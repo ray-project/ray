@@ -49,13 +49,14 @@ def _read_schema_batch(
     format_name: str,
     context: DataContext,
     io_concurrency: int,
-) -> List[Tuple[int, bytes]]:
+) -> List[Tuple[int, bytes, bool]]:
     DataContext._set_current(context)
 
-    def read_file(item: Tuple[str, Optional[int]]) -> bytes:
+    def read_file(item: Tuple[str, Optional[int]]) -> Tuple[pa.Schema, bytes]:
         path, size = item
         try:
-            return read_schema(path, filesystem, size).serialize().to_pybytes()
+            schema = read_schema(path, filesystem, size)
+            return schema, schema.serialize().to_pybytes()
         except (OSError, pa.ArrowInvalid, pa.ArrowTypeError) as error:
             raise type(error)(
                 f"Failed to read {format_name} schema from {path!r}: {error}"
@@ -63,10 +64,25 @@ def _read_schema_batch(
 
     with ThreadPoolExecutor(max_workers=min(io_concurrency, len(paths))) as executor:
         values = executor.map(read_file, zip(paths, sizes))
-        unique: Dict[bytes, int] = {}
-        for index, value in enumerate(values):
-            unique.setdefault(value, index)
-    return [(index, value) for value, index in unique.items()]
+        unique: Dict[bytes, Tuple[int, bytes, bool]] = {}
+        for index, (schema, value) in enumerate(values):
+            if value not in unique:
+                decoded = pa.ipc.read_schema(pa.BufferReader(value))
+                if schema.equals(decoded, check_metadata=True):
+                    unique[value] = (index, value, False)
+                else:
+                    import pyarrow.parquet as pq
+
+                    output = pa.BufferOutputStream()
+                    pq.write_metadata(schema, output)
+                    encoded = output.getvalue().to_pybytes()
+                    restored = pq.read_schema(pa.BufferReader(encoded))
+                    if not schema.equals(restored, check_metadata=True):
+                        raise pa.ArrowInvalid(
+                            "Unable to preserve schema through IPC or Parquet metadata"
+                        )
+                    unique[value] = (index, encoded, True)
+    return list(unique.values())
 
 
 def _schema_task_options(
@@ -124,7 +140,8 @@ def infer_full_schema_from_files(
     """Read schemas on workers and merge once in candidate order on the driver.
 
     Return None when the caller should use its existing driver inference.
-    Each task returns distinct exact IPC payloads and their first positions.
+    Each task returns distinct schemas and their first positions. Schemas that
+    cannot round-trip through IPC use a metadata-only Parquet representation.
     The driver restores candidate order before the one-shot merge.
     """
     context = DataContext.get_current()
@@ -158,7 +175,7 @@ def infer_full_schema_from_files(
     )
     sizes = sample.known_file_sizes
     schemas: List[Tuple[int, pa.Schema]] = []
-    pending: Dict[ObjectRef[List[Tuple[int, bytes]]], int] = {}
+    pending: Dict[ObjectRef[List[Tuple[int, bytes, bool]]], int] = {}
     start = 0
     first_result = True
     try:
@@ -195,10 +212,15 @@ def infer_full_schema_from_files(
             first_result = False
             ref = ready[0]
             offset = pending.pop(ref)
-            for index, value in ray.get(ref):
-                schemas.append(
-                    (offset + index, pa.ipc.read_schema(pa.BufferReader(value)))
-                )
+            for index, value, parquet_encoded in ray.get(ref):
+                position = offset + index
+                if parquet_encoded:
+                    import pyarrow.parquet as pq
+
+                    schema = pq.read_schema(pa.BufferReader(value))
+                else:
+                    schema = pa.ipc.read_schema(pa.BufferReader(value))
+                schemas.append((position, schema))
         schemas.sort(key=lambda item: item[0])
         return _merge_file_schemas(
             [paths[index] for index, _ in schemas],

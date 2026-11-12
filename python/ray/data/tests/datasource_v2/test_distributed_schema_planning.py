@@ -210,6 +210,45 @@ def test_driver_schema_fallback_when_workers_are_busy(
         ray.kill(holder)
 
 
+def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
+    monkeypatch, tmp_path, ray_start_2_cpus
+):
+    monkeypatch.delenv("RAY_SCHEMA_TEST", raising=False)
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "use_datasource_v2", True)
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
+    values = pa.array([[("key", "value")]], type=pa.map_(pa.string(), pa.string()))
+    table = pa.table({"attrs": values}).replace_schema_metadata({b"source": b"map"})
+    paths = [tmp_path / f"map{i}.parquet" for i in range(3)]
+    for path in paths:
+        pq.write_table(table, path)
+    expected = pq.read_schema(paths[0])
+    decoded = pa.ipc.read_schema(pa.BufferReader(expected.serialize()))
+    assert not expected.equals(decoded, check_metadata=True)
+    trace = tmp_path / "map-reads.jsonl"
+    actual = (
+        ray.data.read_parquet(
+            [str(path) for path in paths],
+            merge_schema=True,
+            filesystem=_filesystem(trace, require_env="RAY_SCHEMA_TEST"),
+            runtime_env={"env_vars": {"RAY_SCHEMA_TEST": "enabled"}},
+        )
+        .schema(fetch_if_missing=False)
+        .base_schema
+    )
+    assert actual.equals(expected, check_metadata=True)
+    assert (
+        actual.field("attrs").type.field(0).name
+        == expected.field("attrs").type.field(0).name
+    )
+    records = _records(trace)
+    assert Counter(r["path"] for r in records if r["pid"] != os.getpid()) == {
+        str(path): 1 for path in paths
+    }
+    assert all(r["pid"] != os.getpid() for r in records)
+
+
 class _CustomType(pa.ExtensionType):
     def __init__(self):
         super().__init__(pa.binary(), "ray.tests.schema_reads")
@@ -222,16 +261,21 @@ class _CustomType(pa.ExtensionType):
         return cls()
 
 
-@pytest.mark.parametrize("case", ["custom_extension", "late_object"])
+@pytest.mark.parametrize("case", ["custom_extension", "late_object", "map_extension"])
 def test_worker_schemas_preserve_driver_unifier(
     monkeypatch, tmp_path, ray_start_2_cpus, case
 ):
     custom = _CustomType()
     pa.register_extension_type(custom)
     try:
-        if case == "custom_extension":
+        if case in ("custom_extension", "map_extension"):
             array = pa.ExtensionArray.from_storage(custom, pa.array([b"value"]))
-            tables = [pa.table({"id": array})] * 3
+            columns = {"id": array}
+            if case == "map_extension":
+                columns["attrs"] = pa.array(
+                    [[("key", "value")]], type=pa.map_(pa.string(), pa.string())
+                )
+            tables = [pa.table(columns)] * 3
         else:
             array = pa.ExtensionArray.from_storage(
                 ArrowPythonObjectType(), pa.array([b"opaque"], type=pa.large_binary())

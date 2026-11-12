@@ -10,6 +10,7 @@ from unittest.mock import Mock, PropertyMock
 
 import pyarrow as pa
 import pyarrow.fs as pafs
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -176,7 +177,7 @@ def test_ordered_reads_and_task_options(
         unique = {}
         for index, path in enumerate(batch):
             unique.setdefault(schemas[path].serialize().to_pybytes(), index)
-        payloads[ref] = [(index, value) for value, index in unique.items()]
+        payloads[ref] = [(index, value, False) for value, index in unique.items()]
         submitted.append(batch)
         return ref
 
@@ -302,7 +303,12 @@ def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch):
 
 @pytest.mark.parametrize(
     "stage,error",
-    [("wait", KeyboardInterrupt), ("get", OSError), ("decode", pa.ArrowInvalid)],
+    [
+        ("wait", KeyboardInterrupt),
+        ("get", OSError),
+        ("decode", pa.ArrowInvalid),
+        ("parquet_decode", OSError),
+    ],
 )
 def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
     for suffix, value in dict(min_files=0, max_tasks=2, batch_size=1).items():
@@ -316,12 +322,18 @@ def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
     monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
     monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 1})
     monkeypatch.setattr(ray, "wait", lambda *a, **k: ([refs[0]], [refs[1]]))
-    monkeypatch.setattr(ray, "get", lambda ref: [(0, b"invalid")])
+    monkeypatch.setattr(
+        ray, "get", lambda ref: [(0, b"invalid", stage == "parquet_decode")]
+    )
     if stage == "decode":
         monkeypatch.setattr(
             pa.ipc, "read_schema", Mock(side_effect=error("schema failure"))
         )
-    else:
+    elif stage == "parquet_decode":
+        monkeypatch.setattr(
+            pq, "read_schema", Mock(side_effect=error("schema failure"))
+        )
+    elif stage in ("wait", "get"):
         monkeypatch.setattr(ray, stage, Mock(side_effect=error("schema failure")))
     cancel = Mock()
     monkeypatch.setattr(ray, "cancel", cancel)
@@ -366,10 +378,11 @@ def test_worker_returns_first_position_for_exact_payload():
         context,
         4,
     )
-    assert [index for index, _ in result] == [0, 1, 3]
-    assert [payload for _, payload in result] == [
+    assert [index for index, _, _ in result] == [0, 1, 3]
+    assert [payload for _, payload, _ in result] == [
         values[i].serialize().to_pybytes() for i in range(3)
     ]
+    assert all(not parquet_encoded for _, _, parquet_encoded in result)
 
 
 @pytest.mark.parametrize("size", [None, 123])
