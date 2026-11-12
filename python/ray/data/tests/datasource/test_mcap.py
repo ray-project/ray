@@ -642,7 +642,9 @@ def test_read_mcap_include_row_id(
     assert len(by_id) == 12
 
     monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
-    resplit = ray.data.read_mcap(paths, include_row_id=True)
+    resplit = ray.data.read_mcap(paths, include_row_id=True).materialize()
+    # The read really is split: a task per chunk, not one per file.
+    assert resplit.num_blocks() > len(paths)
     assert {row["row_id"]: row["log_time"] for row in resplit.take_all()} == by_id
 
     # The topic filter drops rows but does not change the ids of the rows it keeps.
