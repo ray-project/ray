@@ -391,8 +391,5 @@ def iter_webdataset_rows(
                         f"{sample.get('__key__')!r} in {path}: the sample already "
                         f"has a column named {k!r}."
                     )
-                sample[k] = [v]
-        yield {
-            k: v[0] if isinstance(v, list) and len(v) == 1 else v
-            for k, v in sample.items()
-        }
+                sample[k] = v
+        yield sample

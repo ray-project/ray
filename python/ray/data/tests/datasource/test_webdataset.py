@@ -3,6 +3,7 @@
 
 import glob
 import io
+import json
 import os
 import pickle
 import tarfile
@@ -814,6 +815,29 @@ def test_read_webdataset_v2_expand_json_rejects_colliding_field(
 
     with pytest.raises(Exception, match="expand_json can't add JSON field 'cls'"):
         ray.data.read_webdataset(path, expand_json=True).take_all()
+
+
+def test_read_webdataset_v2_one_element_lists(ray_start_2_cpus, tmp_path, monkeypatch):
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_utils import (
+        WEBDATASET_READ_CHUNK_SIZE,
+    )
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    num_samples = WEBDATASET_READ_CHUNK_SIZE + 10
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        for i in range(num_samples):
+            value = ["a"] if i < WEBDATASET_READ_CHUNK_SIZE else ["a", "b"]
+            writer.write(f"{i:06d}.json", json.dumps(value).encode("utf-8"))
+
+    rows = sorted(
+        ray.data.read_webdataset(path, override_num_blocks=1).take_all(),
+        key=lambda row: row["__key__"],
+    )
+    assert len(rows) == num_samples
+    assert list(rows[0]["json"]) == ["a"]
+    assert list(rows[-1]["json"]) == ["a", "b"]
 
 
 def test_group_by_keys_duplicate_member_without_meta():
