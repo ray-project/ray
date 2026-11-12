@@ -133,22 +133,20 @@ def list_files_for_each_block(
                         block[FILE_SIZE_COLUMN_NAME].to_pylist(),
                     )
                 ):
-                    if partition_pruner is None or partition_pruner.should_include(
-                        path
-                    ):
-                        yield FileInfo(
-                            path=path,
-                            size=size,
-                            metadata=(
-                                FileMetadata.from_metadata(metadatas[index])
-                                if metadatas is not None
-                                else None
-                            ),
-                        )
+                    yield FileInfo(
+                        path=path,
+                        size=size,
+                        metadata=(
+                            FileMetadata.from_metadata(metadatas[index])
+                            if metadatas is not None
+                            else None
+                        ),
+                    )
 
         for manifest in indexer.list_files_from_file_infos(
             _file_infos(),
             filesystem=filesystem,
+            pruners=[partition_pruner] if partition_pruner is not None else None,
             preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,

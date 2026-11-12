@@ -257,7 +257,11 @@ class SandboxConfig:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
-        env: Environment variables to inject into the sandbox.
+        env: Environment variables to inject into the sandbox. For GPU
+            sandboxes, NVIDIA_DRIVER_CAPABILITIES also sets the driver
+            capabilities runsc allows, such as compute,utility,profiling.
+            Without it, gVisor uses compute,utility. An image's environment
+            cannot raise the allowed capabilities.
         workdir: Working directory for commands (the process cwd). None
             (default) uses the image's WORKDIR, or "/" if the image sets
             none. On a readonly rootfs, an *explicitly* passed workdir is

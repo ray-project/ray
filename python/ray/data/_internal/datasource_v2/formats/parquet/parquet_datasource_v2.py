@@ -17,6 +17,9 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    resolve_partitioning,
+)
 from ray.data._internal.datasource_v2.common.schema_inference import (
     FullSchemaInferenceResult,
     infer_full_schema_from_files,
@@ -53,7 +56,6 @@ from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
-    PathPartitionParser,
     _partition_field_types_to_pa_schema,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
@@ -65,6 +67,24 @@ if TYPE_CHECKING:
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _read_parquet_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+    import pyarrow.dataset as pds
+    import pyarrow.parquet as pq
+
+    if filesystem is None:
+        return pq.read_schema(path)
+    filesystem = filesystem_for_sized_opens(filesystem)
+    fragment = pds.ParquetFileFormat().make_fragment(
+        path, filesystem=filesystem, file_size=size
+    )
+    metadata = call_with_retry(
+        lambda: fragment.metadata,
+        description=f"read Parquet footer for {path}",
+        match=DataContext.get_current().retried_io_errors,
+    )
+    return metadata.schema.to_arrow_schema()
 
 
 @DeveloperAPI
@@ -215,6 +235,8 @@ class ParquetDatasourceV2(FileDataSourceV2):
             small_shuffle_chunk_size=(
                 DataContext.get_current().small_shuffle_chunk_size
             ),
+            partitioning=self._partitioning,
+            logical_schema=self._user_schema,
         )
 
     def get_file_partitioner(self, **kwargs):
@@ -268,30 +290,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
         needs no discovery. Returns a fresh ``Partitioning`` rather than
         mutating ``self`` so schema inference stays side-effect-free.
         """
-        import copy
-
-        # The base signature allows ``None`` for sources whose schema comes
-        # from a catalog; Parquet answers ``schema_needs_file_sample`` True,
-        # so ``_read_datasource_v2`` always samples before calling this.
+        # Parquet always receives the existing schema sample; discovery does
+        # not list additional files or enlarge the sample.
         assert sample is not None, "Parquet always receives a sample"
-
-        if self._partitioning is None or len(sample) == 0:
-            return copy.deepcopy(self._partitioning)
-        if self._partitioning.field_names:
-            return copy.deepcopy(self._partitioning)
-
-        first_path = sample.paths.tolist()[0]
-        parser = PathPartitionParser(self._partitioning)
-        partition_kv = parser(first_path)
-        if not partition_kv:
-            return copy.deepcopy(self._partitioning)
-        return Partitioning(
-            style=self._partitioning.style,
-            base_dir=self._partitioning.base_dir,
-            field_names=list(partition_kv.keys()),
-            field_types=self._partitioning.field_types,
-            filesystem=self._partitioning.filesystem,
-        )
+        return resolve_partitioning(self._partitioning, sample.paths.tolist())
 
     @property
     @override
@@ -311,9 +313,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
         ``Partitioning`` can flow through ``_read_datasource_v2`` into
         :meth:`create_scanner` without side effects.
         """
-        import pyarrow.dataset as pds
-        import pyarrow.parquet as pq
-
         # See ``resolve_partitioning``: ``None`` is reachable only for a
         # source that answers ``schema_needs_file_sample`` False.
         assert sample is not None, "Parquet always receives a sample"
@@ -331,35 +330,24 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # parallel keeps driver-side schema inference bounded by the
         # slowest single read rather than the sum. ``executor.map``
         # preserves input order, which matters because the unified
-        # schema's field order follows the first schema's and
-        # ``sample_paths[0]`` drives partition discovery below.
+        # schema's field order follows the first schema's.
         #
         # With a filesystem, the footer is read through a fragment rather
         # than ``pq.read_schema``: a fragment takes the listing's file size,
         # which spares the open a request for it (a HEAD on S3).
-        filesystem = filesystem_for_sized_opens(self._filesystem)
+        filesystem = self._filesystem
         file_sizes = dict(zip(sample_paths, sample.known_file_sizes))
 
-        if self._user_schema is not None:
+        user_schema = self._user_schema
+        if user_schema is not None:
             # Caller pinned the schema — skip footer reads. Partition/path
             # augmentation below still applies so downstream ops see the
             # synthesized columns.
-            schema = self._user_schema
+            schema = user_schema
         else:
 
             def _read_schema(path: str):
-                if filesystem is None:
-                    return pq.read_schema(path)
-                fragment = pds.ParquetFileFormat().make_fragment(
-                    path, filesystem=filesystem, file_size=file_sizes[path]
-                )
-                # ``make_fragment`` is lazy, so this is the footer read itself.
-                metadata = call_with_retry(
-                    lambda: fragment.metadata,
-                    description=f"read Parquet footer for {path}",
-                    match=DataContext.get_current().retried_io_errors,
-                )
-                return metadata.schema.to_arrow_schema()
+                return _read_parquet_schema(path, filesystem, file_sizes[path])
 
             schema = infer_schema_from_files(
                 sample_paths, _read_schema, format_name="Parquet"
@@ -377,6 +365,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
             sample,
             self._filesystem,
             format_name="Parquet",
+            read_schema=_read_parquet_schema,
             ray_remote_args=ray_remote_args,
             supports_distributed_reads=self.supports_distributed_reads,
         )
@@ -413,21 +402,14 @@ class ParquetDatasourceV2(FileDataSourceV2):
         )
 
     def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
-        sample_paths = sample.paths.tolist()
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
-            first_path = sample_paths[0]
-            parser = PathPartitionParser(resolved_partitioning)
-            partition_kv = parser(first_path)
-            # For hive partitioning the parser discovers key names from the
-            # path itself; for directory partitioning it uses ``field_names``.
-            # In both cases ``partition_kv`` is the authoritative list of
-            # partition columns for the first sample file.
+            field_names = resolved_partitioning.field_names or []
             partition_pa_schema = _partition_field_types_to_pa_schema(
-                field_names=list(partition_kv.keys()),
+                field_names=field_names,
                 field_types=resolved_partitioning.field_types or {},
             )
-            for field_name in partition_kv.keys():
+            for field_name in field_names:
                 if schema.get_field_index(field_name) == -1:
                     pa_type = partition_pa_schema.field(field_name).type
                     schema = schema.append(pa.field(field_name, pa_type))

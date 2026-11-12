@@ -101,6 +101,15 @@ class FileMetadata:
         return FileMetadata(num_rows=self.num_rows, mtime_ns=self.mtime_ns)
 
 
+# The columns every manifest carries. A source may add its own beyond these;
+# see :meth:`FileManifest.extra_columns`.
+REQUIRED_COLUMN_NAMES = (
+    PATH_COLUMN_NAME,
+    FILE_SIZE_COLUMN_NAME,
+    FILE_CHUNK_METADATA_COLUMN_NAME,
+)
+
+
 class FileManifest:
     """Structured view over file paths, sizes, and per-chunk metadata.
 
@@ -184,6 +193,38 @@ class FileManifest:
             for value in block[FILE_METADATA_COLUMN_NAME].to_pylist()
         ]
 
+    @cached_property
+    def extra_columns(self) -> Optional[pa.Table]:
+        """The source's own columns, beside the three required ones.
+
+        The manifest is the only thing the framework carries from listing to
+        reading, so a source that finds its own data puts what the reader
+        needs here -- for Iceberg, each file's delete files, partition values
+        and record count.
+
+        Only ``OnlineBinPacker`` carries them to the read tasks;
+        ``RoundRobinPartitioner`` rejects a manifest that has them. A new
+        partitioner that rebuilds its output rows instead of slicing its
+        input must pass them to :meth:`construct_manifest`, or that state
+        never reaches the reader.
+
+        Build them with one explicit schema for every manifest a source
+        lists. A packer merges rows from several manifests, and a type
+        inferred from values can be null in one manifest and typed in the
+        next.
+
+        Returns:
+            One row per manifest row, or ``None`` when the manifest carries
+            only the required columns -- every plain file format.
+        """
+        table = BlockAccessor.for_block(self._block).to_arrow()
+        names = [
+            name for name in table.column_names if name not in REQUIRED_COLUMN_NAMES
+        ]
+        if not names:
+            return None
+        return table.select(names)
+
     def as_block(self) -> Block:
         """Return the underlying block for the `FileManifest`.
 
@@ -248,7 +289,22 @@ class FileManifest:
         sizes: List[int],
         chunk_metadatas: List[Optional[ChunkMetadata]],
         file_metadatas: Optional[List[FileMetadata]] = None,
+        extra_columns: Optional[pa.Table] = None,
     ) -> "FileManifest":
+        """Build a manifest from the required columns, plus any source columns.
+
+        Args:
+            paths: One file path per row.
+            sizes: On-disk size of each row's file, aligned with ``paths``.
+            chunk_metadatas: Per-row chunk metadata, ``None`` for a whole file.
+            file_metadatas: Optional whole-file metadata, aligned with ``paths``.
+            extra_columns: The source's own columns (see
+                :attr:`extra_columns`), one row each, in the same row order.
+                Appended as-is, so their Arrow types survive the round trip.
+
+        Returns:
+            A manifest whose rows are ``paths`` in the order given.
+        """
         assert len(paths) == len(sizes) == len(chunk_metadatas)
 
         block = pa.table(
@@ -267,4 +323,10 @@ class FileManifest:
                     type=FILE_METADATA_TYPE,
                 ),
             )
+        if extra_columns is not None:
+            assert extra_columns.num_rows == len(
+                paths
+            ), f"{extra_columns.num_rows} extra-column rows for {len(paths)} paths"
+            for field in extra_columns.schema:
+                block = block.append_column(field, extra_columns[field.name])
         return cls(block)

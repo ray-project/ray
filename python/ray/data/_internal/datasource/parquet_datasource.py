@@ -481,12 +481,18 @@ class ParquetDatasource(Datasource):
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
         include_row_hash: bool = False,
+        known_file_sizes: Optional[Dict[str, int]] = None,
     ) -> "ParquetDatasource":
         """Create a ParquetDatasource from a pre-built PyArrow dataset.
 
         This bypasses path resolution, file listing, and dataset construction —
         useful when another system (e.g. delta-rs) has already built a PyArrow
         dataset with the correct filesystem, schema, and fragment metadata.
+
+        ``known_file_sizes`` maps fragment paths to sizes the caller already
+        knows (e.g. from a Delta log). Only paths missing from it are looked up
+        with ``get_file_info``, which costs one request per file on object
+        storage.
         """
         import pyarrow as pa
         from pyarrow.fs import LocalFileSystem
@@ -517,8 +523,13 @@ class ParquetDatasource(Datasource):
                     ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
                 }
 
-            infos = filesystem.get_file_info(pq_paths)
-            file_sizes = [info.size if info.size is not None else 0 for info in infos]
+            sizes = dict(known_file_sizes or {})
+            unknown_paths = [path for path in pq_paths if path not in sizes]
+            if unknown_paths:
+                infos = filesystem.get_file_info(unknown_paths)
+                for path, info in zip(unknown_paths, infos):
+                    sizes[path] = info.size if info.size is not None else 0
+            file_sizes = [sizes[path] for path in pq_paths]
         else:
             file_sizes = []
 

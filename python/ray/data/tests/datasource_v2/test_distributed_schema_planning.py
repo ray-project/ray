@@ -3,7 +3,7 @@
 import json
 import os
 from collections import Counter
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -12,6 +12,8 @@ import pytest
 from pyarrow import orc
 
 import ray
+from ray.actor import ActorHandle
+from ray.data._internal.datasource_v2.common import schema_inference as inference
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
@@ -58,14 +60,10 @@ def test_schema_reads_use_selected_workers(
     ctx = DataContext.get_current()
     monkeypatch.setattr(ctx, "use_datasource_v2", True)
     monkeypatch.setattr(ctx.execution_options, "label_selector", {"schema": "yes"})
-    config = {
-        f"full_schema_inference_{key}": value
-        for key, value in dict(
-            min_files=0, max_tasks=2, num_cpus=1, batch_size=2, io_concurrency=2
-        ).items()
-    }
-    for key, value in config.items():
-        monkeypatch.setattr(ctx, key, value)
+    for key, value in dict(
+        min_files=0, max_tasks=2, num_cpus=1, batch_size=2, io_concurrency=2
+    ).items():
+        monkeypatch.setattr(inference, f"_FULL_SCHEMA_INFERENCE_{key.upper()}", value)
     paths = [tmp_path / f"f{i}.{name}" for i in range(12)]
     for i, path in enumerate(paths):
         table = (
@@ -83,9 +81,7 @@ def test_schema_reads_use_selected_workers(
     dataset = read(
         [str(p) for p in paths],
         merge_schema=True,
-        filesystem=_filesystem(
-            trace, require_env="RAY_SCHEMA_TEST", schema_config=config
-        ),
+        filesystem=_filesystem(trace, require_env="RAY_SCHEMA_TEST"),
         runtime_env={"env_vars": {"RAY_SCHEMA_TEST": "enabled"}},
         ray_remote_args={"scheduling_strategy": "SPREAD"},
     )
@@ -114,13 +110,15 @@ def test_driver_schema_fallback_preserves_read_placement(
     ray.init(address=cluster.address)
     ctx = DataContext.get_current()
     monkeypatch.setattr(ctx, "use_datasource_v2", True)
-    monkeypatch.setattr(ctx, "full_schema_inference_min_files", 0)
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
     paths = [tmp_path / f"f{i}.{name}" for i in range(3)]
     for i, path in enumerate(paths):
         write(
-            pa.table({"id": [i]})
-            if i < 2
-            else pa.table({"id": [i], "late": ["value"]}),
+            (
+                pa.table({"id": [i]})
+                if i < 2
+                else pa.table({"id": [i], "late": ["value"]})
+            ),
             path,
         )
     pg = None
@@ -129,7 +127,7 @@ def test_driver_schema_fallback_preserves_read_placement(
         pg = placement_group([{"CPU": 0.1}])
         ray.get(pg.ready(), timeout=20)
         # CPU admission alone must not mask the PG fallback.
-        monkeypatch.setattr(ctx, "full_schema_inference_num_cpus", 0.05)
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_NUM_CPUS", 0.05)
         strategy = PlacementGroupSchedulingStrategy(pg, placement_group_bundle_index=0)
         options = {
             "num_cpus": 0.1,
@@ -174,6 +172,83 @@ def test_driver_schema_fallback_preserves_read_placement(
             remove_placement_group(pg)
 
 
+def test_driver_schema_fallback_when_workers_are_busy(
+    monkeypatch, tmp_path, ray_start_2_cpus
+):
+    class HoldResources:
+        def ready(self):
+            return True
+
+    holder = cast(
+        ActorHandle[Any], ray.remote(HoldResources).options(num_cpus=2).remote()
+    )
+    ray.get(holder.ready.remote())
+    try:
+        ctx = DataContext.get_current()
+        monkeypatch.setattr(ctx, "use_datasource_v2", True)
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
+        monkeypatch.setattr(
+            inference, "_FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S", 0.2
+        )
+        paths = [tmp_path / f"busy{i}.parquet" for i in range(2)]
+        for i, path in enumerate(paths):
+            pq.write_table(pa.table({"id": [i]}), path)
+        trace = tmp_path / "busy-reads.jsonl"
+        schema = ray.data.read_parquet(
+            [str(path) for path in paths],
+            merge_schema=True,
+            filesystem=_filesystem(trace),
+        ).schema(fetch_if_missing=False)
+        assert schema.base_schema == pa.schema([("id", pa.int64())])
+        records = _records(trace)
+        assert Counter(record["path"] for record in records) == {
+            str(path): 1 for path in paths
+        }
+        assert all(record["pid"] == os.getpid() for record in records)
+    finally:
+        ray.kill(holder)
+
+
+def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
+    monkeypatch, tmp_path, ray_start_2_cpus
+):
+    monkeypatch.delenv("RAY_SCHEMA_TEST", raising=False)
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "use_datasource_v2", True)
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
+    values = pa.array([[("key", "value")]], type=pa.map_(pa.string(), pa.string()))
+    table = pa.table({"attrs": values}).replace_schema_metadata({b"source": b"map"})
+    paths = [tmp_path / f"map{i}.parquet" for i in range(3)]
+    for path in paths:
+        pq.write_table(table, path)
+    expected = pq.read_schema(paths[0])
+    decoded = pa.ipc.read_schema(pa.BufferReader(expected.serialize()))
+    assert not expected.equals(decoded, check_metadata=True)
+    trace = tmp_path / "map-reads.jsonl"
+    actual = (
+        ray.data.read_parquet(
+            [str(path) for path in paths],
+            merge_schema=True,
+            filesystem=_filesystem(trace, require_env="RAY_SCHEMA_TEST"),
+            runtime_env={"env_vars": {"RAY_SCHEMA_TEST": "enabled"}},
+        )
+        .schema(fetch_if_missing=False)
+        .base_schema
+    )
+    assert actual.equals(expected, check_metadata=True)
+    assert (
+        actual.field("attrs").type.field(0).name
+        == expected.field("attrs").type.field(0).name
+    )
+    records = _records(trace)
+    assert Counter(r["path"] for r in records if r["pid"] != os.getpid()) == {
+        str(path): 1 for path in paths
+    }
+    assert all(r["pid"] != os.getpid() for r in records)
+
+
 class _CustomType(pa.ExtensionType):
     def __init__(self):
         super().__init__(pa.binary(), "ray.tests.schema_reads")
@@ -186,16 +261,21 @@ class _CustomType(pa.ExtensionType):
         return cls()
 
 
-@pytest.mark.parametrize("case", ["custom_extension", "late_object"])
+@pytest.mark.parametrize("case", ["custom_extension", "late_object", "map_extension"])
 def test_worker_schemas_preserve_driver_unifier(
     monkeypatch, tmp_path, ray_start_2_cpus, case
 ):
     custom = _CustomType()
     pa.register_extension_type(custom)
     try:
-        if case == "custom_extension":
+        if case in ("custom_extension", "map_extension"):
             array = pa.ExtensionArray.from_storage(custom, pa.array([b"value"]))
-            tables = [pa.table({"id": array})] * 3
+            columns = {"id": array}
+            if case == "map_extension":
+                columns["attrs"] = pa.array(
+                    [[("key", "value")]], type=pa.map_(pa.string(), pa.string())
+                )
+            tables = [pa.table(columns)] * 3
         else:
             array = pa.ExtensionArray.from_storage(
                 ArrowPythonObjectType(), pa.array([b"opaque"], type=pa.large_binary())
@@ -217,12 +297,9 @@ def test_worker_schemas_preserve_driver_unifier(
         if case == "late_object":
             assert isinstance(expected.field("id").type, ArrowPythonObjectType)
         ctx = DataContext.get_current()
-        for key, value in dict(
-            use_datasource_v2=True,
-            full_schema_inference_min_files=0,
-            full_schema_inference_batch_size=2,
-        ).items():
-            monkeypatch.setattr(ctx, key, value)
+        monkeypatch.setattr(ctx, "use_datasource_v2", True)
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
         schema = ray.data.read_parquet(
             [str(p) for p in paths], merge_schema=True
         ).schema(fetch_if_missing=False)
