@@ -137,7 +137,7 @@ A **placement group** is a Ray primitive that reserves a group of resources (cal
 A **bundle** is a dictionary specifying resource requirements, such as `{"CPU": 2, "GPU": 1}`. When you define multiple bundles, you're telling Ray to reserve multiple sets of resources that can be placed according to your chosen strategy.
 
 #### Controlling placement group location with label selectors
-You can further refine where placement groups are scheduled using a `placement_group_bundle_label_selector`. This field defines a list of label selectors to apply per-bundle when scheduling the Serve deployment. This allows you to restrict the nodes where your bundles (and therefore your replicas) are placed based on Ray node labels. For more information on Ray label selectors, see [Use labels to control scheduling](https://docs.ray.io/en/latest/ray-core/scheduling/labels.html).
+You can further refine where placement groups are scheduled using a `placement_group_bundle_label_selector`. This field defines a list of label selectors to apply per-bundle when scheduling the Serve deployment. This allows you to restrict the nodes where your bundles (and therefore your replicas) are placed based on Ray node labels. For more information on Ray label selectors, see [Use labels to control scheduling](../../core/scheduling/labels.md).
 
 ```{literalinclude} ../doc_code/replica_scheduling.py
 :start-after: __placement_group_labels_start__

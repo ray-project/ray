@@ -30,14 +30,17 @@ pyiceberg[sql-sqlite]==0.12.0; python_version >= '3.14'
 clickhouse-connect
 confluent-kafka
 pybase64
-hudi==0.4.0
+hudi==0.5.0
 mcap
 datasketches; python_version < '3.14'
 # `azurite` powers the Azure emulator in test_catalog_azure.py, the same way
 # `kafka` powers test_kafka.py's broker.
 testcontainers[kafka,azurite]
 obstore
-pyarrow
+# Newest pyarrow that daft (pyarrow < 26) allows; it is also the newest
+# release that still supports Python 3.10. The data "arrow latest" CI image
+# force-installs pyarrow 26 on top (ci/docker/data.build.Dockerfile).
+pyarrow==25.0.1
 torch
 tensorflow; python_version < '3.14'
 jax

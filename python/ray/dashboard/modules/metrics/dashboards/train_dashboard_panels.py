@@ -1,7 +1,7 @@
-# flake8: noqa E501
 from ray.dashboard.modules.metrics.dashboards.common import (
     K8S_DISK_USAGE_NOTE,
     DashboardConfig,
+    GrafanaAnnotation,
     Panel,
     Row,
     Target,
@@ -34,6 +34,35 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
         Target(
             expr='sum(ray_train_worker_group_shutdown_total_time_s{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name)',
             legend="Run Name: {{ray_train_run_name}}, Worker Group Shutdown Time",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+# Ray Train Metrics (NCCL Hang Detector)
+NCCL_HANG_DETECTOR_STATE_PANEL = Panel(
+    id=31,
+    title="NCCL Hang Detector State",
+    description="State of the NCCL hang detector for the run's most stalled communicator: HEALTHY, SUSPECTED or CONFIRMED, or DEGRADED once detection is disabled for the run (e.g. `ncclras` is unavailable). Only recorded when the hang detector is enabled (RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1).",
+    unit="",
+    targets=[
+        Target(
+            expr='sum(ray_train_nccl_hang_detector_state{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name, ray_train_nccl_hang_detector_state)',
+            legend="Run Name: {{ray_train_run_name}}, Detector State: {{ray_train_nccl_hang_detector_state}}",
+        ),
+    ],
+)
+
+NCCL_HANG_STALL_DURATION_PANEL = Panel(
+    id=32,
+    title="NCCL Hang Stall Duration",
+    description="Seconds the run's most stalled NCCL communicator has made no progress with a collective mismatch. Drops to 0 when it resumes. Only recorded when the hang detector is enabled (RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1).",
+    unit="seconds",
+    targets=[
+        Target(
+            expr='max(ray_train_nccl_hang_stall_duration_s{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name)',
+            legend="Run Name: {{ray_train_run_name}}",
         ),
     ],
     fill=0,
@@ -444,6 +473,9 @@ TRAIN_GRAFANA_ROWS = [
             # Ray Train Metrics (Controller)
             CONTROLLER_STATE_PANEL,
             CONTROLLER_OPERATION_TIME_PANEL,
+            # Ray Train Metrics (NCCL Hang Detector)
+            NCCL_HANG_DETECTOR_STATE_PANEL,
+            NCCL_HANG_STALL_DURATION_PANEL,
             # Ray Train Metrics (Worker)
             WORKER_TRAIN_REPORT_TIME_PANEL,
             WORKER_CHECKPOINT_SYNC_TIME_PANEL,
@@ -529,10 +561,109 @@ assert len(all_panel_ids) == len(
     set(all_panel_ids)
 ), f"Duplicated id found. Use unique id for each panel. {all_panel_ids}"
 
+# Must match the `TRAIN_ANNOTATION_*` constants in
+# `ray.train.v2._internal.constants`, which `test_train_annotations.py` checks.
+# They're duplicated so that the dashboard doesn't import Ray Train.
+TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
+TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE = "controller_state_change"
+TRAIN_ANNOTATION_RAY_TRAIN_REPORT = "ray.train.report"
+TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE = "ray.train.annotate"
+
+# Queries are isolated to prevent annotations appearing in other jobs. The run
+# tags live under the annotation record's `tags`, so each query lifts the ones it
+# filters on into a label of its own; see `ANNOTATION_COMMON_LABELS`.
+_RUN_FILTERS = (
+    '| json ray_train_run_name="tags.ray_train_run_name"'
+    ', ray_train_run_id="tags.ray_train_run_id" '
+    '| ray_train_run_name=~"$TrainRunName" | ray_train_run_id=~"$TrainRunId"'
+)
+
+CONTROLLER_STATE_ANNOTATION = GrafanaAnnotation(
+    name="Train Controller State Changes",
+    source=TRAIN_ANNOTATION_SOURCE,
+    icon_color="rgba(31, 120, 193, 1)",  # blue
+    ref_id="TrainControllerStateAnnotations",
+    tag_keys="__no_tags__",
+    expr=(
+        f'| event="{TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE}" {_RUN_FILTERS} '
+        '| line_format "{{.message}}"'
+    ),
+)
+
+RAY_TRAIN_REPORT_ANNOTATION = GrafanaAnnotation(
+    name="ray.train.report call",
+    source=TRAIN_ANNOTATION_SOURCE,
+    icon_color="rgba(50, 172, 45, 1)",  # green
+    ref_id="TrainReportCallAnnotations",
+    tag_keys="metrics_pill,checkpoint_pill,validation_pill",
+    expr=(
+        f'| event="{TRAIN_ANNOTATION_RAY_TRAIN_REPORT}" {_RUN_FILTERS} '
+        '| json metrics="fields.metrics"'
+        ', has_checkpoint="fields.has_checkpoint"'
+        ', checkpoint_dir_name="fields.checkpoint_dir_name"'
+        ', validation="fields.validation" '
+        "| label_format "
+        "metrics_pill=`metrics: {{.metrics}}`, "
+        'checkpoint_pill=`{{if eq .has_checkpoint "true"}}checkpoint{{if .checkpoint_dir_name}}: {{.checkpoint_dir_name}}{{end}}{{else}}no checkpoint{{end}}`, '
+        'validation_pill=`{{if eq .validation "true"}}with validation{{else}}no validation{{end}}` '
+        '| line_format "ray.train.report()"'
+    ),
+)
+
+# The custom-annotation variants differ only by severity filter, color, and refId.
+_CUSTOM_ANNOTATION_VARIANTS = [
+    (
+        "Train Custom Annotations (Info)",
+        "rgba(184, 119, 217, 1)",  # purple
+        "TrainCustomAnnotationsInfo",
+        "info",
+    ),
+    (
+        "Train Custom Annotations (Warnings)",
+        "rgba(255, 152, 48, 1)",  # orange
+        "TrainCustomAnnotationsWarning",
+        "warning",
+    ),
+    (
+        "Train Custom Annotations (Errors)",
+        "rgba(224, 47, 68, 1)",  # red
+        "TrainCustomAnnotationsError",
+        "error",
+    ),
+]
+RAY_TRAIN_ANNOTATE_ANNOTATIONS = [
+    GrafanaAnnotation(
+        name=name,
+        source=TRAIN_ANNOTATION_SOURCE,
+        icon_color=icon_color,
+        ref_id=ref_id,
+        tag_keys="severity,worker,fields",
+        expr=(
+            f'| event="{TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE}" '
+            f"{_RUN_FILTERS} "
+            '| json ray_train_worker_world_rank="tags.ray_train_worker_world_rank"'
+            ', severity="fields.severity"'
+            ', fields="fields.custom_fields" '
+            f'| severity="{severity}" '
+            '| ray_train_worker_world_rank=~"$TrainWorkerWorldRank" '
+            "| label_format worker=`rank {{.ray_train_worker_world_rank}}` "
+            '| line_format "{{.message}}"'
+        ),
+    )
+    for name, icon_color, ref_id, severity in _CUSTOM_ANNOTATION_VARIANTS
+]
+
+TRAIN_ANNOTATIONS = [
+    CONTROLLER_STATE_ANNOTATION,
+    RAY_TRAIN_REPORT_ANNOTATION,
+    *RAY_TRAIN_ANNOTATE_ANNOTATIONS,
+]
+
 train_dashboard_config = DashboardConfig(
     name="TRAIN",
     default_uid="rayTrainDashboard",
     rows=TRAIN_GRAFANA_ROWS,
     standard_global_filters=['SessionName=~"$SessionName"'],
     base_json_file_name="train_grafana_dashboard_base.json",
+    annotations=TRAIN_ANNOTATIONS,
 )

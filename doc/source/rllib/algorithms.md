@@ -8,7 +8,7 @@ myst:
 
 # Algorithms
 
-This table lists every algorithm available in RLlib. All algorithms support multi-GPU training on a single GPU node in [Ray (open-source)](https://docs.ray.io/en/latest/index.html) (<img src="images/sigils/multi-gpu.svg" class="inline-figure" width="84" alt="multi_gpu">), and multi-GPU training on multi-node GPU clusters on the [Anyscale platform](https://www.anyscale.com/platform) (<img src="images/sigils/multi-node-multi-gpu.svg" class="inline-figure" width="84" alt="multi_node_multi_gpu">).
+This table lists every algorithm available in RLlib. All algorithms support multi-GPU training on a single GPU node in {doc}`Ray (open-source) </index>` (<img src="images/sigils/multi-gpu.svg" class="inline-figure" width="84" alt="multi_gpu">), and multi-GPU training on multi-node GPU clusters on the [Anyscale platform](https://www.anyscale.com/platform) (<img src="images/sigils/multi-node-multi-gpu.svg" class="inline-figure" width="84" alt="multi_node_multi_gpu">).
 
 ```{list-table}
 :header-rows: 1

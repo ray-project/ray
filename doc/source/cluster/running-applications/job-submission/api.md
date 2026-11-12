@@ -10,7 +10,7 @@ myst:
 
 This page documents every endpoint of the Ray Jobs REST API, generated from the [OpenAPI specification](ray-job-rest-api-spec). For request examples and a walkthrough, see [](ray-job-rest-api).
 
-% Request and response examples are deliberately not enabled here, and can't be until two upstream bugs are fixed. sphinxcontrib-openapi's :generate-examples-from-schemas: crashes on this spec with "ValueError: dictionary update sequence element #0 has length 1; 2 is required" (sphinx-contrib/openapi#166), because example generation can't handle an allOf that targets a non-object schema, which is how JobDetails attaches descriptions to the JobType and JobStatus string enums. The :response-examples-for: option is rejected outright as an unknown option (sphinx-contrib/openapi#165). Re-check both before adding either option.
+% Request and response examples are deliberately not enabled here, and can't be until an upstream bug is fixed. With :generate-examples-from-schemas:, sphinxcontrib-openapi renders a schema-derived string example without JSON-encoding it, so the stop endpoint's 200 response, a bare JobStatus enum, renders as PENDING instead of "PENDING" under Content-Type: application/json. The http lexer rejects it, and the warning fails the build (sphinx-contrib/openapi#172). The fix for the httpdomain renderer is in sphinx-contrib/openapi#185, which isn't in a release yet. Re-check before adding the option.
 
 % The openapi directive has to be wrapped in eval-rst. sphinxcontrib-openapi emits
 % reStructuredText into a ViewList and hands it to nested_parse, but MyST's

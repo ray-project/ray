@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""Examples using MLfowLoggerCallback and setup_mlflow.
-"""
+"""Examples using MLflowLoggerCallback and setup_mlflow."""
 import os
 import tempfile
 import time
@@ -9,6 +8,10 @@ import mlflow
 
 from ray import tune
 from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow
+
+# MLflow >= 3.18 requires opting in to the local filesystem tracking
+# backend that the smoke test's tempdir URI uses.
+os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
 
 
 def evaluation_fn(step, width, height):

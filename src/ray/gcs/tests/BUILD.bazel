@@ -69,6 +69,7 @@ ray_cc_test(
     srcs = [
         "gcs_server_rpc_test.cc",
     ],
+    auth_token = True,
     data = [
         "//:redis-cli",
         "//:redis-server",
@@ -122,6 +123,7 @@ ray_cc_test(
     srcs = [
         "gcs_health_check_manager_test.cc",
     ],
+    auth_token = True,
     tags = [
         "no_windows",
         "team:core",
@@ -300,7 +302,9 @@ ray_cc_test(
         ":gcs_table_storage_test_lib",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_table_storage",
+        "//src/ray/gcs/store_client:observable_store_client",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
+        "//src/ray/observability:fake_metric",
         "//src/ray/util:clock",
     ],
 )

@@ -8,6 +8,7 @@ constructed.
 """
 
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Optional, Union
 
@@ -212,6 +213,84 @@ def test_apply_predicate_mixed_and_with_unsplittable_residual(tmp_path):
     # The residual carried by the new Filter is exactly the mixed-OR
     # conjunct that couldn't be pushed.
     _assert_pred_equals(result.predicate_expr, mixed_or)
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        col("country") == "US",
+        col("a") > 1,
+        (col("country") == "US") & (col("a") > 1),
+        (col("country") == "US") | (col("a") > 1),
+    ],
+    ids=["partition", "data", "and", "mixed_or"],
+)
+def test_block_udf_keeps_post_read_predicates_above_the_read(tmp_path, predicate):
+    op = _mk_partitioned_read_files(tmp_path)
+    assert isinstance(op.scanner, ParquetScanner)
+    # An explicit read-stage predicate must survive the post-UDF barrier.
+    scanner, residual = op.scanner.push_filters(col("a") > 0)
+    assert residual is None
+    op = replace(op, scanner=scanner, block_udf=lambda table: table)
+
+    assert op.supports_predicate_pushdown() is False
+    assert op.apply_predicate(predicate) is op
+    assert op.scanner is scanner
+    _assert_pred_equals(scanner.predicate, col("a") > 0)
+    assert scanner.partition_predicate is None
+
+
+@pytest.mark.parametrize(
+    "predicate,expected_data,expected_partition",
+    [
+        (col("a") > 1, col("a") > 1, None),
+        (col("country") == "US", None, col("country") == "US"),
+    ],
+    ids=["unmodified_data_column", "unmodified_partition_column"],
+)
+def test_block_udf_allows_predicates_on_unmodified_columns(
+    tmp_path, predicate, expected_data, expected_partition
+):
+    op = _mk_partitioned_read_files(tmp_path)
+    op = replace(
+        op,
+        block_udf=lambda table: table,
+        block_udf_modified_columns={"b"},
+    )
+
+    assert op.supports_predicate_pushdown() is True
+    result = op.apply_predicate(predicate)
+
+    assert isinstance(result, ReadFiles) and result is not op
+    assert isinstance(result.scanner, ParquetScanner)
+    _assert_pred_equals(result.scanner.predicate, expected_data)
+    _assert_pred_equals(result.scanner.partition_predicate, expected_partition)
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        col("b") == "x",
+        (col("a") > 1) & (col("b") == "x"),
+        (col("a") > 1) | (col("b") == "x"),
+    ],
+    ids=["modified_column", "mixed_and", "mixed_or"],
+)
+def test_block_udf_keeps_predicates_referencing_modified_columns_above_read(
+    tmp_path, predicate
+):
+    op = _mk_partitioned_read_files(tmp_path)
+    op = replace(
+        op,
+        block_udf=lambda table: table,
+        block_udf_modified_columns={"b"},
+    )
+
+    assert op.supports_predicate_pushdown() is True
+    assert op.apply_predicate(predicate) is op
+    assert isinstance(op.scanner, ParquetScanner)
+    assert op.scanner.predicate is None
+    assert op.scanner.partition_predicate is None
 
 
 if __name__ == "__main__":

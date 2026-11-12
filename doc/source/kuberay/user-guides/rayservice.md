@@ -41,7 +41,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 3: Install a RayService
 
 ```sh
-curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml
+curl -O https://raw.githubusercontent.com/kuberay-project/kuberay/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml
 kubectl apply -f ray-service.sample.yaml
 ```
 
@@ -49,7 +49,7 @@ Look at the Ray Serve configuration `serveConfigV2` embedded in the RayService Y
   * `import_path`: The path to import the Serve application. For `fruit_app`, [fruit.py](https://github.com/ray-project/test_dag/blob/master/fruit.py) defines the application in the `deployment_graph` variable.
   * `route_prefix`: See [Ray Serve API](serve-api) for more details.
   * `working_dir`: The working directory points to the [test_dag](https://github.com/ray-project/test_dag/) repository, which RayService downloads at runtime and uses to start your application. See {ref}`Runtime Environments <runtime-environments>`. for more details.
-  * `deployments`: See [Ray Serve Documentation](https://docs.ray.io/en/master/serve/configure-serve-deployment.html).
+  * `deployments`: See [Ray Serve Documentation](../../serve/configure-serve-deployment.md).
   ```yaml
   serveConfigV2: |
     applications:
@@ -202,7 +202,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 You can update the configurations for the applications by modifying `serveConfigV2` in the RayService configuration file. Reapplying the modified configuration with `kubectl apply` reapplies the new configurations to the existing RayCluster instead of creating a new RayCluster.
 
-Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml). This change reconfigures the existing MangoStand deployment, and future requests are going to use the updated mango price.
+Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/kuberay-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml). This change reconfigures the existing MangoStand deployment, and future requests are going to use the updated mango price.
 
 ```sh
 # Step 7.1: Update the price of mangos from 3 to 4.

@@ -120,7 +120,7 @@ val_data = ray.data.read_csv("./validation.csv")
 
 def train_func_per_worker():
     # Access Ray datasets in your train_func via ``get_dataset_shard``.
-    # Ray Data shards all datasets across workers by default.
+    # Ray Train shards all datasets across workers by default.
     train_ds = train.get_dataset_shard("train")
     val_ds = train.get_dataset_shard("validation")
 
@@ -168,7 +168,7 @@ eval_data = ray.data.read_parquet("hf://datasets/your-dataset/validation/", file
 
 def train_func():
     # Access Ray datasets in your train_func via ``get_dataset_shard``.
-    # Ray Data shards all datasets across workers by default.
+    # Ray Train shards all datasets across workers by default.
     train_ds = ray.train.get_dataset_shard("train")
     eval_ds = ray.train.get_dataset_shard("evaluation")
 
@@ -233,12 +233,12 @@ Pass your preprocessed datasets to a Ray Train trainer, such as {class}`~ray.tra
 
 To access the datasets you passed to the trainer's `datasets` argument, call {meth}`ray.train.get_dataset_shard` inside the `train_loop_per_worker` that runs on each distributed training worker.
 
-Ray Data splits all datasets across the training workers by default. {meth}`~ray.train.get_dataset_shard` returns `1/n` of the dataset, where `n` is the number of training workers.
+Ray Train splits all datasets across the training workers by default. {meth}`~ray.train.get_dataset_shard` returns `1/n` of the dataset, where `n` is the number of training workers.
 
 Ray Data splits the data on the fly in a streaming fashion.
 
 :::{note}
-Because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers. You might use [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) or similar utilities in other frameworks. For an example, see {doc}`Train with DeepSpeed ZeRO-3 and Ray Train <../examples/deepspeed/deepspeed-example>`.
+Because Ray Train splits the evaluation dataset, you have to aggregate the evaluation results across workers. You might use [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) or similar utilities in other frameworks. For an example, see {ref}`train-deepspeed`.
 :::
 
 To override this behavior, pass the `dataset_config` argument. For details on configuring splitting logic, see {ref}`Split datasets <train-datasets-split>`.
@@ -575,6 +575,8 @@ This example persists the fitted preprocessor with the `Trainer(metadata={...})`
 
 When you diagnose bottlenecks that slow training throughput, first find out whether training ever stalls to wait for the next data batch. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer that question. The **Data Ingestion** row shows whether data loading is stalling training, then narrows down which stage is responsible and whether rank stragglers are the cause.
 
+These stages come from Ray Data's iteration pipeline. See {ref}`How does Ray Data iterate over data? <batch_iteration>` for how that pipeline works and what each stage does.
+
 To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster, as described in {ref}`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**. Open it from Grafana's dashboard list and find the **Data Ingestion** section.
 
 To identify data loading bottlenecks with these panels, follow these steps.
@@ -700,7 +702,7 @@ The following table maps each drill-down result to the performance tips that add
 * - A single rank straggles
   - {ref}`isolating-ray-data-worker-processes`
 * - Batching dominates and you use a large local shuffle buffer
-  - {ref}`map_batches_shuffle`
+  - {ref}`shuffle_batches_shuffle`
 ```
 
 For lower-level, per-operator timings that these panels don't cover, see the {ref}`Ray Data dashboard <ray-data-dashboard>` and {ref}`Ray Data stats <ray-data-stats>`.
@@ -848,7 +850,7 @@ trainer = TorchTrainer(
 ```
 
 :::{tip}
-Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`map_batches-based shuffling <map_batches_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
+Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`shuffle_batches <shuffle_batches_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
 :::
 
 For details on tuning Ray Data, see {ref}`data_performance_tips`.
