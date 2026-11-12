@@ -4361,6 +4361,323 @@ class TestReconciler:
             (f"w-{h}", Instance.RAY_STOP_REQUESTED) for h in range(3)
         ]
 
+    def test_multihost_replica_batch_affinity_and_unaligned_retry_isolation(self):
+        # 1. Interleaved pod arrival across N >= 2 concurrent batches keeps 1:1
+        # replica_id <-> launch_request_id affinity and never steals healed pods
+        # from existing degraded or externally adopted replicas.
+        cfg, store, _, im = self._setup_multihost_reconcile_env(
+            "affinity",
+            [
+                *(
+                    create_instance(
+                        f"old-{h}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        cloud_instance_id=f"c-old-{h}",
+                        launch_request_id="req-old",
+                    )
+                    for h in range(3)
+                ),
+                *(
+                    create_instance(
+                        f"ext-{h}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        cloud_instance_id=f"c-ext-{h}",
+                    )
+                    for h in range(2)
+                ),
+                *(
+                    create_instance(
+                        f"r0-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-0",
+                        status_times=[(Instance.REQUESTED, 100)],
+                    )
+                    for h in range(4)
+                ),
+                *(
+                    create_instance(
+                        f"r1-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-1",
+                        status_times=[(Instance.REQUESTED, 200)],
+                    )
+                    for h in range(4)
+                ),
+            ],
+        )
+        cloud = {
+            **{
+                f"c-old-{h}": CloudInstance(
+                    f"c-old-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-old"
+                )
+                for h in range(4)
+            },
+            **{
+                f"c-ext-{h}": CloudInstance(
+                    f"c-ext-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-ext"
+                )
+                for h in range(3)
+            },
+            "c-a-0": CloudInstance(
+                "c-a-0", "tpu", NodeKind.WORKER, True, replica_id="rep-a"
+            ),
+            "c-b-0": CloudInstance(
+                "c-b-0", "tpu", NodeKind.WORKER, True, replica_id="rep-b"
+            ),
+            "c-a-1": CloudInstance(
+                "c-a-1", "tpu", NodeKind.WORKER, True, replica_id="rep-a"
+            ),
+            "c-b-1": CloudInstance(
+                "c-b-1", "tpu", NodeKind.WORKER, True, replica_id="rep-b"
+            ),
+        }
+        Reconciler._handle_cloud_instance_allocation(
+            im, cloud, [], autoscaling_config=cfg
+        )
+        Reconciler._handle_extra_cloud_instances_from_cloud_provider(im, cloud)
+        # Tick 2: remaining pods arrive interleaved in reverse order.
+        cloud.update(
+            {
+                "c-b-2": CloudInstance(
+                    "c-b-2", "tpu", NodeKind.WORKER, True, replica_id="rep-b"
+                ),
+                "c-a-2": CloudInstance(
+                    "c-a-2", "tpu", NodeKind.WORKER, True, replica_id="rep-a"
+                ),
+                "c-b-3": CloudInstance(
+                    "c-b-3", "tpu", NodeKind.WORKER, True, replica_id="rep-b"
+                ),
+                "c-a-3": CloudInstance(
+                    "c-a-3", "tpu", NodeKind.WORKER, True, replica_id="rep-a"
+                ),
+            }
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            im, cloud, [], autoscaling_config=cfg
+        )
+        Reconciler._handle_extra_cloud_instances_from_cloud_provider(im, cloud)
+        insts, _ = store.get_instances()
+        by_rep = defaultdict(set)
+        for inst in insts.values():
+            by_rep[cloud[inst.cloud_instance_id].replica_id].add(inst.launch_request_id)
+        assert by_rep["rep-old"] == {"req-old", ""}
+        assert by_rep["rep-ext"] == {""}
+        assert len(by_rep["rep-a"]) == 1 and len(by_rep["rep-b"]) == 1
+        assert by_rep["rep-a"] | by_rep["rep-b"] == {"req-0", "req-1"}
+
+        # 2. LaunchNodeError for an already-started replica batch fails that batch
+        # without stealing a fresh unrelated replica's pods.
+        _, err_store, _, err_im = self._setup_multihost_reconcile_env(
+            "affinity_err",
+            [
+                create_instance(
+                    "a0",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="ca-0",
+                    launch_request_id="req-a",
+                ),
+                *(
+                    create_instance(
+                        f"a{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-a",
+                        status_times=[(Instance.REQUESTED, 100)],
+                    )
+                    for h in range(1, 4)
+                ),
+                *(
+                    create_instance(
+                        f"b{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-b",
+                        status_times=[(Instance.REQUESTED, 200)],
+                    )
+                    for h in range(4)
+                ),
+            ],
+        )
+        err_cloud = {
+            "ca-0": CloudInstance(
+                "ca-0", "tpu", NodeKind.WORKER, True, replica_id="rep-a"
+            ),
+            "cb-0": CloudInstance(
+                "cb-0", "tpu", NodeKind.WORKER, True, replica_id="rep-b"
+            ),
+        }
+        Reconciler._handle_cloud_instance_allocation(
+            err_im,
+            err_cloud,
+            [
+                LaunchNodeError(
+                    request_id="req-a",
+                    node_type="tpu",
+                    count=2,
+                    timestamp_ns=1,
+                    details="quota",
+                )
+            ],
+            autoscaling_config=cfg,
+        )
+        err_insts, _ = err_store.get_instances()
+        assert (
+            sum(
+                1
+                for h in range(1, 4)
+                if err_insts[f"a{h}"].status == Instance.ALLOCATION_FAILED
+            )
+            == 2
+        )
+        assert any(err_insts[f"b{h}"].cloud_instance_id == "cb-0" for h in range(4))
+
+        # 3. Degraded slice ("req-old", 3/4 RAY_RUNNING) beside an unrelated
+        # unaligned partial retry ("req-new", 2 REQUESTED) drains immediately
+        # and does not absorb req-new's slots in launch occupancy clamping.
+        cfg_cap8 = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "head": NodeTypeConfig(
+                        name="head",
+                        resources={},
+                        min_worker_nodes=0,
+                        max_worker_nodes=0,
+                    ),
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4, "TPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
+                    ),
+                },
+                "max_concurrent_launches": 16,
+            }
+        )
+        _, _, sub3, im3 = self._setup_multihost_reconcile_env(
+            "unaligned_retry",
+            [
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="c-head",
+                ),
+                *(
+                    create_instance(
+                        f"w-{h}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        cloud_instance_id=f"c-{h}",
+                        ray_node_id=f"n-{h}",
+                        launch_request_id="req-old",
+                    )
+                    for h in range(3)
+                ),
+                *(
+                    create_instance(
+                        f"r-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-new",
+                    )
+                    for h in range(2)
+                ),
+            ],
+        )
+        cloud3 = self._replica_cloud({"rep-old": range(3)}, include_head=True)
+        sched3 = MagicMock()
+        sched3.schedule.return_value = SchedulingReply(
+            to_terminate=[
+                TerminationRequest(
+                    id=f"t-{h}",
+                    instance_id=f"w-{h}",
+                    ray_node_id=f"n-{h}",
+                    instance_type="tpu",
+                    instance_status=Instance.RAY_RUNNING,
+                    cause=TerminationRequest.Cause.IDLE,
+                )
+                for h in range(3)
+            ],
+            to_launch=[LaunchRequest(id="l-1", instance_type="tpu", count=4)],
+        )
+        sub3.clear()
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im3,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(),
+            scheduler=sched3,
+            autoscaling_config=cfg_cap8,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=cloud3,
+        )
+        # rep-old drains immediately (not deferred by req-new's 2 % 4 != 0) and
+        # occupies 4 + 2 = 6 slots, clamping the extra 4-pod launch at max_worker_nodes=8.
+        assert sorted((e.instance_id, e.new_instance_status) for e in sub3.events) == [
+            (f"w-{h}", Instance.RAY_STOP_REQUESTED) for h in range(3)
+        ]
+
+        # 4. Incomplete batch rep-0 (1 ALLOCATED + 1 REQUESTED "req-0") beside
+        # 4 REQUESTED "req-1" does not steal req-1's slots -> occupies 4 + 4 = 8.
+        _, _, sub4, im4 = self._setup_multihost_reconcile_env(
+            "no_cross_batch_steal",
+            [
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="c-head",
+                ),
+                create_instance(
+                    "w-0",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-0",
+                    launch_request_id="req-0",
+                ),
+                create_instance(
+                    "r0-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="req-0",
+                ),
+                *(
+                    create_instance(
+                        f"r1-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-1",
+                    )
+                    for h in range(4)
+                ),
+            ],
+        )
+        cloud4 = self._replica_cloud({"rep-0": range(1)}, include_head=True)
+        sched4 = MagicMock()
+        sched4.schedule.return_value = SchedulingReply(
+            to_launch=[LaunchRequest(id="l-2", instance_type="tpu", count=4)]
+        )
+        sub4.clear()
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im4,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(),
+            scheduler=sched4,
+            autoscaling_config=cfg_cap8,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=cloud4,
+        )
+        assert sub4.events == []
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
