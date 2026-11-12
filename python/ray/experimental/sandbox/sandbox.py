@@ -48,7 +48,8 @@ class Sandbox:
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
         disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past it
-            fail with ENOSPC. Zero (default) means no cap. Requires
+            fail with ENOSPC. None (default) or zero means no cap, and on
+            restore None keeps the checkpoint's. Requires
             ``readonly=False`` or a ``workdir``; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         restore_from: Path to checkpoint directory if restoring an existing sandbox.
@@ -71,7 +72,7 @@ class Sandbox:
         cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: Optional[bool] = None,
-        disk: Union[str, int, float] = 0,
+        disk: Optional[Union[str, int, float]] = None,
         restore_from: Optional[str] = None,
         remote: Optional[bool] = None,
         **kwargs,
@@ -116,8 +117,12 @@ class Sandbox:
                 restore_kwargs["capabilities"] = capabilities
             if readonly is not None:
                 restore_kwargs["readonly"] = readonly
-            if disk:
+            if disk is not None:
                 restore_kwargs["disk"] = disk
+            # Named parameters aren't in kwargs: pass the image on too, so
+            # that restore rejects a different one instead of ignoring it.
+            if image is not None:
+                restore_kwargs["image"] = image
 
             self.instance_id = self.runtime.restore(
                 checkpoint_path=restore_from,
@@ -152,7 +157,7 @@ class Sandbox:
                 cidr_allowlist=cidr_allowlist,
                 capabilities=capabilities,
                 readonly=readonly,
-                disk=disk,
+                disk=disk if disk is not None else 0,
                 gpu_ids=gpu_ids,
                 **kwargs,
             )
@@ -298,8 +303,8 @@ class Sandbox:
         self,
         checkpoint_path: Optional[str] = None,
         leave_running: bool = True,
-        remote: bool = False,
         timeout_seconds: float = 30.0,
+        remote: bool = False,
         **kwargs,
     ) -> str:
         """Create a checkpoint of the running sandbox.
@@ -307,8 +312,9 @@ class Sandbox:
         Args:
             checkpoint_path: Path where the checkpoint directory will be saved.
             leave_running: If True, keep the sandbox running after checkpointing.
-            remote: If True, mark checkpoint as remote/shared across VM nodes.
             timeout_seconds: Timeout for the checkpoint operation.
+            remote: If True, mark checkpoint as remote/shared across VM nodes.
+                Requires a ``checkpoint_path`` on storage that every node mounts.
             **kwargs: Additional parameters passed to runtime checkpoint.
 
         Returns:

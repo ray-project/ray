@@ -1549,6 +1549,107 @@ class TestCheckpointRestore(unittest.TestCase):
             assert call_kwargs["memory"] == 1024**3
             assert "scheduling_strategy" not in call_kwargs
 
+    def test_remote_checkpoint_needs_an_explicit_path(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        stack, mock_run, _ = self._fake_runsc()
+        with stack:
+            # The default location is node-local: another node couldn't
+            # restore from it.
+            with pytest.raises(
+                SandboxError, match="remote=True needs a checkpoint_path"
+            ):
+                self.backend.checkpoint_sandbox(sandbox_id, remote=True)
+        assert not self._runsc_calls(mock_run, "checkpoint")
+
+    def test_remote_comes_after_timeout_seconds(self):
+        # A positional (path, leave_running, timeout_seconds) call must not
+        # bind the timeout to remote.
+        import inspect
+
+        actor_class = getattr(
+            sandbox_api.Sandbox, "__ray_actor_class__", sandbox_api.Sandbox
+        )
+        for fn in (
+            actor_class.checkpoint,
+            SandboxRuntime.checkpoint,
+            SandboxRuntime.restore,
+            GVisorSandboxBackend.checkpoint_sandbox,
+            GVisorSandboxBackend.restore_sandbox,
+        ):
+            names = list(inspect.signature(fn).parameters)
+            assert names.index("timeout_seconds") < names.index("remote"), fn
+
+    def test_top_level_restore_prefers_a_readable_manifest(self):
+        # A CheckpointPath from node A, whose path a later checkpoint on node
+        # B replaced: the manifest on disk wins.
+        ckpt_dir = os.path.join(self.temp_dir, "replaced_slot")
+        os.makedirs(os.path.join(ckpt_dir, "state"))
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(
+                {
+                    "node_id": "b" * 56,
+                    "remote": False,
+                    "config": {"image": "busybox:latest", "cpu": 2.0, "memory": "2Gi"},
+                },
+                f,
+            )
+        stale = sandbox_api.CheckpointPath(
+            ckpt_dir, node_id="a" * 56, remote=True, cpu=1.0, memory="1Gi"
+        )
+        with patch.object(sandbox_api.Sandbox, "options") as mock_options:
+            mock_options.return_value = MagicMock()
+            sandbox_api.restore(stale)
+        call_kwargs = mock_options.call_args[1]
+        assert call_kwargs["scheduling_strategy"].node_id == "b" * 56
+        assert call_kwargs["num_cpus"] == 2.0
+        assert call_kwargs["memory"] == 2 * 1024**3
+
+    def test_top_level_restore_falls_back_when_the_manifest_is_unreadable(self):
+        # On shared storage, the manifest may belong to another user (0600).
+        handle = sandbox_api.CheckpointPath(
+            os.path.join(self.temp_dir, "foreign_ckpt"),
+            node_id="a" * 56,
+            remote=True,
+            cpu=3.0,
+            memory="1Gi",
+        )
+        with (
+            patch.object(sandbox_api.Sandbox, "options") as mock_options,
+            patch.object(
+                sandbox_api,
+                "load_checkpoint_manifest",
+                side_effect=PermissionError("Permission denied"),
+            ),
+        ):
+            mock_options.return_value = MagicMock()
+            sandbox_api.restore(handle)
+            call_kwargs = mock_options.call_args[1]
+            assert call_kwargs["num_cpus"] == 3.0
+            assert "scheduling_strategy" not in call_kwargs
+
+            # A plain path gets an error that says what to pass instead.
+            with pytest.raises(SandboxError, match="pass the CheckpointPath"):
+                sandbox_api.restore(str(handle))
+
+    def test_sandbox_actor_forwards_image_and_disk_on_restore(self):
+        actor_class = getattr(
+            sandbox_api.Sandbox, "__ray_actor_class__", sandbox_api.Sandbox
+        )
+        with patch("ray.experimental.sandbox.sandbox.SandboxRuntime") as mock_rt_cls:
+            mock_rt = mock_rt_cls.return_value
+            mock_rt.restore.return_value = "sb-restored-id"
+            actor_class(restore_from="/test/ckpt", image="other:tag", disk=0)
+            restore_kwargs = mock_rt.restore.call_args.kwargs
+            # Passed on, so that restore rejects them instead of ignoring them.
+            assert restore_kwargs["image"] == "other:tag"
+            assert restore_kwargs["disk"] == 0
+
+            mock_rt.restore.reset_mock()
+            actor_class(restore_from="/test/ckpt")
+            restore_kwargs = mock_rt.restore.call_args.kwargs
+            assert "image" not in restore_kwargs
+            assert "disk" not in restore_kwargs
+
 
 if __name__ == "__main__":
     import sys

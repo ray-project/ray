@@ -1705,8 +1705,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         compression: str = "none",
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
-        remote: bool = False,
         timeout_seconds: float = 30.0,
+        remote: bool = False,
         **kwargs,
     ) -> Dict[str, Any]:
         """Save the sandbox state to a checkpoint bundle directory.
@@ -1742,6 +1742,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"{', '.join(repr(c) for c in _CHECKPOINT_COMPRESSIONS)}."
             )
 
+        if remote and not checkpoint_path:
+            # The default location is node-local, so a restore scheduled on
+            # another node wouldn't find it.
+            raise SandboxError(
+                "remote=True needs a checkpoint_path on storage that every node "
+                "mounts at the same path; the default location "
+                f"'{os.path.join(_RAY_SANDBOX_DIR, 'checkpoints')}' is node-local."
+            )
         if not checkpoint_path:
             chk_uuid = uuid.uuid4().hex[:8]
             checkpoint_path = os.path.join(
@@ -2007,8 +2015,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         memory: Optional[Union[str, int, float]] = None,
         background: Optional[bool] = None,
         direct: bool = False,
-        remote: Optional[bool] = None,
         timeout_seconds: float = 30.0,
+        remote: Optional[bool] = None,
         **kwargs,
     ) -> str:
         """Restore a new sandbox instance from a checkpoint bundle.

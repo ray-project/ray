@@ -1,4 +1,3 @@
-import os
 from typing import Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
@@ -173,14 +172,18 @@ def restore(
             :class:`~ray.experimental.sandbox.backend.checkpoint_utils.CheckpointPath`
             instance returned by ``Sandbox.checkpoint()`` or
             ``SandboxRuntime.checkpoint()``.
-        cpu: Optional CPU allocation override.
-        memory: Optional memory allocation override.
+        cpu: Optional CPU override, for both the actor's Ray reservation and
+            the restored sandbox's limit. Defaults to the checkpoint's.
+        memory: Optional memory override, for both the actor's Ray reservation
+            and the restored sandbox's limit. Defaults to the checkpoint's.
         ttl_seconds: Optional time-to-live in seconds.
         timeout_seconds: Timeout in seconds for restore.
         remote: If True, allow restore to be scheduled on any VM node in the cluster
             (for shared/remote mounts). If False, pin restore to the VM node where
             the checkpoint was created. If None (default), inherits from the
-            checkpoint manifest or CheckpointPath metadata.
+            checkpoint manifest or CheckpointPath metadata. A plain path that
+            this process can't read needs ``remote=True`` with ``cpu`` and
+            ``memory``, or the CheckpointPath that ``checkpoint()`` returned.
         resources: Custom logical resource requirements for the Ray actor.
         **kwargs: Additional options.
 
@@ -198,22 +201,30 @@ def restore(
         manifest_remote = checkpoint_path.remote
         target_node_id = checkpoint_path.node_id
 
-    manifest_file = os.path.join(str(checkpoint_path), "manifest.json")
-    if os.path.isfile(manifest_file):
+    # When this process can read the manifest, it's authoritative: a later
+    # checkpoint at the same path may have replaced the one that a
+    # CheckpointPath describes. A manifest this process can't read (missing,
+    # or owned by another user on shared storage) leaves the CheckpointPath's
+    # metadata in force.
+    try:
         manifest, _ = load_checkpoint_manifest(str(checkpoint_path))
+        unreadable = None
+    except (SandboxError, OSError) as err:
+        manifest, unreadable = None, err
+    if manifest is not None:
         recorded_config = manifest.get("config", {})
-        if recorded_cpu is None:
-            recorded_cpu = recorded_config.get("cpu")
-        if recorded_memory is None:
-            recorded_memory = recorded_config.get("memory")
-        if "remote" in manifest:
-            manifest_remote = bool(manifest.get("remote"))
-        if target_node_id is None:
-            target_node_id = manifest.get("node_id")
+        recorded_cpu = recorded_config.get("cpu", recorded_cpu)
+        recorded_memory = recorded_config.get("memory", recorded_memory)
+        manifest_remote = bool(manifest.get("remote", manifest_remote))
+        target_node_id = manifest.get("node_id", target_node_id)
     elif not isinstance(checkpoint_path, CheckpointPath):
         if remote is not True:
-            # Raises the usual "missing manifest" error.
-            load_checkpoint_manifest(str(checkpoint_path))
+            raise SandboxError(
+                f"Can't read the checkpoint at '{checkpoint_path}' from this "
+                f"process ({unreadable}). If it's on storage that this process "
+                "doesn't mount, pass the CheckpointPath that checkpoint() "
+                "returned, or remote=True with cpu and memory."
+            ) from unreadable
         elif cpu is None or memory is None:
             # Without the manifest, the actor would get Ray's default
             # reservation while the restored sandbox keeps its recorded
@@ -222,7 +233,8 @@ def restore(
                 f"Can't read the checkpoint at '{checkpoint_path}' from this "
                 "process to find the CPU and memory to reserve for the restored "
                 "sandbox. Pass the CheckpointPath that checkpoint() returned, or "
-                "cpu and memory explicitly."
+                "cpu and memory explicitly; they also become the restored "
+                "sandbox's limits."
             )
 
     is_remote = remote if remote is not None else manifest_remote
