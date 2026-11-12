@@ -17,7 +17,6 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <atomic>
 #include <functional>
 #include <limits>
 #include <map>
@@ -1432,24 +1431,24 @@ TEST_F(GcsAutoscalerStateManagerTest,
 
 namespace {
 
-// Counts error publications so tests can observe what the report-state success
+// Counts publications so tests can observe what the report-state success
 // callback did after the handler returned.
-class CountingErrorPublisher : public pubsub::FakePublisher {
+class CountingPublisher : public pubsub::FakePublisher {
  public:
-  explicit CountingErrorPublisher(std::atomic<int> *count) : count_(count) {}
+  explicit CountingPublisher(int *count) : count_(count) {}
   void Publish(rpc::PubMessage pub_message) override { ++(*count_); }
 
  private:
-  std::atomic<int> *count_;
+  int *count_;
 };
 
 }  // namespace
 
 TEST_F(GcsAutoscalerStateManagerTest, ReportStateSuccessCallbackSurvivesHandlerReturn) {
   RayConfig::instance().initialize(R"({"enable_infeasible_task_early_exit": false})");
-  std::atomic<int> publish_count{0};
+  int publish_count = 0;
   pubsub::ObservabilityPublisher observability_publisher(
-      std::make_unique<CountingErrorPublisher>(&publish_count));
+      std::make_unique<CountingPublisher>(&publish_count));
   GcsAutoscalerStateManager manager("fake_cluster",
                                     *gcs_node_manager_,
                                     *gcs_actor_manager_,
@@ -1478,7 +1477,7 @@ TEST_F(GcsAutoscalerStateManagerTest, ReportStateSuccessCallbackSurvivesHandlerR
   ASSERT_TRUE(static_cast<bool>(success_callback));
   // No infeasible requests reported: nothing may be published.
   success_callback();
-  ASSERT_EQ(publish_count.load(), 0);
+  ASSERT_EQ(publish_count, 0);
 
   // A later report that newly carries infeasible requests must publish once.
   rpc::autoscaler::ReportAutoscalingStateRequest request_with_infeasible;
@@ -1489,7 +1488,7 @@ TEST_F(GcsAutoscalerStateManagerTest, ReportStateSuccessCallbackSurvivesHandlerR
       request_with_infeasible, &reply, send_reply_callback);
   ASSERT_TRUE(static_cast<bool>(success_callback));
   success_callback();
-  ASSERT_EQ(publish_count.load(), 1);
+  ASSERT_EQ(publish_count, 1);
 }
 
 }  // namespace gcs
