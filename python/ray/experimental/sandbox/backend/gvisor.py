@@ -744,7 +744,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # argv construction.
         gpu_run_args = []
         if config.gpu_ids:
-            gpu_run_args = self._resolve_gpu_run_args()
+            gpu_run_args = self._resolve_gpu_run_args(config.env)
 
         try:
             # The instance id pins the image in the cache while this sandbox
@@ -2648,12 +2648,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "only access GPUs Ray scheduled to its owning actor or task."
             )
 
-    def _resolve_gpu_run_args(self) -> List[str]:
+    def _resolve_gpu_run_args(self, env: Optional[Dict[str, str]]) -> List[str]:
         """The runsc flags GPU passthrough needs for this node's GPU CDI kind.
         Only nvidia.com/gpu is supported, which needs --nvproxy.
 
+        Only the caller's NVIDIA_DRIVER_CAPABILITIES can raise the allowed
+        capabilities, such as compute,utility,profiling for Nsight Compute.
+        Image environment variables cannot raise them. Without an explicit
+        request, gVisor keeps its compute,utility default.
+
+        Args:
+            env: The environment supplied by the caller.
+
         Returns:
-            The runsc flags, ``["--nvproxy"]``.
+            The runsc flags, such as ``["--nvproxy"]``.
 
         Raises:
             SandboxCreationError: If this node has no GPU CDI spec, its kind
@@ -2670,7 +2678,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
         self._check_runsc_runs_cdi_hooks()
         self._check_nvidia_driver_supported()
-        return ["--nvproxy"]
+        args = ["--nvproxy"]
+        capabilities = (env or {}).get("NVIDIA_DRIVER_CAPABILITIES")
+        if capabilities:
+            args.append(f"--nvproxy-allowed-driver-capabilities={capabilities}")
+        return args
 
     @functools.lru_cache(maxsize=None)  # noqa: B019
     def _check_runsc_runs_cdi_hooks(self) -> None:

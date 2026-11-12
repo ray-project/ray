@@ -204,8 +204,9 @@ def test_pads_request_with_cpu_bundles_when_object_store_is_full(
 
     def _record_pad(self, resource_request, **kwargs):
         before = len(resource_request)
-        original_pad(self, resource_request, **kwargs)
+        padding = original_pad(self, resource_request, **kwargs)
         padded.append(len(resource_request) - before)
+        return padding
 
     monkeypatch.setattr(
         RateBasedClusterAutoscaler,

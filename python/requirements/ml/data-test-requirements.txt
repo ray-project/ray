@@ -37,7 +37,10 @@ datasketches; python_version < '3.14'
 # `kafka` powers test_kafka.py's broker.
 testcontainers[kafka,azurite]
 obstore
-pyarrow
+# Newest pyarrow that daft (pyarrow < 26) allows; it is also the newest
+# release that still supports Python 3.10. The data "arrow latest" CI image
+# force-installs pyarrow 26 on top (ci/docker/data.build.Dockerfile).
+pyarrow==25.0.1
 torch
 tensorflow; python_version < '3.14'
 jax
