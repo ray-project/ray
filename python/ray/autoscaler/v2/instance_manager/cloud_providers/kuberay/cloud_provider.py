@@ -372,8 +372,23 @@ class KubeRayProvider(ICloudInstanceProvider):
                     if by_replica
                     else 0
                 )
-                effective_observed = labeled_count + unlabeled_workers_dict[node_type]
-                removed_workers = len(to_delete_instances_by_type.get(node_type, ()))
+                unlabeled = unlabeled_workers_dict[node_type]
+                removed = len(to_delete_instances_by_type.get(node_type, ()))
+                if num_of_hosts > 1:
+                    # Legacy KubeRay without replica labels (`by_replica` is empty):
+                    # account in whole-replica ceiling units so a single-pod failure
+                    # preserves `spec.replicas` for KubeRay to heal, deleting all pods
+                    # of a degraded slice decrements `spec.replicas`, and aligned
+                    # `to_launch` requests stay replica-aligned.
+                    obs_reps = (unlabeled + num_of_hosts - 1) // num_of_hosts
+                    rem_reps = (
+                        max(0, unlabeled - removed) + num_of_hosts - 1
+                    ) // num_of_hosts
+                    effective_observed = obs_reps * num_of_hosts
+                    removed_workers = (obs_reps - rem_reps) * num_of_hosts
+                else:
+                    effective_observed = labeled_count + unlabeled
+                    removed_workers = removed
 
             # If a user manually decreased `replicas` without specifying
             # `workersToDelete`, preserve observed workers / replica groups so

@@ -1097,7 +1097,16 @@ def test_dynamic_slicing_and_multihost_replica_config():
         "cloud.google.com/gke-tpu-accelerator": "tpu7x",
         "cloud.google.com/gke-tpu-topology": "2x2x1",
     }
-    cr["spec"]["workerGroupSpecs"].extend([tpu_override, tpu_single, tpu_zero])
+    tpu_zero_res = copy.deepcopy(tpu_zero)
+    tpu_zero_res["groupName"] = "tpu-zero-resource"
+    tpu_zero_res["resources"] = {"CPU": "4", "TPU": "0"}
+    tpu_zero_res["numOfHosts"] = 1
+    cpu_zero_tpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][0])
+    cpu_zero_tpu["groupName"] = "cpu-zero-tpu"
+    cpu_zero_tpu["resources"] = {"CPU": "4", "TPU": "0"}
+    cr["spec"]["workerGroupSpecs"].extend(
+        [tpu_override, tpu_single, tpu_zero, tpu_zero_res, cpu_zero_tpu]
+    )
 
     derived = _derive_autoscaling_config_from_ray_cr(cr)
     autoscaling_cfg = AutoscalingConfig(configs=derived)
@@ -1105,6 +1114,12 @@ def test_dynamic_slicing_and_multihost_replica_config():
 
     assert nt_cfgs["headgroup"].replica_config is None
     assert nt_cfgs["small-group"].replica_config is None
+    for name in ("tpu-zero-resource", "cpu-zero-tpu"):
+        assert nt_cfgs[name].replica_config is None
+        assert not any(
+            k.startswith("TPU-") and k.endswith("-head")
+            for k in nt_cfgs[name].resources
+        )
     assert nt_cfgs["gpu-group"].max_worker_nodes == 8
     assert nt_cfgs["gpu-group"].replica_config == WorkerReplicaConfig(
         workers_per_replica=4,

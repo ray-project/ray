@@ -4751,7 +4751,17 @@ _PG_CPU = GangResourceRequest(requests=[_mk_req({"CPU": 2}, [(_AFF, "pg", "")])]
         (
             TPU_CONFIGS,
             [_tpu_gang((2, 3), pinned="slice-0")],
-            _DEG_B0 + _P4[:2],
+            _DEG_B0 + [_pending_tpu(f"p{w}", rep="slice-0") for w in range(2)],
+            ({}, 0),
+        ),
+        (
+            TPU_CONFIGS,
+            [_tpu_gang((2, 3), pinned="slice-0")],
+            [
+                _tpu_host("s0-0", "slice-0", 0, {"TPU": 4}),
+                _tpu_host("s0-1", "slice-0", 1),
+            ]
+            + _P4[:2],
             ({}, 0),
         ),
         (
@@ -4825,7 +4835,13 @@ _PG_CPU = GangResourceRequest(requests=[_mk_req({"CPU": 2}, [(_AFF, "pg", "")])]
         (
             TPU_CONFIGS,
             [_tpu_gang((2, 3), pinned="slice-0"), _tpu_gang((2, 3), pinned="slice-1")],
-            _DEG_B0 + _DEG_B1 + _P4,
+            [
+                _tpu_host("s0-0", "slice-0", 0, {"TPU": 4}),
+                _tpu_host("s0-1", "slice-0", 1),
+                _tpu_host("s1-0", "slice-1", 0, {"TPU": 4}),
+                _tpu_host("s1-1", "slice-1", 1),
+            ]
+            + _P4,
             ({}, 0),
         ),
         (TPU_CONFIGS, [_tpu_gang(not_in=["slice-0"])], _IDLE_S0, ({"tpu_4x4": 4}, 0)),
@@ -4870,6 +4886,7 @@ _PG_CPU = GangResourceRequest(requests=[_mk_req({"CPU": 2}, [(_AFF, "pg", "")])]
         "fragmented_slices",
         "pinned_deg_busy_infeasible",
         "pinned_deg_pairs_boot",
+        "pinned_deg_pairs_boot_legacy_no_rep",
         "pinned_outranks_unpinned",
         "min_workers_other_tpu",
         "pinned_other_type_no_regroup",
@@ -7371,8 +7388,12 @@ def test_multihost_staggered_materialization_and_degraded_termination():
     ) == ["deg-0", "deg-1", "deg-2"]
 
     # Degraded idle replica (with or without provider_replica_id) is never blocked
-    # by in-flight REQUESTED launches for new replicas.
+    # by in-flight REQUESTED launches for new replicas, but a spare-filled incomplete
+    # running replica waits while its REQUESTED siblings are fresh and terminates
+    # atomically with them once expired.
     req4 = [_pending_node("tpu", f"req-{i}", Instance.REQUESTED) for i in range(4)]
+    req2 = req4[:2]
+    now = time.monotonic()
     for with_rep in (True, False):
         deg = _make_lifecycle_replica(
             "deg",
@@ -7388,6 +7409,96 @@ def test_multihost_staggered_materialization_and_degraded_termination():
             for t in _sched(_lifecycle_tpu_cfg(), deg + req4, idle_s=10).to_terminate
         ) == ["deg-0", "deg-1", "deg-2"]
 
+        half_running = _make_lifecycle_replica(
+            "half",
+            Instance.RAY_RUNNING,
+            4,
+            busy=False,
+            count=2,
+            idle_ms=60_000,
+            with_provider_replica_id=with_rep,
+        )
+        assert (
+            _sched(
+                _lifecycle_tpu_cfg(),
+                half_running + req2,
+                idle_s=10,
+                pending_idle_s=10,
+            ).to_terminate
+            == []
+        )
+        # Once those 2 in-flight launches materialize as ALLOCATED and expire,
+        # all 4 slots of the spare-filled replica terminate atomically.
+        alloc2 = [
+            _pending_node(
+                "tpu",
+                f"a-{i}",
+                Instance.ALLOCATED,
+                rep="half" if with_rep else None,
+            )
+            for i in range(2)
+        ]
+        assert sorted(
+            t.instance_id
+            for t in _sched(
+                _lifecycle_tpu_cfg(),
+                half_running + alloc2,
+                idle_s=10,
+                pending_idle_s=10,
+                unneeded={"tpu": [now - 100.0, now - 100.0]},
+            ).to_terminate
+        ) == ["a-0", "a-1", "half-0", "half-1"]
+
+    # Idle degraded running replica still scales down independently when a purely
+    # booting half-allocated replica absorbs the 2 in-flight REQUESTED siblings.
+    deg_prov = _make_lifecycle_replica(
+        "deg", Instance.RAY_RUNNING, 4, busy=False, count=3, idle_ms=60_000
+    )
+    half_alloc = [
+        _pending_node("tpu", f"g1-{i}", Instance.ALLOCATED, rep="G1") for i in range(2)
+    ] + req2
+    assert sorted(
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(4, max_w=8),
+            deg_prov + half_alloc,
+            idle_s=10,
+            pending_idle_s=10,
+            unneeded={"tpu": [now - 100.0, now - 100.0]},
+        ).to_terminate
+    ) == ["deg-0", "deg-1", "deg-2"]
+
+    # Provider-identified running replica never absorbs an unattributed ALLOCATED
+    # pod ahead of a spare REQUESTED launch: busy replica does not pin the stray
+    # pod's idle timer, and idle replica still waits on the spare REQUESTED launch.
+    stray = _pending_node("tpu", "stray", Instance.ALLOCATED)
+    deg_busy = _make_lifecycle_replica(
+        "deg", Instance.RAY_RUNNING, 4, busy=True, count=3
+    )
+    assert [
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(4, max_w=8),
+            deg_busy + [stray],
+            idle_s=10,
+            pending_idle_s=10,
+            unneeded={"tpu": [now - 100.0]},
+        ).to_terminate
+    ] == ["stray"]
+    assert (
+        sorted(
+            t.instance_id
+            for t in _sched(
+                _lifecycle_tpu_cfg(4, max_w=8),
+                deg_prov + [stray, req2[0]],
+                idle_s=10,
+                pending_idle_s=10,
+                unneeded={"tpu": [now - 100.0]},
+            ).to_terminate
+        )
+        == []
+    )
+
     # Provider-identified degraded replicas scale down independently under min=4 even
     # when an unattributed ALLOCATED pod is idle or fresh; conversely, a half-allocated
     # booting replica shields its REQUESTED siblings when fresh and scales down
@@ -7398,7 +7509,6 @@ def test_multihost_staggered_materialization_and_degraded_termination():
     deg_b = _make_lifecycle_replica(
         "deg-b", Instance.RAY_RUNNING, 4, busy=False, count=3, idle_ms=60_000
     )
-    stray = _pending_node("tpu", "stray", Instance.ALLOCATED)
     assert [
         t.instance_id
         for t in _sched(
@@ -7419,10 +7529,6 @@ def test_multihost_staggered_materialization_and_degraded_termination():
         ).to_terminate
     ) == ["deg-a-0", "deg-a-1", "deg-a-2"]
 
-    now = time.monotonic()
-    half_alloc = [
-        _pending_node("tpu", f"g1-{i}", Instance.ALLOCATED, rep="G1") for i in range(2)
-    ] + [_pending_node("tpu", f"req-{i}", Instance.REQUESTED) for i in range(2)]
     # Half-allocated booting replica waits while its REQUESTED siblings are in flight.
     assert (
         _sched(
@@ -7530,6 +7636,230 @@ def test_unlabeled_locality_gang_tight_max_num_nodes_with_booting_replica():
         rep_fit = _sched(cfgs, [head] + workers, gangs=[gang], max_nodes=9)
         assert _launch_and_terminate(rep_fit) == ({"gpu": 4}, [])
         assert rep_fit.infeasible_gang_resource_requests == []
+
+
+def test_multihost_draining_spare_priority_and_head_recovery():
+    """Verify draining replicas never absorb launches or wedge pending termination,
+    active/booting replicas outrank idle degraded replicas for spare pods, and
+    domain-only replicas without worker_index_label_key recover missing head resources."""
+    now = time.monotonic()
+
+    # 1. Draining RAY_STOP_REQUESTED replica must not absorb REQUESTED siblings from
+    # a half-booted slice (neither splitting idle termination nor starving pinned gang).
+    stop_rep = [
+        _pending_node("tpu", f"stop-{i}", Instance.RAY_STOP_REQUESTED, rep="stop-rep")
+        for i in range(2)
+    ]
+    boot_half = _make_lifecycle_replica(
+        "boot-1", Instance.RAY_RUNNING, 4, busy=False, count=2, idle_ms=60_000
+    )
+    req2 = [_pending_node("tpu", f"req-{i}", Instance.REQUESTED) for i in range(2)]
+    assert (
+        _sched(
+            _lifecycle_tpu_cfg(4, max_w=8),
+            stop_rep + boot_half + req2,
+            idle_s=10,
+            pending_idle_s=10,
+        ).to_terminate
+        == []
+    )
+    pinned_gang = GangResourceRequest(
+        requests=[ResourceRequestUtil.make({"CPU": 1, "TPU": 4}) for _ in range(4)],
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[
+                    ResourceRequestUtil.make({"CPU": 1, "TPU": 4}) for _ in range(4)
+                ],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name=_SLICE,
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    ),
+                    label_selector=LabelSelector(
+                        label_constraints=[
+                            LabelSelectorConstraint(
+                                label_key=_SLICE,
+                                operator=_IN,
+                                label_values=["boot-1"],
+                            )
+                        ]
+                    ),
+                ),
+            )
+        ],
+    )
+    cfg_gang = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 4, "TPU": 4},
+            labels={},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                worker_index_label_key=_WID,
+            ),
+        )
+    }
+    rep_pinned = _sched(
+        cfg_gang,
+        stop_rep + boot_half + req2,
+        gangs=[pinned_gang],
+    )
+    assert _launch_and_terminate(rep_pinned) == ({}, [])
+    assert rep_pinned.infeasible_gang_resource_requests == []
+
+    # Draining provider replica must not block unrelated expired ALLOCATED pods, and
+    # non-provider RAY_STOP_REQUESTED must not trap expired unrequested QUEUED pods.
+    expired_alloc = [
+        _pending_node("tpu", f"exp-{i}", Instance.ALLOCATED) for i in range(4)
+    ]
+    assert sorted(
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(4, max_w=8),
+            stop_rep + expired_alloc,
+            idle_s=10,
+            pending_idle_s=10,
+            unneeded={"tpu": [now - 100.0] * 4},
+        ).to_terminate
+    ) == [f"exp-{i}" for i in range(4)]
+    stop_unlabeled = [
+        _pending_node("tpu", f"s-{i}", Instance.RAY_STOP_REQUESTED) for i in range(2)
+    ]
+    unreq_q = [_pending_node("tpu", f"uq-{i}", Instance.QUEUED) for i in range(2)]
+    assert sorted(
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(4, max_w=8),
+            stop_unlabeled + unreq_q,
+            idle_s=10,
+            pending_idle_s=10,
+            unneeded={"tpu": [now - 100.0] * 2},
+        ).to_terminate
+    ) == ["uq-0", "uq-1"]
+
+    # 2. Booting/active incomplete replicas outrank all-running and idle-expired
+    # degraded replicas when absorbing spare pending pods (provider and non-provider).
+    deg = _make_lifecycle_replica(
+        "deg", Instance.RAY_RUNNING, 4, busy=True, count=1, idle_ms=0
+    ) + _make_lifecycle_replica(
+        "deg", Instance.RAY_RUNNING, 4, busy=False, count=2, idle_ms=60_000
+    )
+    # Fix distinct instance ids on deg's remaining pods.
+    for idx, inst in enumerate(deg[1:], start=1):
+        nid = f"n-deg-{idx}".encode().ljust(28, b"\0")
+        inst.im_instance.instance_id = f"deg-{idx}"
+        inst.im_instance.node_id = nid.hex()
+        inst.ray_node.node_id = nid
+        inst.ray_node.labels["ray.io/tpu-worker-id"] = str(idx)
+    boot_slice = _make_lifecycle_replica(
+        "boot-slice", Instance.RAY_RUNNING, 4, busy=False, count=1, idle_ms=0
+    ) + [_pending_node("tpu", "boot-a1", Instance.ALLOCATED, rep="boot-slice")]
+    any_gang = GangResourceRequest(
+        requests=[ResourceRequestUtil.make({"CPU": 1, "TPU": 4}) for _ in range(4)],
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[
+                    ResourceRequestUtil.make({"CPU": 1, "TPU": 4}) for _ in range(4)
+                ],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name=_SLICE,
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ],
+    )
+    rep_boot = _sched(
+        cfg_gang,
+        deg + boot_slice + req2,
+        gangs=[any_gang],
+        idle_s=10,
+    )
+    assert _launch_and_terminate(rep_boot) == ({}, [])
+    assert rep_boot.infeasible_gang_resource_requests == []
+
+    # Non-provider variant: 2 freshly idle running pods outrank 3 idle-expired ones.
+    cfg_pool = copy.deepcopy(cfg_gang)
+    cfg_pool["tpu"].labels["pool"] = "new"
+    deg_np = _make_lifecycle_replica(
+        "deg",
+        Instance.RAY_RUNNING,
+        4,
+        busy=False,
+        count=3,
+        idle_ms=60_000,
+        with_provider_replica_id=False,
+    )
+    for inst in deg_np:
+        inst.ray_node.labels["pool"] = "old"
+    half_np = _make_lifecycle_replica(
+        "half",
+        Instance.RAY_RUNNING,
+        4,
+        busy=False,
+        count=2,
+        idle_ms=0,
+        with_provider_replica_id=False,
+    )
+    for inst in half_np:
+        inst.ray_node.labels["pool"] = "new"
+    alloc2_np = [_pending_node("tpu", f"a-{i}", Instance.ALLOCATED) for i in range(2)]
+    new_pool_reqs = [
+        ResourceRequestUtil.make(
+            {"CPU": 1, "TPU": 4}, label_selectors=[[("pool", _IN, ["new"])]]
+        )
+        for _ in range(4)
+    ]
+    new_pool_gang = GangResourceRequest(
+        requests=new_pool_reqs,
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=new_pool_reqs,
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name=_SLICE,
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ],
+    )
+    rep_np = _sched(
+        cfg_pool,
+        deg_np + half_np + alloc2_np,
+        gangs=[new_pool_gang],
+        idle_s=10,
+    )
+    assert rep_np.to_launch == []
+    assert rep_np.infeasible_gang_resource_requests == []
+
+    # 3. Domain-only replica with worker_index_label_key=None restores missing
+    # head_resources onto an absorbed pending slot.
+    rcfg = {
+        "r4": NodeTypeConfig(
+            name="r4",
+            resources={"CPU": 4, "NPU": 2, "ldr": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            replica_config=WorkerReplicaConfig(4, "v/rack", None, ("ldr",)),
+        )
+    }
+    insts = [
+        _run_node("r4", f"r-{i}", {"CPU": 4, "NPU": 2}, {"v/rack": "rk0"}, rep="rep-0")
+        for i in range(2)
+    ] + [
+        _pending_node("r4", f"p-{i}", Instance.ALLOCATED, rep="rep-0") for i in range(2)
+    ]
+    rep_ldr = _sched(
+        rcfg,
+        insts,
+        reqs=[ResourceRequestByCount(request=_mk_req({"ldr": 1}), count=1)],
+    )
+    assert _launch_and_terminate(rep_ldr) == ({}, [])
 
 
 if __name__ == "__main__":

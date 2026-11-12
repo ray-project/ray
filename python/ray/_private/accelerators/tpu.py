@@ -1284,13 +1284,23 @@ class TPUAcceleratorManager(AcceleratorManager):
         }
 
     @staticmethod
+    def _is_positive_resource_value(value: Any) -> bool:
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value > 0
+        )
+
+    @staticmethod
     def get_node_group_additional_resources(
         resources: Dict[str, Any],
         node_selector: Dict[str, str],
         annotations: Optional[Dict[str, str]] = None,
     ) -> Optional[Dict[str, int]]:
         """Derive TPU head resource (`TPU-<pod-type>-head`) for a TPU node group."""
-        if "TPU" not in resources:
+        if not TPUAcceleratorManager._is_positive_resource_value(
+            resources.get("TPU", 0)
+        ):
             return None
         (
             generation,
@@ -1321,16 +1331,13 @@ class TPUAcceleratorManager(AcceleratorManager):
         """Return runtime slice label, worker index label, and worker-0-only head
         resources for a TPU worker group, or None for non-TPU node groups.
         """
-
-        def _pos_num(v: Any) -> bool:
-            return isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
-
+        pos_num = TPUAcceleratorManager._is_positive_resource_value
         head_resources = sorted(
             key
             for key, val in resources.items()
-            if key.startswith("TPU-") and key.endswith("-head") and _pos_num(val)
+            if key.startswith("TPU-") and key.endswith("-head") and pos_num(val)
         )
-        if not (_pos_num(resources.get("TPU", 0)) or head_resources):
+        if not (pos_num(resources.get("TPU", 0)) or head_resources):
             return None
         return {
             "domain_label_key": ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY,

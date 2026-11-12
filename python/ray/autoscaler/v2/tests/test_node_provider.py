@@ -1465,6 +1465,65 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             ("tpu-group", 4)
         ]
 
+        # 10. Legacy KubeRay (replica_id=None, numOfHosts=4): ceiling-replica
+        # accounting preserves spec.replicas on a 1-pod crash so KubeRay heals
+        # the slice, decrements spec.replicas when all surviving pods of a
+        # degraded slice are deleted, and keeps aligned scale-ups error-free.
+        prov_leg_1, client_leg_1 = _run_provider(
+            replicas=2,
+            min_rep=0,
+            pods=[_pod(f"u-{i}", rep=None) for i in range(8)],
+        )
+        prov_leg_1.terminate(ids=["u-0"], request_id="leg-1pod")
+        assert client_leg_1.get_patches("rayclusters/test") == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {"workersToDelete": ["u-0"]},
+            }
+        ]
+
+        prov_leg_deg, client_leg_deg = _run_provider(
+            replicas=2,
+            min_rep=0,
+            pods=[_pod(f"u-{i}", rep=None) for i in range(7)],
+        )
+        prov_leg_deg.terminate(ids=["u-0", "u-1", "u-2"], request_id="leg-3pod")
+        assert client_leg_deg.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 1},
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {"workersToDelete": ["u-0", "u-1", "u-2"]},
+            },
+        ]
+
+        prov_leg_z, client_leg_z = _run_provider(
+            replicas=1,
+            min_rep=0,
+            pods=[_pod(f"u-{i}", rep=None) for i in range(3)],
+        )
+        prov_leg_z.terminate(ids=["u-0", "u-1", "u-2"], request_id="leg-zero")
+        assert client_leg_z.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 0},
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {"workersToDelete": ["u-0", "u-1", "u-2"]},
+            },
+        ]
+
+        prov_leg_up, client_leg_up = _run_provider(
+            replicas=1,
+            min_rep=0,
+            pods=[_pod(f"u-{i}", rep=None) for i in range(7)],
+        )
+        prov_leg_up.launch(shape={"tpu-group": 4}, request_id="leg-up")
+        assert client_leg_up.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 3}
+        ]
+        assert prov_leg_up.poll_errors() == []
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
