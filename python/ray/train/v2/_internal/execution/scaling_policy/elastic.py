@@ -183,8 +183,8 @@ class ElasticScalingPolicy(ScalingPolicy):
                     f"Detected ready resources for {num_workers} workers "
                     "in the cluster. "
                     "Deciding NOT to start/restart training due to the number of workers "
-                    "falling below the minimum "
-                    f"(min_workers={min_workers})."
+                    f"falling below the minimum of {min_workers} "
+                    f"(configured min_workers={self.scaling_config.min_workers})."
                 )
                 self._latest_insufficient_workers_warning_time = now
             return NoopDecision()
