@@ -22,6 +22,8 @@ from ray._common.utils import env_integer
 from ray.data._internal.arrow_aggregation import (
     _INTEGER_SUM_TYPE,
     is_boolean_arrow_type,
+    is_integer_arrow_type,
+    is_unsigned_integer_arrow_type,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
@@ -683,15 +685,19 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
     def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         import pyarrow.compute as pac
 
-        if not pyarrow.types.is_integer(self._column.type):
-            res = pac.sum(self._column, skip_nulls=ignore_nulls)
+        column = self._column
+        if pyarrow.types.is_run_end_encoded(column.type):
+            column = pac.run_end_decode(column)
+
+        if not is_integer_arrow_type(column.type):
+            res = pac.sum(column, skip_nulls=ignore_nulls)
             return res.as_py() if as_py else res
 
         # Arrow's native integer sum kernel wraps on overflow before the scalar
         # can be converted to Python.  Widen the accumulator first, then return
         # a Python int (or the historical native scalar when it still fits).
         res = pac.sum(
-            pac.cast(self._column, _INTEGER_SUM_TYPE), skip_nulls=ignore_nulls
+            pac.cast(column, _INTEGER_SUM_TYPE), skip_nulls=ignore_nulls
         )
         if as_py:
             value = res.as_py()
@@ -699,7 +705,7 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
         output_type = (
             pyarrow.uint64()
-            if pyarrow.types.is_unsigned_integer(self._column.type)
+            if is_unsigned_integer_arrow_type(column.type)
             else pyarrow.int64()
         )
         value = res.as_py()

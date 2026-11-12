@@ -36,6 +36,13 @@ def is_integer_arrow_type(t: "pa.DataType") -> bool:
     return pa.types.is_integer(t)
 
 
+def is_unsigned_integer_arrow_type(t: "pa.DataType") -> bool:
+    """Whether ``t`` is an unsigned integer, including encoded types."""
+    while pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
+        t = t.value_type
+    return pa.types.is_unsigned_integer(t)
+
+
 def is_boolean_arrow_type(t: "pa.DataType") -> bool:
     """Whether ``t`` is boolean, including dictionary/run-end encoded booleans."""
     if pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
