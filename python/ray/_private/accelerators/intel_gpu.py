@@ -1,5 +1,4 @@
 import ctypes
-import ctypes.util
 import logging
 import os
 import sys
@@ -54,15 +53,11 @@ class _ZeDeviceProperties(ctypes.Structure):
 
 
 def _load_level_zero_loader() -> Optional[ctypes.CDLL]:
-    default = "ze_loader.dll" if sys.platform == "win32" else "libze_loader.so.1"
-    for name in (default, ctypes.util.find_library("ze_loader")):
-        if not name:
-            continue
-        try:
-            return ctypes.CDLL(name)
-        except OSError:
-            continue
-    return None
+    name = "ze_loader.dll" if sys.platform == "win32" else "libze_loader.so.1"
+    try:
+        return ctypes.CDLL(name)
+    except OSError:
+        return None
 
 
 def _get_level_zero_gpu_names() -> List[str]:
