@@ -15,6 +15,7 @@ go_library(
     deps = [
         "//go/internal/dashboard/auth",
         "//go/internal/dashboard/head",
+        "//go/pkg/gcs",
         "//go/pkg/log",
         "//go/proto",
         "@org_golang_google_grpc//:go_default_library",
@@ -30,5 +31,8 @@ go_test(
         "//go/internal/dashboard/head",
         "//go/proto",
         "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//status",
     ],
 )

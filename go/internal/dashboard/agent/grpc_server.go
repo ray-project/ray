@@ -60,18 +60,32 @@ func unaryRecoveryInterceptor(ctx context.Context, req interface{}, info *grpc.U
 	return handler(ctx, req)
 }
 
+// streamRecoveryInterceptor converts a panic in a stream handler into an
+// Internal error instead of letting it crash the long-lived agent process,
+// mirroring unaryRecoveryInterceptor for the stream chain.
+func streamRecoveryInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Log.Error(fmt.Errorf("recovered panic: %v", r), "gRPC stream handler panicked", "method", info.FullMethod)
+			err = status.Error(codes.Internal, "internal error")
+		}
+	}()
+	return handler(srv, ss)
+}
+
 // newGRPCServer builds the gRPC server, registers services from every module,
 // and binds the configured listen address.
 //
-// The recovery interceptor is chained outermost so a panic anywhere after it —
-// including inside the authentication interceptor — still becomes an Internal
-// status instead of taking the agent process down.
+// The recovery interceptors are chained outermost on both the unary and the
+// stream chain so a panic anywhere after them — including inside the
+// authentication interceptor — still becomes an Internal status instead of
+// taking the agent process down.
 func newGRPCServer(cfg Config, mods []Module) (*grpcServer, error) {
 	s := grpc.NewServer(
 		grpc.MaxRecvMsgSize(grpcMaxMessageSize),
 		grpc.MaxSendMsgSize(grpcMaxMessageSize),
 		grpc.ChainUnaryInterceptor(unaryRecoveryInterceptor, auth.GRPCUnaryServerInterceptor),
-		grpc.ChainStreamInterceptor(auth.GRPCStreamServerInterceptor),
+		grpc.ChainStreamInterceptor(streamRecoveryInterceptor, auth.GRPCStreamServerInterceptor),
 	)
 	for _, m := range mods {
 		if err := m.RegisterGRPC(s); err != nil {

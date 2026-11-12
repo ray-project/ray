@@ -52,7 +52,6 @@ go_library(
         "@io_opentelemetry_go_proto_otlp//metrics/v1:metrics",
         "@org_golang_google_grpc//:go_default_library",
         "@org_golang_google_grpc//codes",
-        "@org_golang_google_grpc//credentials/insecure",
         "@org_golang_google_grpc//status",
     ],
 )
@@ -110,6 +109,7 @@ go_test(
         "@org_golang_google_grpc//:go_default_library",
         "@org_golang_google_grpc//codes",
         "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//metadata",
         "@org_golang_google_grpc//status",
     ],
 )

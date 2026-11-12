@@ -26,11 +26,10 @@ import (
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/head"
+	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	goproto "google.golang.org/protobuf/proto"
 )
@@ -58,10 +57,6 @@ const (
 	// Python RAY_DASHBOARD_STATS_PURGING_INTERVAL (default 600s, dashboard
 	// consts.py).
 	purgeInterval = 10 * time.Minute
-
-	// grpcMaxRecvMsgSize matches the C++ max_grpc_message_size default used by
-	// the GCS client (head package); node stats can carry large object refs.
-	grpcMaxRecvMsgSize = 512 << 20
 )
 
 // DataSource caches cluster state (nodes, actors, per-node physical stats)
@@ -350,12 +345,21 @@ func (d *DataSource) purgeDeadNodeStats() {
 
 // fetchNodeStats dials a node's NodeManager gRPC service and returns the full
 // GetNodeStats reply. The connection is short-lived and closed after the call
-// (head nodes are few, so a stub cache like Python's is unnecessary).
+// (head nodes are few, so a stub cache like Python's is unnecessary). The dial
+// presents the cluster's credentials resolved from the environment, as the C++
+// BuildChannel does: under RAY_AUTH_MODE=token the raylet rejects
+// unauthenticated requests. The resolution runs per dial so a rotated projected
+// token is picked up by the next call.
 func fetchNodeStats(ctx context.Context, n *proto.GcsNodeInfo) (*proto.GetNodeStatsReply, error) {
 	address := n.GetNodeManagerAddress() + ":" + strconv.Itoa(int(n.GetNodeManagerPort()))
-	conn, err := grpc.DialContext(ctx, address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(grpcMaxRecvMsgSize)))
+	dialOpts, err := gcs.DialOptionsFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	// DialGCS applies the shared 512 MiB message cap (matching the C++
+	// max_grpc_message_size default), and the default dialer stays in place
+	// because this dials a raylet, not the GCS.
+	conn, err := gcs.DialGCS(ctx, address, dialOpts)
 	if err != nil {
 		return nil, err
 	}

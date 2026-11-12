@@ -27,9 +27,9 @@ import (
 	"strings"
 
 	"github.com/ray-project/ray/go/internal/dashboard/head"
+	"github.com/ray-project/ray/go/pkg/gcs"
+	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -906,12 +906,23 @@ func (n *NodeHead) nodeLogicalResources(ctx context.Context) map[string]string {
 // fetchClusterStatus calls the GCS AutoscalerStateService.GetClusterStatus RPC,
 // aligned with the Python get_cluster_status in
 // python/ray/autoscaler/v2/sdk.py. It returns nil on any failure; the caller
-// falls back to an empty map.
+// falls back to an empty map. The dial presents the cluster's credentials
+// resolved from the environment: under RAY_AUTH_MODE=token the GCS rejects
+// unauthenticated requests, so a bare dial would silently lose the per-node
+// logical resources.
 func (n *NodeHead) fetchClusterStatus(ctx context.Context) *proto.GetClusterStatusReply {
 	if n.cfg == nil || n.cfg.GCSAddress == "" {
 		return nil
 	}
-	conn, err := grpc.DialContext(ctx, n.cfg.GCSAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	dialOpts, err := gcs.DialOptionsFromEnv()
+	if err != nil {
+		log.Log.Error(err, "failed to resolve GCS dial options", "address", n.cfg.GCSAddress)
+		return nil
+	}
+	// The head dials GCS over plain TCP: grpc-go's default dialer stalls the
+	// HTTP/2 cleartext handshake against the Ray GCS server (gcs.PlainTCPDialer).
+	dialOpts.Dialer = gcs.PlainTCPDialer
+	conn, err := gcs.DialGCS(ctx, n.cfg.GCSAddress, dialOpts)
 	if err != nil {
 		return nil
 	}

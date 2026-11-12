@@ -22,6 +22,7 @@ go_library(
         "autoscaler_cgo.go",
         "client_cgo.go",
         "client_cgo_benchmark.go",
+        "error_publisher_cgo.go",
         "factory.go",
         "node_resource_publisher_cgo.go",
         "nodes_cgo.go",
@@ -52,6 +53,19 @@ go_test(
     importpath = "github.com/ray-project/ray/go/internal/gcs/native",
     deps = [
         "//go/pkg/gcs",
+    ],
+)
+
+# Error publisher CGO unit test: exercises the compile-time boundary and the
+# null-client fail path of the error publish path without a live GCS cluster.
+go_test(
+    name = "error_publisher_cgo_test",
+    srcs = ["error_publisher_cgo_test.go"],
+    embed = [":native"],
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
     ],
 )
 

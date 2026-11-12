@@ -250,11 +250,22 @@ func (c *GCSClient) CheckAlive(ctx context.Context, nodeIDs []string) (*proto.Ch
 // with get_raylet_stub + NodeManagerServiceStub in
 // python/ray/util/state/state_manager.py. The returned conn must be closed by
 // the caller.
+//
+// Every client channel presents the cluster's credentials resolved from the
+// environment, as the C++ BuildChannel does: under RAY_AUTH_MODE=token the
+// raylet rejects unauthenticated requests. The resolution runs per dial so a
+// rotated projected token is picked up by the next client.
 func (c *GCSClient) NewNodeManagerClient(ctx context.Context, address string) (proto.NodeManagerServiceClient, *grpc.ClientConn, error) {
 	// The raylet listens on a plaintext gRPC port (matching init_grpc_channel
 	// when RAY_USE_TLS is unset in the Python flow). DialGCS applies the shared
-	// 512 MiB message cap; a zero ConnectTimeoutMs keeps the dial non-blocking.
-	conn, err := gcs.DialGCS(ctx, address, gcs.DialOptions{})
+	// 512 MiB message cap; a zero ConnectTimeoutMs keeps the dial non-blocking,
+	// and the default dialer stays in place because this dials a raylet, not
+	// the GCS.
+	dialOpts, err := gcs.DialOptionsFromEnv()
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial raylet %s: %w", address, err)
+	}
+	conn, err := gcs.DialGCS(ctx, address, dialOpts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial raylet %s: %w", address, err)
 	}

@@ -377,7 +377,7 @@ func runDashboardAgent(ctx context.Context) error {
 	// create_check_raylet_task.
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	agent.StartParentWatcher(runCtx, cancel, cfg.LogDir)
+	agent.StartParentWatcher(runCtx, cancel, cfg.LogDir, agent.ResolveErrorPublisher(*cfg))
 
 	mods, err := buildModules(*cfg)
 	if err != nil {

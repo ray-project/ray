@@ -169,6 +169,27 @@ TEST(GcsClientBridgeTest, AutoscalerGetStatusSignature) {
   SUCCEED() << "Autoscaler get_status signature verified";
 }
 
+// Test 10: verify publish_error's argument guards
+TEST(GcsClientBridgeTest, PublisherPublishErrorSignature) {
+  char *error = nullptr;
+
+  int result = ray_gcs_client_publisher_publish_error(
+      nullptr, "ffffffff", nullptr, 0, "raylet_died", "message", 0.0, 5000, &error);
+  ASSERT_EQ(result, 0);
+  ASSERT_NE(error, nullptr);
+  ASSERT_NE(std::strstr(error, "client is null"), nullptr)
+      << "expected null-client error, got: " << error;
+  std::cout << "Expected error for null client: " << error << std::endl;
+  ray_gcs_free_memory(error);
+
+  // A null error_out must not crash either; set_error guards it.
+  result = ray_gcs_client_publisher_publish_error(
+      nullptr, "ffffffff", nullptr, 0, "raylet_died", "message", 0.0, 5000, nullptr);
+  ASSERT_EQ(result, 0);
+
+  SUCCEED() << "Publisher publish_error signature verified";
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

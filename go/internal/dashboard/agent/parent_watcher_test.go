@@ -15,13 +15,19 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/ray-project/ray/go/pkg/gcs"
+	"github.com/ray-project/ray/go/pkg/ids"
 )
 
 // stubParentPid replaces the parent-pid source for the duration of a test.
@@ -94,7 +100,7 @@ func TestParentWatcherCancelsOnlyAfterTheThreshold(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	StartParentWatcher(ctx, cancel, t.TempDir())
+	StartParentWatcher(ctx, cancel, t.TempDir(), nil)
 
 	select {
 	case <-ctx.Done():
@@ -125,7 +131,7 @@ func TestParentWatcherRecoversFromATransientMiss(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	StartParentWatcher(ctx, cancel, t.TempDir())
+	StartParentWatcher(ctx, cancel, t.TempDir(), nil)
 
 	select {
 	case <-ctx.Done():
@@ -152,7 +158,7 @@ func TestParentWatcherResetsTheDeathCountOnAMatch(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	StartParentWatcher(ctx, cancel, t.TempDir())
+	StartParentWatcher(ctx, cancel, t.TempDir(), nil)
 
 	// Long enough for several times the threshold's worth of missed polls.
 	select {
@@ -177,7 +183,7 @@ func TestParentWatcherIsANoOpWithoutARayletPid(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	StartParentWatcher(ctx, cancel, t.TempDir())
+	StartParentWatcher(ctx, cancel, t.TempDir(), nil)
 
 	// 100ms spans 20 polls at the 5ms interval, four times the five-miss
 	// threshold a configured raylet pid would trip at ~25ms.
@@ -246,15 +252,143 @@ func TestClassifyRayletDeathHandlesUnexpectedExit(t *testing.T) {
 	}
 }
 
+// stubErrorPublisher records PublishErrorInfo calls for assertions.
+type stubErrorPublisher struct {
+	mu       sync.Mutex
+	keys     []string
+	payloads []gcs.ErrorInfoPayload
+	err      error
+}
+
+func (p *stubErrorPublisher) PublishErrorInfo(_ context.Context, keyID string, payload gcs.ErrorInfoPayload) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.keys = append(p.keys, keyID)
+	p.payloads = append(p.payloads, payload)
+	return p.err
+}
+
+func (p *stubErrorPublisher) recorded() ([]string, []gcs.ErrorInfoPayload) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]string(nil), p.keys...), append([]gcs.ErrorInfoPayload(nil), p.payloads...)
+}
+
+// TestReportRayletDeathPublishesOnUnexpectedExit proves the diagnostic reaches
+// the driver channel: type raylet_died, nil job id (broadcast to every
+// driver), and the same message that was logged.
+func TestReportRayletDeathPublishesOnUnexpectedExit(t *testing.T) {
+	dir := t.TempDir()
+	writeRayletLog(t, dir, "starting up\nsomething happened\n")
+	pub := &stubErrorPublisher{}
+
+	reportRayletDeath(dir, pub)
+
+	keys, payloads := pub.recorded()
+	if len(payloads) != 1 {
+		t.Fatalf("published %d error messages, want exactly 1", len(payloads))
+	}
+	if payloads[0].Type != rayletDiedErrorType {
+		t.Errorf("type = %q, want %q", payloads[0].Type, rayletDiedErrorType)
+	}
+	if want := ids.NilJobID().Hex(); keys[0] != want {
+		t.Errorf("key = %q, want the nil job id hex %q", keys[0], want)
+	}
+	if !bytes.Equal(payloads[0].JobID, ids.NilJobID().Binary()) {
+		t.Errorf("job id = %v, want the nil job id binary", payloads[0].JobID)
+	}
+	if !strings.Contains(payloads[0].Message, "Termination is unexpected") {
+		t.Errorf("message %q does not report the unexpected termination", payloads[0].Message)
+	}
+	if !strings.Contains(payloads[0].Message, "something happened") {
+		t.Errorf("message %q does not carry the raylet log tail", payloads[0].Message)
+	}
+}
+
+// TestReportRayletDeathPublishesNothingOnGracefulExit pins the graceful
+// branch: Python logs the graceful diagnostic and publishes nothing.
+func TestReportRayletDeathPublishesNothingOnGracefulExit(t *testing.T) {
+	dir := t.TempDir()
+	writeRayletLog(t, dir, "Raylet received SIGTERM, shutting down\n")
+	pub := &stubErrorPublisher{}
+
+	reportRayletDeath(dir, pub)
+
+	if _, payloads := pub.recorded(); len(payloads) != 0 {
+		t.Fatalf("published %d error messages for a graceful exit, want 0", len(payloads))
+	}
+}
+
+// TestReportRayletDeathPublishesTheReadFailure proves an unreadable
+// raylet.out still produces a driver-visible diagnostic — Python's
+// report_raylet_error_logs publishes on error=True for this branch too, with
+// msg "Raylet is terminated. Failed to read Raylet logs at <path>: <e>!".
+func TestReportRayletDeathPublishesTheReadFailure(t *testing.T) {
+	dir := t.TempDir() // no raylet.out inside
+	pub := &stubErrorPublisher{}
+
+	reportRayletDeath(dir, pub)
+
+	_, payloads := pub.recorded()
+	if len(payloads) != 1 {
+		t.Fatalf("published %d error messages for an unreadable raylet.out, want exactly 1: the read failure is itself the diagnostic", len(payloads))
+	}
+	if payloads[0].Type != rayletDiedErrorType {
+		t.Errorf("type = %q, want %q", payloads[0].Type, rayletDiedErrorType)
+	}
+	if !strings.HasPrefix(payloads[0].Message, "Raylet is terminated. Failed to read Raylet logs at ") {
+		t.Errorf("message %q does not follow Python's read-failure shape", payloads[0].Message)
+	}
+	if !strings.HasSuffix(payloads[0].Message, "!") {
+		t.Errorf("message %q does not end with Python's trailing '!'", payloads[0].Message)
+	}
+}
+
+// TestReportRayletDeathSwallowsPublishFailures pins the best-effort contract:
+// a failed publish is logged and never blocks the agent's shutdown.
+func TestReportRayletDeathSwallowsPublishFailures(t *testing.T) {
+	dir := t.TempDir()
+	writeRayletLog(t, dir, "crashed\n")
+	pub := &stubErrorPublisher{err: errors.New("gcs is gone")}
+
+	reportRayletDeath(dir, pub) // must not panic
+	if _, payloads := pub.recorded(); len(payloads) != 1 {
+		t.Fatalf("publish attempts = %d, want 1: a failed publish must be retried-shaped (attempted then swallowed), not skipped", len(payloads))
+	}
+}
+
+func TestPublishRayletDiedErrorToleratesANilPublisher(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("publishRayletDiedError panicked on a nil publisher: %v", r)
+		}
+	}()
+	publishRayletDiedError(nil, "Raylet is terminated. Termination is unexpected.")
+}
+
 func TestReportRayletDeathToleratesAMissingLog(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := tailFileLines(filepath.Join(dir, "raylet.out"), rayletLogTailSize); err == nil {
 		t.Fatal("tailFileLines on a missing raylet.out = nil error, want an error")
 	}
-	// The read-failure and empty-log-dir paths must be silent no-ops rather
-	// than panics: there is nothing to classify without a log.
-	reportRayletDeath(dir)
-	reportRayletDeath("")
+	// The read-failure publish is asserted by
+	// TestReportRayletDeathPublishesTheReadFailure; here a nil publisher must
+	// keep the missing-file path a quiet no-op.
+	reportRayletDeath(dir, nil)
+	// An empty log dir collapses filepath.Join to a bare "raylet.out", so it is
+	// the same read failure and must publish the bare-path message. This pins
+	// the absence of the old `if logDir == ""` special case: reintroducing it
+	// would report a different message and be caught here.
+	pub := &stubErrorPublisher{}
+	reportRayletDeath("", pub)
+	_, payloads := pub.recorded()
+	if len(payloads) != 1 {
+		t.Fatalf("empty log dir published %d error messages, want exactly 1: an empty dir is the bare raylet.out read failure", len(payloads))
+	}
+	const want = "Raylet is terminated. Failed to read Raylet logs at raylet.out: "
+	if !strings.HasPrefix(payloads[0].Message, want) {
+		t.Errorf("empty log dir message = %q, want the bare raylet.out read-failure prefix %q", payloads[0].Message, want)
+	}
 }
 
 // TestReportRayletDeathReadsOnlyTheTailWindow proves a log larger than the

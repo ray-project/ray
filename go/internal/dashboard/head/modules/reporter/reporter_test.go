@@ -22,11 +22,16 @@ import (
 	"net/http/httptest"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/head"
 	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 // mockGCS simulates the GCS internal KV + node + task services used by the
@@ -337,6 +342,75 @@ func TestWorkerTracebackRequiresIPOrNode(t *testing.T) {
 	rr := serve(t, r, "/worker/traceback?pid=123")
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("missing ip/node_id should be 400, got %d", rr.Code)
+	}
+}
+
+// stubAutoscaler serves GetClusterStatus with an empty reply.
+type stubAutoscaler struct {
+	proto.UnimplementedAutoscalerStateServiceServer
+}
+
+func (*stubAutoscaler) GetClusterStatus(context.Context, *proto.GetClusterStatusRequest) (*proto.GetClusterStatusReply, error) {
+	return &proto.GetClusterStatusReply{}, nil
+}
+
+// requireBearer rejects requests whose authorization metadata does not carry
+// the expected bearer token, which is how a token-enforcing Ray server answers
+// under RAY_AUTH_MODE=token (src/ray/rpc/server_call.h enforces the token; the
+// Bearer header format and comparison come from
+// src/ray/rpc/authentication/authentication_token.h, mirrored by
+// go/pkg/gcs/dial.go). The expected value is read per request through the
+// atomic pointer so a test can rotate it while the server keeps serving.
+func requireBearer(expected *atomic.Pointer[string]) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		md, _ := metadata.FromIncomingContext(ctx)
+		if vals := md.Get("authorization"); len(vals) == 0 || vals[0] != *expected.Load() {
+			return nil, status.Error(codes.Unauthenticated, "Invalid or missing authentication token")
+		}
+		return handler(ctx, req)
+	}
+}
+
+// TestFetchClusterStatusPresentsTheClusterToken proves the head's cluster
+// status fetch authenticates: under token mode a bare dial gets nothing and
+// the dashboard silently loses the autoscaler view. Rotating the token between
+// two calls pins the per-dial resolution: a resolve hoisted out of the fetcher
+// would keep presenting the stale token and the second call would be rejected.
+func TestFetchClusterStatusPresentsTheClusterToken(t *testing.T) {
+	t.Setenv("RAY_USE_TLS", "0")
+	t.Setenv("RAY_AUTH_MODE", "token")
+	t.Setenv("RAY_AUTH_TOKEN", "secret")
+
+	secret := "Bearer secret"
+	var expected atomic.Pointer[string]
+	expected.Store(&secret)
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(requireBearer(&expected)))
+	proto.RegisterAutoscalerStateServiceServer(srv, &stubAutoscaler{})
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+
+	// A bounded context makes an unreachable server fail the test with a
+	// message instead of hanging until the bazel test timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	r := &ReportHead{}
+	if reply := r.fetchClusterStatusV2(ctx, lis.Addr().String()); reply == nil {
+		t.Fatal("fetchClusterStatusV2 returned nil with token credentials on: the dial did not authenticate")
+	}
+
+	// A rotated token must be picked up by the next fetch.
+	t.Setenv("RAY_AUTH_TOKEN", "rotated")
+	rotated := "Bearer rotated"
+	expected.Store(&rotated)
+
+	if reply := r.fetchClusterStatusV2(ctx, lis.Addr().String()); reply == nil {
+		t.Fatal("fetchClusterStatusV2 returned nil after the token rotated: the dial did not re-resolve the token")
 	}
 }
 

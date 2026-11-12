@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "agent.go",
         "consts.go",
+        "error_publisher.go",
         "grpc_server.go",
         "http_server.go",
         "parent_watcher.go",
@@ -29,6 +30,7 @@ go_test(
     name = "agent_test",
     srcs = [
         "agent_test.go",
+        "error_publisher_test.go",
         "export_test.go",
         "grpc_auth_test.go",
         "grpc_bind_addr_test.go",

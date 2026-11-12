@@ -124,3 +124,32 @@ type NodeResourceUsagePublisher interface {
 	// payload. It returns an error if the publication fails.
 	PublishNodeResourceUsage(ctx context.Context, keyID, jsonPayload string) error
 }
+
+// ErrorInfoPayload carries one error published to drivers on
+// RAY_ERROR_INFO_CHANNEL, matching rpc::ErrorTableData.
+type ErrorInfoPayload struct {
+	// JobID is the binary job id the error is attributed to. Pass
+	// ids.NilJobID().Binary() (4 bytes 0xff, hex "ffffffff") to broadcast the
+	// error to every attached driver, matching the Python agent's
+	// publish_error; a nil slice leaves the proto field unset instead of
+	// stamping those bytes.
+	JobID   []byte
+	Type    string
+	Message string
+}
+
+// ErrorInfoPublisher publishes error info messages to GCS. Implemented by the
+// cgo native layer inside go_runtime.so; the thin layer holds this interface.
+type ErrorInfoPublisher interface {
+	// PublishErrorInfo publishes one error info message under keyID, matching
+	// the C++ PublisherAccessor::PublishError wire format. The implementation
+	// stamps the timestamp and derives the RPC timeout from ctx.
+	//
+	// ctx MUST carry a deadline, and implementations reject the call without
+	// one: the underlying RPC would run without a timeout and be retried
+	// indefinitely while GCS is unreachable, and the synchronous cgo call
+	// cannot observe ctx cancellation, so the caller would block until GCS
+	// answers. The agent's watcher passes 60s, mirroring Python's
+	// publish_error_to_driver timeout.
+	PublishErrorInfo(ctx context.Context, keyID string, payload ErrorInfoPayload) error
+}

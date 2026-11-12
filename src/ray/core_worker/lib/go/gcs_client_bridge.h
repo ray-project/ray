@@ -246,6 +246,20 @@ int ray_gcs_client_publisher_publish_node_resource_usage(
     const char *key_id,
     const char *node_resource_usage_json,
     char **error_out);
+// Publishes one error info message to GCS on the RAY_ERROR_INFO_CHANNEL,
+// mirroring the Python agent's GcsClient.publish_error. The error carries the
+// binary job id it is attributed to (the nil job id broadcasts to every
+// driver), a type, the message text and a unix-seconds timestamp.
+// Returns 1 on success, 0 on failure (error_out holds details).
+int ray_gcs_client_publisher_publish_error(CGcsClient *client,
+                                           const char *key_id,
+                                           const char *job_id_bytes,
+                                           int job_id_len,
+                                           const char *error_type,
+                                           const char *error_message,
+                                           double timestamp,
+                                           int64_t timeout_ms,
+                                           char **error_out);
 
 // Autoscaler
 // Returns the protobuf-serialized AutoscalingState; the Go side parses it to judge the

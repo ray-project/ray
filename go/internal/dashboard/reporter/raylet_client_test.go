@@ -9,16 +9,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 // unusedPID returns a pid with no /proc entry, so inspecting it models a
@@ -282,6 +287,70 @@ func startStubRaylet(t *testing.T, stub *stubNodeManager) int {
 		t.Fatalf("parse port %q: %v", port, err)
 	}
 	return parsed
+}
+
+// requireBearer rejects requests whose authorization metadata does not carry
+// the expected bearer token, which is how a token-enforcing raylet server
+// answers under RAY_AUTH_MODE=token (src/ray/rpc/server_call.h enforces the
+// token; the Bearer header format and comparison come from
+// src/ray/rpc/authentication/authentication_token.h, mirrored by
+// go/pkg/gcs/dial.go). The expected value is read per request through the
+// atomic pointer so a test can rotate it while the server keeps serving.
+func requireBearer(expected *atomic.Pointer[string]) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		md, _ := metadata.FromIncomingContext(ctx)
+		if vals := md.Get("authorization"); len(vals) == 0 || vals[0] != *expected.Load() {
+			return nil, status.Error(codes.Unauthenticated, "Invalid or missing authentication token")
+		}
+		return handler(ctx, req)
+	}
+}
+
+// TestRayletWorkerPIDFetcherPresentsTheClusterToken proves the fetcher dials
+// with the cluster's credentials: under token mode the raylet rejects
+// unauthenticated requests, so without the fix the fetcher degrades to an empty
+// worker list on every collection cycle. Rotating the token between two calls
+// pins the per-dial resolution: a resolve hoisted out of the fetcher would keep
+// presenting the stale token and the second call would be rejected.
+func TestRayletWorkerPIDFetcherPresentsTheClusterToken(t *testing.T) {
+	t.Setenv("RAY_USE_TLS", "0")
+	t.Setenv("RAY_AUTH_MODE", "token")
+	t.Setenv("RAY_AUTH_TOKEN", "secret")
+
+	secret := "Bearer secret"
+	var expected atomic.Pointer[string]
+	expected.Store(&secret)
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(requireBearer(&expected)))
+	proto.RegisterNodeManagerServiceServer(srv, &stubNodeManager{pids: []int32{7, 8}})
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+
+	fetcher := newRayletWorkerPIDFetcher("127.0.0.1", lis.Addr().(*net.TCPAddr).Port)
+	pids, err := fetcher()
+	if err != nil {
+		t.Fatalf("fetcher with token mode on: %v", err)
+	}
+	if !reflect.DeepEqual(pids, []int32{7, 8}) {
+		t.Fatalf("pids = %v, want [7 8]", pids)
+	}
+
+	// A rotated projected token must be picked up by the next dial.
+	t.Setenv("RAY_AUTH_TOKEN", "rotated")
+	rotated := "Bearer rotated"
+	expected.Store(&rotated)
+
+	pids, err = fetcher()
+	if err != nil {
+		t.Fatalf("fetcher after the token rotated: %v", err)
+	}
+	if !reflect.DeepEqual(pids, []int32{7, 8}) {
+		t.Fatalf("pids after the token rotated = %v, want [7 8]", pids)
+	}
 }
 
 // TestCollectorWorkersOverRayletGRPC verifies the whole discovery path against a

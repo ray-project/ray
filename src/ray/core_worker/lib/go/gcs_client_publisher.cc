@@ -150,4 +150,48 @@ int ray_gcs_client_publisher_publish_node_resource_usage(
   }
 }
 
+// Publishes one error info message on the RAY_ERROR_INFO_CHANNEL, mirroring
+// the Python agent's GcsClient.publish_error (python/ray/includes/
+// gcs_client.pxi): the accessor wraps it in one PubMessage on that channel
+// with the given key id. Returns 1 on success, 0 on failure.
+int ray_gcs_client_publisher_publish_error(CGcsClient *client,
+                                           const char *key_id,
+                                           const char *job_id_bytes,
+                                           int job_id_len,
+                                           const char *error_type,
+                                           const char *error_message,
+                                           double timestamp,
+                                           int64_t timeout_ms,
+                                           char **error_out) {
+  if (!client || !client->gcs_client) {
+    set_error(error_out, "Invalid arguments: client is null");
+    return 0;
+  }
+
+  try {
+    ray::rpc::ErrorTableData error_info;
+    if (job_id_bytes && job_id_len > 0) {
+      error_info.set_job_id(job_id_bytes, job_id_len);
+    }
+    if (error_type) {
+      error_info.set_type(error_type);
+    }
+    if (error_message) {
+      error_info.set_error_message(error_message);
+    }
+    error_info.set_timestamp(timestamp);
+
+    auto status = client->gcs_client->Publisher().PublishError(
+        key_id ? std::string(key_id) : std::string(), std::move(error_info), timeout_ms);
+    if (!status.ok()) {
+      set_error(error_out, status.ToString().c_str());
+      return 0;
+    }
+    return 1;
+  } catch (const std::exception &e) {
+    set_error(error_out, e.what());
+    return 0;
+  }
+}
+
 }  // extern "C"

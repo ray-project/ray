@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/internal/dashboard/log"
@@ -67,6 +68,79 @@ var echoServiceDesc = grpc.ServiceDesc{
 		},
 	}},
 	Metadata: "ray/test/echo",
+}
+
+// panicStreamModule registers a stream method whose handler always panics so
+// the stream recovery interceptor can be observed end to end.
+type panicStreamModule struct{}
+
+func (panicStreamModule) Start(context.Context) error       { return nil }
+func (panicStreamModule) RegisterHTTP(*http.ServeMux) error { return nil }
+func (panicStreamModule) RegisterGRPC(s *grpc.Server) error {
+	s.RegisterService(&panicStreamServiceDesc, panicStreamServer{})
+	return nil
+}
+
+type panicStreamServer struct{}
+
+func (panicStreamServer) boom(interface{}, grpc.ServerStream) error {
+	panic("boom")
+}
+
+var panicStreamServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ray.test.PanicStream",
+	HandlerType: (*interface{})(nil),
+	// grpc-go routes stream calls through Streams[i].Handler; this service has
+	// exactly one stream method.
+	Streams: []grpc.StreamDesc{{
+		StreamName: "Boom",
+		Handler:    func(srv interface{}, stream grpc.ServerStream) error { return panicStreamServer{}.boom(srv, stream) },
+	}},
+	Metadata: "ray/test/panicstream",
+}
+
+// TestAgentGRPCRecoversFromAPanickingStreamHandler proves a panic inside a
+// stream handler becomes an Internal status instead of crashing the agent
+// process. grpc-go does not recover handler panics itself, so without the
+// interceptor the panic propagates out of Serve and kills the agent — while
+// the unary path has been protected since the recovery interceptor landed.
+func TestAgentGRPCRecoversFromAPanickingStreamHandler(t *testing.T) {
+	addr, stop, err := agent.ServeGRPCServerForTest(agent.Config{NodeIP: "127.0.0.1"}, []agent.Module{panicStreamModule{}, echoModule{}})
+	if err != nil {
+		t.Fatalf("ServeGRPCServerForTest: %v", err)
+	}
+	defer stop()
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stream, err := conn.NewStream(ctx, &grpc.StreamDesc{StreamName: "Boom", ServerStreams: true, ClientStreams: true}, "/ray.test.PanicStream/Boom")
+	if err != nil {
+		t.Fatalf("NewStream: %v", err)
+	}
+	if err := stream.SendMsg(&proto.GpuProfilingRequest{}); err != nil {
+		t.Fatalf("SendMsg: %v", err)
+	}
+	var reply proto.GpuProfilingReply
+	err = stream.RecvMsg(&reply)
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("code = %v (err %v), want Internal: the panic must become a status, not a crash", got, err)
+	}
+	if status.Convert(err).Message() != "internal error" {
+		t.Errorf("message = %q, want the unary recovery's exact wording %q", status.Convert(err).Message(), "internal error")
+	}
+
+	// The process survived the panic: a normal unary RPC on the same server
+	// still succeeds.
+	err = conn.Invoke(context.Background(), "/ray.test.EchoService/Echo", &proto.GpuProfilingRequest{}, &proto.GpuProfilingReply{})
+	if err != nil {
+		t.Fatalf("server did not survive the stream panic: %v", err)
+	}
 }
 
 // TestAgentGRPCRequiresTokenWithAuthEnabled proves the authentication
