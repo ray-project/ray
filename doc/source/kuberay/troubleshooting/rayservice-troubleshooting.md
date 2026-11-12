@@ -269,7 +269,7 @@ multi-app config of format `ServeDeploySchema`. If you are using the REST API, y
 the multi-app API endpoint `/api/serve/applications/`.
 ```
 
-To resolve this issue, replace `serveConfig` with `serveConfigV2` and, in the same update, change a field in `spec.rayClusterConfig` that triggers a zero downtime upgrade, such as a resource limit or a Pod template annotation. KubeRay then prepares a new RayCluster instead of updating the existing one in place. See {ref}`Step 8 of the RayService user guide <step-8-zero-downtime-upgrade-for-ray-clusters>` for the fields that don't trigger an upgrade. Don't change `rayVersion` to a value that doesn't match the Ray image to trigger the upgrade, because KubeRay uses `rayVersion` to choose the Pod health checks.
+To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify another field in `spec.rayClusterConfig`, such as a resource limit. This will trigger a new RayCluster preparation instead of an in-place update.
 
 If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters. You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource. See [kuberay#1297](https://github.com/kuberay-project/kuberay/issues/1297) for more details.
 
