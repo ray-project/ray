@@ -1,3 +1,4 @@
+import array
 import asyncio
 import ctypes
 import gc
@@ -18,6 +19,7 @@ import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
@@ -463,7 +465,7 @@ def test_fork_server_timeout_and_dead_server_fallback(shutdown_only, monkeypatch
         os.kill(default_fs_pid, signal.SIGCONT)
 
     # After SIGCONT, the ForkServer accepts the 3 stale backlog connections, sees
-    # POLLRDHUP / EPIPE from the closed client sockets before running worker startup,
+    # POLLHUP / EPIPE from the closed client sockets before running worker startup,
     # and drops them cleanly so only a1 remains under default_fs_pid.
     wait_for_condition(lambda: _find_child_pids(default_fs_pid) == [pid1], timeout=5)
 
@@ -3012,3 +3014,131 @@ def test_fork_server_af_unix_107b_boundary_proc_fd_staging_and_bind_logging(
         shutil.rmtree(short_socks, ignore_errors=True)
         if long_temp_dir is not None:
             shutil.rmtree(long_temp_dir, ignore_errors=True)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
+def test_fork_server_half_close_pythonpath_preload_session_dir_and_lock_pruning(
+    tmp_path,
+):
+    """Verify half-closed SHUT_WR clients are served, user PYTHONPATH enters the
+    server spec when preload_modules is set, session_dir anchors _sockets_dir, and
+    _fork_server_locks entries are pruned safely on eviction."""
+    # 1. Half-closed client (shutdown(SHUT_WR) before reading reply) must still receive
+    # (pid, lifetime_fd) rather than being dropped by POLLRDHUP.
+    sock_path = str(tmp_path / "fs_half_close")
+    fs = ForkServerProcess(socket_path=sock_path, logs_dir=str(tmp_path / "logs"))
+    child_pid = None
+    try:
+        asyncio.run(fs.wait_ready(timeout_s=15.0))
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(5.0)
+        try:
+            client.connect(sock_path)
+            client.sendall(b'{"args": [], "env": {}, "runtime_env_vars": {}}\n')
+            client.shutdown(socket.SHUT_WR)
+            msg, ancdata, _, _ = client.recvmsg(
+                256, socket.CMSG_SPACE(array.array("i", [0]).itemsize)
+            )
+            payload = json.loads(msg.decode())
+            child_pid = payload["pid"]
+            assert child_pid > 0
+            fds = array.array("i")
+            for cmsg_level, cmsg_type, cmsg_data in ancdata:
+                if cmsg_level == socket.SOL_SOCKET and cmsg_type == socket.SCM_RIGHTS:
+                    fds.frombytes(
+                        cmsg_data[: len(cmsg_data) - (len(cmsg_data) % fds.itemsize)]
+                    )
+            assert len(fds) == 1
+            for fd in fds:
+                os.close(fd)
+        finally:
+            client.close()
+    finally:
+        if child_pid:
+            with suppress(OSError):
+                os.kill(child_pid, signal.SIGKILL)
+        fs.stop()
+
+    # 2. session_dir anchors _sockets_dir even when runtime_env_dir is outside it.
+    custom_session = tmp_path / "custom_session"
+    separate_rt = tmp_path / "separate_runtime_resources"
+    custom_session.mkdir()
+    separate_rt.mkdir()
+    agent = RuntimeEnvAgent(
+        runtime_env_dir=str(separate_rt),
+        logging_params={
+            "filename": "runtime_env_agent.log",
+            "log_dir": str(tmp_path / "logs"),
+            "logging_level": "INFO",
+            "logging_format": ray_constants.LOGGER_FORMAT,
+            "max_bytes": 1024 * 1024,
+            "backup_count": 1,
+        },
+        gcs_client=SimpleNamespace(),
+        temp_dir=str(tmp_path),
+        address="127.0.0.1",
+        runtime_env_agent_port=0,
+        session_dir=str(custom_session),
+    )
+    try:
+        assert agent._sockets_dir == str(custom_session / "sockets")
+
+        # 3. User PYTHONPATH is excluded without preload_modules (shares fs_0) and
+        # included in fs_env_vars when preload_modules is non-empty.
+        pkg_dir = tmp_path / "user_pypath_pkg"
+        pkg_dir.mkdir()
+        (pkg_dir / "preloaded_from_pypath.py").write_text("VALUE = 42\n")
+
+        env_no_preload = RuntimeEnv(env_vars={"PYTHONPATH": str(pkg_dir)})
+        ctx_no_preload = RuntimeEnvContext(env_vars={"PYTHONPATH": str(pkg_dir)})
+        fs_key_none, fs_ctx_none, _ = agent._build_fork_server_spec(
+            env_no_preload, ctx_no_preload, agent._logger
+        )
+        assert fs_key_none is None
+        assert fs_ctx_none is None
+
+        env_with_preload = RuntimeEnv(
+            env_vars={"PYTHONPATH": str(pkg_dir)},
+            preload_modules=["preloaded_from_pypath"],
+        )
+        ctx_with_preload = RuntimeEnvContext(env_vars={"PYTHONPATH": str(pkg_dir)})
+        fs_key_pypath, fs_ctx_pypath, _ = agent._build_fork_server_spec(
+            env_with_preload, ctx_with_preload, agent._logger
+        )
+        assert fs_key_pypath is not None
+        assert fs_ctx_pypath is not None
+        assert str(pkg_dir) in fs_ctx_pypath.env_vars["PYTHONPATH"]
+
+        # Verify actual ForkServerProcess preloads the module cleanly without warnings.
+        fs_pypath = ForkServerProcess(
+            socket_path=str(tmp_path / "fs_pypath"),
+            preload_modules=["preloaded_from_pypath"],
+            context=fs_ctx_pypath,
+            logs_dir=str(tmp_path / "logs"),
+            setup_log_path=str(tmp_path / "logs" / "fs_pypath.log"),
+        )
+        try:
+            asyncio.run(fs_pypath.wait_ready(timeout_s=15.0))
+            assert fs_pypath.read_startup_warnings() == []
+        finally:
+            fs_pypath.stop()
+
+        # 4. _fork_server_locks entries are pruned on idle/URI eviction when uncontended,
+        # and retained while a waiter is active.
+        test_key = "test_fs_key_prune"
+        lock = agent._fork_server_locks.setdefault(test_key, asyncio.Lock())
+        agent._fork_server_lock_waiters[test_key] = 1
+        agent._evict_idle_fork_server(test_key)
+        assert agent._fork_server_locks.get(test_key) is lock
+
+        agent._fork_server_lock_waiters.pop(test_key, None)
+        agent._evict_idle_fork_server(test_key)
+        assert test_key not in agent._fork_server_locks
+
+        uri_key = "test_fs_key_uri"
+        agent._fork_server_locks.setdefault(uri_key, asyncio.Lock())
+        agent._fs_key_to_uris[uri_key] = {"gcs://fake_uri.zip"}
+        agent._evict_fork_servers_using_uri("gcs://fake_uri.zip", agent._logger)
+        assert uri_key not in agent._fork_server_locks
+    finally:
+        agent._cleanup_fork_servers()

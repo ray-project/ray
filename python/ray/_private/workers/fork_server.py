@@ -36,9 +36,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MAX_FORK_REQUEST_BYTES = 4 * 1024 * 1024
-_PEER_DISCONNECTED_MASK = (
-    getattr(select, "POLLRDHUP", 0x2000) | select.POLLHUP | select.POLLERR
-)
+# Omit POLLRDHUP so half-closed clients (shutdown(SHUT_WR) after sending the request)
+# are still served; full client close raises POLLHUP on AF_UNIX SOCK_STREAM.
+_PEER_DISCONNECTED_MASK = select.POLLHUP | select.POLLERR
 _WORKER_LIFETIME_PIPE_W: Optional[int] = None
 _AT_FORK_REGISTERED = False
 

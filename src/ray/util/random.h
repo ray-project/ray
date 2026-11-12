@@ -14,42 +14,48 @@
 
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <random>
 #ifndef _WIN32
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
 #include "absl/random/random.h"
 #include "ray/util/logging.h"
 
-namespace ray {
-namespace internal {
+namespace ray::internal {
 
-// Seeds an absl::BitGen with 256 bits of fresh OS entropy via std::random_device.
-// Both default-constructed absl::BitGen() and absl::MakeSeedSeq() draw from Abseil's
-// process-global RandenPool (pool_urbg.cc), which is initialized once via
-// absl::call_once and cloned across fork(), causing sibling forked processes and their
-// newly spawned threads to draw identical seed sequences if RandenPool was initialized
-// before fork().
+/**
+ * @brief Create an `absl::BitGen` seeded from OS entropy instead of Abseil's global
+ * `RandenPool`, which `fork()` copies into child processes.
+ */
 inline absl::BitGen CreateForkSafeBitGen() {
+#ifdef _WIN32
   std::random_device rd;
   std::seed_seq seq{rd(), rd(), rd(), rd(), rd(), rd(), rd(), rd()};
+#else
+  uint32_t seed[8] = {};
+  const int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+  RAY_CHECK(fd >= 0) << "Failed to open /dev/urandom";
+  const ssize_t bytes_read = read(fd, seed, sizeof(seed));
+  close(fd);
+  RAY_CHECK(bytes_read == static_cast<ssize_t>(sizeof(seed)))
+      << "Failed to read seed from /dev/urandom";
+  std::seed_seq seq(std::begin(seed), std::end(seed));
+#endif
   return absl::BitGen(seq);
 }
 
-}  // namespace internal
-}  // namespace ray
+}  // namespace ray::internal
 
 /**
  * @brief A helper function to fill random bytes into `data`.
  *
- * Seeds from OS entropy (`std::random_device`) rather than Abseil's process-global
- * `RandenPool` (used by `absl::BitGen()` and `absl::MakeSeedSeq()`, whose state is
- * cloned across `fork()`), and automatically reseeds the thread-local PRNG if the PID
- * changes across `fork()`.
+ * Seeds from OS entropy rather than Abseil's `RandenPool` and automatically reseeds
+ * the thread-local PRNG if the PID changes across `fork()`.
  *
  * @param[out] data Pointer to the byte container to fill with random bytes.
  */

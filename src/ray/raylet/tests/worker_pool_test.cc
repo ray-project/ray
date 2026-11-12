@@ -3184,6 +3184,66 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
   ASSERT_EQ(worker_pool_->GetProcessSize(), 10);
   EXPECT_EQ(fake_num_worker_fork_server_fallbacks_metric_.GetTagToValue()[{}], 8.0);
 
+  // 6. Slow-trickle server sending 1 byte every 35 ms (each read < 100 ms, total > 100
+  // ms) must still be bounded by the single monotonic worker_fork_server_timeout_ms
+  // deadline rather than resetting per syscall.
+  std::string trickle_dir = std::filesystem::temp_directory_path().string() +
+                            "/ray_fs_trickle_" + std::to_string(getpid());
+  std::filesystem::create_directories(trickle_dir);
+  std::string trickle_sock = trickle_dir + "/fs_trickle";
+  unlink(trickle_sock.c_str());
+  int trickle_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  ASSERT_GE(trickle_fd, 0);
+  struct sockaddr_un trickle_addr = {};
+  trickle_addr.sun_family = AF_UNIX;
+  std::strncpy(
+      trickle_addr.sun_path, trickle_sock.c_str(), sizeof(trickle_addr.sun_path) - 1);
+  ASSERT_EQ(bind(trickle_fd,
+                 reinterpret_cast<struct sockaddr *>(&trickle_addr),
+                 sizeof(trickle_addr)),
+            0);
+  ASSERT_EQ(listen(trickle_fd, 4), 0);
+
+  std::thread trickle_thread([trickle_fd]() {
+    int conn_fd = accept(trickle_fd, nullptr, nullptr);
+    if (conn_fd >= 0) {
+      (void)ReadForkRequestLine(conn_fd);
+      const char *partial = "{\"pid\":12345";
+      for (size_t i = 0; i < std::strlen(partial); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(35));
+        if (send(conn_fd, &partial[i], 1, MSG_NOSIGNAL) <= 0) {
+          break;
+        }
+      }
+      close(conn_fd);
+    }
+  });
+
+  nlohmann::json trickle_ctx = {{"fork_server_socket_path", trickle_sock}};
+  auto t_trickle_start = std::chrono::steady_clock::now();
+  auto [trickle_proc, trickle_wid] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON,
+      rpc::WorkerType::WORKER,
+      JOB_ID,
+      &status,
+      /*dynamic_options=*/{},
+      /*runtime_env_hash=*/124,
+      /*serialized_runtime_env_context=*/trickle_ctx.dump(),
+      env_info);
+  auto trickle_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - t_trickle_start)
+                                .count();
+  trickle_thread.join();
+  close(trickle_fd);
+  unlink(trickle_sock.c_str());
+  std::filesystem::remove_all(trickle_dir);
+
+  ASSERT_NE(trickle_proc.GetId(), 12345);
+  ASSERT_FALSE(trickle_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 11);
+  EXPECT_LT(trickle_elapsed_ms, 220);
+  EXPECT_EQ(fake_num_worker_fork_server_fallbacks_metric_.GetTagToValue()[{}], 9.0);
+
   RayConfig::instance().enable_worker_fork_server() = false;
 }
 #endif

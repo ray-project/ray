@@ -451,6 +451,7 @@ class RuntimeEnvAgent:
         workers_cgroup_path: str = "",
         worker_stdout_fd: Optional[int] = None,
         worker_stderr_fd: Optional[int] = None,
+        session_dir: Optional[str] = None,
     ):
         """Initialize the runtime env agent.
 
@@ -469,6 +470,9 @@ class RuntimeEnvAgent:
                 when ``RAY_LOG_TO_STDERR`` is enabled for forked workers.
             worker_stderr_fd: Optional pre-PipeLogger stderr file descriptor preserved
                 when ``RAY_LOG_TO_STDERR`` is enabled for forked workers.
+            session_dir: Optional Ray session directory used to place fork server
+                sockets under ``<session_dir>/sockets``; defaults to the parent of
+                ``runtime_env_dir`` when omitted.
         """
         super().__init__()
 
@@ -491,9 +495,12 @@ class RuntimeEnvAgent:
                 os.path.abspath(p) if p else p
                 for p in os.environ["PYTHONPATH"].split(os.pathsep)
             )
-        self._sockets_dir = os.path.join(
-            os.path.dirname(os.path.abspath(self._runtime_env_dir)), "sockets"
+        sockets_parent = (
+            os.path.abspath(session_dir)
+            if session_dir
+            else os.path.dirname(os.path.abspath(self._runtime_env_dir))
         )
+        self._sockets_dir = os.path.join(sockets_parent, "sockets")
         self._enable_worker_fork_server = sys.platform.startswith("linux") and env_bool(
             "RAY_enable_worker_fork_server", False
         )
@@ -505,7 +512,8 @@ class RuntimeEnvAgent:
         self._default_fork_server: Optional[ForkServerProcess] = None
         self._default_fs_monitor_task: Optional[asyncio.Task] = None
         self._fork_servers: Dict[str, ForkServerProcess] = {}
-        self._fork_server_locks: Dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._fork_server_locks: Dict[str, asyncio.Lock] = {}
+        self._fork_server_lock_waiters: Dict[str, int] = defaultdict(int)
         self._fork_server_failures: Dict[Optional[str], int] = defaultdict(int)
         self._fork_server_cap_warn_at: float = 0.0
         self._idle_fork_servers: Dict[str, asyncio.TimerHandle] = {}
@@ -639,6 +647,18 @@ class RuntimeEnvAgent:
 
         uri_cache._delete_fn = _wrapped_delete
 
+    def _maybe_prune_fork_server_lock(self, fs_key: str) -> None:
+        if (
+            self._fork_server_lock_waiters.get(fs_key, 0) > 0
+            or fs_key in self._fork_servers
+            or fs_key in self._idle_fork_servers
+            or self._has_active_fork_server_refs(fs_key)
+        ):
+            return
+        lock = self._fork_server_locks.get(fs_key)
+        if lock is not None and not lock.locked():
+            self._fork_server_locks.pop(fs_key, None)
+
     def _evict_fork_servers_using_uri(self, uri: str, logger: logging.Logger) -> None:
         matching_keys = [
             fs_key for fs_key, uris in list(self._fs_key_to_uris.items()) if uri in uris
@@ -655,6 +675,7 @@ class RuntimeEnvAgent:
                     uri,
                 )
                 server.stop()
+            self._maybe_prune_fork_server_lock(fs_key)
 
     def _emit_fork_server_startup_warnings(
         self, server: ForkServerProcess, logger: logging.Logger
@@ -722,7 +743,12 @@ class RuntimeEnvAgent:
             for k in sorted(expanded_ctx_vars)
             if is_exec_bound_env_var(k)
         }
+        preload_modules = list(runtime_env.preload_modules() or [])
         fs_env_vars = {**pypath_ctx.env_vars, **exec_env_vars}
+        # Preserve user PYTHONPATH in the server environment when preload_modules is
+        # requested so pre-fork imports resolve modules located on user PYTHONPATH.
+        if preload_modules and "PYTHONPATH" in expanded_ctx_vars:
+            fs_env_vars["PYTHONPATH"] = expanded_ctx_vars["PYTHONPATH"]
 
         pip_env_sig: Dict[str, str] = {}
         if runtime_env.get("pip"):
@@ -737,7 +763,6 @@ class RuntimeEnvAgent:
                 if ref_name in expanded_user_vars:
                     pip_env_sig[ref_name] = expanded_user_vars[ref_name]
 
-        preload_modules = list(runtime_env.preload_modules() or [])
         py_exec = context.py_executable or sys.executable
         if (
             not uris_list
@@ -823,6 +848,7 @@ class RuntimeEnvAgent:
             self._on_fork_server_became_idle(fs_key)
         elif not self._has_active_fork_server_refs(fs_key):
             self._fork_server_failures.pop(fs_key, None)
+            self._maybe_prune_fork_server_lock(fs_key)
 
     def _cancel_idle_timer(self, fs_key: str) -> None:
         handle = self._idle_fork_servers.pop(fs_key, None)
@@ -1096,26 +1122,29 @@ class RuntimeEnvAgent:
 
         self._serialized_env_to_fs_key[serialized_env] = fs_key
         self._cancel_idle_timer(fs_key)
-        lock = self._fork_server_locks[fs_key]
-        if setup_deadline is not None and lock.locked():
-            rem = setup_deadline - time.monotonic()
-            if rem <= 0:
-                if not self._has_active_fork_server_refs(fs_key):
-                    self._on_fork_server_became_idle(fs_key)
-                return None
-            try:
-                await asyncio.wait_for(lock.acquire(), timeout=rem)
-            except asyncio.TimeoutError:
-                if not self._has_active_fork_server_refs(fs_key):
-                    self._on_fork_server_became_idle(fs_key)
-                logger.warning(
-                    "Timed out waiting for fork server lock within setup_timeout_seconds; "
-                    "falling back to exec."
-                )
-                return None
-        else:
-            await lock.acquire()
+        lock = self._fork_server_locks.setdefault(fs_key, asyncio.Lock())
+        self._fork_server_lock_waiters[fs_key] += 1
+        acquired = False
         try:
+            if setup_deadline is not None and lock.locked():
+                rem = setup_deadline - time.monotonic()
+                if rem <= 0:
+                    if not self._has_active_fork_server_refs(fs_key):
+                        self._on_fork_server_became_idle(fs_key)
+                    return None
+                try:
+                    await asyncio.wait_for(lock.acquire(), timeout=rem)
+                except asyncio.TimeoutError:
+                    if not self._has_active_fork_server_refs(fs_key):
+                        self._on_fork_server_became_idle(fs_key)
+                    logger.warning(
+                        "Timed out waiting for fork server lock within setup_timeout_seconds; "
+                        "falling back to exec."
+                    )
+                    return None
+            else:
+                await lock.acquire()
+            acquired = True
             self._cancel_idle_timer(fs_key)
             server = self._fork_servers.get(fs_key)
             if server is not None:
@@ -1210,7 +1239,14 @@ class RuntimeEnvAgent:
                     return None
             return server.socket_path
         finally:
-            lock.release()
+            if acquired:
+                lock.release()
+            remaining = self._fork_server_lock_waiters.get(fs_key, 0) - 1
+            if remaining > 0:
+                self._fork_server_lock_waiters[fs_key] = remaining
+            else:
+                self._fork_server_lock_waiters.pop(fs_key, None)
+                self._maybe_prune_fork_server_lock(fs_key)
 
     def _evict_idle_fork_server(self, fs_key: str) -> None:
         self._cancel_idle_timer(fs_key)
@@ -1221,6 +1257,7 @@ class RuntimeEnvAgent:
         if server is not None:
             server.stop()
         self._fork_server_failures.pop(fs_key, None)
+        self._maybe_prune_fork_server_lock(fs_key)
 
     def _cleanup_fork_servers(self) -> None:
         self._shutting_down = True
@@ -1238,6 +1275,8 @@ class RuntimeEnvAgent:
             server.stop()
         self._fs_key_to_uris.clear()
         self._fork_server_bypass_logged.clear()
+        self._fork_server_locks.clear()
+        self._fork_server_lock_waiters.clear()
 
     def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()

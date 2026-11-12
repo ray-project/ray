@@ -15,6 +15,8 @@
 #include "ray/raylet/worker_pool.h"
 
 #if !defined(_WIN32)
+#include <fcntl.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -26,6 +28,8 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <chrono>
+#include <climits>
 #include <cstring>
 #include <deque>
 #include <fstream>
@@ -922,38 +926,91 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   std::memcpy(
       addr.sun_path, fork_server_socket_path.data(), fork_server_socket_path.size());
 
-#ifdef SOCK_CLOEXEC
-  int sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+#if defined(SOCK_CLOEXEC) && defined(SOCK_NONBLOCK)
+  int sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 #else
   int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (sock_fd >= 0) {
     SetFdCloseOnExec(sock_fd);
+    int flags = fcntl(sock_fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+      close(sock_fd);
+      sock_fd = -1;
+    }
   }
 #endif
   if (sock_fd < 0) {
     worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
     return nullptr;
   }
+
+  // Enforce one monotonic timeout budget across connect(), write(), and recvmsg() so a
+  // slow or wedged fork server never stalls the single-threaded raylet event loop beyond
+  // worker_fork_server_timeout_ms.
   const int64_t timeout_ms =
       std::max<int64_t>(1, RayConfig::instance().worker_fork_server_timeout_ms());
-  struct timeval tv = {static_cast<time_t>(timeout_ms / 1000),
-                       static_cast<suseconds_t>((timeout_ms % 1000) * 1000)};
-  setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  auto wait_fd = [&](short events, int *out_errno) -> bool {
+    while (true) {
+      const auto now = std::chrono::steady_clock::now();
+      if (now >= deadline) {
+        *out_errno = ETIMEDOUT;
+        return false;
+      }
+      const int64_t remaining_ms =
+          std::chrono::ceil<std::chrono::milliseconds>(deadline - now).count();
+      struct pollfd pfd = {sock_fd, events, 0};
+      const int rc =
+          poll(&pfd, 1, static_cast<int>(std::min<int64_t>(remaining_ms, INT_MAX)));
+      if (rc < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        *out_errno = errno;
+        return false;
+      }
+      if (rc == 0) {
+        *out_errno = ETIMEDOUT;
+        return false;
+      }
+      return true;
+    }
+  };
 
   if (attempted_socket != nullptr) {
     *attempted_socket = true;
   }
 
   if (connect(sock_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == -1) {
-    const int connect_errno = errno;
-    RAY_LOG(WARNING).WithField(worker_id)
-        << "Failed to connect to fork server at " << fork_server_socket_path << ": "
-        << strerror(connect_errno) << "; falling back to execvpe.";
-    close(sock_fd);
-    return record_failure_and_fallback(connect_errno == EAGAIN ||
-                                       connect_errno == EWOULDBLOCK ||
-                                       connect_errno == ETIMEDOUT);
+    int connect_errno = errno;
+    if (connect_errno == EINPROGRESS) {
+      if (!wait_fd(POLLOUT, &connect_errno)) {
+        RAY_LOG(WARNING).WithField(worker_id)
+            << "Failed to connect to fork server at " << fork_server_socket_path << ": "
+            << strerror(connect_errno) << "; falling back to execvpe.";
+        close(sock_fd);
+        return record_failure_and_fallback(connect_errno == EAGAIN ||
+                                           connect_errno == EWOULDBLOCK ||
+                                           connect_errno == ETIMEDOUT);
+      }
+      int so_error = 0;
+      socklen_t so_len = sizeof(so_error);
+      if (getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &so_error, &so_len) == -1) {
+        connect_errno = errno;
+      } else {
+        connect_errno = so_error;
+      }
+    }
+    if (connect_errno != 0) {
+      RAY_LOG(WARNING).WithField(worker_id)
+          << "Failed to connect to fork server at " << fork_server_socket_path << ": "
+          << strerror(connect_errno) << "; falling back to execvpe.";
+      close(sock_fd);
+      return record_failure_and_fallback(connect_errno == EAGAIN ||
+                                         connect_errno == EWOULDBLOCK ||
+                                         connect_errno == ETIMEDOUT);
+    }
   }
 
   nlohmann::json req = {
@@ -962,16 +1019,26 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
       req.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
 
   size_t total_sent = 0;
+  int send_flags = 0;
+#ifdef MSG_NOSIGNAL
+  send_flags |= MSG_NOSIGNAL;
+#endif
   while (total_sent < payload.size()) {
-    ssize_t sent =
-        write(sock_fd, payload.data() + total_sent, payload.size() - total_sent);
+    ssize_t sent = send(
+        sock_fd, payload.data() + total_sent, payload.size() - total_sent, send_flags);
     if (sent < 0) {
       if (errno == EINTR) {
         continue;
       }
-      const int write_errno = errno;
+      int write_errno = errno;
+      if (write_errno == EAGAIN || write_errno == EWOULDBLOCK) {
+        if (wait_fd(POLLOUT, &write_errno)) {
+          continue;
+        }
+      }
       close(sock_fd);
-      return record_failure_and_fallback(write_errno == EAGAIN ||
+      return record_failure_and_fallback(write_errno == ETIMEDOUT ||
+                                         write_errno == EAGAIN ||
                                          write_errno == EWOULDBLOCK);
     }
     total_sent += static_cast<size_t>(sent);
@@ -994,8 +1061,24 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     recv_flags |= MSG_CMSG_CLOEXEC;
 #endif
     ssize_t n = recvmsg(sock_fd, &msg, recv_flags);
-    if (n < 0 && errno == EINTR) {
-      continue;
+    if (n < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        int poll_errno = 0;
+        if (wait_fd(POLLIN, &poll_errno)) {
+          continue;
+        }
+        if (poll_errno == ETIMEDOUT || poll_errno == EAGAIN ||
+            poll_errno == EWOULDBLOCK) {
+          io_timed_out = true;
+        }
+      }
+      break;
+    }
+    if (n == 0) {
+      break;
     }
     for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr;
          cmsg = CMSG_NXTHDR(&msg, cmsg)) {
@@ -1016,15 +1099,6 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
           }
         }
       }
-    }
-    if (n < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        io_timed_out = true;
-      }
-      break;
-    }
-    if (n == 0) {
-      break;
     }
     response.append(buf, static_cast<size_t>(n));
   }
@@ -1245,24 +1319,25 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   }
   worker->SetProcess(std::move(process));
 #if !defined(_WIN32)
-  // Save the worker's actual PGID at registration for safe cleanup later.
-  // Only save if the worker is its own process group leader (pgid == pid), so cleanup
-  // never signals the raylet's, fork server's, or runtime_env_agent's process group.
-  pid_t pgid = -1;
-  errno = 0;
-  pgid = getpgid(pid);
-  if (pgid != -1) {
-    if (pgid == pid) {
-      worker->SetSavedProcessGroupId(pgid);
-    } else if (RayConfig::instance().process_group_cleanup_enabled() ||
-               starting_process_info.started_via_fork_server) {
-      RAY_LOG(WARNING) << "Worker " << pid << " pgid (" << pgid
-                       << ") != pid; skipping SetSavedProcessGroupId to avoid "
-                       << "signaling parent process group.";
+  if (RayConfig::instance().process_group_cleanup_enabled()) {
+    // Save the worker's actual PGID at registration for safe cleanup later.
+    // Only save if the worker is its own process group leader (pgid == pid), so cleanup
+    // never signals the raylet's, fork server's, or runtime_env_agent's process group.
+    pid_t pgid = -1;
+    errno = 0;
+    pgid = getpgid(pid);
+    if (pgid != -1) {
+      if (pgid == pid) {
+        worker->SetSavedProcessGroupId(pgid);
+      } else {
+        RAY_LOG(WARNING) << "Worker " << pid << " pgid (" << pgid
+                         << ") != pid; skipping SetSavedProcessGroupId to avoid "
+                         << "signaling parent process group.";
+      }
+    } else {
+      RAY_LOG(WARNING) << "getpgid(" << pid
+                       << ") failed at registration: " << strerror(errno);
     }
-  } else {
-    RAY_LOG(WARNING) << "getpgid(" << pid
-                     << ") failed at registration: " << strerror(errno);
   }
 #endif
 

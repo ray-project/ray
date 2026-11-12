@@ -228,6 +228,7 @@ if __name__ == "__main__":
         workers_cgroup_path=args.workers_cgroup_path,
         worker_stdout_fd=worker_stdout_fd,
         worker_stderr_fd=worker_stderr_fd,
+        session_dir=args.session_dir,
     )
 
     ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
