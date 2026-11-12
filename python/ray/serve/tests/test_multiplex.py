@@ -246,15 +246,13 @@ class _FakeRequest:
     """
 
     def __init__(self):
-        self._context = ray.serve.context._RequestContext(
-            request_id="fake", _finished=concurrent.futures.Future()
-        )
+        self.finished = concurrent.futures.Future()
 
     def start_get(self, multiplexer: _ModelMultiplexWrapper, model_id: str):
         """Start a lookup in a child task of the request and return the task."""
 
         async def lookup():
-            ray.serve.context._serve_request_context.set(self._context)
+            ray.serve.context._serve_work_finished.set(self.finished)
             return await multiplexer.load_model(model_id)
 
         return get_or_create_event_loop().create_task(lookup())
@@ -263,7 +261,7 @@ class _FakeRequest:
         return await self.start_get(multiplexer, model_id)
 
     async def finish(self):
-        self._context._finished.set_result(None)
+        self.finished.set_result(None)
         # The pins are released by a callback scheduled on the event loop.
         await asyncio.sleep(SETTLE_S)
 
@@ -349,33 +347,73 @@ class TestMultiplexPinning:
         assert model_b.unloaded
         assert multiplexer._pinned_models == {}
 
-    async def test_batch_lookup_is_pinned_until_batch_task_is_done(
+    async def test_batch_lookup_in_child_task_is_pinned_until_batch_is_done(
         self, start_serve_with_context
     ):
-        """A batch handler looks up a model. The model stays pinned while the
-        task running the batch is alive."""
+        """A batch handler looks up its model in a child task. The model stays
+        pinned until the handler returns, not until the child task is done."""
         multiplexer = await _make_multiplexer(cap=1)
-        batch_done = asyncio.Event()
+        model_looked_up, batch_done = asyncio.Event(), asyncio.Event()
 
-        async def handle_batch():
-            ray.serve.context._set_batch_request_context(
-                [ray.serve.context._RequestContext(request_id="in-batch")]
-            )
-            model = await multiplexer.load_model("a")
+        @serve.batch(max_batch_size=1)
+        async def handle_batch(inputs: List[str]) -> List[_TrackedModel]:
+            # `gather` runs the lookup in a task of its own.
+            (model,) = await asyncio.gather(multiplexer.load_model("a"))
+            model_looked_up.set()
             await batch_done.wait()
-            return model
+            return [model]
 
         loop = get_or_create_event_loop()
-        batch_task = loop.create_task(handle_batch())
+        batch_call = loop.create_task(handle_batch("input"))
+        await asyncio.wait_for(model_looked_up.wait(), timeout=5)
         lookup_b = loop.create_task(multiplexer.load_model("b"))
         await asyncio.sleep(SETTLE_S)
 
         assert not lookup_b.done()
 
         batch_done.set()
-        model_a = await batch_task
-        await lookup_b
+        model_a = await batch_call
+        await asyncio.wait_for(lookup_b, timeout=5)
         assert model_a.unloaded
+
+    async def test_owner_finishes_before_pin_is_added(self, start_serve_with_context):
+        """A request finishes between a lookup and its pin. The pin is dropped
+        on the next event loop step and no owner entry is left behind."""
+        multiplexer = await _make_multiplexer(cap=1)
+        await multiplexer.load_model("a")
+        finished_owner = concurrent.futures.Future()
+        finished_owner.set_result(None)
+
+        multiplexer._pin("a", finished_owner)
+        await asyncio.sleep(SETTLE_S)
+
+        assert multiplexer._pinned_models == {}
+
+    async def test_held_back_hit_marks_model_recently_used(
+        self, start_serve_with_context
+    ):
+        """A lookup is held back from the least recently used model, then gets
+        it from the cache when the waiting miss is cancelled. The next miss
+        unloads the other model."""
+        multiplexer = await _make_multiplexer(cap=2)
+        first_a, request_b = _FakeRequest(), _FakeRequest()
+        request_c, second_a = _FakeRequest(), _FakeRequest()
+        model_a = await first_a.get(multiplexer, "a")
+        model_b = await request_b.get(multiplexer, "b")
+        # The miss on "c" drains "a", so the second lookup of "a" is held back.
+        lookup_c = request_c.start_get(multiplexer, "c")
+        await asyncio.sleep(SETTLE_S)
+        lookup_a = second_a.start_get(multiplexer, "a")
+        await asyncio.sleep(SETTLE_S)
+
+        lookup_c.cancel()
+        assert await asyncio.wait_for(lookup_a, timeout=5) is model_a
+        for request in (first_a, request_b, second_a):
+            await request.finish()
+        await multiplexer.load_model("d")
+
+        assert model_b.unloaded
+        assert not model_a.unloaded
 
     async def test_request_using_more_models_than_cap(self, start_serve_with_context):
         """One request looks up two models on a replica that holds one. The
@@ -480,7 +518,7 @@ class TestMultiplexPinning:
         assert list(multiplexer.models) == ["a"]
         assert multiplexer._room_waiters == []
         assert multiplexer._model_load_tasks == set()
-        assert request_bad._context._finished not in multiplexer._pinned_models
+        assert request_bad.finished not in multiplexer._pinned_models
 
     async def test_cancelled_waiting_lookup_is_forgotten(
         self, start_serve_with_context

@@ -337,9 +337,6 @@ class _RequestContext:
     # This is extracted from _ray_trace_ctx kwarg at the replica entry point
     # Advanced users can access this to propagate tracing to external systems
     _ray_trace_ctx: Optional[dict] = None
-    # Resolved by the replica when the request has finished, from the replica's
-    # event loop thread. None outside a replica request.
-    _finished: Optional[concurrent.futures.Future] = None
 
 
 _serve_request_context = contextvars.ContextVar(
@@ -349,6 +346,12 @@ _serve_request_context = contextvars.ContextVar(
 _serve_batch_request_context = contextvars.ContextVar(
     "Serve internal batching request context variable", default=None
 )
+
+# Future that Serve resolves when the request or batch running in this context
+# has finished. It can resolve on another thread. None outside a request.
+_serve_work_finished: contextvars.ContextVar[
+    Optional[concurrent.futures.Future]
+] = contextvars.ContextVar("Serve internal work finished variable", default=None)
 
 
 def _get_serve_request_context() -> "_RequestContext":

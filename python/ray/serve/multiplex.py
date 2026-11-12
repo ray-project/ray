@@ -19,8 +19,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import (
     _get_global_client,
     _get_internal_replica_context,
-    _serve_batch_request_context,
-    _serve_request_context,
+    _serve_work_finished,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -39,7 +38,8 @@ class _ModelMultiplexWrapper:
     The model will be unloaded in the LRU order, the model multiplexer will call the
     model's __del__ attribute if it exists to clean up the model resources eagerly.
 
-    A model looked up inside a request is pinned until that request finishes.
+    A model looked up inside a request or a batch is pinned until that request
+    or batch finishes.
     Pinned models are not unloaded: a cache miss on a full replica unloads the
     least recently used unpinned model, or waits until a request finishes.
     While a miss waits, the least recently used model takes no new requests.
@@ -128,7 +128,7 @@ class _ModelMultiplexWrapper:
         self._model_load_tasks: Set[str] = set()
 
         # Pin owner -> IDs of the cached models it pins. An owner is a future
-        # or task (see `_current_pin_owner`); its pins are dropped when it is done.
+        # (see `_current_pin_owner`); its pins are dropped when it is done.
         self._pinned_models: Dict[Hashable, Set[str]] = {}
         # One entry per lookup waiting for a model to be unpinned.
         self._room_waiters: List[_RoomWaiter] = []
@@ -230,6 +230,7 @@ class _ModelMultiplexWrapper:
             async with self._model_cache_lock:
                 # Check if the model has been loaded by another request.
                 if self._can_use_cached(model_id, owner):
+                    self.models.move_to_end(model_id)
                     return self._pin(model_id, owner)
                 if model_id not in self.models and await self._make_room(owner):
                     await self._load_into_cache(model_id)
@@ -345,27 +346,25 @@ class _ModelMultiplexWrapper:
         self.model_load_latency_ms.observe(load_latency_ms)
 
     def _current_pin_owner(self) -> Optional[Hashable]:
-        """Return the object whose completion ends the caller's use of a model.
+        """Return the future whose completion ends the caller's use of a model.
 
-        Inside a batch this is the asyncio task running the batch. Inside a
-        request it is the future the replica resolves when the request
-        finishes, which child tasks of the request share. Other lookups return
-        None and are not pinned.
+        Serve resolves it when the request or batch that the caller runs in has
+        finished. Child tasks share it. Lookups outside a request or batch
+        return None and are not pinned.
         """
-        if _serve_batch_request_context.get():
-            return asyncio.current_task()
-        request_finished = getattr(_serve_request_context.get(), "_finished", None)
+        work_finished = _serve_work_finished.get()
         # A task that outlives the request that created it keeps its context.
-        if request_finished is None or request_finished.done():
+        if work_finished is None or work_finished.done():
             return None
-        return request_finished
+        return work_finished
 
     def _pin(self, model_id: str, owner: Hashable) -> Any:
         """Pin the cached model for `owner` and return the model."""
         if owner is not None:
             if owner not in self._pinned_models:
                 self._pinned_models[owner] = set()
-                # A request future resolves on the replica's event loop thread.
+                # The future can resolve on another thread. The callback is
+                # always deferred, so it runs after the pin below is added.
                 unpin = functools.partial(
                     asyncio.get_running_loop().call_soon_threadsafe,
                     self._unpin_models_of,
