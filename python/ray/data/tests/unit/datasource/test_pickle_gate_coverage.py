@@ -54,6 +54,10 @@ _ALLOWLIST = {
         "ORCFile is used only to inspect schema metadata; materialized batches are "
         "read and gated in OrcFileReader."
     ),
+    "delta_datasource_v2.py": (
+        "`.to_arrow()` converts the Delta log's schema to an Arrow schema; no data "
+        "is read here. Data files are read and gated in ParquetFileReader."
+    ),
 }
 
 

@@ -1,12 +1,14 @@
 """Add the generated ID column to Parquet reads when the plan is optimized.
 
 ``CheckpointConfig(generated_id_column=...)`` can be set on a dataset after
-``read_parquet()`` built it (Ray Train does this), so the read itself can't
-decide whether to add the column. This rule decides from the config of the
-plan being executed.
+``read_parquet()`` or ``read_delta()`` built it (Ray Train does this), so the
+read itself can't decide whether to add the column. This rule decides from the
+config of the plan being executed.
 """
 
+import logging
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 import pyarrow as pa
 
@@ -14,6 +16,14 @@ from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, 
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.operators.read_operator import ReadFiles
 from ray.data.expressions import col
+from ray.util.debug import log_once
+
+if TYPE_CHECKING:
+    from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
+        DeltaScanner,
+    )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "BindGeneratedIdColumn",
@@ -55,6 +65,9 @@ class BindGeneratedIdColumn(Rule):
 
 def _bind_read(op: ReadFiles, name: str) -> ReadFiles:
     # Lazy imports: ``ray.data.checkpoint`` imports ``ray.data.context``.
+    from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
+        DeltaScanner,
+    )
     from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
         ParquetScanner,
     )
@@ -62,6 +75,8 @@ def _bind_read(op: ReadFiles, name: str) -> ReadFiles:
     from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
 
     scanner = op.scanner
+    if isinstance(scanner, DeltaScanner):
+        _warn_if_delta_version_not_pinned(scanner)
     # Other formats can't produce the IDs; the planner rejects them.
     if not isinstance(scanner, ParquetScanner) or scanner.columns == ():
         return op
@@ -95,6 +110,28 @@ def _bind_read(op: ReadFiles, name: str) -> ReadFiles:
     if scanner is op.scanner:
         return op
     return replace(op, scanner=scanner)
+
+
+def _warn_if_delta_version_not_pinned(scanner: "DeltaScanner") -> None:
+    """Warn that a resumed job may read a newer version of the Delta table.
+
+    A generated ID names a row's place in a data file. Delta data files never
+    change, so a job resumed at the same table version finds every ID again.
+    But ``read_delta`` without ``version=`` reads the latest version, and
+    rows a later commit rewrote into new files (``OPTIMIZE``, an overwrite)
+    get new IDs and are processed again.
+    """
+    if scanner.version_pinned_by_caller or not log_once(
+        f"delta_generated_id_unpinned_version:{scanner.table_uri}"
+    ):
+        return
+    logger.warning(
+        "`generated_id_column` is set for a `read_delta` of the latest version of "
+        f"{scanner.table_uri!r}. A resumed job reads the version that is latest "
+        "then, and processes again any rows that a commit in between rewrote "
+        "into new files, for example by compaction or an overwrite. Pass "
+        "`version=` to `read_delta` to resume against the same version."
+    )
 
 
 def _keep_column(op: Project, name: str) -> Project:

@@ -538,7 +538,10 @@ class Planner:
                 raise InvalidCheckpointingConfig(
                     "`generated_id_column` supports only Parquet reads on the "
                     "V2 datasource path (`ray.data.read_parquet` with "
-                    "`DataContext.use_datasource_v2` enabled), but this dataset "
+                    "`DataContext.use_datasource_v2` enabled, or "
+                    "`ray.data.read_delta` with "
+                    "`DataContext.use_delta_datasource_v2` also enabled), but "
+                    "this dataset "
                     f"reads from {op.datasource.get_name()!r}. Use `id_column` "
                     "with a unique ID column instead."
                 )
