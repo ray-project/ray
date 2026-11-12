@@ -158,6 +158,17 @@ class PoolTaskError(Exception):
         self.underlying = underlying
 
 
+def _get_task_error(result: Any) -> Optional[Exception]:
+    """Return the exception a task failed with, or None if it succeeded.
+
+    Failed tasks are marked with PoolTaskError. Any other value, including an
+    Exception instance that the function returned, is a regular result.
+    """
+    if isinstance(result, PoolTaskError):
+        return result.underlying
+    return None
+
+
 class ResultThread(threading.Thread):
     """Thread that collects results from distributed actors.
 
@@ -269,16 +280,18 @@ class ResultThread(threading.Thread):
             try:
                 batch = ray.get(ready_id)
             except ray.exceptions.RayError as e:
-                batch = [e]
+                # The whole batch failed, for example because the actor died.
+                batch = [PoolTaskError(e)]
 
             # The exception callback is called only once on the first result
             # that errors. If no result errors, it is never called.
             if not self._got_error:
                 for result in batch:
-                    if isinstance(result, Exception):
+                    error = _get_task_error(result)
+                    if error is not None:
                         self._got_error = True
                         if self._error_callback is not None:
-                            self._error_callback(result)
+                            self._error_callback(error)
                         break
                     else:
                         aggregated_batch_results.append(result)
@@ -356,10 +369,9 @@ class AsyncResult:
         results = []
         for batch in self._result_thread.results():
             for result in batch:
-                if isinstance(result, PoolTaskError):
-                    raise result.underlying
-                elif isinstance(result, Exception):
-                    raise result
+                error = _get_task_error(result)
+                if error is not None:
+                    raise error
             results.extend(batch)
 
         if self._single_result:
