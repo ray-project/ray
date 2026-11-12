@@ -3,7 +3,7 @@
 ``MCAPSummaryIndexer`` walks the paths like ``NonSamplingFileIndexer``, then
 reads each file's summary and emits one manifest row per chunk that can hold a
 selected message. The partitioner (``OnlineBinPacker``) groups those rows into
-read tasks by the memory each chunk is estimated to need (``chunk_run``). A
+read tasks by the memory each chunk is estimated to need (``chunk_runs``). A
 large recording is then read by many tasks, and a small one shares a task with
 its neighbours. A file whose summary shows it cannot match the selection is
 dropped before any payload is read.
@@ -43,8 +43,10 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelec
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     _DEFAULT_SUMMARY_IO_CONCURRENCY,
     ListedSummary,
-    chunk_run,
+    ReadMemory,
+    chunk_runs,
     chunk_unit_id,
+    parse_listed_summary,
     read_summaries,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
@@ -76,7 +78,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
     Inherits directory traversal, extension and partition pruning, file shuffle
     and whole-file checkpoint exclusion from :class:`NonSamplingFileIndexer`.
     Overrides :meth:`list_files` to read each listed file's summary and turn it
-    into chunk rows (``mcap_summary.chunk_run``). Grouping rows into read tasks
+    into chunk rows (``mcap_summary.chunk_runs``). Grouping rows into read tasks
     is the partitioner's job.
     """
 
@@ -86,6 +88,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         selection: MCAPSelection,
         ignore_missing_paths: bool,
         read_task_bytes: int,
+        log_time_order: bool = True,
         row_layout: MessageRowLayout = MessageRowLayout(),
         skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
@@ -100,8 +103,10 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         )
         self._selection = selection
         # The partitioner's budget per read task, which the row of an unreadable
-        # file weighs (see the module docstring).
+        # file weighs (see the module docstring), and which bounds the summary
+        # sections held at once.
         self._read_task_bytes = read_task_bytes
+        self._read_memory = ReadMemory(read_task_bytes, log_time_order)
         # The columns a row carries, which size each chunk's listing row.
         self._row_layout = row_layout
         self._io_concurrency = (
@@ -140,9 +145,9 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         )
         assert filesystem is not None  # ``list_file_infos`` raised otherwise
         excluded = excluded_read_unit_ids or frozenset()
-        for file_info, summary_read in self._read_summaries(file_infos, filesystem):
+        for file_info, section_read in self._read_summaries(file_infos, filesystem):
             try:
-                listed = summary_read.result()
+                listed = parse_listed_summary(section_read.result(), file_info.path)
             except Exception as e:  # noqa: BLE001 - the file's own read task fails
                 manifest = self._unreadable_file_manifest(file_info, e)
             else:
@@ -152,14 +157,18 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
 
     def _read_summaries(
         self, file_infos: Iterable[FileInfo], filesystem: "FileSystem"
-    ) -> Iterator[Tuple[FileInfo, "Future[Optional[ListedSummary]]"]]:
-        """Start summary reads concurrently, yielding them in listing order.
+    ) -> Iterator[Tuple[FileInfo, "Future[Optional[memoryview]]"]]:
+        """Fetch summary sections concurrently, yielding them in listing order.
 
         Listing order decides how the partitioner groups chunks into tasks, so
         it must not depend on which read finishes first.
         """
         return read_summaries(
-            filesystem, file_infos, lambda info: info.path, self._io_concurrency
+            filesystem,
+            file_infos,
+            lambda info: info.path,
+            self._read_task_bytes,
+            self._io_concurrency,
         )
 
     def _unreadable_file_manifest(
@@ -222,19 +231,25 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             logger.debug("Skipping %s: no chunk can match the selection", path)
             return None
 
-        total_uncompressed = sum(c.uncompressed_size for c in summary.chunk_indexes)
-        row_bytes = self._row_layout.row_bytes(
-            path, (summary.channels[c] for c in selected), summary.schemas
-        )
-        runs = [
-            chunk_run(chunk_index, summary.statistics, total_uncompressed, row_bytes)
+        chunk_indexes = [
+            chunk_index
             for chunk_index in summary.chunk_indexes
             if self._selection.chunk_may_match(chunk_index, selected)
             and chunk_unit_id(path, chunk_index.chunk_start_offset)
             not in excluded_read_unit_ids
         ]
-        if not runs:
+        if not chunk_indexes:
             return None
+        channels = [summary.channels[c] for c in selected]
+        row_bytes = self._row_layout.row_bytes(path, channels, summary.schemas)
+        runs = chunk_runs(
+            path,
+            summary,
+            chunk_indexes,
+            row_bytes,
+            self._read_memory,
+            payload_factor=self._row_layout.payload_factor(channels),
+        )
         manifest = FileManifest.construct_manifest(
             paths=[path] * len(runs),
             sizes=[file_info.size] * len(runs),

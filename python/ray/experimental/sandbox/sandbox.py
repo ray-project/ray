@@ -261,6 +261,30 @@ class Sandbox:
         """
         self.runtime.set_egress_allowlist(self.instance_id, cidrs)
 
+    def commit(
+        self,
+        image: str,
+        env: Optional[Dict[str, str]] = None,
+        timeout_seconds: float = 1800.0,
+    ) -> str:
+        """Push the sandbox's base image and root filesystem changes to a registry.
+
+        Registry credentials come from ``$DOCKER_CONFIG`` on the node that
+        runs this actor. The actor runs one call at a time, so other calls
+        wait until the push finishes; see ``SandboxRuntime.commit``.
+
+        Args:
+            image: Target reference with a tag, such as ``registry/repo:tag``.
+            env: Variables to replace or extend the base image config's Env.
+            timeout_seconds: Timeout for export and each registry request.
+
+        Returns:
+            The immutable ``registry/repo@sha256:...`` reference.
+        """
+        return self.runtime.commit(
+            self.instance_id, image, env=env, timeout_seconds=timeout_seconds
+        )
+
     def checkpoint(
         self,
         checkpoint_path: Optional[str] = None,
