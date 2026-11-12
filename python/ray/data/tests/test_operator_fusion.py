@@ -478,10 +478,20 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
         return {"id": [x + 1 for x in batch["id"]]}
 
     n = 10
+    ctx = DataContext.get_current()
     ds = ray.data.range(n)
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+    if (
+        ctx.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+        and ctx.use_disk_based_hash_shuffle
+    ):
+        # Disk shuffle v2 keeps the upstream map as its own operator.
+        assert "ReadRange->MapBatches(fn)" in ds.stats()
+        assert "DiskRandomShuffleMap(partitions=" in ds.stats()
+        _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
+        return
     assert "ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
 
