@@ -20,7 +20,7 @@ Ray Sandboxes is an {ref}`alpha <api-stability-alpha>` library in the `ray.exper
 
 When you deploy the gRPC facade with a KubeRay RayService, the `modal` Python client connects to Ray Serve's gRPC proxy over HTTP/2 on port 9000 and authenticates each request with a shared bearer token. The proxy routes incoming `ModalClient` and `TaskCommandRouter` RPCs to `RaySandboxGrpcFacade`, a Ray Serve deployment built by `ray.experimental.sandbox.http.grpc_app:build_app`.
 
-The facade translates Modal SDK calls into Ray Sandbox operations and keeps no state of its own. For each sandbox, the facade schedules a named, detached `SandboxHost` actor on a worker Pod. That actor manages one gVisor container through `SandboxRuntime` and records the sandbox's command executions, so any replica of the facade can serve any call.
+The facade translates Modal SDK calls into Ray Sandbox operations and keeps no state of its own. It places each sandbox on a worker Pod, where a detached Ray actor runs the sandbox's gVisor container through `SandboxRuntime` and records its command executions, so any replica of the facade can serve any call. By default, one actor on each worker Pod hosts every sandbox placed on that Pod. See [Scale the service](#scale-the-service) for the other mode, which gives each sandbox an actor of its own.
 
 ## Prerequisites
 
@@ -269,7 +269,7 @@ Key parts of this configuration include the following:
 * `grpc_options`: Starts Ray Serve's gRPC proxy on port 9000 and registers `ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server`, which exposes the `modal.client.ModalClient` and `modal.task_command_router.TaskCommandRouter` gRPC services.
 * `import_path` and `args`: Deploys `ray.experimental.sandbox.http.grpc_app:build_app` at `/` as the sole application on the Serve instance. Setting `advertise_url` to `http://127.0.0.1:9000` tells the facade to return that local URL as the command-router endpoint when you connect through `kubectl port-forward`.
 * `serve` and `serve-grpc` container ports: KubeRay uses the `serve` port 8000 to check the health of Ray Serve's proxy and exposes any port named `serve` or prefixed with `serve-` on the `rayservice-modal-sandbox-serve-svc` Kubernetes Service.
-* `num-cpus: "0"` on the head Pod: Prevents Ray from scheduling `SandboxHost` actors onto the head Pod, keeping untrusted sandboxes on worker Pods.
+* `num-cpus: "0"` on the head Pod: Keeps untrusted sandboxes on worker Pods, because the facade places sandboxes only on Ray nodes that have CPUs.
 * `securityContext` and `/dev/net/tun` on worker Pods: Sets `seccompProfile` and `appArmorProfile` to `Unconfined` so rootless `runsc` and `slirp4netns` can create user and network namespaces inside the worker container, and mounts `/dev/net/tun` from the node so `slirp4netns` can attach network interfaces for `network="public"` sandboxes.
 
 Apply the manifest:
@@ -365,7 +365,7 @@ result_bytes = sb.filesystem.read_bytes("/workspace/result.txt")
 print("Read from /workspace/result.txt:")
 print(result_bytes.decode("utf-8"), end="")
 
-# Terminate the sandbox and release its Ray actor reservation.
+# Terminate the sandbox and release the CPUs Ray reserved for it.
 sb.terminate()
 ```
 
