@@ -1,11 +1,9 @@
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col
@@ -13,10 +11,6 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "expr, target_type, expected_rows",
     [
@@ -58,10 +52,6 @@ def test_cast_expression_basic(
     assert rows_same(pd.DataFrame(actual), pd.DataFrame(expected_rows))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_cast_expression_usecase(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -80,10 +70,6 @@ def test_cast_expression_usecase(
     assert part_type == pa.int64()
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_cast_expression_chained(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -103,10 +89,6 @@ def test_cast_expression_chained(
     assert rows_same(pd.DataFrame(actual), pd.DataFrame(expected_rows))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_cast_expression_safe_mode(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -118,10 +100,6 @@ def test_cast_expression_safe_mode(
         ds.with_column("result", col("value").cast(DataType.int64())).materialize()
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_cast_expression_invalid_type(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -135,10 +113,6 @@ def test_cast_expression_invalid_type(
         ds.with_column("result", col("id").cast("invalid_type")).materialize()
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_cast_expression_multiple_types(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -168,10 +142,6 @@ def test_cast_expression_multiple_types(
     assert rows_same(pd.DataFrame(results), pd.DataFrame(expected))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_cast_expression_python_type_datatype_error(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):

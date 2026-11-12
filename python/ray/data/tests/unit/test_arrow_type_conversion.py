@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 import numpy as np
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data import DataContext
 from ray.data._internal.execution.util import memory_string
@@ -17,7 +16,6 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.util import MiB
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 import psutil
@@ -102,13 +100,6 @@ def test_arrow_native_list_conversion(input, disable_fallback_to_object_extensio
     """Test asserts that nested lists are represented as native Arrow lists
     upon serialization into Arrow format (and are NOT converted to numpy
     tensor using extension)"""
-
-    if isinstance(input[0], pa.Scalar) and get_pyarrow_version() <= parse_version(
-        "13.0.0"
-    ):
-        pytest.skip(
-            "Pyarrow < 13.0 not able to properly infer native types from its own Scalars"
-        )
 
     pa_arr = convert_to_pyarrow_array(input, "a")
 

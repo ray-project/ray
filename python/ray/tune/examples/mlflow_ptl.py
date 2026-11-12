@@ -12,6 +12,10 @@ from ray.air.integrations.mlflow import setup_mlflow
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier, MNISTDataModule
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
+# MLflow >= 3.18 requires opting in to the local filesystem tracking
+# backend that the smoke test's tempdir URI uses.
+os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+
 
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     setup_mlflow(

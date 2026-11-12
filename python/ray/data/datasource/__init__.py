@@ -26,7 +26,6 @@ from ray.data.datasource.datasource import (
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     FileShuffleConfig,
-    _S3FileSystemWrapper,
 )
 from ray.data.datasource.file_datasink import (
     BlockBasedFileDatasink,
@@ -73,7 +72,6 @@ __all__ = [
     "RowBasedFileDatasink",
     "TurbopufferDatasink",
     "BlockBasedFileDatasink",
-    "_S3FileSystemWrapper",
     "TimeRange",
     "WriteResult",
     "WriteReturnType",
