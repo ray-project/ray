@@ -331,7 +331,7 @@ TEST_F(GcsNodeManagerTest, TestUnregisterNodeAlwaysReplies) {
   ASSERT_EQ(first_replies, 1);
 
   // Unregistering again: the node is already removed, but the reply must still
-  // be sent or the raylet waits forever.
+  // be sent, or the raylet waits until its liveness self-check crashes it.
   int second_replies = 0;
   rpc::UnregisterNodeReply second_reply;
   node_manager.HandleUnregisterNode(
@@ -344,6 +344,7 @@ TEST_F(GcsNodeManagerTest, TestUnregisterNodeAlwaysReplies) {
   while (io_context_->poll() > 0) {
   }
   ASSERT_EQ(second_replies, 1);
+  ASSERT_EQ(second_reply.status().code(), static_cast<int>(StatusCode::OK));
 }
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
