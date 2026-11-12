@@ -19,6 +19,7 @@ drag along.
 
 from __future__ import annotations
 
+import uuid
 from collections import Counter
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Sequence
 
@@ -174,7 +175,12 @@ def _encode_partitions(
         # ``partition_type`` builds.
         for position, field in enumerate(specs[task.file.spec_id].fields):
             if position < len(record):
-                columns[names[field.field_id]][row] = record[position]
+                value = record[position]
+                # PyIceberg reads a UUID partition value as ``uuid.UUID``, which
+                # pyarrow 23 rejects for a UUID column; every version takes bytes.
+                if isinstance(value, uuid.UUID):
+                    value = value.bytes
+                columns[names[field.field_id]][row] = value
 
     # Built child by child rather than from a list of dicts: pyarrow cannot
     # infer an extension-typed struct child from Python values (a UUID
@@ -232,6 +238,7 @@ def manifest_from_scan_tasks(
 ) -> FileManifest:
     """Encode PyIceberg scan tasks as one manifest block, one row per task."""
     from pyiceberg.expressions import AlwaysTrue
+    from pyiceberg.manifest import DataFileContent
 
     paths: List[str] = []
     sizes: List[int] = []
@@ -252,6 +259,14 @@ def manifest_from_scan_tasks(
         # Sorted so a manifest row is reproducible across executions; the set
         # PyIceberg hands us has no order.
         deletes = sorted(task.delete_files, key=lambda f: f.file_path)
+        for delete in deletes:
+            # The reader rebuilds every delete file as a position delete, so
+            # refuse any other kind here rather than misapply it.
+            if delete.content != DataFileContent.POSITION_DELETES:
+                raise NotImplementedError(
+                    f"Only position deletes are supported, but {delete.file_path} "
+                    f"holds {delete.content.name}."
+                )
         delete_paths.append([f.file_path for f in deletes])
         delete_formats.append([f.file_format.value for f in deletes])
         residual_is_true.append(isinstance(task.residual, AlwaysTrue))
