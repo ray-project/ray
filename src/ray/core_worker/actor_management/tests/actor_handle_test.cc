@@ -14,8 +14,8 @@
 
 #include "ray/core_worker/actor_management/actor_handle.h"
 
+#include <cstdint>
 #include <string>
-#include <unordered_map>
 #include <utility>
 
 #include "gtest/gtest.h"
