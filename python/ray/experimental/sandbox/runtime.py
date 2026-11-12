@@ -4,6 +4,7 @@ import threading
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
+from ray.experimental.sandbox._internal.image_utils import BuiltImageEvictedError
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
@@ -11,6 +12,8 @@ from ray.experimental.sandbox.backend.base import (
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import SandboxCreationError
+from ray.experimental.sandbox.image_build import ImageBuildPlan
+from ray.experimental.sandbox.image_builder import ImageBuilder
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
 
@@ -22,6 +25,7 @@ class SandboxRuntime:
     def __init__(self):
         self._image_manager = ImageManager()
         self._backend = GVisorSandboxBackend(image_manager=self._image_manager)
+        self._image_builder = ImageBuilder(self._image_manager, self._backend)
         self._ttl_timers: Dict[str, threading.Timer] = {}
 
     @property
@@ -33,6 +37,58 @@ class SandboxRuntime:
     def backend(self) -> GVisorSandboxBackend:
         """The backend instance used by this runtime."""
         return self._backend
+
+    def build_image(
+        self,
+        image: str,
+        build: ImageBuildPlan,
+        timeout_seconds: float = 120.0,
+        force_token: Optional[str] = None,
+        rootless: bool = True,
+        _ignore_cgroups: bool = False,
+    ) -> str:
+        """Build ``image`` plus ``build`` into this node's image cache.
+
+        Layers already cached -- including those shared with other images
+        built from the same base and leading steps -- are reused. Useful to
+        warm a node before sandboxes are created on it.
+
+        Args:
+            image: Base image reference or local tar path.
+            build: The steps to apply on top of it.
+            timeout_seconds: Network and sandbox-start timeout.
+            force_token: Re-pull the base once for this token (Modal's
+                ``force_build`` on the base image).
+            rootless: Run the build sandboxes rootless.
+            _ignore_cgroups: PRIVATE — testing only.
+
+        Returns:
+            The built image's reference, usable as ``create(image=...)``.
+        """
+        base_force_token = None
+        if force_token is not None and self._image_manager.invalidate_image(
+            image, token=force_token
+        ):
+            base_force_token = force_token
+        return self._image_builder.build(
+            image,
+            build,
+            timeout_seconds=timeout_seconds,
+            base_force_token=base_force_token,
+            rootless=rootless,
+            ignore_cgroups=_ignore_cgroups,
+        )
+
+    def cancel_builds(self) -> None:
+        """Cancel the image builds this runtime is running; callable from any thread.
+
+        Each :meth:`build_image` call in progress -- including the build a
+        ``create(build=...)`` runs -- stops, cleans up what it made, and
+        raises :class:`~ray.experimental.sandbox.exceptions.SandboxImageBuildError`.
+        A build running a step's command stops at once; see
+        :meth:`ImageBuilder.cancel`. May block for a few seconds.
+        """
+        self._image_builder.cancel()
 
     def pull_image(self, image: str, timeout_seconds: float = 120.0) -> str:
         """Download and extract container image into local cache.
@@ -98,6 +154,8 @@ class SandboxRuntime:
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
         disk: Union[str, int, float] = 0,
+        build: Optional[ImageBuildPlan] = None,
+        image_force_token: Optional[str] = None,
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
@@ -147,11 +205,27 @@ class SandboxRuntime:
                 it fail with ENOSPC. Zero means no cap. Requires
                 ``readonly=False`` or a ``workdir``; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+            build: Optional build steps applied on top of ``image``; the
+                sandbox runs the built image (see :meth:`build_image`).
+            image_force_token: Optional token: re-pull ``image`` once per
+                token rather than using the node's cached copy.
             **kwargs: Additional parameters.
 
         Returns:
             A unique string identifier for the created sandbox.
         """
+        base = image
+        if build is not None:
+            image = self.build_image(
+                base,
+                build,
+                timeout_seconds=timeout_seconds,
+                force_token=image_force_token,
+                rootless=rootless,
+                _ignore_cgroups=_ignore_cgroups,
+            )
+        elif image_force_token is not None:
+            self._image_manager.invalidate_image(image, token=image_force_token)
         cfg = SandboxConfig(
             image=image,
             cpu=cpu,
@@ -172,7 +246,25 @@ class SandboxRuntime:
             disk=disk,
             **kwargs,
         )
-        instance_id = self._backend.create_sandbox(cfg)
+        for attempt in range(2):
+            try:
+                # Creating the sandbox pulls and pins its image: a built
+                # image from the cache, a registry image from its registry.
+                instance_id = self._backend.create_sandbox(cfg)
+                break
+            except SandboxCreationError as err:
+                # A just-built image can be evicted before the sandbox pins
+                # it, if the cache is full enough. Building again is cheap:
+                # its layers are still cached.
+                if build is None or attempt or not _caused_by_eviction(err):
+                    raise
+                cfg.image = self._image_builder.build(
+                    base,
+                    build,
+                    timeout_seconds=timeout_seconds,
+                    rootless=rootless,
+                    ignore_cgroups=_ignore_cgroups,
+                )
         if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
             timer = threading.Timer(cfg.ttl_seconds, self._expire, args=(instance_id,))
             timer.daemon = True
@@ -477,3 +569,13 @@ class SandboxRuntime:
             instance_id: Unique identifier of the sandbox instance.
         """
         await asyncio.to_thread(self.delete, instance_id)
+
+
+def _caused_by_eviction(err: BaseException) -> bool:
+    seen = set()
+    while err is not None and id(err) not in seen:
+        if isinstance(err, BuiltImageEvictedError):
+            return True
+        seen.add(id(err))
+        err = err.__cause__ or err.__context__
+    return False

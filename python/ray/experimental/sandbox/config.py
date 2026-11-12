@@ -377,6 +377,9 @@ class SandboxConfig:
     disk: Union[str, int, float] = 0
     mounts: Optional[Dict[str, str]] = None
     oom_score_adj: Optional[int] = None
+    # PRIVATE: ``ENV`` assignments applied over the image's environment, in
+    # order and expanded, beneath ``env`` (Modal's Image.env()).
+    _image_env: Tuple[Tuple[str, Optional[str]], ...] = field(default=(), repr=False)
 
     def __post_init__(self):
         self.cpu = 0.0 if self.cpu is None else float(self.cpu)

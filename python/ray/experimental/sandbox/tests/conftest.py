@@ -46,7 +46,11 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
     inspect, with the owners the real build would store. Its argv lands in
     ``mkfs.args`` next to the script. Yields the directory holding both.
     """
-    from ray.experimental.sandbox._internal.image_utils import mkfs_erofs_path
+    from ray.experimental.sandbox._internal.image_utils import (
+        mkfs_erofs_path,
+        mkfs_erofs_reproducible_flags,
+        mkfs_erofs_sort_flags,
+    )
 
     bin_dir = tmp_path / "fake-mkfs-bin"
     bin_dir.mkdir()
@@ -55,14 +59,19 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
         "#!/bin/sh\n"
         'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
         'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
-        "# args: --tar=f -b<page size> -E^inline_data OUT; the tar is on stdin\n"
-        'cat > "$4"\n'
+        "# args: --tar=f -b<page size> -E^inline_data [flags...] OUT; the tar is on stdin\n"
+        'for arg; do out="$arg"; done\n'
+        'cat > "$out"\n'
     )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
     mkfs_erofs_path.cache_clear()
+    mkfs_erofs_reproducible_flags.cache_clear()
+    mkfs_erofs_sort_flags.cache_clear()
     yield bin_dir
     mkfs_erofs_path.cache_clear()
+    mkfs_erofs_reproducible_flags.cache_clear()
+    mkfs_erofs_sort_flags.cache_clear()
 
 
 def _install_on_path(name: str, url: str) -> None:

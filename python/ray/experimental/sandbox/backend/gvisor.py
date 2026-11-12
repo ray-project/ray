@@ -128,6 +128,36 @@ _PID_FILE = "sandbox.pid"
 _START_POLL_SECONDS = 0.01
 _STATE_POLL_SECONDS = 0.05
 
+# What runsc reports when the image cannot supply the container's init process.
+_MISSING_PAUSE_BINARY = 'error finding executable "sleep"'
+
+
+def _startup_failure_hint(stderr: str, env: Optional[Dict[str, str]] = None) -> str:
+    """Explain a container that died because it could not find ``sleep``.
+
+    runsc reports only that it could not find the executable, which is opaque
+    unless you know the sandbox holds a container open by running
+    ``sleep infinity`` in it -- looked up on the container's PATH, which a
+    PATH in the sandbox's own env replaces.
+    """
+    if _MISSING_PAUSE_BINARY not in stderr:
+        return ""
+    if env and "PATH" in env:
+        return (
+            "\n\nThe sandbox holds a container open by running 'sleep infinity' "
+            "inside it, and looks 'sleep' up on the container's PATH. The "
+            f"sandbox's env sets PATH={env['PATH']!r}, which replaces the "
+            "image's own; include the image's binary directories in it (for "
+            "example /usr/local/bin:/usr/bin:/bin), or leave PATH unset."
+        )
+    return (
+        "\n\nThe sandbox holds a container open by running 'sleep infinity' "
+        "inside it, so the image must provide a 'sleep' binary. Minimal images "
+        "(distroless, scratch) do not ship one. Use a base image with a shell "
+        "and coreutils, such as 'busybox' or a '-slim' distribution image."
+    )
+
+
 # network="public" gives each sandbox a private user+network namespace pair
 # bridged by slirp4netns user-mode networking, the rootless-container shape:
 # a holder process (`unshare --user --map-root-user --net`) pins the
@@ -754,6 +784,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 timeout_seconds=config.timeout_seconds,
                 instance_id=sandbox_id,
             )
+            # Kept for the sandbox's lifetime: a later re-pull swaps the
+            # cached image, and reading its config by name would then describe
+            # the new image rather than the one this sandbox runs.
+            image_config = self._image_manager.get_image_config(config.image)
             # The process cwd: an explicit workdir, else the image's WORKDIR.
             container_cwd = (
                 config.workdir or self._image_manager.get_workdir(config.image) or "/"
@@ -790,6 +824,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
         # The cached image this sandbox pins, for checkpoints to fingerprint.
         self._sandbox_metadata[sandbox_id]["image_dir"] = image_dir
+        # Its config as it was at creation; see image_config().
+        self._sandbox_metadata[sandbox_id]["image_config"] = image_config
 
     def _prepare_bundle(
         self,
@@ -853,6 +889,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_ids=config.gpu_ids,
             _oci_spec_transform_fn=transform,
             disk=config.disk,
+            _image_env=config._image_env,
         )
         # Read back the final spec, as written to config.json.
         with open(config_json_path, encoding="utf-8") as f:
@@ -1037,8 +1074,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         try:
             while True:
                 if proc.poll() is not None:
+                    stderr = stderr_text()
                     raise SandboxCreationError(
-                        f"gVisor container failed to {action}: {stderr_text()}"
+                        f"gVisor container failed to {action}: {stderr}"
+                        f"{_startup_failure_hint(stderr, config.env)}"
                     )
 
                 delay = _START_POLL_SECONDS
@@ -1097,47 +1136,82 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise
         return proc, stderr_file
 
-    def delete_sandbox(self, sandbox_id: str) -> None:
-        """Terminate the sandbox and remove its local directory structure."""
-        meta = self._sandbox_metadata.pop(sandbox_id, None)
-        if meta:
-            root_dir = meta["root_dir"]
-            config: SandboxConfig = meta["config"]
-            proc = meta.get("proc")
-            stderr_file = meta.get("stderr_file")
+    def image_config(self, sandbox_id: str) -> Optional[Dict]:
+        """The config of the image the sandbox runs, as it was at creation.
 
-            kill_args = self._runsc_base_args(config)
-            kill_args.extend(["kill", sandbox_id, "SIGKILL"])
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+
+        Returns:
+            The image's config (Env, WorkingDir, Cmd, Entrypoint, ...), or None
+            if the sandbox is unknown.
+        """
+        meta = self._sandbox_metadata.get(sandbox_id)
+        return meta.get("image_config") if meta else None
+
+    def delete_sandbox(self, sandbox_id: str) -> None:
+        """Terminate the sandbox and remove its local directory structure.
+
+        Safe to call again after it raised. Every step that stops the sandbox
+        runs even when an earlier one failed -- the process-group kill is what
+        actually frees it, so a failed ``runsc kill`` must not skip it. Its
+        files and its pin on the image are let go only once all of them
+        succeeded, since it may still be running, and only then is it
+        forgotten. A retry therefore redoes the work, where forgetting it
+        first made a retry find nothing to delete and report success with the
+        container still running.
+
+        Args:
+            sandbox_id: The sandbox to delete. Unknown ids are a no-op.
+
+        Raises:
+            Exception: The first of the stopping steps that failed, raised
+                once all of them have run.
+        """
+        meta = self._sandbox_metadata.get(sandbox_id)
+        if not meta:
+            return
+        root_dir = meta["root_dir"]
+        config: SandboxConfig = meta["config"]
+        proc = meta.get("proc")
+        stderr_file = meta.get("stderr_file")
+        failures: List[Exception] = []
+
+        def attempt(step: Callable[[], None]) -> None:
             try:
-                subprocess.run(
-                    kill_args, capture_output=True, timeout=5, env=runsc_env()
-                )
-            except subprocess.TimeoutExpired:
+                step()
+            except Exception as exc:
+                failures.append(exc)
+
+        attempt(lambda: self._kill_container(config, sandbox_id))
+        attempt(lambda: self._delete_container_state(config, sandbox_id))
+        # After `runsc run` exits, a network="public" sandbox's launch
+        # shell still stops and reaps the namespace holder and slirp4netns.
+        if proc:
+            attempt(lambda: self._terminate_tree(proc))
+        if failures:
+            raise failures[0]
+
+        if stderr_file:
+            try:
+                stderr_file.close()
+            except Exception:
                 pass
 
-            self._delete_container_state(config, sandbox_id)
-
-            # After `runsc run` exits, a network="public" sandbox's launch
-            # shell still stops and reaps the namespace holder and slirp4netns.
-            if proc:
-                self._terminate_tree(proc)
-
-            if stderr_file:
-                try:
-                    stderr_file.close()
-                except Exception:
-                    pass
-
-            # The cgroup holds every process the sandbox ran, including any
-            # that outlived the launch process, and removing it kills them.
-            if _release_cgroup(sandbox_id, meta.get("cgroup")):
-                shutil.rmtree(root_dir, ignore_errors=True)
-                # Only now is the cached image unused.
-                self._image_manager.release_image(config.image, sandbox_id)
-            # Last, so no other backend reclaims the bundle while it's
-            # being deleted.
-            if meta.get("owner_file"):
-                meta["owner_file"].close()
+        # Stopped: anything still left is the reclaim pass's from here.
+        self._sandbox_metadata.pop(sandbox_id, None)
+        # The cgroup holds every process the sandbox ran, including any
+        # that outlived the launch process, and removing it kills them.
+        # One that can't be removed may still hold processes, so the bundle,
+        # owner file and image pin are left to the reclaim pass.
+        if _release_cgroup(sandbox_id, meta.get("cgroup")):
+            shutil.rmtree(root_dir, ignore_errors=True)
+            # Only now is the cached image unused.
+            self._image_manager.release_image(config.image, sandbox_id)
+        # Last, so no other backend reclaims the bundle while it's
+        # being deleted.
+        if meta.get("owner_file"):
+            meta["owner_file"].close()
 
     def set_egress_allowlist(self, sandbox_id: str, cidrs: List[str]) -> None:
         """Replace the egress allowlist of a running network="public" sandbox.
@@ -1302,6 +1376,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
         return None
 
+    def _kill_container(self, config: SandboxConfig, sandbox_id: str) -> None:
+        """Best-effort ``runsc kill``, bounded like _delete_container_state."""
+        kill_args = self._runsc_base_args(config) + ["kill", sandbox_id, "SIGKILL"]
+        try:
+            subprocess.run(kill_args, capture_output=True, timeout=5, env=runsc_env())
+        except subprocess.TimeoutExpired:
+            pass
+
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
         """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
         try:
@@ -1357,6 +1439,111 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         gid = group or login_gid
         return uid if gid is None else f"{uid}:{gid}"
 
+    def exec_argv(
+        self,
+        sandbox_id: str,
+        command: Union[str, List[str]],
+        cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
+        user: Optional[str] = None,
+        pid_file: Optional[str] = None,
+    ) -> List[str]:
+        """Build the ``runsc exec`` argument vector for a command.
+
+        Exposed so that callers needing their own process supervision (for
+        example streaming stdout while writing stdin) can spawn the command
+        themselves instead of going through :meth:`exec_command`, without
+        duplicating the runsc flag and working-directory logic. The argv joins
+        the sandbox's cgroup when it has one, so a command spawned this way is
+        held to the same CPU and memory limits as the sandbox.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            command: Command string or list of argument strings.
+            cwd: Optional working directory override.
+            env: Optional additional environment variables.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
+            user: Optional user to run as, in any form :meth:`exec_command`
+                accepts (default: the image user).
+            pid_file: Optional host path runsc writes the command's pid inside
+                the sandbox to, for :meth:`kill_process_group_argv`.
+
+        Returns:
+            The full argument vector, ready to hand to a process launcher.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        config: SandboxConfig = meta["config"]
+
+        runsc_args = self._runsc_base_args(config)
+        runsc_args.extend(["exec", "-cwd", cwd or meta["cwd"]])
+        if pid_file:
+            runsc_args.extend(["-internal-pid-file", pid_file])
+        if user is not None:
+            runsc_args.extend(["-user", self._resolve_exec_user(sandbox_id, user)])
+        if env:
+            for k, v in env.items():
+                runsc_args.extend(["-env", f"{k}={v}"])
+        if isinstance(command, list):
+            runsc_args.extend([sandbox_id] + command)
+        else:
+            runsc_args.extend([sandbox_id, shell or config.shell, "-c", command])
+        return self._wrap_workload(meta, runsc_args)
+
+    def kill_process_group_argv(self, sandbox_id: str, pid: int) -> List[str]:
+        """Build the ``runsc kill`` argument vector for one command's group.
+
+        Killing the ``runsc exec`` client does not stop the command inside the
+        sandbox -- SIGKILL cannot be forwarded -- so this signals it directly.
+        Each ``runsc exec`` process leads its own process group, so killing the
+        group also takes down whatever the command started: the halves of a
+        pipeline, a ``sh -c`` script's children.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            pid: The command's pid inside the sandbox, from ``pid_file``.
+
+        Returns:
+            The full argument vector, ready to hand to a process launcher.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        runsc_args = self._runsc_base_args(meta["config"])
+        runsc_args.extend(["kill", "-pgid", str(pid), sandbox_id, "KILL"])
+        return runsc_args
+
+    def export_rootfs_upper(self, sandbox_id: str, path: str) -> None:
+        """Write the sandbox's overlay upper layer to ``path`` as a tar file.
+
+        ``runsc tar rootfs-upper`` serializes only the root mount's upper
+        layer: what the sandbox created, changed or deleted, in overlayfs's
+        own encoding (see ``_internal/image_layers.normalize_overlay_diff``).
+        It always writes to a file: runsc logs to stdout, which would corrupt
+        an archive streamed there.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            path: Host path of the tar file to write.
+
+        Raises:
+            SandboxError: runsc failed, for example because the sandbox has a
+                read-only root filesystem and so no upper layer.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        args = self._runsc_base_args(meta["config"]) + [
+            "tar",
+            "rootfs-upper",
+            "--file",
+            path,
+            sandbox_id,
+        ]
+        res = subprocess.run(args, capture_output=True, text=True, env=runsc_env())
+        if res.returncode != 0:
+            raise SandboxError(
+                f"Failed to export the filesystem changes of sandbox "
+                f"'{sandbox_id}': {(res.stderr or res.stdout).strip()[-500:]}"
+            )
+
     def exec_command(
         self,
         sandbox_id: str,
@@ -1371,31 +1558,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
-
-        exec_env = {}
-        if env:
-            exec_env.update(env)
-
-        exec_cwd = cwd or meta["cwd"]
         # The command's PID inside the sandbox, to kill it if it times out.
         pid_file = os.path.join(meta["root_dir"], f".exec-{uuid.uuid4().hex}.pid")
-
-        # Production execution against running container via `runsc exec`
-        runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", "-cwd", exec_cwd, "-internal-pid-file", pid_file])
-        if user is not None:
-            runsc_args.extend(["-user", self._resolve_exec_user(sandbox_id, user)])
-        if env:
-            for k, v in env.items():
-                runsc_args.extend(["-env", f"{k}={v}"])
-        if isinstance(command, list):
-            runsc_args.extend([sandbox_id] + command)
-        else:
-            exec_shell = shell or config.shell
-            runsc_args.extend([sandbox_id, exec_shell, "-c", command])
+        runsc_args = self.exec_argv(
+            sandbox_id,
+            command,
+            cwd=cwd,
+            env=env,
+            shell=shell,
+            user=user,
+            pid_file=pid_file,
+        )
 
         start_time = time.time()
-        runsc_args = self._wrap_workload(meta, runsc_args)
 
         try:
             proc = subprocess.Popen(
@@ -2819,6 +2994,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         disk: Optional[Union[str, int, float]] = None,
+        _image_env: Sequence[Tuple[str, Optional[str]]] = (),
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
@@ -2835,4 +3011,5 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             disk=disk,
+            _image_env=_image_env,
         )

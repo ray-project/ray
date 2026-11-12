@@ -539,6 +539,9 @@ def test_actor_honors_explicit_zero_cpu_limit(monkeypatch):
         "get_runtime_context",
         lambda: SimpleNamespace(get_assigned_resources=lambda: {"CPU": 2}),
     )
+    # Outside a Ray worker, the actor asks for no GPUs; the real call would
+    # start a Ray instance.
+    monkeypatch.setattr(ray, "get_gpu_ids", lambda: [])
     monkeypatch.setattr(
         "ray.experimental.sandbox.sandbox.SandboxRuntime", lambda: runtime
     )

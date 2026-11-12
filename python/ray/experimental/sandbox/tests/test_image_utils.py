@@ -29,6 +29,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     get_platform_arch,
     get_registry_auth_headers,
     image_cache_name,
+    invalidate_cached_image,
     parse_image_ref,
     pull_and_extract_container_image,
     sanitize_image_name,
@@ -151,10 +152,28 @@ def test_pull_reuses_the_cache_entry_of_another_spelling(tmp_path, monkeypatch):
             pull_and_extract_container_image(spelling, images_dir=images_dir) == first
         )
     assert pulled == ["busybox"]
+    # Hidden directories (the build locks) are the cache's own, not entries.
     entries = [
-        d for d in os.listdir(images_dir) if os.path.isdir(os.path.join(images_dir, d))
+        d
+        for d in os.listdir(images_dir)
+        if not d.startswith(".") and os.path.isdir(os.path.join(images_dir, d))
     ]
     assert entries == [os.path.basename(first)]
+
+
+def test_invalidate_reaches_the_entry_any_spelling_pulled(tmp_path, monkeypatch):
+    """force_build re-pulls a registry image however it is spelled."""
+    pulled = _fake_registry(monkeypatch)
+    images_dir = str(tmp_path / "images")
+    pull_and_extract_container_image("busybox", images_dir=images_dir)
+    assert invalidate_cached_image(
+        "docker.io/library/busybox:latest", images_dir=images_dir, token="t1"
+    )
+    pull_and_extract_container_image("busybox:latest", images_dir=images_dir)
+    # The token is recorded on that same entry, so it re-pulls only once.
+    assert not invalidate_cached_image("busybox", images_dir=images_dir, token="t1")
+    pull_and_extract_container_image("busybox", images_dir=images_dir)
+    assert pulled == ["busybox", "busybox:latest"]
 
 
 def test_pull_keeps_a_digest_and_a_lookalike_tag_apart(tmp_path, monkeypatch):
@@ -536,15 +555,17 @@ def test_repull_crash_keeps_the_new_image(tmp_path, monkeypatch):
         with pytest.raises(RuntimeError):
             pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
     assert os.path.isdir(image_dir)
-    new_marker_mtime = os.path.getmtime(marker)
-    assert new_marker_mtime > stale
+    assert os.path.getmtime(marker) > stale
+    new_image = os.stat(os.path.join(image_dir, ROOTFS_IMAGE)).st_ino
     assert len(_renamed_for_deletion(image_dir)) == 1
 
     monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
     monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
     pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
     assert os.path.isdir(image_dir)
-    assert os.path.getmtime(marker) == new_marker_mtime
+    # Reused rather than pulled again. A hit refreshes the marker's mtime
+    # (eviction is least recently used), so the image file is what shows it.
+    assert os.stat(os.path.join(image_dir, ROOTFS_IMAGE)).st_ino == new_image
     assert _renamed_for_deletion(image_dir) == []
 
 
@@ -1094,6 +1115,35 @@ def test_erofs_superblock_fingerprint(tmp_path):
     assert image_utils.erofs_superblock_fingerprint(str(tmp_path / "none")) is None
 
 
+def test_pull_keeps_the_tars_data_order_when_mkfs_can(tmp_path, fake_mkfs_erofs):
+    """With erofs-utils 1.8+, mkfs.erofs writes file data in the tar's order
+    (--sort=none) instead of spooling it all through a temporary file to sort
+    it; an older one is called as before."""
+    script = fake_mkfs_erofs / "mkfs.erofs"
+    args_file = fake_mkfs_erofs / "mkfs.args"
+
+    def pull(name):
+        local_tar = tmp_path / f"{name}.tar"
+        with tarfile.open(str(local_tar), "w") as tar:
+            _add_member(tar, "etc/hostname", b"x\n")
+        pull_and_extract_container_image(
+            str(local_tar), images_dir=str(tmp_path / "images")
+        )
+        return args_file.read_text().split()
+
+    assert "--sort=none" not in pull("old")
+    script.write_text(
+        script.read_text().replace(
+            'echo "  --tar=MODE  build from tarball"',
+            'echo "  --tar=MODE  build from tarball"; '
+            'echo "  --sort=<path,none>  data sorting order"',
+        )
+    )
+    image_utils.mkfs_erofs_path.cache_clear()
+    image_utils.mkfs_erofs_sort_flags.cache_clear()
+    assert "--sort=none" in pull("new")
+
+
 def test_resolve_in_root(tmp_path):
     """Paths resolve with the tree as ``/``: an absolute link target restarts
     at the root, ``..`` never climbs above it, missing components pass
@@ -1347,6 +1397,128 @@ def test_repull_rejects_images_in_use(tmp_path, monkeypatch, old_format: bool) -
     assert not os.path.exists(lower)
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
+
+
+# -- digest verification -----------------------------------------------------
+
+
+def _sha256(data):
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def _tamperable_registry(tamper=None):
+    """Blobs and manifests of a one-layer image, keyed by URL path.
+
+    ``tamper`` names the piece served with content other than its digest
+    promises: "layer", "config", "platform manifest", or "manifest".
+    """
+    layer = io.BytesIO()
+    with tarfile.open(fileobj=layer, mode="w") as tar:
+        payload = b"hello from the layer\n"
+        info = tarfile.TarInfo("hello.txt")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    layer = layer.getvalue()
+    config = json.dumps({"config": {"Env": ["PATH=/bin"], "Cmd": ["sh"]}}).encode()
+    manifest = json.dumps(
+        {
+            "schemaVersion": 2,
+            "config": {"digest": _sha256(config)},
+            "layers": [{"digest": _sha256(layer)}],
+        }
+    ).encode()
+    index = json.dumps(
+        {
+            "schemaVersion": 2,
+            "manifests": [
+                {
+                    "digest": _sha256(manifest),
+                    "platform": {"os": "linux", "architecture": get_platform_arch()},
+                }
+            ],
+        }
+    ).encode()
+    served = {
+        f"/v2/team/app/blobs/{_sha256(layer)}": layer,
+        f"/v2/team/app/blobs/{_sha256(config)}": config,
+        f"/v2/team/app/manifests/{_sha256(manifest)}": manifest,
+        "/v2/team/app/manifests/1.0": index,
+        f"/v2/team/app/manifests/{_sha256(index)}": index,
+    }
+    altered = {
+        "layer": f"/v2/team/app/blobs/{_sha256(layer)}",
+        "config": f"/v2/team/app/blobs/{_sha256(config)}",
+        "platform manifest": f"/v2/team/app/manifests/{_sha256(manifest)}",
+        "manifest": f"/v2/team/app/manifests/{_sha256(index)}",
+    }
+    if tamper is not None:
+        path = altered[tamper]
+        original = served[path]
+        # Still well-formed, so only the digest check can tell: the layer's
+        # file changes in place, and JSON gains a space.
+        if tamper == "layer":
+            served[path] = original.replace(b"hello", b"HELLO")
+        else:
+            served[path] = b"{ " + original[1:]
+        assert served[path] != original
+    return served, _sha256(index)
+
+
+def _serve(served):
+    def urlopen(req, timeout=None):
+        path = urllib.parse.urlparse(req.full_url).path
+        if path not in served:
+            raise urllib.error.HTTPError(req.full_url, 404, "not found", {}, None)
+        return io.BytesIO(served[path])
+
+    return urlopen
+
+
+@pytest.mark.parametrize(
+    "tamper,reference",
+    [
+        (None, "fake.registry.test/team/app:1.0"),
+        ("layer", "fake.registry.test/team/app:1.0"),
+        ("config", "fake.registry.test/team/app:1.0"),
+        ("platform manifest", "fake.registry.test/team/app:1.0"),
+        # The top-level manifest has a digest to check only when the image is
+        # referenced by one.
+        ("manifest", "fake.registry.test/team/app@{index_digest}"),
+    ],
+)
+def test_pulled_content_must_match_its_digest(tmp_path, tamper, reference):
+    """A blob that is not what its descriptor names is refused, and nothing is
+    cached: a mirror, a proxy or a truncated transfer must not decide what
+    every sandbox built from the image runs."""
+    served, index_digest = _tamperable_registry(tamper)
+    image = reference.format(index_digest=index_digest)
+    images_dir = str(tmp_path / "images")
+
+    with patch.object(image_utils, "get_registry_auth_headers", return_value={}):
+        with patch("urllib.request.urlopen", side_effect=_serve(served)):
+            if tamper is None:
+                image_dir = pull_and_extract_container_image(image, images_dir)
+                assert _image_file(image_dir, "hello.txt") == b"hello from the layer\n"
+                return
+            # Layers are checked by the layer cache as they download.
+            expected = (
+                "failed verification"
+                if tamper == "layer"
+                else f"Digest mismatch on the {tamper}"
+            )
+            with pytest.raises(SandboxCreationError, match=expected):
+                pull_and_extract_container_image(image, images_dir)
+
+    image_dir = os.path.join(images_dir, image_cache_name(image))
+    assert not os.path.exists(os.path.join(image_dir, ".extracted"))
+    assert not any(".tmp." in name for name in os.listdir(images_dir))
+    if tamper == "layer":
+        # Nor is the altered layer kept for another image to use.
+        assert list(layer_cache.cached_blobs(images_dir)) == []
+
+
+def test_an_unrecognized_digest_algorithm_is_not_a_mismatch():
+    image_utils._verify_digest("sha512:abcd", "ffff", "img", "layer")
 
 
 def test_dir_size_counts_hard_links_once(tmp_path):
@@ -1690,7 +1862,9 @@ def test_layer_cache_reclaimed_before_images(tmp_path, monkeypatch, pressure):
         lambda _: 100 - sum(10 for path in paths if os.path.exists(path)),
     )
 
-    assert pull_and_extract_container_image(str(local_tar), images_dir) == image_dir
+    # A cache hit adds nothing to the cache, so it doesn't evict; a pull or a
+    # build of an image the node doesn't have does.
+    image_utils.evict_to_cache_limits(images_dir)
     assert [os.path.exists(path) for path in paths] == [False, True]
     assert _image_file(image_dir, "hello.txt") == b"hello"
 
@@ -1711,6 +1885,96 @@ def test_extract_tar_layer_reads_a_layer_once(tmp_path):
     extract_tar_layer(reader, str(tmp_path))
     assert (tmp_path / "b").stat().st_size == 1 << 20
     assert reader.bytes_read <= len(blob)
+
+
+def _hold(path, seconds, ready):
+    import fcntl
+    import time
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        ready.set()
+        time.sleep(seconds)
+
+
+def _holding(path, seconds):
+    import multiprocessing
+
+    ready = multiprocessing.Event()
+    proc = multiprocessing.Process(target=_hold, args=(path, seconds, ready))
+    proc.start()
+    ready.wait()
+    return proc
+
+
+def test_pinning_a_ready_image_does_not_wait_for_a_build_of_it(tmp_path):
+    """Only the short entry lock guards pins; a producer's build lock doesn't."""
+    import time
+
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = str(tmp_path / "images")
+    entry = pull_and_extract_container_image(str(local_tar), images_dir=images_dir)
+    name = os.path.basename(entry)
+
+    proc = _holding(image_utils.entry_build_lock_path(images_dir, name), 2.0)
+    start = time.monotonic()
+    pull_and_extract_container_image(
+        str(local_tar), images_dir=images_dir, instance_id="sb-1"
+    )
+    assert time.monotonic() - start < 0.5
+    assert os.path.exists(os.path.join(entry, ".users", "sb-1"))
+    proc.join()
+
+    # The short lock still guards the pin itself.
+    proc = _holding(image_utils.entry_lock_path(images_dir, name), 1.0)
+    start = time.monotonic()
+    pull_and_extract_container_image(
+        str(local_tar), images_dir=images_dir, instance_id="sb-2"
+    )
+    assert time.monotonic() - start >= 0.8
+    proc.join()
+
+
+def test_concurrent_pulls_of_one_image_extract_it_once(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = str(tmp_path / "images")
+    calls = []
+    real = image_utils._extract_image_layers
+
+    def slow_extract(*args, **kwargs):
+        calls.append(1)
+        time.sleep(0.5)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(image_utils, "_extract_image_layers", slow_extract)
+    results = []
+    threads = [
+        threading.Thread(
+            target=lambda i=i: results.append(
+                pull_and_extract_container_image(
+                    str(local_tar), images_dir=images_dir, instance_id=f"sb-{i}"
+                )
+            )
+        )
+        for i in range(3)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    assert len(calls) == 1
+    assert len(set(results)) == 1 and len(results) == 3
+    assert sorted(os.listdir(os.path.join(results[0], ".users"))) == [
+        "sb-0",
+        "sb-1",
+        "sb-2",
+    ]
 
 
 if __name__ == "__main__":

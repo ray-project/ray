@@ -16,6 +16,7 @@ import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,6 +38,18 @@ _USER_AGENT = "ray-sandbox/1.0 (python-urllib)"
 # representation: files keep their real owners and in-sandbox chown works for
 # any uid, all from an unprivileged worker.
 ROOTFS_IMAGE = "rootfs.erofs"
+# Images the node builds are cached under references with this prefix (see
+# ``_internal/image_layers.py``). They exist only in the cache, so the pull
+# path never looks one up in a registry.
+LAYER_REFERENCE_PREFIX = "raylayer@"
+# What ``sanitize_image_name`` makes of that prefix: the start of a built
+# image's directory name.
+_LAYER_DIR_PREFIX = "raylayer_"
+# A built image's diff against its parent, next to its ``rootfs.erofs``.
+LAYER_TAR = "layer.tar"
+# Next to an entry's lock file: the force token whose re-pull the entry
+# already went through (see ``invalidate_cached_image``).
+_FORCE_TOKEN_SUFFIX = ".force_token"
 # Cache format recorded in each image's ``.extracted`` marker. A mismatch (an
 # extracted-directory cache left by an earlier Ray, say) re-pulls the image
 # once; sandboxes already running on the old cache keep it until they exit.
@@ -45,6 +58,10 @@ _EXTRACT_FORMAT = 3
 _MKFS_EROFS_MIN_VERSION = "1.7"
 # How many of an image's layers download at once, as in Docker.
 _LAYER_DOWNLOADS = 3
+
+
+class BuiltImageEvictedError(SandboxCreationError):
+    """A built image was evicted between being built and being used."""
 
 
 def _registry_request(
@@ -202,6 +219,10 @@ def image_cache_name(image: str) -> str:
     The name depends on the string alone, not on which files exist, so the
     pin a pull takes and its later release always agree on it.
 
+    A local archive and an image this node built (``raylayer@<key>``) have
+    one spelling each and never come from a registry, so they keep their
+    sanitized name; the image builder writes its entries under that name.
+
     Args:
         image: Container image reference or path to a local tar archive.
 
@@ -212,7 +233,7 @@ def image_cache_name(image: str) -> str:
         not isinstance(image, str)
         or not image.strip()
         or image.endswith(".tar")
-        or image.startswith(("/", "./", "../"))
+        or image.startswith(("/", "./", "../", LAYER_REFERENCE_PREFIX))
     ):
         return sanitize_image_name(image)
     registry, repo, reference = parse_image_ref(image)
@@ -573,6 +594,14 @@ def extract_tar_layer(
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
                     os.symlink(member.linkname, target_path)
+                    # The link's own time, never its target's: otherwise it
+                    # keeps the time of the pull, and two nodes' copies of
+                    # one image differ.
+                    os.utime(
+                        target_path,
+                        (member.mtime, member.mtime),
+                        follow_symlinks=False,
+                    )
                 except OSError:
                     pass
             elif member.islnk():
@@ -662,6 +691,56 @@ def erofs_superblock_fingerprint(image_path: str) -> Optional[str]:
     except OSError:
         return None
     return hashlib.sha256(superblock).hexdigest()
+
+
+@lru_cache(maxsize=1)
+def mkfs_erofs_reproducible_flags() -> Tuple[str, ...]:
+    """Flags that make ``mkfs.erofs`` output depend on its input alone.
+
+    Without them every image records the time it was built, so the same
+    input never yields the same bytes twice -- not on two nodes, not in two
+    builds on one. ``-T0 --mkfs-time`` fixes the build time the superblock
+    records without touching the files' own times. erofs-utils 1.8 added
+    ``--mkfs-time``; an older one gets no flags and builds as before.
+
+    Returns:
+        The flags, or none if this ``mkfs.erofs`` lacks them.
+    """
+    path = mkfs_erofs_path()
+    if path is None or "--mkfs-time" not in _mkfs_erofs_help(path):
+        return ()
+    return ("-T0", "--mkfs-time")
+
+
+@lru_cache(maxsize=1)
+def mkfs_erofs_sort_flags() -> Tuple[str, ...]:
+    """``--sort=none`` if this ``mkfs.erofs`` takes it, else no flags.
+
+    From a tar, ``mkfs.erofs`` sorts file data by path unless told otherwise,
+    which spools all of it through a temporary file first: measured 3 to 10
+    times slower for a 480 MB tree, with the same files in the image. The tar
+    :func:`build_erofs_image` writes lists every directory sorted already, so
+    the image is still the same bytes wherever it is built. erofs-utils 1.8
+    added the flag; an older one builds as before.
+
+    Returns:
+        The flags, or none if this ``mkfs.erofs`` lacks them.
+    """
+    path = mkfs_erofs_path()
+    if path is None or "--sort=" not in _mkfs_erofs_help(path):
+        return ()
+    return ("--sort=none",)
+
+
+def _mkfs_erofs_help(path: str) -> str:
+    """What ``mkfs.erofs --help`` prints, or "" if it can't be run."""
+    try:
+        res = subprocess.run(
+            [path, "--help"], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return res.stdout + res.stderr
 
 
 def require_mkfs_erofs() -> str:
@@ -780,8 +859,74 @@ def _stream_tree(tar: tarfile.TarFile, path: str, arcname: str, owner_filter) ->
             pass  # It stays for the caller to remove, as before.
 
 
+def _seed_rootfs(rootfs_dir: str, pull_started_ns: Optional[int] = None) -> None:
+    """Seed ``/tmp`` and the mount points, keeping the image's own timestamps.
+
+    Seeding writes into directories the image already has -- ``/``,
+    ``/tmp``, ``/etc`` -- which stamps them, and whatever it creates, with
+    the time of the pull. The same image pulled on two nodes, or twice on
+    one, would then differ, and so would every layer built on it: a layer
+    records the metadata of each directory it touches. So every directory
+    seeding may write into gets its mtime back afterwards, and whatever
+    seeding creates takes the image root's own mtime.
+
+    Args:
+        rootfs_dir: The extracted tree.
+        pull_started_ns: When the pull began. A root newer than that got
+            its mtime from the extraction, not the image: no layer carries a
+            ``./`` entry, as is common. It is then set to 0, the same on
+            every node.
+    """
+    if pull_started_ns is not None:
+        try:
+            # With slack: the kernel stamps files from a coarse clock, which
+            # can trail the one pull_started_ns was read from by a tick.
+            if os.lstat(rootfs_dir).st_mtime_ns >= pull_started_ns - 2 * 10**9:
+                os.utime(rootfs_dir, ns=(0, 0))
+        except OSError:
+            pass
+    before: Dict[str, Optional[int]] = {}
+
+    def note(path: str) -> None:
+        if path not in before:
+            try:
+                before[path] = os.lstat(path).st_mtime_ns
+            except OSError:
+                before[path] = None
+
+    note(rootfs_dir)
+    for rel in ("tmp/.ray-sandbox-keep",) + _MOUNTPOINT_DIRS + _MOUNTPOINT_FILES:
+        try:
+            parent, _ = _resolve_in_root(rootfs_dir, os.path.dirname(rel))
+        except OSError:
+            continue
+        note(os.path.join(parent, os.path.basename(rel)))
+        # The directories from the root down to the parent, any of which
+        # seeding may have to create or add to.
+        while parent.startswith(rootfs_dir + os.sep):
+            note(parent)
+            parent = os.path.dirname(parent)
+    _seed_tmp(rootfs_dir)
+    _seed_mountpoints(rootfs_dir)
+    root_mtime = before[rootfs_dir]
+    if root_mtime is None:
+        return
+    for path, mtime in before.items():
+        if mtime is None:
+            if not os.path.lexists(path):
+                continue
+            mtime = root_mtime
+        try:
+            os.utime(path, ns=(mtime, mtime), follow_symlinks=False)
+        except OSError:
+            pass
+
+
 def build_erofs_image(
-    rootfs_dir: str, ownership: Dict[str, Tuple[int, int]], out_path: str
+    rootfs_dir: str,
+    ownership: Dict[str, Tuple[int, int]],
+    out_path: str,
+    image_uuid: Optional[str] = None,
 ) -> None:
     """Build an EROFS image of ``rootfs_dir`` carrying the image's real owners.
 
@@ -800,18 +945,36 @@ def build_erofs_image(
     less likely to fill the node's disk. mkfs.erofs still spools file data
     under ``$TMPDIR`` (its default ``--sort=path``).
 
+    With a ``mkfs.erofs`` that supports it, the image is byte-for-byte the
+    same wherever and whenever the same content is pulled: its build time is
+    fixed (see :func:`mkfs_erofs_reproducible_flags`) and its UUID is
+    ``image_uuid`` rather than a random one. Its file data is laid out in the
+    tar's order (see :func:`mkfs_erofs_sort_flags`).
+
     Args:
         rootfs_dir: Extracted root filesystem. Its files are deleted as
             they're read; the caller removes what's left.
         ownership: {path: (uid, gid)} recorded during extraction.
         out_path: Destination image file.
+        image_uuid: The filesystem UUID to record; random if None.
     """
     mkfs = require_mkfs_erofs()
+    reproducible = list(mkfs_erofs_reproducible_flags())
+    if reproducible and image_uuid:
+        reproducible += ["-U", image_uuid]
     # mkfs.erofs's output goes to a file: with a pipe, it could block on a
     # full pipe while this side blocks on a full stdin.
     with tempfile.TemporaryFile() as output:
         proc = subprocess.Popen(
-            [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", out_path],
+            [
+                mkfs,
+                "--tar=f",
+                f"-b{mmap.PAGESIZE}",
+                "-E^inline_data",
+                *mkfs_erofs_sort_flags(),
+                *reproducible,
+                out_path,
+            ],
             stdin=subprocess.PIPE,
             stdout=output,
             stderr=subprocess.STDOUT,
@@ -840,6 +1003,39 @@ def build_erofs_image(
             output.seek(0)
             message = output.read().decode(errors="replace").strip()[-500:]
             raise SandboxCreationError(f"mkfs.erofs failed: {message}")
+
+
+# Each entry has two locks. Whoever *produces* it -- a pull downloading it,
+# a build making it -- holds its build lock for as long as that takes, so the
+# entry is produced once. The entry's own ``<name>.lock`` is held only for
+# the moments that read or change the published entry: a hit and its pin, the
+# swap that publishes it, an eviction. Pinning a ready image therefore never
+# waits out a build or a download. Build locks live in a directory of their
+# own, which no image name can map onto (``sanitize_image_name`` strips
+# leading dots) and which eviction passes by (it has no ``.extracted``).
+_BUILD_LOCKS_DIR = ".build-locks"
+
+
+def entry_lock_path(images_dir: str, safe_name: str) -> str:
+    """The short lock of entry ``safe_name``: held around reads and swaps."""
+    return os.path.join(images_dir, f"{safe_name}.lock")
+
+
+def entry_build_lock_path(images_dir: str, safe_name: str) -> str:
+    """The build lock of entry ``safe_name``: held while producing it."""
+    return os.path.join(images_dir, _BUILD_LOCKS_DIR, f"{safe_name}.lock")
+
+
+@contextlib.contextmanager
+def hold_lock(path: str):
+    """Hold the exclusive flock on ``path``, creating the file if needed."""
+    os.makedirs(os.path.dirname(path), mode=0o777, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
@@ -995,6 +1191,11 @@ def _rename_for_deletion(image_dir: str) -> str:
     return renamed
 
 
+# The lower directory overlayfs's EXTRACTED mode unpacks an image into, next
+# to its ROOTFS_IMAGE (see overlayfs._extract_image_rootfs).
+_EXTRACTED_ROOTFS = f"{ROOTFS_IMAGE}.rootfs"
+
+
 def _remove_stale_deletions(images_dir: str) -> None:
     """Finish deleting image directories whose deletion was interrupted (see
     ``_rename_for_deletion``)."""
@@ -1003,22 +1204,178 @@ def _remove_stale_deletions(images_dir: str) -> None:
             shutil.rmtree(os.path.join(images_dir, name), ignore_errors=True)
 
 
+def _flattened_bytes(name: str, img_dir: str) -> int:
+    """The size of a built image's ``rootfs.erofs`` that can go on its own.
+
+    A built image whose diff is cached next to it can lose just its
+    flattened image: the builder makes it again from the diffs, with no
+    build step re-run. Anything else -- a pulled image, a layer without an
+    image, a build in progress -- has nothing to drop short of the whole.
+
+    Args:
+        name: The entry's name in the cache.
+        img_dir: The entry's directory.
+
+    Returns:
+        The bytes freed by dropping the image alone, or 0.
+    """
+    if (
+        not name.startswith(_LAYER_DIR_PREFIX)
+        or ".work." in name
+        or ".tmp." in name
+        or not os.path.isfile(os.path.join(img_dir, LAYER_TAR))
+    ):
+        return 0
+    return _file_size_bytes(os.path.join(img_dir, ROOTFS_IMAGE)) + _file_size_bytes(
+        os.path.join(img_dir, ".image_config.json")
+    )
+
+
+def _try_evict(
+    images_dir: str,
+    name: str,
+    img_dir: Optional[str],
+    tar_path: str,
+    size: int,
+    flattened_only: bool,
+) -> Optional[int]:
+    """Evict one entry, or only its flattened image, if no one holds it.
+
+    Args:
+        images_dir: Root image cache directory.
+        name: The entry's name in the cache.
+        img_dir: The entry's directory; None for an archive left alone.
+        tar_path: The ``<name>.tar`` archive an earlier Ray may have left.
+        size: The entry's size in bytes.
+        flattened_only: Drop only a built image's ``rootfs.erofs`` and
+            config, keeping its layer.
+
+    Returns:
+        The bytes freed, or None if the entry is locked or in use.
+    """
+    lock_path = entry_lock_path(images_dir, name)
+    try:
+        with open(lock_path, "w", encoding="utf-8") as f_lock:
+            fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # A pull may have registered a user since the scan.
+            if img_dir is not None and _has_users(img_dir):
+                return None
+            if flattened_only:
+                freed = _flattened_bytes(name, img_dir)
+                for leftover in (ROOTFS_IMAGE, ".image_config.json"):
+                    try:
+                        os.remove(os.path.join(img_dir, leftover))
+                    except OSError:
+                        pass
+                logger.info(
+                    "Dropped the image of cached sandbox build %s (%d bytes); "
+                    "its layer stays cached",
+                    name,
+                    freed,
+                )
+                return freed
+            # Moved aside under the lock, deleted once it is free, so a
+            # pull of this image never waits for the delete. Another pull
+            # may have evicted it since the scan.
+            if img_dir is not None and os.path.isdir(img_dir):
+                _rename_for_deletion(img_dir)
+            try:
+                os.remove(tar_path)
+            except OSError:
+                pass
+    except OSError:
+        return None  # Locked by an in-progress pull or build.
+    _remove_stale_deletions(images_dir)
+    logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
+    return size
+
+
+def _cache_fits(
+    total: int, free: Optional[int], max_bytes: Optional[int], min_free_bytes: int
+) -> bool:
+    return (max_bytes is None or total <= max_bytes) and (
+        free is None or free >= min_free_bytes
+    )
+
+
+def evict_to_cache_limits(images_dir: str, keep: Optional[str] = None) -> None:
+    """Evict as this node's cache cap and free-space floor require.
+
+    See :func:`image_cache_max_bytes` and :func:`image_cache_min_free_bytes`;
+    nothing happens when both are disabled.
+
+    Args:
+        images_dir: Root image cache directory.
+        keep: Sanitized name of an image that must survive this pass.
+    """
+    max_cache = image_cache_max_bytes(images_dir)
+    min_free = image_cache_min_free_bytes(images_dir)
+    if max_cache > 0 or min_free > 0:
+        evict_least_recently_used_images(
+            images_dir,
+            max_cache if max_cache > 0 else None,
+            keep=keep,
+            min_free_bytes=min_free,
+        )
+
+
+def _try_evict_blob(images_dir: str, name: str, mtime: float, size: int) -> bool:
+    """Evict one downloaded layer of ``layer_cache``, unless a pull holds it.
+
+    Args:
+        images_dir: Root image cache directory.
+        name: The layer's path relative to ``images_dir``.
+        mtime: Its modification time when the cache was scanned.
+        size: Its size in bytes, for the log.
+
+    Returns:
+        Whether it is gone: evicted here, or by another pull since the scan.
+    """
+    path = os.path.join(images_dir, name)
+    try:
+        # The lock layer_cache.fetch_blob holds while it downloads or opens it.
+        with open(f"{path}.lock", "w", encoding="utf-8") as f_lock:
+            fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                # A pull may have reused it since the scan, updating its mtime.
+                if os.path.getmtime(path) != mtime:
+                    return False
+                os.remove(path)
+            except FileNotFoundError:
+                pass  # Another pull already evicted it.
+    except OSError:
+        return False  # Locked by an in-progress pull.
+    logger.info("Evicted cached sandbox layer %s (%d bytes)", name, size)
+    return True
+
+
 def evict_least_recently_used_images(
     images_dir: str,
     max_bytes: Optional[int],
     keep: Optional[str] = None,
     min_free_bytes: int = 0,
 ) -> None:
-    """Evict cached layers, then images until the cache fits ``max_bytes``
-    and its filesystem has ``min_free_bytes`` free.
+    """Evict cached layers, then least-recently-used images until the cache
+    fits ``max_bytes`` and its filesystem has ``min_free_bytes`` free.
 
-    Entries are sorted by priority, then modification time: layers have priority
-    0 and go first in last-used order; fully extracted images (``.extracted``
-    marker present) and legacy tar archives have priority 1 and follow in
-    extraction order. Locked entries, pinned images and ``keep`` are skipped.
-    Image pins are rechecked under the same lock that pulls hold when registering
-    users.
-    Open layer files remain readable after eviction.
+    Nodes cache every image they ever ran, so without a cap a long-lived
+    node eventually fills its disk, and the cache also gives way when
+    sandboxes' overlays or anything else fill it. Downloaded registry layers
+    (see ``layer_cache``) go first, in last-used order: losing one costs a
+    download when an image is pulled again, and a layer file a pull has
+    open stays readable. Images follow: fully extracted images
+    (``.extracted`` marker present) and ``<name>.tar`` archives left behind
+    by earlier Ray versions, oldest first. An image is skipped when a live
+    sandbox uses it, when its per-image lock is held (a pull in progress),
+    or when it is ``keep``. The in-use check is repeated under the lock,
+    which is also where pulls register their users, so a marked image is
+    never removed.
+
+    Built images go in two steps. The first pass over images, oldest first, takes only
+    the flattened ``rootfs.erofs`` of a built image whose layer diff is
+    cached too, and everything else whole: rebuilding such an image replays
+    cached diffs, while losing a diff means running its build step again.
+    Only if that is not enough does a second pass take the remaining layers.
 
     Args:
         images_dir: Root image cache directory.
@@ -1030,11 +1387,7 @@ def evict_least_recently_used_images(
         names = os.listdir(images_dir)
     except OSError:
         return
-    # (priority, mtime, name, image_dir or None, file_path, size)
-    entries = [
-        (0, mtime, name, None, os.path.join(images_dir, name), size)
-        for mtime, name, size in layer_cache.cached_blobs(images_dir)
-    ]
+    entries = []  # (mtime, name, image_dir or None, tar_path, size)
     for name in names:
         path = os.path.join(images_dir, name)
         if name.endswith(".tar") and os.path.isfile(path):
@@ -1044,7 +1397,6 @@ def evict_least_recently_used_images(
                 try:
                     entries.append(
                         (
-                            1,
                             os.path.getmtime(path),
                             stem,
                             None,
@@ -1069,53 +1421,43 @@ def evict_least_recently_used_images(
             continue  # Concurrently deleted; keep going.
         tar_path = os.path.join(images_dir, f"{name}.tar")
         size = _dir_size_bytes(path) + _file_size_bytes(tar_path)
-        entries.append((1, mtime, name, path, tar_path, size))
+        entries.append((mtime, name, path, tar_path, size))
 
-    total = sum(entry[-1] for entry in entries)
+    blobs = sorted(layer_cache.cached_blobs(images_dir))  # (mtime, name, size)
+
+    total = sum(entry[-1] for entry in entries) + sum(size for *_, size in blobs)
     free = _free_bytes(images_dir)
-    for priority, mtime, name, img_dir, tar_path, size in sorted(entries):
-        if (max_bytes is None or total <= max_bytes) and (
-            free is None or free >= min_free_bytes
-        ):
+    if _cache_fits(total, free, max_bytes, min_free_bytes):
+        return
+    for mtime, name, size in blobs:
+        if _cache_fits(total, free, max_bytes, min_free_bytes):
             return
+        if _try_evict_blob(images_dir, name, mtime, size):
+            total -= size
+            free = _free_bytes(images_dir)
+    # Built images reduced to their layer in the first pass.
+    demoted = []
+    for entry in sorted(entries):
+        if _cache_fits(total, free, max_bytes, min_free_bytes):
+            return
+        _, name, img_dir, tar_path, size = entry
         if name == keep or (img_dir is not None and _has_users(img_dir)):
             continue
-        lock_path = os.path.join(images_dir, f"{name}.lock")
-        try:
-            with open(lock_path, "w", encoding="utf-8") as f_lock:
-                fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                # A pull may have registered a user since the scan.
-                if img_dir is not None and _has_users(img_dir):
-                    continue
-                if img_dir is None:
-                    try:
-                        # Recheck under the lock: a pull may have reused the
-                        # blob and updated its mtime since the initial scan.
-                        if os.path.getmtime(tar_path) != mtime:
-                            continue
-                    except FileNotFoundError:
-                        pass  # Count an entry another pull already evicted.
-                # Another pull may have evicted it since the scan.
-                if img_dir is not None and os.path.isdir(img_dir):
-                    _rename_for_deletion(img_dir)
-                try:
-                    os.remove(tar_path)
-                except OSError:
-                    pass
-        except OSError:
-            continue  # Locked by an in-progress pull; try the next one.
-        # Delete the image once its lock is free, so a pull of it doesn't wait
-        # for the delete.
-        if img_dir is not None:
-            _remove_stale_deletions(images_dir)
-        total -= size
+        flattened = _flattened_bytes(name, img_dir) if img_dir is not None else 0
+        freed = _try_evict(images_dir, name, img_dir, tar_path, size, flattened > 0)
+        if freed is None:
+            continue
+        total -= freed
         free = _free_bytes(images_dir)
-        logger.info(
-            "Evicted cached sandbox %s %s (%d bytes)",
-            "layer" if priority == 0 else "image",
-            name,
-            size,
-        )
+        if flattened > 0:
+            demoted.append((entry, size - freed))
+    for (_, name, img_dir, tar_path, _), size in demoted:
+        if _cache_fits(total, free, max_bytes, min_free_bytes):
+            return
+        freed = _try_evict(images_dir, name, img_dir, tar_path, size, False)
+        if freed is not None:
+            total -= freed
+            free = _free_bytes(images_dir)
 
 
 def reserve_image_cache_space(image_dir: str, needed_bytes: int) -> None:
@@ -1175,18 +1517,11 @@ def pull_and_extract_container_image(
 
     safe_name = image_cache_name(image)
     target_dir = os.path.join(images_dir, safe_name)
-    lock_path = os.path.join(images_dir, f"{safe_name}.lock")
-
+    lock_path = entry_lock_path(images_dir, safe_name)
+    built = image.startswith(LAYER_REFERENCE_PREFIX)
+    # Finish deleting images whose deletion a crash interrupted (see
+    # _rename_for_deletion).
     _remove_stale_deletions(images_dir)
-    max_cache = image_cache_max_bytes(images_dir)
-    min_free = image_cache_min_free_bytes(images_dir)
-    if max_cache > 0 or min_free > 0:
-        evict_least_recently_used_images(
-            images_dir,
-            max_cache if max_cache > 0 else None,
-            keep=safe_name,
-            min_free_bytes=min_free,
-        )
 
     expected_marker = expected_extract_marker()
 
@@ -1195,69 +1530,116 @@ def pull_and_extract_container_image(
             _mark_image_in_use(target_dir, instance_id)
         return target_dir
 
-    with open(lock_path, "w", encoding="utf-8") as f_lock:
+    def _hit() -> Optional[str]:
+        """Pin and return the cached copy if it is current; the caller holds
+        the entry's lock."""
+        marker_path = os.path.join(target_dir, ".extracted")
+        if not (os.path.isdir(target_dir) and os.path.exists(marker_path)):
+            return None
         try:
-            fcntl.flock(f_lock, fcntl.LOCK_EX)
-            marker_path = os.path.join(target_dir, ".extracted")
-            if os.path.isdir(target_dir) and os.path.exists(marker_path):
-                try:
-                    with open(marker_path, "r", encoding="utf-8") as f_mark:
-                        marker_current = f_mark.read() == expected_marker
-                except OSError:
-                    marker_current = False
-                # A cache of another format re-pulls once.
-                if marker_current and (
-                    not os.path.isfile(image)
-                    or os.path.getmtime(marker_path) >= os.path.getmtime(image)
-                ):
-                    _drop_stale_rootfs_tree(target_dir)
-                    return _finish()
-
-            if _has_users(target_dir):
-                raise SandboxCreationError(
-                    f"Cannot refresh cached image {image!r} while sandboxes are "
-                    "using it. Stop those sandboxes before retrying."
-                )
-
-            # Checked before any download: without it the pull cannot finish.
-            require_mkfs_erofs()
-
-            tmp_extract_dir = os.path.join(
-                images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
+            with open(marker_path, "r", encoding="utf-8") as f_mark:
+                marker_current = f_mark.read() == expected_marker
+        except OSError:
+            marker_current = False
+        # A cache of another format re-pulls once.
+        if not (
+            marker_current
+            and (
+                not os.path.isfile(image)
+                or os.path.getmtime(marker_path) >= os.path.getmtime(image)
             )
-            os.makedirs(tmp_extract_dir, mode=0o755, exist_ok=True)
-            tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
-            os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
-            try:
-                ownership = _extract_image_layers(
-                    image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
-                )
-                _seed_tmp(tmp_rootfs_dir)
-                _seed_mountpoints(tmp_rootfs_dir)
-                build_erofs_image(
-                    tmp_rootfs_dir,
-                    ownership,
-                    os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
-                )
-            except Exception:
-                shutil.rmtree(tmp_extract_dir, ignore_errors=True)
-                raise
-            # The image replaces the tree; nothing reads the tree once the
-            # Sentry mounts the image.
-            shutil.rmtree(tmp_rootfs_dir, ignore_errors=True)
+            # A built image reduced to its layer by eviction has no image to
+            # run until the builder makes it again.
+            and (not built or os.path.isfile(os.path.join(target_dir, ROOTFS_IMAGE)))
+        ):
+            return None
+        _drop_stale_rootfs_tree(target_dir)
+        # Eviction is least-recently-*used*: a hit refreshes the entry. A
+        # local tar's staleness was checked just above, against the marker
+        # as it was before this.
+        _touch(marker_path)
+        return _finish()
 
-            with open(
-                os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
-            ) as f_mark:
-                f_mark.write(expected_marker)
+    with hold_lock(lock_path):
+        found = _hit()
+        # A refresh replaces the entry. Sandboxes on its image keep the file
+        # they have open, but not the extracted lower directory an overlayfs
+        # sandbox mounts (see overlayfs's EXTRACTED mode): that would go.
+        in_use = (
+            found is None
+            and _has_users(target_dir)
+            and os.path.isdir(os.path.join(target_dir, _EXTRACTED_ROOTFS))
+        )
+    if found is not None:
+        return found
+    if built:
+        raise BuiltImageEvictedError(
+            f"Built image '{image}' is no longer cached on this node; it was "
+            "evicted. It is rebuilt by the next create that asks for it."
+        )
+    if in_use:
+        raise SandboxCreationError(
+            f"Cannot refresh cached image {image!r} while sandboxes are "
+            "using it. Stop those sandboxes before retrying."
+        )
 
-            # Swap the new cache in. A re-pull replaces a cache of another
-            # format; sandboxes already running on it keep their pins, and an
-            # extracted ``rootfs/`` tree their gofer still serves moves over
-            # intact (a rename leaves its open root fd alone) and goes once no
-            # sandbox uses the image. The old image moves aside and the new one
-            # takes its name before the old one is deleted, so a crash during
-            # the delete leaves the new image in place.
+    # Checked before any download: without it the pull cannot finish.
+    require_mkfs_erofs()
+
+    # Only one pull of an image downloads it. The entry's own lock is not
+    # held meanwhile, so sandboxes pinning other images, eviction, and a
+    # running sandbox's teardown never wait for the download.
+    with hold_lock(entry_build_lock_path(images_dir, safe_name)):
+        with hold_lock(lock_path):
+            # Another pull may have published it while this one waited.
+            found = _hit()
+        if found is not None:
+            return found
+
+        # Only before a download, not on every hit: the scan walks every
+        # cached entry, and a hit adds nothing to the cache.
+        evict_to_cache_limits(images_dir, keep=safe_name)
+
+        # Anything in the tree stamped after this came from the pull, not
+        # from the image.
+        pull_started_ns = time.time_ns()
+        tmp_extract_dir = os.path.join(
+            images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
+        )
+        os.makedirs(tmp_extract_dir, mode=0o755, exist_ok=True)
+        tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
+        os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
+        try:
+            ownership = _extract_image_layers(
+                image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
+            )
+            _seed_rootfs(tmp_rootfs_dir, pull_started_ns)
+            build_erofs_image(
+                tmp_rootfs_dir,
+                ownership,
+                os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
+                image_uuid=_image_uuid(tmp_extract_dir, safe_name),
+            )
+        except Exception:
+            shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+            raise
+        # The image replaces the tree; nothing reads the tree once the
+        # Sentry mounts the image.
+        shutil.rmtree(tmp_rootfs_dir, ignore_errors=True)
+
+        with open(
+            os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
+        ) as f_mark:
+            f_mark.write(expected_marker)
+
+        # Swap the new cache in. A re-pull replaces a cache of another format;
+        # sandboxes already running on it keep their pins, and an extracted
+        # ``rootfs/`` tree their gofer still serves moves over intact (a
+        # rename leaves its open root fd alone) and goes once no sandbox uses
+        # the image. The old image moves aside and the new one takes its
+        # name before the old one is deleted, so a crash during the delete
+        # leaves the new image in place.
+        with hold_lock(lock_path):
             try:
                 users = os.listdir(os.path.join(target_dir, _USERS_SUBDIR))
             except OSError:
@@ -1270,16 +1652,11 @@ def pull_and_extract_container_image(
             os.replace(tmp_extract_dir, target_dir)
             for user in users:
                 _mark_image_in_use(target_dir, user)
-
-            return _finish()
-        finally:
-            try:
-                fcntl.flock(f_lock, fcntl.LOCK_UN)
-            except Exception:
-                pass
-            # Delete an image the pull moved aside once the lock is free, so
-            # other pulls of this image don't wait for it.
-            _remove_stale_deletions(images_dir)
+            published = _finish()
+    # Delete the image the swap moved aside once both locks are free, so other
+    # pulls of this image don't wait for it.
+    _remove_stale_deletions(images_dir)
+    return published
 
 
 def _download_blobs(
@@ -1338,6 +1715,115 @@ def _download_blobs(
 def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
     if not download.cancelled() and download.exception() is None:
         download.result().close()
+
+
+def _image_uuid(image_dir: str, safe_name: str) -> str:
+    """The filesystem UUID for an image pulled into ``image_dir``.
+
+    Derived from what the image is -- its config, whose digest is the image
+    id, or for an image with none the cache name -- so that every node
+    builds the same bytes for it.
+    """
+    try:
+        with open(os.path.join(image_dir, ".image_config.json"), "rb") as f:
+            ident = "config:" + hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        ident = "name:" + safe_name
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "ray-sandbox:" + ident))
+
+
+def _verify_digest(expected: str, actual_sha256: str, image: str, what: str) -> None:
+    """Refuse content that does not match the digest the manifest named for it.
+
+    A registry names each blob by the sha256 of its bytes, so a mismatch
+    means a mirror, a proxy or a truncated transfer handed back something
+    other than what was asked for; caching it would run that in every sandbox
+    built from this image. Only ``sha256:`` is checked: an algorithm this code
+    does not implement is passed over rather than treated as a mismatch.
+
+    Args:
+        expected: The descriptor's digest, ``algorithm:hex``.
+        actual_sha256: Hex sha256 of the content received.
+        image: The image reference, for the message.
+        what: Which piece of the image this is, for the message.
+
+    Raises:
+        SandboxCreationError: The content does not match.
+    """
+    if not expected.startswith("sha256:"):
+        return
+    if expected != f"sha256:{actual_sha256}":
+        raise SandboxCreationError(
+            f"Digest mismatch on the {what} for image '{image}': the registry "
+            f"named {expected} but returned sha256:{actual_sha256}."
+        )
+
+
+def _touch(path: str) -> None:
+    try:
+        os.utime(path)
+    except OSError:
+        pass
+
+
+def invalidate_cached_image(
+    image: str, images_dir: str = DEFAULT_IMAGES_DIR, token: Optional[str] = None
+) -> bool:
+    """Make the next pull of ``image`` rebuild it from the registry.
+
+    Only the entry's ``.extracted`` marker goes, under the image's lock. The
+    next :func:`pull_and_extract_container_image` then rebuilds the image and
+    swaps it in, carrying over the in-use records of sandboxes still running
+    on the old one -- which keep their mounted ``rootfs.erofs`` regardless,
+    since an open file outlives its unlink. Eviction skips an entry with no
+    marker, so nothing removes the old image under a running sandbox.
+
+    With a ``token``, this happens once per token: the token is recorded
+    next to the entry, and a later call with the same token is a no-op. That
+    is how ``force_build`` re-pulls once per image definition rather than on
+    every sandbox created from it.
+
+    Args:
+        image: Container image name or tar path.
+        images_dir: Root directory of the image cache.
+        token: Optional force token; see above.
+
+    Returns:
+        False if ``token`` was already used for this image, else True.
+    """
+    safe_name = image_cache_name(image)
+    target_dir = os.path.join(images_dir, safe_name)
+    if token is None and not os.path.isdir(target_dir):
+        return True
+    # A token is recorded even for an image not cached yet: the pull it is
+    # about to get is the forced one, and later sandboxes for the same token
+    # must not pull it yet again.
+    try:
+        os.makedirs(images_dir, mode=0o777, exist_ok=True)
+    except OSError:
+        pass
+    lock_path = entry_lock_path(images_dir, safe_name)
+    token_path = os.path.join(images_dir, f"{safe_name}{_FORCE_TOKEN_SUFFIX}")
+    with open(lock_path, "w", encoding="utf-8") as f_lock:
+        fcntl.flock(f_lock, fcntl.LOCK_EX)
+        try:
+            if token is not None:
+                try:
+                    with open(token_path, "r", encoding="utf-8") as f_token:
+                        if f_token.read() == token:
+                            return False
+                except OSError:
+                    pass
+            try:
+                os.remove(os.path.join(target_dir, ".extracted"))
+            except FileNotFoundError:
+                pass
+            if token is not None:
+                with open(token_path, "w", encoding="utf-8") as f_token:
+                    f_token.write(token)
+            return True
+        finally:
+            fcntl.flock(f_lock, fcntl.LOCK_UN)
 
 
 def _extract_image_layers(
@@ -1406,7 +1892,12 @@ def _extract_image_layers(
         manifest_url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
         req = _registry_request(manifest_url, headers, auth_header)
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            manifest_data = json.loads(resp.read().decode("utf-8"))
+            manifest_bytes = resp.read()
+        # A tag names no digest to check against; a digest reference does.
+        _verify_digest(
+            reference, hashlib.sha256(manifest_bytes).hexdigest(), image, "manifest"
+        )
+        manifest_data = json.loads(manifest_bytes.decode("utf-8"))
 
         # Resolve multi-architecture manifest list / OCI index
         if "manifests" in manifest_data:
@@ -1429,7 +1920,14 @@ def _extract_image_layers(
                 auth_header,
             )
             with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
-                manifest_data = json.loads(resp.read().decode("utf-8"))
+                manifest_bytes = resp.read()
+            _verify_digest(
+                chosen_digest,
+                hashlib.sha256(manifest_bytes).hexdigest(),
+                image,
+                "platform manifest",
+            )
+            manifest_data = json.loads(manifest_bytes.decode("utf-8"))
 
         # extract image config so we can reference metadata bout the image later.
         config_desc = manifest_data.get("config")
@@ -1439,18 +1937,29 @@ def _extract_image_layers(
                 f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
             )
             config_req = _registry_request(config_url, headers, auth_header)
+            config_bytes = None
             try:
                 with urllib.request.urlopen(
                     config_req, timeout=timeout_seconds
                 ) as resp:
                     config_bytes = resp.read()
-                    with open(
-                        os.path.join(image_dir, ".image_config.json"),
-                        "wb",
-                    ) as f_cfg:
-                        f_cfg.write(config_bytes)
             except Exception as e:
                 logger.warning(f"Failed to fetch image config blob: {e}")
+            if config_bytes is not None:
+                # Outside the try above: a config that fails to arrive is
+                # tolerated, but one that arrives altered is not -- it carries
+                # the Env, Cmd and Entrypoint every sandbox would run with.
+                _verify_digest(
+                    config_digest,
+                    hashlib.sha256(config_bytes).hexdigest(),
+                    image,
+                    "config blob",
+                )
+                with open(
+                    os.path.join(image_dir, ".image_config.json"),
+                    "wb",
+                ) as f_cfg:
+                    f_cfg.write(config_bytes)
 
         layers = manifest_data.get("layers", [])
         if not layers:

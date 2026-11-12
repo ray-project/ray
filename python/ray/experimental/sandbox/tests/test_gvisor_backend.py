@@ -490,6 +490,31 @@ def test_gvisor_backend_nvml_failure_raises_sandbox_creation_error():
             backend._check_nvidia_driver_supported()
 
 
+def test_export_rootfs_upper_writes_through_runsc_to_a_file(monkeypatch, tmp_path):
+    """runsc logs to stdout, so the archive must go to --file, never stdout."""
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(image="busybox:latest", readonly=False)
+    backend._sandbox_metadata["sb"] = {"config": cfg, "root_dir": str(tmp_path)}
+    calls = []
+
+    class _Done:
+        returncode = 0
+        stdout = stderr = ""
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return _Done()
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", fake_run
+    )
+    out = str(tmp_path / "upper.tar")
+    backend.export_rootfs_upper("sb", out)
+    (args,) = calls
+    assert args[-5:] == ["tar", "rootfs-upper", "--file", out, "sb"]
+    assert args[: len(backend._runsc_base_args(cfg))] == backend._runsc_base_args(cfg)
+
+
 def test_string_exec_shell_configuration():
     """String commands run under config.shell (default /bin/bash) with a
     per-exec override; there is no auto-detection."""
@@ -1298,6 +1323,9 @@ class _BundleRecordingImageManager:
         self.rootfs_image_calls.append(image)
         return self.image
 
+    def get_image_config(self, image):
+        return {}
+
     def prepare_oci_bundle(self, root_dir, **kwargs):
         self.bundle_kwargs = kwargs
         spec = {"root": {"path": "rootfs"}}
@@ -1877,6 +1905,9 @@ class _StubImageManager:
     def get_workdir(self, image):
         return None
 
+    def get_image_config(self, image):
+        return {}
+
     def prepare_oci_bundle(self, root_dir, **kwargs):
         path = os.path.join(root_dir, "config.json")
         with open(path, "w", encoding="utf-8") as f:
@@ -1931,6 +1962,49 @@ def test_create_public_sandbox_installs_the_default_allowlist(tmp_path, monkeypa
     assert len(images.released) == 1
     # The failed create deletes its bundle rather than leaving it locked.
     assert set(tmp_path.iterdir()) <= bundles
+
+
+class _WrappingCgroup:
+    """A cgroup whose launcher prefix is easy to spot and to count."""
+
+    def wrap(self, args):
+        return ["CGROUP-LAUNCHER", *args]
+
+
+def test_exec_argv_joins_the_sandbox_cgroup_once(tmp_path, monkeypatch):
+    """exec_argv is how the Modal actor spawns commands itself, so it must put
+    them in the sandbox's cgroup as exec_command does; and exec_command, which
+    builds on it, must not wrap a second time."""
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-limited"] = {
+        "root_dir": str(tmp_path),
+        "cwd": "/",
+        "config": GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh"),
+        "cgroup": _WrappingCgroup(),
+    }
+    argv = backend.exec_argv("sb-limited", ["true"], pid_file="/host/pid")
+    assert argv[0] == "CGROUP-LAUNCHER" and argv.count("CGROUP-LAUNCHER") == 1
+    assert argv[argv.index("-internal-pid-file") + 1] == "/host/pid"
+
+    spawned = []
+
+    class _Done:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+    def popen(args, **kwargs):
+        spawned.append(args)
+        return _Done()
+
+    monkeypatch.setattr(gvisor.subprocess, "Popen", popen)
+    assert backend.exec_command("sb-limited", ["true"]).exit_code == 0
+    (args,) = spawned
+    assert args.count("CGROUP-LAUNCHER") == 1
+    # exec_command still records the pid its timeout kill reads.
+    pid_file = args[args.index("-internal-pid-file") + 1]
+    assert os.path.dirname(pid_file) == str(tmp_path)
 
 
 def test_set_egress_allowlist_needs_a_public_sandbox(tmp_path):
@@ -3380,6 +3454,62 @@ def test_exec_kill_and_reclaim_run_runsc_with_gomaxprocs(private_bundles, monkey
         f"GOMAXPROCS=2 --root /tmp/runsc kill {sandbox_id} SIGKILL",
         f"GOMAXPROCS=2 --root /tmp/runsc delete -force {sandbox_id}",
     ]
+
+
+def test_a_missing_sleep_hidden_by_a_user_path_is_explained_as_such():
+    """A PATH in the sandbox's env replaces the image's, so the image's own
+    sleep is not found -- which the hint used to blame on the image."""
+    from ray.experimental.sandbox.backend.gvisor import _startup_failure_hint
+
+    stderr = 'error finding executable "sleep" in PATH'
+    assert "distroless" in _startup_failure_hint(stderr)
+    hint = _startup_failure_hint(stderr, {"PATH": "/nonexistent"})
+    assert "PATH='/nonexistent'" in hint and "distroless" not in hint
+    assert _startup_failure_hint("something else", {"PATH": "/x"}) == ""
+
+
+def test_a_delete_that_fails_part_way_still_frees_the_sandbox_and_can_be_retried(
+    monkeypatch, tmp_path
+):
+    """The sandbox used to be forgotten before it was deleted: a failed
+    `runsc kill` skipped the process-group kill that actually frees it, and a
+    retry then found nothing to delete and reported success."""
+    from ray.experimental.sandbox.backend import gvisor
+
+    backend = GVisorSandboxBackend()
+    # The `runsc run` group: what the process-group kill takes down.
+    proc = subprocess.Popen(["sleep", "30"], start_new_session=True)
+    root_dir = tmp_path / "root"
+    root_dir.mkdir()
+    backend._sandbox_metadata["sb"] = {
+        "root_dir": str(root_dir),
+        "config": GVisorSandboxConfig(image="busybox:latest"),
+        "proc": proc,
+    }
+    runs = []
+
+    def run_failing_once(args, **kwargs):
+        runs.append(args)
+        if len(runs) == 1:
+            raise OSError("fork failed")
+        return subprocess.CompletedProcess(args, 1)
+
+    monkeypatch.setattr(gvisor.subprocess, "run", run_failing_once)
+    try:
+        with pytest.raises(OSError, match="fork failed"):
+            backend.delete_sandbox("sb")
+        assert proc.poll() is not None, "the group kill was skipped"
+        # Still known, and its files left alone while it may still run.
+        assert "sb" in backend._sandbox_metadata
+        assert root_dir.exists()
+
+        backend.delete_sandbox("sb")
+        assert "sb" not in backend._sandbox_metadata
+        assert not root_dir.exists()
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
 
 
 if __name__ == "__main__":
