@@ -14,6 +14,10 @@ From 2.61 onwards, Ray Data can reconstruct lost blocks itself instead of relyin
 
 Ray Data lineage reconstruction is experimental and off by default. Its behavior and configuration may change in future releases.
 
+:::{note}
+In early testing, Ray Data lineage reconstruction significantly reduced object spilling after node failures compared to Ray Core lineage reconstruction. This is because reconstruction tasks go through Ray Data's backpressure and resource accounting. The tradeoff is that end-to-end runtime can increase. Reconstruction tasks wait for resources instead of running right away. Also in Ray Data lineage reconstruction, the scheduler re-runs the chain of tasks from the very first stage in the pipeline, batching reconstructions together based on block lineage, and pruning out wasted work. Performance benchmarks for lineage reconstruction are in progress. Until they're published, test your workload with node failures before you turn this on in production.
+:::
+
 For the design, see the [Ray Data lineage reconstruction REP](https://github.com/ray-project/enhancements/pull/74).
 
 (data_fault_tolerance_enable)=
