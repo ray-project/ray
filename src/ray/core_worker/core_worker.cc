@@ -4094,8 +4094,8 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
   if (reference_counter_->IsObjectOutOfScope(object_id)) {
     // Same answer as above, reached when the Reference outlived the scope it was
     // tracking: lineage pinning keeps it while a task that may be retried depends on
-    // the object. The value was deleted when the object went out of scope, so unless
-    // such a task is retried the wait below never gets a reply.
+    // the object. The value may already be deleted, so unless such a task is retried
+    // the wait below may never get a reply.
     reply->set_status(rpc::GetObjectStatusReply::OUT_OF_SCOPE);
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
