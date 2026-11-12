@@ -5,8 +5,11 @@
 
 GPU=""
 BASE_IMAGE="ubuntu:22.04"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
-CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
+# WHEEL_URL and CPP_WHEEL_URL may be set in the environment to a URL or a local
+# wheel path. They default to the latest master nightly wheels. Set
+# CPP_WHEEL_URL to an empty string to skip the C++ wheel.
+WHEEL_URL="${WHEEL_URL-https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl}"
+CPP_WHEEL_URL="${CPP_WHEEL_URL-https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl}"
 PYTHON_VERSION="3.10"
 
 BUILD_ARGS=()
@@ -53,6 +56,15 @@ done
 
 export DOCKER_BUILDKIT=1
 
+# Copies a wheel into a directory from a local path or downloads it from a URL.
+fetch_wheel() {
+    if [[ -f "$1" ]]; then
+        cp "$1" "$2"
+    else
+        wget --quiet "$1" -P "$2"
+    fi
+}
+
 
 # Build base-deps image
 if [[ "$OUTPUT_SHA" != "YES" ]]; then
@@ -93,11 +105,13 @@ fi
 
 RAY_BUILD_DIR="$(mktemp -d)"
 mkdir -p "$RAY_BUILD_DIR/.whl"
-wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
-wget --quiet "$CPP_WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
+fetch_wheel "$WHEEL_URL" "$RAY_BUILD_DIR/.whl"
+if [[ -n "$CPP_WHEEL_URL" ]]; then
+    fetch_wheel "$CPP_WHEEL_URL" "$RAY_BUILD_DIR/.whl"
+fi
 cp docker/ray/Dockerfile "$RAY_BUILD_DIR"
 
-WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"
+WHEEL="$(basename "$RAY_BUILD_DIR"/.whl/ray-*.whl)"
 
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
@@ -113,4 +127,4 @@ else
     "${BUILD_CMD[@]}"
 fi
 
-rm -rf "$WHEEL_DIR"
+rm -rf "$RAY_BUILD_DIR"
