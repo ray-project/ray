@@ -494,41 +494,72 @@ spec:
 
 The configuration in this guide suits trying out the service. Before you run many sandboxes at once or measure how fast the service creates them, consider the following:
 
-* **Run several facade replicas**: The facade keeps no state, so you can raise `num_replicas` for the `RaySandboxGrpcFacade` deployment, for example under `deployments` in `serveConfigV2`, to spread RPCs across replicas.
-* **Account for one Ray actor per sandbox**: Ray schedules each sandbox's `SandboxHost` actor through its Global Control Service, and the actor starts its own Ray worker process on its Pod. Creating a sandbox costs one Ray actor creation, and every running sandbox holds a Ray worker process in addition to its gVisor container.
-* **Pull images before bursts**: The first sandbox on each worker Pod pulls and converts its image, and later sandboxes on that Pod reuse the cached copy. To keep pulls out of creation latency, pull each image on every worker Pod first, for example by running the following script on the head Pod:
+* **Host sandboxes on one actor per node**: With `host_mode: node` in the application's `args`, each worker Pod runs one actor that hosts every sandbox placed on that Pod. With `host_mode: actor`, each sandbox gets a Ray actor of its own, which is a Ray worker process of about 130 MiB that Ray schedules through its Global Control Service. Creates then go only as fast as Ray starts actors, however many Pods you add or facade replicas you run.
+* **Run several facade replicas**: The facade keeps no state, so you can raise `num_replicas` for the `RaySandboxGrpcFacade` deployment, for example under `deployments` in `serveConfigV2`. Plan for about one replica for every 300 creates per second.
+* **Spread sandboxes over many Pods**: A sandbox's boot takes about a third of a CPU-second, and boots get slower as a machine hosts more sandboxes. Many worker Pods with a few hundred sandboxes each start a burst faster than a few Pods with thousands each.
+* **Keep sandboxes booted for bursts**: With `host_mode: node`, the `warm_pool` argument keeps sandboxes booted on every worker Pod, and a matching create takes one at once. See {ref}`Ray Sandboxes <ray-core-sandboxes>` for the profile format.
+* **Pull images before bursts**: The first sandbox on each worker Pod pulls and converts its image, and later sandboxes on that Pod reuse the cached copy. With `host_mode: node`, every worker Pod starts pulling an image when a client names it, such as with `modal.Image.from_registry()`, and the client's image build finishes once the Pods have it.
+* **Raise the limits of Serve's HAProxy**: With Serve's {ref}`HAProxy ingress <serve-haproxy>`, set these environment variables on the Pods that run it:
 
-  ```python
-  import ray
-  from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-
-  @ray.remote(num_cpus=0)
-  def pull(image: str) -> None:
-      from ray.experimental.sandbox.runtime import SandboxRuntime
-
-      SandboxRuntime().pull_image(image, timeout_seconds=1800)
-
-
-  ray.init()
-  workers = [
-      node["NodeID"]
-      for node in ray.nodes()
-      if node["Alive"] and node["Resources"].get("CPU")
-  ]
-  ray.get(
-      [
-          pull.options(
-              scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False)
-          ).remote("python:3.12-slim")
-          for node_id in workers
-      ]
-  )
+  ```yaml
+  env:
+    # The client SDK keeps a connection open for each sandbox it runs
+    # commands in. The default is 4096 connections.
+    - name: RAY_SERVE_HAPROXY_MAXCONN
+      value: "1000000"
+    # The default is 4 threads.
+    - name: RAY_SERVE_HAPROXY_NBTHREAD
+      value: "16"
+    # The default is 100 calls in flight on each connection.
+    - name: RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS
+      value: "10000"
+    - name: RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS
+      value: "10000"
+    # A replica that's busy during a burst can fail two health checks in
+    # a row, the default, and stop receiving traffic.
+    - name: RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL
+      value: "6"
+    - name: RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER
+      value: 10s
   ```
 
-  Pass the same image reference that clients pass to `modal.Image.from_registry()`.
-* **Load-test through a TLS Gateway**: `kubectl port-forward` tunnels every RPC through the Kubernetes API server, which limits throughput. Point load generators at a gateway as described in [Optional: Expose the service behind a TLS Gateway](#optional-expose-the-service-behind-a-tls-gateway) instead.
-* **Relax HAProxy health checks**: With Serve's {ref}`HAProxy ingress <serve-haproxy>`, a replica that's busy during a burst can fail two health checks in a row and stop receiving traffic. Raise `RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL` and `RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER` from their defaults of `2` and `5s`, for example to `6` and `10s`, wherever you set `RAY_SERVE_ENABLE_HA_PROXY`.
+* **Raise the limits of the gateway**: Envoy Gateway stops sending a backend more than 1,024 requests at once by default and fails the others with `reset reason: overflow`, and it allows 100 calls in flight on each client connection. Raise both on the Gateway from [Optional: Expose the service behind a TLS Gateway](#optional-expose-the-service-behind-a-tls-gateway):
+
+  ```yaml
+  apiVersion: gateway.envoyproxy.io/v1alpha1
+  kind: BackendTrafficPolicy
+  metadata:
+    name: sandbox-facade-limits
+  spec:
+    targetRefs:
+      - group: gateway.networking.k8s.io
+        kind: Gateway
+        name: <your-gateway-name>
+    circuitBreaker:
+      maxConnections: 1000000
+      maxPendingRequests: 1000000
+      maxParallelRequests: 1000000
+  ---
+  apiVersion: gateway.envoyproxy.io/v1alpha1
+  kind: ClientTrafficPolicy
+  metadata:
+    name: sandbox-facade-streams
+  spec:
+    targetRefs:
+      - group: gateway.networking.k8s.io
+        kind: Gateway
+        name: <your-gateway-name>
+    http2:
+      maxConcurrentStreams: 10000
+  ```
+
+* **Run load generators next to the service**: `kubectl port-forward` tunnels every RPC through the Kubernetes API server, which limits throughput. Point load generators at a gateway, or run them in a Pod of the cluster. The client SDK talks plaintext only to `localhost`, so in a Pod, forward a local port to the Serve Service and use `http://127.0.0.1:9000` as the server URL:
+
+  ```bash
+  socat TCP-LISTEN:9000,fork,reuseaddr TCP:rayservice-modal-sandbox-serve-svc:9000 &
+  ```
+
+  Each client process creates a few hundred sandboxes per second, so a large burst needs several processes.
 
 ## Limitations
 
