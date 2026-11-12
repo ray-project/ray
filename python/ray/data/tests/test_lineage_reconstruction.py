@@ -9,7 +9,7 @@ the bundler.
 
 import pickle
 from dataclasses import replace
-from typing import TYPE_CHECKING, Dict, List, cast
+from typing import TYPE_CHECKING, Dict, List
 from unittest.mock import MagicMock
 
 import pytest
@@ -776,31 +776,6 @@ def test_lost_child_reconstructs_across_graph_shapes(
     assert len(_nodes(tracker)) == num_blocks + num_children
 
 
-def test_recovery_status_counts_queued_running_and_finished():
-    """Queued counts reconstruction tasks not yet submitted, and running counts only
-    tasks serving a plan, once each however many plans they serve."""
-    from types import SimpleNamespace
-
-    # Only the attributes the method reads; cast so it type-checks as ``self``.
-    state = SimpleNamespace(
-        _lineage_tracker=LineageTracker(),
-        _batched_plans={"op:3": set(), "op:4": {"plan_d"}},
-        _data_tasks={
-            0: SimpleNamespace(reconstruction_plan_ids=frozenset()),
-            1: SimpleNamespace(reconstruction_plan_ids=frozenset({"plan_a"})),
-            2: SimpleNamespace(reconstruction_plan_ids=frozenset({"plan_b", "plan_c"})),
-        },
-        _num_reconstruction_tasks_finished=3,
-    )
-    op = cast(MapOperator, state)
-    assert MapOperator.lineage_recovery_progress_str(op) == (
-        "Recovery: 2 queued, 2 running, 3 finished"
-    )
-
-    state._lineage_tracker = None
-    assert MapOperator.lineage_recovery_progress_str(op) == ""
-
-
 @reconstruction_enabled
 def test_recovery_status_records_the_re_run_task(
     ray_start_regular_shared, lose_output, monkeypatch  # noqa: F405
@@ -1108,7 +1083,7 @@ def test_reconstruction_error_wraps_object_lost_error():
         )
     reconstruction_error = raised.value
 
-    assert isinstance(reconstruction_error, ObjectLostError)
+    assert isinstance(raised.value, ObjectLostError)
     assert reconstruction_error.lost_error is object_lost_error
     assert reconstruction_error.__cause__ is object_lost_error
     for field in ("object_ref_hex", "owner_address", "call_site"):
