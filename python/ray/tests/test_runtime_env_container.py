@@ -75,6 +75,18 @@ def test_container_with_env_vars(podman_docker_cluster):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_image_uri_with_cached_pip(podman_docker_cluster):
+    container_id = podman_docker_cluster
+    cmd = [
+        "python",
+        "tests/test_image_uri_with_cached_pip.py",
+        "--image",
+        NESTED_IMAGE_NAME,
+    ]
+    run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 @pytest.mark.parametrize("use_image_uri_api", [True, False])
 def test_worker_exit_intended_system_exit_and_user_error(
     podman_docker_cluster, use_image_uri_api
@@ -166,18 +178,20 @@ class TestContainerRuntimeEnvWithOtherRuntimeEnv:
             return ray.put((1, 10))
 
     def test_container_with_pip(self, api_version):
-        with pytest.raises(ValueError, match=EXPECTED_ERROR.format(api_version)):
-
-            runtime_env = {"pip": ["requests"]}
-
-            if api_version == "container":
+        runtime_env = {"pip": ["requests"]}
+        if api_version == "container":
+            with pytest.raises(ValueError, match=EXPECTED_ERROR.format(api_version)):
                 runtime_env["container"] = {"image": NESTED_IMAGE_NAME}
-            else:
-                runtime_env["image_uri"] = NESTED_IMAGE_NAME
 
-            @ray.remote(runtime_env=runtime_env)
-            def f():
-                return ray.put((1, 10))
+                @ray.remote(runtime_env=runtime_env)
+                def f():
+                    return ray.put((1, 10))
+
+        else:
+            runtime_env["image_uri"] = NESTED_IMAGE_NAME
+            validated = ray.runtime_env.RuntimeEnv(**runtime_env)
+            assert validated.image_uri() == NESTED_IMAGE_NAME
+            assert validated.pip_config()["packages"] == ["requests"]
 
     def test_container_with_conda(self, api_version):
         with pytest.raises(ValueError, match=EXPECTED_ERROR.format(api_version)):
