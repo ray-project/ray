@@ -120,10 +120,16 @@ def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
     assert map_op._map_ray_remote_args == {"resources": {"bar": 1}}
     assert not dag._preserve_partition_order
 
+    # Ordering must survive fusion of a downstream map into the reduce.
     disk_shuffle_v2.execution_options.preserve_order = True
-    ds_ordered = ray.data.range(10, override_num_blocks=2).random_shuffle()
+    ds_ordered = (
+        ray.data.range(10, override_num_blocks=2)
+        .random_shuffle()
+        .map_batches(lambda b: b)
+    )
     ordered_dag = get_execution_plan(ds_ordered._logical_plan)[0].dag
     assert isinstance(ordered_dag, DiskHashShuffleReduceOp)
+    assert "->" in ordered_dag.name
     assert ordered_dag._preserve_partition_order
 
     # Without the disk transport, SHUFFLE_V2 keeps the legacy all-to-all op.
