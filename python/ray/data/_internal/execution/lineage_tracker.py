@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -97,6 +97,21 @@ class TaskNode:
     # The input of a seed task (a task with no parent tasks), kept so lineage
     # reconstruction can resubmit it. ``None`` for every non-seed task.
     seed_input: Optional["RefBundle"] = None
+
+    # Reconstruction plans whose input for this task is queued, while the
+    # reconstruction task that consumes it is not submitted yet. That reconstruction
+    # task re-produces every output the plan needs from this task.
+    plans_with_queued_reconstruction_task: Set[ReconstructionPlanId] = field(
+        default_factory=set
+    )
+
+    # Maps a reconstruction plan ID to the next output index of each submitted
+    # reconstruction task of this task for the plan. A reconstruction task produces
+    # its outputs in index order, so it still re-produces every output at or after
+    # its next output index.
+    plan_to_next_output_indices: Dict[ReconstructionPlanId, List[OutputIndex]] = field(
+        default_factory=dict
+    )
 
     def __repr__(self) -> str:
         parent_ids = [task.lineage_task_id for task in self.parent_tasks]
@@ -205,6 +220,14 @@ class LineageTracker:
         block_index_child_task_dependencies.remove(entry)
         if not block_index_child_task_dependencies:
             del task_node.plan_to_child_block_lineages[reconstruction_plan_id]
+        # The child now has queued input for the plan, so a reconstruction task of
+        # the child is pending for the plan.
+        child_task_node = self._lineage_task_id_to_task_node[
+            entry.child_lineage_task_id
+        ]
+        child_task_node.plans_with_queued_reconstruction_task.add(
+            reconstruction_plan_id
+        )
 
     def resolve_dependencies(
         self, block_ids: Iterable[BlockId]
@@ -344,6 +367,17 @@ class LineageTracker:
                     dependency.output_index
                 )
 
+        # The queued reconstruction task is now submitted. It re-produces outputs
+        # from index 0.
+        if reconstruction_plan_id is not None:
+            assert re_executed_task_node is not None
+            re_executed_task_node.plans_with_queued_reconstruction_task.discard(
+                reconstruction_plan_id
+            )
+            re_executed_task_node.plan_to_next_output_indices.setdefault(
+                reconstruction_plan_id, []
+            ).append(0)
+
         # Target task case: the plan no longer claims the target once the target
         # itself is being re-executed.
         if (
@@ -392,6 +426,9 @@ class LineageTracker:
             removed in ``register_block_queued``, when the block is released to
             the child that consumes it.
 
+            Completing a re-execution ends its record in
+            ``plan_to_next_output_indices``, since it re-produces no more outputs.
+
         Args:
             lineage_task_id: The ID of the data task that was completed.
             reconstruction_plan_id: The reconstruction plan ID of the reconstruction attempt if the task is a
@@ -410,6 +447,10 @@ class LineageTracker:
                 "completion but was not."
             )
         logger.debug("Registering task complete for task %s", lineage_task_id)
+        if reconstruction_plan_id is not None:
+            # Every re-execution of a task produces the same number of outputs, so
+            # the one that completes has the highest next output index.
+            self._remove_next_output_index(task_node, reconstruction_plan_id, max)
 
     def register_task_failed(
         self,
@@ -427,7 +468,10 @@ class LineageTracker:
         Returns:
             A tuple of the lineage task IDs of the seed tasks to resubmit for
             reconstruction, sorted to keep the order deterministic, and the plan
-            ID associated with this reconstruction attempt.
+            ID associated with this reconstruction attempt. The caller must
+            resubmit every returned seed task for the plan. The seed task list is
+            empty when pending reconstruction tasks of the plan already
+            re-produce every output the failed task needs.
 
         Raises:
             ValueError: If the task, or a child of a task along the failed path,
@@ -446,6 +490,11 @@ class LineageTracker:
             lineage_task_id,
             reconstruction_plan_id,
         )
+        if reconstruction_plan_id is not None:
+            # Which re-execution of the task failed is unknown. Dropping the lowest
+            # next output index keeps the higher ones, so a later failure below this
+            # task traces past it rather than waiting on output that never arrives.
+            self._remove_next_output_index(task_node, reconstruction_plan_id, min)
 
         seed_task_ids: Set[LineageTaskId] = set()
         # Maps a task's lineage task ID to the IDs of the children it has already
@@ -486,15 +535,30 @@ class LineageTracker:
                         f"{child_node.lineage_task_id} to be registered before "
                         "getting a failure status but was not."
                     )
-                for output_index in node.child_task_block_dependencies[
+                output_indices = node.child_task_block_dependencies[
                     child_node.lineage_task_id
-                ]:
+                ]
+                for output_index in output_indices:
                     child_block_lineages.add(
                         ChildBlockDependency(
                             child_lineage_task_id=child_node.lineage_task_id,
                             output_index=output_index,
                         )
                     )
+                # A pending reconstruction task of this task re-produces the
+                # outputs added above, since it reads the plan set when it
+                # produces each output. Tracing further would queue this task's
+                # input a second time for the plan.
+                if self._has_pending_reconstruction_task(
+                    node, reconstruction_plan_id_to_attach, min(output_indices)
+                ):
+                    logger.debug(
+                        "Task %s has a pending reconstruction task for plan %s. "
+                        "Not tracing past it.",
+                        node.lineage_task_id,
+                        reconstruction_plan_id_to_attach,
+                    )
+                    return
             logger.debug(
                 "Task %s has the following plan: %s",
                 node.lineage_task_id,
@@ -509,8 +573,53 @@ class LineageTracker:
                     _trace_parent_for_reconstruction(parent_task_node, node)
 
         _trace_parent_for_reconstruction(task_node)
+        # The caller resubmits every returned seed task for the plan, so each one now
+        # has a queued reconstruction task.
+        for seed_task_id in seed_task_ids:
+            self._lineage_task_id_to_task_node[
+                seed_task_id
+            ].plans_with_queued_reconstruction_task.add(
+                reconstruction_plan_id_to_attach
+            )
         # Sort to keep the order of the seed task IDs deterministic.
         return sorted(seed_task_ids), reconstruction_plan_id_to_attach
+
+    @staticmethod
+    def _has_pending_reconstruction_task(
+        task_node: TaskNode,
+        reconstruction_plan_id: ReconstructionPlanId,
+        output_index: OutputIndex,
+    ) -> bool:
+        """Whether a queued or submitted reconstruction task of the given task still
+        re-produces the output at ``output_index`` and every later output for the
+        plan.
+        """
+        if reconstruction_plan_id in task_node.plans_with_queued_reconstruction_task:
+            return True
+        return any(
+            next_output_index <= output_index
+            for next_output_index in task_node.plan_to_next_output_indices.get(
+                reconstruction_plan_id, []
+            )
+        )
+
+    @staticmethod
+    def _remove_next_output_index(
+        task_node: TaskNode,
+        reconstruction_plan_id: ReconstructionPlanId,
+        select: Callable[[List[OutputIndex]], OutputIndex],
+    ) -> None:
+        """Remove the next output index that ``select`` picks for the plan, once the
+        reconstruction task it belongs to completes or fails.
+        """
+        next_output_indices = task_node.plan_to_next_output_indices.get(
+            reconstruction_plan_id
+        )
+        if not next_output_indices:
+            return
+        next_output_indices.remove(select(next_output_indices))
+        if not next_output_indices:
+            del task_node.plan_to_next_output_indices[reconstruction_plan_id]
 
     def register_seed_input(
         self, seed_task_id: LineageTaskId, seed_input: "RefBundle"
@@ -634,6 +743,11 @@ class LineageTracker:
 
         See :class:`ObjectReuseStatus` for the meaning of each status.
 
+        Note:
+            Call this once per output of a re-execution, in index order. Each call
+            advances that re-execution's record in ``plan_to_next_output_indices``,
+            which ``register_task_failed`` reads to decide where to stop tracing.
+
         Args:
             lineage_task_id: The ID of the data task that produced the output.
             output_index: The index of the output object to get the status for.
@@ -653,6 +767,15 @@ class LineageTracker:
                 "object reuse status but was not."
             )
         task_node: TaskNode = node
+
+        # Outputs of a re-execution arrive in index order. So this output belongs to
+        # a re-execution whose next output index is ``output_index``. Re-executions
+        # at the same next output index are interchangeable.
+        next_output_indices = task_node.plan_to_next_output_indices.get(
+            reconstruction_plan_id, []
+        )
+        if output_index in next_output_indices:
+            next_output_indices[next_output_indices.index(output_index)] += 1
 
         # A plan is keyed by the lineage task ID of the task whose failure opened it.
         is_reconstruction_target = reconstruction_plan_id == lineage_task_id
