@@ -1,8 +1,9 @@
 # Trivy scans of the images published nightly and at release time.
 #
 # Every step is gated on RAYCI_IMAGE_SCAN=1, which nothing sets yet, so none
-# of them runs. To turn the scans on, add it to the build env of the two
-# "Trigger Postmerge" steps in .buildkite/release-automation/pre_release.rayci.yml.
+# of them runs. To turn the scans on, add it to the build env of the
+# trigger-postmerge and trigger-postmerge-nightly steps in
+# .buildkite/release-automation/pre_release.rayci.yml (not the macOS one).
 # release-automation waits on that postmerge build, so every step is
 # soft_fail: a scan must never block a release.
 # Tooling: ci/ray_ci/automation/trivy/.
