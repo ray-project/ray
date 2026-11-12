@@ -4,8 +4,8 @@ The Arrow schema is walked into one chain of arrays per Parquet leaf: its struct
 and lists, then the leaf. Each array is sized from the footer's counts as validity
 bitmap plus offsets plus values, exactly. A leaf whose counts aren't exact, or whose
 layout it doesn't model (views and dictionaries among them), is left to the caller.
-The estimate is for the file's own schema; a read that casts the columns to
-another schema allocates more, which the caller prices.
+The estimate is for the file's own schema, or for the schema the read casts every
+batch to, if given.
 """
 
 from __future__ import annotations
@@ -46,6 +46,19 @@ _ZERO_COPY_PHYSICAL_TYPES = frozenset({"INT32", "INT64", "FLOAT", "DOUBLE"})
 def _is_zero_copy_type(arrow_type: pa.DataType) -> bool:
     numeric = (pa.int32(), pa.int64(), pa.float32(), pa.float64())
     return arrow_type in numeric or pa.types.is_timestamp(arrow_type)
+
+
+def _cast_keeps_bitmap(stored: pa.DataType, pinned: pa.DataType) -> bool:
+    """Whether casting a null-free ``stored`` array keeps its bitmap, as measured on
+    PyArrow 23 to 26: an integer to a temporal type of its width (int32 to date32)
+    and a timestamp to a timestamp or int64 do; the rest, as int32 to int64, don't."""
+    if stored == pinned:
+        return True
+    if pa.types.is_timestamp(stored):
+        return pa.types.is_timestamp(pinned) or pinned == pa.int64()
+    if pa.types.is_integer(stored):
+        return pa.types.is_temporal(pinned) and pinned.bit_width == stored.bit_width
+    return False
 
 
 class _ArrowNode(NamedTuple):
@@ -135,7 +148,15 @@ class _SchemaWalk:
     def __init__(self) -> None:
         # ``(chain, max_repetition_level)`` per leaf, in schema order.
         self.leaves: list[tuple[tuple[_ArrowNode, ...], int]] = []
+        # Each leaf's Arrow type, and the leaf count after each top-level field.
+        self.leaf_types: list[pa.DataType] = []
+        self.field_ends: list[int] = []
         self._next_id = 0
+
+    def field_leaves(self, field_idx: int) -> range:
+        """The leaf indices of top-level field ``field_idx``."""
+        start = self.field_ends[field_idx - 1] if field_idx else 0
+        return range(start, self.field_ends[field_idx])
 
     def _node(self, pos: _Position, **fields: Any) -> _ArrowNode:
         """A new array node at the walk's position ``pos``."""
@@ -285,6 +306,7 @@ class _SchemaWalk:
             keeps_bitmap=_is_zero_copy_type(arrow_type),
         )
         self.leaves.append((chain + (leaf,), pos.depth))
+        self.leaf_types.append(arrow_type)
 
 
 def _walk(arrow_schema: pa.Schema) -> _SchemaWalk:
@@ -295,6 +317,7 @@ def _walk(arrow_schema: pa.Schema) -> _SchemaWalk:
     )
     for field in arrow_schema:
         walk.visit(arrow_type=field.type, nullable=field.nullable, pos=top, chain=())
+        walk.field_ends.append(len(walk.leaves))
     return walk
 
 
@@ -309,6 +332,7 @@ def _matches(leaf: _ArrowNode, rep: int, column: ColumnSchema) -> bool:
 
 def build_leaf_profiles(
     parquet_schema: ParquetSchema,
+    *,
     pinned_schema: pa.Schema | None = None,
     format_kwargs: Mapping[str, Any] | None = None,
     file_metadata: FileMetaData | None = None,
@@ -318,27 +342,30 @@ def build_leaf_profiles(
 
     Args:
         parquet_schema: The file's schema.
-        pinned_schema: The schema the read casts every batch to, if any.
-        format_kwargs: The read's ``ParquetFileFormat`` kwargs.
+        pinned_schema: The schema the read casts every batch to, if any: the
+            reader's ``FileReader._file_dataset_schema``, not the dataset schema.
+        format_kwargs: The ``ParquetFileFormat`` kwargs the read task passes.
         file_metadata: The file's footer, for its writer.
 
     Returns:
         The profiles, or ``None`` for a file this module doesn't model at all.
     """
     format_kwargs = format_kwargs or {}
-    # Rare reads: the reader drops these options when it casts to the schema.
-    if format_kwargs.get("dictionary_columns") or detect_binary_or_list_type(
-        format_kwargs
-    ):
+    # Rare reads. ``binary_type`` and ``list_type`` retype every such column, which
+    # leaves the file unmodelled; ``dictionary_columns``, only the BYTE_ARRAY
+    # leaves it names, by column path.
+    if detect_binary_or_list_type(format_kwargs):
         return None
+    dictionary_columns = frozenset(format_kwargs.get("dictionary_columns") or ())
     try:
         arrow_schema = parquet_schema.to_arrow_schema()
-        walk = _walk(arrow_schema)
+        file_walk = walk = _walk(arrow_schema)
         if len(walk.leaves) != len(parquet_schema):
             return None
         unmapped: set[int] = set()
         if pinned_schema is not None:
             walk, unmapped = _pinned_walk(
+                file_walk=file_walk,
                 arrow_schema=arrow_schema,
                 pinned_schema=pinned_schema,
                 parquet_schema=parquet_schema,
@@ -359,13 +386,25 @@ def build_leaf_profiles(
         leaf = chain[-1]
         if (
             leaf_idx in unmapped
+            or (
+                column.path in dictionary_columns
+                and column.physical_type == "BYTE_ARRAY"
+            )
             or leaf.kind == _UNSUPPORTED
             or not _matches(leaf=leaf, rep=max_repetition_level, column=column)
         ):
             profiles.append(None)
             continue
-        if leaf.keeps_bitmap and column.physical_type not in _ZERO_COPY_PHYSICAL_TYPES:
-            leaf = leaf._replace(keeps_bitmap=False)
+        # The decode keeps a null-free bitmap, and the pin's cast, if any, keeps it.
+        keeps_bitmap = (
+            file_walk.leaves[leaf_idx][0][-1].keeps_bitmap
+            and column.physical_type in _ZERO_COPY_PHYSICAL_TYPES
+            and _cast_keeps_bitmap(
+                stored=file_walk.leaf_types[leaf_idx], pinned=walk.leaf_types[leaf_idx]
+            )
+        )
+        if leaf.keeps_bitmap != keeps_bitmap:
+            leaf = leaf._replace(keeps_bitmap=keeps_bitmap)
         profiles.append(
             LeafProfile(
                 nodes=chain[:-1] + (leaf,),
@@ -574,9 +613,7 @@ def estimate_row_group(
     for leaf in leaves:
         size += estimate_ancestors(leaf=leaf, counted=counted)
         size += estimate_leaf(leaf)
-    if detect_added_columns(read):
-        size += estimate_added_columns(row_group=row_group, read=read)
-    return size
+    return size + estimate_added_columns(row_group=row_group, read=read)
 
 
 def estimate_leaf(leaf: LeafChunk) -> int:
@@ -692,36 +729,46 @@ def pinned_type(field: pa.Field, pinned_schema: pa.Schema | None) -> pa.DataType
 
 
 def _pinned_walk(
-    arrow_schema: pa.Schema, pinned_schema: pa.Schema, parquet_schema: ParquetSchema
+    file_walk: _SchemaWalk,
+    arrow_schema: pa.Schema,
+    pinned_schema: pa.Schema,
+    parquet_schema: ParquetSchema,
 ) -> tuple[_SchemaWalk, set[int]]:
-    """The pinned walk, and the leaves of columns whose cast changes their shape:
-    a struct that gained or reordered fields, a nested field made nullable,
-    numbers cast to text. Those are walked as stored and left unmodelled."""
+    """``file_walk`` redone at the pinned types, and the leaves of columns whose
+    cast changes their shape: a struct that gained or reordered fields, a nested
+    field made nullable, numbers cast to text. Those are walked as stored and left
+    unmodelled."""
+    # A null-typed column keeps its type, sized 0: the caller counts the nulls the
+    # cast fills it with as an added column (``added_bytes``).
+    casts: dict[int, pa.Field] = {}
+    for idx, field in enumerate(arrow_schema):
+        if pa.types.is_null(field.type):
+            continue
+        arrow_type = pinned_type(field=field, pinned_schema=pinned_schema)
+        if arrow_type is not None:
+            casts[idx] = field.with_type(arrow_type)
+    if not casts:
+        return file_walk, set()
+    fields = [casts.get(idx, field) for idx, field in enumerate(arrow_schema)]
+    walk = _walk(pa.schema(fields))
     unmapped: set[int] = set()
-    fields, start = [], 0
-    for field in arrow_schema:
-        end = start + len(_walk(pa.schema([field])).leaves)
-        leaves = range(start, end)
-        # An all-null column keeps its type: its nulls count as an added column.
-        arrow_type = (
-            None
-            if pa.types.is_null(field.type)
-            else pinned_type(field=field, pinned_schema=pinned_schema)
-        )
-        pinned = field if arrow_type is None else field.with_type(arrow_type)
+    for idx, pinned in casts.items():
+        stored = file_walk.field_leaves(idx)
         # The cast matches struct fields by name, the walk by position.
-        if pinned is not field and (
-            _struct_names(pinned.type) != _struct_names(field.type)
-            or not _cast_maps(
-                walk=_walk(pa.schema([pinned])),
-                columns=[parquet_schema.column(j) for j in leaves],
-            )
+        if _struct_names(pinned.type) != _struct_names(
+            arrow_schema.field(idx).type
+        ) or not _cast_maps(
+            file_walk=file_walk,
+            stored=stored,
+            walk=walk,
+            pinned=walk.field_leaves(idx),
+            parquet_schema=parquet_schema,
         ):
-            unmapped.update(leaves)
-            pinned = field
-        fields.append(pinned)
-        start = end
-    return _walk(pa.schema(fields)), unmapped
+            unmapped.update(stored)
+            fields[idx] = arrow_schema.field(idx)
+    if unmapped:
+        walk = _walk(pa.schema(fields))
+    return walk, unmapped
 
 
 def _struct_names(arrow_type: pa.DataType) -> tuple:
@@ -737,12 +784,26 @@ def _struct_names(arrow_type: pa.DataType) -> tuple:
     return ()
 
 
-def _cast_maps(walk: _SchemaWalk, columns: Sequence[ColumnSchema]) -> bool:
-    """Whether a column's leaves follow its pinned walk one for one."""
-    return len(walk.leaves) == len(columns) and all(
-        _matches(leaf=chain[-1], rep=rep, column=column)
-        for (chain, rep), column in zip(walk.leaves, columns)
-    )
+def _cast_maps(
+    file_walk: _SchemaWalk,
+    stored: range,
+    walk: _SchemaWalk,
+    pinned: range,
+    parquet_schema: ParquetSchema,
+) -> bool:
+    """Whether a column's ``stored`` leaves follow its ``pinned`` ones one for one."""
+    if len(stored) != len(pinned):
+        return False
+    for stored_idx, pinned_idx in zip(stored, pinned):
+        chain, rep = walk.leaves[pinned_idx]
+        leaf = chain[-1]
+        if not _matches(leaf=leaf, rep=rep, column=parquet_schema.column(stored_idx)):
+            return False
+        # Text keeps its bytes; anything else cast to text, as a decimal stored as
+        # BYTE_ARRAY, gets new ones the footer doesn't count.
+        if leaf.kind == _BINARY and file_walk.leaves[stored_idx][0][-1].kind != _BINARY:
+            return False
+    return True
 
 
 def _is_view(arrow_type: pa.DataType) -> bool:
@@ -753,13 +814,9 @@ def _is_text(arrow_type: pa.DataType) -> bool:
     return detect_string_type(arrow_type) or _is_view(arrow_type)
 
 
-# Columns Ray adds after decoding: the file's path, Hive partition values, a row
-# hash, a checkpoint ID, and every dataset column the file lacks, filled with
-# nulls by the pin.
-def detect_added_columns(read: Read) -> bool:
-    return read.added_row_bytes > 0 or read.added_row_group_bytes > 0
-
-
+# Columns Ray adds after decoding: the file's path, partition values, a row hash,
+# a checkpoint ID, and every dataset column the pin fills with nulls, which the
+# file lacks or holds as a null-typed column.
 def estimate_added_columns(row_group: RowGroupMetaData, read: Read) -> int:
     """Bytes of the columns Ray appends to one row group."""
     per_row = math.ceil(row_group.num_rows * read.added_row_bytes)
@@ -771,40 +828,71 @@ def estimate_added_columns(row_group: RowGroupMetaData, read: Read) -> int:
 _ADDED_ROW_GROUP_BYTES = 9
 
 
-def added_bytes(added: Sequence[pa.Field], path: str) -> tuple[float, int]:
-    """Bytes per row of the ``added`` columns, and bytes once per row group. Only
-    the path and the Hive values cut from it hold text: ``year=2024/`` gives
-    ``year`` 4 bytes a row."""
-    path_bytes = len(path.encode())
-    partitions = dict(part.split("=", 1) for part in path.split("/") if "=" in part)
+def added_bytes(
+    added: Sequence[pa.Field], path: str, partition_values: Mapping[str, Any]
+) -> Read:
+    """The bytes of the columns Ray adds to a file's rows.
+
+    Args:
+        added: The columns Ray appends, and every dataset column the pin fills with
+            nulls: one the file lacks, or holds as a null-typed column.
+        path: The file's path, the text of the column named ``path``.
+        partition_values: The file's partition values, as the reader parses them:
+            ``{"year": "2024"}`` gives ``year`` 4 bytes of text a row, a null none.
+
+    Returns:
+        The columns' bytes per row and once per row group.
+    """
     per_row, per_row_group = 0.0, 0
     for field in added:
         if field.name == "path":
-            text_bytes = path_bytes
+            text = path
         else:
-            text_bytes = len(partitions.get(field.name, "").encode())
+            value = partition_values.get(field.name)
+            text = "" if value is None else str(value)
         row, once = _added_array_bytes(
-            arrow_type=field.type, text_bytes=text_bytes, path_bytes=path_bytes
+            arrow_type=field.type, text_bytes=len(text.encode())
         )
         per_row += row
         per_row_group += once
-    return per_row, per_row_group
+    return Read(added_row_bytes=per_row, added_row_group_bytes=per_row_group)
 
 
-def _added_array_bytes(
-    arrow_type: pa.DataType, text_bytes: int, path_bytes: int
-) -> tuple[float, int]:
-    """Bytes per element of an added array and its children, and once per row group."""
+def _added_array_bytes(arrow_type: pa.DataType, text_bytes: int) -> tuple[float, int]:
+    """Bytes per element of an added array and its children, and once per row group.
+
+    Widths follow the Arrow columnar format. Besides the table, every array but a
+    null-type one is charged a validity bit a row and ``_ADDED_ROW_GROUP_BYTES``
+    once: the bitmap's last byte (1) and the offset past its last element (at
+    most 8). A list's or map's child is charged its once-bytes only, since the
+    cast fills the column with nulls and leaves the child empty.
+
+    ========================  ================================  ====================
+    Type                      Per row                           Once
+    ========================  ================================  ====================
+    null                      0, no buffers                     0
+    fixed width, bool         ``bit_width / 8``
+    string, binary            offset (4, ``large_``: 8) + text
+    string_view, binary_view  16-byte view + text
+    struct                    each child's                      each child's
+    fixed_size_list           ``list_size`` x the child's       the child's
+    list, map                 offset (4, ``large_list``: 8)     the child's, empty
+    dictionary                index ``bit_width / 8``           one dictionary value
+    union, list view          16, a rough guess
+    ========================  ================================  ====================
+
+    Two cases come out high: a column without nulls, as the path, has no bitmap,
+    and a view holds a value of 12 bytes or less inside its 16.
+    """
     if isinstance(arrow_type, pa.BaseExtensionType):
         arrow_type = arrow_type.storage_type
     if pa.types.is_null(arrow_type):
         return 0, 0
 
     def below(child_type: pa.DataType, child_text: int) -> tuple[float, int]:
-        return _added_array_bytes(
-            arrow_type=child_type, text_bytes=child_text, path_bytes=path_bytes
-        )
+        return _added_array_bytes(arrow_type=child_type, text_bytes=child_text)
 
+    # A validity bit a row.
     row, once = 1 / 8, _ADDED_ROW_GROUP_BYTES
     if pa.types.is_struct(arrow_type):
         for field in arrow_type:
@@ -821,7 +909,7 @@ def _added_array_bytes(
         once += below(arrow_type.value_type, 0)[1]
     elif pa.types.is_dictionary(arrow_type):
         row += arrow_type.index_type.bit_width / 8
-        value_row, value_once = below(arrow_type.value_type, path_bytes)
+        value_row, value_once = below(arrow_type.value_type, text_bytes)
         once += math.ceil(value_row) + value_once
     elif _is_text(arrow_type):
         # A view takes 16 bytes an element; a string or binary, its offset.
