@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import pyarrow.fs
 import pytest
-from packaging.version import Version
 
 import ray
 from ray import train, tune
@@ -86,11 +85,6 @@ def test_tag_storage_type(storage_path_filesystem_expected, mock_record, monkeyp
     monkeypatch.setattr(StorageContext, "_check_validation_file", lambda _: None)
 
     storage_path, storage_filesystem, expected = storage_path_filesystem_expected
-
-    if Version(pyarrow.__version__) < Version("17.0.0") and storage_path.startswith(
-        "gs://"
-    ):
-        pytest.skip("GCS support requires pyarrow >= 17.0.0")
 
     storage = StorageContext(
         storage_path=storage_path,

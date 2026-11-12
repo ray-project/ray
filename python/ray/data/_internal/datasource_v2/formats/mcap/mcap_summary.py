@@ -5,7 +5,8 @@ the schemas and channels, one ``ChunkIndex`` per chunk (byte offset, sizes,
 log-time bounds, channels) and a ``Statistics`` record (message counts, time
 bounds). Reading it takes one to three ranged reads (``mcap_io``), so a read can
 be planned without reading any message. ``read_summaries`` reads the summaries
-of many files concurrently, with retries.
+of many files concurrently, with retries, and keeps each raw section for the
+listing to hand on to read tasks (``ListedSummary``).
 
 Format specification: https://mcap.dev/spec
 """
@@ -13,6 +14,7 @@ Format specification: https://mcap.dev/spec
 import math
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -28,7 +30,11 @@ from typing import (
 from pyarrow.fs import FileSystem
 
 from ray._common.utils import env_integer
-from ray.data._internal.datasource_v2.formats.mcap.mcap_io import read_summary_from
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
+    parse_summary_records,
+    read_summary_from,
+    read_summary_section_from,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.util import call_with_retry
 
@@ -55,6 +61,18 @@ _DEFAULT_SUMMARY_IO_CONCURRENCY = env_integer(
 )
 
 
+@dataclass(frozen=True)
+class ListedSummary:
+    """A file's summary as ``read_summaries`` reads it: parsed, and as raw records.
+
+    ``section`` is the raw summary section, from which the listing copies the
+    records each read task needs into the manifest (``mcap_task_summary``).
+    """
+
+    summary: "Summary"
+    section: memoryview
+
+
 def read_summary(filesystem: FileSystem, path: str) -> Optional["Summary"]:
     """Return the summary of the MCAP file at ``path``, or ``None`` if it has none.
 
@@ -64,12 +82,21 @@ def read_summary(filesystem: FileSystem, path: str) -> Optional["Summary"]:
         return read_summary_from(f, path)
 
 
+def read_listed_summary(filesystem: FileSystem, path: str) -> Optional[ListedSummary]:
+    """Like ``read_summary``, but also keep the raw summary section."""
+    with filesystem.open_input_file(path) as f:
+        section = read_summary_section_from(f, path)
+    if section is None:
+        return None
+    return ListedSummary(parse_summary_records(section, path), section)
+
+
 def _read_summary_with_retry(
     filesystem: "FileSystem", path: str, retried_io_errors: List[str]
-) -> Optional["Summary"]:
+) -> Optional[ListedSummary]:
     """Read one file's summary, retrying errors that match ``retried_io_errors``."""
     return call_with_retry(
-        lambda: read_summary(filesystem, path),
+        lambda: read_listed_summary(filesystem, path),
         description=f"read MCAP summary for {path}",
         match=retried_io_errors,
     )
@@ -80,7 +107,7 @@ def read_summaries(
     items: Iterable[_T],
     path: Callable[[_T], str],
     io_concurrency: int = _DEFAULT_SUMMARY_IO_CONCURRENCY,
-) -> Iterator[Tuple[_T, "Future[Optional[Summary]]"]]:
+) -> Iterator[Tuple[_T, "Future[Optional[ListedSummary]]"]]:
     """Read the summaries of ``items`` several at a time, yielding them in order.
 
     Each item comes with its pending read, so the caller decides what a failed

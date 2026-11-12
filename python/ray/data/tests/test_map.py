@@ -21,9 +21,6 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
-)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -32,7 +29,6 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
@@ -1524,10 +1520,6 @@ def test_map_op_backpressure_configured_properly(
     assert list(range(5))[:-1] == vals
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires pyarrow>=14 for unify_schemas in OneHotEncoder",
-)
 def test_map_names(target_max_block_size_infinite_or_default, capsys):
     """To test different UDF format such that the operator
     has the correct representation.

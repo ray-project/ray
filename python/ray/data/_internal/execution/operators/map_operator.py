@@ -90,6 +90,7 @@ from ray.data._internal.execution.util import (
     merge_label_selector,
     yield_block_with_stats,
 )
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -390,6 +391,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
         is_read_op: bool = False,
+        output_partitioning: Optional[HashPartitioning] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -431,6 +433,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
             is_read_op: Whether this op reads from a datasource.
+            output_partitioning: See ``PhysicalOperator.output_partitioning``.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -462,7 +465,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
 
             TaskPoolMapOperator = get_task_pool_map_operator_cls()
-            task_op = TaskPoolMapOperator(
+            op = TaskPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -479,8 +482,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
-            task_op.is_read_op = is_read_op
-            return task_op
+            op.is_read_op = is_read_op
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
                 get_actor_pool_map_operator_cls,
@@ -493,7 +495,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
-            return ActorPoolMapOperator(
+            op = ActorPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -512,6 +514,8 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        op._output_partitioning = output_partitioning
+        return op
 
     def start(
         self,
@@ -644,6 +648,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -816,6 +821,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 task_index, output
             ),
             task_done_callback=functools.partial(_task_done_callback, task_index),
+            task_resource_request=task_resource_request,
             operator_name=self.name,
             lineage_task_id=lineage_task_id,
             reconstruction_plan_ids=reconstruction_plan_ids,

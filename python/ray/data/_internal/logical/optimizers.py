@@ -20,6 +20,8 @@ from ray.data._internal.logical.rules import (
     CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
     DeriveListFilesPushdown,
+    EliminateAggregateShuffle,
+    EnsureLocalAggregateReadsWholePartitions,
     FuseOperators,
     InheritTargetMaxBlockSizeRule,
     LimitPushdownRule,
@@ -45,7 +47,9 @@ _PHYSICAL_RULESET = Ruleset(
     [
         InheritTargetMaxBlockSizeRule,
         SetReadParallelismRule,
+        EliminateAggregateShuffle,
         FuseOperators,
+        EnsureLocalAggregateReadsWholePartitions,
         ConfigureMapTaskMemoryUsingOutputSize,
     ]
 )
