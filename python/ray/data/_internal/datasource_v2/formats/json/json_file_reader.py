@@ -15,6 +15,7 @@ from ray.data._internal.datasource.json_datasource import read_with_python_json
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
     LineChunkableFileReader,
+    one_block_size,
     read_snappy_buffer,
 )
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnitFragment
@@ -26,9 +27,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _STRADDLING_ERROR = "straddling object straddles two block boundaries"
-
-# ``ReadOptions.block_size`` is a 32-bit int.
-_MAX_BLOCK_SIZE = 2**31 - 1
 
 
 def read_whole_json_file(path: str, filesystem: "FileSystem") -> pa.Buffer:
@@ -80,7 +78,7 @@ def parse_json(
             if _STRADDLING_ERROR not in str(e):
                 raise
         one_block = copy.deepcopy(read_options)
-        one_block.block_size = min(buffer.size, _MAX_BLOCK_SIZE)
+        one_block.block_size = one_block_size(buffer)
         return pajson.read_json(
             io.BytesIO(buffer), read_options=one_block, parse_options=parse_options
         )
@@ -164,9 +162,7 @@ class JsonFileReader(LineChunkableFileReader):
         # One block parses the chunk into one record batch, hence one
         # fragment, and no line can straddle two blocks.
         read_options = copy.deepcopy(self._read_options)
-        read_options.block_size = min(
-            max(read_options.block_size, len(lines)), _MAX_BLOCK_SIZE
-        )
+        read_options.block_size = one_block_size(lines)
         table = parse_json(
             pa.py_buffer(lines),
             path,
@@ -175,6 +171,6 @@ class JsonFileReader(LineChunkableFileReader):
             python_fallback=False,
         )
         assert table is not None
-        # A no-op unless the chunk exceeded ``_MAX_BLOCK_SIZE``.
+        # A no-op unless the chunk exceeded the largest ``block_size``.
         table = table.combine_chunks()
         return next(iter(pds.dataset(table).get_fragments()))
