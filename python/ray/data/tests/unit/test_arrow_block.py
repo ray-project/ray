@@ -86,7 +86,8 @@ class TestArrowBlockColumnAccessor:
         if as_py:
             assert result == 2**63
         else:
-            assert result == pa.scalar(2**63, type=pa.decimal128(38, 0))
+            assert result.type == pa.decimal128(38, 0)
+            assert int(result.as_py()) == 2**63
 
     @pytest.mark.parametrize(
         "ignore_nulls, expected",
