@@ -1006,6 +1006,174 @@ def test_mkfs_with_mkfs_time_pins_only_the_build_time(tmp_path, fake_mkfs_erofs)
     assert _image_tree(image_dir)["etc/f"].mtime == _MEMBER_MTIME
 
 
+def _pull_members(tmp_path, *members):
+    """Pull a single-layer local image of ``_add_member`` argument tuples
+    and return the built image's tree."""
+    local_tar = tmp_path / "sample.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        for member in members:
+            _add_member(tar, *member[:-1], **member[-1])
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(tmp_path / "images")
+    )
+    return _image_tree(image_dir)
+
+
+def _build_layers(tmp_path, *layers):
+    """Extract layers of ``_add_member`` argument tuples one after another
+    the way a pull does, build the image, and return its tree."""
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    ownership, created = {}, set()
+    for members in layers:
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            for member in members:
+                _add_member(tar, *member[:-1], **member[-1])
+        extract_tar_layer(
+            buf.getvalue(), str(rootfs), ownership=ownership, created=created
+        )
+    image = tmp_path / ROOTFS_IMAGE
+    image_utils.build_erofs_image(str(rootfs), ownership, str(image), created)
+    with tarfile.open(str(image)) as tar:
+        return {os.path.normpath(m.name): m for m in tar.getmembers()}
+
+
+def test_pull_zeroes_the_mtime_of_seeded_parents(tmp_path):
+    """An image with no /etc (hello-world, FROM scratch) gets one from the
+    mount-point seeding: it carries mtime 0, not the build's time."""
+    tree = _pull_members(tmp_path, ("hello", b"hi", {"mtime": _MEMBER_MTIME}))
+    assert tree["etc"].mtime == 0
+    for name in ("etc/resolv.conf", "etc/hosts", "etc/hostname"):
+        assert tree[name].mtime == 0
+    assert tree["hello"].mtime == _MEMBER_MTIME
+
+
+def test_pull_zeroes_seeds_placed_through_symlinks(tmp_path):
+    """Seeds created through tmp -> var/tmp and etc -> usr/etc get mtime 0
+    at their canonical paths; the directories they land in keep theirs."""
+    tree = _pull_members(
+        tmp_path,
+        ("var/tmp", {"typ": tarfile.DIRTYPE, "mode": 0o1777, "mtime": _MEMBER_MTIME}),
+        ("usr/etc", {"typ": tarfile.DIRTYPE, "mode": 0o755, "mtime": _MEMBER_MTIME}),
+        ("tmp", {"typ": tarfile.SYMTYPE, "linkname": "var/tmp"}),
+        ("etc", {"typ": tarfile.SYMTYPE, "linkname": "usr/etc"}),
+    )
+    assert tree["var/tmp/.ray-sandbox-keep"].mtime == 0
+    assert tree["usr/etc/hostname"].mtime == 0
+    assert tree["var/tmp"].mtime == _MEMBER_MTIME
+    assert tree["usr/etc"].mtime == _MEMBER_MTIME
+
+
+def test_pull_keeps_the_mtimes_of_shipped_mount_points(tmp_path):
+    """Mount points the image ships itself keep their archived mtimes."""
+    tree = _pull_members(
+        tmp_path,
+        ("etc", {"typ": tarfile.DIRTYPE, "mode": 0o755, "mtime": _MEMBER_MTIME}),
+        ("etc/hosts", b"127.0.0.1 localhost\n", {"mtime": _MEMBER_MTIME}),
+        ("tmp", {"typ": tarfile.DIRTYPE, "mode": 0o1777, "mtime": _MEMBER_MTIME}),
+        ("dev", {"typ": tarfile.DIRTYPE, "mode": 0o755, "mtime": _MEMBER_MTIME}),
+    )
+    assert tree["etc/hosts"].mtime == _MEMBER_MTIME
+    # Seeding /tmp's file and /etc's stubs leaves their directories' mtimes.
+    for name in ("etc", "tmp", "dev"):
+        assert tree[name].mtime == _MEMBER_MTIME
+    assert tree["etc/hostname"].mtime == 0
+    assert tree["dev/pts"].mtime == 0
+
+
+def test_pull_fixes_parents_a_layer_implies(tmp_path):
+    """A layer that ships app/sub/f.txt and no entries for its parents (ko,
+    rules_oci, crane) gets parents with mtime 0 and mode 0755."""
+    tree = _pull_members(tmp_path, ("app/sub/f.txt", b"f", {"mtime": _MEMBER_MTIME}))
+    for name in ("app", "app/sub"):
+        assert tree[name].mtime == 0
+        assert tree[name].mode == 0o755
+    assert tree["app/sub/f.txt"].mtime == _MEMBER_MTIME
+
+
+def test_a_later_directory_entry_sets_an_implied_parent(tmp_path):
+    """An implied parent a later layer ships an entry for takes its times."""
+    tree = _build_layers(
+        tmp_path,
+        [("app/f.txt", b"f", {})],
+        [("app", {"typ": tarfile.DIRTYPE, "mode": 0o750, "mtime": _MEMBER_MTIME})],
+    )
+    assert tree["app"].mtime == _MEMBER_MTIME
+    assert tree["app"].mode == 0o750
+
+
+def test_later_layers_keep_the_mtimes_of_directories_they_change(tmp_path):
+    """A layer that adds to or whites out entries in a directory without an
+    entry for the directory leaves its mtime as the earlier layer set it."""
+    dir_entry = {"typ": tarfile.DIRTYPE, "mode": 0o755, "mtime": _MEMBER_MTIME}
+    tree = _build_layers(
+        tmp_path,
+        [
+            ("opt", dir_entry),
+            ("opt/data", dir_entry),
+            ("opt/data/old.txt", b"o", {}),
+            ("opt/cache", dir_entry),
+            ("opt/cache/stale.txt", b"s", {}),
+        ],
+        [
+            ("opt/data/new.txt", b"n", {}),
+            ("opt/data/.wh.old.txt", {}),
+            ("opt/cache/.wh..wh..opq", {}),
+            ("opt/fresh", b"f", {}),
+        ],
+    )
+    assert "opt/data/old.txt" not in tree and "opt/data/new.txt" in tree
+    assert "opt/cache/stale.txt" not in tree
+    for name in ("opt", "opt/data", "opt/cache"):
+        assert tree[name].mtime == _MEMBER_MTIME
+
+
+def test_pull_modes_do_not_depend_on_the_umask(tmp_path):
+    """Under a restrictive umask, the directories and stubs Ray creates are
+    still 0755 and 0644: the image, and its superblock, stay the same."""
+    old_umask = os.umask(0o077)
+    try:
+        tree = _pull_members(tmp_path, ("app/f.txt", b"f", {}))
+    finally:
+        os.umask(old_umask)
+    for name in (".", "app", "etc", "proc", "dev", "dev/pts", "run"):
+        assert tree[name].mode == 0o755, name
+    for name in ("etc/resolv.conf", "etc/hosts", "etc/hostname"):
+        assert tree[name].mode == 0o644, name
+    assert tree["tmp"].mode == 0o1777
+    assert tree["tmp/.ray-sandbox-keep"].mode == 0o644
+
+
+def test_marker_names_the_mkfs_erofs_version(tmp_path, fake_mkfs_erofs):
+    """Cached images record the mkfs.erofs version, so a different version
+    rebuilds them: erofs-utils releases lay out the same tree differently."""
+    marker = json.loads(expected_extract_marker())
+    assert marker["mkfs_erofs"] == "mkfs.erofs 1.8.5-fake"
+
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = str(tmp_path / "images")
+    image_dir = pull_and_extract_container_image(str(local_tar), images_dir=images_dir)
+    marker_path = os.path.join(image_dir, ".extracted")
+    assert open(marker_path, encoding="utf-8").read() == expected_extract_marker()
+
+    script = fake_mkfs_erofs / "mkfs.erofs"
+    script.write_text(script.read_text().replace("1.8.5-fake", "1.9.1-fake"))
+    image_utils._mkfs_erofs_version.cache_clear()
+    try:
+        assert json.loads(expected_extract_marker())["mkfs_erofs"] == (
+            "mkfs.erofs 1.9.1-fake"
+        )
+        (fake_mkfs_erofs / "mkfs.args").unlink()
+        pull_and_extract_container_image(str(local_tar), images_dir=images_dir)
+        # The cache entry of the old version was rebuilt.
+        assert (fake_mkfs_erofs / "mkfs.args").exists()
+        assert open(marker_path, encoding="utf-8").read() == expected_extract_marker()
+    finally:
+        image_utils._mkfs_erofs_version.cache_clear()
+
+
 def _tar_members(path):
     """Each member of a tar as (name, type, mode, owner, mtime, link, sha256)."""
     with tarfile.open(path) as tar:
@@ -1103,7 +1271,7 @@ def test_build_erofs_image_stops_mkfs_when_reading_the_tree_fails(
     tree.mkdir()
     (tree / "f").write_bytes(b"x")
 
-    def failing_filter(ownership):
+    def failing_filter(ownership, created=None):
         def _filter(ti):
             raise OSError("read error")
 
