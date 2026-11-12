@@ -3,6 +3,7 @@ import io
 import json
 import sys
 import tarfile
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from unittest import mock
@@ -100,11 +101,15 @@ def test_docker_run_args_keep_trivy_contained():
     (target,) = targets(("ray", "3.12"))
     target.digest = "sha256:d1"
     trivy = ContainedTrivy("base@sha256:b")
-    args = trivy.docker_run_args(target)
+    args = trivy.docker_run_args(target, "trivy-scan-x-scan-0")
     assert args == [
         "docker",
         "run",
         "--rm",
+        "--name",
+        "trivy-scan-x-scan-0",
+        "--label",
+        "ray-trivy-scan=1",
         "--network",
         "none",
         "--user",
@@ -238,11 +243,20 @@ def test_scan_group_writes_the_report_contract_and_isolates_bad_refs(tmp_path: P
     assert status["trivy_db"] == {"db": {"blob": "db"}, "java_db": {"blob": "java_db"}}
 
     commands = docker.commands()
-    assert commands[:3] == [
+    creates = [
+        c for c in commands if c.startswith(("docker volume create", "docker create"))
+    ]
+    assert creates == [
         "docker volume create",
         "docker volume create",
         "docker create --name",
     ]
+    for call in docker.calls:
+        if call[:3] == ["docker", "volume", "create"] or call[:2] == [
+            "docker",
+            "create",
+        ]:
+            assert "ray-trivy-scan=1" in call
     assert commands.count("docker run --rm") == 1
     # The containers and volumes are removed afterwards.
     assert commands[-2:] == ["docker rm -f", "docker volume rm"]
@@ -484,6 +498,90 @@ def test_an_image_without_a_result_is_never_reported_scanned(tmp_path: Path):
         results = run_group(tmp_path, group, docker, {})
     (record,) = statuses(results).values()
     assert record["status"] == "error"
+
+
+def test_a_failed_setup_removes_what_it_created():
+    docker = FakeDocker()
+    original = docker.__call__
+
+    def failing(args, check=True):
+        if args[:2] == ["docker", "create"]:
+            docker.calls.append(list(args))
+            raise ScanError("docker create failed")
+        return original(args, check)
+
+    with mock.patch.object(scan_images, "_run", failing):
+        with pytest.raises(ScanError):
+            with ContainedTrivy("base"):
+                pass
+    removed = [c for c in docker.calls if c[:3] == ["docker", "volume", "rm"]]
+    assert removed and "-f" in removed[0]
+
+
+def test_a_cancelled_job_still_cleans_up_and_writes_statuses(tmp_path: Path):
+    group = targets(("ray", "3.11"), ("ray", "3.12"))
+    docker = FakeDocker()
+
+    def cancelled(self, target, dest):
+        scan_images._exit_on_sigterm(15, None)
+
+    with mock.patch.object(scan_images.ContainedTrivy, "scan", cancelled):
+        with pytest.raises(SystemExit) as exit_info:
+            run_group(tmp_path, group, docker, {})
+    assert exit_info.value.code == 143
+    for record in statuses(tmp_path / "results").values():
+        assert record["status"] == "error"
+        assert record["error"] == "scan did not complete"
+    assert docker.commands()[-2:] == ["docker rm -f", "docker volume rm"]
+
+
+def test_cleanup_removes_named_scan_containers(tmp_path: Path):
+    group = targets(("ray", "3.11"), ("ray", "3.12"))
+    docker = FakeDocker()
+    run_group(tmp_path, group, docker, {})
+    runs = [c for c in docker.calls if c[:2] == ["docker", "run"]]
+    names = [c[c.index("--name") + 1] for c in runs]
+    assert len(set(names)) == 2
+    (rm,) = [c for c in docker.calls if c[:3] == ["docker", "rm", "-f"]]
+    assert set(names) <= set(rm)
+
+
+def test_stale_leftovers_from_earlier_jobs_are_removed():
+    now = datetime(2026, 11, 12, 12, 0, 0)
+    listings = {
+        ("docker", "ps"): "trivy-scan-old-loader\ntrivy-scan-new-loader\n",
+        ("docker", "volume", "ls"): (
+            "trivy-scan-old-data\ntrivy-scan-new-data\ntrivy-scan-new-local-data\n"
+        ),
+    }
+    created = {
+        "trivy-scan-old-loader": "2026-11-12T01:00:00.123456789Z",
+        "trivy-scan-new-loader": "2026-11-12T11:30:00.5Z",
+        "trivy-scan-old-data": "2026-11-11T23:00:00Z",
+        "trivy-scan-new-data": "2026-11-12T11:30:00Z",
+        # Volumes report local time with an offset: 03:30-08:00 is 11:30 UTC.
+        "trivy-scan-new-local-data": "2026-11-12T03:30:00-08:00",
+    }
+    calls = []
+
+    def run(args, check=True):
+        args = list(args)
+        calls.append(args)
+        if args[:2] == ["docker", "ps"]:
+            return listings[("docker", "ps")]
+        if args[:3] == ["docker", "volume", "ls"]:
+            return listings[("docker", "volume", "ls")]
+        if "inspect" in args:
+            return created[args[-1]] + "\n"
+        return ""
+
+    with mock.patch.object(scan_images, "_run", run):
+        scan_images._prune_stale(now)
+    removed = [c[-1] for c in calls if "rm" in c]
+    assert removed == ["trivy-scan-old-loader", "trivy-scan-old-data"]
+    assert all(
+        "label=ray-trivy-scan=1" in " ".join(c) for c in calls if "ls" in c or "ps" in c
+    )
 
 
 if __name__ == "__main__":

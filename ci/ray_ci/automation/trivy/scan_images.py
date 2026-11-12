@@ -26,13 +26,16 @@ Example:
 import gzip
 import json
 import logging
+import re
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
 import tempfile
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
@@ -62,6 +65,11 @@ BASE_IMAGE = (
 TRIVY_RUNFILE = "trivy_linux_x86_64/trivy"
 IGNORE_RUNFILE = "io_ray/ci/ray_ci/automation/trivy/ignore/{}.trivyignore.yaml"
 SCAN_USER = "65534:65534"
+# Everything the scan creates on the docker host carries this label.
+LABEL = "ray-trivy-scan=1"
+# Leftovers older than this come from jobs that died without cleaning up;
+# younger ones may belong to a job still running on the same host.
+STALE_AFTER = timedelta(hours=6)
 SCAN_TIMEOUT = "30m"
 # Single-platform manifests; an index would let Trivy silently pick one.
 IMAGE_MANIFEST_TYPES = frozenset(
@@ -285,33 +293,44 @@ class ContainedTrivy:
 
     def __init__(self, base_image: str) -> None:
         self.base_image = base_image
-        prefix = f"trivy-scan-{uuid.uuid4().hex[:12]}"
-        self.data = f"{prefix}-data"
-        self.work = f"{prefix}-work"
-        self.loader = f"{prefix}-loader"
+        self.prefix = f"trivy-scan-{uuid.uuid4().hex[:12]}"
+        self.data = f"{self.prefix}-data"
+        self.work = f"{self.prefix}-work"
+        self.loader = f"{self.prefix}-loader"
+        self.scans: list[str] = []
 
     def __enter__(self) -> "ContainedTrivy":
-        _run(["docker", "volume", "create", self.data])
-        _run(["docker", "volume", "create", self.work])
-        _run(
-            [
-                "docker",
-                "create",
-                "--name",
-                self.loader,
-                "-v",
-                f"{self.data}:/data",
-                "-v",
-                f"{self.work}:/work",
-                self.base_image,
-                # Never started; distroless has no default command to fall back on.
-                "/data/trivy",
-            ]
-        )
+        _prune_stale()
+        try:
+            _run(["docker", "volume", "create", "--label", LABEL, self.data])
+            _run(["docker", "volume", "create", "--label", LABEL, self.work])
+            _run(
+                [
+                    "docker",
+                    "create",
+                    "--name",
+                    self.loader,
+                    "--label",
+                    LABEL,
+                    "-v",
+                    f"{self.data}:/data",
+                    "-v",
+                    f"{self.work}:/work",
+                    self.base_image,
+                    # Never started; distroless has no default command to fall back on.
+                    "/data/trivy",
+                ]
+            )
+        except BaseException:
+            # __exit__ doesn't run when __enter__ raises.
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, *exc: object) -> None:
-        _run(["docker", "rm", "-f", self.loader], check=False)
+        # rm -f also stops a scan container left running by an interrupted
+        # `docker run`; killing the CLI doesn't stop the container.
+        _run(["docker", "rm", "-f", self.loader, *self.scans], check=False)
         _run(["docker", "volume", "rm", "-f", self.data, self.work], check=False)
 
     def load(self, staging: Path) -> None:
@@ -319,11 +338,15 @@ class ContainedTrivy:
         _run(["docker", "cp", f"{staging / 'data'}/.", f"{self.loader}:/data"])
         _run(["docker", "cp", f"{staging / 'work'}/.", f"{self.loader}:/work"])
 
-    def docker_run_args(self, target: Target) -> list[str]:
+    def docker_run_args(self, target: Target, name: str) -> list[str]:
         return [
             "docker",
             "run",
             "--rm",
+            "--name",
+            name,
+            "--label",
+            LABEL,
             "--network",
             "none",
             "--user",
@@ -354,8 +377,58 @@ class ContainedTrivy:
     def scan(self, target: Target, dest: Path) -> None:
         """Scan one image and copy its JSON result to ``dest``."""
         logger.info(f"Scanning {target.name} ({target.digest})")
-        _run(self.docker_run_args(target))
+        name = f"{self.prefix}-scan-{len(self.scans)}"
+        self.scans.append(name)
+        _run(self.docker_run_args(target, name))
         _run(["docker", "cp", f"{self.loader}:/work/out/{target.name}.json", str(dest)])
+
+
+def _created(kind: str, name: str) -> Optional[datetime]:
+    """When a container or volume was created, as naive UTC."""
+    field_name = "{{.CreatedAt}}" if kind == "volume" else "{{.Created}}"
+    out = _run(["docker", kind, "inspect", "--format", field_name, name], check=False)
+    # Containers report UTC ("...Z", nanoseconds); volumes report local time
+    # with an offset. Drop the fraction, which fromisoformat may not parse.
+    match = re.match(
+        r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)?",
+        out.strip(),
+    )
+    if not match:
+        return None
+    offset = match.group(2) if match.group(2) not in (None, "Z") else "+00:00"
+    created = datetime.fromisoformat(match.group(1) + offset)
+    return created.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _prune_stale(now: Optional[datetime] = None) -> None:
+    """Remove containers and volumes that earlier jobs left behind, e.g.
+    after being killed. Containers go first, so their volumes are free."""
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    for kind, listing, remove in (
+        ("container", ["docker", "ps", "-a"], ["docker", "rm", "-f"]),
+        ("volume", ["docker", "volume", "ls"], ["docker", "volume", "rm", "-f"]),
+    ):
+        names = _run(
+            [
+                *listing,
+                "--filter",
+                f"label={LABEL}",
+                "--format",
+                "{{.Name}}" if kind == "volume" else "{{.Names}}",
+            ],
+            check=False,
+        ).split()
+        for name in names:
+            created = _created(kind, name)
+            if created and now - created > STALE_AFTER:
+                logger.info(f"Removing stale {kind} {name} (created {created})")
+                _run([*remove, name], check=False)
+
+
+def _exit_on_sigterm(signum: int, frame: object) -> None:
+    """Cancelled and timed-out jobs get SIGTERM. Exiting normally lets the
+    cleanup and status writing run, which the default handler would skip."""
+    sys.exit(128 + signum)
 
 
 def _make_world_readable(root: Path) -> None:
@@ -522,6 +595,7 @@ def main(
     pull_request: str,
     base_image: str,
 ) -> None:
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
     targets = build_targets(
         [parse_image(spec) for spec in images],
         platform,
