@@ -205,6 +205,7 @@ def _decode_partitions(
         return [Record() for _ in spec_ids]
 
     from pyiceberg.partitioning import _to_partition_representation
+    from pyiceberg.types import UUIDType
 
     names = _child_names(fields)
     specs: Dict[int, "PartitionSpec"] = table_metadata.specs()
@@ -222,13 +223,12 @@ def _decode_partitions(
         values = []
         for field in specs[spec_id].fields:
             value = child_values[names[field.field_id]][row]
-            values.append(
-                None
-                if value is None
-                else _to_partition_representation(
-                    fields[field.field_id].field_type, value
-                )
-            )
+            field_type = fields[field.field_id].field_type
+            # A UUID child already reads back as the ``uuid.UUID`` PyIceberg
+            # plans, which the mapper would turn into bytes.
+            if value is not None and not isinstance(field_type, UUIDType):
+                value = _to_partition_representation(field_type, value)
+            values.append(value)
         records.append(Record(*values))
     return records
 

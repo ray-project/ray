@@ -1,3 +1,4 @@
+import datetime
 import decimal
 import os
 import random
@@ -3385,7 +3386,7 @@ class TestIcebergDatasourceV2:
                     "us-west-2",
                     19723,
                     decimal.Decimal("1.25"),
-                    uuid.UUID(int=7).bytes,
+                    uuid.UUID(int=7),
                     b"\x01\x02",
                     3,
                 ),
@@ -3405,6 +3406,138 @@ class TestIcebergDatasourceV2:
             assert [type(v) for v in copied.file.partition] == [
                 type(v) for v in original.file.partition
             ]
+
+    # One identity-partition column per Iceberg primitive type, each with a
+    # null so one file carries a null partition value.
+    _IDENTITY_PARTITION_CASES = [
+        (pyi_types.BooleanType(), pa.array([True, False, None])),
+        (pyi_types.IntegerType(), pa.array([7, -1, None], pa.int32())),
+        (pyi_types.LongType(), pa.array([2**40, -1, None], pa.int64())),
+        (pyi_types.FloatType(), pa.array([1.5, -0.25, None], pa.float32())),
+        (pyi_types.DoubleType(), pa.array([1.5, -0.25, None], pa.float64())),
+        (
+            pyi_types.DecimalType(9, 2),
+            pa.array(
+                [decimal.Decimal("1.25"), decimal.Decimal("-0.01"), None],
+                pa.decimal128(9, 2),
+            ),
+        ),
+        (
+            pyi_types.DateType(),
+            pa.array([datetime.date(2024, 1, 1), datetime.date(1969, 12, 31), None]),
+        ),
+        (
+            pyi_types.TimeType(),
+            pa.array(
+                [datetime.time(12, 30), datetime.time(0, 0, 0, 1), None],
+                pa.time64("us"),
+            ),
+        ),
+        (
+            pyi_types.TimestampType(),
+            pa.array(
+                [
+                    datetime.datetime(2024, 1, 1, 12),
+                    datetime.datetime(1969, 12, 31),
+                    None,
+                ],
+                pa.timestamp("us"),
+            ),
+        ),
+        (
+            pyi_types.TimestamptzType(),
+            pa.array(
+                [
+                    datetime.datetime(2024, 1, 1, 12),
+                    datetime.datetime(1969, 12, 31),
+                    None,
+                ],
+                pa.timestamp("us", tz="UTC"),
+            ),
+        ),
+        (pyi_types.StringType(), pa.array(["us-west-2", "", None])),
+        # PyIceberg cannot write a pa.uuid() partition column, so the UUIDs go
+        # in as their 16 bytes.
+        (
+            pyi_types.UUIDType(),
+            pa.array(
+                [uuid.UUID(int=7).bytes, uuid.UUID(int=8).bytes, None], pa.binary(16)
+            ),
+        ),
+        (pyi_types.FixedType(4), pa.array([b"abcd", b"\x00" * 4, None], pa.binary(4))),
+        (pyi_types.BinaryType(), pa.array([b"\x01\x02", b"", None])),
+    ]
+
+    @pytest.mark.parametrize(
+        "field_type, column",
+        _IDENTITY_PARTITION_CASES,
+        ids=[str(field_type) for field_type, _ in _IDENTITY_PARTITION_CASES],
+    )
+    def test_real_table_partition_round_trip(self, tmp_path, field_type, column):
+        """Partition values PyIceberg plans from a real table survive the manifest.
+
+        The tests above build partition records by hand, so they only check our
+        guess at the Python types PyIceberg uses. Here PyIceberg writes the
+        table and plans it, and the rebuilt tasks must carry the same partition
+        values and read the same rows.
+        """
+        if isinstance(field_type, pyi_types.UUIDType) and (
+            get_pyarrow_version() < parse_version("18.0.0")
+        ):
+            pytest.skip(
+                "PyIceberg maps a UUID column to pa.uuid(), added in pyarrow 18"
+            )
+
+        from pyiceberg.io.pyarrow import ArrowScan
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        catalog = SqlCatalog(
+            "round_trip",
+            uri=f"sqlite:///{tmp_path}/catalog.db",
+            warehouse=f"file://{tmp_path}",
+        )
+        catalog.create_namespace("db")
+        table = catalog.create_table(
+            "db.t",
+            schema=pyi_schema.Schema(
+                pyi_types.NestedField(1, "id", pyi_types.IntegerType(), required=False),
+                pyi_types.NestedField(2, "p", field_type, required=False),
+            ),
+            partition_spec=PartitionSpec(
+                PartitionField(2, 1000, IdentityTransform(), "p")
+            ),
+        )
+        table.append(
+            pa.table({"id": pa.array(range(len(column)), pa.int32()), "p": column})
+        )
+        tasks = list(table.scan().plan_files())
+        assert len(tasks) == len(column)
+
+        rebuilt = list(
+            scan_tasks_from_manifest(
+                manifest_from_scan_tasks(tasks, table.metadata), table.metadata
+            )
+        )
+        for original, copied in zip(tasks, rebuilt):
+            assert copied.file.partition == original.file.partition
+            assert [type(v) for v in copied.file.partition] == [
+                type(v) for v in original.file.partition
+            ]
+
+        def read(scan_tasks):
+            return ArrowScan(
+                table_metadata=table.metadata,
+                io=table.io,
+                projected_schema=table.schema(),
+                row_filter=pyi_expr.AlwaysTrue(),
+                case_sensitive=True,
+            ).to_table(scan_tasks)
+
+        assert read(rebuilt).equals(read(tasks))
 
     def test_partition_column_survives_partition_evolution(self):
         """Files written under different specs decode against their own spec.
