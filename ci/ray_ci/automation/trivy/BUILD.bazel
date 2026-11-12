@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
-load(":trivy_versions.bzl", "TRIVY_SHA256", "TRIVY_SIGNER_IDENTITY", "TRIVY_VERSION")
+load("//ci/ray_ci/automation/trivy/pin:trivy_versions.bzl", "TRIVY_SHA256", "TRIVY_SIGNER_IDENTITY", "TRIVY_VERSION")
 
 # The pin as data, so the scan tools record exactly what they ran.
 write_file(
@@ -122,5 +122,27 @@ py_test(
         ":trivy_report",
         ci_require("click"),
         ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_workspace_contexts",
+    size = "small",
+    srcs = ["test_workspace_contexts.py"],
+    data = [
+        "//:WORKSPACE",
+        "//:ci/docker/ray-core.wanda.yaml",
+        "//:ci/docker/ray-cpp-core.wanda.yaml",
+        "//:ci/docker/ray-java.wanda.yaml",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("bazel-runfiles"),
+        ci_require("pytest"),
+        ci_require("pyyaml"),
     ],
 )

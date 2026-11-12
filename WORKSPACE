@@ -201,7 +201,7 @@ filegroup(
 )
 
 # The Trivy pin lives in its own file so its bumps get their own review.
-load("//ci/ray_ci/automation/trivy:trivy_versions.bzl", "trivy_repositories")
+load("//ci/ray_ci/automation/trivy/pin:trivy_versions.bzl", "trivy_repositories")
 
 trivy_repositories()
 
