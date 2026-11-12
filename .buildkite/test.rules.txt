@@ -166,7 +166,7 @@ python/ray/data/
 ci/docker/data.build.Dockerfile
 ci/docker/data.build.wanda.yaml
 ci/docker/datan.build.wanda.yaml
-ci/docker/data9.build.wanda.yaml
+ci/docker/data23.build.wanda.yaml
 ci/docker/datal.build.wanda.yaml
 @ data
 ;
@@ -676,6 +676,11 @@ ci/ray_ci/windows/
 # routed to 'doc_api' alone by the rule near the top of this file.
 ci/ray_ci/doc/
 @ doc_api tools
+;
+
+# Service runners must exercise their integration suite as well as CI unit tests.
+ci/ray_ci/data/
+@ data tools
 ;
 
 ci/pipeline/

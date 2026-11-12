@@ -830,6 +830,22 @@
           runtime_env:
             RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "0"
 
+- name: "shuffle_batches.fastpath_{{take_enabled}}"
+  python: "3.11"
+  frequency: manual
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_1_cpu_compute.yaml
+    byod:
+      runtime_env:
+        RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "{{take_enabled}}"
+  matrix:
+    setup:
+      take_enabled: ["1", "0"]
+  run:
+    timeout: 7200
+    script: python benchmark_shuffle_batches.py --repeats=3
+
 - name: "iter_batches_{{format}}"
   python: "3.11"
   cluster:
@@ -1122,6 +1138,9 @@
         # The dataset uses the legacy pickled tensor type. byod.Dockerfile sets
         # this for the old base images, but ray-torch images don't go through it.
         RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
+        # The pinned pyarrow 19.0 is below Ray Data's supported minimum; skip
+        # the import-time floor check for this intentionally-old environment.
+        RAY_DISABLE_PYARROW_VERSION_CHECK: "1"
     cluster_compute: fixed_size_gpu_compute.yaml
 
   run:
@@ -1151,6 +1170,9 @@
         # The dataset uses the legacy pickled tensor type. byod.Dockerfile sets
         # this for the old base images, but ray-torch images don't go through it.
         RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
+        # The pinned pyarrow 19.0 is below Ray Data's supported minimum; skip
+        # the import-time floor check for this intentionally-old environment.
+        RAY_DISABLE_PYARROW_VERSION_CHECK: "1"
     cluster_compute: fixed_size_gpu_compute.yaml
 
   run:

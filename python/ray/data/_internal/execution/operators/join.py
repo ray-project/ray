@@ -4,10 +4,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
-    MIN_PYARROW_VERSION_VIEW_TYPES,
-)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -19,7 +15,6 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 )
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block, Schema
 from ray.data.context import DataContext
@@ -674,10 +669,6 @@ class JoinOperator(HashShufflingOperatorBase):
         """
         import pyarrow as pa
 
-        pyarrow_version = get_pyarrow_version()
-        is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
-        is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
-
         return (
             pa.types.is_map(dtype)
             or pa.types.is_union(dtype)
@@ -686,15 +677,10 @@ class JoinOperator(HashShufflingOperatorBase):
             or pa.types.is_null(dtype)
             or pa.types.is_large_list(dtype)
             or pa.types.is_fixed_size_list(dtype)
-            or (is_v12 and pa.types.is_run_end_encoded(dtype))
-            or (
-                is_v16
-                and (
-                    pa.types.is_binary_view(dtype)
-                    or pa.types.is_string_view(dtype)
-                    or pa.types.is_list_view(dtype)
-                )
-            )
+            or pa.types.is_run_end_encoded(dtype)
+            or pa.types.is_binary_view(dtype)
+            or pa.types.is_string_view(dtype)
+            or pa.types.is_list_view(dtype)
         )
 
     def _get_operator_num_cpus_override(self) -> float:

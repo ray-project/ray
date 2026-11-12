@@ -32,7 +32,11 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.execution.interfaces.resource_request import (
+    execution_resource_dict,
+)
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import (
@@ -47,6 +51,7 @@ from ray.exceptions import ObjectLostError
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -73,9 +78,11 @@ class OpTask(ABC):
         self,
         task_index: int,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         self._task_index: int = task_index
         self._task_resource_bundle: Optional[ExecutionResources] = task_resource_bundle
+        self._task_resource_request: Optional[Dict[str, float]] = task_resource_request
 
     def task_index(self) -> int:
         """Return the index of the task."""
@@ -83,6 +90,9 @@ class OpTask(ABC):
 
     def get_requested_resource_bundle(self) -> Optional[ExecutionResources]:
         return self._task_resource_bundle
+
+    def get_requested_resource_request(self) -> Optional[Dict[str, float]]:
+        return self._task_resource_request
 
     @abstractmethod
     def get_waitable(self) -> Waitable:
@@ -180,6 +190,7 @@ class DataOpTask(OpTask):
             [ray.ObjectRef[Block], int], None
         ] = lambda block_ref, object_size: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
         operator_name: str = "Unknown",
         lineage_task_id: Optional[str] = None,
         reconstruction_plan_ids: FrozenSet[str] = frozenset(),
@@ -203,6 +214,7 @@ class DataOpTask(OpTask):
                 size is resolved (before the pair is emitted/deferred). Exposed
                 as a seam for testing the metadata-fetch branches.
             task_resource_bundle: The execution resources of this task.
+            task_resource_request: The exact scheduling resource request for this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
             lineage_task_id: Logical Ray Data ID of this task, stable across lineage
@@ -211,7 +223,7 @@ class DataOpTask(OpTask):
                 for a fresh attempt. Carried here because the output and completion
                 callbacks need them after submission.
         """
-        super().__init__(task_index, task_resource_bundle)
+        super().__init__(task_index, task_resource_bundle, task_resource_request)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
@@ -585,6 +597,7 @@ class MetadataOpTask(OpTask):
         object_ref: ray.ObjectRef,
         task_done_callback: Callable[[], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         """Initialize a metadata-only OpTask.
 
@@ -593,8 +606,10 @@ class MetadataOpTask(OpTask):
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
             task_resource_bundle: Optional resource bundle reserved for this task.
+            task_resource_request: Optional exact scheduling resource request for
+                this task, as a resource dict.
         """
-        super().__init__(task_index, task_resource_bundle)
+        super().__init__(task_index, task_resource_bundle, task_resource_request)
         self._object_ref = object_ref
         self._task_done_callback = task_done_callback
 
@@ -676,6 +691,7 @@ class PhysicalOperator(Operator):
         self._started = False
         self._shutdown = False
         self._lineage_tracker: Optional["LineageTracker"] = None
+        self._resource_bank: Optional["ResourceBankBase"] = None
         self._in_task_submission_backpressure = False
         self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
@@ -686,6 +702,7 @@ class PhysicalOperator(Operator):
         # The LogicalOperator(s) which were translated to create this PhysicalOperator.
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
+        self._output_partitioning: Optional[HashPartitioning] = None
         self._data_context = data_context
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
@@ -733,6 +750,14 @@ class PhysicalOperator(Operator):
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
         return self._output_dependencies
+
+    @property
+    def output_partitioning(self) -> Optional[HashPartitioning]:
+        """How this operator's output is hash-partitioned, or ``None`` if unknown.
+
+        Lets EliminateAggregateShuffle skip a redundant group-by shuffle.
+        """
+        return self._output_partitioning
 
     def post_order_iter(self) -> Iterator["PhysicalOperator"]:
         return super().post_order_iter()  # type: ignore
@@ -795,6 +820,7 @@ class PhysicalOperator(Operator):
         # The transformed node should have a distinct identity and metrics owner.
         target._id = str(uuid.uuid4())
         target._metrics = OpRuntimeMetrics(target)
+        target._resource_bank = None
         # The copied node belongs to a new transformed DAG. Reverse edges are
         # rewired by parents, so avoid carrying stale downstream references.
         target._output_dependencies = []
@@ -905,6 +931,16 @@ class PhysicalOperator(Operator):
         that are specific to them."""
         return {}
 
+    def get_phase_metrics(self) -> Dict[str, OpRuntimeMetrics]:
+        """Returns runtime metrics for each internal phase of this operator.
+
+        Operators that run several phases behind one operator (e.g. a GPU
+        shuffle's shuffle and finalize stages) override this so each phase
+        whose metrics are not already ``metrics`` is exported alongside it
+        under its own tag. Keys are phase names.
+        """
+        return {}
+
     def _get_logical_args(self) -> Dict[str, Dict[str, Any]]:
         """Return the logical arguments that were translated to create this
         PhysicalOperator."""
@@ -993,6 +1029,7 @@ class PhysicalOperator(Operator):
         options: ExecutionOptions,
         block_ref_counter: BlockRefCounter,
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
         """Called by the executor when execution starts for an operator.
 
@@ -1002,9 +1039,11 @@ class PhysicalOperator(Operator):
                 object-store memory.
             lineage_tracker: The executor-wide lineage metadata tracker, which
                 helps trigger lineage reconstruction on object loss.
+            resource_bank: Optional per-executor ResourceBankBase instance.
         """
         self._block_ref_counter = block_ref_counter
         self._lineage_tracker = lineage_tracker
+        self._resource_bank = resource_bank
         self._started = True
 
     def can_add_input(self) -> bool:
@@ -1241,6 +1280,33 @@ class PhysicalOperator(Operator):
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
+
+    def _get_base_resource_requests(self) -> List[Dict[str, float]]:
+        """Return the exact requests of this operator's in-flight tasks/actors.
+
+        Falls back to the task's logical bundle, which loses custom resources but
+        keeps the standard ones.
+        """
+        requests = []
+        for task in self.get_active_tasks():
+            request = task.get_requested_resource_request()
+            if request:
+                requests.append(request)
+                continue
+            resources = task.get_requested_resource_bundle()
+            if resources is not None and not resources.is_zero():
+                requests.append(execution_resource_dict(resources))
+        return requests
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        """Return the exact resource request of every in-flight task or actor.
+
+        Each entry is the shape one worker needs to be scheduled, custom resources
+        included. Object store memory is not added: it is node-level usage, and
+        folding it in could make a shape unhostable. It is still reported if a
+        task's own remote args ask for it.
+        """
+        return self._get_base_resource_requests()
 
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""

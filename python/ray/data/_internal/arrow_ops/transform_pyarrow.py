@@ -6,12 +6,10 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Un
 
 import numpy as np
 import pyarrow
-from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
 from ray._private.utils import INT32_MAX
 from ray.data._internal.tensor_extensions.arrow import (
-    MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     get_arrow_extension_fixed_shape_tensor_types,
     get_arrow_extension_tensor_types,
     native_tensor_array_to_numpy,
@@ -25,20 +23,11 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import (
     _concatenate_extension_column,
     _is_multi_chunk_extension_column,
     _is_pa_extension_type,
 )
-
-# Minimum version support {String,List,Binary}View types
-MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
-MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES = parse_version("12.0.0")
-MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
-
-PYARROW_VERSION = get_pyarrow_version()
-
 
 # pyarrow.Table.slice is slow when the table has many chunks
 # so we combine chunks into a single one to make slice faster
@@ -616,10 +605,6 @@ def _reconcile_field(
 def _unify_schemas_pyarrow(
     schemas: List["pyarrow.Schema"], promote_types: bool = False
 ) -> "pyarrow.Schema":
-    """Wrapper for pyarrow.unify_schemas with version compatibility."""
-    if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
-        return pyarrow.unify_schemas(schemas)
-
     promote_options = "permissive" if promote_types else "default"
     return pyarrow.unify_schemas(schemas, promote_options=promote_options)
 
@@ -669,10 +654,11 @@ def unify_schemas(
     # Deduplicate schemas. Calling this before PyArrow's unify_schemas is more efficient (100x faster).
 
     # Remove metadata for hashability
-    schema_to_compare = schemas[0].remove_metadata()
+    schema_to_compare = schemas[0]
     schemas_to_unify = [schemas[0]]
+
     for schema in schemas[1:]:
-        if not schema.remove_metadata().equals(schema_to_compare):
+        if not schema.equals(schema_to_compare, check_metadata=False):
             schemas_to_unify.append(schema)
 
     pyarrow_exception = None
@@ -803,7 +789,7 @@ def _backfill_missing_fields(
 
     # An all-null nested field infers as ``pa.null()``. Handle it explicitly
     # rather than relying on PyArrow's promote mode (which does unify ``null``
-    # into a struct on pyarrow >= 17, Ray's minimum): without this branch the
+    # into a struct): without this branch the
     # non-struct guard below would reject the column.
     column_type = column.type
     if pa.types.is_null(column_type):
@@ -1200,20 +1186,13 @@ def _concat_cols_via_concat_tables(
     # When concatenating tables we allow type promotions to occur, since
     # no schema enforcement is currently performed, therefore allowing schemas
     # to vary b/w blocks
-
-    # NOTE: Type promotions aren't available in Arrow < 14.0
     subset_blocks = []
     for block in blocks:
         block_cols = set(block.schema.names)
         cols_to_select = [col_name for col_name in col_names if col_name in block_cols]
         subset_blocks.append(block.select(cols_to_select))
-    if get_pyarrow_version() < parse_version("14.0.0"):
-        table = pa.concat_tables(subset_blocks, promote=True)
-    else:
-        arrow_promote_types_mode = "permissive" if promote_types else "default"
-        table = pa.concat_tables(
-            subset_blocks, promote_options=arrow_promote_types_mode
-        )
+    arrow_promote_types_mode = "permissive" if promote_types else "default"
+    table = pa.concat_tables(subset_blocks, promote_options=arrow_promote_types_mode)
     return {col_name: table.column(col_name) for col_name in table.schema.names}
 
 
@@ -1314,6 +1293,11 @@ def concat(
     if len(blocks) == 1:
         return blocks[0]
 
+    # Fast path: skip schema unification when all input schemas match.
+    first_schema = blocks[0].schema
+    if all(block.schema == first_schema for block in blocks):
+        return pa.concat_tables(blocks)
+
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
@@ -1330,10 +1314,6 @@ def concat(
             matched_blocks.append(block)
         else:
             mismatched_blocks.append(block)
-
-    # Fast path: all blocks already share the unified schema.
-    if len(matched_blocks) == len(blocks):
-        return pa.concat_tables(blocks)
 
     if preserve_order is None:
         preserve_order = DataContext.get_current().execution_options.preserve_order
@@ -1521,10 +1501,7 @@ def to_numpy(
                     [row for chunk in numpy_chunks for row in chunk]
                 )
             return np.vstack(numpy_chunks)
-        if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
-            return array.to_numpy(zero_copy_only=zero_copy_only)
-        else:
-            return array.to_numpy()
+        return array.to_numpy(zero_copy_only=zero_copy_only)
     else:
         raise ValueError(
             f"Either of `Array` or `ChunkedArray` was expected, got {type(array)}"
@@ -1680,16 +1657,10 @@ _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES = [
     pyarrow.types.is_list,
     # Modeled as list<struct<key, val>>
     pyarrow.types.is_map,
+    pyarrow.types.is_string_view,
+    pyarrow.types.is_binary_view,
+    pyarrow.types.is_list_view,
 ]
-
-if PYARROW_VERSION > MIN_PYARROW_VERSION_VIEW_TYPES:
-    _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES.extend(
-        [
-            pyarrow.types.is_string_view,
-            pyarrow.types.is_binary_view,
-            pyarrow.types.is_list_view,
-        ]
-    )
 
 
 def _try_combine_chunks_safe(

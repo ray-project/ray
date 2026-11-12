@@ -39,15 +39,19 @@ def cluster():
     _add_node(cluster, worker=False)
     _add_node(cluster)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
+    try:
+        ray.init(address=cluster.address)
+    except Exception:
+        # Prevent the cluster leaking into another test
+        cluster.shutdown()
+        raise
 
     yield cluster
 
     # Detach head_node before cluster.shutdown() and kill its processes
-    # directly afterwards. Otherwise cluster.remove_node(head) refuses if a
-    # daemon thread (e.g. APPO/IMPALA's learner thread) called an
-    # auto-init-wrapped Ray API and re-established global_worker.node after
-    # our ray.shutdown(), leaving port 8265 bound for the next test.
+    # directly afterwards. This is a safety net in case anything re-initialized
+    # Ray after our ray.shutdown() (which makes cluster.remove_node(head)
+    # refuse), so port 8265 is never left bound for the next test.
     ray.shutdown()
     head = cluster.head_node
     cluster.head_node = None
@@ -65,50 +69,54 @@ def _kill_worker_node(cluster):
 
 def _train(cluster, algo, config, iters, preempt_freq):
     """Train loop with periodic node kill/restore and health tracking."""
-    num_runners = config.num_env_runners
-    saw_healthy_drop = False
-    saw_recovery = False
+    try:
+        num_runners = config.num_env_runners
+        saw_healthy_drop = False
+        saw_recovery = False
 
-    for i in range(iters):
-        algo.train()
+        for i in range(iters):
+            algo.train()
 
-        assert algo.env_runner_group.num_remote_env_runners() == num_runners
-        healthy = algo.env_runner_group.num_healthy_remote_workers()
-        assert 0 <= healthy <= num_runners
+            assert algo.env_runner_group.num_remote_env_runners() == num_runners
+            healthy = algo.env_runner_group.num_healthy_remote_workers()
+            assert 0 <= healthy <= num_runners
 
-        if healthy < num_runners:
-            saw_healthy_drop = True
-        if saw_healthy_drop and healthy == num_runners:
-            saw_recovery = True
+            if healthy < num_runners:
+                saw_healthy_drop = True
+            if saw_healthy_drop and healthy == num_runners:
+                saw_recovery = True
 
-        print(
-            f"ITER={i}, healthy={healthy}/{num_runners}, "
-            f"saw_drop={saw_healthy_drop}, saw_recovery={saw_recovery}"
+            print(
+                f"ITER={i}, healthy={healthy}/{num_runners}, "
+                f"saw_drop={saw_healthy_drop}, saw_recovery={saw_recovery}"
+            )
+
+            # Shut down one node every preempt_freq iterations.
+            if i % preempt_freq == 0:
+                _kill_worker_node(cluster)
+
+            # Bring back a previously failed node.
+            elif (i - 1) % preempt_freq == 0:
+                _add_node(cluster)
+
+        # Workers must have gone down at some point.
+        assert saw_healthy_drop, (
+            "Expected healthy worker count to drop after node kill, "
+            "but it never did."
         )
-
-        # Shut down one node every preempt_freq iterations.
-        if i % preempt_freq == 0:
-            _kill_worker_node(cluster)
-
-        # Bring back a previously failed node.
-        elif (i - 1) % preempt_freq == 0:
-            _add_node(cluster)
-
-    # Workers must have gone down at some point.
-    assert saw_healthy_drop, (
-        "Expected healthy worker count to drop after node kill, " "but it never did."
-    )
-    # If restart is enabled, workers must have come back.
-    if config.restart_failed_env_runners:
-        assert saw_recovery, (
-            "Expected workers to recover after node restore "
-            "(restart_failed_env_runners=True), but they never did."
-        )
-    # If restart is disabled, workers must NOT have come back.
-    if not config.restart_failed_env_runners:
-        assert (
-            not saw_recovery
-        ), "Workers recovered despite restart_failed_env_runners=False."
+        # If restart is enabled, workers must have come back.
+        if config.restart_failed_env_runners:
+            assert saw_recovery, (
+                "Expected workers to recover after node restore "
+                "(restart_failed_env_runners=True), but they never did."
+            )
+        # If restart is disabled, workers must NOT have come back.
+        if not config.restart_failed_env_runners:
+            assert (
+                not saw_recovery
+            ), "Workers recovered despite restart_failed_env_runners=False."
+    finally:
+        algo.stop()
 
 
 def test_node_failure_ignore(cluster):
