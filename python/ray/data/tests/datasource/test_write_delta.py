@@ -16,11 +16,9 @@ from typing import Any, Callable, Dict, List, Optional
 from unittest import mock
 
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data import SaveMode
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.catalog_test_utils import FakeCatalog
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.delta_test_utils import write_column_mapped_table
@@ -31,17 +29,10 @@ try:
 except ImportError:
     _deltalake_check = None
 
-_pa_version = get_pyarrow_version()
-pytestmark = [
-    pytest.mark.skipif(
-        _deltalake_check is None,
-        reason="Missing optional dependency: pip install deltalake",
-    ),
-    pytest.mark.skipif(
-        _pa_version is None or _pa_version < parse_version("15.0.0"),
-        reason="deltalake requires pyarrow >= 15.0",
-    ),
-]
+pytestmark = pytest.mark.skipif(
+    _deltalake_check is None,
+    reason="Missing optional dependency: pip install deltalake",
+)
 
 
 @pytest.fixture
@@ -990,13 +981,6 @@ def test_append_nested_fields_evolves_schema(temp_delta_path):
         == base.to_pylist() + incoming.to_pylist()
     )
 
-    # Arrow < 19 cannot fill missing struct fields when reading old files.
-    # The schema and committed data are checked above on every version.
-    # https://github.com/apache/arrow/issues/44555
-    assert _pa_version is not None
-    if _pa_version < parse_version("19.0.0"):
-        return
-
     out = sorted(_read_all(temp_delta_path), key=lambda row: row["id"])
     assert out == [
         {
@@ -1072,14 +1056,6 @@ def test_append_map_nested_fields(temp_delta_path, side, schema_mode):
         )
         == base.to_pylist() + incoming.to_pylist()
     )
-
-    # Reading evolved structs needs Arrow >= 19 (GH-44555). The value-only
-    # case also casts a nullable key child to non-nullable, needing Arrow >= 20
-    # (https://github.com/apache/arrow/issues/33592).
-    min_read_version = "20.0.0" if side == "value" else "19.0.0"
-    assert _pa_version is not None
-    if _pa_version < parse_version(min_read_version):
-        return
 
     old_key = {"x": 1, **({"y": None} if key_added else {})}
     old_value = {"x": 10, **({"y": None} if value_added else {})}

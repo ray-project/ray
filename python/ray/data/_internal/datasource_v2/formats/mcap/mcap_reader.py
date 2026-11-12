@@ -1,17 +1,18 @@
 """``MCAPReader``, which reads one read task's chunks into message rows.
 
 ``MCAPReader.read`` receives a ``FileManifest`` whose rows name files and, per
-file, the byte offsets of the chunks the task owns. For each file it seeks to
-those chunks, decompresses them, keeps the selected messages and yields Arrow
-tables of about ``target_block_size`` bytes. With ``log_time_order``, a file's
-chunks are merged by log time as they are read, so memory holds only the
-chunks that overlap in time.
+file, the byte offsets of the chunks the task owns and the summary records it
+needs (``mcap_task_summary``). For each file it seeks to those chunks,
+decompresses them, keeps the selected messages and yields Arrow tables of about
+``target_block_size`` bytes. With ``log_time_order``, a file's chunks are merged
+by log time as they are read, so memory holds only the chunks that overlap in
+time.
 
 A row has the columns of ``message_schema``. Its optional ``row_id`` is a
 deterministic name for the message, built from the file path, the chunk's byte
 offset and the message's position in the chunk.
 
-This module groups the manifest by file and finishes every table with its
+This module reads the manifest row by row and finishes every table with its
 partition and synthesized columns. The other modules read and build the rows:
 
 - ``mcap_chunks`` reads the selected messages of a file.
@@ -20,8 +21,9 @@ partition and synthesized columns. The other modules read and build the rows:
 
 import itertools
 import logging
+from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Any, Iterator, List, Optional, Sequence, Set
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem, LocalFileSystem
@@ -33,6 +35,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     buffered,
+    parse_summary_records,
     read_summary_from,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
@@ -40,6 +43,9 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import chunk_unit_id
+from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
+    task_summaries,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnit
 from ray.data._internal.datasource_v2.interfaces.reader import Reader
@@ -52,6 +58,9 @@ from ray.data._internal.util import iterate_with_retry
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
+
+if TYPE_CHECKING:
+    from mcap.summary import Summary
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +126,9 @@ class MCAPReader(Reader[FileManifest]):
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read the files and chunks named by ``input_split``.
 
-        All rows that name one file are read together. Files come out in
-        manifest order. With ``limit``, reading stops at that many rows: no
-        later message is added to a table and no later chunk or file is read.
+        Each row is read on its own, in manifest order, so a path listed twice
+        is read twice. With ``limit``, reading stops at that many rows: no later
+        message is added to a table and no later chunk or file is read.
         """
         from ray.data.context import DataContext
 
@@ -127,12 +136,12 @@ class MCAPReader(Reader[FileManifest]):
             return
         retried_io_errors = DataContext.get_current().retried_io_errors
         remaining = self._limit
-        for path, offsets in _owned_chunks(input_split):
+        for owned in _owned_files(input_split):
             if remaining is not None and remaining <= 0:
                 return
             tables = iterate_with_retry(
-                partial(self._read_file, path, offsets, remaining),
-                f"read MCAP file {path}",
+                partial(self._read_file, owned, remaining),
+                f"read MCAP file {owned.path}",
                 match=retried_io_errors,
             )
             for table in tables:
@@ -143,27 +152,39 @@ class MCAPReader(Reader[FileManifest]):
     # -- one file ----------------------------------------------------------
 
     def _read_file(
-        self, path: str, offsets: Optional[Set[int]], limit: Optional[int]
+        self, owned: "_OwnedFile", limit: Optional[int]
     ) -> Iterator[pa.Table]:
-        """Yield the tables of one file, limited to the chunks at ``offsets``.
+        """Yield the tables of one file, limited to the chunks it owns.
 
-        ``offsets`` is ``None`` for a whole-file row, which means every chunk. A
-        file without a chunk index is scanned linearly, through a read buffer of
-        ``DataContext.streaming_read_buffer_size`` bytes. At most ``limit`` rows
-        are yielded.
+        ``owned.offsets`` is ``None`` for a whole-file row, which means every
+        chunk. A file without a chunk index is scanned linearly, through a read
+        buffer of ``DataContext.streaming_read_buffer_size`` bytes. At most
+        ``limit`` rows are yielded.
         """
         from ray.data.context import DataContext
 
+        path, offsets = owned.path, owned.offsets
         filesystem = self._filesystem or LocalFileSystem()
         with filesystem.open_input_file(path) as f:
-            summary = read_summary_from(f, path)
+            if owned.summary_records is None:
+                # The listing could not read this summary. Reading it here fails
+                # the task with the file's own error.
+                summary = read_summary_from(f, path)
+                file_summary = None
+            else:
+                # The listing's copy, so the summary is not read. A chunk row's
+                # copy indexes only the owned chunks.
+                summary = parse_summary_records(owned.summary_records, path)
+                file_summary = None if offsets is None else _FileSummary(f, path)
             if summary is None or not summary.chunk_indexes:
                 buffer_size = DataContext.get_current().streaming_read_buffer_size
                 messages = self._message_reader.iter_unindexed(
                     buffered(f, buffer_size), path, limit
                 )
             else:
-                messages = self._message_reader.iter_chunks(f, path, summary, offsets)
+                messages = self._message_reader.iter_chunks(
+                    f, path, summary, offsets, file_summary
+                )
             yield from self._tables(itertools.islice(messages, limit), path, offsets)
 
     # -- rows to tables ----------------------------------------------------
@@ -177,7 +198,7 @@ class MCAPReader(Reader[FileManifest]):
         first message is the next one needed.
         """
         # Every table reports one read unit: the file for a whole-file read, else
-        # the task's first chunk. Listing excludes read units chunk by chunk
+        # the row's first chunk. Listing excludes read units chunk by chunk
         # (``excluded_read_unit_ids``), so handing this unit back would skip only
         # that first chunk. Nothing hands units back yet: a ``row_id`` checkpoint
         # filters rows by id instead.
@@ -301,23 +322,44 @@ class MCAPReader(Reader[FileManifest]):
         return array
 
 
-def _owned_chunks(manifest: FileManifest) -> List[Tuple[str, Optional[Set[int]]]]:
-    """Group a manifest's rows by file: ``(path, chunk offsets or None)``.
+@dataclass(frozen=True)
+class _OwnedFile:
+    """What one manifest row reads of one file."""
 
-    A row with chunk metadata contributes its ``unit_ids``, the chunk byte
-    offsets. A row that names no chunk means the whole file (see
-    ``mcap_file_indexer``), which wins over any offsets listed for the same path.
+    path: str
+    # Byte offsets of the owned chunks; ``None`` for the whole file.
+    offsets: Optional[Set[int]]
+    # The summary records the row needs (``mcap_task_summary``); ``None`` for a
+    # file whose summary the listing could not read.
+    summary_records: Optional[bytes]
+
+
+def _owned_files(manifest: FileManifest) -> List[_OwnedFile]:
+    """One ``_OwnedFile`` per manifest row, in manifest order.
+
+    A row with chunk metadata owns its ``unit_ids``, the chunk byte offsets. A
+    row that names no chunk means the whole file (see ``mcap_file_indexer``).
     """
-    owned: Dict[str, Optional[Set[int]]] = {}
-    for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
-        path = str(path)
+    owned = []
+    rows = zip(manifest.paths, manifest.file_chunk_metadatas, task_summaries(manifest))
+    for path, metadata, records in rows:
         unit_ids = None if metadata is None else metadata.get("unit_ids")
-        if unit_ids is None or len(unit_ids) == 0:
-            owned[path] = None
-            continue
-        offsets = {int(i) for i in unit_ids}
-        current = owned.get(path, offsets)
-        if current is not None:
-            current.update(offsets)
-        owned[path] = current
-    return list(owned.items())
+        whole_file = unit_ids is None or len(unit_ids) == 0
+        offsets = None if whole_file else {int(i) for i in unit_ids}
+        owned.append(_OwnedFile(str(path), offsets, records))
+    return owned
+
+
+class _FileSummary:
+    """The whole summary of an open file, read on the first call."""
+
+    def __init__(self, f: Any, path: str):
+        self._f = f
+        self._path = path
+        self._summary: Optional["Summary"] = None
+
+    def __call__(self) -> "Summary":
+        if self._summary is None:
+            self._summary = read_summary_from(self._f, self._path)
+            assert self._summary is not None, "a file with chunk rows has a summary"
+        return self._summary
