@@ -380,6 +380,12 @@ def ray_deps_setup():
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
             "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
+            # The *_pb2_grpc.py stubs come from this gRPC's Python plugin. From
+            # 1.63 on it emits `_registered_method=True` and
+            # `server.add_registered_method_handlers()`, which need grpcio >= 1.64
+            # at runtime. Leave them out so the stubs keep working with the
+            # grpcio >= 1.42.0 that setup.py allows, as the 1.58 plugin's did.
+            "@io_ray//thirdparty/patches:grpc-python-plugin-no-registered-method.patch",
         ],
     )
 
