@@ -172,6 +172,10 @@ def _deduce_default_enable_disk_shuffle() -> bool:
 
 DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
+DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION = env_bool(
+    "RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION", True
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -714,10 +718,10 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
-            ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
-            Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
-            (``0`` for V1, ``1`` for V2).
+        use_datasource_v2: When True, ``ray.data.read_parquet()``,
+            ``ray.data.read_orc()`` and ``ray.data.read_mcap()`` route through
+            the DataSourceV2 pipeline. Defaults to True; override with
+            ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for V2).
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
             runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
             Contiguous row groups are coalesced up to this size; a single row group
@@ -921,6 +925,11 @@ class DataContext:
             environment variable (``False`` when unset). Deprecated
             aliases: ``use_external_hash_shuffle`` and the
             ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
+        enable_aggregate_shuffle_elimination: Whether a group-by skips its shuffle
+            when its input is already hash-partitioned on its keys under the
+            ``SHUFFLE_V2`` strategy, e.g. right after a join on those keys.
+            Defaults to the ``RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION``
+            environment variable (``True`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -1081,6 +1090,12 @@ class DataContext:
     # shuffle operations (sort, keyed repartition, aggregations, joins).
     # When False, use the object-store path.
     use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
+
+    # Whether EliminateAggregateShuffle may skip a group-by's shuffle when its
+    # input is already hash-partitioned on its keys (SHUFFLE_V2 only).
+    enable_aggregate_shuffle_elimination: bool = (
+        DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION
+    )
 
     ################################################################
     # GPU Shuffle configuration

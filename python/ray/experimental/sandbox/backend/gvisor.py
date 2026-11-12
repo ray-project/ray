@@ -34,6 +34,7 @@ from ray.experimental.sandbox._internal import cdi, egress_guard, overlayfs
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
+    wrap_command,
 )
 from ray.experimental.sandbox._internal.image_utils import (
     ROOTFS_IMAGE,
@@ -100,6 +101,32 @@ _CPUS_LOCK_FILE = "cpus.lock"
 # Directory for sandbox bundles, cached container images, and per-sandbox
 # overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
+
+
+def runsc_env() -> Dict[str, str]:
+    """The environment for runsc CLI subprocesses: GOMAXPROCS=2 unless set.
+
+    Each runsc CLI call (run, restore, exec, state, kill, delete, spec, trace,
+    pause, resume, checkpoint) is a Go process, and Go sizes its runtime to every CPU it can see: on a many-core
+    node, dozens of concurrent calls then cost much more CPU than their work
+    (measured on a 64-core node, 64 `runsc exec` calls at a time: 0.023 CPU-s
+    per exec, 0.013 with GOMAXPROCS=2). gVisor's containerd shim runs runsc
+    with GOMAXPROCS=2 for this reason, and runsc doesn't pass the variable on
+    to the sandbox and gofer processes it starts.
+    """
+    env = dict(os.environ)
+    env.setdefault("GOMAXPROCS", "2")
+    return env
+
+
+# `runsc run --pid-file` (and `runsc restore`) writes this file once the
+# container exists. The start loop stats it every _START_POLL_SECONDS and
+# asks `runsc state` (a Go process per call) whether the container runs only
+# after that, every _STATE_POLL_SECONDS: a create returns soon after its boot
+# without spending the CPU a burst of boots needs on `runsc state` processes.
+_PID_FILE = "sandbox.pid"
+_START_POLL_SECONDS = 0.01
+_STATE_POLL_SECONDS = 0.05
 
 # network="public" gives each sandbox a private user+network namespace pair
 # bridged by slirp4netns user-mode networking, the rootless-container shape:
@@ -717,7 +744,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # argv construction.
         gpu_run_args = []
         if config.gpu_ids:
-            gpu_run_args = self._resolve_gpu_run_args()
+            gpu_run_args = self._resolve_gpu_run_args(config.env)
 
         try:
             # The instance id pins the image in the cache while this sandbox
@@ -969,8 +996,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_run_args=gpu_run_args,
             rootfs_overlay=rootfs_overlay,
         )
-        if cgroup is not None:
-            run_args = cgroup.wrap(run_args)
+        run_args = wrap_command(run_args, cgroup, config.oom_score_adj)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -989,16 +1015,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=stderr_file,
+                env=runsc_env(),
             )
         except Exception:
             stderr_file.close()
             raise
         start_time = time.time()
         timeout = config.timeout_seconds
+        pid_file = os.path.join(root_dir, _PID_FILE)
         action = "restore" if restore is not None else "start"
-        # A restore is expected to come up in milliseconds, so poll it more
-        # often than a cold boot.
-        poll_interval = 0.01 if restore is not None else 0.1
+        # A restore is expected to come up in milliseconds, so once its pid
+        # file exists, poll `runsc state` as often as for the file itself.
+        state_poll_seconds = (
+            _START_POLL_SECONDS if restore is not None else _STATE_POLL_SECONDS
+        )
 
         def stderr_text() -> str:
             stderr_file.seek(0)
@@ -1011,9 +1041,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container failed to {action}: {stderr_text()}"
                     )
 
-                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                res = subprocess.run(state_args, capture_output=True, text=True)
-                if res.returncode == 0:
+                delay = _START_POLL_SECONDS
+                res = None
+                if os.path.exists(pid_file):
+                    state_args = self._runsc_base_args(config) + ["state", sandbox_id]
+                    try:
+                        # A wedged runsc mustn't hold the create past its
+                        # deadline, which the check below then enforces.
+                        res = subprocess.run(
+                            state_args,
+                            capture_output=True,
+                            text=True,
+                            timeout=max(1.0, timeout - (time.time() - start_time)),
+                            env=runsc_env(),
+                        )
+                    except subprocess.TimeoutExpired:
+                        res = None
+                    delay = state_poll_seconds
+                if res is not None and res.returncode == 0:
                     try:
                         state_data = json.loads(res.stdout)
                     except ValueError:
@@ -1042,7 +1087,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
                     )
 
-                time.sleep(poll_interval)
+                time.sleep(delay)
         except Exception:
             # Delete runsc's container state, then stop the launch process
             # and everything it started.
@@ -1064,7 +1109,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             kill_args = self._runsc_base_args(config)
             kill_args.extend(["kill", sandbox_id, "SIGKILL"])
             try:
-                subprocess.run(kill_args, capture_output=True, timeout=5)
+                subprocess.run(
+                    kill_args, capture_output=True, timeout=5, env=runsc_env()
+                )
             except subprocess.TimeoutExpired:
                 pass
 
@@ -1319,6 +1366,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
         user: Optional[str] = None,
+        combine_output: bool = False,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
@@ -1354,7 +1402,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 runsc_args,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT if combine_output else subprocess.PIPE,
+                env=runsc_env(),
             )
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
@@ -1368,7 +1417,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except subprocess.TimeoutExpired:
                     # A process that escaped the kill still holds the pipes.
                     proc.stdout.close()
-                    proc.stderr.close()
+                    if proc.stderr is not None:
+                        proc.stderr.close()
                     proc.wait()
                 raise SandboxTimeoutError(
                     f"gVisor exec command timed out after {timeout} seconds."
@@ -1387,9 +1437,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # strictly would fail the whole exec.
         return ExecResult(
             exit_code=proc.returncode,
-            stdout=stdout.decode("utf-8", errors="replace"),
-            stderr=stderr.decode("utf-8", errors="replace"),
+            stdout="" if combine_output else stdout.decode("utf-8", errors="replace"),
+            stderr="" if combine_output else stderr.decode("utf-8", errors="replace"),
             duration_seconds=time.time() - start_time,
+            output=stdout if combine_output else None,
         )
 
     def _kill_exec(self, config: SandboxConfig, sandbox_id: str, pid_file: str) -> None:
@@ -1414,6 +1465,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     base_args + ["kill", "--pid", str(pid), sandbox_id, "SIGKILL"],
                     capture_output=True,
                     timeout=10,
+                    env=runsc_env(),
                 )
             except (OSError, subprocess.TimeoutExpired):
                 pass
@@ -1432,6 +1484,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     text=True,
                     errors="replace",
                     timeout=10,
+                    env=runsc_env(),
                 )
                 if dump.returncode == 0:
                     pids = _exec_processes(dump.stdout, root_pid)
@@ -1453,18 +1506,28 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         content: Union[str, bytes],
         append: bool = False,
     ) -> None:
-        """Write (or append) content to a file inside the sandbox."""
-        meta = self._get_metadata_or_raise(sandbox_id)
-        config: SandboxConfig = meta["config"]
+        """Write content while preserving existing file permissions and symlinks.
 
-        runsc_args = self._runsc_base_args(config)
-        exec_cwd = meta["cwd"]
-        runsc_args.extend(
-            [
-                "exec",
-                "-cwd",
-                exec_cwd,
+        Non-append writes use tee when possible. The shell fallback creates
+        missing parent directories and handles images without tee.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        if not append:
+            # Make a filename of "-" unambiguous across tee versions.
+            destination = "./-" if path == "-" else path
+            returncode, _ = self._write_with(
                 sandbox_id,
+                meta,
+                ["tee", "--", destination],
+                content_bytes,
+            )
+            if returncode == 0:
+                return
+        returncode, stderr = self._write_with(
+            sandbox_id,
+            meta,
+            [
                 "/bin/sh",
                 "-c",
                 (
@@ -1474,23 +1537,32 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 ),
                 "--",
                 path,
-            ]
+            ],
+            content_bytes,
         )
+        if returncode != 0:
+            raise SandboxError(
+                f"Failed to write file '{path}': {stderr.decode('utf-8', errors='replace')}"
+            )
 
-        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+    def _write_with(
+        self, sandbox_id: str, meta: Dict, command: List[str], content: bytes
+    ) -> Tuple[int, bytes]:
+        """Run a sandbox command with content on stdin; return status and stderr."""
+        config: SandboxConfig = meta["config"]
+        runsc_args = self._runsc_base_args(config)
+        runsc_args.extend(["exec", "-cwd", meta["cwd"], sandbox_id, *command])
         runsc_args = self._wrap_workload(meta, runsc_args)
 
         proc = subprocess.Popen(
             runsc_args,
             stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            env=runsc_env(),
         )
-        _, stderr_str = proc.communicate(input=content_bytes)
-        if proc.returncode != 0:
-            raise SandboxError(
-                f"Failed to write file '{path}': {stderr_str.decode('utf-8', errors='replace')}"
-            )
+        _, stderr = proc.communicate(input=content)
+        return proc.returncode, stderr
 
     def read_file(self, sandbox_id: str, path: str) -> bytes:
         """Read binary content from a file inside the local gVisor sandbox directory."""
@@ -1507,6 +1579,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=runsc_env(),
         )
         stdout, stderr = proc.communicate()
         if proc.returncode != 0:
@@ -1535,6 +1608,44 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ) or "Sandbox runtime stopped unexpectedly"
         return None
 
+    def get_config(self, sandbox_id: str) -> SandboxConfig:
+        """Return the configuration of a tracked sandbox."""
+        return self._get_metadata_or_raise(sandbox_id)["config"]
+
+    def sandbox_dir(self, sandbox_id: str) -> str:
+        """Return the host bundle directory, which is removed with the sandbox."""
+        return self._get_metadata_or_raise(sandbox_id)["root_dir"]
+
+    def export_rootfs_changes(
+        self, sandbox_id: str, path: str, timeout: float = 1800.0
+    ) -> None:
+        """Export gVisor's rootfs upper layer, preserving the sandbox's pause state.
+
+        Deletions are 0/0 character devices. Opaque directories carry
+        ``trusted.overlay.opaque``. Bind mounts and host-side changes aren't
+        included.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        # One export at a time per sandbox: overlapping ones would both try
+        # to pause it, or one would resume it under the other's export.
+        with meta.setdefault("export_lock", threading.Lock()):
+            paused = meta.get("status") == SandboxStatus.PAUSED
+            if not paused:
+                self.pause_sandbox(sandbox_id, timeout_seconds=60)
+            try:
+                self._run_runsc_command(
+                    meta["config"],
+                    "tar",
+                    sandbox_id,
+                    "rootfs-upper",
+                    "--file",
+                    path,
+                    timeout_seconds=timeout,
+                )
+            finally:
+                if not paused:
+                    self.resume_sandbox(sandbox_id, timeout_seconds=60)
+
     def _run_runsc_command(
         self,
         config: SandboxConfig,
@@ -1546,7 +1657,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Execute a runsc lifecycle control command (e.g. pause, resume, state)."""
         args = self._runsc_base_args(config) + [subcommand, *extra_args, sandbox_id]
         res = subprocess.run(
-            args, capture_output=True, text=True, timeout=timeout_seconds
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=runsc_env(),
         )
         if res.returncode != 0:
             raise SandboxError(
@@ -1694,6 +1809,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         capture_output=True,
                         text=True,
                         timeout=timeout_seconds,
+                        env=runsc_env(),
                     )
                 except subprocess.TimeoutExpired:
                     # The timeout kills only the runsc client: the save goes
@@ -1854,10 +1970,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
-        # The launch script waits for these to be written; stale copies from
-        # the previous launch would let it go on before the new holder and
-        # slirp4netns are up.
-        for name in ("netns.pid", "slirp4netns.ready"):
+        # The launch script waits for these to be written, and the start loop
+        # for the pid file; stale copies from the previous launch would let
+        # them go on before the new holder, slirp4netns and container are up.
+        for name in ("netns.pid", "slirp4netns.ready", _PID_FILE):
             try:
                 os.remove(os.path.join(root_dir, name))
             except FileNotFoundError:
@@ -2089,8 +2205,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     @staticmethod
     def _wrap_workload(meta, args):
-        cgroup = meta.get("cgroup")
-        return cgroup.wrap(args) if cgroup is not None else args
+        return wrap_command(args, meta.get("cgroup"), meta["config"].oom_score_adj)
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.
@@ -2101,7 +2216,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
         try:
-            subprocess.run(del_args, capture_output=True, timeout=10)
+            subprocess.run(del_args, capture_output=True, timeout=10, env=runsc_env())
         except (subprocess.TimeoutExpired, OSError):
             pass
 
@@ -2230,11 +2345,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             if disk_bytes > 0:
                 overlay2 += f",size={disk_bytes}"
             args.extend(["--overlay2", overlay2])
+        # Both commands write the pid file once the container exists, which
+        # tells the start loop when to begin asking `runsc state`.
+        pid_file = os.path.join(root_dir, _PID_FILE)
         if restore is None:
-            args.extend(["run", "--bundle", root_dir, sandbox_id])
+            args.extend(
+                ["run", "--pid-file", pid_file, "--bundle", root_dir, sandbox_id]
+            )
         else:
             args.extend(
-                ["restore", "--bundle", root_dir, "--image-path", restore.image_path]
+                [
+                    "restore",
+                    "--pid-file",
+                    pid_file,
+                    "--bundle",
+                    root_dir,
+                    "--image-path",
+                    restore.image_path,
+                ]
             )
             if restore.background:
                 args.append("--background")
@@ -2310,9 +2438,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"{unshare} bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
                 # Stop waiting as soon as the holder dies, and refuse an
-                # empty NSPID (which would resolve to /proc//ns/net).
-                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
-                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+                # empty NSPID (which would resolve to /proc//ns/net). Both
+                # waits check every 10 ms for up to 10 s: the holder and
+                # slirp4netns are up within tens of milliseconds.
+                f"for i in $(seq 1 1000); do [ -s {netns_pidfile} ] && break; "
+                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.01; done; "
                 f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
                 '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
                 # slirp4netns attaches from the pod side and stays in the
@@ -2321,8 +2451,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # that is the go signal.
                 f"setpriv --pdeathsig KILL -- {slirp} 3>{ready_file} & "
                 "SLIRP=$!; "
-                f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
-                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
+                f"for i in $(seq 1 1000); do [ -s {ready_file} ] && break; "
+                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.01; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
                 # The egress ruleset goes in after the tap exists and
                 # before anything runs behind it; a failed install aborts
@@ -2499,7 +2629,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ):
                 try:
                     subprocess.run(
-                        [*runsc_args, *action], capture_output=True, timeout=10
+                        [*runsc_args, *action],
+                        capture_output=True,
+                        timeout=10,
+                        env=runsc_env(),
                     )
                 except (OSError, subprocess.TimeoutExpired):
                     pass
@@ -2553,12 +2686,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "only access GPUs Ray scheduled to its owning actor or task."
             )
 
-    def _resolve_gpu_run_args(self) -> List[str]:
+    def _resolve_gpu_run_args(self, env: Optional[Dict[str, str]]) -> List[str]:
         """The runsc flags GPU passthrough needs for this node's GPU CDI kind.
         Only nvidia.com/gpu is supported, which needs --nvproxy.
 
+        Only the caller's NVIDIA_DRIVER_CAPABILITIES can raise the allowed
+        capabilities, such as compute,utility,profiling for Nsight Compute.
+        Image environment variables cannot raise them. Without an explicit
+        request, gVisor keeps its compute,utility default.
+
+        Args:
+            env: The environment supplied by the caller.
+
         Returns:
-            The runsc flags, ``["--nvproxy"]``.
+            The runsc flags, such as ``["--nvproxy"]``.
 
         Raises:
             SandboxCreationError: If this node has no GPU CDI spec, its kind
@@ -2575,7 +2716,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
         self._check_runsc_runs_cdi_hooks()
         self._check_nvidia_driver_supported()
-        return ["--nvproxy"]
+        args = ["--nvproxy"]
+        capabilities = (env or {}).get("NVIDIA_DRIVER_CAPABILITIES")
+        if capabilities:
+            args.append(f"--nvproxy-allowed-driver-capabilities={capabilities}")
+        return args
 
     @functools.lru_cache(maxsize=None)  # noqa: B019
     def _check_runsc_runs_cdi_hooks(self) -> None:
@@ -2591,6 +2736,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 timeout=10,
                 text=True,
                 check=True,
+                env=runsc_env(),
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             raise SandboxCreationError(
@@ -2642,6 +2788,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 timeout=10,
                 text=True,
                 check=True,
+                env=runsc_env(),
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             stderr = getattr(e, "stderr", None)

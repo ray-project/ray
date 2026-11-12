@@ -133,6 +133,47 @@ def test_non_running_worker_group_decision():
     assert decision.num_workers == max_workers
 
 
+def _make_min_workers_zero_policy():
+    scaling_config = ScalingConfig(
+        num_workers=(0, 4),
+        resources_per_worker={"CPU": 8},
+        elastic_resize_monitor_interval_s=0.0,
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+    _start_scaling_policy(policy)
+    return policy
+
+
+@patch.object(ElasticScalingPolicy, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0)
+def test_min_workers_zero_does_not_start_zero_workers():
+    """With min_workers=0, the policy waits for room for one worker instead of
+    starting an empty worker group."""
+    policy = _make_min_workers_zero_policy()
+    mock_coordinator = policy._autoscaling_coordinator
+
+    mock_coordinator._reserved_resources = _make_reserved({"CPU": 8}, 0)
+    decision = policy.make_decision_for_non_running_worker_group()
+    assert isinstance(decision, NoopDecision)
+
+    mock_coordinator._reserved_resources = _make_reserved({"CPU": 8}, 1)
+    decision = policy.make_decision_for_non_running_worker_group()
+    assert isinstance(decision, ResizeDecision)
+    assert decision.num_workers == 1
+
+
+@patch.object(ElasticScalingPolicy, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0)
+def test_min_workers_zero_does_not_resize_to_zero_workers():
+    """With min_workers=0, a running worker group is not resized to 0 workers
+    when its reserved resources fit no worker."""
+    policy = _make_min_workers_zero_policy()
+    policy._autoscaling_coordinator._reserved_resources = _make_reserved({"CPU": 8}, 0)
+    decision = policy.make_decision_for_running_worker_group(
+        worker_group_state=_get_mock_worker_group_state(2, time_monotonic()),
+        worker_group_status=_get_mock_worker_group_status(2),
+    )
+    assert isinstance(decision, NoopDecision)
+
+
 def test_before_controller_abort():
     """Test that before_controller_abort sends a cancel request to the AutoscalingCoordinator."""
     resources_per_worker = {"CPU": 4, "GPU": 1}

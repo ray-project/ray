@@ -32,13 +32,23 @@ def get_mx_app_name() -> str:
     return os.environ.get("RAY_MX_APP_NAME", "mx")
 
 
+# MX binds these ports plus each worker's GPU index on every LLM worker node. Keep them
+# above Ray's default worker port range (`ray start --min-worker-port 10002
+# --max-worker-port 19999`), where any Ray worker process may already be listening, and
+# below the Linux ephemeral range (32768+).
+_DEFAULT_MX_METADATA_PORT_BASE = 21555
+_DEFAULT_MX_WORKER_GRPC_PORT_BASE = 22555
+
+
 def get_mx_metadata_port_base() -> int:
     """Base of the LLM replicas' MX NIXL metadata ports (RAY_MX_METADATA_PORT_BASE).
 
     Returns:
         The base port; MX adds each worker's GPU index.
     """
-    return int(os.environ.get("RAY_MX_METADATA_PORT_BASE", "15555"))
+    return int(
+        os.environ.get("RAY_MX_METADATA_PORT_BASE", _DEFAULT_MX_METADATA_PORT_BASE)
+    )
 
 
 def get_mx_worker_grpc_port_base() -> int:
@@ -47,7 +57,11 @@ def get_mx_worker_grpc_port_base() -> int:
     Returns:
         The base port; MX adds each worker's GPU index.
     """
-    return int(os.environ.get("RAY_MX_WORKER_GRPC_PORT_BASE", "16555"))
+    return int(
+        os.environ.get(
+            "RAY_MX_WORKER_GRPC_PORT_BASE", _DEFAULT_MX_WORKER_GRPC_PORT_BASE
+        )
+    )
 
 
 def get_mx_server_port() -> int:
