@@ -641,6 +641,7 @@ def test_disk_shuffle_reduce_task_applies_reduce_ray_remote_args(restore_data_co
         reduce_ray_remote_args={
             "num_cpus": 2,
             "num_gpus": 1,
+            "memory": None,
             "label_selector": {"subcluster": "validation", "node": "worker-1"},
         },
     )
@@ -653,11 +654,13 @@ def test_disk_shuffle_reduce_task_applies_reduce_ray_remote_args(restore_data_co
         shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
         op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
 
-    assert shuffle_reduce_task.options.call_args.kwargs["label_selector"] == {
+    kwargs = shuffle_reduce_task.options.call_args.kwargs
+    assert kwargs["label_selector"] == {
         "subcluster": "validation",
         "zone": "us-west",
         "node": "worker-1",
     }
+    assert "memory" not in kwargs  # None must not override the estimate
     # Estimates and logical usage must advertise the same ask as the task.
     for usage in (op.incremental_resource_usage(), op.current_logical_usage()):
         assert (usage.cpu, usage.gpu) == (2, 1)

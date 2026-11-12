@@ -171,7 +171,10 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
-        user_args = dict(self._reduce_ray_remote_args)
+        # None means "unset" to ray.remote, so it must not override the defaults.
+        user_args = {
+            k: v for k, v in self._reduce_ray_remote_args.items() if v is not None
+        }
         user_runtime_env = user_args.pop("runtime_env", None)
         remote_args.update(user_args)
         if user_runtime_env is not None:
