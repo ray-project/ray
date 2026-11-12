@@ -80,8 +80,8 @@ For a synchronous deployment:
 
 How this method executes depends on configuration:
 
-- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0` (current default), `__call__` runs directly on the user event loop and blocks it for 1 second.
-- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1`, Serve offloads `__call__` to a threadpool so the event loop stays responsive.
+- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1` (the default), Serve offloads `__call__` to a threadpool so the event loop stays responsive.
+- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`, `__call__` runs directly on the user event loop and blocks it for 1 second.
 
 ### FastAPI ingress (`@serve.ingress`)
 
@@ -274,16 +274,7 @@ Ray Serve exposes several environment variables that control how user code inter
 
 ### `RAY_SERVE_RUN_SYNC_IN_THREADPOOL`
 
-By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`), which means synchronous methods in a deployment run directly on the user event loop. To help you migrate to a safer model, Serve emits a warning like:
-
-> `RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING`: Calling sync method '...' directly on the asyncio loop. In a future version, sync methods will be run in a threadpool by default...
-
-This warning means:
-
-- You have a `def` method that is currently running on the event loop.
-- In a future version, that method runs in a threadpool instead.
-
-You can opt in to the future behavior now by setting:
+By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1`), synchronous methods in a deployment run in a threadpool:
 
 ```bash
 export RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1
@@ -294,10 +285,12 @@ When this flag is `1`:
 - Serve runs synchronous methods in a threadpool.
 - The event loop is free to keep serving other requests while sync methods run.
 
-Before enabling this in production, make sure:
+Make sure:
 
 - Your handler code and any shared state are thread-safe.
 - Your model objects can safely be used from multiple threads, or you protect them with locks.
+
+Set this flag to `0` to retain the legacy behavior of running synchronous methods directly on the user event loop.
 
 ### `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD`
 

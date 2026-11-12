@@ -37,9 +37,9 @@ using std::chrono_literals::operator""s;
 namespace ray {
 namespace core {
 
-class MockWaiter : public ActorTaskExecutionArgWaiterInterface {
+class FakeWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
-  MockWaiter() {}
+  FakeWaiter() {}
 
   // Record the (task_id, attempt_number) of each fetch in call order so tests
   // can refer to a fetch by its 0-based call index via Complete().
@@ -74,7 +74,7 @@ class MockWaiter : public ActorTaskExecutionArgWaiterInterface {
 // Helper that mirrors what CoreWorker::HandlePushTask does on the gRPC thread:
 // fires the args-fetch for tasks with deps, then enqueues.
 void EnqueueWithFetch(ActorTaskExecutionQueueInterface &queue,
-                      MockWaiter &waiter,
+                      FakeWaiter &waiter,
                       int64_t seq_no,
                       int64_t client_processed_up_to,
                       TaskToExecute task) {
@@ -86,7 +86,7 @@ void EnqueueWithFetch(ActorTaskExecutionQueueInterface &queue,
   queue.EnqueueTask(seq_no, client_processed_up_to, std::move(task));
 }
 
-class MockTaskEventBuffer : public worker::TaskEventBuffer {
+class FakeTaskEventBuffer : public worker::TaskEventBuffer {
  public:
   void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {
     task_events.emplace_back(std::move(task_event));
@@ -152,8 +152,8 @@ TaskToExecute MakeTaskToExecute(const TaskSpecification &task_spec) {
 TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   // Test task events are recorded.
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -242,8 +242,8 @@ TEST_P(OrderedActorTaskExecutionQueueRecorderTest, RecordsToRecorderWhenEnabled)
           ? R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})"
           : R"({"enable_ray_event": false, "enable_ray_task_event_recorder": false})");
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -288,8 +288,8 @@ INSTANTIATE_TEST_SUITE_P(RecorderEnabledAndDisabled,
 
 TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -331,8 +331,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
 
 TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning) {
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -388,8 +388,8 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
 TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
   ObjectID obj = ObjectID::FromRandom();
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -454,8 +454,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
 TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj = ObjectID::FromRandom();
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -504,8 +504,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
 
 TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -613,8 +613,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeoutNotPushedOutByLaterTa
 
 TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -676,8 +676,8 @@ TaskSpecification CreateActorTaskSpec(int64_t seq_no,
 TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecutionQueue) {
   // Setup
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -739,8 +739,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   // Test that tasks in different concurrency groups are sequenced independently.
   // group "b" tasks should execute even when group "a" is waiting for a missing seq_no.
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"a", 1, {}},
                                                    ConcurrencyGroup{"b", 1, {}}};
@@ -810,8 +810,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
 TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   // Test task events are recorded.
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
@@ -894,8 +894,8 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
   // Test that if multiple attempts of the same task are received,
   // the next attempt only runs after the previous attempt finishes.
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
 
   std::promise<void> attempt_1_start_promise;
   std::promise<void> attempt_1_finish_promise;
@@ -970,8 +970,8 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
 
 TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellation) {
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
 
   std::promise<void> attempt_1_start_promise;
   std::promise<void> attempt_1_finish_promise;

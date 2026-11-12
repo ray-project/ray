@@ -24,6 +24,7 @@ import numpy as np
 import pyarrow as pa
 
 import ray
+from ray.data._internal.execution.interfaces.common import LogicalActorId
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -129,6 +130,8 @@ BlockPartitionMetadata = List["BlockMetadata"]
 
 VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", "cudf", None]
 DEFAULT_BATCH_FORMAT = "numpy"
+# Sentinel used when BlockStats/BlockMetadata is constructed before Ray init.
+UNKNOWN_NODE_ID = "unknown"
 
 
 def _is_cudf_dataframe(obj: Any) -> bool:
@@ -231,15 +234,24 @@ class BlockExecStats:
     # to individual tasks in per-task statistics.
     task_idx: Optional[int] = None
 
-    # Ray node ID of the worker that produced this block.
-    node_id: str = field(
-        default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
-    )
+    # Logical id of the actor that produced this block, for operators that run
+    # on an actor pool. ``None`` for task-based operators.
+    actor_id: Optional[LogicalActorId] = None
 
-    # Absolute wall-clock timestamp when block generation started.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation started. Monotonic with an undefined, per-machine reference
+    # point: only differences between readings taken on the same node are
+    # meaningful. Never compare across nodes; use `start_unix_time_s` for that.
     start_time_s: Optional[float] = None
-    # Absolute wall-clock timestamp when block generation finished.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation finished. Same caveats as `start_time_s`.
     end_time_s: Optional[float] = None
+    # `time.time()` on the producing worker when block generation started.
+    # Shares an epoch across nodes, so it is safe to compare across blocks
+    # produced on different machines. Not monotonic (NTP can step it); derive
+    # the block's end as `start_unix_time_s + wall_time_s` rather than reading
+    # the clock twice.
+    start_unix_time_s: Optional[float] = None
     # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
     # Time spent in the map transform chain while generating this block: the
@@ -280,6 +292,7 @@ class _BlockExecStatsBuilder:
 
     def __init__(self):
         self._start_time = time.perf_counter()
+        self._start_unix_time = time.time()
         self._start_cpu = time.process_time()
         self._end_time = None
         self._end_cpu = None
@@ -296,6 +309,7 @@ class _BlockExecStatsBuilder:
         return BlockExecStats(
             start_time_s=self._start_time,
             end_time_s=self._end_time,
+            start_unix_time_s=self._start_unix_time,
             wall_time_s=self._end_time - self._start_time,
             cpu_time_s=self._end_cpu - self._start_cpu,
             **kwargs,
@@ -316,6 +330,15 @@ class BlockStats:
 
     # Overall task execution stats (reported from the worker).
     task_exec_stats: Optional[TaskExecWorkerStats] = field(default=None)
+
+    # Ray node ID of the worker/driver that produced this block.
+    node_id: str = field(
+        default_factory=lambda: (
+            ray.get_runtime_context().get_node_id()
+            if ray.is_initialized()
+            else UNKNOWN_NODE_ID
+        )
+    )
 
     def __post_init__(self):
         if self.size_bytes is not None:
@@ -349,6 +372,14 @@ class BlockMetadata(BlockStats):
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
+    # NOTE: `exec_stats` is optional, so each accessor below reports `None`
+    # rather than raising when a block carries no execution stats.
+    def get_task_index(self) -> Optional[int]:
+        return self.exec_stats.task_idx if self.exec_stats is not None else None
+
+    def get_actor_id(self) -> Optional[LogicalActorId]:
+        return self.exec_stats.actor_id if self.exec_stats is not None else None
+
 
 @functools.lru_cache(maxsize=128)
 def _read_arrow_schema_cached(schema_bytes: bytes) -> "pa.Schema":
@@ -376,6 +407,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             exec_stats=metadata.exec_stats,
             task_exec_stats=metadata.task_exec_stats,
             input_files=metadata.input_files,
+            node_id=metadata.node_id,
             schema=schema,
         )
 
@@ -403,6 +435,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             exec_stats=self.exec_stats,
             input_files=self.input_files,
             task_exec_stats=self.task_exec_stats,
+            node_id=self.node_id,
         )
 
     def __getstate__(self) -> Dict[str, Any]:
@@ -464,7 +497,7 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
-    def take(self, indices: List[int]) -> Block:
+    def take(self, indices: Union[List[int], np.ndarray]) -> Block:
         """Return a new block containing the provided row indices.
 
         Args:
@@ -488,8 +521,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def upsert_column(self, column_name: str, column_data: BlockColumn) -> Block:
-        """
-        Upserts a column into the block. If the column already exists, it will be replaced.
+        """Upserts a column into the block. If the column already exists, it will be replaced.
 
         Args:
             column_name: The name of the column to upsert.
@@ -777,8 +809,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
-        """
-        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+        """NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
 
         Compute boundaries of the groups within a block based on provided
         key (a column or a list of columns)
@@ -810,8 +841,7 @@ class BlockAccessor:
     def _iter_groups_sorted(
         self, sort_key: "SortKey"
     ) -> Iterator[Tuple[Sequence[KeyType], Block]]:
-        """
-        NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
+        """NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
 
         Creates an iterator over (zero-copy) blocks of rows grouped by
         provided key(s).
@@ -875,8 +905,7 @@ class BlockColumnAccessor:
         raise NotImplementedError()
 
     def hash(self) -> BlockColumn:
-        """
-        Computes a 64-bit hash value for each row in the column.
+        """Computes a 64-bit hash value for each row in the column.
 
         Provides a unified hashing method across supported backends.
         Handles complex types like lists or nested structures by producing a single hash per row.
@@ -900,8 +929,7 @@ class BlockColumnAccessor:
         raise NotImplementedError()
 
     def is_composed_of_lists(self) -> bool:
-        """
-        Checks whether the column is composed of list-like elements.
+        """Checks whether the column is composed of list-like elements.
 
         Returns:
             True if the column is made up of list-like values; False otherwise.

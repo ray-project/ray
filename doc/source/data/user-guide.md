@@ -6,9 +6,9 @@ myst:
 
 (data_user_guide)=
 
-# User Guides
+# User guides
 
-If you’re new to Ray Data, start with the {ref}`Ray Data Quickstart <data_quickstart>`. This user guide helps you navigate the Ray Data project and shows you how to achieve several tasks.
+These guides show you how to complete common tasks with Ray Data. If you're new to Ray Data, start with the {ref}`Ray Data quickstart <data_quickstart>`.
 
 ```{toctree}
 :maxdepth: 2

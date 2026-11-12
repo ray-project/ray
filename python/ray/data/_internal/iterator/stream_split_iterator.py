@@ -257,8 +257,9 @@ class SplitCoordinator:
 
         ``dataset`` is the dataset id and ``split_index`` indicates the split.
         """
+        # The tag is for the next epoch; its executor is created lazily, so the run index is not incremented yet.
         return {
-            "dataset": self._base_dataset.get_dataset_id(),
+            "dataset": self._base_dataset._get_dataset_id_for_next_run(),
             "split_index": str(output_split_idx),
         }
 

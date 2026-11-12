@@ -264,7 +264,6 @@ Trainable Methods to Implement
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~tune.Trainable.setup
     ~tune.Trainable.save_checkpoint

@@ -17,20 +17,20 @@
 #include <memory>
 #include <unordered_set>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
 
 namespace plasma {
 
-class MockClient : public ClientInterface {
+class FakeClient : public ClientInterface {
  public:
-  MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
-  MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
-  MOCK_METHOD2(MarkObjectAsUsed,
-               void(const ObjectID &object_id,
-                    std::optional<MEMFD_TYPE> fallback_allocated_fd));
-  MOCK_METHOD1(MarkObjectAsUnused, bool(const ObjectID &object_id));
+  ray::Status SendFd(MEMFD_TYPE fd) override { return ray::Status::OK(); }
+  const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids_; }
+  void MarkObjectAsUsed(const ObjectID &object_id,
+                        std::optional<MEMFD_TYPE> fallback_allocated_fd) override {}
+  bool MarkObjectAsUnused(const ObjectID &object_id) override { return true; }
+
+  std::unordered_set<ray::ObjectID> object_ids_;
 };
 
 #define ASSERT_REQUEST_UNFINISHED(queue, req_id)                    \
@@ -87,7 +87,7 @@ TEST_F(CreateRequestQueueTest, TestSimple) {
   };
   // Advance the clock without processing objects. This shouldn't have an impact.
   current_time_ns_ += 10e9;
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
   ASSERT_REQUEST_UNFINISHED(queue_, req_id);
 
@@ -125,7 +125,7 @@ TEST_F(CreateRequestQueueTest, TestOom) {
     return PlasmaError::OK;
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
   auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
 
@@ -161,7 +161,7 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocator) {
     }
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
   auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
 
@@ -205,7 +205,7 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
     return PlasmaError::OK;
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
   auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
 
@@ -242,7 +242,7 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
     return PlasmaError::OK;
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
   auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
 
@@ -289,7 +289,7 @@ TEST_F(CreateRequestQueueTest, TestOomTimerWithSpilling) {
     return PlasmaError::OK;
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
   auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
 
@@ -347,7 +347,7 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
     return PlasmaError::OK;
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
   auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
 
@@ -394,7 +394,7 @@ TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
     return PlasmaError::OutOfMemory;
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   static_cast<void>(queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234));
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
   current_time_ns += 1e8;
@@ -409,13 +409,13 @@ TEST_F(CreateRequestQueueTest, TestClientDisconnected) {
 
   // Client makes two requests. One is processed, the other is still in the
   // queue.
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
   ASSERT_TRUE(queue_.ProcessRequests().ok());
   auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
 
   // Another client makes a concurrent request.
-  auto client2 = std::make_shared<MockClient>();
+  auto client2 = std::make_shared<FakeClient>();
   auto req_id3 = queue_.AddRequest(ObjectID::Nil(), client2, request, 1234);
 
   // Client disconnects.
@@ -435,7 +435,7 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
 
   // Queue is empty, request can be fulfilled.
   auto result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
@@ -485,7 +485,7 @@ TEST_F(CreateRequestQueueTest, TestOOMAndOOD) {
     return return_status;
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
 
   // Should fail with out of disk.
@@ -516,7 +516,7 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocationFailled) {
     return return_status;
   };
 
-  auto client = std::make_shared<MockClient>();
+  auto client = std::make_shared<FakeClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
 
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());

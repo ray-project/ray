@@ -40,7 +40,7 @@ myst:
         env-runners
     rllib-examples
     new-api-stack-migration-guide
-    package_ref/index
+    api/index
 -->
 
 ```{toctree}
@@ -133,7 +133,7 @@ In `config.env_runners()`, you can specify the number of parallel {py:class}`~ra
 
 You can also change the neural network architecture with RLlib's {py:class}`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`, and set up a separate config for the evaluation {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors through the `config.evaluation()` method.
 
-To learn more about the RLlib training APIs, see {ref}`the RLlib Python API <rllib-python-api>`. For an example of an action inference loop after training, see [this example script](https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py).
+To learn more about the RLlib training APIs, see {ref}`the RLlib Python API <rllib-python-api>`. For an example of an action inference loop after training, see [this example script](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py).
 
 For a quick preview of which algorithms and environments RLlib supports, expand the dropdowns below.
 
@@ -320,7 +320,7 @@ RLlib natively supports multi-agent reinforcement learning (MARL), so you can ru
 
 RLlib integrates Ray Data for large-scale data ingestion in offline RL and behavior cloning (BC) workloads.
 
-See a basic [tuned behavior cloning example](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/cartpole_bc.py), or an example of [pre-training a policy with BC and fine-tuning it with online PPO](https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py).
+See a basic [tuned behavior cloning example](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/bc/cartpole_bc.py), or an example of [pre-training a policy with BC and fine-tuning it with online PPO](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py).
 :::
 
 :::{dropdown} **Support for External Env Clients**
@@ -328,7 +328,7 @@ See a basic [tuned behavior cloning example](https://github.com/ray-project/ray/
 
 RLlib supports externally connected RL environments by customizing the {py:class}`~ray.rllib.env.env_runner.EnvRunner` logic. Instead of RLlib-owned, internal Gymnasium environments, you can connect external, TCP-connected environments that act independently and can even run their own action inference, for example through ONNX.
 
-For an example, see [RLlib acting as a server for external env TCP clients](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
+For an example, see [RLlib acting as a server for external env TCP clients](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
 :::
 
 
@@ -403,7 +403,7 @@ Algorithms
 
 ## Customize RLlib
 
-RLlib provides APIs for customizing every part of your experimental and production training workflows. For example, you can code your own {ref}`environments <configuring-environments>` in Python with the [Farama Foundation's Gymnasium](https://farama.org) or DeepMind's OpenSpiel, provide custom [PyTorch models](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py), write your own [optimizer setups and loss definitions](https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py), or define custom [exploratory behavior](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py).
+RLlib provides APIs for customizing every part of your experimental and production training workflows. For example, you can code your own {ref}`environments <configuring-environments>` in Python with the [Farama Foundation's Gymnasium](https://farama.org) or DeepMind's OpenSpiel, provide custom [PyTorch models](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/custom_cnn_rl_module.py), write your own [optimizer setups and loss definitions](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/ppo_with_custom_loss_fn.py), or define custom [exploratory behavior](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/count_based_curiosity.py).
 
 ```{figure} images/rllib-new-api-stack-simple.svg
 :align: left

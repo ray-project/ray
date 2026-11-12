@@ -1,0 +1,813 @@
+import logging
+import math
+from concurrent.futures import ThreadPoolExecutor
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Set,
+)
+
+import pyarrow as pa
+import pyarrow.dataset as pds
+import pyarrow.parquet as pq
+from pyarrow.fs import FileSystem
+from typing_extensions import override
+
+if TYPE_CHECKING:
+    from ray.data.datasource.partitioning import Partitioning
+
+from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.common.file_reader import (
+    _ARROW_DEFAULT_BATCH_SIZE,
+    FileFormat,
+    FileReader,
+)
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    _evaluate_path_predicate,
+    _PartitionValueParser,
+)
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    _split_predicate_by_columns,
+    combine_predicates,
+)
+from ray.data._internal.datasource_v2.formats.parquet.footer_reader import _leaf_matches
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
+    _fragments_from_row_group_ids,
+    _with_io_retry,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_size_estimator import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
+    _get_safe_batch_size_for_nested_types,
+    _needs_nested_type_fallback,
+    _resolve_leaf_column_indices,
+    _resolve_read_columns,
+    _row_group_uncompressed_size,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.read_units import (
+    ReadUnit,
+    ReadUnitFragment,
+)
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
+from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    SynthesizedColumn,
+)
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
+from ray.data._internal.util import MiB
+from ray.data.block import BlockMetadata
+from ray.data.expressions import Expr
+from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__name__)
+
+# Per-stream read-ahead buffer for ``use_buffered_stream=True``. PyArrow's
+# default (~8 KiB) produces many tiny range requests on S3; 8 MiB
+# amortizes per-request latency across meaningful payload sizes.
+_PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
+    "RAY_DATA_PARQUET_FRAGMENT_BUFFER_SIZE", 8 * MiB
+)
+
+# Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
+# (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
+# Parquet scan issues against S3, especially for row-group-scoped fragments.
+# The CPU pool is capped at 1 because each read task holds one Ray CPU; a
+# larger pool oversubscribes the node when many read tasks run concurrently.
+_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 16)
+_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
+
+
+def _estimate_batch_size_from_metadata(
+    fragment: pds.ParquetFileFragment,
+    columns: Optional[List[str]],
+    target_block_size: int,
+) -> Optional[int]:
+    """Estimate batch size from Parquet row group metadata without reading data.
+
+    Uses uncompressed column sizes from row group metadata and the encoding
+    ratio to estimate in-memory row size, then computes how many rows fit
+    in ``target_block_size``.
+
+    Args:
+        fragment: A PyArrow Parquet fragment with accessible metadata.
+        columns: Columns being read, or None for all columns.
+        target_block_size: Target in-memory size per batch in bytes.
+
+    Returns:
+        Estimated batch size in rows, or None if metadata is unavailable.
+    """
+    try:
+        # Accessing `metadata` triggers I/O via `EnsureCompleteMetadata()` to
+        # read the Parquet footer. `check_status` maps C++ Status codes to
+        # Python exceptions: IOError (OSError) for I/O failures,
+        # ArrowInvalid for corrupt footers.
+        # https://github.com/apache/arrow/blob/apache-arrow-23.0.0/python/pyarrow/error.pxi#L110-L126
+        metadata: pq.FileMetaData = fragment.metadata
+    except (OSError, pa.ArrowInvalid) as e:
+        logger.debug("Failed to read Parquet metadata for batch size estimation: %s", e)
+        return None
+
+    if metadata is None or metadata.num_row_groups == 0:
+        return None
+
+    row_group_idx: int = (
+        fragment.row_groups[0].id if fragment.row_groups is not None else 0
+    )
+    row_group_meta: pq.RowGroupMetaData = metadata.row_group(row_group_idx)
+    row_group_num_rows: int = row_group_meta.num_rows
+
+    if row_group_num_rows == 0:
+        return None
+
+    # ``None`` sums every column; a projection narrows it to the matching leaves
+    # (a nested field expands to several, e.g. "a.b.list.element"). Shared with
+    # the footer path so the two cannot drift, and it deliberately avoids
+    # ``total_byte_size``, which can report the *compressed* size for some files
+    # (apache/arrow#48138).
+    projected_leaf_indices: Optional[List[int]] = None
+    if columns is not None:
+        projected_columns = set(columns)
+        projected_leaf_indices = [
+            col_idx
+            for col_idx in range(row_group_meta.num_columns)
+            if _leaf_matches(
+                row_group_meta.column(col_idx).path_in_schema, projected_columns
+            )
+        ]
+    row_group_uncompressed_size = _row_group_uncompressed_size(
+        row_group_meta, projected_leaf_indices
+    )
+
+    # Estimate the in-memory size of the row group
+    estimated_in_mem_row_group_size = (
+        row_group_uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+    )
+
+    estimated_in_mem_row_size = estimated_in_mem_row_group_size / row_group_num_rows
+    if estimated_in_mem_row_size == 0:
+        return None
+
+    # Never request more rows than the row group actually contains.
+    target_batch_size = min(
+        math.ceil(target_block_size / estimated_in_mem_row_size),
+        row_group_num_rows,
+    )
+
+    logger.debug(
+        f"Estimated target batch size to be: {target_batch_size} (with "
+        f"{target_block_size=} bytes and {estimated_in_mem_row_size=} bytes)"
+    )
+
+    return target_batch_size
+
+
+def _estimate_batch_size_from_chunk_stats(
+    uncompressed_size: int,
+    num_rows: int,
+    target_block_size: int,
+) -> Optional[int]:
+    """Estimate batch size from footer-derived chunk stats, without any I/O.
+
+    ``ListFiles`` already read each file's footer and recorded the
+    projection-scoped uncompressed byte size and row count of the row groups it
+    assigned to this chunk (the ``size_bytes`` and ``num_rows`` of its
+    :class:`FileChunk`). Sizing from
+    those avoids the extra footer read that
+    :func:`_estimate_batch_size_from_metadata` incurs. Mirrors that function's
+    math but over the whole chunk (its row-group average) rather than the first
+    row group; the estimate is refined from real data after the first batch.
+    """
+    if num_rows <= 0 or uncompressed_size <= 0:
+        return None
+    estimated_in_mem_row_size = (
+        uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT / num_rows
+    )
+    if estimated_in_mem_row_size == 0:
+        return None
+    # Never request more rows than the chunk actually contains.
+    return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
+
+
+@DeveloperAPI
+class ParquetFileReader(FileReader, SupportsMetadata):
+    """Parquet-specific file reader with adaptive batch sizing.
+
+    Extends :class:`FileReader` with:
+
+    - **Metadata-based batch size estimation**: Uses Parquet row group metadata
+      (uncompressed column sizes) to estimate an optimal batch size before
+      reading any data.
+    - **Adaptive refinement**: After reading each batch, refines the batch size
+      estimate from actual in-memory sizes for subsequent reads.
+
+    For non-Parquet formats, use :class:`FileReader` directly.
+    """
+
+    # Number of files whose footers a single count task reads. Footer reads are
+    # small and network-bound, so batch several per task to amortize overhead.
+    _COUNT_ROWS_BATCH_SIZE = env_integer(
+        "RAY_DATA_PARQUET_READER_COUNT_ROWS_BATCH_SIZE", 16
+    )
+
+    def __init__(
+        self,
+        batch_size: Optional[int] = None,
+        columns: Optional[List[str]] = None,
+        predicate: Optional[Expr] = None,
+        limit: Optional[int] = None,
+        filesystem: Optional[FileSystem] = None,
+        partitioning: "Optional[Partitioning]" = None,
+        ignore_prefixes: Optional[List[str]] = None,
+        target_block_size: Optional[int] = None,
+        synthesized_columns: Sequence[SynthesizedColumn] = (),
+        schema: Optional[pa.Schema] = None,
+        parquet_format_kwargs: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize the Parquet reader.
+
+        Args:
+            batch_size: Explicit batch size override. If provided, disables
+                adaptive batch sizing.
+            columns: Columns to read. None means all columns.
+            predicate: Ray Data expression for filtering.
+            limit: Maximum number of rows to read.
+            filesystem: Filesystem for reading files.
+            partitioning: Ray ``Partitioning`` for synthesizing partition
+                columns from file paths.
+            ignore_prefixes: Prefixes to ignore when reading files.
+            target_block_size: Target in-memory size per batch in bytes.
+                Used for adaptive batch sizing when ``batch_size`` is not set.
+            synthesized_columns: Columns appended to every batch instead of
+                being read from the file (``PathColumn``, ``RowHashColumn``);
+                see :class:`FileReader`. One that requires read unit
+                boundaries makes each row group its own read unit.
+            schema: Caller-supplied unified schema forwarded to the base
+                :class:`FileReader` for per-fragment inference override
+                and partition-column type casting.
+            parquet_format_kwargs: Extra kwargs spread into
+                :class:`pyarrow.dataset.ParquetFileFormat` (e.g.
+                ``coerce_int96_timestamp_unit``, ``pre_buffer``,
+                ``dictionary_columns``). Used to forward the deprecated
+                ``dataset_kwargs`` arg on the V2 path.
+        """
+        super().__init__(
+            format=FileFormat.PARQUET,
+            batch_size=batch_size or _ARROW_DEFAULT_BATCH_SIZE,
+            columns=columns,
+            predicate=predicate,
+            limit=limit,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            ignore_prefixes=ignore_prefixes,
+            synthesized_columns=synthesized_columns,
+            schema=schema,
+        )
+        self._explicit_batch_size = batch_size
+        self._partition_value_parser = (
+            _PartitionValueParser(partitioning) if partitioning is not None else None
+        )
+        # Parquet supplies path values before its row filter. The shared
+        # post-read parser would both overwrite them and reject typed root files.
+        # Disabling it also keeps partition keys in _file_dataset_schema so root
+        # files retain their physical columns. _iter_fragment_tables removes only
+        # the keys supplied by that fragment's path before scanning it.
+        self._partition_parser = None
+        self._target_block_size = target_block_size
+        self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
+        # ``None`` until the first read sizes batches. Not an ``object()``
+        # sentinel: a reader pickled before its first read would get a copy
+        # that no longer compares identical to it.
+        self._sampled_batch_size: Optional[int] = None
+        # Size Arrow's process-wide IO/CPU pools for the read task so a Parquet
+        # scan can issue many concurrent column/range fetches against S3 instead
+        # of being capped at Arrow's small default.
+        if _READER_IO_THREAD_COUNT > 0:
+            pa.set_io_thread_count(_READER_IO_THREAD_COUNT)
+        if _READER_CPU_COUNT > 0:
+            pa.set_cpu_count(_READER_CPU_COUNT)
+
+    @override
+    def _make_format(self) -> pds.ParquetFileFormat:
+        return pds.ParquetFileFormat(**self._parquet_format_kwargs)
+
+    @override
+    def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
+        """Determine batch size from explicit setting, metadata, or default.
+
+        Priority: explicit batch_size > sampled estimate > metadata estimate > default.
+
+        On the first call ``_sampled_batch_size`` is ``None``, so we fall
+        through to the metadata estimate and seed ``_sampled_batch_size`` with
+        the result.  ``_on_batch_read`` later refines it from actual data, and
+        subsequent ``read()`` calls on the same instance use the refined value.
+
+        The metadata estimate prefers the footer-derived stats ``ListFiles``
+        already recorded on the manifest (:class:`FileChunk`),
+        so the common footer-chunking path sizes batches without re-reading the
+        footer. It falls back to reading the first fragment's metadata only when
+        the manifest carries no such stats (e.g. the whole-file path).
+        """
+        if self._explicit_batch_size is not None:
+            return self._explicit_batch_size
+
+        if self._sampled_batch_size is not None:
+            return self._sampled_batch_size
+
+        batch_size = _ARROW_DEFAULT_BATCH_SIZE
+        if self._target_block_size is not None:
+            estimated = self._estimate_batch_size(dataset, manifest)
+            if estimated is not None:
+                logger.debug(
+                    "Estimated Parquet batch size: %d rows (target_block_size=%d)",
+                    estimated,
+                    self._target_block_size,
+                )
+                batch_size = estimated
+
+        self._sampled_batch_size = batch_size
+        return batch_size
+
+    def _estimate_batch_size(
+        self, dataset: pds.Dataset, manifest: FileManifest
+    ) -> Optional[int]:
+        assert self._target_block_size is not None
+        # Prefer footer stats already on the manifest; fall back to a footer read.
+        chunk = next(
+            (md for md in manifest.file_chunk_metadatas if md is not None), None
+        )
+        if chunk is not None:
+            estimated = _estimate_batch_size_from_chunk_stats(
+                chunk["size_bytes"],
+                chunk["num_rows"],
+                self._target_block_size,
+            )
+            if estimated is not None:
+                return estimated
+        first_fragment = next(dataset.get_fragments(), None)
+        if first_fragment is None:
+            return None
+        return _estimate_batch_size_from_metadata(
+            first_fragment, self._columns, self._target_block_size
+        )
+
+    @override
+    def _on_batch_read(self, table: pa.Table) -> None:
+        """Refine batch size estimate from actual in-memory data."""
+        if self._target_block_size is None or table.nbytes == 0 or table.num_rows == 0:
+            return
+        row_size = table.nbytes / table.num_rows
+        self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
+
+    @override
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[ReadUnitFragment]:
+        """Fan file fragments into read-level sub-fragments per manifest row.
+
+        For each manifest row, looks up the file's fragment by path and:
+
+        - If ``chunk_metadata`` is ``None`` (whole-file case), the file
+          fragment is yielded as-is, as a read unit named by its path with a
+          row offset of 0. When a synthesized column needs read unit
+          boundaries the unit also carries the file's row count, read from
+          the footer pyarrow opens to scan the file anyway.
+        - Otherwise the row carries a :class:`FileChunk` whose ``unit_ids``
+          are the exact physical row groups the bin assigned to this file
+          (predicate pruning + bin packing already happened in ``ListFiles``);
+          we slice the fragment via
+          :func:`~ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils._fragments_from_row_group_ids`.
+          When a synthesized column needs read unit boundaries
+          (``RowHashColumn``) it fans out one sub-fragment per row group,
+          each a :class:`ReadUnit` of its own paired with its cumulative
+          pre-filter row offset, so per-row values stay unique across
+          sub-fragments that share ``fragment.path``. Otherwise the groups
+          are scanned together as one unit named by the path.
+
+        Paths are deduped by :meth:`FileReader.read` before the dataset is
+        built, so the dataset has exactly one fragment per file. The
+        per-row chunk metadata drives the fan-out here, not the dataset
+        itself — multiple manifest rows can share a single path, either
+        with different row-group sets (chunking) or repeating the same
+        ones (the user listed the file more than once); each row is read.
+        """
+        path_to_fragment = {
+            fragment.path: fragment for fragment in dataset.get_fragments()
+        }
+        # Scan each row group on its own when a column's value depends on
+        # the row's position in the file (``RowHashColumn``); otherwise let
+        # pyarrow coalesce a file's groups into one scan.
+        per_row_group_offsets = any(
+            c.requires_read_unit_boundaries for c in self._synthesized_columns
+        )
+        fragments: List[ReadUnitFragment] = []
+        for path, file_size, chunk_metadata in zip(
+            manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas
+        ):
+            fragment: pds.ParquetFileFragment = path_to_fragment[path]
+            if chunk_metadata is None:
+                num_rows = None
+                if per_row_group_offsets:
+                    # The whole file is the unit; a column that positions rows
+                    # within their unit still needs its row count.
+                    num_rows = _with_io_retry(
+                        lambda: fragment.metadata.num_rows,
+                        f"read Parquet footer for {path}",
+                    )
+                fragments.append(
+                    ReadUnitFragment(
+                        fragment,
+                        ReadUnit(id=path, source=path, count=1, num_rows=num_rows),
+                    )
+                )
+            else:
+                fragments.extend(
+                    _fragments_from_row_group_ids(
+                        fragment,
+                        chunk_metadata["unit_ids"],
+                        per_row_group_offsets=per_row_group_offsets,
+                        file_size=file_size,
+                    )
+                )
+        return fragments
+
+    @override
+    def _get_partition_values(self, path: str) -> Dict[str, Any]:
+        return (
+            self._partition_value_parser(path)
+            if self._partition_value_parser is not None
+            else {}
+        )
+
+    @override
+    def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> "Iterator[pa.Table]":
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        values = self._get_partition_values(fragment.path)
+        file_dataset_schema = self._file_dataset_schema
+        schema = (
+            file_dataset_schema
+            if file_dataset_schema is not None
+            else fragment.physical_schema
+        )
+        schema = pa.schema([field for field in schema if field.name not in values])
+        physical_predicate = self._predicate
+        residual_predicate = None
+        if self._predicate is not None:
+            split = _split_predicate_by_columns(self._predicate, set(values))
+            physical_predicate = split.data_predicate
+            residual_predicate = split.residual_predicate
+            if split.partition_predicate is not None and (
+                _evaluate_path_predicate(
+                    split.partition_predicate, values, self._schema, path=fragment.path
+                )
+                is False
+            ):
+                return
+        if physical_predicate is not None:
+            physical_schema = fragment.physical_schema
+            unsafe = {
+                name
+                for name in get_column_references(physical_predicate)
+                if physical_schema.get_field_index(name) != -1
+                and schema.get_field_index(name) != -1
+                and physical_schema.field(name).type != schema.field(name).type
+            }
+            if unsafe:
+                split = _split_predicate_by_columns(physical_predicate, unsafe)
+                physical_predicate = split.data_predicate
+                residual_predicate = combine_predicates(
+                    residual_predicate,
+                    combine_predicates(
+                        split.partition_predicate, split.residual_predicate
+                    ),
+                )
+        columns = scanner_kwargs.get("columns")
+        residual_columns = (
+            set(get_column_references(residual_predicate))
+            if residual_predicate is not None
+            else set()
+        )
+        local_kwargs = dict(scanner_kwargs)
+        if columns is not None:
+            physical_columns = [name for name in columns if name not in values]
+            physical_columns.extend(
+                sorted(residual_columns - set(physical_columns) - set(values))
+            )
+            local_kwargs["columns"] = physical_columns
+        local_kwargs["filter"] = (
+            physical_predicate.to_pyarrow() if physical_predicate is not None else None
+        )
+        needed = (
+            None if self._columns is None else set(self._columns) | residual_columns
+        )
+        for table in self._iter_fragment_tables_without_pickle_check(
+            fragment, local_kwargs, schema, physical_predicate
+        ):
+            # When you unpickle untrusted data, attackers can execute arbitrary
+            # code. To avoid exposing our users, raise unless the user has
+            # explicitly opted in.
+            raise_on_pickle_object_columns(table)
+            table = self._apply_partition_values(table, values, required_columns=needed)
+            if residual_predicate is not None:
+                table = table.filter(residual_predicate.to_pyarrow())
+            yield table
+
+    def _iter_fragment_tables_without_pickle_check(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+        file_dataset_schema: pa.Schema,
+        predicate: Optional[Expr],
+    ) -> "Iterator[pa.Table]":
+        """Use row-level reads for oversized nested types or differing structs."""
+        import pyarrow.compute as pc
+
+        from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        columns = scanner_kwargs.get("columns")
+        filter_expr: pc.Expression = scanner_kwargs.get("filter")
+        # Include filter-referenced columns in the fallback check: a filter
+        # that touches a large nested column outside the projection still
+        # forces row-level decoding of that column, which would otherwise
+        # hit ARROW-5030 in the normal scanner path.
+        filter_columns = (
+            get_column_references(predicate) if predicate is not None else None
+        )
+        read_columns = _resolve_read_columns(columns, filter_expr, filter_columns)
+        if read_columns is None:
+            read_columns = list(file_dataset_schema.names)
+        needs_nested_type_fallback = _needs_nested_type_fallback(fragment, read_columns)
+        physical_schema = fragment.physical_schema
+        needs_struct_schema_alignment = False
+        if file_dataset_schema is not None:
+            for field in physical_schema:
+                if read_columns is not None and not any(
+                    column == field.name or column.startswith(f"{field.name}.")
+                    for column in read_columns
+                ):
+                    continue
+                target_index = file_dataset_schema.get_field_index(field.name)
+                if target_index == -1:
+                    continue
+                target_type = file_dataset_schema.field(target_index).type
+                if (
+                    pa.types.is_struct(field.type)
+                    and pa.types.is_struct(target_type)
+                    and field.type != target_type
+                ):
+                    needs_struct_schema_alignment = True
+                    break
+
+        if not needs_nested_type_fallback and not needs_struct_schema_alignment:
+            scanner = fragment.scanner(**scanner_kwargs, schema=file_dataset_schema)
+            for tagged in scanner.scan_batches():
+                yield pa.Table.from_batches(batches=[tagged.record_batch])
+            return
+
+        if needs_nested_type_fallback and log_once(
+            f"parquet_nested_fallback_v2:{fragment.path}"
+        ):
+            logger.warning(
+                "Using pyarrow.parquet row-level batched reader for '%s' due "
+                "to Arrow nested type chunking limitation (ARROW-5030). "
+                "Consider writing Parquet files with smaller row group sizes "
+                "to avoid this.",
+                fragment.path,
+            )
+
+        batch_size = scanner_kwargs.get("batch_size")
+
+        pf = pq.ParquetFile(
+            fragment.path,
+            filesystem=fragment.filesystem,  # pyrefly: ignore[unexpected-keyword]
+            coerce_int96_timestamp_unit=self._parquet_format_kwargs.get(
+                "coerce_int96_timestamp_unit"
+            ),
+        )
+
+        # Scope the safe batch-size calculation to the columns actually being
+        # decoded so we don't shrink batches based on columns we won't read.
+        leaf_indices = (
+            _resolve_leaf_column_indices(pf.metadata, read_columns)
+            if read_columns is not None and pf.metadata.num_row_groups > 0
+            else None
+        )
+        safe_batch_size = _get_safe_batch_size_for_nested_types(pf, leaf_indices)
+        fallback_batch_size = (
+            min(batch_size, safe_batch_size) if batch_size else safe_batch_size
+        )
+
+        # Apply row-group-level predicate pushdown via fragment.subset; the
+        # row-level filter is applied per-batch below since iter_batches
+        # doesn't accept a filter expression. Under schema evolution the
+        # filter may reference a column absent from this fragment's
+        # physical schema — fragment.subset uses that schema (not the
+        # unified one) and raises ArrowInvalid, so skip row-group pruning
+        # in that case and let the per-batch filter (post null-fill) do
+        # all the row-dropping.
+        fragment_physical_columns = set(fragment.physical_schema.names)
+        filter_touches_missing_column = filter_columns is not None and any(
+            c not in fragment_physical_columns for c in filter_columns
+        )
+        if filter_expr is not None and not filter_touches_missing_column:
+            subset = fragment.subset(filter=filter_expr)
+        else:
+            subset = fragment
+        row_groups = (
+            [rg.id for rg in subset.row_groups]
+            if subset.row_groups is not None
+            else None
+        )
+        if row_groups is not None and len(row_groups) == 0:
+            return
+
+        # ``pq.ParquetFile.iter_batches`` returns batches with the fragment's
+        # physical schema, so the fallback path would otherwise emit tables
+        # that differ from the scanner path (which pins
+        # ``_file_dataset_schema``) in struct field order, integer width,
+        # or missing columns. Align + cast to the same unified schema so
+        # fallback and non-fallback fragments concat cleanly downstream.
+        # Include filter-only columns until the predicate has been evaluated
+        # using the same logical types as the regular fragment scanner.
+        if file_dataset_schema is not None and columns is not None:
+            align_schema = pa.schema(
+                [
+                    file_dataset_schema.field(c)
+                    for c in columns
+                    if file_dataset_schema.get_field_index(c) != -1
+                ]
+            )
+        else:
+            align_schema = file_dataset_schema
+        assert file_dataset_schema is not None
+        filter_schema = pa.schema(
+            [
+                file_dataset_schema.field(name)
+                for name in read_columns
+                if file_dataset_schema.get_field_index(name) != -1
+            ]
+        )
+
+        # Under schema evolution a filter-referenced column may live in
+        # the unified dataset schema but be absent from this fragment.
+        # The scanner path null-fills such columns via dataset-level
+        # schema pinning; ``pq.ParquetFile.iter_batches`` silently drops
+        # them and then ``table.filter(filter_expr)`` raises
+        # ``ArrowInvalid: No match for FieldRef.Name``. Mirror the
+        # scanner: append a null column of the unified type before the
+        # filter evaluates, so ``null > 15`` resolves to false and the
+        # fragment contributes 0 rows.
+        columns_to_null_fill: List[str] = (
+            [c for c in read_columns if c not in fragment_physical_columns]
+            if read_columns is not None
+            else []
+        )
+        null_fill_type_by_column = {
+            column_name: (
+                file_dataset_schema.field(column_name).type
+                if file_dataset_schema is not None
+                and file_dataset_schema.get_field_index(column_name) != -1
+                else pa.null()
+            )
+            for column_name in columns_to_null_fill
+        }
+
+        for batch in pf.iter_batches(
+            batch_size=fallback_batch_size,
+            columns=read_columns,
+            use_threads=True,
+            row_groups=row_groups,
+        ):
+            table = pa.Table.from_batches([batch])
+            for column_name in columns_to_null_fill:
+                if column_name not in table.column_names:
+                    table = table.append_column(
+                        column_name,
+                        pa.nulls(
+                            table.num_rows,
+                            type=null_fill_type_by_column[column_name],
+                        ),
+                    )
+            table = table.select(filter_schema.names)
+            table = _align_struct_fields([table], filter_schema)[0].cast(filter_schema)
+            if filter_expr is not None:
+                table = table.filter(filter_expr)
+                # Skip downstream select/align/cast on fully-filtered
+                # batches — the caller discards empty tables anyway.
+                if table.num_rows == 0:
+                    continue
+            if columns is not None:
+                table = table.select([c for c in columns if c in table.column_names])
+            if align_schema is not None:
+                table = _align_struct_fields([table], align_schema)[0].cast(
+                    align_schema
+                )
+            yield table
+
+    @override
+    def _arrow_scanner_kwargs(self) -> dict:
+        # ``pre_buffer`` is left at pyarrow's default (``True``). With
+        # ``pre_buffer=True`` pyarrow plans a single coalesced range
+        # request covering all needed column chunks for a fragment and
+        # issues it in one I/O burst, then decodes from memory. With
+        # ``pre_buffer=False`` pyarrow opens a per-column buffered
+        # stream and fetches lazily — fine on narrow schemas (few large
+        # columns) but catastrophic on wide schemas (thousands of small
+        # columns become thousands of range requests). V1
+        # ``ParquetDatasource`` also relies on the default. The
+        # cross-fragment memory accumulation that originally motivated
+        # disabling ``pre_buffer`` (apache/arrow#39808) is already
+        # addressed by V2's per-fragment scanners.
+        #
+        # ``buffer_size`` controls the per-stream read-ahead buffer
+        # pyarrow issues against the filesystem when ``use_buffered_stream``
+        # is on. The default is small (8 KiB), which produces many tiny
+        # range requests on S3. 8 MiB amortizes S3 latency across
+        # meaningful bytes per round-trip. Tunable via env var for
+        # workloads that need a different point on the latency/memory-
+        # peak curve.
+        kwargs: dict = {
+            "fragment_scan_options": pds.ParquetFragmentScanOptions(
+                use_buffered_stream=True,
+                buffer_size=_PARQUET_FRAGMENT_BUFFER_SIZE,
+            ),
+            "fragment_readahead": 1,
+        }
+        return kwargs
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        """Yield one ``BlockMetadata`` per file, with ``num_rows`` from the footer.
+
+        Reads only the Parquet footer (file metadata) for each path -- no data
+        columns -- so ``PushdownCountFiles`` can answer ``count()`` cheaply.
+        Footers are fetched concurrently since each read is network-bound.
+        """
+        from pyarrow.fs import LocalFileSystem
+
+        from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
+        from ray.data.context import DataContext
+
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
+        retried_io_errors = DataContext.get_current().retried_io_errors
+
+        def _num_rows(path: str, file_size: Optional[int]) -> int:
+            # A fragment, unlike ``pq.read_metadata``, takes the listing's
+            # size, which spares the open a request for it (a HEAD on S3).
+            fragment = pds.ParquetFileFormat().make_fragment(
+                path, filesystem=filesystem, file_size=file_size
+            )
+            # Getting the footer requires network calls, so it may fail with
+            # transient errors; retry them.
+            metadata = call_with_retry(
+                lambda: fragment.metadata,
+                description=f"read Parquet footer for {path}",
+                match=retried_io_errors,
+            )
+            return metadata.num_rows
+
+        paths = [str(p) for p in file_manifest.paths]
+        with ThreadPoolExecutor() as executor:
+            for num_rows in executor.map(
+                _num_rows, paths, file_manifest.known_file_sizes
+            ):
+                yield BlockMetadata(
+                    num_rows=num_rows,
+                    size_bytes=None,
+                    exec_stats=None,
+                    input_files=None,
+                )
+
+    @override
+    def available_metadata(self) -> Set[MetadataType]:
+        # A row-reducing predicate would make the footer's ``num_rows`` an
+        # overcount, so only advertise NUM_ROWS when there's no predicate.
+        # Column projection doesn't affect the row count.
+        if self._predicate is not None:
+            return set()
+        return {MetadataType.NUM_ROWS, MetadataType.NUM_BYTES}
+
+    @override
+    def get_target_metadata_batch_size(self) -> Optional[int]:
+        return self._COUNT_ROWS_BATCH_SIZE

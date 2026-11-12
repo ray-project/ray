@@ -263,14 +263,14 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,
-        result: ReplicaResult,
+        result: Optional[ReplicaResult],
     ):
         """Promote a pending token to acquired once the replica accepts.
 
-        Only called when the rejection protocol is active and the replica
-        accepts. On rejection this is NOT called, so the token stays in
-        _pending_tokens and is intentionally leaked on retry to teach the
-        CQ that the replica is busy.
+        Called when the rejection protocol is active and the replica accepts,
+        and for pick-only selections (``result`` is ``None``). On rejection this
+        is NOT called, so the token stays in _pending_tokens and is
+        intentionally leaked on retry to teach the CQ that the replica is busy.
         """
         rid = pending_request.metadata.internal_request_id
         token = self._pending_tokens.pop(rid, None)

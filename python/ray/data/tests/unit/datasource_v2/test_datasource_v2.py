@@ -6,18 +6,20 @@ import pyarrow as pa
 import pyarrow.fs as pafs
 import pytest
 
-from ray.data._internal.datasource_v2.datasource_v2 import (
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
+    NonSamplingFileIndexer,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+    ParquetDatasourceV2,
+)
+from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     DataSourceV2,
     DataSourceWithMetadata,
     FileDataSourceV2,
 )
-from ray.data._internal.datasource_v2.listing.file_indexer import (
-    FileIndexer,
-    NonSamplingFileIndexer,
-)
-from ray.data._internal.datasource_v2.parquet_datasource_v2 import ParquetDatasourceV2
-from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileIndexer
+from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
 from ray.data.read_api import _read_datasource_v2
 
 _SCHEMA = pa.schema([("x", pa.int64())])
@@ -95,7 +97,7 @@ class _BareSource(_Members, DataSourceV2):
 
 def test_table_source_has_no_filesystem_members():
     source = _MetadataSource()
-    for member in ("filesystem", "file_extensions", "shuffle"):
+    for member in ("filesystem", "file_extensions", "shuffle", "source_paths"):
         assert not hasattr(source, member), member
     assert source.schema_needs_file_sample is False
 
@@ -118,6 +120,7 @@ def test_file_source_defaults():
     assert isinstance(source, DataSourceV2)
     assert source.file_extensions is None
     assert source.shuffle is None
+    assert source.source_paths == source.paths
 
 
 def test_parquet_is_a_file_source():

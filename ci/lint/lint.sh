@@ -61,8 +61,7 @@ code_format() {
 
 # Use system python to avoid conflicts with uv python in forge image
 doc_readme() {
-  /usr/bin/python -m pip install -c python/requirements_compiled.txt docutils
-  cd python && /usr/bin/python setup.py check --restructuredtext --strict --metadata
+  cd python && /usr/bin/python setup.py check --strict --metadata
 }
 
 dashboard_format() {
@@ -140,6 +139,11 @@ api_param_coverage() {
   echo "--- Check new-parameter documentation coverage"
   local base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
   git fetch --depth=500 origin "${base_branch}" >/dev/null 2>&1 || true
+  # The depth-limited fetch makes the clone shallow, so a branch forked more
+  # than 500 commits back has no merge-base in it. Fetch the full history then.
+  if ! git merge-base "origin/${base_branch}" HEAD >/dev/null 2>&1; then
+    git fetch --unshallow origin "${base_branch}" >/dev/null 2>&1 || true
+  fi
   PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_param_coverage.py \
     "$(pwd)" --base-ref "origin/${base_branch}" "$@"
 }
@@ -150,6 +154,22 @@ documentation_style() {
 
 doc_no_new_rst() {
   python doc/test_no_new_rst.py
+}
+
+doc_prose_doctest_targets() {
+  python doc/test_prose_doctest_targets.py
+}
+
+doc_assets() {
+  python doc/test_doc_assets.py
+}
+
+ray_repo_links() {
+  python ci/lint/check_ray_repo_links.py
+}
+
+docstring_only_scope() {
+  python ci/ray_ci/doc/check_docstring_only.py
 }
 
 "$@"

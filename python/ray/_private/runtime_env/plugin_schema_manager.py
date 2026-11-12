@@ -3,8 +3,6 @@ import logging
 import os
 from typing import List
 
-import jsonschema
-
 from ray._private.runtime_env.constants import (
     RAY_RUNTIME_ENV_PLUGIN_SCHEMA_SUFFIX,
     RAY_RUNTIME_ENV_PLUGIN_SCHEMAS_ENV_VAR,
@@ -89,6 +87,9 @@ class RuntimeEnvPluginSchemaManager:
             cls.loaded = True
         # if no schema matches, skip the validation.
         if name in cls.schemas:
+            # lazy import jsonschema as it compiles a grammar to optimize load time
+            import jsonschema
+
             jsonschema.validate(instance=instance, schema=cls.schemas[name])
 
     @classmethod

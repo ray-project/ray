@@ -336,8 +336,7 @@ class AWSNodeProvider(NodeProvider):
     def _merge_tag_specs(
         tag_specs: List[Dict[str, Any]], user_tag_specs: List[Dict[str, Any]]
     ) -> None:
-        """
-        Merges user-provided node config tag specifications into a base
+        """Merges user-provided node config tag specifications into a base
         list of node provider tag specifications. The base list of
         node provider tag specs is modified in-place.
 
@@ -477,7 +476,9 @@ class AWSNodeProvider(NodeProvider):
                         # In theory, all ClientError's we expect to get should
                         # have these fields, but just in case we can't parse
                         # it, it's fine, just throw the original error.
-                        logger.warning("Couldn't parse exception.", exc)
+                        logger.warning(
+                            "Couldn't parse exception: %s", exc, exc_info=True
+                        )
                         pass
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",

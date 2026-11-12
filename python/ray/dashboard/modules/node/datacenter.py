@@ -56,8 +56,7 @@ class DataOrganizer:
     @classmethod
     @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_UPDATING_INTERVAL)
     async def organize(cls, thread_pool_executor):
-        """
-        Organizes data: read from (node_physical_stats, node_stats) and updates
+        """Organizes data: read from (node_physical_stats, node_stats) and updates
         (node_workers, node_worker_stats).
 
         This methods is not really async, but DataSource is not thread safe so we need
@@ -218,6 +217,7 @@ class DataOrganizer:
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
         actor_process_gpu_stats = []
+        actor_process_npu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
@@ -232,7 +232,16 @@ class DataOrganizer:
                         actor_process_gpu_stats.append(gpu_stats)
                         break
 
+            for npu_stats in node_physical_stats.get("npus", []):
+                # npu_stats.get("processesPids") can be None, an empty list or a
+                # list of dictionaries.
+                for process in npu_stats.get("processesPids") or []:
+                    if process["pid"] == pid:
+                        actor_process_npu_stats.append(npu_stats)
+                        break
+
         actor["gpus"] = actor_process_gpu_stats
+        actor["npus"] = actor_process_npu_stats
         actor["processStats"] = actor_process_stats
         actor["mem"] = node_physical_stats.get("mem", [])
 
