@@ -1,11 +1,12 @@
 """End-to-end tests for the NCCL RAS hang detector on real GPUs.
 
 Each test deliberately induces one class of NCCL desync inside a real
-``TorchTrainer`` (``backend="nccl"``, ``use_gpu=True``) with the
-:class:`NCCLRASCallback` registered, and asserts the callback's whole-job
-behavior: query RAS on a worker -> parse -> classify per communicator -> capture
-diagnostics (per-rank stack traces and PyTorch Flight Recorder dumps plus
-per-node `nvidia-smi` snapshots) -> raise :class:`NCCLHangError`.
+``TorchTrainer`` (``backend="nccl"``, ``use_gpu=True``) with the hang
+detector turned on (``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1``), and asserts
+the detector's whole-job behavior: query RAS on each node -> parse -> classify
+per communicator -> capture diagnostics (per-rank stack traces and PyTorch
+Flight Recorder dumps plus per-node `nvidia-smi` snapshots) -> raise
+:class:`NCCLHangError`.
 """
 import os
 import shutil
@@ -63,8 +64,8 @@ EXPERIMENT_NAME = "nccl_ras_hang_detector_e2e"
 def nccl_ras_env() -> Iterator[Dict[str, Any]]:
     """Speed up hang detection for this module only, then restore.
 
-    These knobs are read by ``NCCLRASCallback`` on the driver (the callback is
-    registered by default), so they only need to be present in this process.
+    These knobs are read on the driver, where the trainer adds the detector,
+    so they only need to be present in this process.
     Only keys not already set by the caller are added (and only those removed),
     preserving any explicit override.
 
@@ -159,7 +160,7 @@ def shape_mismatch_train_fn(config):
     """Same collective, different tensor size per rank -> shape mismatch.
 
     Undetectable by RAS (op type/count are identical), so this only checks the
-    callback does not spuriously fail a run.
+    detector does not spuriously fail a run.
     """
     import time
 
@@ -176,7 +177,7 @@ def shape_mismatch_train_fn(config):
 def healthy_train_fn(config):
     """Negative control: all ranks issue matched collectives and finish cleanly.
 
-    A correct run must complete with no error, proving the callback raises no
+    A correct run must complete with no error, proving the detector raises no
     spurious hang (false positive) on a healthy job. Op-counts advance in
     lock-step every step, so no rank ever looks frozen.
     """
@@ -249,10 +250,10 @@ def multicomm_subset_train_fn(config):
 def run_train_fn(
     train_func, num_workers, tensor_shape=64 * 1024 * 1024, storage_path=None
 ):
-    """Run ``train_func`` with the RAS callback; return the raised error or None.
+    """Run ``train_func`` with the hang detector; return the raised error or None.
 
     Passing ``storage_path`` pins the run's experiment directory, so a test can
-    read the hang diagnostics the callback uploaded under it.
+    read the hang diagnostics the detector uploaded under it.
     """
     run_config = (
         RunConfig(storage_path=str(storage_path), name=EXPERIMENT_NAME)
@@ -296,7 +297,7 @@ def test_healthy_run_does_not_fail(ray_start_4_cpus_2_gpus, tmp_path):
 
 HANG, FAIL, MAYBE = "hang", "fail", "maybe"
 # "hang"  -> a communicator deadlocks with a frozen straggler rank; the
-#            callback must raise NCCLHangError.
+#            detector must raise NCCLHangError.
 # "fail"  -> a dead rank; that Ray's own worker health check fails the run
 #            with a WorkerGroupError. RAS can detect these missing ranks but
 #            we don't act on it quickly enough by default.
@@ -323,7 +324,7 @@ def _assert_outcome(err, expectation):
 
 
 def diagnostics_dir(storage_path, tool) -> Path:
-    """Where the callback uploads one tool's files for a run."""
+    """Where the detector uploads one tool's files for a run."""
     return Path(storage_path) / EXPERIMENT_NAME / "hang_detector" / tool
 
 

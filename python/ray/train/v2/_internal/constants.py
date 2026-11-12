@@ -158,10 +158,10 @@ METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 # NCCL RAS hang detection.
 # ------------------------------------------------------------
 
-# Feature flag for the NCCL RAS hang detector callback.
+# Feature flag for the NCCL RAS hang detector.
 ENABLE_NCCL_HANG_DETECTOR_ENV_VAR = "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR"
 
-# How often (seconds) to query the NCCL RAS subsystem on a worker
+# How often (seconds) to query the NCCL RAS subsystem
 NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S"
 DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S: float = 15.0
 # How long a communicator must make no progress before the detector acts.

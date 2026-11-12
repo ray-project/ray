@@ -12,7 +12,9 @@ import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
 from ray.train.health import Diagnose, Evict, HealthDecision, Noop, Reattempt
 from ray.train.health._internal.manager import HealthManager
+from ray.train.health.evaluators.nccl_ras import NCCLHangReattempt
 from ray.train.v2._internal.callbacks.health_callback import HealthCallback
+from ray.train.v2._internal.callbacks.nccl_hang_health import NCCLHangHealthCallback
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
@@ -79,6 +81,7 @@ from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
     HealthCheckError,
+    NCCLHangError,
     PreemptionError,
     TrainingFailedError,
 )
@@ -228,10 +231,21 @@ class TrainController:
         self._health_manager = None
         self._health_callback = None
         health_config = self._run_config.health_config
-        if health_config is not None:
-            self._health_manager = HealthManager(health_config.inflight_checks)
+        # The in-flight checks that Ray Train adds, such as the NCCL hang
+        # detector's.
+        builtin_checks = [
+            c.health_check()
+            for c in self._callbacks
+            if isinstance(c, NCCLHangHealthCallback)
+        ]
+        if health_config is not None or builtin_checks:
+            self._health_manager = HealthManager(
+                (list(health_config.inflight_checks) if health_config else [])
+                + builtin_checks
+            )
             self._health_callback = HealthCallback(
-                self._health_manager, health_config.preflight_checks
+                self._health_manager,
+                list(health_config.preflight_checks) if health_config else [],
             )
             self._worker_group_callbacks_to_propagate.append(self._health_callback)
 
@@ -785,7 +799,11 @@ class TrainController:
         if failure_result:
             return failure_result
 
-        error = HealthCheckError(decision)
+        error = (
+            NCCLHangError(decision)
+            if isinstance(decision, NCCLHangReattempt)
+            else HealthCheckError(decision)
+        )
         if isinstance(decision, Diagnose):
             if not any(check.requires_idle_workers for check in decision.checks):
                 logger.info("Diagnosing while training continues: %s", decision.reason)

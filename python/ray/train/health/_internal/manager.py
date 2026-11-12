@@ -57,7 +57,9 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
     """Merge the evaluators' decisions into the health decision to carry out.
 
     The most severe kind wins: ``Evict``, then ``Reattempt``, then
-    ``Diagnose``. Decisions of that kind are combined into one.
+    ``Diagnose``. Decisions of that kind are combined into one. A lone
+    ``Reattempt`` is kept as is, such as the hang detector's
+    ``NCCLHangReattempt``.
 
     Args:
         decisions: The evaluators' decisions.
@@ -84,6 +86,8 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
     if evicts:
         nodes = sorted({node for evict in evicts for node in evict.target_nodes})
         return Evict(reason=_join_reasons(evicts), target_nodes=nodes)
+    if len(reattempts) == 1:
+        return reattempts[0]
     if reattempts:
         return Reattempt(reason=_join_reasons(reattempts))
     if diagnoses:

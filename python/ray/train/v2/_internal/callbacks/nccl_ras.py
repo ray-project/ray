@@ -49,6 +49,7 @@ from typing import (
 import ray
 from ray._private.ray_constants import env_float
 from ray.exceptions import GetTimeoutError
+from ray.train.health import Reattempt
 from ray.train.v2._internal.constants import (
     DEFAULT_NCCL_RAS_ACTION,
     DEFAULT_NCCL_RAS_CONFIRM_DURATION_S,
@@ -919,8 +920,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     """Detects NCCL hangs via the RAS subsystem (see module docstring for the
     topology and the hard/soft model).
 
-    Default-off: the trainer only registers this callback when
-    ``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1`` is set on the driver.
+    Not registered: ``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1`` runs the same
+    detector on ``ray.train.health`` with ``NCCLHangHealthCallback``. This
+    callback stays until it's deleted.
 
     To confirm that a NCCL anomaly isn't a single-snapshot blip, a communicator
     must stay frozen for consecutive polls, tracked as a per-communicator
@@ -1256,7 +1258,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             message += "To debug:\n" + "".join(f"  - {step}\n" for step in debug_steps)
 
         if self._action == NCCL_RAS_ACTION_FAIL:
-            raise NCCLHangError(message, worker_failures={})
+            raise NCCLHangError(Reattempt(reason=message))
         elif self._action == NCCL_RAS_ACTION_OBSERVE:
             logger.warning(message)
 

@@ -181,6 +181,15 @@ def test_merge_decisions(decisions, merged):
     assert merge_decisions(decisions) == merged
 
 
+def test_merge_decisions_keeps_a_lone_reattempt():
+    # The hang detector's NCCLHangReattempt is raised as NCCLHangError.
+    class HangReattempt(Reattempt):
+        pass
+
+    reattempt = HangReattempt(reason="hang")
+    assert merge_decisions([SLOW, Noop(), reattempt]) is reattempt
+
+
 def test_merge_decisions_rejects_an_unknown_decision():
     with pytest.raises(TypeError):
         merge_decisions([Noop(), Custom()])

@@ -11,9 +11,12 @@ from ray.train.health import (
     HealthCheck,
     HealthConfig,
     Noop,
+    PeriodicHealthCheck,
     Reattempt,
 )
+from ray.train.health.evaluators.nccl_ras import NCCLHangEvaluator
 from ray.train.v2._internal.callbacks.health_callback import HealthCallback
+from ray.train.v2._internal.callbacks.nccl_hang_health import NCCLHangHealthCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.execution.callback import ControllerCallback
@@ -49,6 +52,7 @@ class FakeHealthManager:
     worker_probes = []
 
     def __init__(self, inflight_checks):
+        self.inflight_checks = inflight_checks
         self.decisions = []
         self.on_demand_checks = []
         self.worker_statuses = None
@@ -309,6 +313,48 @@ def test_user_callbacks_get_the_health_decision():
     user_callback.after_health_decision.assert_called_once_with(
         run_context=run_context, health_decision=decision
     )
+
+
+def _controller_with(health_config, callbacks):
+    return TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(
+            run_config=RunConfig(name="test", health_config=health_config),
+            scaling_config=ScalingConfig(num_workers=2),
+        ),
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
+        failure_policy=MockFailurePolicy(None),
+        callbacks=callbacks,
+    )
+
+
+def _has_health_callback(controller):
+    return any(
+        isinstance(c, HealthCallback)
+        for c in controller._worker_group_callbacks_to_propagate
+    )
+
+
+@pytest.mark.parametrize("with_health_config", [False, True])
+def test_the_nccl_hang_detector_adds_its_check(with_health_config):
+    # The detector's check runs with the user's in-flight checks, or alone.
+    user_check = PeriodicHealthCheck(poll_interval_s=5)
+    controller = _controller_with(
+        HealthConfig(inflight_checks=[user_check]) if with_health_config else None,
+        [NCCLHangHealthCallback()],
+    )
+
+    checks = controller._health_manager.inflight_checks
+    assert checks[:-1] == ([user_check] if with_health_config else [])
+    (evaluator,) = checks[-1].evaluator_creator()
+    assert isinstance(evaluator, NCCLHangEvaluator)
+    assert _has_health_callback(controller)
+
+
+def test_no_health_checks_without_a_health_config_or_the_detector():
+    controller = _controller_with(None, [])
+    assert controller._health_manager is None
+    assert not _has_health_callback(controller)
 
 
 if __name__ == "__main__":

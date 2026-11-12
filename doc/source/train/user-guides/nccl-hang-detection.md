@@ -22,7 +22,7 @@ This guide shows how to enable the detector, what it does during a hang, how to 
 
 NCCL ships a Reliability, Availability, and Serviceability (RAS) subsystem that runs a monitoring thread inside every NCCL process. The threads form a mesh across the ranks of a job and track, for each communicator, how many collectives of each type every rank has launched. The `ncclras` command-line client queries that mesh from any one rank and returns the state of every rank it can reach.
 
-The detector runs on the Ray Train controller and polls `ncclras` on one of the training workers every `RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S` seconds. It doesn't touch the training function and adds no work to the training step. A single poll shows a snapshot, and ranks are legitimately skewed by stragglers, data loading, and checkpointing, so the detector compares consecutive polls and only treats a communicator as hung when both of the following hold across the whole confirm window:
+The detector runs on the Ray Train controller and polls `ncclras` on each training node every `RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S` seconds. It doesn't touch the training function and adds no work to the training step. A single poll shows a snapshot, and ranks are legitimately skewed by stragglers, data loading, and checkpointing, so the detector compares consecutive polls and only treats a communicator as hung when both of the following hold across the whole confirm window:
 
 - Its ranks report different launch counts for at least one collective type, and every rank is still running.
 - No rank advanced any collective count since the previous poll.
@@ -37,7 +37,7 @@ Any progress on any rank resets that communicator. The detector tracks each comm
 
 ## Enable the detector
 
-Set `RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1` on the driver before you construct the trainer. The trainer registers the detector as a built-in callback, and the training function needs no changes:
+Set `RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1` on the driver before you construct the trainer. The trainer adds the detector to the run as a built-in health check, and the training function needs no changes:
 
 ```{literalinclude} ../doc_code/nccl_hang_detection.py
 :language: python
@@ -138,7 +138,7 @@ The detector writes the human-readable `ncclras -f text` report at confirmation 
 
 ### `nvidia-smi` snapshots
 
-The detector runs `nvidia-smi -q` on one worker per node and writes the output to `nvidia_smi/node_<ip>.log`: power, temperature, clocks, utilization, and ECC state of every GPU on that node at the moment of the hang. It needs `nvidia-smi` on the nodes, which the NVIDIA driver installs.
+The detector runs `nvidia-smi -q` on each node and writes the output to `nvidia_smi/node_<ip>.log`: power, temperature, clocks, utilization, and ECC state of every GPU on that node at the moment of the hang. It needs `nvidia-smi` on the nodes, which the NVIDIA driver installs.
 
 (train-nccl-hang-flight-recorder)=
 
@@ -169,7 +169,7 @@ The detector catches hangs where ranks disagree about launch counts. It doesn't 
 
 - **Symmetric in-collective hangs.** If every rank launches the same collective and the fabric wedges mid-operation, all counts match and the detector sees no mismatch. The PyTorch watchdog is still the only signal for these.
 - **A rank that exited early.** The detector only evaluates a communicator while all of its ranks report `RUNNING`. A rank that crashed or finalized alongside frozen peers is skipped, because Ray Train's health check fails the worker group first.
-- **Hangs in communicators that the polled rank can't reach.** RAS only knows about the ranks reachable through the communicators that each process created. If a job never creates a communicator that spans all ranks, a query on one rank reports only its own subset. Every common parallelism strategy creates a world process group, so this rarely applies in practice.
+- **Hangs in communicators that the polled rank can't reach.** RAS only knows about the ranks reachable through the communicators that each process created. If a job never creates a communicator that spans all ranks, a query on one node reports only its own subset. Every common parallelism strategy creates a world process group, so this rarely applies in practice.
 
 The detector can also report a false positive:
 

@@ -55,8 +55,20 @@ class HealthCheckError(WorkerGroupError):
 
 
 @DeveloperAPI
-class NCCLHangError(WorkerGroupError):
-    """Exception raised when the NCCL RAS subsystem detects a hung training job."""
+class NCCLHangError(HealthCheckError):
+    """Exception raised when the NCCL hang detector confirms a hung training
+    job, with ``RAY_TRAIN_NCCL_RAS_ACTION=fail``.
+
+    Args:
+        decision: The hang detector's ``Reattempt``, whose reason describes
+            the hang.
+    """
+
+    def __init__(self, decision: HealthDecision):
+        # The message is the hang detector's report, without HealthCheckError's
+        # prefix.
+        super(HealthCheckError, self).__init__(decision.reason, worker_failures={})
+        self.decision = decision
 
 
 @PublicAPI(stability="alpha")
