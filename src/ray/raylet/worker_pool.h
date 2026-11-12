@@ -419,28 +419,25 @@ class WorkerPool : public WorkerPoolInterface {
   /// Clock for getting current time.
   ClockInterface &clock_;
 
-  /// Asynchronously start a new worker process. Once the worker process has
-  /// registered with an external server, the process should create and
-  /// register N workers, then add them to the pool.
-  /// Failure to start the worker process is a fatal error. If too many workers
-  /// are already being started, then this function will return without starting
-  /// any workers.
-  ///
-  /// \param language Which language this worker process should be.
-  /// \param worker_type The type of the worker. This worker type is internal to
-  ///                             worker pool abstraction. Outside this class, workers
-  ///                             will have rpc::WorkerType instead.
-  /// \param job_id The ID of the job to which the started worker process belongs.
-  /// \param status The output status of work process starting.
-  /// \param dynamic_options The dynamic options that we should add for worker command.
-  /// \param runtime_env_hash The hash of runtime env.
-  /// \param serialized_runtime_env_context The context of runtime env.
-  /// \param runtime_env_info The raw runtime env info.
-  /// \param worker_startup_keep_alive_duration If set, the worker will be kept alive for
-  ///   this duration even if it's idle. This is only applicable before a lease is
-  ///   assigned to the worker.
-  /// \return The process that we started and the worker ID assigned to it. If the worker
-  /// ID is nil, we didn't start a process.
+  /**
+   * @brief Asynchronously start a new worker process.
+   * Once registered with an external server, the process should create and register
+   * N workers, then add them to the pool. Failure to start the process is fatal.
+   * If too many workers are already starting, this returns without starting a process.
+   * @param language Language of the worker process.
+   * @param worker_type Internal worker pool type of the process.
+   * @param job_id Job to which the process belongs.
+   * @param[out] status Status of starting the process.
+   * @param dynamic_options Additional worker command options.
+   * @param runtime_env_hash Hash of the runtime environment.
+   * @param serialized_runtime_env_context Serialized runtime environment context.
+   * @param runtime_env_info Raw runtime environment information.
+   * @param worker_startup_keep_alive_duration If set, keep the worker alive for this
+   * duration even when idle, before a lease is assigned.
+   * @param worker_resource_limits Limits associated with the process for worker reuse
+   * matching.
+   * @return The started process and its worker ID. A nil ID means no process started.
+   */
   std::tuple<const ProcessInterface &, WorkerID> StartWorkerProcess(
       const Language &language,
       rpc::WorkerType worker_type,
@@ -481,6 +478,11 @@ class WorkerPool : public WorkerPoolInterface {
   const std::vector<std::string> &LookupWorkerDynamicOptions(
       const WorkerID &worker_id) const;
 
+  /**
+   * @brief Look up the resource limit profile recorded for a worker process.
+   * @param worker_id ID of the worker process to look up.
+   * @return The recorded profile, or an empty profile if the process is unknown.
+   */
   const rpc::WorkerResourceLimits &LookupWorkerResourceLimits(
       const WorkerID &worker_id) const;
 

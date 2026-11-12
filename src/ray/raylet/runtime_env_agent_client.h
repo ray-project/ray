@@ -73,8 +73,15 @@ class RuntimeEnvAgentClient {
                                      const rpc::RuntimeEnvConfig &runtime_env_config,
                                      GetOrCreateRuntimeEnvCallback callback) = 0;
 
-  /// Request a runtime env context with per-worker resource limits. The limits are
-  /// applied to the returned context and are not part of the cached base runtime env.
+  /**
+   * @brief Request a runtime environment context with per-worker resource limits.
+   * Limits apply to the returned context without modifying the cached base context.
+   * @param job_id Job to which the runtime environment belongs.
+   * @param serialized_runtime_env JSON-serialized runtime environment.
+   * @param runtime_env_config Runtime environment setup configuration.
+   * @param worker_resource_limits Limits to apply to this worker's context.
+   * @param callback Callback invoked with the setup result.
+   */
   virtual void GetOrCreateRuntimeEnv(
       const JobID &job_id,
       const std::string &serialized_runtime_env,
