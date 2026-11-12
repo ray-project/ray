@@ -3,6 +3,7 @@ import math
 import time
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._common.utils import binary_to_hex
@@ -56,6 +57,194 @@ from ray.core.generated.instance_manager_pb2 import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Exhaustive partition of every non-UNKNOWN IMInstance.InstanceStatus used by
+# multi-host replica reconciliation. Every state belongs to exactly one bucket:
+#   TERMINAL | UNALLOCATED | BOOTING | {RAY_RUNNING} | DRAINING | TEARDOWN.
+_TERMINAL_INSTANCE_STATUSES = frozenset(
+    {
+        IMInstance.TERMINATED,
+        IMInstance.ALLOCATION_FAILED,
+    }
+)
+_UNALLOCATED_INSTANCE_STATUSES = frozenset(
+    {
+        IMInstance.QUEUED,
+        IMInstance.REQUESTED,
+    }
+)
+_BOOTING_INSTANCE_STATUSES = frozenset(
+    {
+        IMInstance.ALLOCATED,
+        IMInstance.RAY_INSTALLING,
+    }
+)
+_DRAINING_INSTANCE_STATUSES = frozenset(
+    {
+        IMInstance.RAY_STOP_REQUESTED,
+        IMInstance.RAY_STOPPING,
+    }
+)
+_TEARDOWN_INSTANCE_STATUSES = frozenset(
+    {
+        IMInstance.ALLOCATION_TIMEOUT,
+        IMInstance.RAY_INSTALL_FAILED,
+        IMInstance.RAY_STOPPED,
+        IMInstance.TERMINATING,
+        IMInstance.TERMINATION_FAILED,
+    }
+)
+_ACTIVE_CID_STATUSES = (
+    _BOOTING_INSTANCE_STATUSES
+    | {IMInstance.RAY_RUNNING}
+    | _DRAINING_INSTANCE_STATUSES
+    | {IMInstance.TERMINATING}
+)
+_LIVE_CID_STATUSES = _BOOTING_INSTANCE_STATUSES | {IMInstance.RAY_RUNNING}
+_OCCUPYING_CLOUD_STATUSES = _LIVE_CID_STATUSES | _DRAINING_INSTANCE_STATUSES
+
+
+@dataclass
+class _MultiHostReplicaView:
+    """Canonical multi-host replica state projection shared across allocation,
+    scaling clamps, partial-replica drain filtering, and instance termination."""
+
+    active_cids: Set[CloudInstanceId] = field(default_factory=set)
+    booting_cids: Set[CloudInstanceId] = field(default_factory=set)
+    live_cids: Set[CloudInstanceId] = field(default_factory=set)
+    assigned_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    rep_assigned_cids: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    rep_lids: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    rep_bound_cids_by_lid: Dict[Tuple[Tuple[NodeType, str], str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    non_fillable_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    rep_booting: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    rep_occupying: Dict[Tuple[NodeType, str], int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    draining_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    ray_running_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    claimed_reps_by_lid: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    requested_by_lid: Dict[Tuple[NodeType, str], int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    in_flight_by_lid: Dict[Tuple[NodeType, str], int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+
+    def owed_batch_slots(self, nt: NodeType, rid: str, lid: str, size: int) -> int:
+        """Unallocated pods that batch `lid` still owes live replica `(nt, rid)`."""
+        rk = (nt, rid)
+        if not rid or not lid or rk in self.non_fillable_reps:
+            return 0
+        bound = self.rep_bound_cids_by_lid.get((rk, lid))
+        if not bound:
+            return 0
+        return min(
+            max(0, size - len(self.rep_assigned_cids[rk])),
+            max(0, size - len(bound)),
+        )
+
+
+def _build_multihost_replica_view(
+    im_instances: List[IMInstance],
+    cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    replica_sizes: Dict[NodeType, int],
+    status_overrides: Optional[Dict[str, "IMInstance.InstanceStatus"]] = None,
+) -> _MultiHostReplicaView:
+    """Project per-instance IM rows and cloud replica IDs into one canonical view."""
+    view = _MultiHostReplicaView()
+    overrides = status_overrides or {}
+
+    for inst in im_instances:
+        st = overrides.get(inst.instance_id, inst.status)
+        if not inst.cloud_instance_id:
+            continue
+        if st in _ACTIVE_CID_STATUSES:
+            view.active_cids.add(inst.cloud_instance_id)
+        if st in _BOOTING_INSTANCE_STATUSES:
+            view.booting_cids.add(inst.cloud_instance_id)
+        if st in _LIVE_CID_STATUSES:
+            view.live_cids.add(inst.cloud_instance_id)
+
+    if not replica_sizes:
+        return view
+
+    for inst in im_instances:
+        if inst.node_kind == NodeKind.HEAD or inst.instance_type not in replica_sizes:
+            continue
+        nt = inst.instance_type
+        st = overrides.get(inst.instance_id, inst.status)
+        lid = inst.launch_request_id
+
+        if inst.cloud_instance_id:
+            c_inst = cloud_instances.get(inst.cloud_instance_id)
+            if c_inst is not None and c_inst.node_kind == NodeKind.HEAD:
+                continue
+            rid = (
+                c_inst.replica_id if c_inst is not None and c_inst.replica_id else ""
+            ) or inst.cloud_instance_replica_id
+            if not rid:
+                continue
+            rk = (nt, rid)
+            # Track every pod ever bound to `(rk, lid)` (even if later preempted
+            # or raylet-restarted) so per-replica owed counts stay exact.
+            view.assigned_reps.add(rk)
+            if lid:
+                view.claimed_reps_by_lid[(nt, lid)].add(rid)
+                view.rep_bound_cids_by_lid[(rk, lid)].add(inst.cloud_instance_id)
+                view.rep_lids[rk].add(lid)
+
+            # Ignore stale RAY_STOPPED rows shadowed by an active IM row on the
+            # same cloud instance (e.g. after a raylet restart).
+            if (
+                st == IMInstance.RAY_STOPPED
+                and inst.cloud_instance_id in view.active_cids
+            ):
+                continue
+
+            if st in _TERMINAL_INSTANCE_STATUSES:
+                if any(
+                    h.instance_status
+                    in (
+                        IMInstance.TERMINATING,
+                        IMInstance.ALLOCATION_TIMEOUT,
+                        IMInstance.RAY_INSTALL_FAILED,
+                    )
+                    for h in inst.status_history
+                ):
+                    view.non_fillable_reps.add(rk)
+                continue
+
+            if st in _DRAINING_INSTANCE_STATUSES | _TEARDOWN_INSTANCE_STATUSES:
+                view.non_fillable_reps.add(rk)
+
+            if c_inst is None:
+                continue
+            view.rep_assigned_cids[rk].add(inst.cloud_instance_id)
+            if st in _BOOTING_INSTANCE_STATUSES:
+                view.rep_booting.add(rk)
+            if st in _OCCUPYING_CLOUD_STATUSES:
+                view.rep_occupying[rk] += 1
+            if st in _DRAINING_INSTANCE_STATUSES:
+                view.draining_reps.add(rk)
+                view.ray_running_reps.add(rk)
+            elif st == IMInstance.RAY_RUNNING:
+                view.ray_running_reps.add(rk)
+        elif st == IMInstance.REQUESTED:
+            view.requested_by_lid[(nt, lid or "")] += 1
+            view.in_flight_by_lid[(nt, lid or "")] += 1
+        elif st == IMInstance.QUEUED and lid:
+            view.in_flight_by_lid[(nt, lid)] += 1
+
+    return view
 
 
 class Reconciler:
@@ -391,40 +580,15 @@ class Reconciler:
             else {}
         )
         # Preserve replica_id <-> launch_request_id affinity across concurrent
-        # multi-host replica launches and prevent a new batch from claiming a
-        # pod belonging to an already-existing (e.g. degraded/healing) replica.
-        assigned_reps: Set[Tuple[NodeType, str]] = set()
-        rep_launch_ids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
-        rep_assigned_count: Dict[Tuple[NodeType, str], int] = defaultdict(int)
-        claimed_reps_by_lid: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
-        batch_size_by_lid: Dict[Tuple[NodeType, str], int] = defaultdict(int)
-        if replica_sizes:
-            for instance in im_instances:
-                nt = instance.instance_type
-                if nt not in replica_sizes or instance.status in (
-                    IMInstance.TERMINATED,
-                    IMInstance.ALLOCATION_FAILED,
-                    IMInstance.ALLOCATION_TIMEOUT,
-                ):
-                    continue
-                lid = instance.launch_request_id
-                if instance.cloud_instance_id:
-                    c_inst = non_terminated_cloud_instances.get(
-                        instance.cloud_instance_id
-                    )
-                    if c_inst is None:
-                        continue
-                    if c_inst.replica_id:
-                        rk = (nt, c_inst.replica_id)
-                        assigned_reps.add(rk)
-                        rep_assigned_count[rk] += 1
-                        if lid:
-                            rep_launch_ids[rk].add(lid)
-                            claimed_reps_by_lid[(nt, lid)].add(c_inst.replica_id)
-                    if lid:
-                        batch_size_by_lid[(nt, lid)] += 1
-                elif lid:
-                    batch_size_by_lid[(nt, lid)] += 1
+        # multi-host replica launches and prevent a batch from claiming a pod
+        # belonging to an existing, draining, or tearing-down replica.
+        replica_view = (
+            _build_multihost_replica_view(
+                im_instances, non_terminated_cloud_instances, replica_sizes
+            )
+            if replica_sizes
+            else None
+        )
         # A single launch request could launch multiple node types, so a launch
         # request id alone doesn't identify a launch error: key the errors by
         # (request id, node type) so that errors of different node types from the
@@ -470,11 +634,7 @@ class Reconciler:
                 launch_errors,
                 remaining_launch_failures,
                 replica_sizes=replica_sizes,
-                assigned_reps=assigned_reps,
-                rep_launch_ids=rep_launch_ids,
-                rep_assigned_count=rep_assigned_count,
-                claimed_reps_by_lid=claimed_reps_by_lid,
-                batch_size_by_lid=batch_size_by_lid,
+                replica_view=replica_view,
             )
             if not update_event:
                 continue
@@ -491,11 +651,7 @@ class Reconciler:
         launch_errors: Dict[Tuple[str, NodeType], LaunchNodeError],
         remaining_launch_failures: Dict[Tuple[str, NodeType], int],
         replica_sizes: Optional[Dict[NodeType, int]] = None,
-        assigned_reps: Optional[Set[Tuple[NodeType, str]]] = None,
-        rep_launch_ids: Optional[Dict[Tuple[NodeType, str], Set[str]]] = None,
-        rep_assigned_count: Optional[Dict[Tuple[NodeType, str], int]] = None,
-        claimed_reps_by_lid: Optional[Dict[Tuple[NodeType, str], Set[str]]] = None,
-        batch_size_by_lid: Optional[Dict[Tuple[NodeType, str], int]] = None,
+        replica_view: Optional[_MultiHostReplicaView] = None,
     ) -> Optional[IMInstanceUpdateEvent]:
         """Allocate, or fail the cloud instance allocation for the instance.
 
@@ -507,11 +663,7 @@ class Reconciler:
             remaining_launch_failures: Remaining number of instances to fail for
                 each (launch request id, node type), from LaunchNodeError.count.
             replica_sizes: Multi-worker replica sizes by node type.
-            assigned_reps: `(node_type, replica_id)` pairs already bound to IM.
-            rep_launch_ids: `launch_request_id`s already bound to each replica.
-            rep_assigned_count: Live assigned pod counts per `(node_type, replica_id)`.
-            claimed_reps_by_lid: Replica IDs claimed by each `(node_type, launch_request_id)`.
-            batch_size_by_lid: Active IM instance counts per `(node_type, launch_request_id)`.
+            replica_view: Canonical multi-host replica view updated in place.
 
         Returns:
             Instance update to ALLOCATED: if there's a matching unassigned cloud
@@ -529,38 +681,34 @@ class Reconciler:
         )
         nt = im_instance.instance_type
         size = replica_sizes.get(nt, 1) if replica_sizes else 1
+        lid = im_instance.launch_request_id
         if candidates:
-            if (
-                size > 1
-                and assigned_reps is not None
-                and rep_launch_ids is not None
-                and rep_assigned_count is not None
-                and claimed_reps_by_lid is not None
-                and batch_size_by_lid is not None
-            ):
-                lid = im_instance.launch_request_id
+            if size > 1 and replica_view is not None:
                 match_idx = None
-                # 1. Finish an incomplete replica already bound to this launch batch.
+                # 1. Finish an incomplete live replica already bound to this batch.
                 for idx in range(len(candidates) - 1, -1, -1):
                     rid = candidates[idx].replica_id
-                    if (
-                        rid
-                        and lid in rep_launch_ids[(nt, rid)]
-                        and rep_assigned_count[(nt, rid)] < size
-                    ):
+                    if rid and replica_view.owed_batch_slots(nt, rid, lid, size) > 0:
                         match_idx = idx
                         break
-                # 2. Claim a fresh replica only if this batch has unclaimed capacity.
-                if (
-                    match_idx is None
-                    and len(claimed_reps_by_lid[(nt, lid)]) * size
-                    < batch_size_by_lid[(nt, lid)]
-                ):
-                    for idx in range(len(candidates) - 1, -1, -1):
-                        rid = candidates[idx].replica_id
-                        if rid and (nt, rid) not in assigned_reps:
-                            match_idx = idx
-                            break
+                # 2. Claim a fresh replica only if this batch still has at least a
+                # full replica's worth of unclaimed, non-failing REQUESTED slots.
+                if match_idx is None:
+                    open_live_slots = sum(
+                        replica_view.owed_batch_slots(nt, r, lid, size)
+                        for r in replica_view.claimed_reps_by_lid[(nt, lid)]
+                    )
+                    avail_req = max(
+                        0,
+                        replica_view.requested_by_lid[(nt, lid)]
+                        - remaining_launch_failures.get((lid, nt), 0),
+                    )
+                    if avail_req - open_live_slots >= size:
+                        for idx in range(len(candidates) - 1, -1, -1):
+                            rid = candidates[idx].replica_id
+                            if rid and (nt, rid) not in replica_view.assigned_reps:
+                                match_idx = idx
+                                break
                 # 3. Fallback for providers without replica_id metadata.
                 if match_idx is None:
                     for idx in range(len(candidates) - 1, -1, -1):
@@ -569,18 +717,36 @@ class Reconciler:
                             break
                 if match_idx is not None:
                     unassigned_cloud_instance = candidates.pop(match_idx)
+                    replica_view.requested_by_lid[(nt, lid)] = max(
+                        0, replica_view.requested_by_lid[(nt, lid)] - 1
+                    )
+                    replica_view.in_flight_by_lid[(nt, lid)] = max(
+                        0, replica_view.in_flight_by_lid[(nt, lid)] - 1
+                    )
                     if unassigned_cloud_instance.replica_id:
                         rk = (nt, unassigned_cloud_instance.replica_id)
-                        assigned_reps.add(rk)
-                        rep_assigned_count[rk] += 1
-                        rep_launch_ids[rk].add(lid)
-                        claimed_reps_by_lid[(nt, lid)].add(
-                            unassigned_cloud_instance.replica_id
+                        replica_view.assigned_reps.add(rk)
+                        replica_view.rep_assigned_cids[rk].add(
+                            unassigned_cloud_instance.cloud_instance_id
                         )
+                        replica_view.rep_booting.add(rk)
+                        if lid:
+                            replica_view.rep_lids[rk].add(lid)
+                            replica_view.rep_bound_cids_by_lid[(rk, lid)].add(
+                                unassigned_cloud_instance.cloud_instance_id
+                            )
+                            replica_view.claimed_reps_by_lid[(nt, lid)].add(
+                                unassigned_cloud_instance.replica_id
+                            )
             else:
                 unassigned_cloud_instance = candidates.pop()
 
         if unassigned_cloud_instance:
+            event_kwargs = {}
+            if unassigned_cloud_instance.replica_id:
+                event_kwargs[
+                    "cloud_instance_replica_id"
+                ] = unassigned_cloud_instance.replica_id
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATED,
@@ -591,6 +757,7 @@ class Reconciler:
                     "allocated unassigned cloud instance "
                     f"{unassigned_cloud_instance.cloud_instance_id}"
                 ),
+                **event_kwargs,
             )
 
         # Fail at most `count` instances for this (request id, type). The rest
@@ -598,9 +765,13 @@ class Reconciler:
         launch_error_key = (im_instance.launch_request_id, im_instance.instance_type)
         if remaining_launch_failures.get(launch_error_key, 0) > 0:
             remaining_launch_failures[launch_error_key] -= 1
-            if batch_size_by_lid is not None and size > 1:
-                batch_key = (nt, im_instance.launch_request_id)
-                batch_size_by_lid[batch_key] = max(0, batch_size_by_lid[batch_key] - 1)
+            if replica_view is not None and size > 1:
+                replica_view.requested_by_lid[(nt, lid)] = max(
+                    0, replica_view.requested_by_lid[(nt, lid)] - 1
+                )
+                replica_view.in_flight_by_lid[(nt, lid)] = max(
+                    0, replica_view.in_flight_by_lid[(nt, lid)] - 1
+                )
             launch_error = launch_errors[launch_error_key]
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
@@ -857,6 +1028,14 @@ class Reconciler:
         terminal_statuses = (IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED)
         instances, version = Reconciler._get_im_instances(instance_manager)
         live_ray_node_ids = {binary_to_hex(n.node_id) for n in ray_nodes}
+        # Retain terminal replica records whose batch still has unallocated
+        # instances so multi-host replica accounting preserves prior bindings.
+        active_lids = {
+            instance.launch_request_id
+            for instance in instances
+            if instance.launch_request_id
+            and instance.status in _UNALLOCATED_INSTANCE_STATUSES
+        }
         now_ns = time.time_ns()
         retention_ns = retention_s * 1_000_000_000
         to_delete: List[str] = []
@@ -866,6 +1045,12 @@ class Reconciler:
             # Keep records GCS still references, else they get resurrected as
             # ALLOCATED by _handle_extra_cloud_instances_from_ray_nodes.
             if instance.node_id and instance.node_id in live_ray_node_ids:
+                continue
+            if (
+                instance.cloud_instance_replica_id
+                and instance.launch_request_id
+                and instance.launch_request_id in active_lids
+            ):
                 continue
             terminal_times = InstanceUtil.get_status_transition_times_ns(
                 instance, instance.status
@@ -1123,20 +1308,32 @@ class Reconciler:
                 fresh = [
                     i for i in queued_instances_for_type if not i.launch_request_id
                 ]
+                retried_by_lid: Dict[str, List[IMInstance]] = defaultdict(list)
+                for inst in retried:
+                    retried_by_lid[inst.launch_request_id].append(inst)
                 if available > 0 and not requested_instances_by_type.get(instance_type):
                     # Allow one atomic multi-host replica when launch capacity is open
                     # and this group has no in-flight REQUESTED instances, preventing
                     # smaller groups from starving larger multi-host replicas.
-                    available = max(available, len(retried) + (size if fresh else 0))
-                retried_to_launch = min(
-                    len(retried), max(0, min(available, num_desired_to_upscale))
-                )
-                rem_avail = max(0, available - retried_to_launch)
+                    first_retried = (
+                        len(next(iter(retried_by_lid.values())))
+                        if retried_by_lid
+                        else 0
+                    )
+                    available = max(available, first_retried + (size if fresh else 0))
+                selected_retried: List[IMInstance] = []
+                retried_budget = max(0, min(available, num_desired_to_upscale))
+                for group in retried_by_lid.values():
+                    if len(group) <= retried_budget - len(selected_retried) or (
+                        not selected_retried and len(group) <= available
+                    ):
+                        selected_retried.extend(group)
+                rem_avail = max(0, available - len(selected_retried))
                 fresh_to_launch = min(
                     len(fresh), max(0, min(rem_avail, num_desired_to_upscale))
                 )
                 fresh_to_launch -= fresh_to_launch % size
-                selected = retried[:retried_to_launch] + fresh[:fresh_to_launch]
+                selected = selected_retried + fresh[:fresh_to_launch]
                 if selected:
                     all_to_launch[instance_type].extend(selected)
                     total_num_requested_to_launch += len(selected)
@@ -1472,7 +1669,9 @@ class Reconciler:
                     im_instance=im_instance,
                     cloud_instance_id=cid,
                     cloud_instance_replica_id=(
-                        c_inst.replica_id if c_inst is not None else None
+                        (c_inst.replica_id if c_inst is not None else None)
+                        or im_instance.cloud_instance_replica_id
+                        or None
                     ),
                 )
             )
@@ -1554,11 +1753,10 @@ class Reconciler:
         # Replicas with a Ray stop pending after this tick. The cloud provider
         # deletes a replica as a unit, so their not-yet-running pods wait for the
         # stop to be accepted instead of deleting the replica under it.
-        stopping_reps = {
-            _replica_key(inst)
-            for inst in im_instances
-            if inst.status in (IMInstance.RAY_STOP_REQUESTED, IMInstance.RAY_STOPPING)
-        } | {
+        pre_view = _build_multihost_replica_view(
+            im_instances, cloud_instances, replica_sizes
+        )
+        stopping_reps = set(pre_view.draining_reps) | {
             _replica_key(im_instances_by_instance_id[req.instance_id])
             for req in to_terminate
             if req.instance_status == IMInstance.RAY_RUNNING
@@ -1625,90 +1823,71 @@ class Reconciler:
             # updates (including draining RAY_STOP_REQUESTED / RAY_STOPPING
             # workers and whole active multi-host replicas) so queued launches
             # stay within configured limits until draining slots actually free.
+            status_overrides = {
+                iid: ev.new_instance_status for iid, ev in updates.items()
+            }
+            view = _build_multihost_replica_view(
+                im_instances,
+                cloud_instances,
+                replica_sizes,
+                status_overrides=status_overrides,
+            )
             active_by_type: Dict[NodeType, int] = defaultdict(int)
             active_total = 0
-            rep_occupying: Dict[Tuple[NodeType, str], int] = defaultdict(int)
-            rep_assigned_cids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
-            rep_booting: Set[Tuple[NodeType, str]] = set()
-            rep_lids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
-            in_flight_by_lid: Dict[Tuple[NodeType, str], int] = defaultdict(int)
             for inst in im_instances:
-                st = (
-                    updates[inst.instance_id].new_instance_status
-                    if inst.instance_id in updates
-                    else inst.status
-                )
-                is_occupying = (
+                st = status_overrides.get(inst.instance_id, inst.status)
+                if (
                     InstanceUtil.is_ray_running_reachable(st)
                     or st == IMInstance.RAY_STOPPING
-                )
-                if is_occupying:
+                ):
                     active_total += 1
                     if inst.node_kind != NodeKind.HEAD:
                         active_by_type[inst.instance_type] += 1
-                if (
-                    inst.node_kind == NodeKind.HEAD
-                    or inst.instance_type not in replica_sizes
-                ):
-                    continue
-                rk = _replica_key(inst)
-                if rk is not None:
-                    if st not in (
-                        IMInstance.TERMINATED,
-                        IMInstance.ALLOCATION_FAILED,
-                    ):
-                        rep_assigned_cids[rk].add(inst.cloud_instance_id)
-                    if inst.launch_request_id and st not in (
-                        IMInstance.TERMINATING,
-                        IMInstance.TERMINATED,
-                        IMInstance.ALLOCATION_FAILED,
-                    ):
-                        rep_lids[rk].add(inst.launch_request_id)
-                    if is_occupying:
-                        rep_occupying[rk] += 1
-                    if st in (IMInstance.ALLOCATED, IMInstance.RAY_INSTALLING):
-                        rep_booting.add(rk)
-                elif st == IMInstance.REQUESTED or (
-                    st == IMInstance.QUEUED and bool(inst.launch_request_id)
-                ):
-                    in_flight_by_lid[
-                        (inst.instance_type, inst.launch_request_id or "")
-                    ] += 1
 
+            in_flight_by_lid: Dict[Tuple[NodeType, str], int] = defaultdict(
+                int, view.in_flight_by_lid
+            )
             for rk in sorted(
-                rep_occupying,
+                view.rep_occupying,
                 key=lambda r: (
                     0
-                    if (
-                        r in rep_booting
-                        or any(in_flight_by_lid[(r[0], lid)] > 0 for lid in rep_lids[r])
+                    if any(
+                        in_flight_by_lid[(r[0], lid)] > 0
+                        and view.owed_batch_slots(r[0], r[1], lid, replica_sizes[r[0]])
+                        > 0
+                        for lid in view.rep_lids[r]
                     )
+                    or (r not in view.non_fillable_reps and r in view.rep_booting)
                     else 1,
                     r,
                 ),
             ):
-                nt, _ = rk
+                nt, rid = rk
                 size = replica_sizes[nt]
-                occ = rep_occupying[rk]
+                occ = view.rep_occupying[rk]
                 if occ >= size:
                     continue
-                missing_unassigned = max(0, size - len(rep_assigned_cids[rk]))
                 covered = 0
-                for lid in sorted(rep_lids[rk]):
-                    take = min(
-                        missing_unassigned - covered, in_flight_by_lid[(nt, lid)]
-                    )
-                    in_flight_by_lid[(nt, lid)] -= take
-                    covered += take
-                if covered < missing_unassigned and in_flight_by_lid[(nt, "")] > 0:
-                    avail_untagged = (
-                        in_flight_by_lid[(nt, "")]
-                        if rk in rep_booting
-                        else in_flight_by_lid[(nt, "")] % size
-                    )
-                    take = min(missing_unassigned - covered, avail_untagged)
-                    in_flight_by_lid[(nt, "")] -= take
-                    covered += take
+                if rk not in view.non_fillable_reps:
+                    missing_unassigned = max(0, size - len(view.rep_assigned_cids[rk]))
+                    for lid in sorted(view.rep_lids[rk]):
+                        owed = view.owed_batch_slots(nt, rid, lid, size)
+                        take = min(
+                            missing_unassigned - covered,
+                            owed,
+                            in_flight_by_lid[(nt, lid)],
+                        )
+                        in_flight_by_lid[(nt, lid)] -= take
+                        covered += take
+                    if covered < missing_unassigned and in_flight_by_lid[(nt, "")] > 0:
+                        avail_untagged = (
+                            in_flight_by_lid[(nt, "")]
+                            if rk in view.rep_booting
+                            else in_flight_by_lid[(nt, "")] % size
+                        )
+                        take = min(missing_unassigned - covered, avail_untagged)
+                        in_flight_by_lid[(nt, "")] -= take
+                        covered += take
                 extra_gap = max(0, size - occ - covered)
                 active_by_type[nt] += extra_gap
                 active_total += extra_gap
@@ -1763,30 +1942,17 @@ class Reconciler:
         if not (to_terminate and replica_sizes and cloud_instances):
             return list(to_terminate)
 
-        booting_cids = {
-            i.cloud_instance_id
-            for i in im_instances
-            if i.cloud_instance_id
-            and i.status in (IMInstance.ALLOCATED, IMInstance.RAY_INSTALLING)
-        }
-        live_cids = booting_cids | {
-            i.cloud_instance_id
-            for i in im_instances
-            if i.cloud_instance_id and i.status == IMInstance.RAY_RUNNING
-        }
+        view = _build_multihost_replica_view(
+            im_instances, cloud_instances, replica_sizes
+        )
         # Mid-materialization guard is bounded by request_status_timeout_s.
-        in_flight_by_lid: Dict[Tuple[NodeType, str], int] = defaultdict(int)
-        for i in im_instances:
-            if i.status == IMInstance.REQUESTED or (
-                i.status == IMInstance.QUEUED and bool(i.launch_request_id)
-            ):
-                in_flight_by_lid[(i.instance_type, i.launch_request_id or "")] += 1
         done_cids = {
             i.cloud_instance_id
             for i in im_instances
             if i.cloud_instance_id
-            and i.cloud_instance_id not in live_cids
-            and i.status != IMInstance.QUEUED
+            and i.cloud_instance_id not in view.live_cids
+            and i.status
+            not in _TERMINAL_INSTANCE_STATUSES | _UNALLOCATED_INSTANCE_STATUSES
         }
         present_by_rep: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
         for cid, c_inst in cloud_instances.items():
@@ -1796,26 +1962,6 @@ class Reconciler:
                 and c_inst.replica_id
             ):
                 present_by_rep[(c_inst.node_type, c_inst.replica_id)].add(cid)
-        rep_lids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
-        for i in im_instances:
-            if (
-                i.cloud_instance_id
-                and i.launch_request_id
-                and i.status
-                not in (
-                    IMInstance.TERMINATING,
-                    IMInstance.TERMINATED,
-                    IMInstance.ALLOCATION_FAILED,
-                )
-            ):
-                c_i = cloud_instances.get(i.cloud_instance_id)
-                if (
-                    c_i is not None
-                    and c_i.node_kind != NodeKind.HEAD
-                    and i.instance_type in replica_sizes
-                    and c_i.replica_id
-                ):
-                    rep_lids[(i.instance_type, c_i.replica_id)].add(i.launch_request_id)
         term_cids = {
             im_instances_by_instance_id[r.instance_id].cloud_instance_id
             for r in to_terminate
@@ -1846,16 +1992,24 @@ class Reconciler:
                     not (rep_cids <= (term_cids | done_cids))
                     or (
                         len(rep_cids) < replica_sizes[inst.instance_type]
+                        and rep_key not in view.non_fillable_reps
                         and (
                             any(
-                                in_flight_by_lid[(inst.instance_type, lid)] > 0
-                                for lid in rep_lids[rep_key]
+                                view.in_flight_by_lid[(inst.instance_type, lid)] > 0
+                                and view.owed_batch_slots(
+                                    inst.instance_type,
+                                    c_inst.replica_id,
+                                    lid,
+                                    replica_sizes[inst.instance_type],
+                                )
+                                > 0
+                                for lid in view.rep_lids[rep_key]
                             )
                             or (
-                                in_flight_by_lid[(inst.instance_type, "")] > 0
+                                view.in_flight_by_lid[(inst.instance_type, "")] > 0
                                 and (
-                                    bool(rep_cids & booting_cids)
-                                    or in_flight_by_lid[(inst.instance_type, "")]
+                                    bool(rep_cids & view.booting_cids)
+                                    or view.in_flight_by_lid[(inst.instance_type, "")]
                                     % replica_sizes[inst.instance_type]
                                     != 0
                                 )
@@ -1902,24 +2056,7 @@ class Reconciler:
 
         im_instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
-        statuses_to_terminate = {
-            IMInstance.RAY_STOPPED,
-            IMInstance.ALLOCATION_TIMEOUT,
-            IMInstance.RAY_INSTALL_FAILED,
-            IMInstance.TERMINATION_FAILED,
-        }
-        inactive_statuses = statuses_to_terminate | {
-            IMInstance.TERMINATED,
-            IMInstance.ALLOCATION_FAILED,
-        }
-        # A RAY_STOPPED row can be stale after a raylet restart on the same
-        # cloud instance. If another active IM row still owns that cloud
-        # instance, clean up only the stale row without terminating the cloud.
-        active_cloud_instance_ids = {
-            instance.cloud_instance_id
-            for instance in im_instances
-            if instance.cloud_instance_id and instance.status not in inactive_statuses
-        }
+        statuses_to_terminate = _TEARDOWN_INSTANCE_STATUSES - {IMInstance.TERMINATING}
         # The cloud provider deletes a multi-worker replica as a unit. When a
         # requested stop was accepted by some workers of a replica but another still
         # runs Ray (its stop was rejected, is pending, or is draining), the stopped
@@ -1929,6 +2066,14 @@ class Reconciler:
         # replica-atomic providers.
         replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
         cloud_instances = non_terminated_cloud_instances or {}
+        view = _build_multihost_replica_view(
+            im_instances, cloud_instances, replica_sizes
+        )
+        # A RAY_STOPPED row can be stale after a raylet restart on the same
+        # cloud instance. If another active IM row still owns that cloud
+        # instance, clean up only the stale row without terminating the cloud.
+        active_cloud_instance_ids = view.active_cids
+        ray_running_reps = view.ray_running_reps
 
         def _replica_key(inst: IMInstance) -> Optional[Tuple[NodeType, str]]:
             c_inst = cloud_instances.get(inst.cloud_instance_id)
@@ -1940,17 +2085,6 @@ class Reconciler:
                 return (inst.instance_type, c_inst.replica_id)
             return None
 
-        ray_running_reps = {
-            _replica_key(inst)
-            for inst in im_instances
-            if inst.status
-            in (
-                IMInstance.RAY_RUNNING,
-                IMInstance.RAY_STOP_REQUESTED,
-                IMInstance.RAY_STOPPING,
-            )
-        }
-        ray_running_reps.discard(None)
         hold_timeout_s = (
             autoscaling_config.get_instance_reconcile_config().terminating_status_timeout_s
             if autoscaling_config is not None
@@ -2276,7 +2410,9 @@ class Reconciler:
             ray_nodes: The ray cluster's states of ray nodes.
         """
         Reconciler._handle_extra_cloud_instances_from_ray_nodes(
-            instance_manager, ray_nodes
+            instance_manager,
+            ray_nodes,
+            non_terminated_cloud_instances=non_terminated_cloud_instances,
         )
         Reconciler._handle_extra_cloud_instances_from_cloud_provider(
             instance_manager, non_terminated_cloud_instances
@@ -2311,6 +2447,9 @@ class Reconciler:
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
                 continue
+            event_kwargs = {}
+            if cloud_instance.replica_id:
+                event_kwargs["cloud_instance_replica_id"] = cloud_instance.replica_id
             updates[cloud_instance_id] = IMInstanceUpdateEvent(
                 instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
                 cloud_instance_id=cloud_instance_id,
@@ -2323,12 +2462,17 @@ class Reconciler:
                     f"({NodeKind.Name(cloud_instance.node_kind)}) from cloud provider"
                 ),
                 upsert=True,
+                **event_kwargs,
             )
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _handle_extra_cloud_instances_from_ray_nodes(
-        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+        instance_manager: InstanceManager,
+        ray_nodes: List[NodeState],
+        non_terminated_cloud_instances: Optional[
+            Dict[CloudInstanceId, CloudInstance]
+        ] = None,
     ):
         """For extra cloud instances reported by Ray but not managed by the instance
         manager, we will create new IM instances with ALLOCATED status.
@@ -2336,6 +2480,8 @@ class Reconciler:
         Args:
             instance_manager: The instance manager to reconcile.
             ray_nodes: The ray cluster's states of ray nodes.
+            non_terminated_cloud_instances: Optional non-terminated cloud instances
+                used to retain provider replica group IDs on adopted records.
         """
         updates = {}
 
@@ -2365,6 +2511,10 @@ class Reconciler:
                 continue
 
             is_head = is_head_node(ray_node)
+            cloud_inst = (non_terminated_cloud_instances or {}).get(cloud_instance_id)
+            event_kwargs = {}
+            if cloud_inst is not None and cloud_inst.replica_id:
+                event_kwargs["cloud_instance_replica_id"] = cloud_inst.replica_id
             updates[ray_node_id] = IMInstanceUpdateEvent(
                 instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
                 cloud_instance_id=cloud_instance_id,
@@ -2377,6 +2527,7 @@ class Reconciler:
                     f"{ray_node_id}"
                 ),
                 upsert=True,
+                **event_kwargs,
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)

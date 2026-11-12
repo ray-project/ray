@@ -213,6 +213,8 @@ class InstanceManager:
                 update.cloud_instance_id
             ), "ALLOCATED update must have cloud_instance_id"
             instance.cloud_instance_id = update.cloud_instance_id
+            if update.HasField("cloud_instance_replica_id"):
+                instance.cloud_instance_replica_id = update.cloud_instance_replica_id
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
             instance.node_id = update.ray_node_id

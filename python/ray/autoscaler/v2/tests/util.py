@@ -92,10 +92,15 @@ def create_instance(
     cloud_instance_id="",
     ray_node_id="",
     node_kind=NodeKind.WORKER,
+    cloud_instance_replica_id="",
 ):
 
     if not status_times:
         status_times = [(status, time.time_ns())]
+
+    kwargs = {}
+    if cloud_instance_replica_id:
+        kwargs["cloud_instance_replica_id"] = cloud_instance_replica_id
 
     return Instance(
         instance_id=instance_id,
@@ -110,6 +115,7 @@ def create_instance(
         cloud_instance_id=cloud_instance_id,
         node_id=ray_node_id,
         node_kind=node_kind,
+        **kwargs,
     )
 
 

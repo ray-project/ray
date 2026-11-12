@@ -25,7 +25,15 @@ from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
     LaunchNodeError,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
+from ray.autoscaler.v2.instance_manager.reconciler import (
+    _BOOTING_INSTANCE_STATUSES,
+    _DRAINING_INSTANCE_STATUSES,
+    _TEARDOWN_INSTANCE_STATUSES,
+    _TERMINAL_INSTANCE_STATUSES,
+    _UNALLOCATED_INSTANCE_STATUSES,
+    Reconciler,
+    logger,
+)
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
     CloudResourceMonitor,
@@ -4677,6 +4685,751 @@ class TestReconciler:
             non_terminated_cloud_instances=cloud4,
         )
         assert sub4.events == []
+
+        # 5. Teardown/timed-out replicas (TERMINATING, ALLOCATION_TIMEOUT) stay
+        # protected in assigned_reps so neither their own REQUESTED siblings nor
+        # unrelated batches bind lingering pods onto them; a multi-replica batch
+        # still claims its second fresh replica, and stale RAY_STOPPED duplicates
+        # shadowed by an active RAY_RUNNING pod do not block filling a live slice.
+        _, td_store, _, td_im = self._setup_multihost_reconcile_env(
+            "affinity_teardown",
+            [
+                # req-a launched 2 replicas (8 hosts): rep-term has 4 pods (1
+                # already TERMINATING), rep-a2 has 4 REQUESTED waiting.
+                create_instance(
+                    "t0",
+                    status=Instance.TERMINATING,
+                    instance_type="tpu",
+                    cloud_instance_id="ct-0",
+                    launch_request_id="req-a",
+                ),
+                *(
+                    create_instance(
+                        f"t{h}",
+                        status=Instance.ALLOCATED,
+                        instance_type="tpu",
+                        cloud_instance_id=f"ct-{h}",
+                        launch_request_id="req-a",
+                    )
+                    for h in range(1, 3)
+                ),
+                *(
+                    create_instance(
+                        f"ta-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-a",
+                        status_times=[(Instance.REQUESTED, 100)],
+                    )
+                    for h in range(5)
+                ),
+                # rep-timeout has an ALLOCATION_TIMEOUT pod from req-old.
+                create_instance(
+                    "to-0",
+                    status=Instance.ALLOCATION_TIMEOUT,
+                    instance_type="tpu",
+                    cloud_instance_id="co-0",
+                    launch_request_id="req-old",
+                ),
+                # req-b is an unrelated fresh batch.
+                create_instance(
+                    "b-0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="req-b",
+                    status_times=[(Instance.REQUESTED, 200)],
+                ),
+                # rep-live has a stale RAY_STOPPED row shadowed by live RAY_RUNNING
+                # on the same cloud_instance_id cl-0 -> remains fillable by req-live.
+                create_instance(
+                    "l-stale",
+                    status=Instance.RAY_STOPPED,
+                    instance_type="tpu",
+                    cloud_instance_id="cl-0",
+                    launch_request_id="req-live",
+                ),
+                create_instance(
+                    "l-0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="cl-0",
+                    ray_node_id="nl-0",
+                    launch_request_id="req-live",
+                ),
+                create_instance(
+                    "l-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="req-live",
+                    status_times=[(Instance.REQUESTED, 300)],
+                ),
+            ],
+        )
+        td_cloud = {
+            "ct-0": CloudInstance(
+                "ct-0", "tpu", NodeKind.WORKER, True, replica_id="rep-term"
+            ),
+            "ct-1": CloudInstance(
+                "ct-1", "tpu", NodeKind.WORKER, True, replica_id="rep-term"
+            ),
+            "ct-2": CloudInstance(
+                "ct-2", "tpu", NodeKind.WORKER, True, replica_id="rep-term"
+            ),
+            "ct-3": CloudInstance(
+                "ct-3", "tpu", NodeKind.WORKER, True, replica_id="rep-term"
+            ),
+            "co-0": CloudInstance(
+                "co-0", "tpu", NodeKind.WORKER, True, replica_id="rep-timeout"
+            ),
+            "co-1": CloudInstance(
+                "co-1", "tpu", NodeKind.WORKER, True, replica_id="rep-timeout"
+            ),
+            "ca2-0": CloudInstance(
+                "ca2-0", "tpu", NodeKind.WORKER, True, replica_id="rep-a2"
+            ),
+            "cl-0": CloudInstance(
+                "cl-0", "tpu", NodeKind.WORKER, True, replica_id="rep-live"
+            ),
+            "cl-1": CloudInstance(
+                "cl-1", "tpu", NodeKind.WORKER, True, replica_id="rep-live"
+            ),
+        }
+        Reconciler._handle_cloud_instance_allocation(
+            td_im, td_cloud, [], autoscaling_config=cfg
+        )
+        td_insts, _ = td_store.get_instances()
+        assigned_cids_after = {
+            i.cloud_instance_id for i in td_insts.values() if i.cloud_instance_id
+        }
+        # Neither lingering ct-3 (TERMINATING rep-term) nor co-1 (ALLOCATION_TIMEOUT
+        # rep-timeout) may be claimed by any REQUESTED instance.
+        assert "ct-3" not in assigned_cids_after
+        assert "co-1" not in assigned_cids_after
+        # req-a skips rep-term and claims fresh rep-a2 instead.
+        assert any(td_insts[f"ta-{h}"].cloud_instance_id == "ca2-0" for h in range(5))
+        # req-b stays REQUESTED rather than stealing co-1 or ct-3.
+        assert td_insts["b-0"].status == Instance.REQUESTED
+        # Live rep-live with shadowed stale RAY_STOPPED still binds cl-1.
+        assert td_insts["l-1"].cloud_instance_id == "cl-1"
+
+        # 6. Exhaustive disjoint partition of all non-UNKNOWN InstanceStatus values.
+        buckets = [
+            _TERMINAL_INSTANCE_STATUSES,
+            _UNALLOCATED_INSTANCE_STATUSES,
+            _BOOTING_INSTANCE_STATUSES,
+            {Instance.RAY_RUNNING},
+            _DRAINING_INSTANCE_STATUSES,
+            _TEARDOWN_INSTANCE_STATUSES,
+        ]
+        all_non_unknown = {
+            v for v in Instance.InstanceStatus.values() if v != Instance.UNKNOWN
+        }
+        assert sum(len(b) for b in buckets) == len(all_non_unknown)
+        assert set().union(*buckets) == all_non_unknown
+
+        # 7. Sub-replica (< size) stale REQUESTED leftover after a vanished replica
+        # cannot claim a fresh replica; a valid 4-pod batch claims it instead.
+        _, sr_store, _, sr_im = self._setup_multihost_reconcile_env(
+            "stale_partial_leftover",
+            [
+                create_instance(
+                    "old-0",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="cold-0",
+                    launch_request_id="req-stale",
+                ),
+                create_instance(
+                    "old-1",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="cold-1",
+                    launch_request_id="req-stale",
+                ),
+                *(
+                    create_instance(
+                        f"sr-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-stale",
+                        status_times=[(Instance.REQUESTED, 50)],
+                    )
+                    for h in range(2)
+                ),
+                *(
+                    create_instance(
+                        f"fr-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-fresh",
+                        status_times=[(Instance.REQUESTED, 100)],
+                    )
+                    for h in range(4)
+                ),
+            ],
+        )
+        sr_cloud = {
+            "cf-0": CloudInstance(
+                "cf-0", "tpu", NodeKind.WORKER, True, replica_id="rep-fresh"
+            )
+        }
+        Reconciler._handle_cloud_instance_allocation(
+            sr_im, sr_cloud, [], autoscaling_config=cfg
+        )
+        sr_insts, _ = sr_store.get_instances()
+        assert all(sr_insts[f"sr-{h}"].status == Instance.REQUESTED for h in range(2))
+        assert any(sr_insts[f"fr-{h}"].cloud_instance_id == "cf-0" for h in range(4))
+
+        # 8. Multi-replica batch: rep-1 already bound 4/4 pods (one later preempted)
+        # while rep-2 is still booting; healed pod on rep-1 is never stolen even
+        # after rep-2 binds its first pod in the same tick.
+        _, mr_store, _, mr_im = self._setup_multihost_reconcile_env(
+            "multirep_healed",
+            [
+                *(
+                    create_instance(
+                        f"r1-{h}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        cloud_instance_id=f"c1-{h}",
+                        ray_node_id=f"n1-{h}",
+                        launch_request_id="req-multi",
+                    )
+                    for h in range(3)
+                ),
+                create_instance(
+                    "r1-3",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c1-3",
+                    cloud_instance_replica_id="rep-1",
+                    launch_request_id="req-multi",
+                ),
+                *(
+                    create_instance(
+                        f"r2-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-multi",
+                        status_times=[(Instance.REQUESTED, 100 + h)],
+                    )
+                    for h in range(4)
+                ),
+            ],
+        )
+        mr_cloud = {
+            **{
+                f"c1-{h}": CloudInstance(
+                    f"c1-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+                )
+                for h in range(3)
+            },
+            # Place healed pod last so reverse iteration sees it first on every slot.
+            "c2-0": CloudInstance(
+                "c2-0", "tpu", NodeKind.WORKER, True, replica_id="rep-2"
+            ),
+            "c2-1": CloudInstance(
+                "c2-1", "tpu", NodeKind.WORKER, True, replica_id="rep-2"
+            ),
+            "c1-healed": CloudInstance(
+                "c1-healed", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+            ),
+        }
+        Reconciler._handle_cloud_instance_allocation(
+            mr_im, mr_cloud, [], autoscaling_config=cfg
+        )
+        mr_insts, _ = mr_store.get_instances()
+        r2_cids = {
+            mr_insts[f"r2-{h}"].cloud_instance_id
+            for h in range(4)
+            if mr_insts[f"r2-{h}"].cloud_instance_id
+        }
+        assert r2_cids == {"c2-0", "c2-1"}
+        assert "c1-healed" not in r2_cids
+
+        # 9. Raylet restart mid-replica-boot: old tagged row became TERMINATED while
+        # an untagged RAY_RUNNING row owns the same live pod -> sibling still binds.
+        _, rr_store, _, rr_im = self._setup_multihost_reconcile_env(
+            "raylet_restart_boot",
+            [
+                create_instance(
+                    "rr-old",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="cr-0",
+                    launch_request_id="req-rr",
+                ),
+                create_instance(
+                    "rr-new",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="cr-0",
+                    ray_node_id="nr-0",
+                ),
+                create_instance(
+                    "rr-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="req-rr",
+                    status_times=[(Instance.REQUESTED, 100)],
+                ),
+            ],
+        )
+        rr_cloud = {
+            "cr-0": CloudInstance(
+                "cr-0", "tpu", NodeKind.WORKER, True, replica_id="rep-rr"
+            ),
+            "cr-1": CloudInstance(
+                "cr-1", "tpu", NodeKind.WORKER, True, replica_id="rep-rr"
+            ),
+        }
+        Reconciler._handle_cloud_instance_allocation(
+            rr_im, rr_cloud, [], autoscaling_config=cfg
+        )
+        rr_insts, _ = rr_store.get_instances()
+        assert rr_insts["rr-1"].cloud_instance_id == "cr-1"
+
+        # 10. ALLOCATION_TIMEOUT/RAY_INSTALL_FAILED replica is non-fillable in
+        # _scale_cluster and _filter_partial_replica_terminations: it drains
+        # immediately despite same-batch REQUESTED slots and occupies full size.
+        _, _, sub_to, im_to = self._setup_multihost_reconcile_env(
+            "non_fillable_timeout",
+            [
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="c-head",
+                ),
+                create_instance(
+                    "to-run-0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="cto-0",
+                    ray_node_id="nto-0",
+                    launch_request_id="req-to",
+                ),
+                create_instance(
+                    "to-run-1",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="cto-1",
+                    ray_node_id="nto-1",
+                    launch_request_id="req-to",
+                ),
+                create_instance(
+                    "to-fail-2",
+                    status=Instance.ALLOCATION_TIMEOUT,
+                    instance_type="tpu",
+                    cloud_instance_id="cto-2",
+                    launch_request_id="req-to",
+                ),
+                *(
+                    create_instance(
+                        f"to-req-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="req-to",
+                    )
+                    for h in range(4)
+                ),
+            ],
+        )
+        cloud_to = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            **{
+                f"cto-{h}": CloudInstance(
+                    f"cto-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-to"
+                )
+                for h in range(3)
+            },
+        }
+        sched_to = MagicMock()
+        sched_to.schedule.return_value = SchedulingReply(
+            to_terminate=[
+                TerminationRequest(
+                    id=f"tto-{h}",
+                    instance_id=f"to-run-{h}",
+                    ray_node_id=f"nto-{h}",
+                    instance_type="tpu",
+                    instance_status=Instance.RAY_RUNNING,
+                    cause=TerminationRequest.Cause.IDLE,
+                )
+                for h in range(2)
+            ],
+            to_launch=[LaunchRequest(id="lto-1", instance_type="tpu", count=4)],
+        )
+        sub_to.clear()
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im_to,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(),
+            scheduler=sched_to,
+            autoscaling_config=cfg_cap8,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=cloud_to,
+        )
+        assert sorted(
+            (e.instance_id, e.new_instance_status) for e in sub_to.events
+        ) == [
+            ("to-run-0", Instance.RAY_STOP_REQUESTED),
+            ("to-run-1", Instance.RAY_STOP_REQUESTED),
+        ]
+
+    def test_multihost_replica_id_persistence_and_per_replica_accounting(self):
+        # 1. ALLOCATED persists cloud_instance_replica_id across pod termination
+        # (including adopted unmanaged pods) and GC keeps terminal siblings while
+        # their launch batch still has unallocated instances.
+        cfg2, store, _, im = self._setup_multihost_reconcile_env(
+            "persist_rid",
+            [
+                create_instance(
+                    "r1-0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-a",
+                    status_times=[(Instance.REQUESTED, 10)],
+                ),
+                create_instance(
+                    "r1-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-a",
+                    status_times=[(Instance.REQUESTED, 11)],
+                ),
+                create_instance(
+                    "done-0",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-done",
+                    cloud_instance_replica_id="rep-done",
+                    launch_request_id="lid-done",
+                    status_times=[(Instance.TERMINATED, 1)],
+                ),
+            ],
+            max_worker_nodes=4,
+            workers_per_replica=2,
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            im,
+            {
+                "c1-0": CloudInstance(
+                    "c1-0", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+                )
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        insts, _ = store.get_instances()
+        assert insts["r1-0"].cloud_instance_replica_id == "rep-1"
+        # Pod c1-0 disappears before c1-1 arrives -> r1-0 transitions to TERMINATED
+        # while retaining cloud_instance_replica_id="rep-1".
+        Reconciler._handle_cloud_instance_terminated(im, {})
+        Reconciler._gc_terminated_instances(
+            im, InstanceReconcileConfig(terminated_instance_gc_retention_s=0), []
+        )
+        insts, _ = store.get_instances()
+        assert insts["r1-0"].status == Instance.TERMINATED
+        assert insts["r1-0"].cloud_instance_replica_id == "rep-1"
+        assert "done-0" not in insts
+        # Sibling c1-1 arrives later and still binds to r1-1 via persisted rep-1.
+        Reconciler._handle_cloud_instance_allocation(
+            im,
+            {
+                "c1-1": CloudInstance(
+                    "c1-1", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+                )
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        insts, _ = store.get_instances()
+        assert insts["r1-1"].cloud_instance_id == "c1-1"
+        assert insts["r1-1"].cloud_instance_replica_id == "rep-1"
+
+        # 2. Healed pod on booting replica rep-1 (already bound 2/2, 1 evicted)
+        # is never stolen by sibling REQUESTED slots even while c1-0 is ALLOCATED.
+        _, boot_store, _, boot_im = self._setup_multihost_reconcile_env(
+            "boot_heal",
+            [
+                create_instance(
+                    "r1-0",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c1-0",
+                    cloud_instance_replica_id="rep-1",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "r1-1",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c1-1",
+                    cloud_instance_replica_id="rep-1",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "r2-0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-a",
+                    status_times=[(Instance.REQUESTED, 20)],
+                ),
+                create_instance(
+                    "r2-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-a",
+                    status_times=[(Instance.REQUESTED, 21)],
+                ),
+            ],
+            max_worker_nodes=4,
+            workers_per_replica=2,
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            boot_im,
+            {
+                "c1-0": CloudInstance(
+                    "c1-0", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+                ),
+                "c1-healed": CloudInstance(
+                    "c1-healed", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+                ),
+                "c2-0": CloudInstance(
+                    "c2-0", "tpu", NodeKind.WORKER, True, replica_id="rep-2"
+                ),
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        boot_insts, _ = boot_store.get_instances()
+        assert boot_insts["r2-0"].cloud_instance_id == "c2-0"
+        assert boot_insts["r2-1"].status == Instance.REQUESTED
+
+        # 3. Vanished replica rep-a1 and non-fillable rep-timeout never corrupt
+        # per-replica owed counts for sibling replicas in the same batch.
+        _, m3_store, _, m3_im = self._setup_multihost_reconcile_env(
+            "multi_vanished",
+            [
+                create_instance(
+                    "a1-0",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="ca1-0",
+                    cloud_instance_replica_id="rep-a1",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "a1-1",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="ca1-1",
+                    cloud_instance_replica_id="rep-a1",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "a2-0",
+                    status=Instance.ALLOCATION_TIMEOUT,
+                    instance_type="tpu",
+                    cloud_instance_id="ca2-0",
+                    cloud_instance_replica_id="rep-a2",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "a3-0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="ca3-0",
+                    ray_node_id="na30",
+                    cloud_instance_replica_id="rep-a3",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "a3-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-a",
+                    status_times=[(Instance.REQUESTED, 10)],
+                ),
+                create_instance(
+                    "b-0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-b",
+                    status_times=[(Instance.REQUESTED, 20)],
+                ),
+                create_instance(
+                    "b-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-b",
+                    status_times=[(Instance.REQUESTED, 21)],
+                ),
+            ],
+            max_worker_nodes=8,
+            workers_per_replica=2,
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            m3_im,
+            {
+                "ca2-0": CloudInstance(
+                    "ca2-0", "tpu", NodeKind.WORKER, True, replica_id="rep-a2"
+                ),
+                "ca3-0": CloudInstance(
+                    "ca3-0", "tpu", NodeKind.WORKER, True, replica_id="rep-a3"
+                ),
+                "ca3-1": CloudInstance(
+                    "ca3-1", "tpu", NodeKind.WORKER, True, replica_id="rep-a3"
+                ),
+                "cb-0": CloudInstance(
+                    "cb-0", "tpu", NodeKind.WORKER, True, replica_id="rep-b"
+                ),
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        m3_insts, _ = m3_store.get_instances()
+        assert m3_insts["a3-1"].cloud_instance_id == "ca3-1"
+        assert m3_insts["b-0"].cloud_instance_id == "cb-0"
+
+        # 4. Retried multi-host QUEUED batch is launched atomically and never
+        # split across REQUESTED and QUEUED; even a pre-split 1 REQUESTED +
+        # 1 QUEUED cannot claim a fresh 2-pod replica.
+        retried_group = [
+            create_instance(
+                f"ret-{h}",
+                status=Instance.QUEUED,
+                instance_type="tpu",
+                launch_request_id="lid-retry",
+                status_times=[(Instance.QUEUED, 1 + h)],
+            )
+            for h in range(2)
+        ]
+        other_req = [
+            create_instance(
+                "other-0",
+                status=Instance.REQUESTED,
+                instance_type="tpu",
+                launch_request_id="lid-other",
+            )
+        ]
+        assert "tpu" not in Reconciler._compute_to_launch(
+            retried_group, other_req, [], 1.0, 2, {"tpu": 2}
+        )
+        _, rq_store, _, rq_im = self._setup_multihost_reconcile_env(
+            "split_rq",
+            [
+                create_instance(
+                    "rq-0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-retry",
+                    status_times=[(Instance.REQUESTED, 10)],
+                ),
+                create_instance(
+                    "rq-1",
+                    status=Instance.QUEUED,
+                    instance_type="tpu",
+                    launch_request_id="lid-retry",
+                    status_times=[(Instance.QUEUED, 10)],
+                ),
+            ],
+            max_worker_nodes=4,
+            workers_per_replica=2,
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            rq_im,
+            {
+                "cn-0": CloudInstance(
+                    "cn-0", "tpu", NodeKind.WORKER, True, replica_id="rep-new"
+                )
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        rq_insts, _ = rq_store.get_instances()
+        assert rq_insts["rq-0"].status == Instance.REQUESTED
+
+        # 5. Evicted replica rep-1 (2/2 previously bound) drains immediately and
+        # occupies its full replica slot in _scale_cluster without absorbing
+        # sibling REQUESTED slots meant for rep-2.
+        _, _, sub6, im6 = self._setup_multihost_reconcile_env(
+            "evicted_drain_and_cap",
+            [
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="c-head",
+                ),
+                create_instance(
+                    "r1-0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="c1-0",
+                    ray_node_id="n10",
+                    cloud_instance_replica_id="rep-1",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "r1-1",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c1-1",
+                    cloud_instance_replica_id="rep-1",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "r2-0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-a",
+                ),
+                create_instance(
+                    "r2-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-a",
+                ),
+            ],
+            max_worker_nodes=4,
+            workers_per_replica=2,
+        )
+        sched6 = MagicMock()
+        sched6.schedule.return_value = SchedulingReply(
+            to_terminate=[
+                TerminationRequest(
+                    id="t1",
+                    instance_id="r1-0",
+                    ray_node_id="n10",
+                    instance_type="tpu",
+                    instance_status=Instance.RAY_RUNNING,
+                    cause=TerminationRequest.Cause.IDLE,
+                )
+            ],
+            to_launch=[LaunchRequest(id="l1", instance_type="tpu", count=2)],
+        )
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im6,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(),
+            scheduler=sched6,
+            autoscaling_config=cfg2,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances={
+                "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+                "c1-0": CloudInstance(
+                    "c1-0", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+                ),
+            },
+        )
+        assert [(e.instance_id, e.new_instance_status) for e in sub6.events] == [
+            ("r1-0", Instance.RAY_STOP_REQUESTED)
+        ]
 
 
 if __name__ == "__main__":

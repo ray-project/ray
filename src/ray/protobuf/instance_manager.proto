@@ -132,6 +132,9 @@ message Instance {
   string launch_config_hash = 13;
   // The ray node kind, e.g. head, worker, etc.
   NodeKind node_kind = 14;
+  // Provider-assigned replica group id for multi-worker cloud instances
+  // (e.g. KubeRay ray.io/replica-id), persisted across pod eviction/GC.
+  optional string cloud_instance_replica_id = 15;
 }
 
 // Update event for an instance.
@@ -160,6 +163,8 @@ message InstanceUpdateEvent {
   optional string launch_request_id = 9;
   // Termination request for RAY_STOPPING event.
   optional TerminationRequest termination_request = 10;
+  // Provider-assigned replica group id for ALLOCATED event.
+  optional string cloud_instance_replica_id = 11;
 }
 
 // Launch request for a node type.
