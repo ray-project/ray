@@ -638,10 +638,7 @@ def test_orc_adaptive_batch_size_with_hive_projection(
     )
 
     result = pa.concat_tables(list(reader.read(manifest)))
-    assert (
-        result.select(["payload"]).to_pylist()
-        == table.slice(128).select(["payload"]).to_pylist()
-    )
+    assert result.to_pylist() == table.slice(128).select(["payload"]).to_pylist()
     actual_size = scan.call_args.kwargs["scanner_kwargs"]["batch_size"]
     if batch_size is not None:
         assert actual_size == batch_size
