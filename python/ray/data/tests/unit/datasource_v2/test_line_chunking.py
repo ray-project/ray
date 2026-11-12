@@ -1,11 +1,14 @@
 """Unit tests for byte-range line chunking of CSV and JSONL on DataSourceV2."""
+import collections
 import json
 import random
 
+import fsspec
 import pyarrow as pa
 import pyarrow.dataset as pds
+import pyarrow.json as pajson
 import pytest
-from pyarrow.fs import LocalFileSystem
+from pyarrow.fs import FSSpecHandler, LocalFileSystem, PyFileSystem
 
 from ray.data._internal.datasource_v2.common import line_chunking
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
@@ -14,6 +17,7 @@ from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
 )
 from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
     LineChunkableFileReader,
+    one_block_size,
 )
 from ray.data._internal.datasource_v2.common.line_chunking import (
     line_chunk_byte_range,
@@ -89,7 +93,10 @@ def test_indexer_keeps_a_file_that_fits_in_one_chunk_whole():
 
 class _JsonlReader(LineChunkableFileReader):
     def _make_chunk_fragment(self, lines, *, starts_at_file_start, path):
-        return pds.JsonFileFormat().make_fragment(pa.py_buffer(lines))
+        read_options = pajson.ReadOptions(block_size=one_block_size(lines, 1 << 20))
+        return pds.JsonFileFormat(read_options=read_options).make_fragment(
+            pa.py_buffer(lines)
+        )
 
 
 def _write_jsonl(path, rows):
@@ -97,7 +104,7 @@ def _write_jsonl(path, rows):
     return str(path)
 
 
-def _read(paths, *, chunk_size, schema, columns=None):
+def _read(paths, *, chunk_size, schema, columns=None, filesystem=None):
     indexer = LineChunkFileIndexer(chunk_size=chunk_size, ignore_missing_paths=False)
     rows_paths, sizes, metadatas = [], [], []
     for path in paths:
@@ -112,7 +119,7 @@ def _read(paths, *, chunk_size, schema, columns=None):
     reader = _JsonlReader(
         FileFormat.JSON,
         chunk_size=chunk_size,
-        filesystem=LocalFileSystem(),
+        filesystem=filesystem or LocalFileSystem(),
         schema=schema,
         columns=columns,
     )
@@ -152,7 +159,65 @@ def test_reader_projects_a_column_one_chunk_lacks(tmp_path):
     assert values == [None] * 5 + [2] * 5
 
 
-def test_reader_keeps_whole_file_units_on_the_plain_path(tmp_path):
+def test_reader_projects_a_column_one_chunk_lacks_without_a_schema(tmp_path):
+    path = _write_jsonl(tmp_path / "a.jsonl", [{"a": 1}] * 5 + [{"b": 2}] * 5)
+    _, tables = _read([path], chunk_size=30, schema=None, columns=["b"])
+    values = [v for table in tables for v in table.column("b").to_pylist()]
+    assert values == [None] * 5 + [2] * 5
+
+
+# Rows past the first MiB, the default ``block_size`` pyarrow infers types from.
+_EARLY_ROWS = [{"i": i, "x": 1, "pad": "y" * 100} for i in range(12_000)]
+_LATE_ROWS = [{"i": i, "x": 1.5, "pad": "y" * 100, "k": i} for i in range(12_000)]
+
+
+@pytest.mark.parametrize("chunk_size", [2 << 20, 8 << 20], ids=["split", "whole"])
+def test_reader_reads_a_key_first_seen_after_the_first_mib(tmp_path, chunk_size):
+    path = _write_jsonl(tmp_path / "a.jsonl", _EARLY_ROWS + _LATE_ROWS)
+    schema = pa.schema([("i", pa.int64()), ("x", pa.int64()), ("pad", pa.string())])
+    _, tables = _read([path], chunk_size=chunk_size, schema=schema)
+    merged = pa.concat_tables(tables, promote_options="permissive")
+    assert merged.column("k").drop_null().to_pylist() == list(range(12_000))
+
+
+@pytest.mark.parametrize("chunk_size", [2 << 20, 8 << 20], ids=["split", "whole"])
+def test_reader_reads_whole_numbers_then_decimals(tmp_path, chunk_size):
+    path = _write_jsonl(tmp_path / "a.jsonl", _EARLY_ROWS + _LATE_ROWS)
+    schema = pa.schema([("i", pa.int64()), ("x", pa.int64()), ("pad", pa.string())])
+    _, tables = _read([path], chunk_size=chunk_size, schema=schema)
+    merged = pa.concat_tables(tables, promote_options="permissive")
+    assert collections.Counter(merged.column("x").to_pylist()) == {
+        1: 12_000,
+        1.5: 12_000,
+    }
+
+
+class _CountingHandler(FSSpecHandler):
+    def __init__(self):
+        super().__init__(fsspec.filesystem("file"))
+        self.opened = []
+
+    def open_input_file(self, path):
+        self.opened.append(path)
+        return super().open_input_file(path)
+
+
+def test_reader_opens_a_small_file_once(tmp_path):
+    paths = [
+        _write_jsonl(tmp_path / f"{i}.jsonl", [{"id": i}, {"id": i}]) for i in range(3)
+    ]
+    handler = _CountingHandler()
+    _, tables = _read(
+        paths,
+        chunk_size=10_000,
+        schema=pa.schema([("id", pa.int64())]),
+        filesystem=PyFileSystem(handler),
+    )
+    assert sum(len(table) for table in tables) == 6
+    assert sorted(handler.opened) == sorted(paths)
+
+
+def test_reader_reads_a_file_that_fits_in_one_chunk_whole(tmp_path):
     path = _write_jsonl(tmp_path / "a.jsonl", [{"id": i} for i in range(3)])
     manifest, tables = _read(
         [path], chunk_size=10_000, schema=pa.schema([("id", pa.int64())])
