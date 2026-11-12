@@ -2,10 +2,11 @@ import sys
 from decimal import Decimal
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
-from ray.data.aggregate import Sum
 from ray.data._internal.arrow_aggregation import arrow_agg_options, mean_spec, sum_spec
+from ray.data.aggregate import Sum
 
 
 def _aggregate(table, agg_spec, source_col):
@@ -80,6 +81,26 @@ def test_unsigned_integer_sum_uses_stable_decimal_type_when_it_fits():
 
     assert result.type == pa.decimal128(38, 0)
     assert result.to_pylist() == [2**62]
+
+
+@pytest.mark.parametrize("encoded_type", ["dictionary", "run_end"])
+def test_encoded_integer_sum_uses_widened_accumulator(encoded_type):
+    values = pa.array([2**62, 2**62], type=pa.int64())
+    if encoded_type == "dictionary":
+        values = pa.DictionaryArray.from_arrays(pa.array([0, 0]), values)
+    else:
+        values = pc.run_end_encode(values)
+
+    agg = sum_spec()
+    partial = _aggregate(pa.table({"g": [0, 0], "v": values}), agg, "v")
+    result = agg.finalize(partial, tuple(agg.components))
+
+    assert result.type == pa.decimal128(38, 0)
+    assert result.to_pylist() == [2**63]
+
+    output_field = Sum("v").output_field(pa.schema([("v", values.type)]))
+    assert output_field is not None
+    assert output_field.type == pa.decimal128(38, 0)
 
 
 def test_decimal_sum_is_not_widened():

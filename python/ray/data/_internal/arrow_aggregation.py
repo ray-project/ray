@@ -22,9 +22,18 @@ def _prepare_integer_sum_column(
 
     input_col = f"__agg{agg_index}_sum_input"
     source = block[source_col]
-    if pa.types.is_integer(source.type):
+    if pa.types.is_run_end_encoded(source.type):
+        source = pc.run_end_decode(source)
+    if is_integer_arrow_type(source.type):
         source = pc.cast(source, _INTEGER_SUM_TYPE)
     return block.append_column(input_col, source)
+
+
+def is_integer_arrow_type(t: "pa.DataType") -> bool:
+    """Whether ``t`` is an integer, including encoded integer types."""
+    while pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
+        t = t.value_type
+    return pa.types.is_integer(t)
 
 
 def is_boolean_arrow_type(t: "pa.DataType") -> bool:
