@@ -94,7 +94,9 @@ class InstanceReconcileConfig:
     ray_install_status_timeout_s: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_RAY_INSTALL_STATUS_TIMEOUT_S", 30 * 60
     )
-    # The timeout for waiting for a TERMINATING instance to be TERMINATED.
+    # The timeout for waiting for a TERMINATING instance to be TERMINATED, and
+    # for holding a solicited RAY_STOPPED worker in a multi-worker replica while
+    # siblings still run or drain Ray.
     terminating_status_timeout_s: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_TERMINATING_STATUS_TIMEOUT_S", 300
     )

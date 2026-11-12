@@ -3691,8 +3691,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def _prog_key(u: List[SchedulingNode]) -> Tuple[bool, int, float]:
             ranks = [_term_rank(m) for m in u]
+            size = replica_sizes.get(u[0].node_type, 1)
             return (
-                len(u) < replica_sizes.get(u[0].node_type, 1),
+                len(u) < size if max(ranks) < 4 else len(u) >= size,
                 max(ranks),
                 sum(ranks) / len(ranks),
             )
@@ -3824,32 +3825,37 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ):
                     if all(id(m) in idle_timeouts for m in r_nodes):
                         units.append(r_nodes)
-                elif all(m._has_runtime_domain for m in r_nodes):
-                    known.append((rid, r_nodes))
-                elif all(
-                    ResourceDemandScheduler._progress_rank(m) < 3 for m in r_nodes
-                ):
-                    unknown.append(r_nodes)
+                else:
+                    known_m = [m for m in r_nodes if m._has_runtime_domain]
+                    unknown_m = [
+                        m
+                        for m in r_nodes
+                        if not m._has_runtime_domain
+                        and ResourceDemandScheduler._progress_rank(m) < 3
+                    ]
+                    if known_m:
+                        known.append((rid, known_m))
+                    if unknown_m:
+                        unknown.append(unknown_m)
 
+            idle_inc_known: List[List[SchedulingNode]] = []
             has_active_inc = False
             for rid, rn in known:
-                if all(id(m) in idle_timeouts for m in rn) and not (
-                    rid in pinned_for_type and len(rn) < size
+                if len(rn) >= size:
+                    if all(id(m) in idle_timeouts for m in rn):
+                        units.append(rn)
+                elif (
+                    all(id(m) in idle_timeouts for m in rn)
+                    and rid not in pinned_for_type
                 ):
-                    units.append(rn)
-                elif len(rn) < size:
+                    idle_inc_known.append(rn)
+                else:
                     has_active_inc = True
 
             flat = [m for rn in unknown for m in rn]
-            if (
-                flat
-                and not has_active_inc
-                and all(
-                    ResourceDemandScheduler._progress_rank(m) < 3
-                    and id(m) in idle_timeouts
-                    for m in flat
-                )
-            ):
+            if not flat:
+                units.extend(idle_inc_known)
+            elif not has_active_inc and all(id(m) in idle_timeouts for m in flat):
                 flat.sort(
                     key=lambda m: (
                         ResourceDemandScheduler._progress_rank(m),
@@ -3857,11 +3863,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                     ),
                     reverse=True,
                 )
-                units.extend(
-                    flat[i : i + size]
-                    for i in range(0, len(flat), size)
-                    if len(flat[i : i + size]) == size or not known
-                )
+                if idle_inc_known:
+                    units.append([m for rn in idle_inc_known for m in rn] + flat)
+                elif len(flat) % size == 0:
+                    units.extend(flat[i : i + size] for i in range(0, len(flat), size))
+                else:
+                    units.append(flat)
 
         units.sort(
             key=lambda u: (

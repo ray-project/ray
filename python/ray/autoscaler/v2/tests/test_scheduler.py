@@ -7395,6 +7395,102 @@ def test_stop_requested_replica_occupancy_and_min_workers(workers_per_replica):
     assert idle_reply.to_launch == []
 
 
+def test_multihost_mixed_runtime_domain_replica_idle_not_split():
+    cfg = NodeTypeConfig(
+        name="tpu",
+        resources={"CPU": 4, "TPU": 4},
+        labels={},
+        min_worker_nodes=0,
+        max_worker_nodes=12,
+        replica_config=WorkerReplicaConfig(
+            workers_per_replica=4,
+            domain_label_key="ray.io/tpu-slice-name",
+            worker_index_label_key="ray.io/tpu-worker-id",
+        ),
+    )
+    busy_full = _make_lifecycle_replica(
+        "rep-healthy",
+        Instance.RAY_RUNNING,
+        4,
+        busy=True,
+        count=4,
+        with_provider_replica_id=False,
+    )
+    idle_running = _make_lifecycle_replica(
+        "rep-0",
+        Instance.RAY_RUNNING,
+        4,
+        busy=False,
+        count=2,
+        with_provider_replica_id=False,
+    )
+    for inst in idle_running:
+        inst.ray_node.idle_duration_ms = 60_000
+    allocated = [
+        AutoscalerInstance(
+            im_instance=Instance(
+                instance_id=iid,
+                instance_type="tpu",
+                status=Instance.ALLOCATED,
+                cloud_instance_id=f"c-{iid}",
+                node_kind=NodeKind.WORKER,
+            ),
+            cloud_instance_id=f"c-{iid}",
+        )
+        for iid in ("alloc-0", "alloc-1", "stray")
+    ]
+    sched = ResourceDemandScheduler()
+    req = SchedulingRequest(
+        node_type_configs={"tpu": cfg},
+        current_instances=busy_full + idle_running + allocated,
+        disable_launch_config_check=True,
+        idle_timeout_s=10,
+        pending_idle_timeout_s=10,
+    )
+    clock = iter([100.0, 120.0])
+    with patch(
+        "ray.autoscaler.v2.scheduler.time.monotonic",
+        side_effect=lambda: next(clock, 120.0),
+    ):
+        sched.schedule(req)
+        reply = sched.schedule(req)
+    term_ids = {r.instance_id for r in reply.to_terminate}
+    assert term_ids == {"rep-0-0", "rep-0-1", "alloc-0", "alloc-1", "stray"}
+
+
+def test_multihost_degraded_running_replica_terminated_before_complete_replica():
+    cfg = NodeTypeConfig(
+        name="tpu",
+        resources={"CPU": 4, "TPU": 4},
+        labels={},
+        min_worker_nodes=0,
+        max_worker_nodes=4,
+        replica_config=WorkerReplicaConfig(
+            workers_per_replica=4,
+            domain_label_key="ray.io/tpu-slice-name",
+            worker_index_label_key="ray.io/tpu-worker-id",
+        ),
+    )
+    full = _make_lifecycle_replica("full", Instance.RAY_RUNNING, 4, busy=False, count=4)
+    degraded = _make_lifecycle_replica(
+        "deg", Instance.RAY_RUNNING, 4, busy=False, count=3
+    )
+    for inst in full + degraded:
+        inst.ray_node.idle_duration_ms = 60_000
+    reply = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs={"tpu": cfg},
+            current_instances=full + degraded,
+            disable_launch_config_check=True,
+        )
+    )
+    assert sorted(req.instance_id for req in reply.to_terminate) == [
+        "deg-0",
+        "deg-1",
+        "deg-2",
+    ]
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

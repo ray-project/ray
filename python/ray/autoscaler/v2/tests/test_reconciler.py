@@ -51,6 +51,7 @@ from ray.core.generated.autoscaler_pb2 import (
 )
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
+    InstanceUpdateEvent,
     LaunchRequest,
     NodeKind,
     TerminationRequest,
@@ -3629,6 +3630,247 @@ class TestReconciler:
         assert sorted(
             (e.instance_id, e.new_instance_status) for e in crash_sub.events
         ) == [("w-0", Instance.TERMINATING)]
+
+    @pytest.mark.parametrize(
+        "sibling_status",
+        [
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOP_REQUESTED,
+            Instance.RAY_STOPPING,
+        ],
+    )
+    def test_multihost_drain_hold_timeout_leaves_unready_siblings(self, sibling_status):
+        cfg = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4, "TPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
+                    )
+                }
+            }
+        )
+        hold_timeout_s = (
+            cfg.get_instance_reconcile_config().terminating_status_timeout_s
+        )
+        now_ns = time.time_ns()
+        expired_ns = now_ns - (hold_timeout_s + 60) * 10**9
+        store = InstanceStorage(cluster_id="hold_timeout", storage=InMemoryStorage())
+        sub = MockSubscriber()
+        im = InstanceManager(store, instance_status_update_subscribers=[sub])
+        TestReconciler._add_instances(
+            store,
+            [
+                # rep-0: w-0 timed out in solicited RAY_STOPPED while w-1 still runs/drains Ray.
+                create_instance(
+                    "w-0",
+                    status=Instance.RAY_STOPPED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-0",
+                    status_times=[
+                        (Instance.RAY_RUNNING, expired_ns - 2),
+                        (Instance.RAY_STOP_REQUESTED, expired_ns - 1),
+                        (Instance.RAY_STOPPED, expired_ns),
+                    ],
+                ),
+                create_instance(
+                    "w-1",
+                    status=sibling_status,
+                    instance_type="tpu",
+                    cloud_instance_id="c-1",
+                    ray_node_id="n-1",
+                ),
+                create_instance(
+                    "w-2",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-2",
+                ),
+                create_instance(
+                    "w-3",
+                    status=Instance.RAY_INSTALLING,
+                    instance_type="tpu",
+                    cloud_instance_id="c-3",
+                ),
+                # rep-1: all running workers drained; unready w-7 must terminate with them.
+                *(
+                    create_instance(
+                        f"w-{h}",
+                        status=Instance.RAY_STOPPED,
+                        instance_type="tpu",
+                        cloud_instance_id=f"c-{h}",
+                        status_times=[
+                            (Instance.RAY_RUNNING, now_ns - 3),
+                            (Instance.RAY_STOP_REQUESTED, now_ns - 2),
+                            (Instance.RAY_STOPPED, now_ns - 1),
+                        ],
+                    )
+                    for h in range(4, 7)
+                ),
+                create_instance(
+                    "w-7",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-7",
+                ),
+            ],
+        )
+        cloud = {
+            **{
+                f"c-{h}": CloudInstance(
+                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+                for h in range(4)
+            },
+            **{
+                f"c-{h}": CloudInstance(
+                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+                )
+                for h in range(4, 8)
+            },
+        }
+        sub.clear()
+        Reconciler._terminate_instances(
+            im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
+        )
+        assert sorted((e.instance_id, e.new_instance_status) for e in sub.events) == [
+            ("w-0", Instance.TERMINATING),
+            ("w-4", Instance.TERMINATING),
+            ("w-5", Instance.TERMINATING),
+            ("w-6", Instance.TERMINATING),
+            ("w-7", Instance.TERMINATING),
+        ]
+
+        # Once the cloud provider removes rep-0, remaining siblings converge to TERMINATED.
+        sub.clear()
+        Reconciler._handle_cloud_instance_terminated(
+            im,
+            non_terminated_cloud_instances={
+                k: v for k, v in cloud.items() if v.replica_id != "rep-0"
+            },
+        )
+        assert sorted((e.instance_id, e.new_instance_status) for e in sub.events) == [
+            (f"w-{h}", Instance.TERMINATED) for h in range(4)
+        ]
+
+    def test_multihost_ray_stopping_sibling_defers_unready_and_stopped_siblings(self):
+        cfg = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4, "TPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
+                    )
+                }
+            }
+        )
+        now_ns = time.time_ns()
+        store = InstanceStorage(cluster_id="stopping_hold", storage=InMemoryStorage())
+        sub = MockSubscriber()
+        im = InstanceManager(store, instance_status_update_subscribers=[sub])
+        TestReconciler._add_instances(
+            store,
+            [
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="c-head",
+                ),
+                create_instance(
+                    "w-0",
+                    status=Instance.RAY_STOPPING,
+                    instance_type="tpu",
+                    cloud_instance_id="c-0",
+                    ray_node_id="n-0",
+                ),
+                create_instance(
+                    "w-1",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-1",
+                ),
+                create_instance(
+                    "w-2",
+                    status=Instance.RAY_STOPPED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-2",
+                    status_times=[
+                        (Instance.RAY_RUNNING, now_ns - 3),
+                        (Instance.RAY_STOPPING, now_ns - 2),
+                        (Instance.RAY_STOPPED, now_ns - 1),
+                    ],
+                ),
+            ],
+        )
+        cloud = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            **{
+                f"c-{h}": CloudInstance(
+                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+                for h in range(3)
+            },
+        }
+        sched = MagicMock()
+        sched.schedule.return_value = SchedulingReply(
+            to_launch=[],
+            to_terminate=[
+                TerminationRequest(
+                    id="t-1",
+                    instance_id="w-1",
+                    instance_type="tpu",
+                    instance_status=Instance.ALLOCATED,
+                    cause=TerminationRequest.Cause.IDLE,
+                )
+            ],
+        )
+        sub.clear()
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(),
+            scheduler=sched,
+            autoscaling_config=cfg,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=cloud,
+        )
+        assert sub.events == []
+
+        sub.clear()
+        Reconciler._terminate_instances(
+            im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
+        )
+        assert sub.events == []
+
+        # Once w-0 finishes draining to RAY_STOPPED, all three terminate together.
+        _, version = store.get_instances()
+        Reconciler._update_instance_manager(
+            im,
+            version,
+            {
+                "w-0": InstanceUpdateEvent(
+                    instance_id="w-0", new_instance_status=Instance.RAY_STOPPED
+                )
+            },
+        )
+        sub.clear()
+        Reconciler._terminate_instances(
+            im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
+        )
+        assert sorted((e.instance_id, e.new_instance_status) for e in sub.events) == [
+            ("w-0", Instance.TERMINATING),
+            ("w-1", Instance.TERMINATING),
+            ("w-2", Instance.TERMINATING),
+        ]
 
 
 if __name__ == "__main__":

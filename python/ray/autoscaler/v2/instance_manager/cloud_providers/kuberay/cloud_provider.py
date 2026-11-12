@@ -223,7 +223,10 @@ class KubeRayProvider(ICloudInstanceProvider):
                 self._add_launch_errors(
                     nodes_to_reject,
                     request_id,
-                    details="Launch capped by maxReplicas limit.",
+                    details=(
+                        "Launch rejected by maxReplicas limit or unaligned "
+                        "numOfHosts count."
+                    ),
                 )
 
         except Exception as e:

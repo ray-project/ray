@@ -1446,7 +1446,7 @@ class Reconciler:
         stopping_reps = {
             _replica_key(inst)
             for inst in im_instances
-            if inst.status == IMInstance.RAY_STOP_REQUESTED
+            if inst.status in (IMInstance.RAY_STOP_REQUESTED, IMInstance.RAY_STOPPING)
         } | {
             _replica_key(im_instances_by_instance_id[req.instance_id])
             for req in to_terminate
@@ -1705,9 +1705,11 @@ class Reconciler:
         }
         # The cloud provider deletes a multi-worker replica as a unit. When a
         # requested stop was accepted by some workers of a replica but another still
-        # runs Ray (its stop was rejected or is pending), the stopped workers wait,
-        # up to terminating_status_timeout_s, so the replica is not deleted under
-        # work that is still running.
+        # runs Ray (its stop was rejected, is pending, or is draining), the stopped
+        # workers wait up to terminating_status_timeout_s so the replica is not
+        # deleted under work that is still running. After that timeout, the stopped
+        # worker proceeds to TERMINATING, which recycles the replica on
+        # replica-atomic providers.
         replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
         cloud_instances = non_terminated_cloud_instances or {}
 
@@ -1724,7 +1726,12 @@ class Reconciler:
         ray_running_reps = {
             _replica_key(inst)
             for inst in im_instances
-            if inst.status in (IMInstance.RAY_RUNNING, IMInstance.RAY_STOP_REQUESTED)
+            if inst.status
+            in (
+                IMInstance.RAY_RUNNING,
+                IMInstance.RAY_STOP_REQUESTED,
+                IMInstance.RAY_STOPPING,
+            )
         }
         ray_running_reps.discard(None)
         hold_timeout_s = (
@@ -1760,14 +1767,10 @@ class Reconciler:
                 and instance.status_history[-2].instance_status
                 in (IMInstance.RAY_STOP_REQUESTED, IMInstance.RAY_STOPPING)
             )
-            if (
-                solicited_stop
-                and rep_key in ray_running_reps
-                and not InstanceUtil.has_timeout(instance, hold_timeout_s)
-            ):
-                continue
-
-            if solicited_stop and rep_key is not None:
+            if solicited_stop and rep_key in ray_running_reps:
+                if not InstanceUtil.has_timeout(instance, hold_timeout_s):
+                    continue
+            elif solicited_stop and rep_key is not None:
                 drained_terminating_reps.add(rep_key)
 
             # Terminate the instance.
