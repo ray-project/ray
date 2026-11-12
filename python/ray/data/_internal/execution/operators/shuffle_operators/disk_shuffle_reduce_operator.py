@@ -547,7 +547,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         average non-empty partition's request, as for ShuffleReduceOp."""
         regroup_op = self.input_dependencies[0]
         assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
-        total_bytes = functools.reduce(np.add, regroup_op.partition_bytes_by_input)
+        total_bytes = np.asarray(sum(regroup_op.partition_bytes_by_input))
         non_empty = total_bytes[total_bytes > 0]
         memory = (
             int(non_empty.mean() * self._peak_memory_multiplier)
