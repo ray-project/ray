@@ -238,11 +238,13 @@ def load_checkpoint_manifest(checkpoint_path: str) -> Tuple[Dict[str, Any], str]
 # Configuration that the checkpointed memory state depends on: the image
 # and the mounts and network stack that the guest kernel was saved with,
 # plus what runsc's restore spec validation (on by default) compares:
-# process.capabilities and the dev.gvisor.* annotations, which carry ``disk``
-# as the rootfs overlay size. A restore can't change them.
+# process.cwd, which is the ``workdir``, process.capabilities, and the
+# dev.gvisor.* annotations, which carry ``disk`` as the rootfs overlay size.
+# A restore can't change them.
 _RESTORE_IMMUTABLE_FIELDS = (
     "image",
     "network",
+    "workdir",
     "rootless",
     "capabilities",
     "disk",

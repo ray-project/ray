@@ -145,10 +145,9 @@ class TestCheckpointUtils(unittest.TestCase):
         restored = build_restored_config(manifest, network="none", image=None)
         assert restored.network == "none"
 
-    def test_build_restored_config_workdir_can_change(self):
-        # The workdir is only the working directory, not a mount. Checkpoints
-        # from before the readonly option was removed record readonly=False
-        # for a writable sandbox, and still restore.
+    def test_build_restored_config_restores_a_writable_checkpoint(self):
+        # Checkpoints from before the readonly option was removed record
+        # readonly=False for a writable sandbox, and still restore.
         manifest = {
             "config": {
                 "image": "busybox:latest",
@@ -157,11 +156,29 @@ class TestCheckpointUtils(unittest.TestCase):
                 "rootless": False,
             }
         }
-        restored = build_restored_config(manifest, workdir="/other")
-        assert restored.workdir == "/other"
+        restored = build_restored_config(manifest)
+        assert restored.workdir == "/workspace"
         assert not hasattr(restored, "readonly")
         # A readonly override, which restore used to accept, is ignored.
         assert build_restored_config(manifest, readonly=False).workdir == "/workspace"
+
+    def test_build_restored_config_rejects_a_workdir_change(self):
+        # runsc restores only with the cwd the checkpoint was taken with: its
+        # spec validation fails with '"Cwd" does not match across checkpoint
+        # restore'. The workdir an image sets is recorded as None.
+        for recorded in ("/workspace", None):
+            manifest = {
+                "config": {
+                    "image": "busybox:latest",
+                    "workdir": recorded,
+                    "rootless": False,
+                }
+            }
+            with pytest.raises(SandboxError, match="Cannot restore with workdir="):
+                build_restored_config(manifest, workdir="/other")
+            # Passing the recorded value, or None, is not a change.
+            assert build_restored_config(manifest, workdir=recorded).workdir == recorded
+            assert build_restored_config(manifest, workdir=None).workdir == recorded
 
     def test_build_restored_config_rejects_a_readonly_checkpoint(self):
         # Its memory state was saved with a root filesystem that has no
