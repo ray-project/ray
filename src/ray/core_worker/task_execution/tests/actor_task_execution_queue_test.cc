@@ -678,8 +678,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
 // stale-entry version instead recorded a task event for it.
 TEST(OrderedActorTaskExecutionQueueTest, TestRetryArgsReadyAfterStop) {
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -719,8 +719,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryArgsReadyAfterStop) {
 // callback must resolve its own task, not whichever retry is at the head of the list.
 TEST(OrderedActorTaskExecutionQueueTest, TestConcurrentRetryArgsReadyOutOfOrder) {
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
