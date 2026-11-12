@@ -14,6 +14,7 @@
 
 #include "ray/gcs_rpc_client/gcs_client.h"
 
+#include <future>
 #include <memory>
 #include <string>
 #include <utility>
@@ -872,12 +873,36 @@ TEST_P(GcsSubscriptionRecoveryTest, ActorSubscriptionRecoversWithoutGcsRestart) 
   ASSERT_TRUE(
       WaitForCondition([&]() { return actor_updates.load() >= 2; }, timeout_ms_.count()));
 
-  // Pause only the client event loop. GCS continues running in the same process.
-  client_io_service_->stop();
-  client_io_service_thread_->join();
+  // Keep another actor nonterminal until its recovery snapshot has been delivered.
+  // A later DEAD notification must then arrive through the restored subscription.
+  const auto pending_actor = GenActorTableData(job_id);
+  const auto pending_actor_id = ActorID::FromBinary(pending_actor->actor_id());
+  ASSERT_TRUE(RegisterActor(pending_actor));
+  std::atomic<int> pending_actor_updates(0);
+  std::atomic<bool> saw_pending_actor_dead(false);
+  ASSERT_TRUE(SubscribeActor(pending_actor_id,
+                             [&](const ActorID &, const rpc::ActorTableData &data) {
+                               ++pending_actor_updates;
+                               if (data.state() == rpc::ActorTableData::DEAD) {
+                                 saw_pending_actor_dead = true;
+                               }
+                             }));
+  const auto pending_actor_updates_before_pause = pending_actor_updates.load();
+
+  // Block only the client event loop. Unlike stop(), this keeps RPC completions
+  // queued instead of dropping them while GCS continues running.
+  std::promise<void> resume_client;
+  auto client_paused = std::make_shared<std::promise<bool>>();
+  client_io_service_->post(
+      [client_paused, resume = resume_client.get_future().share()]() {
+        client_paused->set_value(true);
+        resume.wait();
+      },
+      "GcsSubscriptionRecoveryTest.PauseClient");
+  ASSERT_TRUE(WaitReady(client_paused->get_future(), timeout_ms_));
   auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", config_.grpc_server_port),
                                      grpc::InsecureChannelCredentials());
-  auto pubsub_stub = rpc::InternalPubSubGcsService::NewStub(channel);
+  auto pubsub_stub = rpc::ControlPlanePubSubGcsService::NewStub(channel);
   auto poll = [&](const UniqueID &subscriber_id, const std::string &publisher_id) {
     grpc::ClientContext context;
     StampContext(context);
@@ -914,15 +939,20 @@ TEST_P(GcsSubscriptionRecoveryTest, ActorSubscriptionRecoversWithoutGcsRestart) 
   const auto observer_stream = poll(observer_id, "").publisher_id();
 
   auto actor_stub = rpc::ActorInfoGcsService::NewStub(channel);
-  grpc::ClientContext kill_context;
-  StampContext(kill_context);
-  kill_context.set_deadline(std::chrono::system_clock::now() + timeout_ms_);
-  rpc::KillActorViaGcsRequest kill_request;
-  kill_request.set_actor_id(actor_id.Binary());
-  kill_request.set_force_kill(true);
-  kill_request.set_no_restart(true);
-  rpc::KillActorViaGcsReply kill_reply;
-  EXPECT_TRUE(actor_stub->KillActorViaGcs(&kill_context, kill_request, &kill_reply).ok());
+  auto kill_actor = [&](const ActorID &id) {
+    grpc::ClientContext kill_context;
+    StampContext(kill_context);
+    kill_context.set_deadline(std::chrono::system_clock::now() + timeout_ms_);
+    rpc::KillActorViaGcsRequest kill_request;
+    kill_request.set_actor_id(id.Binary());
+    kill_request.set_force_kill(true);
+    kill_request.set_no_restart(true);
+    rpc::KillActorViaGcsReply kill_reply;
+    EXPECT_TRUE(
+        actor_stub->KillActorViaGcs(&kill_context, kill_request, &kill_reply).ok());
+    EXPECT_EQ(kill_reply.status().code(), 0);
+  };
+  kill_actor(actor_id);
   const auto notification = poll(observer_id, observer_stream);
   EXPECT_EQ(notification.pub_messages_size(), 1);
   if (!notification.pub_messages().empty()) {
@@ -934,16 +964,23 @@ TEST_P(GcsSubscriptionRecoveryTest, ActorSubscriptionRecoversWithoutGcsRestart) 
   EXPECT_NE(new_stream, old_stream);
   EXPECT_FALSE(saw_dead.load());
 
-  // No notification is published after this point. Recovery must re-register
-  // through GcsClient::AsyncResubscribe and fetch the current Actor state.
-  client_io_service_->restart();
-  client_io_service_thread_ = std::make_unique<std::thread>([this]() {
-    auto work = boost::asio::make_work_guard(*client_io_service_);
-    client_io_service_->run();
-  });
+  // The first actor's missed DEAD update must be recovered by fetching its
+  // current state through GcsClient::AsyncResubscribe.
+  resume_client.set_value();
   EXPECT_TRUE(WaitForCondition([&]() { return saw_dead.load(); }, timeout_ms_.count()));
+  // Wait for the second actor's recovery fetch before killing it. This prevents
+  // an outstanding snapshot from masking a failure to restore its subscription.
+  ASSERT_TRUE(WaitForCondition(
+      [&]() { return pending_actor_updates.load() > pending_actor_updates_before_pause; },
+      timeout_ms_.count()));
+  ASSERT_FALSE(saw_pending_actor_dead.load());
+  kill_actor(pending_actor_id);
+  EXPECT_TRUE(WaitForCondition([&]() { return saw_pending_actor_dead.load(); },
+                               timeout_ms_.count()));
   UnsubscribeActor(actor_id);
   WaitForActorUnsubscribed(actor_id);
+  UnsubscribeActor(pending_actor_id);
+  WaitForActorUnsubscribed(pending_actor_id);
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsSubscriptionRecoveryTest,
