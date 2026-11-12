@@ -3,6 +3,7 @@ import math
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
 import pytest
 
 from ray.data import ActorPoolStrategy
@@ -346,6 +347,50 @@ async def test_vllm_wrapper_uses_explicit_multimodal_data():
     request = await wrapper._prepare_llm_request(row)
 
     assert request.multimodal_data == {"image": [sentinel_image]}
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_drops_none_keys_from_structured_outputs():
+    """Keys Arrow fills with None when rows carry different schemas are dropped."""
+    wrapper = _make_bare_wrapper()
+
+    # What a row looks like after Ray Data unifies it with a row whose schema has
+    # `status` and `amount` properties and a `maxLength` on `name`.
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "sampling_params": {
+            "max_tokens": 1,
+            "structured_outputs": {
+                "json": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "maxLength": None},
+                        "status": None,
+                        "amount": None,
+                    },
+                    "required": np.array(["name"], dtype=object),
+                },
+                "regex": None,
+            },
+        },
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+
+    assert request.params.structured_outputs.json == {
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"],
+    }
+
+
+def test_drop_none_values_keeps_none_list_items():
+    from ray.llm._internal.batch.stages.common import drop_none_values
+
+    schema = {"enum": ["a", None], "default": None, "items": [{"const": 1, "x": None}]}
+
+    assert drop_none_values(schema) == {"enum": ["a", None], "items": [{"const": 1}]}
 
 
 @pytest.mark.parametrize(

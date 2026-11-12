@@ -32,3 +32,26 @@ def maybe_convert_ndarray_to_list(
     elif isinstance(params, np.ndarray):
         return params.tolist()
     return params
+
+
+def drop_none_values(params: Any) -> Any:
+    """Recursively drop dict entries whose value is None.
+
+    When rows in one block carry different nested dicts (for example different JSON
+    schemas in ``structured_outputs``), Arrow unifies them into one struct type, and each
+    row comes back with the other rows' keys set to None. A JSON schema with
+    ``"properties": {"name": {...}, "status": None}`` is invalid, so the structured
+    output backend rejects the request. None items inside lists are kept, so values like
+    ``"enum": ["a", None]`` are unchanged.
+
+    Args:
+        params: The parameters to clean.
+
+    Returns:
+        The parameters without None-valued dict entries.
+    """
+    if isinstance(params, dict):
+        return {k: drop_none_values(v) for k, v in params.items() if v is not None}
+    if isinstance(params, list):
+        return [drop_none_values(v) for v in params]
+    return params
