@@ -34,6 +34,7 @@ from ray.experimental.sandbox._internal import cdi, egress_guard, overlayfs
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
+    unlimited_cpu_window,
     wrap_command,
 )
 from ray.experimental.sandbox._internal.image_utils import (
@@ -996,7 +997,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_run_args=gpu_run_args,
             rootfs_overlay=rootfs_overlay,
         )
-        run_args = wrap_command(run_args, cgroup, config.oom_score_adj)
+        # A sandbox with limits runs on its cgroup's CPUs. One without them
+        # gets a window of the node's CPUs if the node sets one.
+        window = None
+        if cgroup is None:
+            try:
+                window = unlimited_cpu_window()
+            except ValueError as err:
+                raise SandboxCreationError(str(err)) from None
+        run_args = wrap_command(run_args, cgroup, config.oom_score_adj, cpus=window)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")

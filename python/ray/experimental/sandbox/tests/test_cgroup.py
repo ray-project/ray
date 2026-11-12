@@ -219,6 +219,100 @@ def test_launcher_sets_oom_priority_before_exec(
     execute.assert_called_once_with("workload", ["workload"])
 
 
+def test_cpu_window_rotates_over_the_nodes_cpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each sandbox without a CPU limit gets the next window of the CPUs this
+    process may use, so sandboxes spread over the node and share windows only
+    once every window is taken."""
+    monkeypatch.setattr(
+        os, "sched_getaffinity", lambda pid: {8, 9, 10, 11, 12, 13}, raising=False
+    )
+    monkeypatch.setattr(cgroup, "_window_next", 0)
+    monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", "4")
+    windows = [cgroup.unlimited_cpu_window() for _ in range(4)]
+    assert windows == [[8, 9, 10, 11], [12, 13, 8, 9], [10, 11, 12, 13], [8, 9, 10, 11]]
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [(None, None), ("", None), ("0", None), ("6", None), ("64", None), ("1", [8, 9])],
+)
+def test_cpu_window_leaves_every_cpu_unless_it_is_smaller_than_the_node(
+    monkeypatch: pytest.MonkeyPatch, value, expected
+) -> None:
+    """Unset, zero, or as many CPUs as the node has: the sandbox keeps every
+    CPU. A window is never smaller than the two CPUs gVisor needs."""
+    monkeypatch.setattr(
+        os, "sched_getaffinity", lambda pid: {8, 9, 10, 11, 12, 13}, raising=False
+    )
+    monkeypatch.setattr(cgroup, "_window_next", 0)
+    if value is None:
+        monkeypatch.delenv("RAY_SANDBOX_CPU_WINDOW", raising=False)
+    else:
+        monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", value)
+    assert cgroup.unlimited_cpu_window() == expected
+
+
+@pytest.mark.parametrize("value", ["eight", "-2", "2.5"])
+def test_cpu_window_rejects_a_value_that_is_not_a_cpu_count(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", value)
+    with pytest.raises(ValueError, match="RAY_SANDBOX_CPU_WINDOW"):
+        cgroup.unlimited_cpu_window()
+
+
+def test_launcher_runs_an_unlimited_sandbox_on_its_cpu_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The window reaches the launcher as an affinity, with no cgroup to join."""
+    command = cgroup.wrap_command(["workload"], cpus=[3, 2])
+    assert command[3:6] == ["", "--cpus", "2,3"]
+    affinity = Mock()
+    execute = Mock()
+    monkeypatch.setattr(sys, "argv", command[2:])
+    monkeypatch.setattr(os, "execvp", execute)
+    monkeypatch.setattr(os, "sched_setaffinity", affinity, raising=False)
+    cgroup_launcher.main()
+    affinity.assert_called_once_with(0, {2, 3})
+    execute.assert_called_once_with("workload", ["workload"])
+
+
+def test_a_cgroups_cpus_take_precedence_over_the_window(tmp_path: Path) -> None:
+    group = cgroup.SandboxCgroup(tmp_path, {}, [0, 1])
+    command = cgroup.wrap_command(["workload"], group, cpus=[6, 7])
+    assert command[4:6] == ["--cpus", "0,1"]
+
+
+def test_a_sandbox_without_limits_boots_on_the_nodes_cpu_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With RAY_SANDBOX_CPU_WINDOW set, the launch command of a sandbox
+    without a cgroup goes through the launcher with the window's CPUs. A
+    value that isn't a CPU count fails the create."""
+    monkeypatch.setattr(
+        os, "sched_getaffinity", lambda pid: set(range(16)), raising=False
+    )
+    monkeypatch.setattr(cgroup, "_window_next", 4)
+    launched = []
+
+    def popen(args, **kwargs):
+        launched.append(list(args))
+        raise OSError("stop here")
+
+    monkeypatch.setattr(gvisor.subprocess, "Popen", popen)
+    backend = GVisorSandboxBackend()
+    config = SandboxConfig(image="busybox:latest")
+    for value in ("4", "", "many"):
+        monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", value)
+        with pytest.raises((OSError, SandboxCreationError)):
+            backend._run_until_running(config, "sb-1", str(tmp_path), None)
+    assert len(launched) == 2
+    assert launched[0][1] == "-S" and launched[0][3:6] == ["", "--cpus", "4,5,6,7"]
+    assert "--cpus" not in launched[1]
+
+
 def test_launcher_does_not_execute_if_oom_priority_cannot_be_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
