@@ -320,11 +320,13 @@ def test_hosted_calls_use_the_channel_and_fall_back_to_ray():
     asyncio.run(scenario())
 
 
-def test_hosted_calls_skip_the_channel_unless_enabled():
+def test_hosted_calls_skip_the_channel_when_disabled():
     async def scenario():
         target = _Host()
         host = _HostHandle(target, HostChannelServer(target, CHANNEL_METHODS))
-        resolver = RayActorHandleResolver(SandboxAPISettings(host_mode="node"))
+        resolver = RayActorHandleResolver(
+            SandboxAPISettings(host_mode="node", host_channel=False)
+        )
         handle = HostedSandboxHandle(host, "host", "sb-1", resolver)
         for _ in range(3):
             await handle.describe.remote()

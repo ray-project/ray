@@ -38,9 +38,16 @@ NODE_HOST_PREFIX = "sandbox-node-host-"
 # Long polls (describe, get_exec) from every sandbox on a node share one host.
 _NODE_HOST_MAX_CONCURRENCY = 100_000
 # How long the list of nodes that can run sandboxes is reused.
-_NODES_TTL_SECONDS = 5.0
+_NODES_TTL_SECONDS = 30.0
+# How many hosts one create asks for room before it stops looking, and how
+# long a replica skips a host that answered "full". Without them a create on
+# a nearly full cluster would ask every host in turn.
+_MAX_ADMIT_PROBES = 16
+_FULL_HOST_SECONDS = 1.0
 # How long a listing waits for the node hosts to report their sandboxes.
 _LIST_HOSTS_SECONDS = 10.0
+# How long prestart waits for the hosts it started to answer.
+_PRESTART_SECONDS = 300.0
 # After a host channel fails to connect or breaks, calls to that host go
 # through Ray for this long before the next attempt.
 _CHANNEL_RETRY_SECONDS = 30.0
@@ -277,12 +284,24 @@ class RayActorHandleResolver:
         # host_mode="node": sandbox specs each node host keeps booted ahead
         # of creates, as [{"spec", "size"}] (set by the gRPC facade).
         self.warm_templates: List[Dict[str, Any]] = []
-        self._nodes: List[str] = []
+        # Alive nodes with CPUs, sorted, and the node each hosted sandbox id's
+        # prefix names (None for a prefix two nodes share). Replaced as a
+        # whole on each refresh, so readers need no lock or copy.
+        self._nodes: Tuple[str, ...] = ()
+        self._node_prefixes: Dict[str, Optional[str]] = {}
+        # Each node's total resources, which its host admits against.
+        self._node_resources: Dict[str, Dict[str, float]] = {}
         self._nodes_at = 0.0
         self._refreshing_nodes = False
+        self._refresh_task: Any = None
+        # Node id -> when this resolver may ask its host for room again.
+        self._full_hosts: Dict[str, float] = {}
         self._spread = itertools.count()
         # host_channel: (host actor id, event loop id) -> its _ChannelSlot.
         self._channels: Dict[Tuple[str, int], "_ChannelSlot"] = {}
+        # Pulls that outlived their prepull call (the loop keeps only weak
+        # references to tasks).
+        self._prepull_tasks: set = set()
 
     def _actor_class(self) -> Any:
         # One ActorClass for the resolver's lifetime: a fresh
@@ -329,6 +348,12 @@ class RayActorHandleResolver:
                 "max_exec_history": self._settings.max_exec_history,
                 "max_file_bytes": self._settings.max_file_bytes,
             },
+            # What the host admits against without asking Ray each time.
+            {
+                k: float(v)
+                for k, v in self._node_resources.get(node_id, {}).items()
+                if k == "CPU"
+            },
         )
         handle = actor_class.options(
             name=name,
@@ -355,13 +380,30 @@ class RayActorHandleResolver:
         demand: Dict[str, float],
         ctor_kwargs: Dict[str, Any],
     ) -> Optional[HostedSandboxHandle]:
-        """Place a sandbox in some node host's slab, round robin; None if all are full."""
-        nodes = await asyncio.to_thread(self._cpu_nodes)
+        """Place a sandbox in some node host's slab, round robin.
+
+        Args:
+            demand: The resources the sandbox requests, such as
+                ``{"CPU": 0.25}``.
+            ctor_kwargs: The ``SandboxHost`` constructor arguments.
+
+        Returns:
+            The sandbox's handle, or None if the hosts it asked are full.
+        """
+        nodes = await self._nodes_for_admit()
         if not nodes:
             return None
         start = next(self._spread)
+        now = time.monotonic()
+        full = self._full_hosts
+        probes = 0
         for i in range(len(nodes)):
             node_id = nodes[(start + i) % len(nodes)]
+            if full and full.get(node_id, 0.0) > now:
+                continue
+            if probes >= _MAX_ADMIT_PROBES:
+                break
+            probes += 1
             name = _hosted_sandbox_id(node_id)
             for attempt in (0, 1):
                 entry = self._cached_node_host(node_id) or await asyncio.to_thread(
@@ -388,13 +430,21 @@ class RayActorHandleResolver:
                 handle = HostedSandboxHandle(host, host_name, name, self)
                 self._cache(name, handle)
                 return handle
+            full[node_id] = time.monotonic() + _FULL_HOST_SECONDS
+            if len(full) > 4 * len(nodes):
+                # Nodes that left the cluster since they were marked.
+                self._full_hosts = {
+                    n: t for n, t in full.items() if t > time.monotonic()
+                }
+                full = self._full_hosts
         return None
 
     def prestart(self) -> int:
         """Start the host on every node that can run sandboxes (host_mode="node").
 
         Hosts otherwise start with the first sandbox placed on their node,
-        which then waits for the host's worker process.
+        which then waits for the host's worker process. Every host starts at
+        once, so a large cluster takes as long as one node.
 
         Returns:
             How many hosts were started or found.
@@ -402,18 +452,65 @@ class RayActorHandleResolver:
         import ray
 
         started = 0
-        for node_id in self._cpu_nodes(refresh=True):
-            for attempt in (0, 1):
-                handle = self._node_host(node_id)[1]
+        pending = self._cpu_nodes(refresh=True)
+        for attempt in (0, 1):
+            handles = [(node_id, self._node_host(node_id)[1]) for node_id in pending]
+            refs = [handle.sandbox_ids.remote() for _, handle in handles]
+            ray.wait(refs, num_returns=len(refs), timeout=_PRESTART_SECONDS)
+            pending = []
+            for (node_id, handle), ref in zip(handles, refs):
                 try:
-                    ray.get(handle.sandbox_ids.remote())
+                    ray.get(ref, timeout=0)
                     started += 1
-                    break
                 except Exception as exc:
                     if attempt or not _is_actor_gone(exc):
-                        raise
+                        logger.warning(
+                            "Sandbox node host on %s did not start: %s", node_id, exc
+                        )
+                        continue
+                    # A host this resolver cached has died; start another.
                     self._drop_node_host(node_id, handle)
+                    pending.append(node_id)
+            if not pending:
+                break
         return started
+
+    async def prepull(self, image: str, wait_seconds: float) -> Dict[str, int]:
+        """Pull ``image`` on every node host, and wait for the pulls.
+
+        A create pulls its image when its node doesn't have it, so the first
+        create on each node would wait for a pull. This starts the pull on
+        every node as soon as a client names the image.
+
+        Args:
+            image: The image reference.
+            wait_seconds: How long to wait for the pulls. They go on after.
+
+        Returns:
+            How many hosts there are, and how many have the image.
+        """
+        nodes = await asyncio.to_thread(self._cpu_nodes)
+        if self._settings.host_mode != "node" or not nodes:
+            return {"hosts": 0, "pulled": 0}
+
+        async def pull(node_id: str) -> bool:
+            entry = self._cached_node_host(node_id) or await asyncio.to_thread(
+                self._node_host, node_id
+            )
+            try:
+                return bool(await entry[1].prepull.remote(image))
+            except Exception as exc:  # noqa: BLE001 - creates pull on their own
+                logger.debug("prepull(%s) on %s: %s", image, node_id, exc)
+                return False
+
+        tasks = [asyncio.ensure_future(pull(node_id)) for node_id in nodes]
+        done, pending = await asyncio.wait(tasks, timeout=wait_seconds)
+        for task in pending:
+            # Still pulling: let it finish, and keep a reference meanwhile.
+            self._prepull_tasks.add(task)
+            task.add_done_callback(self._prepull_tasks.discard)
+        pulled = sum(1 for task in done if not task.exception() and task.result())
+        return {"hosts": len(nodes), "pulled": pulled}
 
     def _refresh_host(self, handle: HostedSandboxHandle) -> Optional[Any]:
         """The live host under ``handle``'s host name, if it isn't the one
@@ -492,7 +589,7 @@ class RayActorHandleResolver:
             if self._node_hosts.get(node_id, (None, None))[1] is handle:
                 del self._node_hosts[node_id]
 
-    def _cpu_nodes(self, refresh: bool = False) -> List[str]:
+    def _cpu_nodes(self, refresh: bool = False) -> Tuple[str, ...]:
         """Alive nodes with CPUs, reused for a few seconds.
 
         One caller refreshes a stale list while the others keep using it, so
@@ -504,21 +601,46 @@ class RayActorHandleResolver:
         with self._lock:
             stale = now - self._nodes_at > _NODES_TTL_SECONDS or not self._nodes
             if not (stale or refresh) or (self._nodes and self._refreshing_nodes):
-                return list(self._nodes)
+                return self._nodes
             self._refreshing_nodes = True
         try:
-            nodes = sorted(
-                n["NodeID"]
+            resources = {
+                n["NodeID"]: n.get("Resources", {})
                 for n in ray.nodes()
                 if n.get("Alive") and n.get("Resources", {}).get("CPU", 0) > 0
-            )
+            }
+            nodes = tuple(sorted(resources))
+            prefixes: Dict[str, Optional[str]] = {}
+            for node_id in nodes:
+                prefix = node_id[:_NODE_PREFIX_CHARS]
+                prefixes[prefix] = None if prefix in prefixes else node_id
             with self._lock:
                 self._nodes, self._nodes_at = nodes, time.monotonic()
+                self._node_prefixes = prefixes
+                self._node_resources = resources
         finally:
             with self._lock:
                 self._refreshing_nodes = False
-        with self._lock:
-            return list(self._nodes)
+        return self._nodes
+
+    async def _nodes_for_admit(self) -> Tuple[str, ...]:
+        """``_cpu_nodes`` without leaving the event loop while a list is known.
+
+        A stale list is used once more while one caller refreshes it in a
+        worker thread, so a create never waits for the GCS's node listing.
+        """
+        nodes = self._nodes
+        if not nodes:
+            return await asyncio.to_thread(self._cpu_nodes)
+        if (
+            time.monotonic() - self._nodes_at > _NODES_TTL_SECONDS
+            and not self._refreshing_nodes
+            and (self._refresh_task is None or self._refresh_task.done())
+        ):
+            self._refresh_task = asyncio.ensure_future(
+                asyncio.to_thread(self._cpu_nodes)
+            )
+        return nodes
 
     def _spread_node(self) -> str:
         """A node for a sandbox that reserves nothing: round robin over CPU nodes."""
@@ -529,13 +651,10 @@ class RayActorHandleResolver:
 
     def _node_for_prefix(self, prefix: str) -> Optional[str]:
         """The alive node whose id starts with ``prefix``, if exactly one does."""
-        for refresh in (False, True):
-            matches = [n for n in self._cpu_nodes(refresh) if n.startswith(prefix)]
-            if len(matches) == 1:
-                return matches[0]
-            if len(matches) > 1:
-                return None
-        return None
+        if prefix not in self._node_prefixes:
+            # A node that joined since the last listing.
+            self._cpu_nodes(refresh=True)
+        return self._node_prefixes.get(prefix)
 
     async def acreate(
         self,
@@ -701,16 +820,16 @@ class RayActorHandleResolver:
             if handle is not None:
                 self._handles.move_to_end(name)
                 return handle
-            fresh = time.monotonic() - self._nodes_at <= _NODES_TTL_SECONDS
-            nodes = self._nodes if fresh else None
         match = _HOSTED_ID.fullmatch(name)
-        if match is None or not nodes:
+        if match is None:
             return None
-        matches = [n for n in nodes if n.startswith(match.group(1))]
-        if len(matches) != 1:
+        # A node id is never reused, so a prefix the last listing knows still
+        # names its node; one it doesn't know is left to ``get``.
+        node_id = self._node_prefixes.get(match.group(1))
+        if node_id is None:
             return None
         with self._lock:
-            entry = self._node_hosts.get(matches[0])
+            entry = self._node_hosts.get(node_id)
         if entry is None:
             return None
         handle = HostedSandboxHandle(entry[1], entry[0], name, self)

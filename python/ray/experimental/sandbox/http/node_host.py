@@ -46,6 +46,14 @@ _SLAB_PLACEMENT_SECONDS = 0.2
 # until a sandbox leaves), so a burst on a full cluster doesn't wait out a
 # placement per admit.
 _FULL_SECONDS = 1.0
+# A host that knows its node's resources admits a sandbox the node has room
+# for at once and reserves its slab in the background, so a create never
+# waits for Ray to place a group. That reservation may take this long (the
+# GCS places groups one at a time, and a burst on a large cluster queues one
+# per node); past it the host stops admitting ahead of its reservations for
+# _FLOAT_RETRY_SECONDS.
+_FLOAT_PLACEMENT_SECONDS = 60.0
+_FLOAT_RETRY_SECONDS = 10.0
 _EPSILON = 1e-9
 # Concurrent boots a host spends refilling its warm pool, so a refill never
 # crowds out the creates that drained it.
@@ -167,6 +175,9 @@ class SandboxNodeHost:
             the full pool (ignored without ``slab``).
         warm_settings: The ``HostSettings`` that pre-booted sandboxes start
             with; a create that adopts one applies its own.
+        node_resources: This node's total resources, such as ``{"CPU": 32}``.
+            With them the host admits a sandbox the node has room for
+            without waiting for its slab (see ``admit``).
     """
 
     def __init__(
@@ -175,6 +186,7 @@ class SandboxNodeHost:
         slab: Optional[Dict[str, float]] = None,
         warm_pool: Optional[List[Dict[str, Any]]] = None,
         warm_settings: Optional[HostSettings] = None,
+        node_resources: Optional[Dict[str, float]] = None,
     ) -> None:
         import ray
 
@@ -192,6 +204,11 @@ class SandboxNodeHost:
         self._grow_lock = asyncio.Lock()
         self._waiting: list = []
         self._full_until = 0.0
+        # Sandboxes admitted ahead of their slab (see admit): id -> demand.
+        self._node_total = dict(node_resources or {})
+        self._floating: Dict[str, Dict[str, float]] = {}
+        self._float_task: Optional[asyncio.Task] = None
+        self._float_blocked_until = 0.0
         # Boots and refills run as tasks nobody awaits; the loop keeps only
         # weak references to tasks.
         self._background: Set[asyncio.Task] = set()
@@ -211,6 +228,8 @@ class SandboxNodeHost:
         self._busy_slot = asyncio.Semaphore(1)
         self._exec_starts: collections.deque = collections.deque()
         self._channel: Optional[HostChannelServer] = None
+        # Image -> its pull in flight (see prepull).
+        self._prepulls: Dict[str, "asyncio.Future"] = {}
 
     def _set_warm_pool(self, warm_pool: Optional[List[Dict[str, Any]]]) -> None:
         """Set the warm pools; a pool no longer listed shuts its sandboxes down."""
@@ -247,6 +266,7 @@ class SandboxNodeHost:
         slab: Optional[Dict[str, float]],
         warm_pool: Optional[List[Dict[str, Any]]],
         warm_settings: Optional[HostSettings],
+        node_resources: Optional[Dict[str, float]] = None,
     ) -> None:
         """Take the settings of the facade that calls this host.
 
@@ -259,9 +279,12 @@ class SandboxNodeHost:
             slab: As in the constructor.
             warm_pool: As in the constructor.
             warm_settings: As in the constructor.
+            node_resources: As in the constructor.
         """
         self._use_executor()
         self._slab_shape = dict(slab or {})
+        if node_resources:
+            self._node_total = dict(node_resources)
         self._warm_settings = dict(warm_settings or {})
         self._set_warm_pool(warm_pool)
         self._refill()
@@ -421,6 +444,11 @@ class SandboxNodeHost:
         ``slab`` and at least ``demand``, aimed at its own node; one Ray puts
         elsewhere (the node is full) is released again and the host reports
         ``{"error_code": "full"}``, so the caller tries another host.
+
+        A host that knows its node's resources doesn't make the sandbox wait
+        for that reservation: while its slabs and the sandboxes admitted
+        ahead of them fit the node, it adds the sandbox at once and reserves
+        the slab in the background.
         """
         self._use_executor()
         if sandbox_id in self._sandboxes:
@@ -429,6 +457,11 @@ class SandboxNodeHost:
         loop = asyncio.get_running_loop()
         if slab is None and loop.time() < self._full_until:
             return {"error_code": "full", "message": f"node {self._node_id} is full"}
+        if slab is None and self._can_float(demand, loop.time()):
+            self._floating[sandbox_id] = dict(demand)
+            if self._float_task is None or self._float_task.done():
+                self._float_task = asyncio.ensure_future(self._reserve_floating())
+            return await self.add(sandbox_id, spec, settings)
         if slab is None:
             # Admits that arrive while slabs grow wait here; the grower
             # reserves for all of them at once.
@@ -448,6 +481,68 @@ class SandboxNodeHost:
         slab.take(sandbox_id, demand)
         self._slab_of[sandbox_id] = slab
         return await self.add(sandbox_id, spec, settings)
+
+    def _can_float(self, demand: Dict[str, float], now: float) -> bool:
+        """Whether the node has room for ``demand`` by this host's own count:
+        its slabs plus the sandboxes admitted ahead of theirs."""
+        if not self._node_total or now < self._float_blocked_until:
+            return False
+        for k, v in demand.items():
+            total = self._node_total.get(k)
+            if total is None:
+                return False
+            floating = sum(d.get(k, 0.0) for d in self._floating.values())
+            if self._held(k) + floating + v > total + _EPSILON:
+                return False
+        return True
+
+    async def _reserve_floating(self) -> None:
+        """Reserve slabs for the sandboxes admitted ahead of them.
+
+        Runs while there are any. Each slab is at least as large as what the
+        host already holds, so a node filling up takes a handful of groups.
+        If Ray can't place one here (something else holds the node's
+        resources), the host answers "full" for a while; the sandboxes it
+        already admitted stay.
+        """
+        loop = asyncio.get_running_loop()
+        while self._floating:
+            async with self._grow_lock:
+                self._settle_floating()
+                if not self._floating:
+                    break
+                need: Dict[str, float] = {}
+                for demand in self._floating.values():
+                    for k, v in demand.items():
+                        need[k] = need.get(k, 0.0) + v
+                shape = {}
+                for k, v in need.items():
+                    held = self._held(k)
+                    want = max(v, self._slab_shape.get(k, 0.0), held)
+                    room = self._node_total.get(k, 0.0) - held
+                    shape[k] = max(v, min(want, room))
+                try:
+                    slab = await self._grow_one(shape, _FLOAT_PLACEMENT_SECONDS)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Failed to reserve a sandbox slab: %s", exc)
+                    slab = None
+                if slab is None:
+                    self._float_blocked_until = loop.time() + _FLOAT_RETRY_SECONDS
+                    self._full_until = loop.time() + _FULL_SECONDS
+                    return
+                self._settle_floating()
+
+    def _settle_floating(self) -> None:
+        """Move the sandboxes admitted ahead of their slab into slabs with room."""
+        for sandbox_id in list(self._floating):
+            demand = self._floating[sandbox_id]
+            slab = self._fitting_slab(demand)
+            if slab is None:
+                continue
+            del self._floating[sandbox_id]
+            if sandbox_id in self._sandboxes:
+                slab.take(sandbox_id, demand)
+                self._slab_of[sandbox_id] = slab
 
     def _fitting_slab(self, demand: Dict[str, float]) -> Optional[_Slab]:
         for slab in self._slabs:
@@ -469,7 +564,14 @@ class SandboxNodeHost:
         # Never reserve past what the node has free: slabs that don't fit go
         # to other nodes (or pend), and capacity reserved but unused here is
         # capacity other hosts can't use.
-        free = await asyncio.to_thread(self._node_free)
+        if self._node_total:
+            # The host's own count, which costs the GCS nothing: listing
+            # every node's resources from each host doesn't scale.
+            free: Optional[Dict[str, float]] = {
+                k: v - self._held(k) for k, v in self._node_total.items()
+            }
+        else:
+            free = await asyncio.to_thread(self._node_free)
         shapes = []
         while True:
             shape = {}
@@ -506,7 +608,9 @@ class SandboxNodeHost:
         except Exception:
             return None
 
-    async def _grow_one(self, shape: Dict[str, float]) -> Optional[_Slab]:
+    async def _grow_one(
+        self, shape: Dict[str, float], wait_seconds: float = _SLAB_PLACEMENT_SECONDS
+    ) -> Optional[_Slab]:
         """Reserve one slab of ``shape`` on this node, or None if it lands elsewhere."""
         from ray.util.placement_group import (
             placement_group,
@@ -523,9 +627,13 @@ class SandboxNodeHost:
             _soft_target_node_id=self._node_id,
         )
         try:
-            await asyncio.wait_for(reservation.ready(), _SLAB_PLACEMENT_SECONDS)
-            table = await asyncio.to_thread(placement_group_table, reservation)
-            placed = next(iter(table["bundles_to_node_id"].values()))
+            # wait() asks the GCS. ready() would run a task in the group,
+            # which starts a Ray worker process on the node for every slab.
+            if await asyncio.to_thread(reservation.wait, wait_seconds):
+                table = await asyncio.to_thread(placement_group_table, reservation)
+                placed = next(iter(table["bundles_to_node_id"].values()))
+            else:
+                placed = None
         except Exception:
             placed = None
         if placed == self._node_id:
@@ -546,6 +654,9 @@ class SandboxNodeHost:
         return slab
 
     def _release_slab_share(self, sandbox_id: str) -> None:
+        if self._floating.pop(sandbox_id, None) is not None:
+            self._full_until = 0.0  # room again
+            return
         slab = self._slab_of.pop(sandbox_id, None)
         if slab is None:
             return
@@ -611,7 +722,7 @@ class SandboxNodeHost:
             await host.boot()
 
     async def describe(
-        self, sandbox_id: str, wait_seconds: float = 0.0
+        self, sandbox_id: str, wait_seconds: float = 0.0, until_booted: bool = False
     ) -> Dict[str, Any]:
         host = self._sandboxes.get(sandbox_id)
         if host is None:
@@ -621,7 +732,7 @@ class SandboxNodeHost:
                 "status": "terminated",
                 "error": None,
             }
-        return await host.describe(wait_seconds)
+        return await host.describe(wait_seconds, until_booted)
 
     async def start_exec(
         self, sandbox_id: str, *args: Any, **kwargs: Any
@@ -724,6 +835,38 @@ class SandboxNodeHost:
         if host is not None:
             await host._shutdown()
         self._release(sandbox_id)
+
+    async def prepull(self, image: str, timeout_seconds: float = 600.0) -> bool:
+        """Pull ``image`` into this node's cache ahead of the creates that use it.
+
+        Calls for an image that is being pulled share that pull.
+
+        Args:
+            image: The image reference.
+            timeout_seconds: How long the pull may take.
+
+        Returns:
+            True once the image is in the cache, False if the pull failed.
+        """
+        self._use_executor()
+        pull = self._prepulls.get(image)
+        if pull is None:
+            pull = asyncio.ensure_future(self._prepull(image, timeout_seconds))
+            self._prepulls[image] = pull
+            pull.add_done_callback(lambda _: self._prepulls.pop(image, None))
+        return await asyncio.shield(pull)
+
+    async def _prepull(self, image: str, timeout_seconds: float) -> bool:
+        from ray.experimental.sandbox.image_manager import ImageManager
+
+        try:
+            await asyncio.to_thread(
+                ImageManager().pull_image, image, timeout_seconds=timeout_seconds
+            )
+            return True
+        except Exception as exc:  # noqa: BLE001 - a create reports its own pull
+            logger.warning("Failed to pull %s ahead of its creates: %s", image, exc)
+            return False
 
     async def channel_endpoint(self) -> Dict[str, Any]:
         """Where and how to connect a host channel; serves one from the first call."""

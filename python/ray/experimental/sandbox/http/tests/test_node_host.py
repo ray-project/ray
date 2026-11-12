@@ -6,11 +6,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from ray.experimental.sandbox.http import node_host
+from ray.experimental.sandbox.http import node_host, resolver as resolver_module
 from ray.experimental.sandbox.http.node_host import SandboxNodeHost, _Slab
 from ray.experimental.sandbox.http.resolver import (
     NODE_HOST_PREFIX,
     RayActorHandleResolver,
+    _hosted_sandbox_id,
 )
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 
@@ -69,6 +70,11 @@ def _host() -> SandboxNodeHost:
     host._fill_slots = asyncio.Semaphore(node_host._WARM_FILL_CONCURRENCY)
     host._busy_slot = asyncio.Semaphore(1)
     host._exec_starts = collections.deque()
+    host._node_total = {}
+    host._floating = {}
+    host._float_task = None
+    host._float_blocked_until = 0.0
+    host._prepulls = {}
     return host
 
 
@@ -363,7 +369,7 @@ def test_a_full_node_grows_no_slab():
         host._node_free = lambda: {"memory": 1e9}  # CPU fully reserved
         grown = []
 
-        async def grow_one(shape):
+        async def grow_one(shape, wait_seconds=None):
             grown.append(shape)
             return None
 
@@ -404,6 +410,243 @@ def test_a_repeated_admit_takes_its_share_once():
     assert results == [{"ok": True}, {"ok": True}]
     assert used == {"CPU": 0.25}
     assert sandboxes == holders == ["sb-1"]
+
+
+def test_a_host_that_knows_its_node_admits_before_its_slab_is_reserved():
+    """With the node's resources known, an admit doesn't wait for Ray to
+    place a slab: the sandbox is added at once, and takes its share of the
+    slab once the reservation is there."""
+
+    async def scenario():
+        host = _host()
+        host._slab_shape = {"CPU": 1.0}
+        host._node_total = {"CPU": 2.0}
+        placed = asyncio.Event()
+        shapes = []
+
+        async def grow_one(shape, wait_seconds=None):
+            shapes.append(dict(shape))
+            await placed.wait()
+            return host._add_slab(f"pg-{len(shapes)}", shape)
+
+        async def grow(demand):
+            return None  # the node has no room left for another slab
+
+        host._grow_one = grow_one
+        host._grow = grow
+        spec = {"image": "python:3.12-slim"}
+        demand = {"CPU": 0.5}
+        early = [await host.admit(f"sb-{i}", spec, {}, demand) for i in range(4)]
+        floating = dict(host._floating)
+        # A fifth would put the node past its two CPUs.
+        over = await host.admit("sb-4", spec, {}, demand)
+        placed.set()
+        await host._float_task
+        return early, floating, over, shapes, host
+
+    early, floating, over, shapes, host = asyncio.run(scenario())
+    assert early == [{"ok": True}] * 4
+    assert sorted(floating) == ["sb-0", "sb-1", "sb-2", "sb-3"]
+    assert over["error_code"] == "full"
+    # One group covers every sandbox admitted while it was being reserved.
+    assert shapes == [{"CPU": 2.0}]
+    assert host._floating == {}
+    assert sorted(host._slab_of) == ["sb-0", "sb-1", "sb-2", "sb-3"]
+    assert [slab.used for slab in host._slabs] == [{"CPU": 2.0}]
+
+
+def test_a_slab_ray_cannot_place_stops_admits_ahead_of_reservations():
+    """If Ray can't place the slab on this node, something else holds the
+    node's resources: the host stops admitting ahead of its reservations and
+    answers "full", and the sandboxes it already admitted stay."""
+
+    async def scenario():
+        host = _host()
+        host._slab_shape = {"CPU": 1.0}
+        host._node_total = {"CPU": 4.0}
+
+        async def grow_one(shape, wait_seconds=None):
+            return None
+
+        async def grow(demand):
+            return None
+
+        host._grow_one = grow_one
+        host._grow = grow
+        spec = {"image": "python:3.12-slim"}
+        first = await host.admit("sb-0", spec, {}, {"CPU": 0.5})
+        await host._float_task
+        second = await host.admit("sb-1", spec, {}, {"CPU": 0.5})
+        released = await host.remove("sb-0")
+        return first, second, list(host._sandboxes), dict(host._floating), released
+
+    first, second, sandboxes, floating, _ = asyncio.run(scenario())
+    assert first == {"ok": True}
+    assert second["error_code"] == "full"
+    assert sandboxes == [] and floating == {}
+
+
+def test_prepull_shares_one_pull_per_image(monkeypatch):
+    """Calls for an image that is being pulled wait for that pull."""
+    from ray.experimental.sandbox import image_manager
+
+    pulls = []
+
+    def pull_image(self, image, timeout_seconds=120.0, instance_id=None):
+        pulls.append(image)
+        time.sleep(0.05)
+        if image == "broken":
+            raise RuntimeError("no such image")
+        return "/cache/" + image
+
+    monkeypatch.setattr(image_manager.ImageManager, "pull_image", pull_image)
+
+    async def scenario():
+        host = _host()
+        first = await asyncio.gather(
+            *(host.prepull("python:3.12-slim") for _ in range(3))
+        )
+        failed = await host.prepull("broken")
+        again = await host.prepull("python:3.12-slim")
+        return first, failed, again
+
+    first, failed, again = asyncio.run(scenario())
+    assert first == [True, True, True]
+    assert failed is False
+    assert again is True
+    assert pulls == ["python:3.12-slim", "broken", "python:3.12-slim"]
+
+
+class _FakeHost:
+    """A node host handle whose methods run a function in place of the actor."""
+
+    def __init__(self, node_id, **methods):
+        self._actor_id = SimpleNamespace(hex=lambda: node_id)
+        self.calls = []
+        for name, fn in methods.items():
+            setattr(self, name, SimpleNamespace(remote=self._remote(name, fn)))
+
+    def _remote(self, name, fn):
+        def remote(*args, **kwargs):
+            self.calls.append(name)
+
+            async def run():
+                return fn(*args, **kwargs)
+
+            return run()
+
+        return remote
+
+
+def _node_resolver(monkeypatch, nodes, **settings):
+    """A node-mode resolver over fake nodes, with no Ray behind it."""
+    import ray
+
+    resolver = RayActorHandleResolver(SandboxAPISettings(host_mode="node", **settings))
+    monkeypatch.setattr(
+        ray,
+        "nodes",
+        lambda: [
+            {"NodeID": n, "Alive": True, "Resources": {"CPU": 8.0}} for n in nodes
+        ],
+    )
+    return resolver
+
+
+def test_hosted_ids_resolve_without_scanning_the_nodes(monkeypatch):
+    """A hosted sandbox id names its node by a prefix, which an index maps
+    to the node; a prefix two nodes share names neither."""
+    nodes = ["aaaaaaaaaa" + "1" * 46, "bbbbbbbbbb" + "2" * 46, "bbbbbbbbbb" + "3" * 46]
+    resolver = _node_resolver(monkeypatch, nodes)
+    resolver._cpu_nodes(refresh=True)
+    resolver._node_hosts[nodes[0]] = ("host-a", object())
+    sandbox_id = _hosted_sandbox_id(nodes[0])
+    handle = resolver.cached(sandbox_id)
+    assert handle.host_name == "host-a" and handle.sandbox_id == sandbox_id
+    assert resolver.cached(_hosted_sandbox_id(nodes[1])) is None
+    assert resolver._node_for_prefix("bbbbbbbbbb") is None
+    assert resolver._node_for_prefix("aaaaaaaaaa") == nodes[0]
+
+
+def test_admit_skips_full_hosts_and_stops_after_its_probes(monkeypatch):
+    """A host that answers "full" isn't asked again for a moment, and one
+    create asks a bounded number of hosts, so a create on a nearly full
+    cluster doesn't ask every host in turn."""
+    monkeypatch.setattr(resolver_module, "_MAX_ADMIT_PROBES", 3)
+    nodes = [f"{i:010d}" + "0" * 46 for i in range(8)]
+    resolver = _node_resolver(monkeypatch, nodes)
+    full = {"error_code": "full", "message": "full"}
+    hosts = {}
+    for i, node in enumerate(nodes):
+        answer = {"ok": True} if i == 7 else full
+        hosts[node] = _FakeHost(node, admit=lambda *a, _answer=answer: _answer)
+        resolver._node_hosts[node] = (f"host-{i}", hosts[node])
+    ctor = {"spec": {"image": "img"}, "settings": {}}
+
+    async def scenario():
+        resolver._cpu_nodes(refresh=True)
+        results = []
+        for _ in range(4):
+            results.append(await resolver._admit({"CPU": 0.25}, ctor))
+        return results
+
+    results = asyncio.run(scenario())
+    asked = sorted(i for i, node in enumerate(nodes) if hosts[node].calls)
+    # Two creates stop at their probe limit and remember the full hosts, so
+    # the third asks only hosts nobody asked yet and reaches the one with
+    # room: nine calls, where asking every host in turn would take 22.
+    assert [r is not None for r in results] == [False, False, True, True]
+    assert sum(len(h.calls) for h in hosts.values()) == 3 + 3 + 2 + 1
+    assert asked == list(range(8))
+
+
+def test_prestart_starts_every_host_before_waiting_for_any(monkeypatch):
+    import ray
+
+    nodes = [f"{i:010d}" + "0" * 46 for i in range(5)]
+    resolver = _node_resolver(monkeypatch, nodes)
+    order = []
+
+    def node_host(node_id):
+        order.append(("start", node_id))
+        return (
+            "host",
+            SimpleNamespace(sandbox_ids=SimpleNamespace(remote=lambda: node_id)),
+        )
+
+    def wait(refs, num_returns, timeout):
+        order.append(("wait", len(refs)))
+        return refs, []
+
+    monkeypatch.setattr(resolver, "_node_host", node_host)
+    monkeypatch.setattr(ray, "wait", wait)
+    monkeypatch.setattr(ray, "get", lambda ref, timeout=None: [])
+    assert resolver.prestart() == 5
+    assert order[:5] == [("start", n) for n in nodes]
+    assert order[5] == ("wait", 5)
+
+
+def test_prepull_asks_every_node_host(monkeypatch):
+    nodes = [f"{i:010d}" + "0" * 46 for i in range(3)]
+    resolver = _node_resolver(monkeypatch, nodes)
+    pulled = []
+
+    def prepull(image, node):
+        pulled.append((node[:10], image))
+        if node == nodes[2]:
+            raise RuntimeError("host died")
+        return True
+
+    for node in nodes:
+        host = _FakeHost(node, prepull=lambda image, _node=node: prepull(image, _node))
+        resolver._node_hosts[node] = ("host", host)
+
+    async def scenario():
+        resolver._cpu_nodes(refresh=True)
+        return await resolver.prepull("python:3.12-slim", 5.0)
+
+    assert asyncio.run(scenario()) == {"hosts": 3, "pulled": 2}
+    assert sorted(pulled) == [(n[:10], "python:3.12-slim") for n in nodes]
 
 
 def test_background_tasks_are_held_until_done():

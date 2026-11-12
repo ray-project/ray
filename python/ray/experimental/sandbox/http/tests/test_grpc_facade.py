@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import types
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -36,6 +37,7 @@ from ray.experimental.sandbox.http.grpc_facade import (
     _FS_TOOLS_PATH,
     RaySandboxFacade,
 )
+from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 from ray.experimental.sandbox.http.tests.conftest import (
     FakeExecResult,
     FakeResolver,
@@ -44,7 +46,7 @@ from ray.experimental.sandbox.http.tests.conftest import (
 
 # Each test gets its own port so a leftover HTTP/2 connection from a prior test
 # can never bleed into the next one.
-_next_port = iter(range(50917, 50947))
+_next_port = iter(range(50917, 50957))
 
 _TOKEN = "facade-test-token"
 # The token as the client SDK presents it on the control plane (its token
@@ -395,6 +397,146 @@ class _VacantNodeHostHandle:
                 return asyncio.ensure_future(method(sandbox_id, *args, **kwargs))
 
         return _Method()
+
+
+def test_get_task_id_holds_until_the_sandbox_runs() -> None:
+    """The SDK sleeps half a second after each empty answer, so the call is
+    held while the sandbox boots and answers once it runs, rather than on
+    each step of the boot."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[bool, str, str]:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        runtime.create_gate = threading.Event()
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                call = asyncio.ensure_future(
+                    control.SandboxGetTaskId(
+                        api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id)
+                    )
+                )
+                # Pulled, and now starting: the earlier facade answered here
+                # with an empty task id.
+                while not runtime.create_calls:
+                    await asyncio.sleep(0.01)
+                await asyncio.sleep(0.2)
+                held = not call.done()
+                runtime.create_gate.set()
+                reply = await asyncio.wait_for(call, timeout=5.0)
+                return held, reply.task_id, sandbox_id
+            finally:
+                await channel.close()
+
+    held, task_id, sandbox_id = asyncio.run(scenario())
+    assert held
+    assert task_id == sandbox_id
+
+
+def test_get_task_id_answers_empty_when_the_boot_outlasts_the_hold(monkeypatch) -> None:
+    monkeypatch.setattr(grpc_facade, "_TASK_ID_HOLD_SECONDS", 0.1)
+    port = next(_next_port)
+
+    async def scenario() -> str:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        runtime.create_gate = threading.Event()
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                reply = await control.SandboxGetTaskId(
+                    api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id)
+                )
+                runtime.create_gate.set()
+                return reply.task_id
+            finally:
+                await channel.close()
+
+    assert asyncio.run(scenario()) == ""
+
+
+class _PrepullResolver(FakeResolver):
+    """A resolver that pulls images on its (imaginary) node hosts."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.prepulled: List[str] = []
+        self.release = asyncio.Event()
+
+    async def prepull(self, image: str, wait_seconds: float) -> Dict[str, int]:
+        self.prepulled.append(image)
+        await self.release.wait()
+        return {"hosts": 2, "pulled": 2}
+
+
+def test_an_image_build_pulls_the_image_on_node_hosts_and_waits_for_it() -> None:
+    """Naming an image starts its pull on every node host, once, and the
+    build the SDK then joins is done when the pulls are."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[List[str], bool, int]:
+        resolver = _PrepullResolver()
+        settings = SandboxAPISettings(host_mode="node")
+        async with _Facade(resolver, port, settings=settings):
+            channel, control, _ = _channel(port)
+            try:
+                request = api_pb2.ImageGetOrCreateRequest(
+                    image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
+                )
+                image = await control.ImageGetOrCreate(request)
+                await control.ImageGetOrCreate(request)
+                join = asyncio.ensure_future(
+                    _replies(
+                        control.ImageJoinStreaming(
+                            api_pb2.ImageJoinStreamingRequest(image_id=image.image_id)
+                        )
+                    )
+                )
+                await asyncio.sleep(0.2)
+                waiting = not join.done()
+                resolver.release.set()
+                replies = await asyncio.wait_for(join, timeout=5.0)
+                return resolver.prepulled, waiting, replies[-1].result.status
+            finally:
+                await channel.close()
+
+    prepulled, waiting, status = asyncio.run(scenario())
+    assert prepulled == ["ubuntu:24.04"]
+    assert waiting
+    assert status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+
+
+def test_an_image_build_does_not_wait_without_node_hosts() -> None:
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[List[str], int]:
+        resolver = _PrepullResolver()
+        settings = SandboxAPISettings(host_mode="actor")
+        async with _Facade(resolver, port, settings=settings):
+            channel, control, _ = _channel(port)
+            try:
+                image = await control.ImageGetOrCreate(
+                    api_pb2.ImageGetOrCreateRequest(
+                        image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
+                    )
+                )
+                replies = await _replies(
+                    control.ImageJoinStreaming(
+                        api_pb2.ImageJoinStreamingRequest(image_id=image.image_id)
+                    )
+                )
+                return resolver.prepulled, replies[-1].result.status
+            finally:
+                await channel.close()
+
+    prepulled, status = asyncio.run(scenario())
+    assert prepulled == []
+    assert status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
 
 
 def test_a_sandbox_its_node_host_lacks_is_not_found() -> None:

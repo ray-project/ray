@@ -97,6 +97,15 @@ _WAIT_MAX_SECONDS = 55.0
 # actor that is not answering before reporting "still running".
 _POLL_GRACE_SECONDS = 0.5
 _SCHEDULING_GRACE_SECONDS = 10.0
+# How long SandboxGetTaskId holds a call for a sandbox that is still booting,
+# and how much longer it waits for the host to answer. Together they stay
+# under the 15 s route timeout that Envoy applies by default.
+_TASK_ID_HOLD_SECONDS = 5.0
+_TASK_ID_GRACE_SECONDS = 5.0
+# How long an image "build" waits for node hosts to pull the image.
+_PREPULL_WAIT_SECONDS = 120.0
+# Images whose pulls a replica remembers having started.
+_MAX_PREPULLED_IMAGES = 256
 _PULL_TIMEOUT_SECONDS = 1800.0
 _START_TIMEOUT_SECONDS = 120.0
 _READ_BOUND_SECONDS = 600.0
@@ -277,6 +286,8 @@ class _FacadeState:
         self.advertise_url = advertise_url
         # Required on every RPC when set; see _rpc.
         self.token = token
+        # Image -> the pulls its first use started on the node hosts.
+        self.prepulls: Dict[str, "asyncio.Future"] = {}
 
     # Resolver calls can wait on a GCS round trip (an actor create, a cache
     # miss), so they run in worker threads, never on the event loop that
@@ -643,6 +654,7 @@ class _ControlServicer(ModalClientServicer):
     @_rpc
     async def ImageGetOrCreate(self, request: Any, grpc_context: Any) -> Any:
         ref = _image_ref_from_dockerfile(request.image)
+        self._prepull(ref)
         return api_pb2.ImageGetOrCreateResponse(
             image_id=_encode_id("im-", ref),
             metadata=api_pb2.ImageMetadata(
@@ -654,12 +666,45 @@ class _ControlServicer(ModalClientServicer):
     async def ImageJoinStreaming(
         self, request: Any, grpc_context: Any
     ) -> AsyncIterator[Any]:
-        # Images are pulled at sandbox boot, so the "build" is already done.
+        # A sandbox pulls its image at boot if its node lacks it. With node
+        # hosts, the "build" is every node pulling the image ahead of that,
+        # so wait for it, as the SDK waits for a build.
+        try:
+            pull = self._prepull(_decode_id("im-", request.image_id))
+        except _RpcError:
+            pull = None
+        if pull is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(pull), _PREPULL_WAIT_SECONDS)
+            except Exception as exc:  # noqa: BLE001 - creates pull on their own
+                logger.debug("Waiting for image pulls: %s", exc)
         yield api_pb2.ImageJoinStreamingResponse(
             result=api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
             )
         )
+
+    def _prepull(self, image: str) -> Optional["asyncio.Future"]:
+        """Start pulling ``image`` on every node host, once per image.
+
+        Args:
+            image: The image reference.
+
+        Returns:
+            The pulls in flight, or None if this facade hosts sandboxes in
+            their own actors.
+        """
+        prepull = getattr(self._state.resolver, "prepull", None)
+        if prepull is None or self._state.settings.host_mode != "node":
+            return None
+        pulls = self._state.prepulls
+        pull = pulls.get(image)
+        if pull is None:
+            pull = asyncio.ensure_future(prepull(image, _PREPULL_WAIT_SECONDS))
+            pulls[image] = pull
+            if len(pulls) > _MAX_PREPULLED_IMAGES:
+                pulls.pop(next(iter(pulls)))
+        return pull
 
     @_rpc
     async def SandboxCreate(self, request: Any, grpc_context: Any) -> Any:
@@ -776,8 +821,15 @@ class _ControlServicer(ModalClientServicer):
     async def SandboxGetTaskId(self, request: Any, grpc_context: Any) -> Any:
         handle = await self._state.require_handle(request.sandbox_id)
         try:
+            # The SDK sleeps half a second after every empty answer, so hold
+            # the call until the sandbox runs or fails rather than answer on
+            # each step of its boot.
             info = await _bounded(
-                handle.describe.remote(wait_seconds=1.0), extra_wait=1.0
+                handle.describe.remote(
+                    wait_seconds=_TASK_ID_HOLD_SECONDS, until_booted=True
+                ),
+                extra_wait=_TASK_ID_HOLD_SECONDS,
+                grace=_TASK_ID_GRACE_SECONDS,
             )
         except _RpcError as exc:
             if exc.code != StatusCode.UNAVAILABLE:
