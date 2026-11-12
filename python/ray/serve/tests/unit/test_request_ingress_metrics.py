@@ -76,3 +76,8 @@ def test_cached_tag_keys_rebuild_the_direct_tags():
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
+
+
+def test_tags_from_key_rejects_a_length_mismatch():
+    with pytest.raises(ValueError):
+        RequestIngressMetrics.tags_from_key(("route", "method"), REQUEST_TAG_KEYS)

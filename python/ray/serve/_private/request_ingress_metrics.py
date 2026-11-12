@@ -150,6 +150,11 @@ class RequestIngressMetrics:
         key: Tuple[str, ...], tag_keys: Tuple[str, ...]
     ) -> Dict[str, str]:
         """Rebuild a tag dict from a cached key and its canonical key order."""
+        if len(key) != len(tag_keys):
+            raise ValueError(
+                f"Key has {len(key)} values but {len(tag_keys)} tag keys "
+                f"are expected: {key!r} for {tag_keys!r}."
+            )
         return dict(zip(tag_keys, key))
 
     @staticmethod

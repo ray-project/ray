@@ -639,9 +639,9 @@ class ReplicaMetricsManager:
             protocol_metrics.set_num_ongoing_requests(
                 self._ingress_ongoing_requests[protocol]
             )
-            for request_key, count in self._cached_ingress_request_counter[
-                protocol
-            ].items():
+            for request_key, count in self._cached_ingress_request_counter.get(
+                protocol, {}
+            ).items():
                 protocol_metrics.request_counter.inc(
                     count,
                     tags=RequestIngressMetrics.tags_from_key(
@@ -649,9 +649,9 @@ class ReplicaMetricsManager:
                     ),
                 )
 
-            for request_key, count in self._cached_ingress_request_error_counter[
-                protocol
-            ].items():
+            for request_key, count in self._cached_ingress_request_error_counter.get(
+                protocol, {}
+            ).items():
                 protocol_metrics.request_error_counter.inc(
                     count,
                     tags=RequestIngressMetrics.tags_from_key(
@@ -659,9 +659,9 @@ class ReplicaMetricsManager:
                     ),
                 )
 
-            for request_key, count in self._cached_deployment_request_error_counter[
-                protocol
-            ].items():
+            for request_key, count in self._cached_deployment_request_error_counter.get(
+                protocol, {}
+            ).items():
                 protocol_metrics.deployment_request_error_counter.inc(
                     count,
                     tags=RequestIngressMetrics.tags_from_key(
@@ -669,9 +669,9 @@ class ReplicaMetricsManager:
                     ),
                 )
 
-            for latency_key, latencies in self._cached_ingress_processing_latencies[
-                protocol
-            ].items():
+            for latency_key, latencies in self._cached_ingress_processing_latencies.get(
+                protocol, {}
+            ).items():
                 protocol_metrics.processing_latency_tracker._observe_many(
                     latencies,
                     tags=RequestIngressMetrics.tags_from_key(
