@@ -367,8 +367,14 @@ class KVTokenTracker:
         }
 
     def _publish_autoscaling_snapshot(self) -> None:
-        if self._autoscaling_metrics_callback is not None:
+        if self._autoscaling_metrics_callback is None:
+            return
+        # Callers publish after updating local state but before syncing the
+        # selection service and peers, so a raising callback must not abort them.
+        try:
             self._autoscaling_metrics_callback(self._get_autoscaling_snapshot())
+        except Exception:
+            logger.exception("Autoscaling metrics callback failed.")
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
