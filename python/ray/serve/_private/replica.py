@@ -710,8 +710,14 @@ class ReplicaMetricsManager:
         # observes, so there is nothing to flush: cancel it rather than let
         # graceful_shutdown wait out its timeout on it.
         self._metrics_pusher.stop_event.set()
-        self._metrics_pusher.cancel_task(self.PUSH_SELF_HEALTH_TASK_NAME)
+        self.stop_self_health()
         await self._metrics_pusher.graceful_shutdown()
+
+    def stop_self_health(self) -> None:
+        """Stop the self-check for good. Paused first, because the check this cancels
+        swallows the cancel and would otherwise report it as a failure."""
+        self._self_health_paused = True
+        self._metrics_pusher.cancel_task(self.PUSH_SELF_HEALTH_TASK_NAME)
 
     def _push_blocked(self, ref, started_s: float) -> bool:
         """True while the previous push is still in flight and not yet overdue.
@@ -2067,8 +2073,10 @@ class Replica:
 
             # A new replica should not be considered healthy until it passes
             # an initial health check. If an initial health check fails,
-            # consider it an initialization failure.
-            await self.check_health()
+            # consider it an initialization failure. Run the check itself, not
+            # check_health(): this runs again on every replica a restarted controller
+            # recovers, and a cached failure would fail one that has since recovered.
+            await self._run_user_health_check()
             # From here the periodic task is the sole caller of the user health
             # check; remote probes read its cached result.
             self._start_self_health_pusher()
@@ -2325,6 +2333,9 @@ class Replica:
         await self._drain_ongoing_requests(check_immediately=True)
 
     async def shutdown(self):
+        # The self-check runs the user's check_health, which must not run alongside or
+        # after __del__, which may free what it uses.
+        self._metrics_manager.stop_self_health()
         try:
             self._user_callable_wrapper.stop_user_loop_watchdog()
             await self._user_callable_wrapper.call_destructor()

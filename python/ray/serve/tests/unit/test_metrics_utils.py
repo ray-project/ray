@@ -1590,6 +1590,41 @@ class TestSelfHealthPush:
         assert m._consecutive_failures == 0
 
     @pytest.mark.asyncio
+    async def test_replica_shutdown_stops_the_self_check_before_the_destructor(self):
+        """__del__ may free what check_health uses, so a check in flight must not go
+        on to finish alongside it, nor report what it saw."""
+        from unittest.mock import Mock
+
+        import ray.serve._private.replica as replica_mod
+
+        m = self._manager()
+        started = asyncio.Event()
+        release = asyncio.Event()
+        finished = []
+
+        async def check():
+            started.set()
+            await release.wait()
+            finished.append(1)
+
+        m.start_self_health_pusher(check, 10.0)
+        await started.wait()
+        r = replica_mod.Replica.__new__(replica_mod.Replica)
+        r._metrics_manager = m
+        r._user_callable_initialized = True
+        r._user_callable_wrapper = Mock()
+
+        async def destructor():
+            release.set()
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+        r._user_callable_wrapper.call_destructor = destructor
+        await r.shutdown()
+        assert finished == []
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_a_pass_past_the_threshold_clears_the_count(self, monkeypatch):
         import ray.serve._private.replica as replica_mod
         from ray.serve._private.constants import (
@@ -1914,6 +1949,21 @@ class TestReplicaHealthVerdict:
         with pytest.raises(RuntimeError, match="intended to fail"):
             await r._run_user_health_check()
         assert r._healthy is False
+
+    @pytest.mark.asyncio
+    async def test_a_reinit_runs_the_user_check_rather_than_the_cached_verdict(self):
+        """A restarted controller calls initialize again on every replica it recovers,
+        and a failed re-init stops the replica. One whose last self-check failed but
+        that passes now has recovered, so the cached failure must not decide it."""
+        r = self._replica()
+        r._user_callable_initialized_lock = asyncio.Lock()
+        r._user_callable_initialized = True
+        r._healthy = False
+        r._health_checked_at = time.time()
+        r._last_self_health_error = "intended to fail"
+        await r.initialize(None, None)
+        r._user_callable_wrapper.call_user_health_check.assert_called_once()
+        assert r._healthy is True
 
 
 class TestReconfigurePausesSelfHealth:
