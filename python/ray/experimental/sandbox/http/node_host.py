@@ -274,8 +274,6 @@ class SandboxNodeHost:
         self._busy_slot = asyncio.Semaphore(1)
         self._exec_starts: collections.deque = collections.deque()
         self._channel: Optional[HostChannelServer] = None
-        # Image -> its pull in flight (see prepull).
-        self._prepulls: Dict[str, "asyncio.Future"] = {}
 
     def _set_warm_pool(self, warm_pool: Optional[List[Dict[str, Any]]]) -> None:
         """Set the warm pools; a pool no longer listed shuts its sandboxes down."""
@@ -801,38 +799,6 @@ class SandboxNodeHost:
         if host is not None:
             await host._shutdown()
         self._release(sandbox_id)
-
-    async def prepull(self, image: str, timeout_seconds: float = 600.0) -> bool:
-        """Pull ``image`` into this node's cache ahead of the creates that use it.
-
-        Calls for an image that is being pulled share that pull.
-
-        Args:
-            image: The image reference.
-            timeout_seconds: How long the pull may take.
-
-        Returns:
-            True once the image is in the cache, False if the pull failed.
-        """
-        self._use_executor()
-        pull = self._prepulls.get(image)
-        if pull is None:
-            pull = asyncio.ensure_future(self._prepull(image, timeout_seconds))
-            self._prepulls[image] = pull
-            pull.add_done_callback(lambda _: self._prepulls.pop(image, None))
-        return await asyncio.shield(pull)
-
-    async def _prepull(self, image: str, timeout_seconds: float) -> bool:
-        from ray.experimental.sandbox.image_manager import ImageManager
-
-        try:
-            await asyncio.to_thread(
-                ImageManager().pull_image, image, timeout_seconds=timeout_seconds
-            )
-            return True
-        except Exception as exc:  # noqa: BLE001 - a create reports its own pull
-            logger.warning("Failed to pull %s ahead of its creates: %s", image, exc)
-            return False
 
     async def channel_endpoint(self) -> Dict[str, Any]:
         """Where and how to connect a host channel; serves one from the first call."""

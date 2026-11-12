@@ -460,57 +460,6 @@ def test_get_task_id_answers_empty_when_the_boot_outlasts_the_hold(monkeypatch) 
     assert asyncio.run(scenario()) == ""
 
 
-class _PrepullResolver(FakeResolver):
-    """A resolver that pulls images on its (imaginary) node hosts."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.prepulled: List[str] = []
-        self.release = asyncio.Event()
-
-    async def prepull(self, image: str, wait_seconds: float) -> Dict[str, int]:
-        self.prepulled.append(image)
-        await self.release.wait()
-        return {"hosts": 2, "pulled": 2}
-
-
-def test_an_image_build_pulls_the_image_on_node_hosts_and_waits_for_it() -> None:
-    """Naming an image starts its pull on every node host, once, and the
-    build the SDK then joins is done when the pulls are."""
-    port = next(_next_port)
-
-    async def scenario() -> Tuple[List[str], bool, int]:
-        resolver = _PrepullResolver()
-        settings = SandboxAPISettings(host_mode="node")
-        async with _Facade(resolver, port, settings=settings):
-            channel, control, _ = _channel(port)
-            try:
-                request = api_pb2.ImageGetOrCreateRequest(
-                    image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
-                )
-                image = await control.ImageGetOrCreate(request)
-                await control.ImageGetOrCreate(request)
-                join = asyncio.ensure_future(
-                    _replies(
-                        control.ImageJoinStreaming(
-                            api_pb2.ImageJoinStreamingRequest(image_id=image.image_id)
-                        )
-                    )
-                )
-                await asyncio.sleep(0.2)
-                waiting = not join.done()
-                resolver.release.set()
-                replies = await asyncio.wait_for(join, timeout=5.0)
-                return resolver.prepulled, waiting, replies[-1].result.status
-            finally:
-                await channel.close()
-
-    prepulled, waiting, status = asyncio.run(scenario())
-    assert prepulled == ["ubuntu:24.04"]
-    assert waiting
-    assert status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-
-
 def test_a_create_that_finds_no_room_answers_unavailable() -> None:
     """A create that waited for a node with room and found none answers
     UNAVAILABLE, which the client SDK retries, so a cluster that is adding
@@ -532,73 +481,6 @@ def test_a_create_that_finds_no_room_answers_unavailable() -> None:
                 await channel.close()
 
     assert asyncio.run(scenario()) == StatusCode.UNAVAILABLE
-
-
-def test_pulls_that_missed_a_node_host_start_again_after_a_while(monkeypatch) -> None:
-    """Pulls that left the image on every node host aren't repeated. Ones that
-    didn't are, once the retry time has passed, and not before."""
-    port = next(_next_port)
-    monkeypatch.setattr(grpc_facade, "_PREPULL_RETRY_SECONDS", 0.3)
-
-    class _Resolver(_PrepullResolver):
-        results = [
-            {"hosts": 2, "pulled": 1},
-            {"hosts": 0, "pulled": 0},
-            {"hosts": 2, "pulled": 2},
-        ]
-
-        async def prepull(self, image: str, wait_seconds: float) -> Dict[str, int]:
-            self.prepulled.append(image)
-            return self.results[len(self.prepulled) - 1]
-
-    async def scenario() -> List[int]:
-        resolver = _Resolver()
-        settings = SandboxAPISettings(host_mode="node")
-        async with _Facade(resolver, port, settings=settings):
-            channel, control, _ = _channel(port)
-            try:
-                request = api_pb2.ImageGetOrCreateRequest(
-                    image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
-                )
-                counts = []
-                for pause in (0.0, 0.05, 0.5, 0.5, 0.5):
-                    await asyncio.sleep(pause)
-                    await control.ImageGetOrCreate(request)
-                    counts.append(len(resolver.prepulled))
-                return counts
-            finally:
-                await channel.close()
-
-    # One node missed the image, then no node was up, then every node had it.
-    assert asyncio.run(scenario()) == [1, 1, 2, 3, 3]
-
-
-def test_an_image_build_does_not_wait_without_node_hosts() -> None:
-    port = next(_next_port)
-
-    async def scenario() -> Tuple[List[str], int]:
-        resolver = _PrepullResolver()
-        settings = SandboxAPISettings(host_mode="actor")
-        async with _Facade(resolver, port, settings=settings):
-            channel, control, _ = _channel(port)
-            try:
-                image = await control.ImageGetOrCreate(
-                    api_pb2.ImageGetOrCreateRequest(
-                        image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
-                    )
-                )
-                replies = await _replies(
-                    control.ImageJoinStreaming(
-                        api_pb2.ImageJoinStreamingRequest(image_id=image.image_id)
-                    )
-                )
-                return resolver.prepulled, replies[-1].result.status
-            finally:
-                await channel.close()
-
-    prepulled, status = asyncio.run(scenario())
-    assert prepulled == []
-    assert status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
 
 
 def test_a_sandbox_its_node_host_lacks_is_not_found() -> None:
@@ -1267,7 +1149,6 @@ def test_facade_imports_without_fastapi() -> None:
 
 def test_write_file_stdin_is_capped() -> None:
     """A WriteFile larger than max_file_bytes is refused, not buffered."""
-    from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 
     port = next(_next_port)
 

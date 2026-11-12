@@ -76,7 +76,6 @@ def _host() -> SandboxNodeHost:
     host._floating = {}
     host._float_task = None
     host._float_blocked_until = 0.0
-    host._prepulls = {}
     return host
 
 
@@ -522,37 +521,6 @@ def test_a_slab_ray_cannot_place_stops_admits_ahead_of_reservations():
     assert sandboxes == [] and floating == {}
 
 
-def test_prepull_shares_one_pull_per_image(monkeypatch):
-    """Calls for an image that is being pulled wait for that pull."""
-    from ray.experimental.sandbox import image_manager
-
-    pulls = []
-
-    def pull_image(self, image, timeout_seconds=120.0, instance_id=None):
-        pulls.append(image)
-        time.sleep(0.05)
-        if image == "broken":
-            raise RuntimeError("no such image")
-        return "/cache/" + image
-
-    monkeypatch.setattr(image_manager.ImageManager, "pull_image", pull_image)
-
-    async def scenario():
-        host = _host()
-        first = await asyncio.gather(
-            *(host.prepull("python:3.12-slim") for _ in range(3))
-        )
-        failed = await host.prepull("broken")
-        again = await host.prepull("python:3.12-slim")
-        return first, failed, again
-
-    first, failed, again = asyncio.run(scenario())
-    assert first == [True, True, True]
-    assert failed is False
-    assert again is True
-    assert pulls == ["python:3.12-slim", "broken", "python:3.12-slim"]
-
-
 class _FakeHost:
     """A node host handle whose methods run a function in place of the actor."""
 
@@ -660,29 +628,6 @@ def test_prestart_starts_every_host_before_waiting_for_any(monkeypatch):
     assert resolver.prestart() == 5
     assert order[:5] == [("start", n) for n in nodes]
     assert order[5] == ("wait", 5)
-
-
-def test_prepull_asks_every_node_host(monkeypatch):
-    nodes = [f"{i:010d}" + "0" * 46 for i in range(3)]
-    resolver = _node_resolver(monkeypatch, nodes)
-    pulled = []
-
-    def prepull(image, node):
-        pulled.append((node[:10], image))
-        if node == nodes[2]:
-            raise RuntimeError("host died")
-        return True
-
-    for node in nodes:
-        host = _FakeHost(node, prepull=lambda image, _node=node: prepull(image, _node))
-        resolver._node_hosts[node] = ("host", host)
-
-    async def scenario():
-        resolver._cpu_nodes(refresh=True)
-        return await resolver.prepull("python:3.12-slim", 5.0)
-
-    assert asyncio.run(scenario()) == {"hosts": 3, "pulled": 2}
-    assert sorted(pulled) == [(n[:10], "python:3.12-slim") for n in nodes]
 
 
 def test_background_tasks_are_held_until_done():

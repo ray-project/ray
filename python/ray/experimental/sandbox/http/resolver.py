@@ -299,9 +299,6 @@ class RayActorHandleResolver:
         self._spread = itertools.count()
         # host_channel: (host actor id, event loop id) -> its _ChannelSlot.
         self._channels: Dict[Tuple[str, int], "_ChannelSlot"] = {}
-        # Pulls that outlived their prepull call (the loop keeps only weak
-        # references to tasks).
-        self._prepull_tasks: set = set()
 
     def _actor_class(self) -> Any:
         # One ActorClass for the resolver's lifetime: a fresh
@@ -474,43 +471,6 @@ class RayActorHandleResolver:
             if not pending:
                 break
         return started
-
-    async def prepull(self, image: str, wait_seconds: float) -> Dict[str, int]:
-        """Pull ``image`` on every node host, and wait for the pulls.
-
-        A create pulls its image when its node doesn't have it, so the first
-        create on each node would wait for a pull. This starts the pull on
-        every node as soon as a client names the image.
-
-        Args:
-            image: The image reference.
-            wait_seconds: How long to wait for the pulls. They go on after.
-
-        Returns:
-            How many hosts there are, and how many have the image.
-        """
-        nodes = await asyncio.to_thread(self._cpu_nodes)
-        if self._settings.host_mode != "node" or not nodes:
-            return {"hosts": 0, "pulled": 0}
-
-        async def pull(node_id: str) -> bool:
-            entry = self._cached_node_host(node_id) or await asyncio.to_thread(
-                self._node_host, node_id
-            )
-            try:
-                return bool(await entry[1].prepull.remote(image))
-            except Exception as exc:  # noqa: BLE001 - creates pull on their own
-                logger.debug("prepull(%s) on %s: %s", image, node_id, exc)
-                return False
-
-        tasks = [asyncio.ensure_future(pull(node_id)) for node_id in nodes]
-        done, pending = await asyncio.wait(tasks, timeout=wait_seconds)
-        for task in pending:
-            # Still pulling: let it finish, and keep a reference meanwhile.
-            self._prepull_tasks.add(task)
-            task.add_done_callback(self._prepull_tasks.discard)
-        pulled = sum(1 for task in done if not task.exception() and task.result())
-        return {"hosts": len(nodes), "pulled": pulled}
 
     def _refresh_host(self, handle: HostedSandboxHandle) -> Optional[Any]:
         """The live host under ``handle``'s host name, if it isn't the one

@@ -72,9 +72,7 @@ message ImageGetOrCreateResponse {
   ImageMetadata metadata = 3;
 }
 
-message ImageJoinStreamingRequest {
-  string image_id = 1;
-}
+message ImageJoinStreamingRequest {}
 
 message GenericResult {
   enum GenericStatus {

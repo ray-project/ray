@@ -1162,7 +1162,7 @@ ingress-nginx defaults to 1 MiB per request and 60 seconds without data from the
 
 The facade hosts sandboxes on one actor per node. A create is a call to the actor on the node it picks, so it starts no Ray worker process and registers no actor with Ray. Each node's actor reserves CPUs for its sandboxes in placement groups that many sandboxes share, and it reserves each group in the background, so a create doesn't wait for Ray to place one.
 
-You don't size these actors. Each node has one, whatever the node's size, and it reserves no CPUs for itself. How many sandboxes a node takes depends only on the CPUs that each sandbox requests, which is the client's `cpu`, or `default_actor_num_cpus` when the client names none. A node with 32 CPUs hosts 32 sandboxes that request 1 CPU each, or 256 that request 0.125.
+You don't size these actors. Each node has one, whatever the node's size, and it reserves no CPUs for itself. Density, the number of sandboxes for each CPU, is one divided by the CPUs that a sandbox requests, which is the client's `cpu`, or `default_actor_num_cpus` when the client names none. Sandboxes that request 1 CPU pack one to a CPU, and sandboxes that request 0.125 pack eight, so a node with 32 CPUs hosts 32 or 256 of them.
 
 These arguments change how the actors host sandboxes:
 
@@ -1173,7 +1173,7 @@ These arguments change how the actors host sandboxes:
 
 Only sandboxes that request nothing but CPUs share placement groups. A sandbox that also requests memory reserves a group of its own, and so does a sandbox that finds every node full, which shows the autoscaler what it needs. That create waits up to `scheduling_grace_seconds`, 60 seconds by default, for a node with room. Then it answers `UNAVAILABLE`, which the client SDK retries, and each retry reserves the resources again.
 
-When a client names an image, such as with `modal.Image.from_registry`, every node starts pulling it, and the client's image build finishes once the nodes have it or after two minutes. A sandbox created on a node that doesn't have its image yet pulls it first.
+A sandbox pulls its image when its node doesn't have it yet, so the first sandbox of an image on a node waits for that pull. To have an image on every node before a burst, list it in `warm_pool`.
 
 #### Size the facade for many sandboxes
 

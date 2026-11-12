@@ -102,13 +102,6 @@ _SCHEDULING_GRACE_SECONDS = 10.0
 # under the 15 s route timeout that Envoy applies by default.
 _TASK_ID_HOLD_SECONDS = 5.0
 _TASK_ID_GRACE_SECONDS = 5.0
-# How long an image "build" waits for node hosts to pull the image.
-_PREPULL_WAIT_SECONDS = 120.0
-# Images whose pulls a replica remembers having started.
-_MAX_PREPULLED_IMAGES = 256
-# How long a replica waits before it starts an image's pulls again, when the
-# last ones didn't leave the image on every node host.
-_PREPULL_RETRY_SECONDS = 30.0
 _PULL_TIMEOUT_SECONDS = 1800.0
 _START_TIMEOUT_SECONDS = 120.0
 _READ_BOUND_SECONDS = 600.0
@@ -289,8 +282,6 @@ class _FacadeState:
         self.advertise_url = advertise_url
         # Required on every RPC when set; see _rpc.
         self.token = token
-        # Image -> the pulls its first use started on the node hosts.
-        self.prepulls: Dict[str, "asyncio.Future"] = {}
 
     # Resolver calls can wait on a GCS round trip (an actor create, a cache
     # miss), so they run in worker threads, never on the event loop that
@@ -657,7 +648,6 @@ class _ControlServicer(ModalClientServicer):
     @_rpc
     async def ImageGetOrCreate(self, request: Any, grpc_context: Any) -> Any:
         ref = _image_ref_from_dockerfile(request.image)
-        self._prepull(ref)
         return api_pb2.ImageGetOrCreateResponse(
             image_id=_encode_id("im-", ref),
             metadata=api_pb2.ImageMetadata(
@@ -669,63 +659,12 @@ class _ControlServicer(ModalClientServicer):
     async def ImageJoinStreaming(
         self, request: Any, grpc_context: Any
     ) -> AsyncIterator[Any]:
-        # A sandbox pulls its image at boot if its node lacks it. With node
-        # hosts, the "build" is every node pulling the image ahead of that,
-        # so wait for it, as the SDK waits for a build.
-        try:
-            pull = self._prepull(_decode_id("im-", request.image_id))
-        except _RpcError:
-            pull = None
-        if pull is not None:
-            try:
-                await asyncio.wait_for(asyncio.shield(pull), _PREPULL_WAIT_SECONDS)
-            except Exception as exc:  # noqa: BLE001 - creates pull on their own
-                logger.debug("Waiting for image pulls: %s", exc)
+        # Images are pulled at sandbox boot, so the "build" is already done.
         yield api_pb2.ImageJoinStreamingResponse(
             result=api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
             )
         )
-
-    def _prepull(self, image: str) -> Optional["asyncio.Future"]:
-        """Start pulling ``image`` on every node host, once per image.
-
-        Pulls that left the image on every node host aren't started again.
-        Ones that didn't, because a pull failed or outlasted the wait or no
-        node was up yet, are forgotten after ``_PREPULL_RETRY_SECONDS``, so a
-        later request for the image starts them again.
-
-        Args:
-            image: The image reference.
-
-        Returns:
-            The pulls in flight, or None if this facade hosts sandboxes in
-            their own actors.
-        """
-        prepull = getattr(self._state.resolver, "prepull", None)
-        if prepull is None or self._state.settings.host_mode != "node":
-            return None
-        pulls = self._state.prepulls
-        pull = pulls.get(image)
-        if pull is None:
-            pull = asyncio.ensure_future(prepull(image, _PREPULL_WAIT_SECONDS))
-            pulls[image] = pull
-            pull.add_done_callback(lambda done: self._settle_prepull(image, done))
-            if len(pulls) > _MAX_PREPULLED_IMAGES:
-                pulls.pop(next(iter(pulls)))
-        return pull
-
-    def _settle_prepull(self, image: str, done: "asyncio.Future") -> None:
-        result = None if done.cancelled() or done.exception() else done.result()
-        if result and 0 < result.get("hosts", 0) <= result.get("pulled", 0):
-            return
-        pulls = self._state.prepulls
-
-        def forget() -> None:
-            if pulls.get(image) is done:
-                del pulls[image]
-
-        asyncio.get_running_loop().call_later(_PREPULL_RETRY_SECONDS, forget)
 
     @_rpc
     async def SandboxCreate(self, request: Any, grpc_context: Any) -> Any:
