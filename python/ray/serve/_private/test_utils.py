@@ -41,7 +41,6 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
-    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -840,7 +839,8 @@ class MockReplicaActorWrapper:
         self._push_stands_in_for_probe = True
         self.healthy = (
             healthy
-            or (consecutive_failures or 0) < REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+            or (consecutive_failures or 0)
+            < self.version.deployment_config.health_check_unhealthy_threshold
         )
 
     def get_routing_stats(self) -> Dict[str, Any]:

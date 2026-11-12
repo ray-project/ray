@@ -2626,6 +2626,7 @@ def test_get_serve_instance_details_json_serializable(
                                 "graceful_shutdown_timeout_s": 60.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
+                                "health_check_unhealthy_threshold": 3,
                                 "ray_actor_options": {
                                     "num_cpus": 1.0,
                                 },

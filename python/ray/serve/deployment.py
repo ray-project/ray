@@ -270,6 +270,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        health_check_unhealthy_threshold: Default[int] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
         request_router_config: Default[
             Union[Dict, RequestRouterConfig, None]
@@ -325,6 +326,8 @@ class Deployment:
             health_check_period_s: Seconds between health checks on a replica.
             health_check_timeout_s: Seconds allowed for a health check to finish
                 before it is considered failed.
+            health_check_unhealthy_threshold: Consecutive failed health checks
+                before replacing a replica. Changes don't restart replicas.
             logging_config: Logging options for this deployment's replicas.
             request_router_config: Request routing options for this deployment.
             _init_args: Internal. Positional arguments for the deployment
@@ -485,6 +488,11 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
+        if health_check_unhealthy_threshold is not DEFAULT.VALUE:
+            new_deployment_config.health_check_unhealthy_threshold = (
+                health_check_unhealthy_threshold
+            )
+
         if logging_config is not DEFAULT.VALUE:
             if isinstance(logging_config, LoggingConfig):
                 logging_config = logging_config.model_dump()
@@ -593,6 +601,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "graceful_shutdown_timeout_s": d._deployment_config.graceful_shutdown_timeout_s,
         "health_check_period_s": d._deployment_config.health_check_period_s,
         "health_check_timeout_s": d._deployment_config.health_check_timeout_s,
+        "health_check_unhealthy_threshold": d._deployment_config.health_check_unhealthy_threshold,
         "ray_actor_options": ray_actor_options_schema,
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
@@ -663,6 +672,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
+        health_check_unhealthy_threshold=s.health_check_unhealthy_threshold,
         logging_config=s.logging_config,
         request_router_config=s.request_router_config,
         gang_scheduling_config=s.gang_scheduling_config,
