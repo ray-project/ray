@@ -1508,28 +1508,102 @@ class Reconciler:
                 skipped_requested,
             )
 
-        deferred = [
-            r
-            for r in reply.to_terminate
-            if r.instance_id not in updates
-            and r.instance_status != IMInstance.RAY_STOP_REQUESTED
-        ]
         pending_launches = [[req.instance_type, req.count] for req in to_launch]
-        if deferred and pending_launches:
-            # The scheduler planned these launches assuming its terminations apply
-            # this tick. Deferred ones keep occupying their slots, so cap the
-            # launches by the instances that actually remain.
+        if pending_launches:
+            # Cap launches by instances still occupying slots after this tick's
+            # updates (including draining RAY_STOP_REQUESTED / RAY_STOPPING
+            # workers and whole active multi-host replicas) so queued launches
+            # stay within configured limits until draining slots actually free.
             active_by_type: Dict[NodeType, int] = defaultdict(int)
             active_total = 0
+            rep_occupying: Dict[Tuple[NodeType, str], int] = defaultdict(int)
+            rep_assigned_cids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
+            rep_booting: Set[Tuple[NodeType, str]] = set()
+            rep_lids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
+            in_flight_req_count: Dict[NodeType, int] = defaultdict(int)
+            in_flight_req_lids: Dict[NodeType, Set[str]] = defaultdict(set)
+            in_flight_untagged: Dict[NodeType, int] = defaultdict(int)
             for inst in im_instances:
                 st = (
                     updates[inst.instance_id].new_instance_status
                     if inst.instance_id in updates
                     else inst.status
                 )
-                if InstanceUtil.is_ray_running_reachable(st):
+                is_occupying = (
+                    InstanceUtil.is_ray_running_reachable(st)
+                    or st == IMInstance.RAY_STOPPING
+                )
+                if is_occupying:
                     active_total += 1
-                    active_by_type[inst.instance_type] += 1
+                    if inst.node_kind != NodeKind.HEAD:
+                        active_by_type[inst.instance_type] += 1
+                if (
+                    inst.node_kind == NodeKind.HEAD
+                    or inst.instance_type not in replica_sizes
+                ):
+                    continue
+                rk = _replica_key(inst)
+                if rk is not None:
+                    if st not in (
+                        IMInstance.TERMINATED,
+                        IMInstance.ALLOCATION_FAILED,
+                    ):
+                        rep_assigned_cids[rk].add(inst.cloud_instance_id)
+                    if inst.launch_request_id and st not in (
+                        IMInstance.TERMINATING,
+                        IMInstance.TERMINATED,
+                        IMInstance.ALLOCATION_FAILED,
+                    ):
+                        rep_lids[rk].add(inst.launch_request_id)
+                    if is_occupying:
+                        rep_occupying[rk] += 1
+                    if st in (IMInstance.ALLOCATED, IMInstance.RAY_INSTALLING):
+                        rep_booting.add(rk)
+                elif st == IMInstance.REQUESTED or (
+                    st == IMInstance.QUEUED and bool(inst.launch_request_id)
+                ):
+                    in_flight_req_count[inst.instance_type] += 1
+                    if inst.launch_request_id:
+                        in_flight_req_lids[inst.instance_type].add(
+                            inst.launch_request_id
+                        )
+                    else:
+                        in_flight_untagged[inst.instance_type] += 1
+
+            unassigned_req = dict(in_flight_req_count)
+            for rk in sorted(
+                rep_occupying,
+                key=lambda r: (
+                    0
+                    if (
+                        r in rep_booting or bool(rep_lids[r] & in_flight_req_lids[r[0]])
+                    )
+                    else 1,
+                    r,
+                ),
+            ):
+                nt, _ = rk
+                size = replica_sizes[nt]
+                occ = rep_occupying[rk]
+                if occ >= size:
+                    continue
+                missing_unassigned = max(0, size - len(rep_assigned_cids[rk]))
+                shared_lid = bool(rep_lids[rk] & in_flight_req_lids[nt])
+                known_disjoint = (
+                    bool(rep_lids[rk])
+                    and bool(in_flight_req_lids[nt])
+                    and not shared_lid
+                    and in_flight_untagged[nt] == 0
+                )
+                avail = unassigned_req.get(nt, 0)
+                if not (shared_lid or (rk in rep_booting and not known_disjoint)):
+                    avail %= size
+                covered = min(missing_unassigned, avail)
+                unassigned_req[nt] = unassigned_req.get(nt, 0) - covered
+                extra_gap = max(0, size - occ - covered)
+                active_by_type[nt] += extra_gap
+                active_total += extra_gap
+
             node_type_configs = autoscaling_config.get_node_type_configs() or {}
             max_num_nodes = autoscaling_config.get_max_num_nodes()
             for item in pending_launches:
@@ -1591,13 +1665,16 @@ class Reconciler:
             for i in im_instances
             if i.cloud_instance_id and i.status == IMInstance.RAY_RUNNING
         }
-        # Mid-materialization guard is type-wide, bounded by request_status_timeout_s.
-        requested_types = {
-            i.instance_type
-            for i in im_instances
-            if i.status == IMInstance.REQUESTED
-            or (i.status == IMInstance.QUEUED and bool(i.launch_request_id))
-        }
+        # Mid-materialization guard is bounded by request_status_timeout_s.
+        in_flight_req_count: Dict[NodeType, int] = defaultdict(int)
+        in_flight_req_lids: Dict[NodeType, Set[str]] = defaultdict(set)
+        for i in im_instances:
+            if i.status == IMInstance.REQUESTED or (
+                i.status == IMInstance.QUEUED and bool(i.launch_request_id)
+            ):
+                in_flight_req_count[i.instance_type] += 1
+                if i.launch_request_id:
+                    in_flight_req_lids[i.instance_type].add(i.launch_request_id)
         done_cids = {
             i.cloud_instance_id
             for i in im_instances
@@ -1613,6 +1690,26 @@ class Reconciler:
                 and c_inst.replica_id
             ):
                 present_by_rep[(c_inst.node_type, c_inst.replica_id)].add(cid)
+        rep_lids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
+        for i in im_instances:
+            if (
+                i.cloud_instance_id
+                and i.launch_request_id
+                and i.status
+                not in (
+                    IMInstance.TERMINATING,
+                    IMInstance.TERMINATED,
+                    IMInstance.ALLOCATION_FAILED,
+                )
+            ):
+                c_i = cloud_instances.get(i.cloud_instance_id)
+                if (
+                    c_i is not None
+                    and c_i.node_kind != NodeKind.HEAD
+                    and i.instance_type in replica_sizes
+                    and c_i.replica_id
+                ):
+                    rep_lids[(i.instance_type, c_i.replica_id)].add(i.launch_request_id)
         term_cids = {
             im_instances_by_instance_id[r.instance_id].cloud_instance_id
             for r in to_terminate
@@ -1629,11 +1726,12 @@ class Reconciler:
                 if inst is not None and inst.cloud_instance_id
                 else None
             )
-            rep_cids = (
-                present_by_rep[(inst.instance_type, c_inst.replica_id)]
+            rep_key = (
+                (inst.instance_type, c_inst.replica_id)
                 if inst is not None and c_inst is not None and c_inst.replica_id
                 else None
             )
+            rep_cids = present_by_rep[rep_key] if rep_key is not None else None
             if (
                 rep_cids is not None
                 and req.instance_status != IMInstance.QUEUED
@@ -1642,8 +1740,17 @@ class Reconciler:
                     not (rep_cids <= (term_cids | done_cids))
                     or (
                         len(rep_cids) < replica_sizes[inst.instance_type]
-                        and inst.instance_type in requested_types
-                        and bool(rep_cids & booting_cids)
+                        and in_flight_req_count[inst.instance_type] > 0
+                        and (
+                            bool(rep_cids & booting_cids)
+                            or in_flight_req_count[inst.instance_type]
+                            % replica_sizes[inst.instance_type]
+                            != 0
+                            or bool(
+                                rep_lids[rep_key]
+                                & in_flight_req_lids[inst.instance_type]
+                            )
+                        )
                     )
                 )
             ):
