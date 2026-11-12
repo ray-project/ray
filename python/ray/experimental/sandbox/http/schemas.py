@@ -92,8 +92,9 @@ class CreateSandboxRequest(BaseModel):
     workdir: Optional[str] = Field(
         default=None,
         description=(
-            "Sandbox-level working directory; also the default cwd for execs. "
-            "None uses the image's own WORKDIR, like Docker."
+            "Sandbox-level working directory, as an absolute path; also the "
+            "default cwd for execs. None uses the image's own WORKDIR, like "
+            "Docker."
         ),
     )
     ttl_seconds: Optional[int] = Field(
@@ -198,6 +199,15 @@ class CreateSandboxRequest(BaseModel):
                 "it. Remove the readonly field."
             )
         return data
+
+    @field_validator("workdir")
+    @classmethod
+    def _validate_workdir(cls, workdir: Optional[str]) -> Optional[str]:
+        # runsc only rejects a relative path at container start, long after
+        # this request was answered with 202.
+        if workdir and not workdir.startswith("/"):
+            raise ValueError("workdir must be an absolute path")
+        return workdir
 
     @field_validator("network")
     @classmethod

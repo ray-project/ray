@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from unittest.mock import Mock
 
 import pytest
@@ -166,6 +167,17 @@ def test_create_ignores_readonly_false():
     # Other unknown options still fail.
     with pytest.raises(TypeError, match="writable"):
         runtime.create(image="fake:latest", writable=True)
+
+
+def test_create_ignores_readonly_none():
+    """A wrapper that forwards its own unset readonly passes None. That
+    isn't a use of the option, so it doesn't warn."""
+    runtime = _fake_runtime()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        runtime.create(image="fake:latest", readonly=None)
+    (config,) = runtime._backend.configs
+    assert not hasattr(config, "readonly")
 
 
 def test_create_refuses_readonly_true():

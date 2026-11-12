@@ -36,6 +36,14 @@ def test_default_sandbox_config():
         SandboxConfig(image=None)
 
 
+@pytest.mark.parametrize("workdir", ["sub", "./sub", "../sub"])
+def test_workdir_must_be_absolute(workdir):
+    """runsc refuses a relative cwd, but only when the container starts,
+    after the image pull."""
+    with pytest.raises(ValueError, match="workdir must be an absolute path"):
+        SandboxConfig(image="busybox:latest", workdir=workdir)
+
+
 def test_gvisor_sandbox_config():
     config = GVisorSandboxConfig(
         image="ubuntu:22.04",

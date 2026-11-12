@@ -277,7 +277,7 @@ ray.get(sb.delete.remote())
 
 ### Read, write, upload, and download files
 
-Write source files directly into the sandbox, or upload local files from the host before execution. A sandbox can write anywhere in its root filesystem. Its writes go to a private overlay on top of the image, so they never reach the cached image or another sandbox, and Ray discards them with the sandbox. Set `workdir`, such as `/workspace`, to choose the directory that commands run in. If the image doesn't have that directory, the sandbox starts with an empty one.
+Write source files directly into the sandbox, or upload local files from the host before execution. A sandbox can write anywhere in its root filesystem. Its writes go to a private overlay on top of the image, so they never reach the cached image or another sandbox, and Ray discards them with the sandbox. Set `workdir` to an absolute path, such as `/workspace`, to choose the directory that commands run in. If the image doesn't have that directory, the sandbox starts with an empty one.
 
 :::{note}
 Earlier Ray versions had a `readonly` option, which defaulted to a read-only root filesystem. Ray ignores `readonly=False` with a deprecation warning. `readonly=True` raises a `ValueError`, because no sandbox has a read-only root filesystem anymore.

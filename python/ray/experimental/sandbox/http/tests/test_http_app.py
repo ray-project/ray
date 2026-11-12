@@ -708,6 +708,18 @@ def test_invalid_network_mode_is_422(fake_resolver: FakeResolver) -> None:
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize("workdir", ["sub", "./sub"])
+def test_relative_workdir_is_422(fake_resolver: FakeResolver, workdir: str) -> None:
+    """runsc refuses a relative cwd only when the container starts, which is
+    after the create request was answered."""
+    client = _client(fake_resolver)
+    response = client.post(
+        f"{BASE}/sandboxes", json={"image": "python:3.12", "workdir": workdir}
+    )
+    assert response.status_code == 422
+    assert "workdir must be an absolute path" in response.text
+
+
 def test_create_passes_cidr_allowlist_and_reports_it(
     fake_resolver: FakeResolver,
 ) -> None:

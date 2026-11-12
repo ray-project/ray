@@ -218,6 +218,8 @@ def pop_removed_readonly(options: Dict[str, Any], stacklevel: int = 2) -> None:
     with a deprecation warning. ``readonly=True`` asked for a restriction
     that no longer exists, so it is refused: ignoring it would hand the
     caller a sandbox that can write where it was told not to.
+    ``readonly=None`` is how a wrapper forwards an option its own caller
+    left unset, so it is dropped without a warning.
 
     Args:
         options: The keyword arguments a caller passed. ``readonly`` is
@@ -228,9 +230,10 @@ def pop_removed_readonly(options: Dict[str, Any], stacklevel: int = 2) -> None:
     Raises:
         ValueError: If ``readonly`` is true.
     """
-    if "readonly" not in options:
+    readonly = options.pop("readonly", None)
+    if readonly is None:
         return
-    if options.pop("readonly"):
+    if readonly:
         raise ValueError(
             "readonly=True is no longer supported: every sandbox writes to a "
             "private overlay over its image, which is discarded with the "
@@ -299,10 +302,10 @@ class SandboxConfig:
             capabilities runsc allows, such as compute,utility,profiling.
             Without it, gVisor uses compute,utility. An image's environment
             cannot raise the allowed capabilities.
-        workdir: Working directory for commands (the process cwd). None
-            (default) uses the image's WORKDIR, or "/" if the image sets
-            none. A workdir the image lacks is created in the sandbox's
-            root filesystem.
+        workdir: Working directory for commands (the process cwd), as an
+            absolute path. None (default) uses the image's WORKDIR, or "/"
+            if the image sets none. A workdir the image lacks is created in
+            the sandbox's root filesystem.
         ttl_seconds: Optional time-to-live in seconds, measured wall-clock
             from creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -416,6 +419,11 @@ class SandboxConfig:
             raise ValueError("memory must be non-negative")
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
             raise ValueError("A valid container image name must be specified.")
+        if self.workdir and not (
+            isinstance(self.workdir, str) and os.path.isabs(self.workdir)
+        ):
+            # runsc only rejects this at container start, after the pull.
+            raise ValueError(f"workdir must be an absolute path, got {self.workdir!r}.")
         if self.mounts is not None:
             if not isinstance(self.mounts, dict):
                 raise TypeError("mounts must be a dictionary.")

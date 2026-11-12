@@ -64,6 +64,7 @@ from ray.experimental.sandbox.config import (
     normalize_cidr_allowlist,
     parse_cidr_allowlist_entry,
     parse_memory_bytes,
+    pop_removed_readonly,
 )
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -1970,6 +1971,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         configuration with any overrides applied, and is owned, limited and
         cleaned up like a created one.
         """
+        # The option is gone, but callers written for it still pass it. The
+        # other overrides are SandboxConfig fields; this one would be skipped
+        # as unknown, and readonly=True would restore a writable sandbox.
+        pop_removed_readonly(kwargs)
         # Step 1: Validate checkpoint bundle directory and load stored manifest configuration.
         checkpoint_path = os.path.abspath(checkpoint_path)
         if not os.path.exists(checkpoint_path):

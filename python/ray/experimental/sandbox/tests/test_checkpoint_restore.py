@@ -872,6 +872,18 @@ class TestCheckpointRestore(unittest.TestCase):
         assert not mock_popen.called
         self.image_manager.pull_image.assert_not_called()
 
+    def test_backend_restore_handles_the_removed_readonly_option(self):
+        """The backend's restore skips overrides that aren't SandboxConfig
+        fields, so it checks the removed option itself: readonly=True must
+        not restore a writable sandbox."""
+        missing = os.path.join(self.temp_dir, "no_such_checkpoint")
+        with pytest.raises(ValueError, match="readonly=True is no longer"):
+            self.backend.restore_sandbox(missing, readonly=True)
+        # readonly=False warns, and the restore goes on to its own checks.
+        with pytest.warns(RayDeprecationWarning, match="'readonly' option"):
+            with pytest.raises(SandboxError, match="does not exist"):
+                self.backend.restore_sandbox(missing, readonly=False)
+
     def test_restore_keeps_the_workdir_as_the_cwd(self):
         """The workdir is only the working directory. Its files come back
         with the rest of the root filesystem, and no host directory backs

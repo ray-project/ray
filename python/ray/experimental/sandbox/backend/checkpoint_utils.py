@@ -11,13 +11,14 @@ import dataclasses
 import json
 import logging
 import os
+import posixpath
 import shutil
 import subprocess
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import (
     SandboxError,
 )
@@ -252,6 +253,26 @@ _RESTORE_IMMUTABLE_FIELDS = (
 )
 
 
+def _same_saved_value(field: str, override: Any, recorded: Any) -> bool:
+    """Whether a restore override means the value the checkpoint recorded.
+
+    A size and a path have more than one spelling: ``disk=67108864`` is
+    ``disk="64Mi"``, and ``workdir="/workspace/"`` is ``workdir="/workspace"``.
+    """
+    if override == recorded:
+        return True
+    try:
+        if field == "disk":
+            return (parse_memory_bytes(override) or 0) == (
+                parse_memory_bytes(recorded) or 0
+            )
+        if field == "workdir" and isinstance(recorded, str):
+            return posixpath.normpath(override) == posixpath.normpath(recorded)
+    except (TypeError, ValueError):
+        pass
+    return False
+
+
 def build_restored_config(
     manifest: Dict[str, Any],
     cpu: Optional[float] = None,
@@ -314,13 +335,16 @@ def build_restored_config(
     for k, v in kwargs.items():
         if k not in valid_fields or v is None:
             continue
-        immutable = k in _RESTORE_IMMUTABLE_FIELDS
-        if immutable and k in cfg_dict and v != cfg_dict[k]:
-            raise SandboxError(
-                f"Cannot restore with {k}={v!r}: the checkpoint was taken with "
-                f"{k}={cfg_dict[k]!r}, and its saved memory state depends on it. "
-                f"Restore without overriding {k!r}."
-            )
+        if k in _RESTORE_IMMUTABLE_FIELDS and k in cfg_dict:
+            if not _same_saved_value(k, v, cfg_dict[k]):
+                raise SandboxError(
+                    f"Cannot restore with {k}={v!r}: the checkpoint was taken "
+                    f"with {k}={cfg_dict[k]!r}, and its saved memory state "
+                    f"depends on it. Restore without overriding {k!r}."
+                )
+            # Keep the recorded spelling: runsc compares the restored spec
+            # with the saved one as written.
+            continue
         cfg_dict[k] = v
 
     if cfg_dict.get("network") not in ("public", "host") and kwargs.get("dns") is None:

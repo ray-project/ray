@@ -180,6 +180,33 @@ class TestCheckpointUtils(unittest.TestCase):
             assert build_restored_config(manifest, workdir=recorded).workdir == recorded
             assert build_restored_config(manifest, workdir=None).workdir == recorded
 
+    def test_build_restored_config_accepts_another_spelling_of_a_saved_value(self):
+        # A size and a path have more than one spelling. The restored config
+        # keeps the recorded one, because runsc compares the restored spec
+        # with the saved one as written.
+        manifest = {
+            "config": {
+                "image": "busybox:latest",
+                "workdir": "/workspace",
+                "disk": "64Mi",
+                "rootless": False,
+            }
+        }
+        for override in (
+            {"disk": 64 * 1024 * 1024},
+            {"disk": "64MiB"},
+            {"disk": "67108864"},
+            {"workdir": "/workspace/"},
+            {"workdir": "/workspace/."},
+        ):
+            restored = build_restored_config(manifest, **override)
+            assert restored.disk == "64Mi"
+            assert restored.workdir == "/workspace"
+        # A different value is still a change, as is one that doesn't parse.
+        for override in ({"disk": "65Mi"}, {"disk": "a lot"}, {"workdir": "/work"}):
+            with pytest.raises(SandboxError, match="Cannot restore with"):
+                build_restored_config(manifest, **override)
+
     def test_build_restored_config_rejects_a_readonly_checkpoint(self):
         # Its memory state was saved with a root filesystem that has no
         # overlay, a host-backed workdir and a tmpfs on /tmp.
