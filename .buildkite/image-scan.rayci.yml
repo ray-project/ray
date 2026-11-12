@@ -119,7 +119,8 @@ steps:
       - ray_extra_images_push_aarch64(*)
       - forge
 
-  - label: ":shield: trivy: scan ray-llm, ray-llm-extra ({{array.architecture}})"
+  # One step per architecture, so each waits only on its own publish steps.
+  - label: ":shield: trivy: scan ray-llm, ray-llm-extra (x86_64)"
     key: images_scan_llm
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: medium
@@ -130,17 +131,31 @@ steps:
       - skip-on-premerge
     commands:
       - bazel run //ci/ray_ci/automation/trivy:scan_images --
-        --architecture {{array.architecture}}
+        --architecture x86_64
         --platform cu13.0.0-cudnn
         --image ray-llm:3.12 --image ray-llm-extra:3.12
-    array:
-      architecture:
-        - x86_64
-        - aarch64
     depends_on:
       - trivy_db
       - ray_llm_images_cuda_push(*)
       - ray_llm_extra_images_cuda_push(*)
+      - forge
+
+  - label: ":shield: trivy: scan ray-llm, ray-llm-extra (aarch64)"
+    key: images_scan_llm_aarch64
+    if: build.env("RAYCI_IMAGE_SCAN") == "1"
+    instance_type: medium
+    soft_fail: true
+    tags:
+      - docker
+      - oss
+      - skip-on-premerge
+    commands:
+      - bazel run //ci/ray_ci/automation/trivy:scan_images --
+        --architecture aarch64
+        --platform cu13.0.0-cudnn
+        --image ray-llm:3.12 --image ray-llm-extra:3.12
+    depends_on:
+      - trivy_db
       - ray_llm_images_cuda_push_aarch64(*)
       - ray_llm_extra_images_cuda_push_aarch64(*)
       - forge
