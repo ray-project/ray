@@ -245,6 +245,7 @@ class TestWandbLogger:
         assert logger_state.kwargs["id"] == trial.trial_id
         assert logger_state.kwargs["name"] == trial.trial_name
         assert logger_state.kwargs["group"] == trial.experiment_dir_name
+        assert logger_state.kwargs["reinit"] == "finish_previous"
         assert "config" in logger_state.exclude
 
         del logger
@@ -584,6 +585,17 @@ def test_wandb_logger_rank_zero_only(trial, monkeypatch):
         mock_wandb = Mock()
         setup_wandb(project="test_project", rank_zero_only=True, _wandb=mock_wandb)
         assert mock_wandb.init.call_args.kwargs.get("mode") != "disabled"
+
+
+def test_setup_wandb_reinit(monkeypatch):
+    """wandb deprecated boolean values for `reinit`."""
+    monkeypatch.setenv(WANDB_ENV_VAR, "abcde")
+    mock_wandb = Mock()
+
+    with patch("ray.air.integrations.wandb.get_session", return_value=None):
+        setup_wandb(project="test_project", _wandb=mock_wandb)
+
+    assert mock_wandb.init.call_args.kwargs["reinit"] == "finish_previous"
 
 
 if __name__ == "__main__":

@@ -1,10 +1,13 @@
 import importlib.util
 import json
 import os
+import re
 
+import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.datasource_v2.formats.mcap import mcap_datasource_v2
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -17,12 +20,36 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def create_test_mcap_file(file_path: str, messages: list) -> None:
-    """Create a test MCAP file with given messages."""
-    from mcap.writer import Writer
+@pytest.fixture(autouse=True, params=[False, True], ids=["v1", "v2"])
+def datasource_v2(request, restore_data_context):
+    """Run every test against both read paths of ``read_mcap``.
+
+    ``True`` reads through ``MCAPDatasourceV2`` and ``False`` through the legacy
+    ``MCAPDatasource``. Both must return the same rows.
+    """
+    ray.data.DataContext.get_current().use_datasource_v2 = request.param
+    return request.param
+
+
+def create_test_mcap_file(file_path: str, messages: list, index: bool = True) -> None:
+    """Create a test MCAP file with given messages.
+
+    With ``index=False`` the file has no chunks and no chunk index, so readers
+    scan it from the start.
+    """
+    from mcap.writer import IndexType, Writer
 
     with open(file_path, "wb") as stream:
-        writer = Writer(stream)
+        if index:
+            writer = Writer(stream)
+        else:
+            writer = Writer(
+                stream,
+                use_chunking=False,
+                index_types=IndexType.NONE,
+                use_statistics=False,
+                use_summary_offsets=False,
+            )
         writer.start(profile="", library="ray-test")
 
         # Register schema
@@ -133,13 +160,15 @@ def time_series_mcap_file(tmp_path):
     return path, base_time
 
 
-def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file):
+def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file, datasource_v2):
     """Test basic MCAP file reading."""
     ds = ray.data.read_mcap(basic_mcap_file)
 
     # Test metadata operations
     assert ds.count() == 2
-    assert ds.input_files() == [_unwrap_protocol(basic_mcap_file)]
+    if not datasource_v2:
+        # On V2, files are listed at execution time, so ``input_files()`` is empty.
+        assert ds.input_files() == [_unwrap_protocol(basic_mcap_file)]
 
     # Verify basic fields are present
     rows = ds.take_all()
@@ -150,7 +179,7 @@ def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file):
         assert "publish_time" in row
 
 
-def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path):
+def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path, datasource_v2):
     """Test reading multiple MCAP files."""
     paths = []
     for i in range(2):
@@ -167,7 +196,8 @@ def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_mcap(paths)
     assert ds.count() == 2
-    assert set(ds.input_files()) == {_unwrap_protocol(p) for p in paths}
+    if not datasource_v2:
+        assert set(ds.input_files()) == {_unwrap_protocol(p) for p in paths}
 
     rows = ds.take_all()
     file_ids = {row["data"]["file_id"] for row in rows}
@@ -335,7 +365,7 @@ def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])
 def test_read_mcap_ignore_missing_paths(
-    ray_start_regular_shared, simple_mcap_file, ignore_missing_paths
+    ray_start_regular_shared, simple_mcap_file, ignore_missing_paths, datasource_v2
 ):
     """Test ignore_missing_paths parameter."""
     paths = [simple_mcap_file, "/nonexistent/missing.mcap"]
@@ -343,7 +373,8 @@ def test_read_mcap_ignore_missing_paths(
     if ignore_missing_paths:
         ds = ray.data.read_mcap(paths, ignore_missing_paths=ignore_missing_paths)
         assert ds.count() == 1
-        assert ds.input_files() == [_unwrap_protocol(simple_mcap_file)]
+        if not datasource_v2:
+            assert ds.input_files() == [_unwrap_protocol(simple_mcap_file)]
     else:
         with pytest.raises(Exception):  # FileNotFoundError or similar
             ds = ray.data.read_mcap(paths, ignore_missing_paths=ignore_missing_paths)
@@ -386,6 +417,326 @@ def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
     assert row["data"]["sensor_data"]["temperature"] == 23.5
     assert row["data"]["metadata"]["device_id"] == "sensor_001"
     assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
+
+
+def test_read_mcap_partition_filter_applies_to_schema_planning(
+    ray_start_regular_shared, tmp_path
+):
+    """Planning opens only the files the partition filter keeps.
+
+    The sixteen sampled files hold no ``/a``, so planning looks further. The
+    filtered-out partition's ``/a`` is CDR; were it opened, ``data`` would be
+    planned as bytes.
+    """
+    from mcap.writer import Writer
+
+    from ray.data.datasource.partitioning import PartitionStyle, PathPartitionFilter
+
+    def write(path, topic, message_encoding):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as stream:
+            writer = Writer(stream)
+            writer.start(profile="", library="ray-test")
+            schema_id = writer.register_schema(
+                name="test_schema", encoding="jsonschema", data=b"{}"
+            )
+            channel_id = writer.register_channel(
+                schema_id=schema_id, topic=topic, message_encoding=message_encoding
+            )
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=1000000000,
+                publish_time=1000000000,
+                data=json.dumps({"value": 1}).encode(),
+            )
+            writer.finish()
+
+    write(os.path.join(tmp_path, "p=a", "dropped.mcap"), "/a", "cdr")
+    for i in range(16):
+        write(os.path.join(tmp_path, "p=b", f"other_{i:02d}.mcap"), "/b", "json")
+    write(os.path.join(tmp_path, "p=b", "zz_selected.mcap"), "/a", "json")
+    partition_filter = PathPartitionFilter.of(
+        filter_fn=lambda partitions: partitions["p"] == "b",
+        style=PartitionStyle.HIVE,
+        base_dir=str(tmp_path),
+    )
+
+    ds = ray.data.read_mcap(
+        str(tmp_path), topics=["/a"], partition_filter=partition_filter
+    )
+    assert [row["data"] for row in ds.take_all()] == [{"value": 1}]
+
+
+@pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])
+def test_read_mcap_log_time_order(
+    ray_start_regular_shared, tmp_path, datasource_v2, index
+):
+    """Messages written out of log-time order come back sorted by default, with
+    or without a chunk index.
+
+    With ``log_time_order=False`` they come back in the order they were written.
+    The legacy datasource always sorts, so it refuses ``False``.
+    """
+    path = os.path.join(tmp_path, "unordered.mcap")
+    messages = [
+        {"topic": "/test", "data": {"seq": i}, "log_time": log_time}
+        for i, log_time in enumerate([3_000_000_000, 1_000_000_000, 2_000_000_000])
+    ]
+    create_test_mcap_file(path, messages, index=index)
+
+    ordered = ray.data.read_mcap(path).take_all()
+    assert [row["data"]["seq"] for row in ordered] == [1, 2, 0]
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="log_time_order"):
+            ray.data.read_mcap(path, log_time_order=False)
+        return
+    as_written = ray.data.read_mcap(path, log_time_order=False).take_all()
+    assert [row["data"]["seq"] for row in as_written] == [0, 1, 2]
+
+
+def _write_chunked_mcap(path, num_messages, topics=("/a", "/b", "/c")):
+    """Write one message per chunk, so every message boundary is a split point."""
+    from mcap.writer import CompressionType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=1, compression=CompressionType.ZSTD)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b"{}"
+        )
+        channels = {
+            topic: writer.register_channel(
+                schema_id=schema_id, topic=topic, message_encoding="json"
+            )
+            for topic in topics
+        }
+        for i in range(num_messages):
+            writer.add_message(
+                channel_id=channels[topics[i % len(topics)]],
+                log_time=1_000_000_000 + i * 1_000_000,
+                publish_time=1_000_000_000 + i * 1_000_000,
+                data=json.dumps({"seq": i}).encode(),
+            )
+        writer.finish()
+
+
+def test_read_mcap_v2_splits_a_file_across_read_tasks(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """On V2, a one-byte packing budget reads each chunk of a file in its own task.
+
+    The nine-chunk file then comes out as nine blocks.
+    """
+    path = os.path.join(tmp_path, "chunked.mcap")
+    _write_chunked_mcap(path, 9)
+    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
+
+    ds = ray.data.read_mcap(path).materialize()
+
+    assert ds.count() == 9
+    assert sorted(row["data"]["seq"] for row in ds.take_all()) == list(range(9))
+    if datasource_v2:
+        assert ds.num_blocks() == 9
+
+
+def _heaviest_chunk(path, **options) -> int:
+    """The weight the V2 listing gives the heaviest chunk of ``path``."""
+    datasource = mcap_datasource_v2.MCAPDatasourceV2([path], **options)
+    (manifest,) = datasource._get_file_indexer().list_files(
+        pa.array([path]), filesystem=datasource.filesystem
+    )
+    return max(int(md["size_bytes"]) for md in manifest.file_chunk_metadatas)
+
+
+def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """With ``preserve_order``, each file comes out in ``log_time`` order from
+    start to end, and the files follow each other in the order they are passed.
+
+    On V2 the budget fits two or three chunks, so an unordered read would split
+    every file. An ordered read keeps each file in one task instead.
+    """
+    num_files, num_messages = 3, 12
+    paths = [os.path.join(tmp_path, f"f{i}.mcap") for i in range(num_files)]
+    for path in paths:
+        _write_chunked_mcap(path, num_messages)
+    ray.data.DataContext.get_current().execution_options.preserve_order = True
+    if datasource_v2:
+        budget = int(2.5 * _heaviest_chunk(paths[0], include_paths=True))
+        monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
+
+    ds = ray.data.read_mcap(paths, include_paths=True).materialize()
+    rows = [(os.path.basename(r["path"]), r["log_time"]) for r in ds.take_all()]
+
+    assert rows == [
+        (f"f{i}.mcap", 1_000_000_000 + j * 1_000_000)
+        for i in range(num_files)
+        for j in range(num_messages)
+    ]
+    if datasource_v2:
+        assert ds.num_blocks() == num_files
+
+
+def test_read_mcap_preserve_order_keeps_files_of_mixed_size_in_listing_order(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """With ``preserve_order``, a large file listed between two small ones in a
+    directory comes out between them, as the legacy reader returns them.
+
+    On V2 one listing task lists the directory. The large file needs a task of
+    its own, while the small ones would fit one task together.
+    """
+    # The directory lists its files in name order.
+    sizes = {"a_small.mcap": 1, "b_large.mcap": 12, "c_small.mcap": 1}
+    paths = [os.path.join(tmp_path, name) for name in sizes]
+    for path, num_messages in zip(paths, sizes.values()):
+        _write_chunked_mcap(path, num_messages)
+    ray.data.DataContext.get_current().execution_options.preserve_order = True
+    if datasource_v2:
+        budget = int(2.5 * _heaviest_chunk(paths[1], include_paths=True))
+        monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
+
+    ds = ray.data.read_mcap(str(tmp_path), include_paths=True)
+    files = [os.path.basename(row["path"]) for row in ds.take_all()]
+
+    assert files == [name for name, count in sizes.items() for _ in range(count)]
+
+
+def test_read_mcap_include_row_id(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """``row_id`` names a message the same way however the read is split."""
+    paths = []
+    for i in range(2):
+        path = os.path.join(tmp_path, f"f{i}.mcap")
+        _write_chunked_mcap(path, 6)
+        paths.append(path)
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="include_row_id"):
+            ray.data.read_mcap(paths, include_row_id=True)
+        return
+
+    one_task_per_chunk = ray.data.read_mcap(paths, include_row_id=True)
+    by_id = {row["row_id"]: row["log_time"] for row in one_task_per_chunk.take_all()}
+    assert len(by_id) == 12
+
+    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
+    resplit = ray.data.read_mcap(paths, include_row_id=True)
+    assert {row["row_id"]: row["log_time"] for row in resplit.take_all()} == by_id
+
+    # The topic filter drops rows but does not change the ids of the rows it keeps.
+    filtered = ray.data.read_mcap(paths, topics=["/b"], include_row_id=True)
+    for row in filtered.take_all():
+        assert by_id[row["row_id"]] == row["log_time"]
+
+
+def test_read_mcap_checkpoint_config_turns_on_row_id(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2
+):
+    """A checkpoint keyed on ``row_id`` gets the column without asking for it."""
+    from ray.data.checkpoint import CheckpointConfig
+
+    if not datasource_v2:
+        pytest.skip("row_id is a V2 column")
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column="row_id", checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
+    )
+    assert "row_id" in ray.data.read_mcap(simple_mcap_file).schema().names
+
+
+def test_read_mcap_v2_schema_matches_rows(
+    ray_start_regular_shared, multi_topic_mcap_file, datasource_v2
+):
+    """The planning-time schema is the schema of the blocks that come out."""
+    if not datasource_v2:
+        pytest.skip("the legacy path infers its schema from the first block")
+    ds = ray.data.read_mcap(multi_topic_mcap_file, include_paths=True)
+    planned = ds.schema()
+    (bundle,) = ds.iter_internal_ref_bundles()
+    (block,) = ray.get(bundle.block_refs)
+    assert block.schema.names == planned.names
+    assert block.schema.types == planned.types
+
+
+def test_read_mcap_schema_matches_messages_whose_fields_vary(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """``ds.schema()`` gives ``data`` the type its blocks hold when the first
+    message lacks a field and has an int where later messages have a float."""
+    path = os.path.join(tmp_path, "varying.mcap")
+    payloads = [{"x": 1}, {"x": 2.5, "y": "a"}, {"x": 3}]
+    create_test_mcap_file(
+        path,
+        [{"topic": "/a", "data": p, "log_time": i} for i, p in enumerate(payloads)],
+    )
+    ds = ray.data.read_mcap(path)
+
+    planned = ds.schema().base_schema.field("data").type
+    materialized = ds.materialize().schema().base_schema.field("data").type
+
+    assert planned == pa.struct([("x", pa.float64()), ("y", pa.string())])
+    assert materialized == planned
+
+
+@pytest.mark.parametrize("corruption", ["cut_short", "not_mcap"])
+def test_read_mcap_max_errored_blocks_skips_a_corrupt_recording(
+    ray_start_regular_shared, tmp_path, datasource_v2, corruption
+):
+    """A folder with one corrupt recording reads the others when
+    ``max_errored_blocks`` allows one error, and fails naming the file when not.
+    """
+    folder = os.path.join(tmp_path, "drive")
+    os.makedirs(folder)
+    valid = os.path.join(folder, "1.mcap")
+    create_test_mcap_file(
+        valid,
+        [{"topic": "/imu", "data": {"i": i}, "log_time": i} for i in range(3)],
+    )
+    with open(valid, "rb") as f:
+        data = f.read()
+    corrupt = os.path.join(folder, "2.mcap")
+    with open(corrupt, "wb") as f:
+        # A run that crashed mid-recording, or a file that is not MCAP at all.
+        f.write(data[: len(data) // 2] if corruption == "cut_short" else b"x" * 100)
+    ctx = ray.data.DataContext.get_current()
+
+    ctx.max_errored_blocks = 1
+    assert ray.data.read_mcap(folder).count() == 3
+
+    ctx.max_errored_blocks = 0
+    with pytest.raises(Exception) as error:
+        ray.data.read_mcap(folder).count()
+    if datasource_v2:
+        assert "2.mcap" in str(error.value)
+
+
+def test_read_mcap_lists_files_in_parallel(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """The V2 listing packs per task, so several files are listed by several tasks."""
+    if not datasource_v2:
+        pytest.skip("ListFiles tasks exist only on the V2 read path")
+
+    paths = []
+    for i in range(3):
+        path = os.path.join(tmp_path, f"parallel_{i}.mcap")
+        create_test_mcap_file(
+            path,
+            [{"topic": "/t", "data": {"i": i}, "log_time": 1_000_000_000 + i}],
+        )
+        paths.append(path)
+
+    ds = ray.data.read_mcap(paths).materialize()
+    assert sorted(row["data"]["i"] for row in ds.take_all()) == [0, 1, 2]
+    match = re.search(r"ListFiles: (\d+) tasks executed", ds.stats())
+    assert match is not None, ds.stats()
+    # One listing task per path (up to 200), not a single task for all paths,
+    # because the MCAP packer packs per listing shard.
+    assert int(match.group(1)) == 3
 
 
 if __name__ == "__main__":

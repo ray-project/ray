@@ -10,6 +10,10 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve._private.utils import (
+    _callable_uses_multiplexing,
+    _is_router_application_class,
+)
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -20,18 +24,25 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 K = TypeVar("K")
 V = TypeVar("V")
 
-INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
-    "`ingress_request_router` requires HAProxy. "
+ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR = (
+    "A router application requires a route prefix. Application '{name}' has none."
+)
+
+ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR = (
+    "A router application cannot also have an `ingress_request_router`: both "
+    "choose the replica for requests to the application."
+)
+
+REQUIRES_HAPROXY_ERROR = (
+    "{feature} requires HAProxy. "
     "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
 )
 
 CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR = (
     "A custom `request_router_config.request_router_class` is not supported on "
-    "the ingress deployment when HAProxy is enabled. HAProxy load-balances "
-    "ingress traffic with its own algorithm and bypasses the Serve request "
-    "router, so the custom router would be silently ignored. Remove the custom "
-    "`request_router_class` from the ingress deployment, or configure HAProxy's "
-    "load-balancing algorithm instead."
+    "the ingress deployment when HAProxy is enabled because HAProxy bypasses "
+    "that router. To customize ingress replica selection, attach an ingress "
+    "request router deployment that implements `/internal/route`."
 )
 
 
@@ -78,6 +89,8 @@ class BuiltApplication:
     # Optional ingress request router deployment for ingress bypass mode.
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
     ingress_request_router_deployment: Optional[Deployment] = None
+    # When set, the application serves as an application level router.
+    is_router_application: bool = False
 
     def validate_single_fastapi_ingress(self) -> None:
         """Validate that the application has at most one FastAPI ingress."""
@@ -91,6 +104,12 @@ class BuiltApplication:
                 f'Found multiple FastAPI deployments in application "{self.name}". '
                 "Please only include one deployment with @serve.ingress "
                 "in your application to avoid this issue."
+            )
+
+    def validate_router_application(self) -> None:
+        if self.is_router_application and self.route_prefix is None:
+            raise RayServeException(
+                ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR.format(name=self.name)
             )
 
 
@@ -143,13 +162,26 @@ def build_app(
             "`Deployment.bind()`."
         )
     if ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
-        raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
+        raise RayServeException(
+            REQUIRES_HAPROXY_ERROR.format(feature="`ingress_request_router`")
+        )
+    is_router_application = _is_router_application_class(
+        app._bound_deployment.func_or_class
+    )
+    if is_router_application:
+        if not RAY_SERVE_ENABLE_HA_PROXY:
+            raise RayServeException(
+                REQUIRES_HAPROXY_ERROR.format(feature="A router application")
+            )
+        if ingress_request_router is not None:
+            raise RayServeException(
+                ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR
+            )
 
     # Under HAProxy, ingress traffic is load-balanced by HAProxy and bypasses
     # the ingress deployment's Serve request router, so a custom router there is
-    # silently ignored. Reject it unless an `ingress_request_router` is attached
-    # (the Serve LLM direct-streaming path), where HAProxy delegates replica
-    # selection back to that router.
+    # silently ignored. An explicitly attached ingress request router is allowed
+    # because it implements the /internal/route API itself.
     if (
         RAY_SERVE_ENABLE_HA_PROXY
         and ingress_request_router is None
@@ -167,6 +199,21 @@ def build_app(
         default_runtime_env=default_runtime_env,
         make_deployment_handle=make_deployment_handle,
     )
+
+    # Select a replica with the requested model already loaded.
+    if (
+        ingress_request_router is None
+        and RAY_SERVE_ENABLE_HA_PROXY
+        and _callable_uses_multiplexing(app._bound_deployment.func_or_class)
+    ):
+        from ray.serve._private.multiplex_ingress_router import (
+            MultiplexedIngressRequestRouter,
+        )
+
+        ingress_request_router = MultiplexedIngressRequestRouter.bind(  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+            handles[app]
+        )
+
     ingress_request_router_deployment = None
     if ingress_request_router is not None:
         ingress_request_router_deployments = _build_app_recursive(
@@ -211,6 +258,7 @@ def build_app(
         },
         external_scaler_enabled=external_scaler_enabled,
         ingress_request_router_deployment=ingress_request_router_deployment,
+        is_router_application=is_router_application,
     )
 
 

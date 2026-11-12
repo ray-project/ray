@@ -18,7 +18,6 @@
 #include <memory>
 #include <string>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "src/ray/protobuf/common.pb.h"

@@ -48,7 +48,15 @@ RELEASE_TEST_CONFIG_FILES = [
     "release/release_multimodal_inference_benchmarks_tests.yaml",
 ]
 
-ALLOWED_BYOD_TYPES = ["gpu", "gpu-cu130", "cpu", "cu123", "llm-cu130", "torch-cu128"]
+ALLOWED_BYOD_TYPES = [
+    "gpu-cu130",
+    "gpu-cu133",
+    "cpu",
+    "cu123",
+    "llm-cu130",
+    "torch-cu128",
+    "torch-cu133",
+]
 
 NEW_COMPUTE_CONFIG_KEYS = {
     "cloud",
@@ -86,6 +94,7 @@ CLOUD_ID_TO_NAME = {
     "cld_vy7xqacrvddvbuy95auinvuqmt": "oss_release_tests_gce",
     "cld_k8WcxPgjUtSE8RVmfZpTLuKM": "anyscale_k8s_gcp_cloud",
     "cld_tPsS3nQz8p5cautbyWgEdr4y": "anyscale_gce_cloud",
+    "cld_82np1njz31y9lwk56mc2xcc23x": "rkn-gpu-cloud",
 }
 
 
@@ -303,11 +312,12 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
 def validate_byod_type(byod_type: str, python_version: str) -> None:
     if byod_type not in ALLOWED_BYOD_TYPES:
         raise Exception(f"Invalid BYOD type: {byod_type}")
-    if byod_type == "gpu" and python_version != "3.10":
-        raise Exception("GPU BYOD tests must use Python 3.10")
     if byod_type == "llm-cu130" and python_version != "3.12":
         raise Exception("LLM cu130 BYOD tests must use Python 3.12")
-    if byod_type == "torch-cu128" and python_version not in ["3.11", "3.14"]:
+    if byod_type in ["torch-cu128", "torch-cu133"] and python_version not in [
+        "3.11",
+        "3.14",
+    ]:
         raise Exception(f"{byod_type} BYOD tests must use Python 3.11 or 3.14")
     if byod_type in ["cpu", "cu123"] and python_version not in [
         "3.10",

@@ -12,8 +12,8 @@ falling back to the network only if a snapshot is missing.
 This script rebuilds those snapshots. A scheduled monthly job runs it and opens
 a PR when anything drifted -- most targets resolve against upstream's moving
 ``stable`` / ``latest`` / ``main`` docs, so their inventories change when
-upstream *releases*, not when Ray bumps a pin. (The three targets that set an
-explicit inventory URL are exceptions; see this directory's README.) Run it by
+upstream *releases*, not when Ray bumps a pin. (The three targets pinned to a
+fixed version or mirror are exceptions; see this directory's README.) Run it by
 hand after adding a target, or when a cross-reference to a symbol that does
 exist upstream stops resolving::
 

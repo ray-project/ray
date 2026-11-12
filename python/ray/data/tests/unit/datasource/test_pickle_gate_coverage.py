@@ -44,7 +44,17 @@ _ARROW_READ_PATTERNS = [
 _ARROW_READ_RE = re.compile("|".join(_ARROW_READ_PATTERNS))
 
 # Module file name -> why an Arrow-read match there does not need the gate.
-_ALLOWLIST = {}
+_ALLOWLIST = {
+    "orc_batch_size_estimator.py": (
+        "ORCFile is used only to inspect schema and file-tail metadata for batch "
+        "size estimation; no data batches are materialized. Batches are read and "
+        "gated in OrcFileReader."
+    ),
+    "orc_datasource_v2.py": (
+        "ORCFile is used only to inspect schema metadata; materialized batches are "
+        "read and gated in OrcFileReader."
+    ),
+}
 
 
 def _datasource_modules():

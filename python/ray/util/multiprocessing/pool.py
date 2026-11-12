@@ -339,8 +339,7 @@ class AsyncResult:
         self._result_thread.start()
 
     def wait(self, timeout: Optional[float] = None):
-        """
-        Returns once the result is ready or the timeout expires (does not
+        """Returns once the result is ready or the timeout expires (does not
         raise TimeoutError).
 
         Args:
@@ -369,16 +368,14 @@ class AsyncResult:
         return results
 
     def ready(self):
-        """
-        Returns true if the result is ready, else false if the tasks are still
+        """Returns true if the result is ready, else false if the tasks are still
         running.
         """
 
         return not self._result_thread.is_alive()
 
     def successful(self):
-        """
-        Returns true if none of the submitted tasks errored, else false. Should
+        """Returns true if none of the submitted tasks errored, else false. Should
         only be called once the result is ready (can be checked using `ready`).
         """
 
@@ -981,7 +978,7 @@ class Pool:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.terminate()
 
-    def close(self):
+    def close(self) -> None:
         """Close the pool.
 
         Prevents any more tasks from being submitted on the pool but allows
@@ -995,7 +992,7 @@ class Pool:
         self._closed = True
         gc.collect()
 
-    def terminate(self):
+    def terminate(self) -> None:
         """Close the pool.
 
         Prevents any more tasks from being submitted on the pool and stops
@@ -1007,7 +1004,7 @@ class Pool:
         for actor, _ in self._actor_pool:
             ray.kill(actor)
 
-    def join(self):
+    def join(self) -> None:
         """Wait for the actors in a closed pool to exit.
 
         If the pool was closed using `close`, this will return once all

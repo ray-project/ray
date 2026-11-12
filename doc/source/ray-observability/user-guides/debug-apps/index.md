@@ -17,7 +17,6 @@ debug-hangs
 debug-failures
 debug-worker-thread-count
 optimize-performance
-../../ray-distributed-debugger
 ray-debugging
 ```
 

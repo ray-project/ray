@@ -5,7 +5,6 @@ import datasets
 import pyarrow
 import pytest
 import requests
-from packaging.version import Version
 
 import ray
 from ray.data._internal.datasource.huggingface_datasource import (
@@ -267,10 +266,6 @@ def test_from_huggingface(mock_hf_dataset_dict, ray_start_regular_shared, num_pa
 @pytest.mark.skipif(
     datasets.Version(datasets.__version__) < datasets.Version("2.8.0"),
     reason="IterableDataset.iter() added in 2.8.0",
-)
-@pytest.mark.skipif(
-    Version(pyarrow.__version__) < Version("8.0.0"),
-    reason="pyarrow.Table.to_reader() added in 8.0.0",
 )
 # Note, pandas is excluded here because IterableDatasets do not support pandas format.
 @pytest.mark.parametrize(

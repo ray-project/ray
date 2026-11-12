@@ -1,5 +1,4 @@
-"""
-Constants.
+"""Constants.
 
 Contains constants used to setup collective groups.
 """

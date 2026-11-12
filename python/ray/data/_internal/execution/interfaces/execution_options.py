@@ -391,8 +391,8 @@ class ExecutionOptions:
             operators. Off by default.
         actor_locality_enabled: Deprecated. Ray Data manages actor locality
             internally.
-        verbose_progress: Whether to report progress individually per operator. By
-            default, only AllToAll operators and global progress is reported. This
+        verbose_progress: Whether to report progress individually per operator. When
+            off, only AllToAll operators and global progress are reported. This
             option is useful for performance debugging. On by default.
         label_selector: A mapping of label key to label value. When set, every task
             and actor launched by this Dataset (including shuffle, sort, and

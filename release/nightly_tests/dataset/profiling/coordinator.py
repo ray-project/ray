@@ -2,6 +2,7 @@
 # ABOUTME: Provides start/stop methods so benchmarks don't need per-profiler boilerplate.
 
 import os
+import shutil
 
 from . import gpu_monitor, net_monitor, nsys, object_store, perf, pyspy, telemetry
 
@@ -188,7 +189,25 @@ class Profiling:
             perf.stop_workers(self._worker_perf_actors)
             perf.stop_head(self._head_perf_handles)
 
+        self._copy_benchmark_result()
+
         if s3_prefix is not None:
             telemetry.upload(self.outdir, s3_prefix, s3_bucket=s3_bucket)
 
         Profiling._instance_active = False
+
+    def _copy_benchmark_result(self):
+        """Copy the benchmark result into outdir so it is uploaded with the profiles.
+
+        The release job runner names the result via TEST_OUTPUT_JSON; local runs
+        fall back to ./result.json, like Benchmark.write_result(). A failed copy is
+        reported, not raised, so the profiles still upload.
+        """
+        result_path = os.environ.get("TEST_OUTPUT_JSON", "./result.json")
+        if not os.path.exists(result_path):
+            return
+        try:
+            os.makedirs(self.outdir, exist_ok=True)
+            shutil.copy2(result_path, self.outdir)
+        except Exception as e:
+            print(f"Failed to copy the benchmark result into the profiling outdir: {e}")

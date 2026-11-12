@@ -41,6 +41,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -52,6 +53,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
+    format_scheduling_constraints,
 )
 from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -522,10 +524,12 @@ class MockReplicaActorWrapper:
         self.stopped = False
         # Expected to be set in the test.
         self.done_stopping = False
+        self.killed = False
         # Will be set when `force_stop()` is called.
         self.force_stopped_counter = 0
         # Will be set when `check_health()` is called.
         self.health_check_called = False
+        self._push_stands_in_for_probe = False
         # Returned by the health check.
         self.healthy = True
         self._is_cross_language = False
@@ -539,6 +543,7 @@ class MockReplicaActorWrapper:
         self._internal_grpc_port = None
         self._http_port = None
         self._pg_bundles = None
+        self._scheduling_constraints = ""
         self._initialization_latency_s = -1
         self._docs_path: Optional[str] = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
@@ -695,6 +700,9 @@ class MockReplicaActorWrapper:
         target_node_id=None,
     ):
         self.started = True
+        self._scheduling_constraints = format_scheduling_constraints(
+            deployment_info.replica_config
+        )
         self._gang_context = gang_context
         self._gang_pg_index = gang_pg_index
         self._assign_rank_callback = assign_rank_callback
@@ -735,11 +743,12 @@ class MockReplicaActorWrapper:
         replica_rank_context[self._replica_id.unique_id] = rank
         return updating
 
-    def recover(self, ingress: bool = False):
+    def recover(self, ingress: bool = False, scheduling_constraints: str = ""):
         if self.replica_id in dead_replicas_context:
             return False
 
         self._ingress = ingress
+        self._scheduling_constraints = scheduling_constraints
         self.recovering = True
         self.started = False
         self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
@@ -776,6 +785,11 @@ class MockReplicaActorWrapper:
     def actor_resources(self) -> Dict[str, float]:
         return {"CPU": 0.1}
 
+    def scheduling_constraints(self) -> str:
+        # Only used to print a warning. Derived from the deployment's own
+        # label selectors in start(), so tests configure it through the config.
+        return self._scheduling_constraints
+
     @property
     def available_resources(self) -> Dict[str, float]:
         # Only used to print a warning.
@@ -789,7 +803,9 @@ class MockReplicaActorWrapper:
         self.stopped = True
         return self.graceful_shutdown_timeout_s
 
-    def check_stopped(self) -> bool:
+    def check_stopped(self, *, kill_actor: bool = True) -> bool:
+        if self.done_stopping and kill_actor:
+            self.killed = True
         return self.done_stopping
 
     @staticmethod
@@ -797,11 +813,35 @@ class MockReplicaActorWrapper:
         REMOVED_GANG_PG_NAMES.append(pg_name)
 
     def force_stop(self, log_shutdown_message: bool = False):
+        self.killed = True
         self.force_stopped_counter += 1
 
     def check_health(self):
+        if self._push_stands_in_for_probe:
+            # A fresh push means the real wrapper would not arm a probe.
+            self._push_stands_in_for_probe = False
+            return self.healthy
         self.health_check_called = True
         return self.healthy
+
+    def record_pushed_health(
+        self,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ) -> None:
+        """Match ActorReplicaWrapper, stubbing only the verdict.
+
+        The real arbitration lives in PushedHealthTracker and is tested there; here
+        the push sets the verdict directly so end-to-end tests can exercise the
+        manager's routing and the state machine.
+        """
+        self.pushed_health = (checked_at, healthy, consecutive_failures)
+        self._push_stands_in_for_probe = True
+        self.healthy = (
+            healthy
+            or (consecutive_failures or 0) < REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        )
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
