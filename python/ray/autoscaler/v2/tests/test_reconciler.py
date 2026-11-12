@@ -5431,6 +5431,161 @@ class TestReconciler:
             ("r1-0", Instance.RAY_STOP_REQUESTED)
         ]
 
+        # 6. Torn-down historical replica retained within GC window never blocks
+        # a later scale-up that reuses the same replica_id across multiple ticks.
+        _, reuse_store, _, reuse_im = self._setup_multihost_reconcile_env(
+            "reuse_replica_id",
+            [
+                create_instance(
+                    "old-0",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="cold-0",
+                    cloud_instance_replica_id="rep-0",
+                    launch_request_id="lid-old",
+                    status_times=[
+                        (Instance.ALLOCATED, 1),
+                        (Instance.TERMINATING, 2),
+                        (Instance.TERMINATED, 3),
+                    ],
+                ),
+                create_instance(
+                    "old-1",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="cold-1",
+                    cloud_instance_replica_id="rep-0",
+                    launch_request_id="lid-old",
+                    status_times=[
+                        (Instance.ALLOCATED, 1),
+                        (Instance.TERMINATING, 2),
+                        (Instance.TERMINATED, 3),
+                    ],
+                ),
+                create_instance(
+                    "new-0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-new",
+                    status_times=[(Instance.REQUESTED, 100)],
+                ),
+                create_instance(
+                    "new-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-new",
+                    status_times=[(Instance.REQUESTED, 101)],
+                ),
+            ],
+            max_worker_nodes=4,
+            workers_per_replica=2,
+        )
+        # Tick 1: first pod of recreated rep-0 arrives and binds to lid-new.
+        Reconciler._handle_cloud_instance_allocation(
+            reuse_im,
+            {
+                "cnew-0": CloudInstance(
+                    "cnew-0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        # Tick 2: second pod of recreated rep-0 arrives and must NOT be blocked
+        # by lid-old's TERMINATING history on the same replica_id.
+        Reconciler._handle_cloud_instance_allocation(
+            reuse_im,
+            {
+                "cnew-0": CloudInstance(
+                    "cnew-0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+                "cnew-1": CloudInstance(
+                    "cnew-1", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        reuse_insts, _ = reuse_store.get_instances()
+        assert reuse_insts["new-0"].cloud_instance_id == "cnew-0"
+        assert reuse_insts["new-1"].cloud_instance_id == "cnew-1"
+
+        # 7. Same-batch reuse after an earlier replica of that batch fully
+        # tore down also binds cleanly across ticks.
+        _, same_store, _, same_im = self._setup_multihost_reconcile_env(
+            "same_batch_reuse_rid",
+            [
+                create_instance(
+                    "s-old-0",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="csold-0",
+                    cloud_instance_replica_id="rep-0",
+                    launch_request_id="lid-same",
+                    status_times=[
+                        (Instance.ALLOCATED, 1),
+                        (Instance.TERMINATING, 2),
+                        (Instance.TERMINATED, 3),
+                    ],
+                ),
+                create_instance(
+                    "s-old-1",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="csold-1",
+                    cloud_instance_replica_id="rep-0",
+                    launch_request_id="lid-same",
+                    status_times=[
+                        (Instance.ALLOCATED, 1),
+                        (Instance.TERMINATING, 2),
+                        (Instance.TERMINATED, 3),
+                    ],
+                ),
+                create_instance(
+                    "s-new-0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-same",
+                    status_times=[(Instance.REQUESTED, 10)],
+                ),
+                create_instance(
+                    "s-new-1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-same",
+                    status_times=[(Instance.REQUESTED, 11)],
+                ),
+            ],
+            max_worker_nodes=4,
+            workers_per_replica=2,
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            same_im,
+            {
+                "csnew-0": CloudInstance(
+                    "csnew-0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            same_im,
+            {
+                "csnew-0": CloudInstance(
+                    "csnew-0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+                "csnew-1": CloudInstance(
+                    "csnew-1", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+            },
+            [],
+            autoscaling_config=cfg2,
+        )
+        same_insts, _ = same_store.get_instances()
+        assert same_insts["s-new-0"].cloud_instance_id == "csnew-0"
+        assert same_insts["s-new-1"].cloud_instance_id == "csnew-1"
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

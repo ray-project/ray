@@ -177,6 +177,17 @@ def _build_multihost_replica_view(
     if not replica_sizes:
         return view
 
+    teardown_history_statuses = (
+        IMInstance.TERMINATING,
+        IMInstance.ALLOCATION_TIMEOUT,
+        IMInstance.RAY_INSTALL_FAILED,
+    )
+    term_rows_by_rep_lid: Dict[
+        Tuple[Tuple[NodeType, str], str], List[IMInstance]
+    ] = defaultdict(list)
+    untagged_active_cids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
+    min_live_alloc_ns: Dict[Tuple[Tuple[NodeType, str], str], int] = {}
+
     for inst in im_instances:
         if inst.node_kind == NodeKind.HEAD or inst.instance_type not in replica_sizes:
             continue
@@ -194,13 +205,26 @@ def _build_multihost_replica_view(
             if not rid:
                 continue
             rk = (nt, rid)
-            # Track every pod ever bound to `(rk, lid)` (even if later preempted
-            # or raylet-restarted) so per-replica owed counts stay exact.
+            if st in _TERMINAL_INSTANCE_STATUSES:
+                if lid:
+                    term_rows_by_rep_lid[(rk, lid)].append(inst)
+                continue
+
             view.assigned_reps.add(rk)
             if lid:
                 view.claimed_reps_by_lid[(nt, lid)].add(rid)
                 view.rep_bound_cids_by_lid[(rk, lid)].add(inst.cloud_instance_id)
                 view.rep_lids[rk].add(lid)
+                alloc_times = InstanceUtil.get_status_transition_times_ns(
+                    inst, IMInstance.ALLOCATED
+                )
+                if alloc_times:
+                    ts = min(alloc_times)
+                    prev = min_live_alloc_ns.get((rk, lid))
+                    if prev is None or ts < prev:
+                        min_live_alloc_ns[(rk, lid)] = ts
+            elif inst.cloud_instance_id in view.active_cids:
+                untagged_active_cids[rk].add(inst.cloud_instance_id)
 
             # Ignore stale RAY_STOPPED rows shadowed by an active IM row on the
             # same cloud instance (e.g. after a raylet restart).
@@ -208,19 +232,6 @@ def _build_multihost_replica_view(
                 st == IMInstance.RAY_STOPPED
                 and inst.cloud_instance_id in view.active_cids
             ):
-                continue
-
-            if st in _TERMINAL_INSTANCE_STATUSES:
-                if any(
-                    h.instance_status
-                    in (
-                        IMInstance.TERMINATING,
-                        IMInstance.ALLOCATION_TIMEOUT,
-                        IMInstance.RAY_INSTALL_FAILED,
-                    )
-                    for h in inst.status_history
-                ):
-                    view.non_fillable_reps.add(rk)
                 continue
 
             if st in _DRAINING_INSTANCE_STATUSES | _TEARDOWN_INSTANCE_STATUSES:
@@ -243,6 +254,56 @@ def _build_multihost_replica_view(
             view.in_flight_by_lid[(nt, lid or "")] += 1
         elif st == IMInstance.QUEUED and lid:
             view.in_flight_by_lid[(nt, lid)] += 1
+
+    # Reattach terminal rows only when they belong to a live replica incarnation
+    # (same batch still non-terminal on `rk`, or same live untagged cloud pod
+    # after a raylet restart) or to an incomplete mid-boot replica whose batch
+    # is still waiting on remaining pods. Fully torn-down historical replicas
+    # stay ignored so recreated replicas reusing the same `replica_id` can bind.
+    for (rk, lid), rows in term_rows_by_rep_lid.items():
+        nt, rid = rk
+        term_cids = {r.cloud_instance_id for r in rows}
+        has_teardown = any(
+            h.instance_status in teardown_history_statuses
+            for r in rows
+            for h in r.status_history
+        )
+        term_times = [
+            ts
+            for r in rows
+            for ts in InstanceUtil.get_status_transition_times_ns(
+                r, IMInstance.TERMINATED
+            )
+        ]
+        live_alloc = min_live_alloc_ns.get((rk, lid))
+        prior_torn_down_incarnation = (
+            has_teardown
+            and live_alloc is not None
+            and bool(term_times)
+            and max(term_times) < live_alloc
+        )
+        same_live_incarnation = (
+            rk in view.assigned_reps
+            and not prior_torn_down_incarnation
+            and (
+                lid in view.rep_lids[rk]
+                or (not has_teardown and bool(term_cids & untagged_active_cids[rk]))
+            )
+        )
+        mid_boot_eviction = (
+            rk not in view.assigned_reps
+            and view.in_flight_by_lid[(nt, lid)] > 0
+            and len(term_cids) < replica_sizes[nt]
+            and not has_teardown
+        )
+        if not (same_live_incarnation or mid_boot_eviction):
+            continue
+        view.assigned_reps.add(rk)
+        view.claimed_reps_by_lid[(nt, lid)].add(rid)
+        view.rep_bound_cids_by_lid[(rk, lid)].update(term_cids)
+        view.rep_lids[rk].add(lid)
+        if has_teardown:
+            view.non_fillable_reps.add(rk)
 
     return view
 
