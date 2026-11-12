@@ -619,7 +619,9 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
                        << argument_id;
-      return;
+      // Skip only this ID. Returning here would leave the submitted task refs
+      // of every remaining argument in the batch pinned forever.
+      continue;
     }
     RAY_CHECK(it->second.submitted_task_ref_count > 0);
     it->second.submitted_task_ref_count--;
