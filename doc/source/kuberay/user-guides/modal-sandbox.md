@@ -498,7 +498,7 @@ The configuration in this guide suits trying out the service. Before you run man
 * **Run several facade replicas**: The facade keeps no state, so you can raise `num_replicas` for the `RaySandboxGrpcFacade` deployment, for example under `deployments` in `serveConfigV2`. Plan for about one replica for every 300 creates per second.
 * **Spread sandboxes over many Pods**: A sandbox's boot takes about a third of a CPU-second, and boots get slower as a machine hosts more sandboxes. Many worker Pods with a few hundred sandboxes each start a burst faster than a few Pods with thousands each.
 * **Keep sandboxes booted for bursts**: With `host_mode: node`, the `warm_pool` argument keeps sandboxes booted on every worker Pod, and a matching create takes one at once. See {ref}`Ray Sandboxes <ray-core-sandboxes>` for the profile format.
-* **Pull images before bursts**: The first sandbox on each worker Pod pulls and converts its image, and later sandboxes on that Pod reuse the cached copy. With `host_mode: node`, every worker Pod starts pulling an image when a client names it, such as with `modal.Image.from_registry()`, and the client's image build finishes once the Pods have it.
+* **Pull images before bursts**: The first sandbox of an image on each worker Pod pulls and converts it, and later sandboxes on that Pod reuse the cached copy. To keep that pull out of a burst, list the image in `warm_pool`, which boots sandboxes of it on every worker Pod ahead of time.
 * **Raise the limits of Serve's HAProxy**: With Serve's {ref}`HAProxy ingress <serve-haproxy>`, set these environment variables on the Pods that run it:
 
   ```yaml
