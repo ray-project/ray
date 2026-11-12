@@ -3,15 +3,29 @@ from unittest import mock
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data import Schema
+from ray.data import DataContext, Schema
+from ray.data._internal.object_extensions.arrow import (
+    ArrowPythonObjectArray,
+    _contains_pickle_object_type,
+)
 from ray.data._internal.util import rows_same
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.delta_test_utils import write_column_mapped_table
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(params=["v1", "v2"], autouse=True)
+def delta_reader(request, restore_data_context):
+    """Run every test with both the V1 and the DataSourceV2 reader."""
+    ctx = DataContext.get_current()
+    ctx.use_datasource_v2 = True
+    ctx.use_delta_datasource_v2 = request.param == "v2"
+    return request.param
 
 
 @pytest.mark.parametrize(
@@ -141,14 +155,53 @@ def test_delta_read_storage_options(tmp_path, storage_options):
     assert rows_same(ds.to_pandas(), df)
 
 
-def test_delta_read_empty_table(tmp_path):
+def test_delta_read_empty_table(tmp_path, delta_reader):
     from deltalake import write_deltalake
 
     path = os.path.join(tmp_path, "tmp_test_delta_empty")
-    write_deltalake(path, pa.table({"x": pa.array([], type=pa.int64())}))
+    write_deltalake(
+        path, pa.schema([("x", pa.int64()), ("y", pa.string())]).empty_table()
+    )
 
     ds = ray.data.read_delta(path)
     assert ds.count() == 0
+    assert ds.take_all() == []
+    if delta_reader == "v2":
+        # The V2 reader takes the schema from the log. The V1 reader takes it
+        # from the data files, and an empty table has none.
+        assert ds.schema().names == ["x", "y"]
+
+
+def test_delta_read_does_not_unpickle_a_tampered_data_file(tmp_path):
+    """A data file swapped for one with a pickled-object column must not run
+    its pickle. Both readers read data files with the log's schema, so the
+    column comes back as plain bytes."""
+    from deltalake import DeltaTable, write_deltalake
+
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    path = os.path.join(tmp_path, "tmp_test_delta_tampered")
+    write_deltalake(path, pa.table({"id": [1, 2], "obj": [b"a", b"b"]}))
+    (data_file,) = pa.table(DeltaTable(path).get_add_actions(flatten=True))[
+        "path"
+    ].to_pylist()
+    pq.write_table(
+        pa.table(
+            {"id": [1, 2], "obj": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
+        ),
+        os.path.join(path, data_file),
+    )
+
+    batches = list(ray.data.read_delta(path).iter_batches(batch_format="pyarrow"))
+
+    assert sum(batch.num_rows for batch in batches) == 2
+    for batch in batches:
+        assert not _contains_pickle_object_type(batch.schema.field("obj").type)
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 def test_delta_read_rejects_multiple_paths():
@@ -165,11 +218,13 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
     has to point at the table property, not at a library upgrade.
 
     deltalake cannot *write* a table declaring the feature either, so the
-    protocol error is injected rather than provoked; what is under test is
-    Ray's translation of it.
+    feature and the protocol error are injected rather than provoked; what is
+    under test is Ray's translation of it. The DataSourceV2 reader leaves such
+    a table to the V1 reader, so both readers fail the same way.
     """
     from deltalake import write_deltalake
     from deltalake.exceptions import DeltaProtocolError
+    from deltalake.table import ProtocolVersions
 
     path = os.path.join(tmp_path, "tmp_test_delta_dv_message")
     write_deltalake(path, pa.table({"id": [1, 2, 3]}))
@@ -178,8 +233,11 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
         "The table has set these reader features: {'deletionVectors'} but these "
         "are not yet supported by the deltalake reader."
     )
+    dv_protocol = ProtocolVersions(3, 7, ["deletionVectors"], ["deletionVectors"])
 
     with mock.patch(
+        "deltalake.DeltaTable.protocol", return_value=dv_protocol
+    ), mock.patch(
         "deltalake.DeltaTable.to_pyarrow_dataset", side_effect=protocol_error
     ):
         with pytest.raises(RuntimeError) as excinfo:
@@ -347,12 +405,17 @@ def test_read_unity_catalog_partition_filters(tmp_path):
     assert _input_dates(ds) == ["2026-01-02"] * 2
 
 
-def test_delta_read_takes_file_sizes_from_the_log(tmp_path):
+def test_delta_read_takes_file_sizes_from_the_log(tmp_path, delta_reader):
     """Listing makes no per-file ``get_file_info`` call; sizes come from the log.
 
     Partition values with special characters check that the log's paths, which
     are URL-encoded once more than the fragment paths, are decoded exactly once.
     """
+    if delta_reader == "v2":
+        pytest.skip(
+            "The V2 reader lists files in Ray tasks when the read runs; "
+            "test_delta_file_indexer.py checks its paths and log sizes."
+        )
     import fsspec.implementations.local
     import pyarrow.fs as pafs
     from deltalake import write_deltalake
