@@ -29,7 +29,10 @@ ray_cc_library(
     name = "actor_handle",
     srcs = ["actor_handle.cc"],
     hdrs = ["actor_handle.h"],
-    visibility = ["//src/ray/core_worker:__pkg__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:task_common",
