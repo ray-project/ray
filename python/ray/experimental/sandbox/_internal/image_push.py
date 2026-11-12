@@ -17,6 +17,7 @@ import io
 import json
 import logging
 import os
+import re
 import tarfile
 import threading
 import urllib.parse
@@ -35,7 +36,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     parse_image_ref,
     registry_base_url,
 )
-from ray.experimental.sandbox.exceptions import SandboxError
+from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ _PART_BYTES = 128 << 20
 _MAX_PARTS = 8
 _PARALLELISM = 16
 _CHUNK = 1 << 20
+# The OCI distribution spec's repository name and tag grammar.
+_NAME_PART = r"[a-z0-9]+(?:(?:\.|_|__|-+)[a-z0-9]+)*"
+_REPOSITORY = re.compile(rf"{_NAME_PART}(?:/{_NAME_PART})*")
+_TAG = re.compile(r"[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}")
 
 
 @dataclasses.dataclass
@@ -178,14 +183,28 @@ def _marker(name: str, like: tarfile.TarInfo) -> tarfile.TarInfo:
     return info
 
 
+def _parse_target(target: str) -> Tuple[str, str, str]:
+    """Return the registry, repository and tag of a commit ``target``."""
+    registry, repo, tag = parse_image_ref(target)
+    if tag.startswith("sha256:"):
+        raise SandboxError(f"Commit target '{target}' needs a tag, not a digest")
+    # A registry turns a malformed name down only once the layers are built.
+    if not _REPOSITORY.fullmatch(repo):
+        raise SandboxError(
+            f"Commit target '{target}' has an invalid repository name '{repo}': "
+            "use lowercase letters and digits, separated by '.', '_', '-' or '/'."
+        )
+    if not _TAG.fullmatch(tag):
+        raise SandboxError(f"Commit target '{target}' has an invalid tag '{tag}'")
+    return registry, repo, tag
+
+
 def validate_commit(base_image: str, target: str, images_dir: str) -> None:
     """Raise if ``target`` or the cached ``base_image`` can't be committed.
 
     These are the checks ``push_image`` makes that need no export or registry.
     """
-    _, _, tag = parse_image_ref(target)
-    if tag.startswith("sha256:"):
-        raise SandboxError(f"Commit target '{target}' needs a tag, not a digest")
+    _parse_target(target)
     _load_base(images_dir, base_image)
 
 
@@ -203,9 +222,7 @@ def push_image(
     builds on the exact image the sandbox runs, even if the tag has moved since.
     ``env`` overrides or adds entries in the image's Env.
     """
-    registry, repo, tag = parse_image_ref(target)
-    if tag.startswith("sha256:"):
-        raise SandboxError(f"Commit target '{target}' needs a tag, not a digest")
+    registry, repo, tag = _parse_target(target)
     manifest, config = _load_base(images_dir, base_image)
     src_registry, src_repo, reference = parse_image_ref(base_image)
     src_registry, src_repo = apply_registry_mirror(src_registry, src_repo)
@@ -215,9 +232,18 @@ def push_image(
     scopes = [f"repository:{repo}:pull,push"]
     if can_mount:
         scopes.append(f"repository:{src_repo}:pull")
-    auth = get_registry_auth_headers(
-        registry, repo, reference=tag, timeout=timeout_seconds, scopes=scopes
-    ).get("Authorization")
+    try:
+        auth = get_registry_auth_headers(
+            registry,
+            repo,
+            reference=tag,
+            timeout=timeout_seconds,
+            scopes=scopes,
+            action="push",
+        ).get("Authorization")
+    except SandboxCreationError as err:
+        # Not a sandbox creation failure.
+        raise SandboxError(str(err)) from err
 
     with contextlib.closing(
         _Repository(registry, repo, auth, timeout_seconds, scopes=scopes)
@@ -286,6 +312,29 @@ def _load_base(images_dir: str, base_image: str) -> Tuple[Dict, Dict]:
             f"Cannot commit base image '{base_image}': "
             "cached manifest requires a config descriptor object."
         )
+    layers = manifest.get("layers")
+    if not isinstance(layers, list) or not all(
+        isinstance(layer, dict) and isinstance(layer.get("digest"), str)
+        for layer in layers
+    ):
+        raise SandboxError(
+            f"Cannot commit base image '{base_image}': "
+            "cached manifest requires a layers array of descriptors with a digest."
+        )
+    # Checked here, before any export or upload, not when the config is built.
+    rootfs = config.get("rootfs") if isinstance(config, dict) else None
+    if (
+        not isinstance(config, dict)
+        or not isinstance(config.get("config"), (dict, type(None)))
+        or not isinstance(config.get("history"), (list, type(None)))
+        or not isinstance(rootfs, (dict, type(None)))
+        or not isinstance((rootfs or {}).get("diff_ids"), (list, type(None)))
+    ):
+        raise SandboxError(
+            f"Cannot commit base image '{base_image}': its cached config must "
+            "be an object whose config and rootfs are objects or null and "
+            "whose history and rootfs.diff_ids are arrays or null."
+        )
     return manifest, config
 
 
@@ -295,17 +344,20 @@ def _commit_config(
     """Return ``config`` with ``layers`` and ``env`` added, serialized."""
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     config["created"] = now
-    rootfs = config.setdefault("rootfs", {"type": "layers", "diff_ids": []})
-    rootfs["diff_ids"] += [layer.diff_id for layer in layers]
-    config.setdefault("history", []).extend(
+    # Any of these may be absent or null in the base config.
+    rootfs = config.get("rootfs")
+    if rootfs is None:
+        rootfs = config["rootfs"] = {"type": "layers"}
+    rootfs["diff_ids"] = (rootfs.get("diff_ids") or []) + [
+        layer.diff_id for layer in layers
+    ]
+    config["history"] = (config.get("history") or []) + [
         {"created": now, "created_by": "ray sandbox commit"} for _ in layers
-    )
+    ]
     if env:
         image_config = config.get("config")
         if image_config is None:
             image_config = config["config"] = {}
-        elif not isinstance(image_config, dict):
-            raise SandboxError("Base image config field must be an object or null")
         merged = dict(
             e.split("=", 1) for e in image_config.get("Env") or [] if "=" in e
         )
@@ -393,29 +445,41 @@ class _Repository:
         body = kwargs.get("data")
         position = body.tell() if isinstance(body, io.IOBase) else None
         response = self._session.request(method, url, timeout=self._timeout, **kwargs)
+        sent = response.request.headers.get("Authorization")
+        challenge = response.headers.get("WWW-Authenticate", "")
         if (
             response.status_code == 401
             and registry_request
             and _url_origin(response.request.url) == self._origin
-            and not response.request.headers.get("Authorization")
-        ):
-            response.close()
-            # Parallel anonymous requests share one credential lookup. A
-            # rejection of an authenticated request is final.
-            with self._auth_lock:
-                if "Authorization" not in self._session.headers:
-                    self._session.headers["Authorization"] = self._authenticate(
-                        response.headers.get("WWW-Authenticate", "")
-                    )
-            if position is not None:
-                body.seek(position)
-            response = self._session.request(
-                method, url, timeout=self._timeout, **kwargs
+            and (
+                not sent
+                or sent.startswith("Bearer ")
+                and challenge.lower().startswith("bearer ")
             )
+        ):
+            # Parallel requests share one credential lookup: whoever finds the
+            # rejected credential still in the session replaces it. A Bearer
+            # token may have expired mid-push, so it is refreshed once. Basic
+            # credentials, and a refresh that yields the same static token,
+            # make the rejection final.
+            with self._auth_lock:
+                if self._session.headers.get("Authorization") == sent:
+                    self._session.headers["Authorization"] = self._authenticate(
+                        challenge
+                    )
+                retry = self._session.headers["Authorization"] != sent
+            if retry:
+                response.close()
+                if position is not None:
+                    body.seek(position)
+                response = self._session.request(
+                    method, url, timeout=self._timeout, **kwargs
+                )
         if response.status_code >= 400 and response.status_code not in ok:
             raise SandboxError(
                 f"Registry {method} {url.split('?')[0]} failed: "
-                f"{response.status_code} {response.text[:500]}"
+                f"{response.status_code} "
+                f"{response.text[:500] or response.reason or ''}"
             )
         return response
 

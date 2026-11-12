@@ -316,6 +316,17 @@ def test_push_scopes_reach_bearer_and_refresh_grants(
     assert registry.token_scopes == [scopes]
 
 
+def test_basic_challenge_without_credentials_names_the_push(
+    start_registry, docker_config
+):
+    registry = start_registry("basic")
+    docker_config({})
+    with pytest.raises(SandboxCreationError, match="requires credentials to push"):
+        get_registry_auth_headers(
+            f"http://{registry.host}", _REPO, reference="1", action="push"
+        )
+
+
 def test_identity_token_takes_the_oauth2_refresh_grant(
     start_registry, docker_config, install_helper, fake_mkfs_erofs, tmp_path
 ):

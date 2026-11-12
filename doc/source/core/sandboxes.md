@@ -336,12 +336,32 @@ A `readonly=True` sandbox keeps its root filesystem read-only, so `disk` caps it
 
 ### Commit a sandbox to an image
 
-Call `SandboxRuntime.commit()` to push a sandbox's base image and root filesystem changes to a registry.
+Call `commit()` on a sandbox actor to push the sandbox's base image and root filesystem changes to a registry.
 Commit requires a writable root filesystem, so create the sandbox with `readonly=False`.
 A sandbox with the default `readonly=True` has no root filesystem changes to export, because its only writable path is a `workdir` mount, and `commit()` raises a `SandboxError` for it.
 Commit leaves the sandbox in the state it was in: a running sandbox is paused only while its changes are exported, and a paused sandbox stays paused.
 The image doesn't include bind mounts or changes made from the host.
-Registry credentials come from `$DOCKER_CONFIG/config.json` and must allow push.
+Registry credentials come from `$DOCKER_CONFIG/config.json` on the node that runs the sandbox, and must allow push.
+
+```python
+import ray
+from ray.experimental import sandbox
+
+sb = sandbox.create(image="python:3.12-slim", readonly=False)
+ray.get(sb.exec.remote("pip install httpx"))
+image = ray.get(sb.commit.remote("myregistry.azurecr.io/tools/python:with-httpx"))
+sandbox.create(image=image, readonly=False)
+```
+
+The method returns an immutable image reference such as `myregistry.azurecr.io/tools/python@sha256:...`.
+Commit requires a registry base image with a cached manifest and config.
+For an image cached without this metadata, pull it into a fresh cache and recreate the sandbox before committing.
+
+:::{note}
+A sandbox actor runs one call at a time, so calls such as `exec()` wait until a commit finishes pushing.
+:::
+
+`SandboxRuntime.commit()` does the same for a sandbox that you manage without an actor:
 
 ```python
 from ray.experimental.sandbox.runtime import SandboxRuntime
@@ -352,10 +372,6 @@ runtime.exec(instance, ["pip", "install", "httpx"])
 image = runtime.commit(instance, "myregistry.azurecr.io/tools/python:with-httpx")
 runtime.create(image, readonly=False)
 ```
-
-The method returns an immutable image reference such as `myregistry.azurecr.io/tools/python@sha256:...`.
-Commit requires a registry base image with a cached manifest and config.
-For an image cached without this metadata, pull it into a fresh cache and recreate the sandbox before committing.
 
 ### Schedule a Sandbox actor with custom resources
 

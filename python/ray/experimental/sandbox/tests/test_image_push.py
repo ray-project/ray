@@ -16,7 +16,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     extract_tar_layer,
     image_cache_name,
 )
-from ray.experimental.sandbox.exceptions import SandboxError
+from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -232,17 +232,113 @@ def test_push_rejects_invalid_config_descriptor_before_registry_requests(
         )
 
 
-@pytest.mark.parametrize("config_present", [False, True])
-def test_commit_env_with_missing_or_null_image_config(config_present):
-    config = {"config": None} if config_present else {}
-    committed = json.loads(image_push._commit_config(config, [], {"A": "new"}))
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"history": None, "rootfs": None},
+        {"rootfs": {"type": "layers"}},
+        {"rootfs": {"type": "layers", "diff_ids": None}, "config": None},
+    ],
+)
+def test_commit_config_fills_in_null_or_missing_fields(config):
+    layer = image_push.Layer("unused", "sha256:blob", "sha256:diff", 1)
+    committed = json.loads(image_push._commit_config(config, [layer], {"A": "new"}))
+    assert committed["rootfs"] == {"type": "layers", "diff_ids": ["sha256:diff"]}
+    assert [h["created_by"] for h in committed["history"]] == ["ray sandbox commit"]
     assert committed["config"] == {"Env": ["A=new"]}
 
 
-@pytest.mark.parametrize("image_config", [[], "invalid"])
-def test_commit_env_rejects_non_object_image_config(image_config):
-    with pytest.raises(SandboxError, match="config field must be an object or null"):
-        image_push._commit_config({"config": image_config}, [], {"A": "new"})
+@pytest.mark.parametrize(
+    "config",
+    [
+        [],
+        {"config": []},
+        {"config": "invalid"},
+        {"history": {}},
+        {"rootfs": []},
+        {"rootfs": {"diff_ids": "invalid"}},
+    ],
+)
+def test_validate_commit_rejects_malformed_image_config(tmp_path, config):
+    """A config ``_commit_config`` can't extend fails before export and upload."""
+    base = "registry.example/source:old"
+    image_dir = tmp_path / image_cache_name(base)
+    image_dir.mkdir()
+    (image_dir / ".manifest.json").write_text(json.dumps({"config": {}, "layers": []}))
+    (image_dir / ".image_config.json").write_text(json.dumps(config))
+    with pytest.raises(SandboxError, match="cached config must be an object"):
+        image_push.validate_commit(base, "registry.example/target:new", str(tmp_path))
+
+
+@pytest.mark.parametrize("layers", [None, {}, [None], [{}], [{"digest": None}]])
+def test_validate_commit_rejects_malformed_manifest_layers(tmp_path, layers):
+    base = "registry.example/source:old"
+    image_dir = tmp_path / image_cache_name(base)
+    image_dir.mkdir()
+    manifest = {"config": {}}
+    if layers is not None:
+        manifest["layers"] = layers
+    (image_dir / ".manifest.json").write_text(json.dumps(manifest))
+    (image_dir / ".image_config.json").write_text("{}")
+    with pytest.raises(SandboxError, match="requires a layers array"):
+        image_push.validate_commit(base, "registry.example/target:new", str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "target, match",
+    [
+        ("registry.example/Team/app:new", "invalid repository name 'Team/app'"),
+        ("registry.example/team//app:new", "invalid repository name"),
+        ("registry.example/team/app:", "invalid repository name"),
+        ("registry.example/team/app:-new", "invalid tag '-new'"),
+    ],
+)
+def test_validate_commit_rejects_malformed_target(tmp_path, target, match):
+    """A name the registry would refuse fails before export and upload."""
+    with pytest.raises(SandboxError, match=match):
+        image_push.validate_commit("registry.example/source:old", target, str(tmp_path))
+
+
+def test_push_auth_failure_is_not_a_sandbox_creation_error(tmp_path, monkeypatch):
+    base = "registry.example/source:old"
+    image_dir = tmp_path / image_cache_name(base)
+    image_dir.mkdir()
+    (image_dir / ".manifest.json").write_text('{"config": {}, "layers": []}')
+    (image_dir / ".image_config.json").write_text("{}")
+
+    def refuse(*args, **kwargs):
+        assert kwargs["action"] == "push"
+        raise SandboxCreationError("requires credentials to push")
+
+    monkeypatch.setattr(image_push, "get_registry_auth_headers", refuse)
+    with pytest.raises(SandboxError, match="credentials to push") as info:
+        image_push.push_image(
+            base, "registry.example/target:new", [], None, str(tmp_path), 5
+        )
+    assert type(info.value) is SandboxError
+
+
+def test_failed_request_without_a_body_reports_the_http_reason(monkeypatch):
+    """A HEAD response has no body to explain the failure."""
+    import requests
+
+    repository = image_push._Repository("registry.example", "target", "Basic x", 5)
+
+    def send(request, **kwargs):
+        response = requests.Response()
+        response.request = request
+        response.status_code = 401
+        response.reason = "Unauthorized"
+        response._content = b""
+        response._content_consumed = True
+        return response
+
+    monkeypatch.setattr(repository._session, "send", send)
+    try:
+        with pytest.raises(SandboxError, match="failed: 401 Unauthorized"):
+            repository.has_blob("sha256:test")
+    finally:
+        repository.close()
 
 
 @pytest.mark.parametrize("status", [400, 401, 500])
@@ -267,6 +363,57 @@ def test_mount_authentication_and_unexpected_errors_remain_terminal(
             repository.mount("sha256:test", "source")
     finally:
         repository.close()
+
+
+@pytest.mark.parametrize(
+    "sent, refreshed, expected",
+    [
+        # An expired token is refreshed once and the request resent.
+        ("Bearer expired", "Bearer fresh", ["Bearer expired", "Bearer fresh"]),
+        # A refresh that yields the same static token leaves the 401 final.
+        ("Bearer static", "Bearer static", ["Bearer static"]),
+        # Basic credentials are never retried.
+        ("Basic dXNlcjpwYXNz", None, ["Basic dXNlcjpwYXNz"]),
+    ],
+)
+def test_rejected_bearer_token_is_refreshed_once(
+    monkeypatch, sent, refreshed, expected
+):
+    import requests
+
+    repository = image_push._Repository("registry.example", "target", sent, 5)
+    calls = []
+    lookups = []
+
+    def send(request, **kwargs):
+        calls.append(request.headers.get("Authorization"))
+        response = requests.Response()
+        response.request = request
+        response.status_code = 200 if calls[-1] == "Bearer fresh" else 401
+        response._content = b"denied"
+        response._content_consumed = True
+        response.headers["WWW-Authenticate"] = 'Bearer realm="https://auth.example"'
+        return response
+
+    def authenticate(challenge: str) -> str:
+        lookups.append(challenge)
+        return refreshed
+
+    monkeypatch.setattr(repository._session, "send", send)
+    monkeypatch.setattr(repository, "_authenticate", authenticate)
+    try:
+        if expected[-1] == "Bearer fresh":
+            assert repository.has_blob("sha256:test")
+            # The refreshed token serves later requests without another lookup.
+            assert repository.has_blob("sha256:test")
+            expected = expected + ["Bearer fresh"]
+        else:
+            with pytest.raises(SandboxError, match="failed: 401"):
+                repository.has_blob("sha256:test")
+    finally:
+        repository.close()
+    assert calls == expected
+    assert len(lookups) == (0 if refreshed is None else 1)
 
 
 @pytest.mark.parametrize(

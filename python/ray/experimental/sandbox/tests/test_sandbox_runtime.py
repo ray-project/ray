@@ -6,10 +6,12 @@ shipped behind a green suite.
 """
 
 import asyncio
+import concurrent.futures
 import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from unittest.mock import Mock
 
@@ -296,6 +298,40 @@ def test_export_rootfs_preserves_pause_state(tmp_path, monkeypatch, paused, fail
         ["tar", "rootfs-upper", "--file", str(tmp_path / "rootfs.tar"), "sandbox"]
     ]
     assert [timeout for _, timeout in calls] == ([7] if paused else [60, 7, 60])
+
+
+def test_concurrent_exports_of_one_sandbox_run_one_at_a_time(tmp_path, monkeypatch):
+    """Each export pauses, exports and resumes on its own: a second one neither
+    pauses an already paused sandbox nor has it resumed under its export."""
+    backend = _fake_running_backend(tmp_path)
+    commands = []
+    first_export_running = threading.Event()
+    second_command_seen = threading.Event()
+
+    def run(args, **kwargs):
+        command = next(c for c in ("pause", "tar", "resume") if c in args)
+        commands.append(command)
+        if command == "tar" and not first_export_running.is_set():
+            first_export_running.set()
+            # Leave the other export time to barge in.
+            second_command_seen.wait(0.3)
+        elif first_export_running.is_set():
+            second_command_seen.set()
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with concurrent.futures.ThreadPoolExecutor(2) as pool:
+        first = pool.submit(
+            backend.export_rootfs_changes, "sandbox", str(tmp_path / "a.tar")
+        )
+        assert first_export_running.wait(5)
+        second = pool.submit(
+            backend.export_rootfs_changes, "sandbox", str(tmp_path / "b.tar")
+        )
+        first.result()
+        second.result()
+    assert commands == ["pause", "tar", "resume"] * 2
+    assert backend.get_status("sandbox") == SandboxStatus.RUNNING
 
 
 @pytest.mark.parametrize(

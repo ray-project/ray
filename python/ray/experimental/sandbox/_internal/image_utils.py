@@ -244,6 +244,7 @@ def get_registry_auth_headers(
     reference: str = "latest",
     timeout: float = 30.0,
     scopes: Optional[List[str]] = None,
+    action: str = "pull",
 ) -> Dict[str, str]:
     """Answer a registry's authentication challenge for pulling ``repo``.
 
@@ -263,6 +264,7 @@ def get_registry_auth_headers(
         timeout: Network and credential helper timeout in seconds.
         scopes: Override the challenge's scopes, such as pull,push on the
             target repository and pull on the source repository.
+        action: What the headers are for, "pull" or "push", named in errors.
 
     Returns:
         The ``Authorization`` header for the pull's registry requests, or no
@@ -291,7 +293,7 @@ def get_registry_auth_headers(
         if scheme == "basic":
             if creds is None or not creds.username:
                 raise SandboxCreationError(
-                    f"Registry '{registry}' requires credentials to pull "
+                    f"Registry '{registry}' requires credentials to {action} "
                     f"'{repo}', and the Docker config "
                     f"{docker_config.config_path()} provides none for it."
                 )
@@ -349,7 +351,7 @@ def get_registry_auth_headers(
         except Exception as auth_err:
             if creds is not None:
                 raise SandboxCreationError(
-                    f"Failed to get a pull token for '{registry}' from "
+                    f"Failed to get a {action} token for '{registry}' from "
                     f"'{realm}' with the credentials in "
                     f"{docker_config.config_path()}: "
                     f"{_describe_pull_error(auth_err)}"
@@ -441,6 +443,7 @@ def extract_tar_layer(
     tar_input: Union[bytes, io.IOBase, BinaryIO],
     dest_dir: str,
     ownership: Optional[Dict[str, Tuple[int, int]]] = None,
+    dir_attrs: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> None:
     """Extract a tar archive layer onto dest_dir with OCI whiteout handling.
 
@@ -455,13 +458,22 @@ def extract_tar_layer(
     entry at; whiteouts and root-owned replacements drop entries. The
     extracted files themselves stay owned by the extracting user; the EROFS
     image build restores the recorded owners.
+
+    ``dir_attrs``, likewise shared across an image's layers, collects each
+    directory's archived {canonical path: (mode, mtime)} instead of applying
+    it, and the caller runs ``apply_dir_attrs`` after the last layer: a
+    read-only directory (0555) locked after its own layer would stop an
+    unprivileged worker from extracting a later layer's files, or whiteouts,
+    inside it. Without it the attributes are applied when this layer ends.
     """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
     else:
         tar_fileobj = tar_input
 
-    dir_mtimes = []
+    apply_now = dir_attrs is None
+    if dir_attrs is None:
+        dir_attrs = {}
     # Iterating reads the layer once; getmembers() first would decompress it
     # twice, since extractfile() then rewinds a compressed stream. Not stream
     # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
@@ -490,6 +502,10 @@ def extract_tar_layer(
             if basename == ".wh..wh..opq":
                 if ownership is not None:
                     _drop_ownership_children(ownership, parent_rel)
+                opaque_attrs = dir_attrs.get(parent_rel)
+                _drop_ownership_children(dir_attrs, parent_rel)
+                if opaque_attrs is not None:
+                    dir_attrs[parent_rel] = opaque_attrs
                 if os.path.isdir(parent_dir):
                     for item in os.listdir(parent_dir):
                         item_path = os.path.join(parent_dir, item)
@@ -508,10 +524,10 @@ def extract_tar_layer(
                 if not del_name:
                     continue
                 del_path = os.path.join(parent_dir, del_name)
+                del_rel = os.path.normpath(os.path.join(parent_rel, del_name))
                 if ownership is not None:
-                    _drop_ownership_subtree(
-                        ownership, os.path.normpath(os.path.join(parent_rel, del_name))
-                    )
+                    _drop_ownership_subtree(ownership, del_rel)
+                _drop_ownership_subtree(dir_attrs, del_rel)
                 if os.path.isdir(del_path) and not os.path.islink(del_path):
                     shutil.rmtree(del_path, ignore_errors=True)
                 elif os.path.exists(del_path) or os.path.islink(del_path):
@@ -524,6 +540,7 @@ def extract_tar_layer(
             # Remove conflicting existing file/dir if member type differs
             if os.path.exists(target_path) or os.path.islink(target_path):
                 if not (os.path.isdir(target_path) and member.isdir()):
+                    _drop_ownership_subtree(dir_attrs, rel)
                     try:
                         if os.path.isdir(target_path) and not os.path.islink(
                             target_path
@@ -567,12 +584,12 @@ def extract_tar_layer(
                     pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
-                # Deferred to the post-loop pass: tar lists a directory
-                # before its contents, so a restrictive archived mode (0500)
-                # applied here would break extracting the children. Preserved
+                # Deferred to apply_dir_attrs: tar lists a directory before
+                # its contents, so a restrictive archived mode (0500) applied
+                # here would break extracting the children. Preserved
                 # symlinks (UsrMerge) are skipped: chmod/utime follow them.
                 if not os.path.islink(target_path):
-                    dir_mtimes.append((target_path, member.mode, member.mtime))
+                    dir_attrs[rel] = (member.mode, member.mtime)
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -607,9 +624,28 @@ def extract_tar_layer(
                     # A later layer re-shipping the path as root wins.
                     ownership.pop(rel, None)
 
+    if apply_now:
+        apply_dir_attrs(dest_dir, dir_attrs)
+
+
+def apply_dir_attrs(dest_dir: str, dir_attrs: Dict[str, Tuple[int, int]]) -> None:
+    """Apply the directory modes and mtimes ``extract_tar_layer`` collected.
+
+    Args:
+        dest_dir: Directory the layers were extracted onto.
+        dir_attrs: {canonical path: (mode, mtime)} of the extracted directories.
+    """
     # Children first, so a parent's restrictive mode cannot block them.
-    for dir_path, mode, mtime in reversed(dir_mtimes):
+    for rel in sorted(
+        dir_attrs, key=lambda rel: -1 if rel == "." else rel.count("/"), reverse=True
+    ):
+        mode, mtime = dir_attrs[rel]
+        dir_path = os.path.join(dest_dir, rel)
         try:
+            # A path since replaced by a file or a symlink keeps its own
+            # attributes: chmod/utime would follow the symlink.
+            if not stat.S_ISDIR(os.lstat(dir_path).st_mode):
+                continue
             if mode:
                 os.chmod(dir_path, mode)
             os.utime(dir_path, (mtime, mtime))
@@ -1472,9 +1508,13 @@ def _extract_image_layers(
                 digests, base_url, headers, auth_header, timeout_seconds, blob_dir
             )
         ) as blobs:
+            dir_attrs: Dict[str, Tuple[int, int]] = {}
             for blob in blobs:
                 with blob:
-                    extract_tar_layer(blob, rootfs_dir, ownership=ownership)
+                    extract_tar_layer(
+                        blob, rootfs_dir, ownership=ownership, dir_attrs=dir_attrs
+                    )
+            apply_dir_attrs(rootfs_dir, dir_attrs)
 
     except Exception as err:
         if isinstance(err, SandboxCreationError):

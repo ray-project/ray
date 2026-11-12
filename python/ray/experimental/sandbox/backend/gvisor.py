@@ -1626,22 +1626,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         included.
         """
         meta = self._get_metadata_or_raise(sandbox_id)
-        paused = meta.get("status") == SandboxStatus.PAUSED
-        if not paused:
-            self.pause_sandbox(sandbox_id, timeout_seconds=60)
-        try:
-            self._run_runsc_command(
-                meta["config"],
-                "tar",
-                sandbox_id,
-                "rootfs-upper",
-                "--file",
-                path,
-                timeout_seconds=timeout,
-            )
-        finally:
+        # One export at a time per sandbox: overlapping ones would both try
+        # to pause it, or one would resume it under the other's export.
+        with meta.setdefault("export_lock", threading.Lock()):
+            paused = meta.get("status") == SandboxStatus.PAUSED
             if not paused:
-                self.resume_sandbox(sandbox_id, timeout_seconds=60)
+                self.pause_sandbox(sandbox_id, timeout_seconds=60)
+            try:
+                self._run_runsc_command(
+                    meta["config"],
+                    "tar",
+                    sandbox_id,
+                    "rootfs-upper",
+                    "--file",
+                    path,
+                    timeout_seconds=timeout,
+                )
+            finally:
+                if not paused:
+                    self.resume_sandbox(sandbox_id, timeout_seconds=60)
 
     def _run_runsc_command(
         self,
