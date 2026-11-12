@@ -6,7 +6,7 @@ import os
 import re
 import time
 from functools import lru_cache
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import requests
 
@@ -28,6 +28,18 @@ GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
+
+GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
+GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
+GKE_TPU_SLICE_TOPOLOGY_ANNOTATION = "cloud.google.com/gke-tpu-slice-topology"
+GKE_TPU_ACCELERATOR_TO_GENERATION = {
+    "tpu-v4-podslice": "v4",
+    "tpu-v5-lite-device": "v5litepod",
+    "tpu-v5-lite-podslice": "v5litepod",
+    "tpu-v5p-slice": "v5p",
+    "tpu-v6e-slice": "v6e",
+    "tpu7x": "v7x",
+}
 
 # Constants for accessing the `accelerator-type` from TPU VM
 # instance metadata.
@@ -1221,3 +1233,92 @@ class TPUAcceleratorManager(AcceleratorManager):
             tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
 
         return tpu_labels
+
+    @staticmethod
+    def _resolve_gke_tpu_selector(
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Tuple[Optional[str], Optional[str], str]:
+        """Extract GKE TPU generation, raw accelerator name, and effective topology.
+
+        Supports both static GKE nodeSelectors (`cloud.google.com/gke-tpu-topology`)
+        and GKE TPU Dynamic Slicing (`cloud.google.com/gke-tpu-slice-topology` on
+        pod annotations).
+        """
+        accelerator = node_selector.get(GKE_TPU_ACCELERATOR_LABEL)
+        generation = GKE_TPU_ACCELERATOR_TO_GENERATION.get(accelerator)
+        ann = annotations or {}
+        topology = (
+            (ann.get(GKE_TPU_SLICE_TOPOLOGY_ANNOTATION) or "").strip()
+            or (node_selector.get(GKE_TPU_TOPOLOGY_LABEL) or "").strip()
+        ).lower()
+        return generation, accelerator, topology
+
+    @staticmethod
+    def get_node_group_accelerator_labels(
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, str]]:
+        """Derive TPU node-group labels from GKE TPU nodeSelectors/annotations."""
+        (
+            generation,
+            accelerator,
+            topology,
+        ) = TPUAcceleratorManager._resolve_gke_tpu_selector(node_selector, annotations)
+        if not generation:
+            return None
+        if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+            generation, topology
+        ):
+            logger.warning(
+                f"Invalid or missing GKE TPU topology '{topology}' for accelerator "
+                f"'{accelerator}'; skipping default TPU labels."
+            )
+            return None
+        return {
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: f"TPU-{generation.upper()}",
+            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology,
+            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: infer_tpu_pod_type_from_topology(
+                topology, generation
+            ),
+        }
+
+    @staticmethod
+    def _is_positive_resource_value(value: Any) -> bool:
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value > 0
+        )
+
+    @staticmethod
+    def get_node_group_additional_resources(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, int]]:
+        """Derive TPU head resource (`TPU-<pod-type>-head`) for a TPU node group."""
+        if not TPUAcceleratorManager._is_positive_resource_value(
+            resources.get("TPU", 0)
+        ):
+            return None
+        (
+            generation,
+            accelerator,
+            topology,
+        ) = TPUAcceleratorManager._resolve_gke_tpu_selector(node_selector, annotations)
+        if not accelerator or not topology:
+            logger.error(
+                f"Pods using TPUs require `{GKE_TPU_ACCELERATOR_LABEL}` and either "
+                f"`{GKE_TPU_TOPOLOGY_LABEL}` node selector or "
+                f"`{GKE_TPU_SLICE_TOPOLOGY_ANNOTATION}` pod annotation. "
+                "See https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#configuring-kubernetes-pods-for-tpu-usage "
+                "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
+            )
+            return None
+        if generation and TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+            generation, topology
+        ):
+            pod_type = infer_tpu_pod_type_from_topology(topology, generation)
+            return {f"TPU-{pod_type}-head": 1}
+        return None
