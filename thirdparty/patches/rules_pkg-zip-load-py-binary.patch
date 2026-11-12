@@ -1,0 +1,12 @@
+diff -u pkg/private/zip/BUILD
+--- pkg/private/zip/BUILD
++++ pkg/private/zip/BUILD
+@@ -16,7 +16,7 @@
+ All interfaces are subject to change at any time.
+ """
+ 
+-load("@rules_python//python:defs.bzl", "py_library")
++load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+ 
+ package(default_applicable_licenses = ["//:license"])
+ 

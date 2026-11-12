@@ -141,8 +141,8 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
-load("@python3_10//:defs.bzl", python310 = "interpreter")
-load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
+# rules_python >= 1.0 no longer exports `interpreter` from defs.bzl; the host
+# interpreter is @<name>_host//:python.
 
 # The pip that whl_library shells out to, overridden ahead of the one rules_python
 # brings.
@@ -208,14 +208,15 @@ py_library(
     url = "https://files.pythonhosted.org/packages/ef/7d/500c9ad20238fcfcb4cb9243eede163594d7020ce87bd9610c9e02771876/pip-24.3.1-py3-none-any.whl",
 )
 
-pip_install_dependencies()
+# rules_python >= 1.0: py_repositories() (above) sets up what
+# pip_install_dependencies() used to.
 
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 # For CI scripts use only; not for ray testing.
 pip_parse(
     name = "py_deps_py310",
-    python_interpreter_target = python310,
+    python_interpreter_target = "@python3_10_host//:python",
     requirements_lock = "//release:requirements_py310.txt",
 )
 
@@ -224,6 +225,42 @@ load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps"
 install_py_deps_py310()
 
 register_toolchains("//bazel:py310_toolchain")
+
+# rules_python >= 1.0, as a module, registers its own hermetic interpreters
+# (@pythons_hub) for every platform. Ray's py_test targets have to run on the
+# Python found on PATH (CI images install pytest and Ray's deps there), which
+# is what rules_python 0.40's autodetecting toolchain gave.
+#
+# A local_runtime_repo inspects that Python at fetch time, so the toolchain it
+# provides knows its version and exposes its headers and libpython. That is
+# what rules_rust_pyo3 needs to build extensions; the bare runtime_env
+# toolchain has neither. WORKSPACE registrations take priority over non-root
+# modules', so this wins over @pythons_hub. on_failure = "warn" falls back to
+# the hermetic toolchain where no usable system Python exists.
+load("@rules_python//python/local_toolchains:repos.bzl", "local_runtime_repo", "local_runtime_toolchains_repo")
+
+local_runtime_repo(
+    name = "local_python3",
+    interpreter_path = "python3",
+    on_failure = "warn",
+)
+
+# Windows has no python3.exe; this one only gets used where python3 failed.
+local_runtime_repo(
+    name = "local_python",
+    interpreter_path = "python",
+    on_failure = "warn",
+)
+
+local_runtime_toolchains_repo(
+    name = "local_python3_toolchains",
+    runtimes = [
+        "local_python3",
+        "local_python",
+    ],
+)
+
+register_toolchains("@local_python3_toolchains//:all")
 
 register_execution_platforms(
     "@local_config_platform//:host",
