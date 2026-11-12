@@ -682,19 +682,19 @@ def test_non_json_file_past_the_sample_fails_its_read_task(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "payloads, last_type, combined_type, combined_first_row",
+    "payloads, last_fields, combined_type, combined_first_row",
     [
         (
             [{"seq": 0, "extra": "x"}],
-            # Ray's converter orders struct fields by name; unifying keeps the
-            # planned field first.
-            pa.struct([("extra", pa.string()), ("seq", pa.int64())]),
+            # pyarrow picks the 17th file's field order (it changed in 25);
+            # only the combined type's order is Ray's, so only it is asserted.
+            {"extra": pa.string(), "seq": pa.int64()},
             pa.struct([("seq", pa.int64()), ("extra", pa.string())]),
             {"seq": 0, "extra": None},
         ),
         (
             [{"seq": 0.5}],
-            pa.struct([("seq", pa.float64())]),
+            {"seq": pa.float64()},
             pa.struct([("seq", pa.float64())]),
             {"seq": 0.0},
         ),
@@ -702,7 +702,7 @@ def test_non_json_file_past_the_sample_fails_its_read_task(tmp_path):
     ids=["new_field", "int_to_float"],
 )
 def test_json_past_the_sample_is_typed_by_its_own_values(
-    tmp_path, payloads, last_type, combined_type, combined_first_row
+    tmp_path, payloads, last_fields, combined_type, combined_first_row
 ):
     """A 17th file's JSON is typed by its own values, not by the plan.
 
@@ -715,7 +715,8 @@ def test_json_past_the_sample_is_typed_by_its_own_values(
 
     tables = read_each_file(paths)
 
-    assert tables[paths[-1]].schema.field("data").type == last_type
+    last_type = tables[paths[-1]].schema.field("data").type
+    assert {f.name: f.type for f in last_type} == last_fields
     combined = concat([tables[paths[0]], tables[paths[-1]]], promote_types=True)
     assert combined.schema.field("data").type == combined_type
     # The first row comes from a sampled file, typed to the combined struct.
