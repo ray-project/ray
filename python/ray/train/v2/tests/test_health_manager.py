@@ -311,8 +311,8 @@ def test_evaluate_waits_for_the_on_demand_checks_before_another_diagnose():
     assert manager.evaluate(timeout=0) == diagnose
 
 
-def test_evaluate_keeps_a_diagnose_that_stops_the_workers_while_others_run():
-    diagnose = Diagnose(reason="slow", checks=[HealthCheck(stop_workers=True)])
+def test_evaluate_keeps_a_diagnose_that_requires_idle_workers_while_others_run():
+    diagnose = Diagnose(reason="slow", checks=[HealthCheck(requires_idle_workers=True)])
     manager = HealthManager([_check(evaluators=[Always(diagnose)])])
     _fake_temps(manager, [ProbeResult()])
     manager.start_on_demand_checks(

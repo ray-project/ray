@@ -331,7 +331,10 @@ class TrainController:
                     resources_per_worker=decision.resources_per_worker,
                 )
             except HealthCheckError as e:
-                # The pre-flight checks kept training from starting.
+                # Only HealthCallback.after_worker_group_start raises this: a
+                # pre-flight check that requires idle workers decided to
+                # Reattempt or Evict. WorkerGroup._start() shut down the
+                # started workers before re-raising it.
                 return self._execute_health_decision(e.decision)
 
         return TrainControllerLoopIterationResult(
@@ -758,14 +761,15 @@ class TrainController:
     def _execute_health_decision(
         self, decision: HealthDecision
     ) -> Optional[TrainControllerLoopIterationResult]:
-        """Act on a health decision about the worker group: a pre-flight one
-        while it starts, or one while it runs.
+        """Act on a health decision: from the pre-flight checks before
+        training, or from the in-flight checks or a ``Diagnose`` during
+        training.
 
         A ``Reattempt`` restarts the worker group through the failure policy,
         like a worker error. An ``Evict`` restarts it outside the failure
         policy. A ``Diagnose`` starts its checks while training continues, and
         a later ``HealthManager.evaluate()`` decides on their results. If a
-        check stops the workers, the ``Diagnose`` restarts the worker group
+        check requires idle workers, the ``Diagnose`` restarts the worker group
         outside the failure policy instead, and the checks run at the start of
         the next attempt, like pre-flight checks.
 
@@ -781,7 +785,7 @@ class TrainController:
 
         error = HealthCheckError(decision)
         if isinstance(decision, Diagnose):
-            if not any(check.stop_workers for check in decision.checks):
+            if not any(check.requires_idle_workers for check in decision.checks):
                 logger.info("Diagnosing while training continues: %s", decision.reason)
                 self._health_manager.start_on_demand_checks(decision.checks)
                 return None

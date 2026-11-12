@@ -40,7 +40,7 @@ class HealthCheckError(WorkerGroupError):
 
     Args:
         decision: The health decision: a ``Reattempt``, an ``Evict``, or a
-            ``Diagnose`` whose checks stop the workers.
+            ``Diagnose`` whose checks require idle workers.
     """
 
     def __init__(self, decision: HealthDecision):

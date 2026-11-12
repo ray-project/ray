@@ -52,7 +52,7 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
         TypeError: If a decision is not a ``Noop``, ``Reattempt``, ``Evict`` or
             ``Diagnose``.
     """
-    # TODO: Rank a Diagnose whose checks stop the workers above Reattempt.
+    # TODO: Rank a Diagnose whose checks require idle workers above Reattempt.
     evicts, reattempts, diagnoses = [], [], []
     for decision in decisions:
         if isinstance(decision, Evict):
@@ -159,8 +159,8 @@ class HealthManager:
     ) -> HealthDecision:
         """Evaluate the on-demand checks once they are back, and the in-flight
         checks. While on-demand checks run, an in-flight ``Diagnose`` is
-        dropped rather than start more, unless a check stops the workers: that
-        ``Diagnose`` restarts the worker group instead.
+        dropped rather than start more, unless a check requires idle workers:
+        that ``Diagnose`` restarts the worker group instead.
 
         Args:
             timeout: Timeout in seconds to wait for the in-flight checks' latest
@@ -175,7 +175,7 @@ class HealthManager:
         if on_demand_decision is None:
             on_demand_decision = Noop()
             if isinstance(inflight_decision, Diagnose) and not any(
-                check.stop_workers for check in inflight_decision.checks
+                check.requires_idle_workers for check in inflight_decision.checks
             ):
                 inflight_decision = Noop()
         return merge_decisions([on_demand_decision, inflight_decision])
@@ -237,6 +237,9 @@ class HealthManager:
         decision = self._decide(
             evaluators, _to_health_state(status, self._on_demand_probes)
         )
+        # The controller logs every other decision when it acts on it. A Noop
+        # has no action, so log here that the checks, such as a Diagnose's,
+        # are done and found nothing.
         if isinstance(decision, Noop):
             logger.info("The on-demand health checks found nothing to act on.")
         return decision

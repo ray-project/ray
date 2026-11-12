@@ -118,11 +118,11 @@ def test_diagnose_starts_its_checks_while_training_continues():
     assert [d.reason for d in callback.decisions] == ["slow"]
 
 
-def test_a_diagnose_that_stops_the_workers_restarts_outside_the_failure_policy():
+def test_a_diagnose_that_requires_idle_workers_restarts_outside_the_failure_policy():
     failure_policy = MockFailurePolicy(None)
     failure_policy.make_decision = MagicMock()
     controller, callback = _running_controller(failure_policy)
-    checks = [HealthCheck(stop_workers=True), HealthCheck()]
+    checks = [HealthCheck(requires_idle_workers=True), HealthCheck()]
     controller._health_manager.decisions = [Diagnose(reason="slow", checks=checks)]
 
     _step(controller)
@@ -217,11 +217,11 @@ def test_health_callback_resets_each_attempt():
 @pytest.mark.parametrize(
     "decision", [Noop(), Diagnose(reason="slow", checks=[])], ids=["noop", "diagnose"]
 )
-def test_training_starts_once_the_preflight_checks_that_stop_the_workers_decide(
+def test_training_starts_once_the_preflight_checks_that_require_idle_workers_decide(
     decision,
 ):
     health_manager = _health_manager(decision)
-    blocking, other = HealthCheck(stop_workers=True), HealthCheck()
+    blocking, other = HealthCheck(requires_idle_workers=True), HealthCheck()
     callback = HealthCallback(health_manager, preflight_checks=[other, blocking])
 
     callback.after_worker_group_start(_worker_group("a"))
@@ -232,7 +232,7 @@ def test_training_starts_once_the_preflight_checks_that_stop_the_workers_decide(
     health_manager.shutdown.assert_not_called()
 
 
-def test_preflight_checks_that_dont_stop_the_workers_run_alongside_training():
+def test_preflight_checks_that_dont_require_idle_workers_run_alongside_training():
     health_manager = _health_manager()
     check = HealthCheck()
     callback = HealthCallback(health_manager, preflight_checks=[check])
@@ -249,7 +249,7 @@ def test_preflight_checks_that_restart_keep_training_from_starting(decision):
     health_manager = _health_manager(decision)
     callback = HealthCallback(
         health_manager,
-        preflight_checks=[HealthCheck(stop_workers=True), HealthCheck()],
+        preflight_checks=[HealthCheck(requires_idle_workers=True), HealthCheck()],
     )
 
     with pytest.raises(HealthCheckError) as error:
@@ -261,8 +261,8 @@ def test_preflight_checks_that_restart_keep_training_from_starting(decision):
 
 def test_checks_for_the_next_start_run_once_with_the_preflight_checks():
     health_manager = _health_manager(Noop())
-    preflight = HealthCheck(stop_workers=True)
-    blocking, other = HealthCheck(stop_workers=True), HealthCheck()
+    preflight = HealthCheck(requires_idle_workers=True)
+    blocking, other = HealthCheck(requires_idle_workers=True), HealthCheck()
     callback = HealthCallback(health_manager, preflight_checks=[preflight])
     callback.run_at_next_start([blocking, other])
 

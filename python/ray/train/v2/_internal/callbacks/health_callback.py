@@ -18,7 +18,9 @@ class HealthCallback(WorkerGroupCallback):
     nodes while they run.
 
     Args:
-        health_manager: The run's ``HealthManager``.
+        health_manager: The run's ``HealthManager``. The ``TrainController``
+            creates it from ``RunConfig.health_config``, and evaluates its
+            checks while the attempt runs.
         preflight_checks: The checks to run once at the start of each attempt.
     """
 
@@ -49,7 +51,7 @@ class HealthCallback(WorkerGroupCallback):
             worker_group: The attempt's worker group.
 
         Raises:
-            HealthCheckError: If the checks that stop the workers decide to
+            HealthCheckError: If the checks that require idle workers decide to
                 ``Reattempt`` or ``Evict``, which keeps training from starting.
         """
         node_ids = {worker.metadata.node_id for worker in worker_group.get_workers()}
@@ -57,7 +59,7 @@ class HealthCallback(WorkerGroupCallback):
 
         checks = self._preflight_checks + self._next_start_checks
         self._next_start_checks = []
-        blocking_checks = [c for c in checks if c.stop_workers]
+        blocking_checks = [c for c in checks if c.requires_idle_workers]
         if blocking_checks:
             decision = self._health_manager.start_and_evaluate_on_demand_checks(
                 blocking_checks
@@ -66,7 +68,7 @@ class HealthCallback(WorkerGroupCallback):
                 self._health_manager.shutdown()
                 raise HealthCheckError(decision)
 
-        other_checks = [c for c in checks if not c.stop_workers]
+        other_checks = [c for c in checks if not c.requires_idle_workers]
         if other_checks:
             self._health_manager.start_on_demand_checks(other_checks)
 
