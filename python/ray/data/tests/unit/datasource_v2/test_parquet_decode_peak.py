@@ -279,6 +279,59 @@ def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
         assert all(size > plain_size for size, plain_size in zip(sizes, plain))
 
 
+def test_pin_leaves_out_the_columns_the_reader_appends():
+    """The pin is the reader's: no partition key or synthesized column, and none at
+    all, type options kept, for a schema of nothing else."""
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        FooterReader,
+    )
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    x, year, path = (
+        pa.field("x", pa.int64()),
+        pa.field("year", pa.string()),
+        pa.field("path", pa.string()),
+    )
+    options = {"dictionary_columns": ["x"]}
+
+    def pin(fields, partition_values):
+        reader = FooterReader(
+            LocalFileSystem(),
+            partitioning=Partitioning(PartitionStyle.HIVE),
+            read_schema=pa.schema(fields),
+            synthesized_columns=["path"],
+            format_kwargs=options,
+        )
+        return reader._pin(partition_values)
+
+    assert pin([x, year, path], {"year": "2024"}) == (pa.schema([x]), {})
+    assert pin([x, year, path], {}) == (pa.schema([x, year]), {})
+    assert pin([year, path], {"year": "2024"}) == (None, options)
+
+
+def test_partition_column_is_sized_by_its_value(tmp_path):
+    """A partition column's text is the path's value: a longer one sizes larger, and
+    neither counts for a read without partitioning."""
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    table = pa.table({"x": pa.array(np.arange(M, dtype="int64"))})
+    schema = table.schema.append(pa.field("year", pa.string()))
+    paths = []
+    for value in ("2024", "20242024"):
+        directory = tmp_path / f"year={value}"
+        directory.mkdir()
+        paths.append(directory / "data.parquet")
+        pq.write_table(table, paths[-1])
+    short, long = (
+        _sizes(path, read_schema=schema, partitioning=Partitioning(PartitionStyle.HIVE))
+        for path in paths
+    )
+    assert all(a < b for a, b in zip(short, long))
+    assert _sizes(paths[0], read_schema=schema) == _sizes(paths[1], read_schema=schema)
+
+
 def test_dotted_column_beside_its_prefix_counts_once(tmp_path):
     """A flat ``user.id`` beside ``user`` is sized once, as ``user_id`` would be."""
     sizes = []

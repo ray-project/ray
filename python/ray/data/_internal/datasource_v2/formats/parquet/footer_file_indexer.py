@@ -2,13 +2,25 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, AbstractSet, Deque, Iterable, Iterator, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Collection,
+    Deque,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+)
 
 import numpy as np
 import pyarrow as pa
 
 import ray
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
@@ -35,6 +47,7 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
+    from ray.data.datasource.partitioning import Partitioning
     from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
@@ -148,10 +161,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         small_shuffle_chunk_size: int = 0,
         format_kwargs: Optional[dict] = None,
         read_schema: Optional[pa.Schema] = None,
+        synthesized_columns: Collection[str] = (),
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
         result_batch_size: Optional[int] = None,
         max_inflight_batches: Optional[int] = None,
+        partitioning: Optional[Partitioning] = None,
+        logical_schema: Optional[pa.Schema] = None,
     ):
         super().__init__(
             ignore_missing_paths=ignore_missing_paths,
@@ -160,6 +176,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             max_paths_per_output=max_paths_per_output,
         )
         self._coalesce_bytes = coalesce_bytes
+        self._partitioning = partitioning
+        self._logical_schema = logical_schema
         # Coalesce target used instead of ``coalesce_bytes`` (when larger) for a
         # row-group shuffle, so the shuffle unit is a ~chunk-sized run rather
         # than a single, possibly tiny, row group.
@@ -168,6 +186,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         # kwargs and the dataset schema they cast to.
         self._format_kwargs = dict(format_kwargs or {})
         self._read_schema = read_schema
+        self._synthesized_columns = frozenset(synthesized_columns)
         # Every knob is re-read here rather than taken from the module-level
         # constant, so ``monkeypatch.setenv`` and release-test env overrides work
         # after this module has already been imported. An explicit ctor argument
@@ -236,6 +255,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
+            pruners=pruners,
             preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
@@ -250,6 +270,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: Optional["FileSystem"],
+        pruners: Optional[List["FilePruner"]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
@@ -258,6 +279,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
+        if pruners:
+            file_infos = (
+                info
+                for info in file_infos
+                if all(pruner.should_include(info.path) for pruner in pruners)
+            )
         if excluded_read_unit_ids:
             file_infos = (
                 info for info in file_infos if info.path not in excluded_read_unit_ids
@@ -269,6 +296,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
+            pruners=pruners,
             preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
@@ -283,6 +311,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: Optional["FileSystem"],
+        pruners: Optional[List["FilePruner"]],
         preserve_order: bool,
         predicate: Optional["Expr"],
         limit: Optional[int],
@@ -291,6 +320,14 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         execution_idx: int,
         excluded_read_unit_ids: Optional[AbstractSet[str]],
     ) -> Iterator[FileManifest]:
+        partition_pruner = next(
+            (
+                pruner
+                for pruner in pruners or []
+                if isinstance(pruner, PartitionPredicatePruner)
+            ),
+            None,
+        )
         shuffle_row_groups = (
             shuffle_config is not None and shuffle_config.small_chunks_shuffle
         )
@@ -305,8 +342,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 projected_columns,
                 coalesce_bytes,
                 excluded_read_unit_ids=excluded_read_unit_ids,
+                partitioning=self._partitioning,
+                partition_pruner=partition_pruner,
+                logical_schema=self._logical_schema,
                 format_kwargs=self._format_kwargs,
                 read_schema=self._read_schema,
+                synthesized_columns=self._synthesized_columns,
             )
             for _ in range(self._num_actors)
         ]

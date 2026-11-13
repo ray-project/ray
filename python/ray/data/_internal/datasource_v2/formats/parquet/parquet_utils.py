@@ -9,7 +9,7 @@ from ``ray.data._internal.util``, so it can be imported from anywhere without
 creating import cycles.
 """
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pyarrow as pa
 
@@ -34,6 +34,18 @@ _ARROW_CHUNK_LIMIT = 2 * GiB
 READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
 
 
+# ``ParquetFileFormat`` options that only change the Arrow types of a read.
+_TYPE_OPTIONS = ("dictionary_columns", "binary_type", "list_type")
+
+
+def read_format_kwargs(kwargs: Dict[str, Any], casts: bool) -> Dict[str, Any]:
+    """The ``ParquetFileFormat`` kwargs a read task passes. A read that casts to the
+    schema drops the type options, which the cast undoes."""
+    if not casts:
+        return dict(kwargs)
+    return {k: v for k, v in kwargs.items() if k not in _TYPE_OPTIONS}
+
+
 def check_for_legacy_tensor_type(schema: pa.Schema) -> None:
     """Check for the legacy tensor extension type and raise an error if found.
 
@@ -43,17 +55,15 @@ def check_for_legacy_tensor_type(schema: pa.Schema) -> None:
     default.
     """
     for name, type in zip(schema.names, schema.types):
-        if isinstance(type, pa.UnknownExtensionType) and isinstance(
-            type, pa.PyExtensionType
-        ):
+        if isinstance(type, pa.UnknownExtensionType):
             raise RuntimeError(
                 f"Ray Data couldn't infer the type of column '{name}' (got "
                 f"`UnknownExtensionType` with pickled class ref "
                 f"'{type.__arrow_ext_serialize__()}'). This might mean you're trying "
                 f"to read data written with an older version of Ray. Reading data "
                 f"written with older versions of Ray might expose you to arbitrary code "
-                f"execution. To try reading the data anyway, "
-                f"preset `RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
+                f"execution. To try reading the data anyway, install pyarrow < 21 and "
+                f"preset `RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes. "
                 "To learn more, see https://github.com/ray-project/ray/issues/41314."
             )
 
