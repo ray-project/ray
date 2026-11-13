@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Optional
 from unittest.mock import create_autospec
@@ -303,6 +304,68 @@ async def test_scoreless_checkpoint_is_worst_in_min_mode(tmp_path, validation_re
     assert (
         checkpoint_manager.best_checkpoint_result.checkpoint == best_report.checkpoint
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        ReportedCheckpointStatus.VALIDATED,
+        ReportedCheckpointStatus.VALIDATION_FAILED,
+        ReportedCheckpointStatus.VALIDATION_TIMEOUT,
+    ],
+)
+async def test_missing_score_attribute_logging(
+    tmp_path, caplog, propagate_logs, status
+):
+    """A checkpoint that lacks the score attribute because its validation is
+    pending, failed or timed out is expected, so it is not logged as an error.
+    A finalized checkpoint without the attribute is a misconfiguration and is
+    logged once, however many times it is scored."""
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="missing_score_attribute_logging_experiment",
+    )
+    checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(
+            checkpoint_score_attribute="score",
+            checkpoint_score_order="min",
+        ),
+    )
+    reports = create_dummy_training_reports(
+        num_results=6, storage_context=storage_context
+    )
+    pending_report = reports[1]
+    pending_report.metrics = {}
+    pending_report.validation = ValidationTaskConfig()
+    reports[4].metrics = {}  # Reported without the attribute or a validation.
+
+    def missing_score_errors():
+        return [
+            r
+            for r in caplog.records
+            if "missing the checkpoint_score_attribute key (score)" in r.message
+        ]
+
+    with caplog.at_level(
+        logging.ERROR, logger="ray.train._internal.checkpoint_manager"
+    ):
+        for report in reports[:3]:
+            checkpoint_manager.register_checkpoint(report)
+        assert not missing_score_errors()
+
+        # A validation that doesn't return the attribute is a misconfiguration.
+        checkpoint_manager.update_checkpoints_with_validation_result(
+            {pending_report.checkpoint: ({}, status)}
+        )
+        checkpoint_manager.register_checkpoint(reports[3])
+        expected = 1 if status == ReportedCheckpointStatus.VALIDATED else 0
+        assert len(missing_score_errors()) == expected
+
+        for report in reports[4:]:
+            checkpoint_manager.register_checkpoint(report)
+        assert len(missing_score_errors()) == expected + 1
 
 
 @pytest.mark.asyncio
