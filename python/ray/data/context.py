@@ -172,6 +172,10 @@ def _deduce_default_enable_disk_shuffle() -> bool:
 
 DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
+DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION = env_bool(
+    "RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION", True
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -714,21 +718,18 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
-            ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
-            Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
-            (``0`` for V1, ``1`` for V2).
+        use_datasource_v2: When True, ``ray.data.read_parquet()``,
+            ``ray.data.read_orc()`` and ``ray.data.read_mcap()`` route through
+            the DataSourceV2 pipeline. Defaults to True; override with
+            ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for V2).
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
             runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
             Contiguous row groups are coalesced up to this size; a single row group
             larger than it is shuffled on its own.
         orc_statistics_pruning: ORC DataSourceV2 statistics pruning mode.
-            ``file`` (default) skips files proven not to match while keeping
-            surviving files on the streaming reader. ``stripe`` additionally
-            skips stripes inside each file task, but PyArrow materializes each
-            retained stripe before batching and can use substantially more memory.
-            ``off`` disables additional statistics reads. Unsupported or missing
-            statistics fall back to the existing streaming reader in both modes.
+            ``off`` (default) disables additional statistics reads. ``file`` skips
+            files proven not to match and streams surviving files. Missing or
+            untrustworthy statistics fall back to the existing streaming reader.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -928,6 +929,11 @@ class DataContext:
             environment variable (``False`` when unset). Deprecated
             aliases: ``use_external_hash_shuffle`` and the
             ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
+        enable_aggregate_shuffle_elimination: Whether a group-by skips its shuffle
+            when its input is already hash-partitioned on its keys under the
+            ``SHUFFLE_V2`` strategy, e.g. right after a join on those keys.
+            Defaults to the ``RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION``
+            environment variable (``True`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -1089,6 +1095,12 @@ class DataContext:
     # When False, use the object-store path.
     use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
 
+    # Whether EliminateAggregateShuffle may skip a group-by's shuffle when its
+    # input is already hash-partitioned on its keys (SHUFFLE_V2 only).
+    enable_aggregate_shuffle_elimination: bool = (
+        DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION
+    )
+
     ################################################################
     # GPU Shuffle configuration
     ################################################################
@@ -1120,7 +1132,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    orc_statistics_pruning: str = "file"
+    orc_statistics_pruning: str = "off"
     small_shuffle_chunk_size: int = DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
@@ -1269,10 +1281,8 @@ class DataContext:
         self._execution_idx = 0
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name == "orc_statistics_pruning" and value not in ("off", "file", "stripe"):
-            raise ValueError(
-                "orc_statistics_pruning must be 'off', 'file', or 'stripe'"
-            )
+        if name == "orc_statistics_pruning" and value not in ("off", "file"):
+            raise ValueError("orc_statistics_pruning must be 'off' or 'file'")
         if name == "scheduling_strategy" and (
             name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY
         ):

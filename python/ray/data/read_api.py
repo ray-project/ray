@@ -146,6 +146,7 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
+    from deltalake import DeltaTable
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
@@ -592,12 +593,14 @@ def _read_datasource_v2(
         filesystem = datasource.filesystem
         file_extensions = datasource.file_extensions
         shuffle = datasource.shuffle
+        source_paths = datasource.source_paths
     elif isinstance(datasource, DataSourceWithMetadata):
         # The source's own indexer finds the data: nothing to walk, nothing to
         # filter by extension, no file shuffle.
         filesystem = None
         file_extensions = None
         shuffle = None
+        source_paths = datasource.paths
     else:
         raise TypeError(
             f"{type(datasource).__name__} extends DataSourceV2 directly. Extend "
@@ -734,7 +737,7 @@ def _read_datasource_v2(
         paths=list(datasource.paths),
         file_indexer=indexer,
         filesystem=filesystem,
-        source_paths=list(datasource.paths),
+        source_paths=list(source_paths),
         prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
@@ -3407,6 +3410,8 @@ def read_mcap(
     time_range: Optional[Union[Tuple[int, int], TimeRange]] = None,
     message_types: Optional[Union[List[str], Set[str]]] = None,
     include_metadata: bool = True,
+    log_time_order: bool = True,
+    include_row_id: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -3434,6 +3439,36 @@ def read_mcap(
     MCAP is a format commonly used in robotics and autonomous systems for storing
     ROS2 messages and other time-series data. This reader provides predicate pushdown
     optimization for efficient filtering by topics, time ranges, and message types.
+
+    Each row is one message. The ``data`` column holds decoded JSON values when
+    every selected topic is JSON-encoded, and the raw payload bytes otherwise.
+    To decode the JSON topics of a recording that also has other encodings,
+    select them with ``topics`` or ``message_types``. JSON values are typed from
+    the values each read task holds: a field that only some files have is null
+    in the other rows, and a field whose type differs between files, such as a
+    number in one and a string in another, fails where their rows are combined.
+    On the V2 datasource, ``Dataset.schema()`` types them before reading, from
+    the selected messages of the first chunk that holds one. A field that first
+    appears in a later chunk or file is missing from that schema.
+
+    By default, ``read_mcap`` reads through the V2 datasource
+    (``DataContext.use_datasource_v2``). Its rows differ from the legacy reader's
+    in three ways:
+
+    - ``schema_data`` and the new ``channel_metadata`` column are
+      dictionary-encoded, so a block stores each channel's values once. pandas
+      shows them as category columns. Cast them to ``binary`` and ``string``
+      before you group by them or write blocks from several read tasks into one
+      Arrow IPC file. Cast ``schema_data`` before you mix this output with the
+      legacy reader's in one Parquet folder.
+    - A large file is split across read tasks. Its messages keep ``log_time``
+      order across the whole file, and files come out in the order they were
+      listed, only with ``DataContext.execution_options.preserve_order``.
+    - ``override_num_blocks`` has no effect.
+
+    To use the legacy reader, set ``DataContext.get_current().use_datasource_v2``
+    to ``False`` or set ``RAY_DATA_USE_DATASOURCE_V2=0``. This also moves
+    ``read_parquet`` back to its legacy reader.
 
     Examples:
         :noindex:
@@ -3478,6 +3513,14 @@ def read_mcap(
         ...     include_paths=True # doctest: +SKIP
         ... ) # doctest: +SKIP
 
+        Store ``schema_data`` as plain bytes, as the legacy reader does.
+
+        >>> import pyarrow as pa # doctest: +SKIP
+        >>> def plain_schema_data(t: pa.Table) -> pa.Table: # doctest: +SKIP
+        ...     i = t.schema.get_field_index("schema_data") # doctest: +SKIP
+        ...     return t.set_column(i, "schema_data", t["schema_data"].cast(pa.binary())) # doctest: +SKIP
+        >>> ds = ds.map_batches(plain_schema_data, batch_format="pyarrow") # doctest: +SKIP
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -3490,6 +3533,38 @@ def read_mcap(
             include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
             Defaults to True. When True, includes schema, channel, and message metadata.
+            On the V2 datasource, ``channel_metadata`` holds each channel's
+            metadata map as JSON text with sorted keys, such as ROS 2's
+            ``offered_qos_profiles``; read it with ``json.loads``. It and
+            ``schema_data`` are dictionary-encoded, so a block stores each of a
+            channel's values once.
+        log_time_order: Whether each file's messages come out in ascending
+            ``log_time`` order. Defaults to True. Messages with equal log times
+            keep the order they were written in. If False, messages come in the
+            order they were written. ``False`` requires the V2 datasource. On
+            the V2 datasource (``DataContext.use_datasource_v2``), a read task
+            holds about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of estimated read
+            memory (128 MiB by default). A large file is split across several
+            tasks, and small files can share one. Each task returns each of its
+            files in order, but tasks finish in any order, so a split file is in
+            order only within each task. With
+            ``DataContext.execution_options.preserve_order``, files come out in
+            the order they were listed, and with ``log_time_order`` they are not
+            split: each file is read by one task, so it comes out in order from
+            start to end. That task holds the chunks that overlap in time
+            together, so a file whose chunks all overlap is held whole. A file
+            without a chunk index is always read by one task, which holds its
+            selected messages in memory to sort them.
+        include_row_id: If ``True``, add a ``row_id`` column with a deterministic
+            id per message, built from the file path and the message's position
+            in the file. A message gets the same id on every run, however the
+            read is split into tasks, so the column can serve as the
+            ``id_column`` of a :class:`~ray.data.checkpoint.CheckpointConfig`.
+            Turned on automatically when the current checkpoint config's
+            ``id_column`` is ``row_id``. Requires the V2 datasource
+            (``DataContext.use_datasource_v2``). ``read_mcap`` refuses
+            ``CheckpointConfig(generated_id_column=...)``, which only
+            ``read_parquet`` supports.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -3516,7 +3591,9 @@ def read_mcap(
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
-            value in most cases.
+            value in most cases. The V2 datasource ignores it and logs a warning: it
+            sizes each read task by bytes instead, about 128 MiB by default
+            (``RAY_DATA_MCAP_BIN_PACKING_BYTES``).
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -3545,6 +3622,82 @@ def read_mcap(
                 f"{time_range}"
             )
         time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
+
+    ctx = DataContext.get_current()
+    checkpoint_config = ctx.checkpoint_config
+    if checkpoint_config is not None and checkpoint_config.has_generated_id_column:
+        from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+        raise InvalidCheckpointingConfig(
+            "`CheckpointConfig(generated_id_column=...)` works only with "
+            "`read_parquet`. For `read_mcap`, use "
+            '`CheckpointConfig(id_column="row_id")`. Its `row_id` column gives '
+            "each message an id that stays the same on every run."
+        )
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+        ROW_ID_COLUMN,
+    )
+
+    if checkpoint_config is not None and checkpoint_config.id_column == ROW_ID_COLUMN:
+        # A checkpoint keyed on ``row_id`` needs the column in the read output.
+        include_row_id = True
+    if ctx.use_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+            _BIN_PACKING_BYTES,
+            MCAPDatasourceV2,
+        )
+
+        num_blocks = _get_num_output_blocks(parallelism, override_num_blocks)
+        if num_blocks != -1:
+            given = (
+                "parallelism" if override_num_blocks is None else "override_num_blocks"
+            )
+            logger.warning(
+                f"`read_mcap` ignores `{given}` with the V2 datasource. It sizes "
+                f"each read task by bytes instead, about "
+                f"{_BIN_PACKING_BYTES / 2**20:g} MiB "
+                "(RAY_DATA_MCAP_BIN_PACKING_BYTES)."
+            )
+        datasource_v2 = MCAPDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            topics=topics,
+            time_range=time_range,
+            message_types=message_types,
+            include_metadata=include_metadata,
+            log_time_order=log_time_order,
+            include_row_id=include_row_id,
+            include_paths=include_paths,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            partition_filter=partition_filter,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=num_blocks,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
+
+    if not log_time_order or include_row_id:
+        raise NotImplementedError(
+            "`log_time_order=False`, `include_row_id` and a checkpoint keyed on "
+            "`row_id` on `read_mcap` require the V2 datasource. Enable it with "
+            "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
 
     datasource = MCAPDatasource(
         paths,
@@ -4762,8 +4915,7 @@ def read_hudi(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from an
+    """Create a :class:`~ray.data.Dataset` from an
     `Apache Hudi table <https://hudi.apache.org>`_.
 
     Examples:
@@ -5408,8 +5560,7 @@ def read_delta_sharing_tables(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Read data from a Delta Sharing table.
+    """Read data from a Delta Sharing table.
     Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
 
     This function reads data from a Delta Sharing table specified by the URL.
@@ -5960,8 +6111,7 @@ def read_lance(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from one or more
+    """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
@@ -6087,8 +6237,7 @@ def read_clickhouse(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+    """Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
 
     Examples:
         >>> import ray
@@ -6296,6 +6445,9 @@ def read_delta(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     catalog: Optional["Catalog"] = None,
     columns: Optional[List[str]] = None,
+    partition_filters: Optional[
+        Union[List[Tuple[str, str, Any]], List[List[Tuple[str, str, Any]]]]
+    ] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -6325,6 +6477,12 @@ def read_delta(
     - Column statistics from the Delta log for row-group pruning
     - Authentication via ``storage_options``
 
+    .. note::
+
+        Tables with column mapping (``delta.columnMapping.mode`` set to
+        ``name`` or ``id``) aren't supported yet, and ``read_delta`` raises
+        ``NotImplementedError`` for them.
+
     Examples:
 
         Read a local Delta table:
@@ -6347,6 +6505,13 @@ def read_delta(
         >>> ds = ray.data.read_delta(  # doctest: +SKIP
         ...     "az://container/delta-table/",
         ...     storage_options={"use_azure_cli": "true"},
+        ... )
+
+        Read only the files of one partition:
+
+        >>> ds = ray.data.read_delta(  # doctest: +SKIP
+        ...     "s3://bucket/delta-table/",
+        ...     partition_filters=[("date", "=", "2026-01-02")],
         ... )
 
     Args:
@@ -6378,6 +6543,14 @@ def read_delta(
             the catalog resolves the physical location and credentials.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
+        partition_filters: Filters on the table's partition columns, so only the
+            matching partitions' files are listed and read. Uses ``deltalake``'s
+            tuple format: ``(column, op, value)`` with ``op`` one of ``=``,
+            ``!=``, ``<``, ``<=``, ``>``, ``>=``, ``in`` and ``not in``. A flat
+            list of tuples is an AND of them, and a list of such lists is an OR
+            of the inner ANDs (this form needs ``deltalake`` 1.6.6 or later).
+            Every column must be a partition column, so the result is exact. To
+            filter on other columns, use :meth:`~ray.data.Dataset.filter`.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -6462,8 +6635,33 @@ def read_delta(
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
+    # The data files of a column-mapped table name their columns with physical
+    # names (such as ``col-<uuid>``) that only the log maps to the table's
+    # column names. ``to_pyarrow_dataset`` doesn't apply that mapping, and some
+    # deltalake versions (1.6.4 to 1.6.6) don't reject the table either, so the
+    # columns read back as nulls. Check the table property rather than the
+    # protocol: reader 2 / writer 5 tables declare no reader features.
+    column_mapping_mode = (dt.metadata().configuration or {}).get(
+        "delta.columnMapping.mode"
+    ) or "none"
+    if column_mapping_mode.lower() != "none":
+        raise NotImplementedError(
+            "This Delta table uses column mapping (`delta.columnMapping.mode` is "
+            f"{column_mapping_mode!r}), which `ray.data.read_delta` doesn't "
+            "support yet. Its data files store columns under physical names that "
+            "only the Delta log maps to the table's column names, so reading "
+            "them would return nulls or wrong columns. Follow "
+            "https://github.com/ray-project/ray/issues/64854 for support."
+        )
+    partition_filter_kwargs = (
+        _delta_partition_filter_kwargs(dt, partition_filters)
+        if partition_filters is not None
+        else {}
+    )
     try:
-        pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
+        pa_dataset = dt.to_pyarrow_dataset(
+            filesystem=filesystem, **partition_filter_kwargs
+        )
     except Exception as e:
         error_msg = str(e)
         # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
@@ -6508,6 +6706,7 @@ def read_delta(
         to_batch_kwargs=arrow_parquet_args if arrow_parquet_args else None,
         shuffle=shuffle,
         include_paths=include_paths,
+        known_file_sizes=_delta_file_sizes(dt),
     )
 
     return read_datasource(
@@ -6775,3 +6974,96 @@ def _get_num_output_blocks(
     elif override_num_blocks is not None:
         parallelism = override_num_blocks
     return parallelism
+
+
+def _delta_partition_filter_kwargs(
+    dt: "DeltaTable",
+    partition_filters: Union[
+        List[Tuple[str, str, Any]], List[List[Tuple[str, str, Any]]]
+    ],
+) -> Dict[str, Any]:
+    """The ``to_pyarrow_dataset`` argument that applies ``partition_filters``.
+
+    deltalake 1.6.6 added ``file_pruning_predicate``, which takes an AND list
+    or an OR of AND lists, and deprecated ``partitions``, which older versions
+    use and which only takes an AND list.
+
+    Args:
+        dt: The table being read.
+        partition_filters: ``read_delta``'s ``partition_filters``.
+
+    Returns:
+        Keyword arguments for ``DeltaTable.to_pyarrow_dataset``.
+    """
+    from deltalake import DeltaTable
+
+    if not isinstance(partition_filters, list) or not partition_filters:
+        raise ValueError(
+            "`partition_filters` must be a non-empty list of (column, op, value) "
+            "tuples, or a list of such lists."
+        )
+    is_dnf = all(isinstance(group, list) for group in partition_filters)
+    groups = partition_filters if is_dnf else [partition_filters]
+    partition_columns = set(dt.metadata().partition_columns)
+    for group in groups:
+        if not isinstance(group, list) or not group:
+            raise ValueError(
+                "`partition_filters` must be a list of (column, op, value) tuples, "
+                f"or a list of such lists; got {partition_filters!r}."
+            )
+        for condition in group:
+            if not isinstance(condition, tuple) or len(condition) != 3:
+                raise ValueError(
+                    "Each partition filter must be a (column, op, value) tuple; "
+                    f"got {condition!r}."
+                )
+            # deltalake also accepts other columns, but prunes those only by
+            # file statistics, so non-matching rows would come back. Keep the
+            # result exact.
+            if condition[0] not in partition_columns:
+                raise ValueError(
+                    "`partition_filters` can only use partition columns, but "
+                    f"{condition[0]!r} isn't one (partition columns: "
+                    f"{sorted(partition_columns)}). Use `Dataset.filter` to "
+                    "filter on other columns."
+                )
+
+    parameters = inspect.signature(DeltaTable.to_pyarrow_dataset).parameters
+    if "file_pruning_predicate" in parameters:
+        return {"file_pruning_predicate": partition_filters}
+    if is_dnf:
+        raise ValueError(
+            "`partition_filters` with OR groups (a list of lists) needs deltalake "
+            "1.6.6 or later. Upgrade deltalake, or pass a single list of "
+            "conditions to AND them."
+        )
+    return {"partitions": partition_filters}
+
+
+def _delta_file_sizes(dt: "DeltaTable") -> Dict[str, int]:
+    """File sizes from the Delta log, keyed by ``to_pyarrow_dataset`` fragment path.
+
+    Lets the reader skip a ``get_file_info`` call (one request on object
+    storage) per file. The log stores paths URL-encoded once more than the
+    fragment paths ``to_pyarrow_dataset`` builds, so they're decoded once.
+
+    Args:
+        dt: The table being read.
+
+    Returns:
+        A map from fragment path to file size in bytes.
+    """
+    import urllib.parse
+
+    import pyarrow as pa
+
+    # deltalake 1.x returns an arro3-core table; ``pa.table`` converts it
+    # through the Arrow C stream interface.
+    actions = pa.table(dt.get_add_actions(flatten=True)).select(["path", "size_bytes"])
+    return {
+        urllib.parse.unquote(path): size
+        for path, size in zip(
+            actions["path"].to_pylist(), actions["size_bytes"].to_pylist()
+        )
+        if path is not None and size is not None
+    }

@@ -1,128 +1,21 @@
-"""Bounded, best-effort ORC tail statistics. Data I/O errors still propagate."""
+"""Conservative file statistics from Arrow's serialized ORC footer."""
 
 import re
-import zlib
 from dataclasses import dataclass
-from typing import Dict, Optional, Protocol, Tuple
+from typing import Any, Dict, Optional, cast
 
-import pyarrow as pa
 from google.protobuf.message import DecodeError
+from pyarrow import orc
 
-from ray.data._internal.datasource_v2.formats.orc.orc_proto import (
-    Footer,
-    Metadata,
-    PostScript,
+from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator import (
+    _file_tail_message_type,
 )
 
-# Bounds apply independently to Footer and Metadata. Files exceeding them
-# simply use the existing streaming reader, including in default file mode.
-_MAX_ENCODED = 16 * 1024 * 1024
-_MAX_DECODED = 64 * 1024 * 1024
-_MAX_BLOCK = 4 * 1024 * 1024
+_MAX_TAIL_BYTES = 64 * 1024 * 1024
 
 
 class MetadataUnavailable(ValueError):
-    """The tail cannot be used for pruning; retain the original read unit."""
-
-
-def _parse(message_type, data):
-    message = message_type()
-    try:
-        message.ParseFromString(data)
-    except (DecodeError, UnicodeDecodeError) as exc:
-        raise MetadataUnavailable("Invalid ORC metadata protobuf") from exc
-    return message
-
-
-def _snappy_length(data: bytes) -> int:
-    # The raw Snappy format starts with a uint32 varint uncompressed length.
-    # Arrow requires this exact size, rather than an output-buffer capacity.
-    value = 0
-    for index, byte in enumerate(data[:5]):
-        value |= (byte & 127) << (7 * index)
-        if byte < 128:
-            if value > 0xFFFFFFFF:
-                break
-            return value
-    raise MetadataUnavailable("Invalid raw Snappy length")
-
-
-def _decode_block(data: bytes, codec: int, capacity: int) -> bytes:
-    try:
-        if codec == 1:
-            decoder = zlib.decompressobj(-15)
-            result = decoder.decompress(data, capacity + 1)
-            if not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
-                raise MetadataUnavailable("Invalid or oversized raw DEFLATE block")
-        elif codec == 2:
-            length = _snappy_length(data)
-            if length > capacity:
-                raise MetadataUnavailable("Oversized raw Snappy block")
-            result = pa.Codec("snappy").decompress(data, length, asbytes=True)
-        elif codec == 4:
-            # Unlike size-prefixed or auto-detecting block APIs, specifying
-            # uncompressed_size selects strictly raw LZ4 and returns actual bytes.
-            import lz4.block
-
-            try:
-                result = lz4.block.decompress(data, uncompressed_size=capacity)
-            except lz4.block.LZ4BlockError as exc:
-                raise MetadataUnavailable("Invalid raw LZ4 block") from exc
-        elif codec == 5:
-            with pa.CompressedInputStream(pa.BufferReader(data), "zstd") as stream:
-                result = stream.read(capacity + 1)
-        else:
-            raise MetadataUnavailable("Unsupported ORC compression")
-    # Arrow's memory-only codec stream reports malformed frames as OSError.
-    # File reads happen outside this scope and their OSErrors must propagate.
-    except (
-        ImportError,
-        ValueError,
-        RuntimeError,
-        OSError,
-        zlib.error,
-        pa.ArrowException,
-    ) as exc:
-        raise MetadataUnavailable("ORC metadata codec unavailable or invalid") from exc
-    if len(result) > capacity:
-        raise MetadataUnavailable("Oversized ORC metadata block")
-    return result
-
-
-def _decode(data: bytes, codec: int, block_size: int) -> bytes:
-    if codec == 0:
-        if len(data) > _MAX_DECODED:
-            raise MetadataUnavailable("Oversized uncompressed ORC metadata")
-        return data
-    if codec not in (1, 2, 4, 5) or not 0 < block_size <= _MAX_BLOCK:
-        raise MetadataUnavailable("Unsupported codec or block size")
-    output = bytearray()
-    offset = 0
-    while offset < len(data):
-        if len(data) - offset < 3:
-            raise MetadataUnavailable("Truncated ORC compression header")
-        header = int.from_bytes(data[offset : offset + 3], "little")
-        offset += 3
-        length = header >> 1
-        if not length or length > block_size or offset + length > len(data):
-            raise MetadataUnavailable("Invalid ORC compression block length")
-        block = data[offset : offset + length]
-        offset += length
-        if not header & 1:
-            block = _decode_block(block, codec, block_size)
-        if len(output) + len(block) > _MAX_DECODED:
-            raise MetadataUnavailable("Oversized decoded ORC metadata")
-        output.extend(block)
-    return bytes(output)
-
-
-def _read(source, offset: int, length: int) -> bytes:
-    if length < 0 or length > _MAX_ENCODED or offset < 3:
-        raise MetadataUnavailable("Invalid ORC tail range")
-    data = source.read_at(length, offset)
-    if len(data) != length:
-        raise MetadataUnavailable("Truncated ORC tail")
-    return data
+    """Statistics cannot safely establish that a file can be skipped."""
 
 
 @dataclass(frozen=True)
@@ -134,24 +27,10 @@ class ColumnStatistics:
     true_count: Optional[int] = None
 
 
-class _PostScriptFields(Protocol):
-    metadata_length: int
-    compression: int
-    compression_block_size: int
-
-    def HasField(self, name: str) -> bool:
-        ...
-
-
 @dataclass(frozen=True)
 class OrcMetadata:
     rows: int
-    stripes: Tuple[Tuple[int, int, int], ...]
-    columns: Dict[str, Tuple[int, int]]
     statistics: Dict[str, ColumnStatistics]
-    postscript: _PostScriptFields
-    metadata_offset: int
-    string_statistics_safe: bool
 
 
 def _statistics(raw, rows, columns, string_safe):
@@ -210,33 +89,44 @@ def _statistics(raw, rows, columns, string_safe):
 
 
 def read_metadata(source) -> OrcMetadata:
-    size = source.size()
-    if size < 4:
-        raise MetadataUnavailable("Not an ORC file")
-    ps_length = _read(source, size - 1, 1)[0]
-    ps_offset = size - 1 - ps_length
-    ps = _parse(PostScript, _read(source, ps_offset, ps_length))
+    # Opening the Arrow reader can perform I/O; errors there must propagate.
+    reader = orc.ORCFile(source)
+    get_tail = getattr(getattr(reader, "reader", None), "serialized_file_tail", None)
+    if not callable(get_tail):
+        raise MetadataUnavailable("Serialized ORC footer is unavailable")
+    try:
+        data = get_tail()
+    except NotImplementedError as exc:
+        raise MetadataUnavailable("Serialized ORC footer is unsupported") from exc
+    if not isinstance(data, bytes) or len(data) > _MAX_TAIL_BYTES:
+        raise MetadataUnavailable("Invalid or oversized serialized ORC footer")
+    try:
+        tail = cast(Any, _file_tail_message_type().FromString(data))
+    except (DecodeError, UnicodeDecodeError) as exc:
+        raise MetadataUnavailable("Invalid ORC footer protobuf") from exc
+    if not tail.HasField("footer") or not tail.HasField("postscript"):
+        raise MetadataUnavailable("Incomplete serialized ORC tail")
+    footer, ps = tail.footer, tail.postscript
     if (
         not ps.HasField("magic")
         or ps.magic != "ORC"
         or tuple(ps.version) != (0, 12)
         or not ps.HasField("footer_length")
-        or not ps.HasField("compression")
         or ps.stripe_statistics_length
+        or not tail.HasField("file_length")
+        or not tail.HasField("postscript_length")
+        or tail.file_length != source.size()
     ):
         raise MetadataUnavailable("Unsupported ORC tail version/layout")
-    footer_offset = ps_offset - ps.footer_length
-    metadata_offset = footer_offset - ps.metadata_length
+    metadata_offset = (
+        tail.file_length
+        - 1
+        - tail.postscript_length
+        - ps.footer_length
+        - ps.metadata_length
+    )
     if metadata_offset < 3:
         raise MetadataUnavailable("ORC tail overlaps header")
-    footer = _parse(
-        Footer,
-        _decode(
-            _read(source, footer_offset, ps.footer_length),
-            ps.compression,
-            ps.compression_block_size,
-        ),
-    )
     if (
         footer.HasField("encryption")
         or not footer.HasField("number_of_rows")
@@ -284,8 +174,8 @@ def read_metadata(source) -> OrcMetadata:
         columns[name] = (index, footer.types[index].kind)
     if len(set(root.subtypes)) != len(root.subtypes):
         raise MetadataUnavailable("Duplicate ORC type id")
-    stripes = []
     previous_end = 3
+    stripe_rows = 0
     for stripe in footer.stripes:
         if not all(
             stripe.HasField(name)
@@ -306,45 +196,17 @@ def read_metadata(source) -> OrcMetadata:
         )
         if stripe.offset < previous_end or end > metadata_offset:
             raise MetadataUnavailable("Overlapping ORC stripe ranges")
-        stripes.append((stripe.offset, end, stripe.number_of_rows))
         previous_end = end
-    if sum(stripe[2] for stripe in stripes) != footer.number_of_rows:
-        raise MetadataUnavailable("Inconsistent ORC row counts")
-    # Java 2.2.1 compares complete UTF-8 bytes, including embedded NUL, and
-    # distinguishes exact min/max from truncated bounds. C++ strncmp-based
-    # string statistics do not satisfy this qualification.
+        stripe_rows += stripe.number_of_rows
+    if (
+        stripe_rows != footer.number_of_rows
+        or reader.nrows != footer.number_of_rows
+        or reader.nstripes != len(footer.stripes)
+    ):
+        raise MetadataUnavailable("Inconsistent ORC row or stripe counts")
+    # Only this qualified Java writer is known to emit exact, ordered bounds.
     string_safe = footer.writer == 0 and version == (2, 2, 1) and ps.writer_version == 9
     return OrcMetadata(
         footer.number_of_rows,
-        tuple(stripes),
-        columns,
         _statistics(footer.statistics, footer.number_of_rows, columns, string_safe),
-        ps,
-        metadata_offset,
-        string_safe,
-    )
-
-
-def read_stripe_statistics(source, metadata: OrcMetadata):
-    ps = metadata.postscript
-    if not ps.HasField("metadata_length") or not ps.metadata_length:
-        raise MetadataUnavailable("Missing ORC stripe statistics")
-    raw = _parse(
-        Metadata,
-        _decode(
-            _read(source, metadata.metadata_offset, ps.metadata_length),
-            ps.compression,
-            ps.compression_block_size,
-        ),
-    )
-    if len(raw.stripe_stats) != len(metadata.stripes):
-        raise MetadataUnavailable("Incomplete ORC stripe statistics")
-    return tuple(
-        _statistics(
-            stats.col_stats,
-            stripe[2],
-            metadata.columns,
-            metadata.string_statistics_safe,
-        )
-        for stats, stripe in zip(raw.stripe_stats, metadata.stripes)
     )

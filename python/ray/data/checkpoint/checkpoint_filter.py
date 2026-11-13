@@ -428,16 +428,27 @@ class IdColumnCheckpointManager(CheckpointManager):
     """Manager for regular ID columns."""
 
 
+# Arrow type of the grouping keys that ``_add_file_key_columns`` builds.
+#
+# The keys repeat a file's directory and name on every committed row, and the
+# group-by sorts each shuffle partition with a take that joins the partition's
+# chunks into one array. A ``string`` array holds at most 2 GiB because its
+# offsets are 32-bit, so a partition with a few tens of millions of committed
+# rows fails with ``ArrowInvalid: offset overflow while concatenating arrays``.
+# ``large_string`` has 64-bit offsets and no such limit.
+_FILE_KEY_TYPE = pyarrow.large_string()
+
+
 def _add_file_key_columns(batch: pyarrow.Table, id_column: str) -> pyarrow.Table:
     """Pull the file-naming fields out of the generated IDs for grouping."""
     ids = batch[id_column]
     return pyarrow.table(
         {
             PATH_PREFIX_FIELD: pyarrow.compute.cast(
-                pyarrow.compute.struct_field(ids, PATH_PREFIX_FIELD), pyarrow.string()
+                pyarrow.compute.struct_field(ids, PATH_PREFIX_FIELD), _FILE_KEY_TYPE
             ),
             FILE_NAME_FIELD: pyarrow.compute.cast(
-                pyarrow.compute.struct_field(ids, FILE_NAME_FIELD), pyarrow.string()
+                pyarrow.compute.struct_field(ids, FILE_NAME_FIELD), _FILE_KEY_TYPE
             ),
             id_column: ids,
         }

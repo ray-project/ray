@@ -138,9 +138,7 @@ class MetricsHead(SubprocessModule):
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
-        """
-        Endpoint that checks if Grafana is running
-        """
+        """Endpoint that checks if Grafana is running"""
         # If disabled, we don't want to show the metrics tab at all.
         if self.grafana_host == GRAFANA_HOST_DISABLED_VALUE:
             return dashboard_optional_utils.rest_response(
@@ -238,9 +236,7 @@ class MetricsHead(SubprocessModule):
             )
 
     def _create_default_grafana_configs(self):
-        """
-        Creates the Grafana configurations that are by default provided by Ray.
-        """
+        """Creates the Grafana configurations that are by default provided by Ray."""
         # Create Grafana configuration folder
         if os.path.exists(self._grafana_config_output_path):
             shutil.rmtree(self._grafana_config_output_path)
@@ -428,9 +424,7 @@ class MetricsHead(SubprocessModule):
             f.write(content)
 
     def _create_default_prometheus_configs(self):
-        """
-        Creates the Prometheus configurations that are by default provided by Ray.
-        """
+        """Creates the Prometheus configurations that are by default provided by Ray."""
         prometheus_config_output_path = os.path.join(
             self._metrics_root, "prometheus", "prometheus.yml"
         )

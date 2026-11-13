@@ -44,8 +44,7 @@ class RemoteCommunicatorManager:
         actors: Optional[List[ray.actor.ActorHandle]] = None,
         backend: Optional[Backend] = None,
     ):
-        """
-        Get the collective groups that the given actors are a subset of. Filter by
+        """Get the collective groups that the given actors are a subset of. Filter by
         backend if provided.
         """
         actors = actors or []
@@ -65,8 +64,7 @@ class RemoteCommunicatorManager:
 def get_collective_groups(
     actors: List[ray.actor.ActorHandle], backend: Optional[str] = None
 ) -> List[CommunicatorHandle]:
-    """
-    Get the collective groups that the given actors are a subset of. Filter by
+    """Get the collective groups that the given actors are a subset of. Filter by
     backend if provided.
 
     Args:
@@ -159,8 +157,7 @@ def create_collective_group(
 
 @PublicAPI(stability="alpha")
 def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
-    """
-    Destroy a collective group. If this functions returns successfully, then
+    """Destroy a collective group. If this functions returns successfully, then
     the actors that were in the collective can be reused to create a new
     collective group.
 
@@ -198,8 +195,7 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
 
 @PublicAPI(stability="alpha")
 def destroy_all_collective_groups():
-    """
-    Destroy all collective groups. This will destroy all collective groups that
+    """Destroy all collective groups. This will destroy all collective groups that
     were previously created by this process. After this function returns, the
     actors participating in those collective groups can be reused to create a
     new collective group.

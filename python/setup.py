@@ -223,7 +223,7 @@ if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
-        "pyarrow >= 17.0.0",
+        "pyarrow >= 23.0.0",
     ]
     pydantic_deps = [
         "pydantic>=2.5.0,<3; python_version < '3.14'",
@@ -252,7 +252,6 @@ if setup_spec.type == SetupType.RAY:
             pandas_dep,
             *pyarrow_deps,
             "fsspec",
-            "lz4>=4.4.5,<5",
         ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
@@ -386,7 +385,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.32.0",
+                "vllm[audio]==0.33.0",
                 "nixl==1.5.0",
                 "nixl-cu13==1.5.0",
                 "jsonref>=1.1.0",
@@ -724,7 +723,7 @@ if __name__ == "__main__":
         shutil.rmtree(build_dir)
 
     with open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+        os.path.join(ROOT_DIR, os.path.pardir, "README.md"), "r", encoding="utf-8"
     ) as f:
         long_readme = f.read()
 
@@ -747,6 +746,7 @@ if __name__ == "__main__":
         author_email="ray-dev@googlegroups.com",
         description=(setup_spec.description),
         long_description=long_readme,
+        long_description_content_type="text/markdown",
         url="https://github.com/ray-project/ray",
         keywords=(
             "ray distributed parallel machine-learning hyperparameter-tuning"

@@ -16,7 +16,7 @@ _PYARROW_VERSION: Optional[Version] = None
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
 # constraints given in python/setup.py.
 # Inclusive minimum pyarrow version.
-_PYARROW_SUPPORTED_VERSION_MIN = "17.0.0"
+_PYARROW_SUPPORTED_VERSION_MIN = "23.0.0"
 _PYARROW_VERSION_VALIDATED = False
 
 
@@ -113,11 +113,10 @@ def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
 
 def add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
     """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
-    parameter. For pyarrow >= 9.0.0, this is required in order to allow
-    ``S3FileSystem.create_dir()`` to create S3 buckets.
+    parameter. This is required in order to allow ``S3FileSystem.create_dir()`` to
+    create S3 buckets.
 
-    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
-    the URI unchanged.
+    If the provided URI is not an S3 URL, we return the URI unchanged.
 
     Args:
         uri: The URI that we'll add the query parameter to, if it's an S3 URL.
@@ -126,11 +125,6 @@ def add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
         A URI with the added allow_bucket_creation=true query parameter, if the provided
         URI is an S3 URL; uri will be returned unchanged otherwise.
     """
-
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
-        return uri
     parsed_uri = urlparse(uri)
     if parsed_uri.scheme == "s3":
         uri = _add_url_query_params(uri, {"allow_bucket_creation": True})

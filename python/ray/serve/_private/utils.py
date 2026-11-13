@@ -413,8 +413,7 @@ def merge_dict(dict1, dict2):
 
 
 def parse_import_path(import_path: str):
-    """
-    Takes in an import_path of form:
+    """Takes in an import_path of form:
 
     [subdirectory 1].[subdir 2]...[subdir n].[file name].[attribute name]
 
@@ -701,8 +700,7 @@ def get_all_live_placement_group_names() -> List[str]:
 
 
 def get_active_placement_group_ids() -> Set[str]:
-    """
-    Retrieve the set of placement group IDs referenced by alive Serve actors.
+    """Retrieve the set of placement group IDs referenced by alive Serve actors.
 
     Returns:
         The set of placement group IDs referenced by alive Serve actors.
