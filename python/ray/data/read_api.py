@@ -3462,9 +3462,8 @@ def read_mcap(
       Arrow IPC file. Cast ``schema_data`` before you mix this output with the
       legacy reader's in one Parquet folder.
     - A large file is split across read tasks. Its messages keep ``log_time``
-      order across the whole file only with
-      ``DataContext.execution_options.preserve_order``, and the files of one
-      directory can come out in a different order than listed.
+      order across the whole file, and files come out in the order they were
+      listed, only with ``DataContext.execution_options.preserve_order``.
     - ``override_num_blocks`` has no effect.
 
     To use the legacy reader, set ``DataContext.get_current().use_datasource_v2``
@@ -3549,13 +3548,13 @@ def read_mcap(
             tasks, and small files can share one. Each task returns each of its
             files in order, but tasks finish in any order, so a split file is in
             order only within each task. With
-            ``DataContext.execution_options.preserve_order``, files are not
+            ``DataContext.execution_options.preserve_order``, files come out in
+            the order they were listed, and with ``log_time_order`` they are not
             split: each file is read by one task, so it comes out in order from
-            start to end, and files come out in the order they were listed. A
-            file larger than the budget then gets a task of its own and holds
-            that much memory, as the legacy reader does. A file without a chunk
-            index is always read by one task, which holds its selected messages
-            in memory to sort them.
+            start to end. That task holds the chunks that overlap in time
+            together, so a file whose chunks all overlap is held whole. A file
+            without a chunk index is always read by one task, which holds its
+            selected messages in memory to sort them.
         include_row_id: If ``True``, add a ``row_id`` column with a deterministic
             id per message, built from the file path and the message's position
             in the file. A message gets the same id on every run, however the
