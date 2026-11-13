@@ -217,6 +217,11 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             path if user_provided_path else self._get_temporary_checkpoint_dir()
         )
         local_path = os.path.normpath(os.path.expanduser(str(local_path)))
+
+        if not user_provided_path:
+            self._download_to_temporary_dir(local_path)
+            return local_path
+
         os.makedirs(local_path, exist_ok=True)
 
         try:
@@ -240,6 +245,29 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
         return local_path
 
+    def _download_to_temporary_dir(self, local_path: str) -> None:
+        """Download the checkpoint into its temporary directory, at most once.
+
+        All processes on a node that access this checkpoint share this directory,
+        and ``as_directory()`` deletes it when its last reader exits. Downloads and
+        deletions take the same file lock, and a marker file records a completed
+        download, so a caller never sees a directory that is partially downloaded
+        or being deleted. If the directory was deleted, or an earlier download
+        failed, the caller downloads the checkpoint again.
+
+        Args:
+            local_path: The temporary directory to download the checkpoint to.
+        """
+        download_complete_path = _get_download_complete_path(local_path)
+        with TempFileLock(local_path, timeout=-1):
+            if os.path.exists(download_complete_path):
+                return
+            os.makedirs(local_path, exist_ok=True)
+            _download_from_fs_path(
+                fs=self.filesystem, fs_path=self.path, local_path=local_path
+            )
+            Path(download_complete_path).touch()
+
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
         """Returns checkpoint contents in a local directory as a context.
@@ -261,7 +289,8 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         receive the same local (temporary) directory to read from.
 
         Once all processes have finished working with the checkpoint,
-        the temporary directory is cleaned up.
+        the temporary directory is cleaned up. A process that calls this method
+        after the cleanup downloads the checkpoint again.
 
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it may be deleted when exiting the context.
@@ -304,22 +333,23 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                         f"Traceback:\n{traceback.format_exc()}"
                     )
 
-                # If there are no more lock files, that means there are no more
-                # readers of this directory, and we can safely delete it.
+                # If there are no more del lock files, there are no more readers
+                # of this directory, and we can safely delete it. Check while
+                # holding the lock that `to_directory()` downloads under: a reader
+                # that registered after we removed our del lock is either seen
+                # here, so the directory is kept, or is blocked in `to_directory()`
+                # until the deletion finishes, and then downloads again.
                 # In the edge case (process crash before del lock file is removed),
                 # we do not remove the directory at all.
                 # Since it's in /tmp, this is not that big of a deal.
-                # check if any lock files are remaining
-                remaining_locks = _list_existing_del_locks(temp_dir)
-                if not remaining_locks:
-                    try:
-                        # Timeout 0 means there will be only one attempt to acquire
-                        # the file lock. If it cannot be acquired, a TimeoutError
-                        # will be thrown.
-                        with TempFileLock(temp_dir, timeout=0):
-                            shutil.rmtree(temp_dir, ignore_errors=True)
-                    except TimeoutError:
-                        pass
+                with TempFileLock(temp_dir, timeout=-1):
+                    if not _list_existing_del_locks(temp_dir):
+                        # Remove the marker first, so that a partially deleted
+                        # directory is never treated as a complete download.
+                        Path(_get_download_complete_path(temp_dir)).unlink(
+                            missing_ok=True
+                        )
+                        shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir that this checkpoint
@@ -386,6 +416,29 @@ def _list_existing_del_locks(path: str) -> List[str]:
     then this should return a list of 2 deletion lock files.
     """
     return list(glob.glob(f"{_get_del_lock_path(path, suffix='*')}"))
+
+
+def _get_download_complete_path(path: str) -> str:
+    """Get the path to the marker file for a completed download into `path`.
+
+    The marker sits next to the directory, like the deletion lock files, so it
+    never shows up in the checkpoint contents.
+
+    Args:
+        path: The path of the temporary checkpoint directory.
+
+    Returns:
+        The download-complete marker file path.
+
+    Example:
+
+        >>> _get_download_complete_path("/tmp/checkpoint_tmp")
+        '/tmp/checkpoint_tmp.complete'
+        >>> _get_download_complete_path("/tmp/checkpoint_tmp/")
+        '/tmp/checkpoint_tmp.complete'
+
+    """
+    return f"{path.rstrip('/')}.complete"
 
 
 def _get_migration_error(name: str):

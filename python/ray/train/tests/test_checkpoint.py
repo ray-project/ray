@@ -5,11 +5,13 @@ import pyarrow.fs
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.train._checkpoint import (
     _CHECKPOINT_TEMP_DIR_PREFIX,
     _METADATA_FILE_NAME,
     Checkpoint,
     _get_del_lock_path,
+    _get_download_complete_path,
     _list_existing_del_locks,
 )
 from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
@@ -107,6 +109,7 @@ def test_as_directory(checkpoint: Checkpoint):
     else:
         # Should have been deleted, if the checkpoint downloaded to a temp dir.
         assert not checkpoint_path.exists()
+        assert not Path(_get_download_complete_path(str(checkpoint_path))).exists()
 
 
 def test_multiprocess_as_directory(checkpoint: Checkpoint, monkeypatch):
@@ -188,6 +191,99 @@ def test_as_directory_download_error(checkpoint: Checkpoint, monkeypatch):
     with pytest.raises(RuntimeError, match=error_text):
         with checkpoint.as_directory() as _:
             pass
+
+
+def test_as_directory_reader_arrives_during_cleanup(checkpoint: Checkpoint, tmp_path):
+    """A reader that arrives while the last reader is deleting the shared
+    temporary directory waits for the deletion and downloads the checkpoint
+    again, instead of failing because the directory no longer exists."""
+    if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+        pytest.skip("Local checkpoints are not downloaded to a temp dir.")
+    if checkpoint.filesystem.type_name == "mock":
+        pytest.skip("Mock filesystem cannot be pickled for use with Ray.")
+
+    deleting_marker = tmp_path / "deleting"
+
+    @ray.remote
+    def read_with_slow_cleanup(checkpoint: Checkpoint):
+        import shutil
+        import time
+
+        original_rmtree = shutil.rmtree
+
+        def slow_rmtree(path, *args, **kwargs):
+            # Called by the `as_directory()` cleanup while it holds the lock.
+            deleting_marker.touch()
+            time.sleep(2)
+            original_rmtree(path, *args, **kwargs)
+
+        shutil.rmtree = slow_rmtree
+        try:
+            with checkpoint.as_directory():
+                pass
+        finally:
+            shutil.rmtree = original_rmtree
+
+    ref = read_with_slow_cleanup.remote(checkpoint)
+    wait_for_condition(deleting_marker.exists, timeout=60)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        assert (Path(checkpoint_dir) / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
+    ray.get(ref)
+
+
+def test_to_directory_reuses_complete_download(checkpoint: Checkpoint, monkeypatch):
+    """A caller that arrives after the shared temporary directory was fully
+    downloaded reuses it, instead of downloading again over files that other
+    readers may be reading."""
+    if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+        pytest.skip("Local checkpoints are not downloaded to a temp dir.")
+
+    from ray.train import _checkpoint
+
+    num_downloads = 0
+    original_download = _checkpoint._download_from_fs_path
+
+    def counting_download(*args, **kwargs):
+        nonlocal num_downloads
+        num_downloads += 1
+        return original_download(*args, **kwargs)
+
+    monkeypatch.setattr(_checkpoint, "_download_from_fs_path", counting_download)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        assert checkpoint.to_directory() == checkpoint_dir
+        assert num_downloads == 1
+
+    # The last reader deleted the directory and its marker, so the next reader
+    # downloads the checkpoint again.
+    assert not Path(checkpoint_dir).exists()
+    assert not Path(_get_download_complete_path(checkpoint_dir)).exists()
+    with checkpoint.as_directory() as checkpoint_dir:
+        assert (Path(checkpoint_dir) / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
+    assert num_downloads == 2
+
+
+def test_to_directory_retries_failed_download(checkpoint: Checkpoint, monkeypatch):
+    """A failed download doesn't mark the shared temporary directory as
+    complete, so the next caller downloads the checkpoint again."""
+    if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+        pytest.skip("Local checkpoints are not downloaded to a temp dir.")
+
+    from ray.train import _checkpoint
+
+    original_download = _checkpoint._download_from_fs_path
+
+    def failing_download(*args, **kwargs):
+        raise RuntimeError("download failed")
+
+    monkeypatch.setattr(_checkpoint, "_download_from_fs_path", failing_download)
+    with pytest.raises(RuntimeError, match="download failed"):
+        checkpoint.to_directory()
+
+    monkeypatch.setattr(_checkpoint, "_download_from_fs_path", original_download)
+    checkpoint_dir = checkpoint.to_directory()
+    assert (Path(checkpoint_dir) / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
 
 
 def test_metadata(checkpoint: Checkpoint):
