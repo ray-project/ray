@@ -577,6 +577,58 @@ async def test_api_manager_list_tasks(state_api_manager):
 
 
 @pytest.mark.asyncio
+async def test_api_manager_list_tasks_latest_attempt_first(state_api_manager):
+    """Attempts of the same task are returned newest first.
+
+    The dashboard task detail page queries a single task_id with limit=1, so the
+    latest attempt must come first regardless of the order GCS returns them in.
+    """
+    data_source_client = state_api_manager.data_source_client
+    data_source_client.get_all_task_info = AsyncMock()
+    task_id = b"1234"
+    other_task_id = b"2345"
+
+    def task_events():
+        return generate_task_data(
+            [
+                generate_task_event(
+                    other_task_id, attempt_number=0, state=TaskStatus.FAILED
+                ),
+                generate_task_event(task_id, attempt_number=0, state=TaskStatus.FAILED),
+                generate_task_event(
+                    task_id, attempt_number=2, state=TaskStatus.FINISHED
+                ),
+                generate_task_event(
+                    other_task_id, attempt_number=1, state=TaskStatus.FINISHED
+                ),
+                generate_task_event(task_id, attempt_number=1, state=TaskStatus.FAILED),
+            ]
+        )
+
+    # Filtering by task_id with limit=1 returns the latest attempt.
+    data_source_client.get_all_task_info.side_effect = [task_events()]
+    result = await state_api_manager.list_tasks(
+        option=create_api_options(
+            filters=[("task_id", "=", task_id.hex())], limit=1, detail=True
+        )
+    )
+    assert len(result.result) == 1
+    assert result.result[0]["attempt_number"] == 2
+    assert result.result[0]["state"] == "FINISHED"
+
+    # With the default options, tasks stay ordered by task_id and attempts newest first.
+    data_source_client.get_all_task_info.side_effect = [task_events()]
+    result = await state_api_manager.list_tasks(option=create_api_options())
+    assert [(t["task_id"], t["attempt_number"]) for t in result.result] == [
+        (task_id.hex(), 2),
+        (task_id.hex(), 1),
+        (task_id.hex(), 0),
+        (other_task_id.hex(), 1),
+        (other_task_id.hex(), 0),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_api_manager_list_tasks_events(state_api_manager):
     data_source_client = state_api_manager.data_source_client
 
