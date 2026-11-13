@@ -1818,13 +1818,24 @@ def _get_buffer_address(arr: np.ndarray) -> int:
 def native_tensor_array_to_numpy(array: "FixedShapeTensorArray") -> np.ndarray:
     """``array.to_numpy_ndarray()``, with ``None`` for each null row.
 
-    pyarrow's conversion ignores the validity bitmap: a null row keeps a slot
-    in the fixed-size storage and reads back as whatever that slot holds,
-    usually zeros.
+    Before pyarrow 26 the conversion reads a null row from its slot in the
+    fixed-size storage, usually zeros; pyarrow 26 rejects an array with nulls
+    outright. So the conversion runs on the storage without its validity
+    bitmap, and the null rows are replaced afterwards.
     """
-    dense = array.to_numpy_ndarray()
     if array.null_count == 0:
-        return dense
+        return array.to_numpy_ndarray()
+    storage = array.storage
+    without_bitmap = pa.Array.from_buffers(
+        storage.type,
+        len(storage),
+        [None],
+        offset=storage.offset,
+        children=[storage.values],
+    )
+    dense = pa.ExtensionArray.from_storage(
+        array.type, without_bitmap
+    ).to_numpy_ndarray()
     is_valid = np.asarray(array.is_valid())
     return create_ragged_ndarray(
         [dense[i] if is_valid[i] else None for i in range(len(array))]

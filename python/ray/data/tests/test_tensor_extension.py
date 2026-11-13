@@ -1651,6 +1651,11 @@ def test_native_tensor_array_to_numpy_with_null_rows():
 
     assert dense.shape == (3, 2) and dense.dtype == np.int64
     assert _rows(with_none) == [[1, 1], None, [3, 3]]
+    assert _rows(native_tensor_array_to_numpy(with_null[1:])) == [None, [3, 3]]
+    assert _rows(native_tensor_array_to_numpy(pa.nulls(2, tensor_type))) == [
+        None,
+        None,
+    ]
 
 
 def test_variable_shaped_tensor_array_to_numpy_with_null_children():
