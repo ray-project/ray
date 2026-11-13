@@ -215,7 +215,7 @@ class FileManifest:
 
         Returns:
             One row per manifest row, or ``None`` when the manifest carries
-            only the required columns -- every plain file format.
+            only the required columns.
         """
         table = BlockAccessor.for_block(self._block).to_arrow()
         names = [

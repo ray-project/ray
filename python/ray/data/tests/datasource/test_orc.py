@@ -1434,10 +1434,6 @@ def test_read_orc_merge_schema_reuses_candidates_across_actions_and_lineage(
     from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
         OrcDatasourceV2,
     )
-    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-        FILE_METADATA_COLUMN_NAME,
-        FILE_METADATA_TYPE,
-    )
     from ray.data._internal.logical.operators import ListFiles
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
@@ -1464,17 +1460,10 @@ def test_read_orc_merge_schema_reuses_candidates_across_actions_and_lineage(
     assert isinstance(listing, ListFiles)
     assert listing.prelisted_file_infos is not None
     assert len(listing.prelisted_file_infos) == 4
-    for block in listing.prelisted_file_infos:
-        assert block.column_names == [
-            "__path",
-            "__file_size",
-            FILE_METADATA_COLUMN_NAME,
-        ]
-        assert block.schema.field(FILE_METADATA_COLUMN_NAME).type == FILE_METADATA_TYPE
-        metadata = block[FILE_METADATA_COLUMN_NAME].to_pylist()
-        assert len(metadata) == 1
-        assert metadata[0]["num_rows"] == 1
-        assert metadata[0]["parquet_footer"] is None
+    assert all(
+        block.column_names == ["__path", "__file_size"]
+        for block in listing.prelisted_file_infos
+    )
     restored = ray.data.Dataset.deserialize_lineage(ds.serialize_lineage())
     _write_orc(str(tmp_path / "new.orc"), pa.table({"id": [99], "new": ["excluded"]}))
 

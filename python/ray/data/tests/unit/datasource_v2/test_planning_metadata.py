@@ -36,8 +36,8 @@ from ray.data.expressions import col
 from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
 
 
-def _plan(tmp_path, name="Parquet", case=None):
-    paths = [tmp_path / f"{i}.{name}" for i in range(2)]
+def _plan(tmp_path, case=None):
+    paths = [tmp_path / f"{i}.parquet" for i in range(2)]
     raw = RecordingLocalFileSystem(skip_instance_cache=True)
     fs = pafs.PyFileSystem(pafs.FSSpecHandler(raw))
     tables = [
@@ -62,24 +62,19 @@ def _plan(tmp_path, name="Parquet", case=None):
             0, "id", pa.array([], type=tables[1].schema.field("id").type)
         )
     for path, table in zip(paths, tables):
-        if name == "Parquet":
-            pq.write_table(
-                table,
-                path,
-                row_group_size=3 if case in {"nan", "null", "no_statistics"} else 1,
-                use_deprecated_int96_timestamps=True,
-                write_statistics=case != "no_statistics",
-            )
-        else:
-            orc.write_table(table, path)
+        pq.write_table(
+            table,
+            path,
+            row_group_size=3 if case in {"nan", "null", "no_statistics"} else 1,
+            use_deprecated_int96_timestamps=True,
+            write_statistics=case != "no_statistics",
+        )
     sample = FileManifest.construct_manifest(
         paths=list(map(str, paths)),
         sizes=[p.stat().st_size for p in paths],
         chunk_metadatas=[None] * 2,
     )
-    source = (ParquetDatasourceV2 if name == "Parquet" else OrcDatasourceV2)(
-        list(map(str, paths)), filesystem=fs
-    )
+    source = ParquetDatasourceV2(list(map(str, paths)), filesystem=fs)
     result = source.infer_full_schema_with_metadata(
         sample, ray_remote_args={"num_cpus": 0}
     )
@@ -100,11 +95,31 @@ def test_metadata_hook_preserves_schema_override(mocker, source_type):
     assert result.schema is hook.return_value and result.metadata is None
 
 
-@pytest.mark.parametrize("case", ["Parquet", "nan", "null", "no_statistics", "ORC"])
+def test_metadata_hook_preserves_infer_schema_driver_fallback(
+    mocker, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 1)
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 8192)
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 4096
+    )
+    path = tmp_path / "data.parquet"
+    pq.write_table(pa.table({"id": [1]}), path)
+    sample = FileManifest.construct_manifest(
+        paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
+    )
+    hook = mocker.Mock(return_value=pa.schema([("custom", pa.int64())]))
+    custom_type = type("CustomSource", (ParquetDatasourceV2,), {"infer_schema": hook})
+    source = custom_type([str(path)], filesystem=pafs.LocalFileSystem())
+    result = source.infer_full_schema_with_metadata(sample, ray_remote_args={})
+    hook.assert_called_once_with(sample)
+    assert result.schema is hook.return_value and result.metadata is None
+
+
+@pytest.mark.parametrize("case", ["Parquet", "nan", "null", "no_statistics"])
 @pytest.mark.parametrize("miss", [False, True])
 def test_same_open_counts_and_footer_roundtrip(tmp_path, case, miss):
-    name = "ORC" if case == "ORC" else "Parquet"
-    result, sample, fs, raw = _plan(tmp_path, name, case)
+    result, sample, fs, raw = _plan(tmp_path, case)
     assert result.schema.names == ["id", "empty_only", "late", "timestamp"]
     metadata = result.metadata
     assert metadata is not None
@@ -118,69 +133,54 @@ def test_same_open_counts_and_footer_roundtrip(tmp_path, case, miss):
         chunk_metadatas=[None] * 2,
         file_metadatas=cached,
     )
-    reader = (
-        ParquetFileReader(filesystem=fs)
-        if name == "Parquet"
-        else OrcFileReader(
-            format=FileFormat.ORC, filesystem=fs, reuse_file_metadata=True
-        )
-    )
+    reader = ParquetFileReader(filesystem=fs)
     assert [v.num_rows for v in reader.read_metadata(manifest)] == [0, 3]
     assert len(raw.opens) == (4 if miss else 2)
-    if name == "Parquet":
-        path = str(sample.paths[-1])
-        assert values[-1].parquet_footer is not None
-        original = pq.read_metadata(path)
-        assert original.schema.column(2).physical_type == "INT96"
-        if case == "no_statistics":
-            assert original.row_group(0).column(0).statistics is None
-        assert pq.read_metadata(pa.BufferReader(values[-1].parquet_footer)).equals(
-            original
-        )
-        footer = FooterReader(
-            filesystem=fs,
-            io_concurrency=1,
-            filter_expr=col("id")
-            >= (30 if case in {"nan", "null", "no_statistics"} else 1),
-            projected_cols=["id"],
-        )
-        try:
-            file = FileInfo(path, sample.file_sizes[-1])
-            expected = footer._read_and_chunk(file)
-            opens = len(raw.opens)
-            actual = footer._read_and_chunk(replace(file, metadata=cached[-1]))
-            assert actual == expected
-            if case in {"nan", "null", "no_statistics"}:
-                assert all(not group.fully_matched for group in actual.row_groups)
-            assert len(raw.opens) == opens + int(miss)
-            if case == "Parquet":
-                unknown = footer._read_and_chunk(
-                    replace(file, size=None, metadata=cached[-1])
-                )
-                assert unknown.row_groups == expected.row_groups
-                assert len(raw.opens) == opens + int(miss) + 1
-        finally:
-            footer.pool.shutdown()
+    path = str(sample.paths[-1])
+    assert values[-1].parquet_footer is not None
+    original = pq.read_metadata(path)
+    assert original.schema.column(2).physical_type == "INT96"
+    if case == "no_statistics":
+        assert original.row_group(0).column(0).statistics is None
+    assert pq.read_metadata(pa.BufferReader(values[-1].parquet_footer)).equals(original)
+    footer = FooterReader(
+        filesystem=fs,
+        io_concurrency=1,
+        filter_expr=col("id")
+        >= (30 if case in {"nan", "null", "no_statistics"} else 1),
+        projected_cols=["id"],
+    )
+    try:
+        file = FileInfo(path, sample.file_sizes[-1])
+        expected = footer._read_and_chunk(file)
+        opens = len(raw.opens)
+        actual = footer._read_and_chunk(replace(file, metadata=cached[-1]))
+        assert actual == expected
+        if case in {"nan", "null", "no_statistics"}:
+            assert all(not group.fully_matched for group in actual.row_groups)
+        assert len(raw.opens) == opens + int(miss)
         if case == "Parquet":
-            block = manifest.as_block()
-            assert isinstance(block, pa.Table)
-            block = block.slice(1, 1)
-            unknown_size = FileManifest(
-                block.set_column(
-                    block.schema.get_field_index(FILE_SIZE_COLUMN_NAME),
-                    FILE_SIZE_COLUMN_NAME,
-                    pa.array([None], type=pa.int64()),
-                )
+            unknown = footer._read_and_chunk(
+                replace(file, size=None, metadata=cached[-1])
             )
-            opens = len(raw.opens)
-            assert [v.num_rows for v in reader.read_metadata(unknown_size)] == [3]
-            assert len(raw.opens) == opens + 1
-    else:
-        assert all(v.parquet_footer is None for v in values)
-        assert not OrcFileReader(format=FileFormat.ORC).available_metadata()
-        assert not OrcFileReader(
-            format=FileFormat.ORC, reuse_file_metadata=True, predicate=col("id") > 0
-        ).available_metadata()
+            assert unknown.row_groups == expected.row_groups
+            assert len(raw.opens) == opens + int(miss) + 1
+    finally:
+        footer.pool.shutdown()
+    if case == "Parquet":
+        block = manifest.as_block()
+        assert isinstance(block, pa.Table)
+        block = block.slice(1, 1)
+        unknown_size = FileManifest(
+            block.set_column(
+                block.schema.get_field_index(FILE_SIZE_COLUMN_NAME),
+                FILE_SIZE_COLUMN_NAME,
+                pa.array([None], type=pa.int64()),
+            )
+        )
+        opens = len(raw.opens)
+        assert [v.num_rows for v in reader.read_metadata(unknown_size)] == [3]
+        assert len(raw.opens) == opens + 1
 
 
 @pytest.mark.parametrize(
@@ -198,11 +198,14 @@ def test_same_open_counts_and_footer_roundtrip(tmp_path, case, miss):
 def test_payload_budgets_and_large_batches(
     monkeypatch, tmp_path, total, task, batch, records
 ):
-    ctx = DataContext.get_current()
-    monkeypatch.setattr(ctx, "full_schema_inference_metadata_budget_bytes", total)
-    monkeypatch.setattr(ctx, "full_schema_inference_task_metadata_budget_bytes", task)
-    monkeypatch.setattr(ctx, "full_schema_inference_batch_size", batch)
-    result, _, _, _ = _plan(tmp_path)
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", total
+    )
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", task
+    )
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", batch)
+    result, sample, fs, raw = _plan(tmp_path)
     assert result.schema.names == ["id", "empty_only", "late", "timestamp"]
     metadata = result.metadata
     chunks = metadata.chunks if metadata is not None else []
@@ -215,30 +218,20 @@ def test_payload_budgets_and_large_batches(
         assert size <= task
         used += size
     assert admitted == records and used <= total
-
-
-@pytest.mark.parametrize(
-    "suffix,value",
-    [
-        ("metadata_budget_bytes", -1),
-        ("task_metadata_budget_bytes", -1),
-        ("metadata_budget_bytes", True),
-        ("task_metadata_budget_bytes", 1.5),
-    ],
-)
-def test_invalid_metadata_budget(monkeypatch, suffix, value):
-    monkeypatch.setattr(
-        DataContext.get_current(), "full_schema_inference_" + suffix, value
-    )
-    sample = FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
-    with pytest.raises(ValueError, match=suffix):
-        inference.infer_full_schema_with_metadata_from_files(
-            sample,
-            pafs.LocalFileSystem(),
-            format_name="Parquet",
-            ray_remote_args={},
-            supports_distributed_reads=False,
-        )
+    if (total, task, batch) == (96, 4096, 2):
+        assert metadata is not None
+        cached = FileMetadata.from_metadata(metadata.to_pylist()[-1])
+        assert cached.num_rows == 3 and cached.parquet_footer is None
+        footer = FooterReader(filesystem=fs, io_concurrency=1)
+        try:
+            file = FileInfo(str(sample.paths[-1]), sample.file_sizes[-1])
+            expected = footer._read_and_chunk(file)
+            opens = len(raw.opens)
+            actual = footer._read_and_chunk(replace(file, metadata=cached))
+            assert actual == expected
+            assert len(raw.opens) == opens + 1
+        finally:
+            footer.pool.shutdown()
 
 
 @pytest.mark.parametrize(
@@ -270,7 +263,6 @@ def test_cache_validation(tmp_path, change):
 
 
 def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypatch):
-    ctx = DataContext.get_current()
     for key, value in dict(
         min_files=0,
         max_tasks=4,
@@ -278,7 +270,7 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
         metadata_budget_bytes=512,
         task_metadata_budget_bytes=128,
     ).items():
-        monkeypatch.setattr(ctx, "full_schema_inference_" + key, value)
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_" + key.upper(), value)
     paths = [str(i // 2) for i in range(12)]
     sample = FileManifest.construct_manifest(
         paths=paths, sizes=[1] * 12, chunk_metadatas=[None] * 12
@@ -289,7 +281,7 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
     state = dict(submitted=0, reserved=0, used=0)
     values = {}
 
-    def submit(batch, fs, fmt, context, rows, credit, mtimes):
+    def submit(batch, sizes, fs, fmt, context, rows, credit, mtimes, **kwargs):
         assert rows * 32 + credit <= 128
         state["reserved"] += credit
         assert state["reserved"] + state["used"] <= 512 - 12 * 32
@@ -298,12 +290,16 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
         size = min(8, credit // max(1, rows))
         name = "head" if ref.index == 0 else "tail"
         values[ref] = inference._SchemaBatchResult(
-            [pa.schema([(name, pa.int64())]).serialize().to_pybytes() for _ in batch],
+            [(0, pa.schema([(name, pa.int64())]).serialize().to_pybytes(), False)],
             pa.array(
                 [
-                    FileMetadata(int(p), b"x" * size if size else None).to_metadata()
-                    if i < rows
-                    else None
+                    (
+                        FileMetadata(
+                            int(p), b"x" * size if size else None
+                        ).to_metadata()
+                        if i < rows
+                        else None
+                    )
                     for i, p in enumerate(batch)
                 ],
                 type=FILE_METADATA_TYPE,
@@ -344,7 +340,188 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
     assert metadata is not None
     assert result.schema.names == ["head", "tail"]
     assert [v["num_rows"] for v in metadata.to_pylist()] == list(map(int, paths))
-    assert (state["submitted"], state["reserved"], decode.call_count) == (6, 0, 2)
+    assert (state["submitted"], state["reserved"], decode.call_count) == (7, 0, 7)
+
+
+@pytest.mark.parametrize("distributed", [False, True])
+def test_deduplicated_schemas_keep_metadata_in_file_order(
+    monkeypatch, tmp_path, distributed
+):
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 4)
+    schemas = [[], [], ["late"], [], ["last"], []]
+    paths = [tmp_path / f"{i}.parquet" for i in range(len(schemas))]
+    for i, (path, extra) in enumerate(zip(paths, schemas)):
+        table = pa.table({key: list(range(i + 1)) for key in ["id", *extra]})
+        pq.write_table(table, path)
+    sample = FileManifest.construct_manifest(
+        paths=list(map(str, paths)),
+        sizes=[path.stat().st_size for path in paths],
+        chunk_metadatas=[None] * len(paths),
+    )
+    if distributed:
+        remote = Mock()
+        remote.options.return_value = remote
+        remote.remote.side_effect = lambda *args, **kwargs: Mock(
+            result=inference._read_schema_metadata_batch(*args, **kwargs)
+        )
+        monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
+        monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
+        monkeypatch.setattr(ray, "wait", lambda refs, **kw: ([refs[-1]], refs[:-1]))
+        monkeypatch.setattr(ray, "get", lambda ref: ref.result)
+    result = inference.infer_full_schema_with_metadata_from_files(
+        sample,
+        pafs.LocalFileSystem(),
+        format_name="Parquet",
+        ray_remote_args={},
+        supports_distributed_reads=distributed,
+    )
+    assert result is not None
+    metadata = result.metadata
+    assert metadata is not None
+    assert result.schema.names == ["id", "late", "last"]
+    assert [value["num_rows"] for value in metadata.to_pylist()] == list(range(1, 7))
+    assert [
+        pq.read_metadata(pa.BufferReader(value["parquet_footer"])).num_rows
+        for value in metadata.to_pylist()
+    ] == list(range(1, 7))
+    if distributed:
+        assert remote.remote.call_count == 3
+
+
+@pytest.mark.parametrize("permanent", [False, True])
+def test_orc_metadata_read_retries_matching_errors(monkeypatch, tmp_path, permanent):
+    path = tmp_path / "test.orc"
+    orc.write_table(pa.table({"id": [1, 2]}), path)
+    original = orc.ORCFile
+    reader = Mock(
+        side_effect=(
+            OSError("permanent")
+            if permanent
+            else [OSError("temporary"), original(str(path))]
+        )
+    )
+    monkeypatch.setattr(orc, "ORCFile", reader)
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "retried_io_errors", ["temporary"])
+    manifest = FileManifest.construct_manifest(
+        paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
+    )
+    file_reader = OrcFileReader(
+        format=FileFormat.ORC,
+        filesystem=pafs.LocalFileSystem(),
+        enable_metadata_count=True,
+    )
+    if permanent:
+        with pytest.raises(OSError, match="permanent"):
+            list(file_reader.read_metadata(manifest))
+        assert reader.call_count == 1
+    else:
+        assert [m.num_rows for m in file_reader.read_metadata(manifest)] == [2]
+        assert reader.call_count == 2
+
+
+def test_metadata_timeout_cancels_before_driver_read(monkeypatch):
+    for key, value in dict(min_files=0, batch_size=2, max_tasks=4).items():
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_" + key.upper(), value)
+    sample = FileManifest.construct_manifest(
+        paths=[str(i) for i in range(4)], sizes=[1] * 4, chunk_metadatas=[None] * 4
+    )
+    remote = Mock()
+    remote.options.return_value = remote
+    remote.remote.side_effect = lambda *a, **kw: Mock()
+    events = []
+    result = inference.FullSchemaInferenceResult(pa.schema([("id", pa.int64())]))
+    monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
+    monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
+    monkeypatch.setattr(ray, "wait", lambda refs, **kw: ([], refs))
+    monkeypatch.setattr(ray, "cancel", lambda ref, **kw: events.append("cancel"))
+    monkeypatch.setattr(
+        inference,
+        "_driver_read_all_metadata",
+        lambda *a: events.append("driver") or result,
+    )
+    actual = inference.infer_full_schema_with_metadata_from_files(
+        sample,
+        pafs.LocalFileSystem(),
+        format_name="Parquet",
+        ray_remote_args={},
+        supports_distributed_reads=True,
+    )
+    assert actual is result
+    assert remote.remote.call_count == 3
+    assert events == ["cancel", "cancel", "cancel", "driver"]
+
+
+def test_driver_returns_unused_footer_credit(monkeypatch):
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 1)
+    credits = []
+    payload = pa.schema([("id", pa.int64())]).serialize().to_pybytes()
+
+    def read(paths, sizes, fs, fmt, ctx, rows, credit, mtimes, **kwargs):
+        credits.append(credit)
+        return inference._SchemaBatchResult(
+            [(0, payload, False)],
+            pa.array([FileMetadata(1).to_metadata()], type=FILE_METADATA_TYPE),
+            0,
+        )
+
+    monkeypatch.setattr(inference, "_read_schema_metadata_batch", read)
+    inference._driver_read_all_metadata(
+        ["a", "b"], [1, 1], pafs.LocalFileSystem(), "Parquet", 128, 128, None
+    )
+    assert credits == [64, 64]
+
+
+def test_probe_batch_reserves_available_row_slots(monkeypatch):
+    for key, value in dict(
+        min_files=0,
+        batch_size=2,
+        max_tasks=4,
+        metadata_budget_bytes=128,
+        task_metadata_budget_bytes=32,
+    ).items():
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_" + key.upper(), value)
+    sample = FileManifest.construct_manifest(
+        paths=[str(i) for i in range(4)], sizes=[1] * 4, chunk_metadatas=[None] * 4
+    )
+    remote = Mock()
+    remote.options.return_value = remote
+    payload = pa.schema([("id", pa.int64())]).serialize().to_pybytes()
+
+    def submit(paths, sizes, fs, fmt, ctx, rows, credit, mtimes, **kwargs):
+        values = [
+            FileMetadata(int(p)).to_metadata() if i < rows else None
+            for i, p in enumerate(paths)
+        ]
+        return Mock(
+            result=inference._SchemaBatchResult(
+                [(0, payload, False)], pa.array(values, type=FILE_METADATA_TYPE), 0
+            )
+        )
+
+    remote.remote.side_effect = submit
+    monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
+    monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
+    monkeypatch.setattr(ray, "wait", lambda refs, **kw: ([refs[-1]], refs[:-1]))
+    monkeypatch.setattr(ray, "get", lambda ref: ref.result)
+    result = inference.infer_full_schema_with_metadata_from_files(
+        sample,
+        pafs.LocalFileSystem(),
+        format_name="Parquet",
+        ray_remote_args={},
+        supports_distributed_reads=True,
+    )
+    assert result is not None
+    metadata = result.metadata
+    assert metadata is not None
+    assert [v["num_rows"] if v else None for v in metadata.to_pylist()] == [
+        0,
+        1,
+        None,
+        3,
+    ]
 
 
 if __name__ == "__main__":

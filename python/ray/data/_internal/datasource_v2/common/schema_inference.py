@@ -5,7 +5,7 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
@@ -21,7 +21,11 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 )
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import unify_schemas_with_validation
+from ray.data._internal.util import (
+    call_with_retry,
+    filesystem_for_sized_opens,
+    unify_schemas_with_validation,
+)
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -68,7 +72,7 @@ class FullSchemaInferenceResult:
 
 @dataclass
 class _SchemaBatchResult:
-    schemas: List[bytes]
+    schemas: List[Tuple[int, bytes, bool]]
     metadata: Optional[pa.Array]
     footer_bytes: int
 
@@ -98,6 +102,39 @@ class _FooterBudget:
         return payload
 
 
+def _add_unique_schema(
+    unique: Dict[bytes, Tuple[int, bytes, bool]],
+    index: int,
+    schema: pa.Schema,
+    value: bytes,
+) -> None:
+    if value in unique:
+        return
+    decoded = pa.ipc.read_schema(pa.BufferReader(value))
+    if schema.equals(decoded, check_metadata=True):
+        unique[value] = (index, value, False)
+        return
+    import pyarrow.parquet as pq
+
+    output = pa.BufferOutputStream()
+    pq.write_metadata(schema, output)
+    encoded = output.getvalue().to_pybytes()
+    restored = pq.read_schema(pa.BufferReader(encoded))
+    if not schema.equals(restored, check_metadata=True):
+        raise pa.ArrowInvalid(
+            "Unable to preserve schema through IPC or Parquet metadata"
+        )
+    unique[value] = (index, encoded, True)
+
+
+def _decode_schema(value: bytes, parquet_encoded: bool) -> pa.Schema:
+    if parquet_encoded:
+        import pyarrow.parquet as pq
+
+        return pq.read_schema(pa.BufferReader(value))
+    return pa.ipc.read_schema(pa.BufferReader(value))
+
+
 def _read_schema_batch(
     paths: List[str],
     sizes: List[Optional[int]],
@@ -123,27 +160,13 @@ def _read_schema_batch(
         values = executor.map(read_file, zip(paths, sizes))
         unique: Dict[bytes, Tuple[int, bytes, bool]] = {}
         for index, (schema, value) in enumerate(values):
-            if value not in unique:
-                decoded = pa.ipc.read_schema(pa.BufferReader(value))
-                if schema.equals(decoded, check_metadata=True):
-                    unique[value] = (index, value, False)
-                else:
-                    import pyarrow.parquet as pq
-
-                    output = pa.BufferOutputStream()
-                    pq.write_metadata(schema, output)
-                    encoded = output.getvalue().to_pybytes()
-                    restored = pq.read_schema(pa.BufferReader(encoded))
-                    if not schema.equals(restored, check_metadata=True):
-                        raise pa.ArrowInvalid(
-                            "Unable to preserve schema through IPC or Parquet metadata"
-                        )
-                    unique[value] = (index, encoded, True)
+            _add_unique_schema(unique, index, schema, value)
     return list(unique.values())
 
 
 def _read_schema_metadata_batch(
     paths: List[str],
+    sizes: Optional[List[Optional[int]]],
     filesystem: FileSystem,
     format_name: str,
     context: DataContext,
@@ -153,41 +176,47 @@ def _read_schema_metadata_batch(
     *,
     io_concurrency: Optional[int] = None,
 ) -> _SchemaBatchResult:
+    """Read every schema once and, within budget, file metadata in the same open.
+
+    Schemas are batch-deduplicated and their first positions restored on the
+    driver (using the schema-only path's lossless encoding). Metadata stays
+    file-specific and aligned with the input
+    order, so deduplication never reorders or drops per-file records. Parquet
+    reads use the listed file size when available to spare the extra size
+    request, matching the schema-only path.
+    """
     DataContext._set_current(context)
-    if format_name not in {"Parquet", "ORC"}:
+    if format_name != "Parquet":
         raise ValueError(f"Unsupported schema format: {format_name}")
     budget = _FooterBudget(footer_credit)
 
     def read_file(item: Tuple[int, str]):
         index, path = item
+        size = sizes[index] if sizes is not None else None
         metadata: Optional[FileMetadata] = None
         try:
-            with filesystem.open_input_file(path) as source:
-                if format_name == "Parquet":
-                    import pyarrow.parquet as pq
+            import pyarrow.dataset as pds
 
-                    parquet_reader = pq.ParquetFile(source)
-                    # This is pq.read_schema's conversion, not schema_arrow.
-                    schema = parquet_reader.schema.to_arrow_schema()
-                    if index < row_records:
-                        metadata = FileMetadata(
-                            parquet_reader.metadata.num_rows,
-                            budget.encode(parquet_reader.metadata)
-                            if footer_credit
-                            else None,
-                            mtimes[index] if mtimes is not None else None,
-                        )
-                else:
-                    import pyarrow.orc as orc
-
-                    orc_reader = orc.ORCFile(source)
-                    schema = orc_reader.schema
-                    if index < row_records:
-                        metadata = FileMetadata(
-                            num_rows=orc_reader.nrows,
-                            mtime_ns=mtimes[index] if mtimes is not None else None,
-                        )
-                return schema.serialize().to_pybytes(), metadata
+            fragment = pds.ParquetFileFormat().make_fragment(
+                path,
+                filesystem=filesystem_for_sized_opens(filesystem),
+                file_size=size,
+            )
+            parquet_metadata = call_with_retry(
+                lambda: fragment.metadata,
+                description=f"read Parquet footer for {path}",
+                match=context.retried_io_errors,
+            )
+            # This is pq.read_schema's conversion, not schema_arrow.
+            schema = parquet_metadata.schema.to_arrow_schema()
+            if index < row_records:
+                metadata = FileMetadata(
+                    parquet_metadata.num_rows,
+                    budget.encode(parquet_metadata) if footer_credit else None,
+                    mtimes[index] if mtimes is not None else None,
+                )
+            value = schema.serialize().to_pybytes()
+            return schema, value, metadata
         except (OSError, pa.ArrowInvalid, pa.ArrowTypeError) as error:
             raise type(error)(
                 f"Failed to read {format_name} schema from {path!r}: {error}"
@@ -198,13 +227,19 @@ def _read_schema_metadata_batch(
         if io_concurrency is not None
         else _FULL_SCHEMA_INFERENCE_IO_CONCURRENCY
     )
+    unique: Dict[bytes, Tuple[int, bytes, bool]] = {}
+    metadata_values: List[Optional[FileMetadata]] = []
     with ThreadPoolExecutor(max_workers=min(concurrency, len(paths))) as executor:
-        results = list(executor.map(read_file, enumerate(paths)))
+        for index, (schema, value, file_metadata) in enumerate(
+            executor.map(read_file, enumerate(paths))
+        ):
+            metadata_values.append(file_metadata)
+            _add_unique_schema(unique, index, schema, value)
     metadata = (
         pa.array(
             [
                 value.to_metadata() if value is not None else None
-                for _, value in results
+                for value in metadata_values
             ],
             type=FILE_METADATA_TYPE,
         )
@@ -212,7 +247,7 @@ def _read_schema_metadata_batch(
         else None
     )
     return _SchemaBatchResult(
-        [schema for schema, _ in results], metadata, budget.limit - budget.remaining
+        list(unique.values()), metadata, budget.limit - budget.remaining
     )
 
 
@@ -350,13 +385,7 @@ def infer_full_schema_from_files(
             offset = pending.pop(ref)
             for index, value, parquet_encoded in ray.get(ref):
                 position = offset + index
-                if parquet_encoded:
-                    import pyarrow.parquet as pq
-
-                    schema = pq.read_schema(pa.BufferReader(value))
-                else:
-                    schema = pa.ipc.read_schema(pa.BufferReader(value))
-                schemas.append((position, schema))
+                schemas.append((position, _decode_schema(value, parquet_encoded)))
         schemas.sort(key=lambda item: item[0])
         return _merge_file_schemas(
             [paths[index] for index, _ in schemas],
@@ -374,6 +403,7 @@ def infer_full_schema_from_files(
 
 def _driver_read_all_metadata(
     paths: List[str],
+    sizes: Optional[List[Optional[int]]],
     filesystem: FileSystem,
     format_name: str,
     budget: int,
@@ -394,10 +424,8 @@ def _driver_read_all_metadata(
         if format_name == "Parquet"
         else 0
     )
-    schemas: List[Optional[pa.Schema]] = [None] * len(paths)
+    schemas: List[Tuple[int, pa.Schema]] = []
     metadata_chunks: Dict[int, pa.Array] = {}
-    last_payload: Optional[bytes] = None
-    last_schema: Optional[pa.Schema] = None
     for start in range(0, len(paths), batch_size):
         stop = min(start + batch_size, len(paths))
         row_records = min(row_slots, stop - start, row_remaining)
@@ -413,6 +441,7 @@ def _driver_read_all_metadata(
         footer_available -= credit
         result = _read_schema_metadata_batch(
             paths[start:stop],
+            sizes[start:stop] if sizes is not None else None,
             filesystem,
             format_name,
             context,
@@ -421,25 +450,29 @@ def _driver_read_all_metadata(
             mtimes[start:stop] if mtimes is not None else None,
             io_concurrency=16,
         )
+        footer_available += credit - result.footer_bytes
         metadata_chunks[start] = (
             result.metadata
             if result.metadata is not None
             else pa.nulls(stop - start, type=FILE_METADATA_TYPE)
         )
-        for index, value in enumerate(result.schemas):
-            if value != last_payload:
-                last_schema = pa.ipc.read_schema(pa.BufferReader(value))
-                last_payload = value
-            assert last_schema is not None
-            schemas[start + index] = last_schema
+        for first_pos, value, parquet_encoded in result.schemas:
+            schemas.append((start + first_pos, _decode_schema(value, parquet_encoded)))
+    schemas.sort(key=lambda item: item[0])
     return FullSchemaInferenceResult(
-        _merge_file_schemas(paths, cast(List[pa.Schema], schemas), format_name),
-        pa.chunked_array(
-            [metadata_chunks[offset] for offset in sorted(metadata_chunks)],
-            type=FILE_METADATA_TYPE,
-        )
-        if row_limit
-        else None,
+        _merge_file_schemas(
+            [paths[index] for index, _ in schemas],
+            [schema for _, schema in schemas],
+            format_name,
+        ),
+        (
+            pa.chunked_array(
+                [metadata_chunks[offset] for offset in sorted(metadata_chunks)],
+                type=FILE_METADATA_TYPE,
+            )
+            if row_limit
+            else None
+        ),
     )
 
 
@@ -453,9 +486,8 @@ def infer_full_schema_with_metadata_from_files(
 ) -> Optional[FullSchemaInferenceResult]:
     """Read every schema once and optionally retain budgeted file metadata.
 
-    Consecutive identical IPC payloads share a decoded schema within this
-    call; metadata remains file-specific and candidate references remain
-    O(files). Scheduling follows the schema-only path: the first batch is a
+    Schemas are deduplicated per batch; metadata remains file-specific.
+    Scheduling follows the schema-only path: the first batch is a
     single file so progress lands early, and the first distributed result has
     a timeout after which this function cancels pending tasks and finishes
     with a driver-side read, so the caller is not pushed into a second
@@ -473,6 +505,7 @@ def infer_full_schema_with_metadata_from_files(
     paths: List[str] = sample.paths.tolist()
     if not paths:
         return FullSchemaInferenceResult(pa.schema([]))
+    sizes = sample.known_file_sizes
     block = sample.as_block()
     mtimes = (
         block[FILE_MTIME_COLUMN_NAME].to_pylist()
@@ -508,17 +541,17 @@ def infer_full_schema_with_metadata_from_files(
     ) >= min(16, batch_size)
     if not distributed:
         return _driver_read_all_metadata(
-            paths, filesystem, format_name, budget, task_budget, mtimes
+            paths, sizes, filesystem, format_name, budget, task_budget, mtimes
         )
     read_remote = cached_remote_fn(_read_schema_metadata_batch, max_retries=2).options(
         num_cpus=_FULL_SCHEMA_INFERENCE_NUM_CPUS, **options
     )
     # Reserve count records first, respecting the task cap even for large batches.
     row_slots = min(batch_size, task_budget // _FILE_METADATA_RECORD_BYTES)
-    full_batches, tail = divmod(len(paths), batch_size)
+    full_batches, tail = divmod(len(paths) - 1, batch_size)
     row_limit = min(
         budget // _FILE_METADATA_RECORD_BYTES,
-        full_batches * row_slots + min(tail, row_slots),
+        1 + full_batches * row_slots + min(tail, row_slots),
     )
     row_remaining = row_limit
     footer_available = (
@@ -526,11 +559,9 @@ def infer_full_schema_with_metadata_from_files(
         if format_name == "Parquet"
         else 0
     )
-    schemas: List[Optional[pa.Schema]] = [None] * len(paths)
+    schemas: List[Tuple[int, pa.Schema]] = []
     metadata_chunks: Dict[int, pa.Array] = {}
     pending: Dict[ObjectRef[Any], Tuple[int, int, int]] = {}
-    last_payload: Optional[bytes] = None
-    last_schema: Optional[pa.Schema] = None
 
     def consume(
         result: _SchemaBatchResult,
@@ -538,19 +569,15 @@ def infer_full_schema_with_metadata_from_files(
         count: int,
         credit: int,
     ) -> None:
-        nonlocal footer_available, last_payload, last_schema
+        nonlocal footer_available
         footer_available += credit - result.footer_bytes
         metadata_chunks[offset] = (
             result.metadata
             if result.metadata is not None
             else pa.nulls(count, type=FILE_METADATA_TYPE)
         )
-        for index, value in enumerate(result.schemas):
-            if value != last_payload:
-                last_schema = pa.ipc.read_schema(pa.BufferReader(value))
-                last_payload = value
-            assert last_schema is not None
-            schemas[offset + index] = last_schema
+        for first_pos, value, parquet_encoded in result.schemas:
+            schemas.append((offset + first_pos, _decode_schema(value, parquet_encoded)))
 
     start = 0
     first_result = True
@@ -573,6 +600,7 @@ def infer_full_schema_with_metadata_from_files(
                 footer_available -= credit
                 ref = read_remote.remote(
                     paths[start:stop],
+                    sizes[start:stop] if sizes is not None else None,
                     filesystem,
                     format_name,
                     context,
@@ -606,23 +634,6 @@ def infer_full_schema_with_metadata_from_files(
             ref = ready[0]
             offset, count, credit = pending.pop(ref)
             consume(ray.get(ref), offset, count, credit)
-        if timed_out:
-            # Cancel outstanding tasks (in the finally block) and finish with a
-            # driver-side read so the caller is not pushed into a second
-            # distributed planning round.
-            return _driver_read_all_metadata(
-                paths, filesystem, format_name, budget, task_budget, mtimes
-            )
-        assert all(schema is not None for schema in schemas)
-        return FullSchemaInferenceResult(
-            _merge_file_schemas(paths, cast(List[pa.Schema], schemas), format_name),
-            pa.chunked_array(
-                [metadata_chunks[offset] for offset in sorted(metadata_chunks)],
-                type=FILE_METADATA_TYPE,
-            )
-            if row_limit
-            else None,
-        )
     finally:
         for ref in pending:
             try:
@@ -630,6 +641,26 @@ def infer_full_schema_with_metadata_from_files(
             except Exception:
                 logger.debug("Could not cancel schema task", exc_info=True)
         pending.clear()
+    if timed_out:
+        return _driver_read_all_metadata(
+            paths, sizes, filesystem, format_name, budget, task_budget, mtimes
+        )
+    schemas.sort(key=lambda item: item[0])
+    return FullSchemaInferenceResult(
+        _merge_file_schemas(
+            [paths[index] for index, _ in schemas],
+            [schema for _, schema in schemas],
+            format_name,
+        ),
+        (
+            pa.chunked_array(
+                [metadata_chunks[offset] for offset in sorted(metadata_chunks)],
+                type=FILE_METADATA_TYPE,
+            )
+            if row_limit
+            else None
+        ),
+    )
 
 
 def infer_schema_from_files(

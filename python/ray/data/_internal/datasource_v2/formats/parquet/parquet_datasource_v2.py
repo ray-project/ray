@@ -380,6 +380,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # Cache settings must not bypass a subclass's schema hook.
         if (
             type(self).infer_full_schema is not ParquetDatasourceV2.infer_full_schema
+            or type(self).infer_schema is not ParquetDatasourceV2.infer_schema
             or self._user_schema is not None
             or not len(sample)
         ):
