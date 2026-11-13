@@ -1136,9 +1136,21 @@ def _create_router_server(
     port: int,
     replica_id_to_return: str,
     extra_response: Optional[dict] = None,
+    health: Optional[dict] = None,
 ):
-    """Fake /internal/route. Captures request data forwarded by HAProxy."""
+    """Fake /internal/route. Captures request data forwarded by HAProxy.
+
+    /-/healthz returns 503 while ``health["healthy"]`` is False, as a draining
+    replica does.
+    """
     app = FastAPI()
+
+    @app.get("/-/healthz")
+    async def healthz():
+        if health is not None and not health["healthy"]:
+            return Response("DRAINING", status_code=503)
+        return Response("success")
+
     captured = {
         "bodies": [],
         "headers": [],
@@ -1417,6 +1429,7 @@ async def ingress_router_pool(haproxy_api_cleanup, monkeypatch, tmp_path):
         replica_port, replica_id_header="A"
     )
     routers = []
+    router_health = [{"healthy": True} for _ in router_ports]
 
     def create_router(index):
         return _create_router_server(
@@ -1427,6 +1440,7 @@ async def ingress_router_pool(haproxy_api_cleanup, monkeypatch, tmp_path):
                     router_header: str(index)
                 }
             },
+            health=router_health[index],
         )
 
     async def start_proxy(name, reverse=False, nbthread=1):
@@ -1480,6 +1494,9 @@ async def ingress_router_pool(haproxy_api_cleanup, monkeypatch, tmp_path):
     def restart_router(index):
         routers[index] = create_router(index)
 
+    def set_router_healthy(index, healthy):
+        router_health[index]["healthy"] = healthy
+
     try:
         for i in range(3):
             routers.append(create_router(i))
@@ -1488,6 +1505,7 @@ async def ingress_router_pool(haproxy_api_cleanup, monkeypatch, tmp_path):
             post=post,
             stop_router=stop_router,
             restart_router=restart_router,
+            set_router_healthy=set_router_healthy,
         )
     finally:
         _shutdown_fake_servers(
@@ -1548,8 +1566,12 @@ async def test_router_session_reload(ingress_router_pool):
 
 
 @pytest.mark.asyncio
-async def test_router_session_failover(ingress_router_pool):
-    """Router failure moves its sessions; recovery restores their owners."""
+@pytest.mark.parametrize("failure", ["stopped", "draining"])
+async def test_router_session_failover(ingress_router_pool, failure):
+    """A stopped or draining router loses its sessions; recovery restores them.
+
+    A draining router still accepts connections, so only /-/healthz removes it.
+    """
     pool = ingress_router_pool
     _, _, port = await pool.start_proxy("proxy")
     owners = {
@@ -1558,14 +1580,20 @@ async def test_router_session_failover(ingress_router_pool):
     }
     sid = next(iter(owners))
     failed_owner = owners[sid]
-    pool.stop_router(failed_owner)
+    if failure == "stopped":
+        pool.stop_router(failed_owner)
+    else:
+        pool.set_router_healthy(failed_owner, False)
     await async_wait_for_condition(
         lambda: pool.post(port, {SERVE_SESSION_ID: sid}) != failed_owner, timeout=10
     )
     for session, owner in owners.items():
         if owner != failed_owner:
             assert pool.post(port, {SERVE_SESSION_ID: session}) == owner
-    pool.restart_router(failed_owner)
+    if failure == "stopped":
+        pool.restart_router(failed_owner)
+    else:
+        pool.set_router_healthy(failed_owner, True)
     await async_wait_for_condition(
         lambda: pool.post(port, {SERVE_SESSION_ID: sid}) == failed_owner, timeout=10
     )

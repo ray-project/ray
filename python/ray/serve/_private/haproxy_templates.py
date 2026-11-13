@@ -303,7 +303,9 @@ frontend ingress_request_routers
     use_backend {{ backend.name }}-ingress-request-routers if { path /{{ backend.name }} }
     {%- endfor %}
     default_backend default_backend
-{%- for backend in backends if backend.name in ingress_router_server_ids %}
+{%- for item in backends_with_health_config if item.backend.name in ingress_router_server_ids %}
+{%- set backend = item.backend %}
+{%- set hc = item.health_config %}
 backend {{ backend.name }}-ingress-request-routers
     no log
     balance hdr(x-serve-router-session-id)
@@ -312,7 +314,12 @@ backend {{ backend.name }}-ingress-request-routers
     http-request set-path /internal/route
     http-reuse always
     timeout server {{ ingress_request_router_timeout_s }}s
-    default-server weight {{ ingress_router_weight }}{% if config.health_check_inter %} inter {{ config.health_check_inter }}{% endif %}
+    # Draining routers fail /-/healthz and leave the ring.
+    {%- if hc.health_path %}
+    option httpchk GET {{ hc.health_path }}
+    http-check expect status 200
+    {%- endif %}
+    {{ hc.default_server_directive }} weight {{ ingress_router_weight }}
     {%- for server in backend.ingress_request_router_servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} id {{ ingress_router_server_ids[backend.name][server.name] }} check
     {%- endfor %}

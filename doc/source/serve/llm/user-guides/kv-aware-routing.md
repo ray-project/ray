@@ -112,7 +112,7 @@ curl http://localhost:8000/v1/chat/completions \
   -d '{"model": "qwen3-0.6b", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
-Session affinity works at two levels. At the ingress, HAProxy uses consistent hashing to send requests with the same session ID to the same ingress request router (`LLMRouter`). That router tokenizes requests and can reuse tokenized conversation prefixes across turns.
+Session affinity works at two levels. At the ingress, HAProxy uses consistent hashing to send requests with the same session ID to the same ingress request router (`LLMRouter`). That router tokenizes requests and can reuse tokenized conversation prefixes across turns. The router might run on another node, which adds a network round trip. For long multi-turn conversations, prefix token reuse saves more than this hop costs. For short prompts, the hop can cost more than it saves.
 
 Then, the router (`LLMRouter`) selects a model replica (`LLMServer`) for the first request by estimated token load and KV cache overlap. Later turns stay on that model replica even when another has lower load or more cached tokens. After the session's idle timeout, or if the model replica becomes unavailable or ineligible, the router selects again.
 
@@ -134,7 +134,6 @@ Set these in the cluster environment:
 | Environment variable | Default | Effect |
 | --- | --- | --- |
 | `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` | 1 | Ingress replicas per proxy node. Raise it when ingress tokenization and request scoring bound throughput. |
-| `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT` | 16 | Equal ingress replica weights for HAProxy's native consistent hashing. Higher values improve session distribution at the cost of memory. |
 | `RAY_SERVE_HAPROXY_RETRIES` | HAProxy default (3) | Retries for failed backend connections, including ingress replicas. |
 | `RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS` | 0 | Report decode progress as the engine generates tokens, for more accurate load tracking. Because each engine replica sends updates to every ingress replica, this can add network overhead at high concurrency. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_TTL_S` | 60 | How long a replica holds a staged prompt-token payload before eviction. |

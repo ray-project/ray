@@ -34,6 +34,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     DRAINING_MESSAGE,
+    HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT,
     HEALTHY_MESSAGE,
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
@@ -58,7 +59,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
-    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT,
     RAY_SERVE_HAPROXY_INGRESS_RETRIES,
     RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
@@ -1550,7 +1550,7 @@ class HAProxyApi(ProxyApi):
                     "route_info": health_route_info,
                     "has_ingress_request_router": has_ingress_request_router,
                     "ingress_router_server_ids": ingress_router_server_ids,
-                    "ingress_router_weight": RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT,
+                    "ingress_router_weight": HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
                     "ingress_request_router_timeout_s": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
