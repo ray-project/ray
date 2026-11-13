@@ -325,6 +325,7 @@ class TopNMergeOperator(InternalQueueOperatorMixin, PhysicalOperator):
         exc: Optional[Exception],
         task_exec_stats: Optional[TaskExecWorkerStats],
         task_exec_driver_stats: Optional[TaskExecDriverStats],
+        aborted: bool,
     ) -> None:
         assert self._merge.task is not None
         self._metrics.on_task_finished(
