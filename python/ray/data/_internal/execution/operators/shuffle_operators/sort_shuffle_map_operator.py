@@ -27,9 +27,9 @@ class SortRangePartitioner:
     Boundaries come from the user (``sort_key.boundaries``), are empty when there
     is a single partition, or are read from the upstream ``SortSamplingOp`` the
     first time an input arrives. ``SortShuffleMapOp`` resolves them per input;
-    the disk writer (``plan_disk_sort_shuffle_map``) ships the partitioner
-    itself as its partition fn, resolved once on the first input before the
-    map tasks pick it up.
+    the disk writer (see ``_plan_sort_v2``) ships the partitioner itself as its
+    partition fn, resolved once on the first input before the map tasks pick
+    it up.
     """
 
     def __init__(

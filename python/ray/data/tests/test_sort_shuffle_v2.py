@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_oper
     SortSamplingOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
+    SortRangePartitioner,
     SortShuffleMapOp,
 )
 from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
@@ -43,7 +44,6 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTask
 from ray.data._internal.planner.plan_all_to_all_op import (
     plan_disk_hash_shuffle_map,
     plan_disk_hash_shuffle_reduce,
-    plan_disk_sort_shuffle_map,
 )
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
@@ -252,7 +252,23 @@ def test_sort_sampling_handles_all_empty_blocks(
     assert op.has_completed()
 
 
-@pytest.mark.parametrize("build_map_op", [SortShuffleMapOp, plan_disk_sort_shuffle_map])
+def _disk_sort_writer(input_op, ctx, *, num_partitions, sort_key):
+    """The disk sort writer as ``_plan_sort_v2`` builds it."""
+    partitioner = SortRangePartitioner(sort_key, num_partitions, input_op, ctx)
+
+    def resolve_boundaries(schema):
+        partitioner.partition_fn_for(schema, input_op)
+
+    return plan_disk_hash_shuffle_map(
+        input_op,
+        ctx,
+        num_partitions=num_partitions,
+        partition_fn=partitioner,
+        on_start=resolve_boundaries,
+    )
+
+
+@pytest.mark.parametrize("build_map_op", [SortShuffleMapOp, _disk_sort_writer])
 def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
     ray_start_regular_shared_2_cpus,
     restore_data_context,

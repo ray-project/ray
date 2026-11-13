@@ -64,7 +64,6 @@ from ray.data._internal.logical.operators import (
     Sort,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
-from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
@@ -132,33 +131,6 @@ def plan_disk_hash_shuffle_map(
         ray_remote_args={"num_cpus": map_cpus, "runtime_env": _SHUFFLE_MAP_RUNTIME_ENV},
         supports_fusion=False,
         on_start=on_start,
-    )
-
-
-def plan_disk_sort_shuffle_map(
-    input_op: PhysicalOperator,
-    data_context: DataContext,
-    *,
-    num_partitions: int,
-    sort_key: SortKey,
-    name: str = "DiskSortShuffleMap",
-) -> MapOperator:
-    """``plan_disk_hash_shuffle_map`` for a sort: the writer range-partitions
-    on boundaries resolved like ``SortShuffleMapOp`` does.
-
-    The partitioner is the writer's partition fn. The sampling op (if any)
-    forwards nothing until the boundaries exist, and the first input resolves
-    them through ``on_start`` before the map transformer is serialized for the
-    tasks, so every map task sees the resolved boundaries.
-    """
-    partitioner = SortRangePartitioner(sort_key, num_partitions, input_op, data_context)
-    return plan_disk_hash_shuffle_map(
-        input_op,
-        data_context,
-        num_partitions=num_partitions,
-        partition_fn=partitioner,
-        name=name,
-        on_start=lambda schema: partitioner.partition_fn_for(schema, input_op),
     )
 
 
@@ -370,12 +342,20 @@ def _plan_sort_v2(
 
     _, build_reduce, prefix = _select_shuffle_v2_op_classes(data_context)
     if prefix == "Disk":
-        map_op = plan_disk_sort_shuffle_map(
+        # The partitioner is the writer's partition fn. The sampling op (if
+        # any) forwards nothing until the boundaries exist, and on_start
+        # resolves them on the first input, before the map transformer is
+        # serialized for the tasks.
+        partitioner = SortRangePartitioner(
+            sort_key, num_partitions, map_input_op, data_context
+        )
+        map_op = plan_disk_hash_shuffle_map(
             map_input_op,
             data_context,
             num_partitions=num_partitions,
-            sort_key=sort_key,
+            partition_fn=partitioner,
             name=f"{prefix}SortShuffleMap(partitions={num_partitions})",
+            on_start=lambda schema: partitioner.partition_fn_for(schema, map_input_op),
         )
     else:
         map_op = SortShuffleMapOp(
