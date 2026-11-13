@@ -102,16 +102,22 @@ def test_the_pipeline_asks_for_every_published_image_once():
 SCAN = "bazel run //ci/ray_ci/automation/trivy:scan_images --"
 
 
-def test_a_single_command_step_is_read_too():
-    pipeline = {
-        "steps": [
-            {
-                "key": "s",
-                "command": f"{SCAN} --architecture x86_64 --platform tpu "
-                "--image ray:3.12",
-            }
-        ]
-    }
+TPU_SCAN = f"{SCAN} --architecture x86_64 --platform tpu --image ray:3.12"
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        pytest.param({"command": TPU_SCAN}, id="command-string"),
+        pytest.param({"command": [TPU_SCAN]}, id="command-list"),
+        pytest.param({"commands": TPU_SCAN}, id="commands-string"),
+        pytest.param({"commands": ["echo start", TPU_SCAN]}, id="commands-list"),
+    ],
+)
+def test_every_way_buildkite_takes_a_command_is_read(step: dict):
+    """Buildkite takes `command` or `commands`, each a string or a list, and
+    rayci passes them through; a form left unread would drop its images."""
+    pipeline = {"steps": [{"key": "s", **step}]}
     assert [i.name for i in expected_images(pipeline)] == ["ray-py3.12-tpu"]
 
 

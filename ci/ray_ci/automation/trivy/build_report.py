@@ -58,14 +58,24 @@ RESULT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.(status\.json|json\.gz)$
 DOWNLOAD_THREADS = 16
 
 
+def _commands(step: Mapping[str, Any]) -> list[str]:
+    """Buildkite takes ``command`` or ``commands``, each a string or a list."""
+    found: list[str] = []
+    for key in ("command", "commands"):
+        value = step.get(key)
+        if isinstance(value, str):
+            found.append(value)
+        elif isinstance(value, list):
+            found += [str(c) for c in value]
+    return found
+
+
 def _step_images(step: Mapping[str, Any]) -> list[Image]:
     """The images one step scans, or none if it doesn't run scan_images.
     A scan step this can't read exactly is an error: guessing would make
     the coverage check quietly wrong."""
     key = step.get("key") or step.get("label") or "?"
-    command = step.get("command")
-    commands = [command] if isinstance(command, str) else step.get("commands") or []
-    text = " ".join(commands)
+    text = " ".join(_commands(step))
     runs = text.count(SCAN_TARGET)
     if not runs:
         return []
