@@ -190,6 +190,21 @@ def test_validation(ray_start_6_cpus):
         )
 
 
+def test_legacy_num_boost_round_zero_and_callbacks_not_mutated():
+    valid_dataset = mock.MagicMock()
+    user_callbacks = [lambda env: None]
+    trainer = LightGBMTrainer(
+        scaling_config=ScalingConfig(num_workers=1),
+        label_column="target",
+        num_boost_round=0,
+        callbacks=user_callbacks,
+        datasets={TRAIN_DATASET_KEY: valid_dataset},
+    )
+    assert trainer._train_loop_per_worker.keywords["num_boost_round"] == 0
+    assert len(user_callbacks) == 1
+    assert len(trainer._train_loop_per_worker.keywords["lightgbm_train_kwargs"]["callbacks"]) == 2
+
+
 @pytest.mark.parametrize("rank", [None, 0, 1])
 def test_checkpoint_only_on_rank0(rank):
     """Tests that the callback only reports checkpoints on rank 0,
