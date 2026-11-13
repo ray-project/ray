@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import DataContext
@@ -79,19 +80,15 @@ class TestDownstreamCapacityBackpressurePolicy:
         # Set up eligibility methods (used by ResourceManager.is_op_eligible)
         mock_operator.throttling_disabled.return_value = throttling_disabled
         mock_operator.has_execution_finished.return_value = has_execution_finished
+        mock_operator.is_synchronization_barrier = False
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
         return mock_operator, op_state
 
     def _mock_materializing_operator(self):
-        """Helper method to create mock materializing operator (e.g., AllToAllOperator).
-
-        This creates a mock that passes isinstance(op, AllToAllOperator).
-        We use __class__ assignment to make isinstance work with MagicMock.
-        """
+        """Helper method to create mock materializing operator (e.g., AllToAllOperator)."""
         mock_operator = MagicMock(spec=AllToAllOperator)
-        mock_operator.__class__ = AllToAllOperator  # Make isinstance work
         mock_operator.metrics = MagicMock(spec=OpRuntimeMetrics)
         mock_operator.metrics.num_tasks_running = 0
         mock_operator.metrics.obj_store_mem_internal_inqueue = 0
@@ -103,6 +100,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         mock_operator.throttling_disabled = types.MethodType(
             AllToAllOperator.throttling_disabled, mock_operator
         )
+        mock_operator.is_synchronization_barrier = True
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
@@ -271,7 +269,7 @@ class TestDownstreamCapacityBackpressurePolicy:
             obj_store_mem_pending_task_inputs=100,
             throttling_disabled=throttling_disabled,
         )
-        materializing_op.__class__ = op_class
+        materializing_op.is_synchronization_barrier = True
         op.output_dependencies = [materializing_op]
 
         topology = {op: op_state, materializing_op: materializing_op_state}
@@ -291,6 +289,15 @@ class TestDownstreamCapacityBackpressurePolicy:
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is True
+
+    @pytest.mark.parametrize(
+        "op_class",
+        [HashShufflingOperatorBase, AllToAllOperator, ShuffleMapOp, ZipOperator],
+    )
+    def test_is_synchronization_barrier_overrides(self, op_class):
+        """Test that the former blocking-materializing classes are barriers."""
+        op = MagicMock(spec=op_class)
+        assert op_class.is_synchronization_barrier.fget(op) is True
 
     def test_backpressure_applied_when_materializer_is_beyond_downstream_eligible_op(
         self,

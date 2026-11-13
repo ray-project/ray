@@ -422,7 +422,7 @@ class FuseOperators(Rule):
 
         if isinstance(up_op, DiskHashShuffleReduceOp):
             fused_op = DiskHashShuffleReduceOp(
-                up_op.input_dependencies,
+                up_op.input_dependencies[0],
                 up_op.data_context,
                 num_partitions=up_op._num_partitions,
                 reduce_fn=up_op._reduce_fn,
