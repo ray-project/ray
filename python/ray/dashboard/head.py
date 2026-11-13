@@ -650,9 +650,9 @@ class DashboardHead:
         else:
             logger.info("http server disabled.")
 
-        # We need to expose dashboard's node's ip for other worker nodes
-        # if it's not localhost.
-        dashboard_http_host = self.ip if not is_localhost(self.http_host) else http_host
+        # Advertise the address the HTTP server is reachable at. The server already
+        # replaces an all-interfaces bind address (0.0.0.0 or ::) with the node IP.
+        dashboard_http_host = http_host
         # This could be done better in the future, including
         # removing the polling on the Ray side, by communicating the
         # server address to Ray via stdin / stdout or a pipe.

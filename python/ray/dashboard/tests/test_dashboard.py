@@ -367,6 +367,26 @@ def test_dashboard_address_global(ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Binding 127.0.0.2 needs the whole 127.0.0.0/8 range on loopback.",
+)
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [{"dashboard_host": "127.0.0.2"}],
+    indirect=True,
+)
+def test_dashboard_address_specific(ray_start_with_dashboard):
+    # A specific address is advertised as is, since the dashboard is only
+    # reachable there, not on the node IP.
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert parse_address(webui_url)[0] == "127.0.0.2"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_http_get(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
