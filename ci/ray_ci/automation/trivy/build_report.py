@@ -150,12 +150,14 @@ def load_scanner(store: ScanStore, workdir: Path) -> tuple[dict[str, Any], str]:
     return trivy_report.load_metadata(path)
 
 
-def files_note(store: ScanStore) -> str:
+def files_note(store: ScanStore, uploaded: bool = True) -> str:
+    raw = f"each image's raw Trivy result in `{store.url(RESULTS_FOLDER)}`."
+    if not uploaded:
+        return f"The report is only in this job's `trivy/report/` artifacts; {raw}"
     return (
         f"Kept for 30 days: the report in `{store.url(REPORT_FOLDER)}` "
         "(`report.md`, `summary.json`, `vulns.csv.gz`) and in this job's "
-        "`trivy/report/` artifacts; each image's raw Trivy result in "
-        f"`{store.url(RESULTS_FOLDER)}`."
+        f"`trivy/report/` artifacts; {raw}"
     )
 
 
@@ -228,12 +230,15 @@ def report_build(
         )
         upload_error = publish_report(store, output_dir, workdir)
 
+    style = trivy_report.annotation_style(scans, code)
+    if upload_error:
+        issues = [*issues, f"the report could not be uploaded to S3: {upload_error}"]
+        note = files_note(store, uploaded=False)
+        style = "warning" if style == "success" else style
     body = trivy_report.render_annotation(
         scans, [], scanner, issues=issues, files_note=note
     )
-    annotation = write_annotation(
-        annotation_dir, body, trivy_report.annotation_style(scans, code)
-    )
+    annotation = write_annotation(annotation_dir, body, style)
     logger.info(f"Wrote {output_dir} and {annotation}")
     if upload_error:
         logger.error(f"Could not upload the report: {upload_error}")

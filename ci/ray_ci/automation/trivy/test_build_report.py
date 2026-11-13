@@ -205,9 +205,16 @@ def test_a_failed_report_upload_fails_a_clean_build(tmp_path: Path, caplog):
     result = run(tmp_path, s3, pipeline)
     assert result.exit_code == 1, result.output
     assert "Could not upload the report" in caplog.text
-    # The annotation still goes up, and says the build is clean.
+    # The annotation still goes up; it says the upload failed, isn't green,
+    # and doesn't send readers to a report/ folder that isn't there.
     (annotation,) = (tmp_path / "annotations").iterdir()
-    assert annotation.name == "trivy-scan.success.md"
+    assert annotation.name == "trivy-scan.warning.md"
+    body = annotation.read_text()
+    assert "the report could not be uploaded to S3: upload to s3://" in body
+    assert "AccessDenied" in body
+    footer = body.rstrip().splitlines()[-1]
+    assert f"{PREFIX}/report/" not in footer
+    assert "only in this job's `trivy/report/` artifacts" in footer
 
 
 def test_a_failed_report_upload_keeps_the_findings_exit_code(tmp_path: Path):
@@ -219,6 +226,9 @@ def test_a_failed_report_upload_keeps_the_findings_exit_code(tmp_path: Path):
     s3.denied.add(f"{PREFIX}/report/report.md")
     result = run(tmp_path, s3, pipeline)
     assert result.exit_code == EXIT_FINDINGS, result.output
+    (annotation,) = (tmp_path / "annotations").iterdir()
+    assert annotation.name == "trivy-scan.error.md"
+    assert "the report could not be uploaded to S3" in annotation.read_text()
 
 
 def test_a_failed_report_still_leaves_a_warning_annotation(tmp_path: Path):
