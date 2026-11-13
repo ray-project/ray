@@ -50,6 +50,18 @@ py_library(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_air_deprecation",
+    size = "medium",
+    srcs = ["tests/test_air_deprecation.py"],
+    env = _AIR_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [":ml_lib"],
+)
+
+py_test(
     name = "test_air_usage",
     size = "medium",
     srcs = ["tests/test_air_usage.py"],
