@@ -22,6 +22,40 @@ py_test(
     ],
 )
 
+py_library(
+    name = "scan_store",
+    srcs = ["scan_store.py"],
+    deps = [
+        ci_require("boto3"),
+        ci_require("botocore"),
+        ci_require("click"),
+    ],
+)
+
+py_library(
+    name = "fake_s3",
+    testonly = True,
+    srcs = ["fake_s3.py"],
+    deps = [ci_require("botocore")],
+)
+
+py_test(
+    name = "test_scan_store",
+    size = "small",
+    srcs = ["test_scan_store.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":fake_s3",
+        ":scan_store",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
 py_test(
     name = "test_workspace_contexts",
     size = "small",
