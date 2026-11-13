@@ -2,7 +2,8 @@ import pickle
 
 from freezegun import freeze_time
 
-from ray.tune.stopper import TimeoutStopper
+from ray.air.constants import TRAINING_ITERATION
+from ray.tune.stopper import MaximumIterationStopper, TimeoutStopper
 
 
 def test_timeout_stopper_timeout():
@@ -54,6 +55,14 @@ def test_timeout_stopper_recover_after_timeout():
         assert stopper.stop_all()
         frozen.tick(10)
         assert stopper.stop_all()
+
+
+def test_maximum_iteration_stopper_restored_trial():
+    """A trial restored from an older checkpoint replays iterations 2 and 3."""
+    stopper = MaximumIterationStopper(max_iter=4)
+    for iteration in (1, 2, 3, 2, 3):
+        assert not stopper("trial", {TRAINING_ITERATION: iteration})
+    assert stopper("trial", {TRAINING_ITERATION: 4})
 
 
 if __name__ == "__main__":
