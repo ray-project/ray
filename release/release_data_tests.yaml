@@ -266,6 +266,19 @@
           runtime_env:
             RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
 
+    - __suffix__: adaptive_partial_agg
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION: "1"
+
+    - __suffix__: adaptive_partial_agg_disk
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
+            RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION: "1"
+
 - name: aggregate_groups_high_cardinality
   python: "3.11"
   cluster:
@@ -296,6 +309,19 @@
         byod:
           runtime_env:
             RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
+
+    - __suffix__: adaptive_partial_agg
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION: "1"
+
+    - __suffix__: adaptive_partial_agg_disk
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
+            RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION: "1"
 
 # map_groups (keyed repartition under the hood).
 - name: map_groups_high_cardinality
