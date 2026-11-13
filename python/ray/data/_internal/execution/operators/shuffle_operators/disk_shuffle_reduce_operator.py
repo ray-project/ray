@@ -1,12 +1,17 @@
 import functools
 import logging
 import typing
-from collections import defaultdict, deque
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 
 import pyarrow as pa
 
 import ray
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+    ReorderingBundleQueue,
+)
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionResources,
@@ -79,6 +84,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         reduce_fn: ReduceFn,
         disallow_block_splitting: bool = False,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        preserve_partition_order: bool = False,
         peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "DiskHashShuffleReduce",
         should_emit_empty_partitions: bool = True,
@@ -105,6 +111,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
+        self._preserve_partition_order: bool = preserve_partition_order
         self._emit_empty_partitions: bool = should_emit_empty_partitions
         self._output_partitioning: Optional[HashPartitioning] = output_partitioning
         # False when reduce_fn (aggregation) or a fused map can change the row
@@ -132,7 +139,11 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         )
 
         # -- Output queue ----------------------------------------------------
-        self._output_queue: deque = deque()
+        self._output_queue: BaseBundleQueue = (
+            ReorderingBundleQueue()
+            if self._preserve_partition_order
+            else FIFOBundleQueue()
+        )
         # See set_emit_whole_partitions.
         self._emit_whole_partitions: bool = False
         # Each partition's outputs, kept until its reduce task finishes.
@@ -190,9 +201,13 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             and estimated_rows == 0
         ):
             if self._emit_empty_partitions:
-                self._emit_empty_partition(refs, schema)
+                self._emit_empty_partition(partition_id, refs, schema)
             else:
                 refs.destroy_if_owned()
+                # The key must still be finalized or the ordered queue would
+                # never advance past this partition.
+                if self._preserve_partition_order:
+                    self._output_queue.finalize(key=partition_id)
             return
 
         pending = self._pending_inputs.setdefault(partition_id, {})
@@ -295,7 +310,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             task_id=data_task.get_task_id(),
         )
 
-    def _emit_empty_partition(self, refs: RefBundle, schema: pa.Schema) -> None:
+    def _emit_empty_partition(
+        self, partition_id: int, refs: RefBundle, schema: pa.Schema
+    ) -> None:
         """Emit one empty output block for an empty partition.
 
         The partition contributed no rows, so there is nothing to reduce; we
@@ -323,8 +340,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             self.id,
         )
         self._num_reduce_tasks_submitted += 1
-        self._output_queue.append(out_bundle)
-        self._metrics.on_output_queued(out_bundle)
+        self._record_partition_output(partition_id, out_bundle, partition_complete=True)
         _, num_outputs, num_rows = estimate_total_num_of_blocks(
             self._num_reduce_tasks_submitted,
             self.upstream_op_num_outputs(),
@@ -335,10 +351,10 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._estimated_output_num_rows = num_rows
 
     def has_next(self) -> bool:
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        bundle: RefBundle = self._output_queue.popleft()
+        bundle: RefBundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
         return bundle
@@ -348,11 +364,11 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
         if self._emit_whole_partitions:
-            # Hold it until the task ends; on_output_queued below still counts it.
+            # Hold it until the task ends, but count it as queued for memory.
             self._held_partition_outputs[partition_id].append(bundle)
+            self._metrics.on_output_queued(bundle)
         else:
-            self._output_queue.append(bundle)
-        self._metrics.on_output_queued(bundle)
+            self._record_partition_output(partition_id, bundle)
         self._metrics.on_task_output_generated(task_index=partition_id, output=bundle)
         _, num_outputs, num_rows = estimate_total_num_of_blocks(
             self._num_reduce_tasks_submitted,
@@ -384,9 +400,11 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             for bundle in held:
                 self._metrics.on_output_dequeued(bundle)
             if held and exc is None:
-                whole_partition = RefBundle.merge_ref_bundles(held)
-                self._output_queue.append(whole_partition)
-                self._metrics.on_output_queued(whole_partition)
+                self._record_partition_output(
+                    partition_id, RefBundle.merge_ref_bundles(held)
+                )
+        if self._preserve_partition_order:
+            self._output_queue.finalize(key=partition_id)
         self._metrics.on_task_finished(
             task_index=partition_id,
             exception=exc,
@@ -398,8 +416,24 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
                 f"Reduce of partition {partition_id} failed: {exc}", exc_info=exc
             )
 
+    def _record_partition_output(
+        self,
+        partition_id: int,
+        bundle: RefBundle,
+        *,
+        partition_complete: bool = False,
+    ) -> None:
+        self._output_queue.add(bundle, key=partition_id)
+        self._metrics.on_output_queued(bundle)
+        if self._preserve_partition_order and partition_complete:
+            self._output_queue.finalize(key=partition_id)
+
     def has_execution_finished(self) -> bool:
-        if self._shuffle_reduce_tasks or self._output_queue or self._pending_inputs:
+        if (
+            self._shuffle_reduce_tasks
+            or len(self._output_queue) > 0
+            or self._pending_inputs
+        ):
             return False
         return super().has_execution_finished()
 
