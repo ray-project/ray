@@ -2,7 +2,6 @@
 
 import hashlib
 import logging
-import os
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -21,11 +20,22 @@ _NODES_TTL_SECONDS = 5.0
 _nodes_lock = threading.Lock()
 _nodes: List[Dict[str, Any]] = []
 _nodes_fetched_at = float("-inf")
+# The cluster the list is of. A process can leave one cluster and join
+# another within the list's lifetime.
+_nodes_cluster: Optional[str] = None
+
+
+def _cluster() -> str:
+    return ray.get_runtime_context().gcs_address
 
 
 def _alive_nodes() -> List[Dict[str, Any]]:
-    global _nodes, _nodes_fetched_at
+    global _nodes, _nodes_fetched_at, _nodes_cluster
+    cluster = _cluster()
     with _nodes_lock:
+        if cluster != _nodes_cluster:
+            _nodes, _nodes_cluster = [], cluster
+            _nodes_fetched_at = float("-inf")
         if time.monotonic() - _nodes_fetched_at >= _NODES_TTL_SECONDS:
             try:
                 _nodes = [node for node in ray.nodes() if node.get("Alive")]
@@ -38,12 +48,13 @@ def _alive_nodes() -> List[Dict[str, Any]]:
 
 
 def _is_local_archive(image: str) -> bool:
-    """Whether ``image`` names a tar archive on the local filesystem."""
-    return (
-        image.endswith(".tar")
-        or image.startswith(("/", "./", "../"))
-        or os.path.isfile(image)
-    )
+    """Whether ``image`` names a tar archive on a node's filesystem.
+
+    By its spelling only. The caller's filesystem says nothing about the
+    node that pulls, and a file here named like an image, such as ``python``,
+    would otherwise turn the image's placement off.
+    """
+    return image.endswith(".tar") or image.startswith(("/", "./", "../"))
 
 
 def _image_key(image: str) -> str:

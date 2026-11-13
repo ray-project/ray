@@ -133,13 +133,15 @@ def create(
         actor_opts["num_gpus"] = num_gpus
     if resources:
         actor_opts["resources"] = resources
-    actor_opts["scheduling_strategy"] = image_scheduling_strategy(
-        image,
-        num_cpus=actor_opts.get("num_cpus"),
-        num_gpus=actor_opts.get("num_gpus"),
-        memory=actor_opts.get("memory"),
-        resources=resources,
-    )
+    # A caller's own placement wins, and Ray takes only one of the two.
+    if "scheduling_strategy" not in actor_opts and "placement_group" not in actor_opts:
+        actor_opts["scheduling_strategy"] = image_scheduling_strategy(
+            image,
+            num_cpus=actor_opts.get("num_cpus"),
+            num_gpus=actor_opts.get("num_gpus"),
+            memory=actor_opts.get("memory"),
+            resources=resources,
+        )
 
     return Sandbox.options(**actor_opts).remote(
         image=image,

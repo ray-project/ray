@@ -1000,6 +1000,17 @@ def test_resolver_prefers_the_node_the_image_maps_to(
         {"num_cpus": 2, "num_gpus": 1, "memory": 1 << 30, "resources": {"gvisor": 1}},
     )
     assert options[0]["resources"] == {"gvisor": 1}
+    # A placement in the actor options wins, and Ray takes only one of a
+    # scheduling strategy and a placement group.
+    for own in ("scheduling_strategy", "placement_group"):
+        resolver.create(
+            "sb-2",
+            {"num_cpus": 2, own: "the caller's"},
+            {"spec": {"image": "python:3.12-slim"}},
+            get_if_exists=False,
+        )
+        assert options[-1][own] == "the caller's"
+        assert set(options[-1]) & {"scheduling_strategy", "placement_group"} == {own}
 
 
 class _LosesFirstBoot(FakeResolver):

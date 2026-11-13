@@ -133,6 +133,17 @@ class RayActorHandleResolver:
             The actor handle.
         """
         image = (ctor_kwargs.get("spec") or {}).get("image")
+        options = dict(actor_options)
+        # A placement that the caller set wins, and Ray takes only one of the
+        # two.
+        if image and not {"scheduling_strategy", "placement_group"} & options.keys():
+            options["scheduling_strategy"] = image_scheduling_strategy(
+                image,
+                num_cpus=options.get("num_cpus"),
+                num_gpus=options.get("num_gpus"),
+                memory=options.get("memory"),
+                resources=options.get("resources"),
+            )
         handle = (
             self._actor_class()
             .options(
@@ -140,16 +151,7 @@ class RayActorHandleResolver:
                 namespace=self._settings.namespace,
                 lifetime="detached",
                 get_if_exists=get_if_exists,
-                scheduling_strategy=image_scheduling_strategy(
-                    image,
-                    num_cpus=actor_options.get("num_cpus"),
-                    num_gpus=actor_options.get("num_gpus"),
-                    memory=actor_options.get("memory"),
-                    resources=actor_options.get("resources"),
-                )
-                if image
-                else None,
-                **actor_options,
+                **options,
             )
             .remote(**ctor_kwargs)
         )

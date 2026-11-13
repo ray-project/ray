@@ -20,6 +20,8 @@ def fake_nodes(monkeypatch):
     monkeypatch.setattr(placement.ray, "is_initialized", lambda: True)
     monkeypatch.setattr(placement.ray, "nodes", lambda: list(nodes))
     monkeypatch.setattr(placement, "get_current_placement_group", lambda: None)
+    monkeypatch.setattr(placement, "_cluster", lambda: "10.0.0.1:6379")
+    monkeypatch.setattr(placement, "_nodes_cluster", None)
     monkeypatch.setattr(placement, "_nodes_fetched_at", float("-inf"))
     monkeypatch.setattr(placement, "_NODES_TTL_SECONDS", 0)
     return nodes
@@ -99,6 +101,54 @@ def test_a_failed_node_listing_keeps_the_last_one(fake_nodes, monkeypatch):
     for _ in range(5):
         assert image_scheduling_strategy("busybox:latest").node_id == "aa" * 28
     assert len(calls) == 1
+
+
+def test_a_new_cluster_gets_a_new_node_list(fake_nodes, monkeypatch):
+    """A process that leaves one cluster and joins another, as a driver that
+    calls ray.shutdown() and ray.init() does, doesn't place sandboxes on the
+    first cluster's nodes while their list is still fresh."""
+    monkeypatch.setattr(placement, "_NODES_TTL_SECONDS", 60)
+    fake_nodes.append(_node("aa" * 28, CPU=8.0))
+    assert image_scheduling_strategy("busybox:latest").node_id == "aa" * 28
+    fake_nodes[:] = [_node("bb" * 28, CPU=8.0)]
+    # The same cluster: the list is reused until it's old.
+    assert image_scheduling_strategy("busybox:latest").node_id == "aa" * 28
+    monkeypatch.setattr(placement, "_cluster", lambda: "10.0.0.2:6379")
+    assert image_scheduling_strategy("busybox:latest").node_id == "bb" * 28
+
+
+def test_a_file_named_like_an_image_keeps_the_images_placement(
+    fake_nodes, monkeypatch, tmp_path
+):
+    """Whether an image is a local archive is read from its spelling. A file
+    in the caller's directory says nothing about the node that pulls."""
+    fake_nodes.append(_node("aa" * 28, CPU=8.0))
+    (tmp_path / "python").write_text("")
+    monkeypatch.chdir(tmp_path)
+    assert image_scheduling_strategy("python").node_id == "aa" * 28
+
+
+@pytest.mark.parametrize("own", ["scheduling_strategy", "placement_group"])
+def test_create_keeps_a_callers_own_placement(monkeypatch, own):
+    """Ray takes a scheduling strategy or a placement group, not both, and
+    either one that the caller passes wins over the image's node."""
+    options = {}
+
+    class _Actor:
+        def remote(self, **kwargs):
+            return "handle"
+
+    def fake_options(**actor_options):
+        options.update(actor_options)
+        return _Actor()
+
+    monkeypatch.setattr(sandbox_module.Sandbox, "options", fake_options)
+    monkeypatch.setattr(
+        sandbox_module, "image_scheduling_strategy", lambda image, **demand: "image"
+    )
+    sandbox_module.create("python:3.12-slim", **{own: "the caller's"})
+    assert options[own] == "the caller's"
+    assert set(options) & {"scheduling_strategy", "placement_group"} == {own}
 
 
 def test_create_prefers_the_node_the_image_maps_to(monkeypatch):
