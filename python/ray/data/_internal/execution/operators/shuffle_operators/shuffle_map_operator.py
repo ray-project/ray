@@ -28,7 +28,12 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     PartitionFn,
     _shuffle_map_task,
 )
-from ray.data.block import Block, BlockMetadata, BlockStats
+from ray.data._internal.execution.operators.shuffle_phase_metrics import (
+    PhaseSpec,
+    ShuffleOperatorMetrics,
+)
+from ray.data._internal.stats import StatsDict
+from ray.data.block import Block, BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -53,6 +58,15 @@ def extract_partition_id(bundle: RefBundle) -> int:
             if f.startswith(_PARTITION_ID_SENTINEL):
                 return int(f[len(_PARTITION_ID_SENTINEL) :])
     raise ValueError("ShuffleMapOp bundle is missing a partition_id sentinel.")
+
+
+def worker_stats_from_exec_stats(
+    exec_stats: Optional[BlockExecStats],
+) -> Optional[TaskExecWorkerStats]:
+    """Map tasks time themselves through the exec stats of their input block."""
+    if exec_stats is None or exec_stats.wall_time_s is None:
+        return None
+    return TaskExecWorkerStats(task_wall_time_s=exec_stats.wall_time_s)
 
 
 class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
@@ -137,10 +151,14 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # -- Output queue  ---------------------------------------------------
         self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
         self._partition_bundles_emitted: bool = False
+        self._num_partition_bundles_emitted: int = 0
 
         # -- Stats -----------------------------------------------------------
         self._total_input_bytes: int = 0
-        self._map_blocks_stats: List[BlockStats] = []
+        self._phase_metrics = ShuffleOperatorMetrics(
+            self, self._metrics, [PhaseSpec("map", "Map", is_output_phase=True)]
+        )
+        self._map_metrics = self._phase_metrics.phase_metrics["map"]
 
     @property
     def _input_queues(self) -> List[BaseBundleQueue]:
@@ -252,7 +270,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             for bundle in input_bundles
             for ref, meta in zip(bundle.block_refs, bundle.metadata)
         )
-        self._metrics.on_task_submitted(
+        self._map_metrics.on_task_submitted(
             cur_task_idx,
             RefBundle(all_blocks_meta, schema=None, owns_blocks=False),
             task_id=task.get_task_id(),
@@ -293,21 +311,17 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             bundle.destroy_if_owned()
 
         self._total_input_bytes += input_meta.size_bytes or 0
-        block_stats = input_meta.to_stats()
-        if block_stats.exec_stats is not None:
-            block_stats = dataclasses.replace(
-                block_stats,
+        if input_meta.exec_stats is not None:
+            input_meta = dataclasses.replace(
+                input_meta,
                 exec_stats=dataclasses.replace(
-                    block_stats.exec_stats, task_idx=task_idx
+                    input_meta.exec_stats, task_idx=task_idx
                 ),
             )
-        self._map_blocks_stats.append(block_stats)
+        self._map_metrics.record_block_stats(input_meta)
 
-        self._metrics.on_task_finished(
-            task_idx,
-            None,
-            task_exec_stats=None,
-            task_exec_driver_stats=None,
+        self._map_metrics.on_task_finished(
+            task_idx, None, worker_stats_from_exec_stats(input_meta.exec_stats), None
         )
 
         self._maybe_emit_partition_bundles()
@@ -353,14 +367,15 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 owns_blocks=merged.owns_blocks,
             )
             self._output_queue.add(stamped)
-            self._metrics.on_output_queued(stamped)
+            self._map_metrics.on_output_queued(stamped)
+            self._num_partition_bundles_emitted += 1
 
     def has_next(self) -> bool:
         return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
         bundle: RefBundle = self._output_queue.get_next()
-        self._metrics.on_output_dequeued(bundle)
+        self._map_metrics.on_output_dequeued(bundle)
         return bundle
 
     def get_partition_bytes(self) -> Dict[int, int]:
@@ -395,8 +410,18 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             queue.clear()
         self._output_queue.clear()
 
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
-        return {self._name: self._map_blocks_stats}
+    def _extra_metrics(self) -> Dict[str, Any]:
+        return self._phase_metrics.extra_metrics()
+
+    def get_stats(self) -> StatsDict:
+        return self._phase_metrics.stats()
+
+    def num_outputs_total(self) -> Optional[int]:
+        # One bundle per partition once any map task ran, none if no input ever
+        # arrived; the exact count is known once the bundles are emitted.
+        if self._partition_bundles_emitted:
+            return self._num_partition_bundles_emitted
+        return self._num_partitions
 
     def num_output_rows_total(self) -> Optional[int]:
         # The aggregation combiner (block_transformer) pre-aggregates each map

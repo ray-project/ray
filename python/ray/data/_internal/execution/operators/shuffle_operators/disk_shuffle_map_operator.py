@@ -32,12 +32,18 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     make_partition_sentinel,
+    worker_stats_from_exec_stats,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
+from ray.data._internal.execution.operators.shuffle_phase_metrics import (
+    PhaseSpec,
+    ShuffleOperatorMetrics,
+)
 from ray.data._internal.execution.util import merge_label_selector
-from ray.data.block import BlockExecStats, BlockMetadata, BlockStats
+from ray.data._internal.stats import StatsDict
+from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -107,10 +113,14 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # a distinct partition_id sentinel in metadata.
         self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
         self._partition_bundles_emitted: bool = False
+        self._num_partition_bundles_emitted: int = 0
 
         # -- Stats -----------------------------------------------------------
         self._total_input_bytes: int = 0
-        self._map_blocks_stats: List[BlockStats] = []
+        self._phase_metrics = ShuffleOperatorMetrics(
+            self, self._metrics, [PhaseSpec("map", "Map", is_output_phase=True)]
+        )
+        self._map_metrics = self._phase_metrics.phase_metrics["map"]
         # Per-partition decoded stats summed across completed mappers:
         # ``_partition_rows`` from tbl.num_rows, ``_partition_bytes`` from
         # tbl.nbytes (pre-compression). Rows gate empty partitions; bytes
@@ -263,7 +273,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             for bundle in input_bundles
             for ref, meta in zip(bundle.block_refs, bundle.metadata)
         )
-        self._metrics.on_task_submitted(
+        self._map_metrics.on_task_submitted(
             cur_task_idx,
             RefBundle(all_blocks_meta, schema=None, owns_blocks=False),
             task_id=task.get_task_id(),
@@ -337,16 +347,13 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             exec_stats=handle.get("exec_stats"),
             input_files=None,
         )
-        self._map_blocks_stats.append(input_meta.to_stats())
+        self._map_metrics.record_block_stats(input_meta)
 
-        # Order: on_task_output_generated needs the task still in
-        # _running_tasks; on_task_finished pops it.
-        self._metrics.on_task_output_generated(task_index=task_idx, output=out_bundle)
-        self._metrics.on_task_finished(
-            task_idx,
-            None,
-            task_exec_stats=None,
-            task_exec_driver_stats=None,
+        # Order: on_task_output needs the task still in _running_tasks;
+        # on_task_finished pops it.
+        self._map_metrics.on_task_output(task_idx, out_bundle)
+        self._map_metrics.on_task_finished(
+            task_idx, None, worker_stats_from_exec_stats(input_meta.exec_stats), None
         )
 
         self._maybe_emit_partition_bundles()
@@ -394,14 +401,15 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 owns_blocks=False,
             )
             self._output_queue.add(wrapper)
-            self._metrics.on_output_queued(wrapper)
+            self._map_metrics.on_output_queued(wrapper)
+            self._num_partition_bundles_emitted += 1
 
     def has_next(self) -> bool:
         return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
         bundle: RefBundle = self._output_queue.get_next()
-        self._metrics.on_output_dequeued(bundle)
+        self._map_metrics.on_output_dequeued(bundle)
         return bundle
 
     def get_partition_bytes(self) -> Dict[int, int]:
@@ -511,8 +519,18 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         if cleanup_refs:
             ray.wait(cleanup_refs, num_returns=len(cleanup_refs), timeout=5.0)
 
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
-        return {self._name: self._map_blocks_stats}
+    def _extra_metrics(self) -> Dict[str, Any]:
+        return self._phase_metrics.extra_metrics()
+
+    def get_stats(self) -> StatsDict:
+        return self._phase_metrics.stats()
+
+    def num_outputs_total(self) -> Optional[int]:
+        # One bundle per partition once any map task ran, none if no input ever
+        # arrived; the exact count is known once the bundles are emitted.
+        if self._partition_bundles_emitted:
+            return self._num_partition_bundles_emitted
+        return self._num_partitions
 
     def num_output_rows_total(self) -> Optional[int]:
         # The aggregation combiner (block_transformer) pre-aggregates each map
