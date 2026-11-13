@@ -1,9 +1,15 @@
+import os
 import subprocess
 import sys
+from unittest import mock
 
 import pytest
 
-from ray._private.runtime_env.context import build_windows_worker_command
+from ray._private.runtime_env.context import (
+    RuntimeEnvContext,
+    build_windows_worker_command,
+)
+from ray.core.generated.common_pb2 import Language
 
 
 @pytest.mark.parametrize(
@@ -43,6 +49,23 @@ def test_prefix_and_arguments_are_still_quoted():
 
 def test_empty_prefix_and_arguments_add_no_spaces():
     assert build_windows_worker_command([], ["uv run python"], []) == "uv run python"
+
+
+@pytest.mark.parametrize(
+    "py_executable,expected",
+    [
+        ("uv run --locked python", "uv run --locked python worker.py --a%26b"),
+        ("python.exe", ["python.exe", "worker.py", "--a%26b"]),
+    ],
+)
+def test_exec_worker_on_windows(py_executable, expected):
+    context = RuntimeEnvContext(py_executable=py_executable)
+    with mock.patch.dict(os.environ), mock.patch.object(
+        sys, "platform", "win32"
+    ), mock.patch("subprocess.Popen") as popen:
+        context.exec_worker(["worker.py", "--a&b"], Language.PYTHON)
+
+    popen.assert_called_once_with(expected, shell=True)
 
 
 if __name__ == "__main__":

@@ -164,7 +164,9 @@ class RuntimeEnvContext:
 
             passthrough_args = [quote(s) for s in passthrough_args]
 
-            cmd = [*self.command_prefix, *executable, *passthrough_args]
+            cmd = build_windows_worker_command(
+                self.command_prefix, executable, passthrough_args
+            )
             logger.debug(f"Exec'ing worker with command: {cmd}")
             subprocess.Popen(cmd, shell=True).wait()
         else:
