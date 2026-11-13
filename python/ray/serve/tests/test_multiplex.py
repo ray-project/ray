@@ -630,6 +630,28 @@ class TestMultiplexPinning:
         assert await asyncio.wait_for(lookup_a, timeout=5) is model_a
         assert multiplexer._room_waiters == []
 
+    async def test_waiter_cancelled_after_wake_releases_held_back_lookup(
+        self, start_serve_with_context
+    ):
+        """A waiting miss is woken, then cancelled before it resumes. A lookup
+        held back by its draining model in between still gets that model."""
+        multiplexer = await _make_multiplexer(cap=1)
+        request_a, request_b, held_back = _FakeRequest(), _FakeRequest(), _FakeRequest()
+        model_a = await request_a.get(multiplexer, "a")
+        lookup_b = request_b.start_get(multiplexer, "b")
+        await asyncio.sleep(SETTLE_S)
+
+        # All in one event loop step: the unpin wakes b, the new lookup is held
+        # back from the draining model, then b is cancelled before it resumes.
+        request_a.finished.set_result(None)
+        lookup_a = held_back.start_get(multiplexer, "a")
+        get_or_create_event_loop().call_soon(lookup_b.cancel)
+        with pytest.raises(asyncio.CancelledError):
+            await lookup_b
+
+        assert await asyncio.wait_for(lookup_a, timeout=5) is model_a
+        assert multiplexer._room_waiters == []
+
     async def test_async_del_runs_after_unpin(self, start_serve_with_context):
         """The model's cleanup hook is `async def __del__`. It is awaited when
         the model is unloaded, which happens after its request finishes."""

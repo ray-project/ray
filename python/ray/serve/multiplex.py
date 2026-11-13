@@ -243,6 +243,7 @@ class _ModelMultiplexWrapper:
                 if self._can_use_cached(model_id, owner):
                     return self._pin(model_id, owner)
                 if model_id not in self.models and await self._make_room(owner):
+                    # Advertised again if an earlier wait removed it.
                     self._model_load_tasks.add(model_id)
                     await self._load_into_cache(model_id)
                     return self._pin(model_id, owner)
@@ -254,12 +255,14 @@ class _ModelMultiplexWrapper:
             self._push_multiplexed_replica_info = True
             try:
                 await waiter.cache_changed
+            except BaseException:
+                # The lookup stops waiting for good, even if it was woken
+                # first: lookups held back for this waiter can go ahead.
+                self._wake_waiters()
+                raise
             finally:
                 self._room_waiters.remove(waiter)
                 self._push_multiplexed_replica_info = True
-                if waiter.cache_changed.cancelled():
-                    # Lookups held back for this waiter can go ahead.
-                    self._wake_waiters()
 
     def _add_waiter(self, model_id: str, owner: Hashable) -> "_RoomWaiter":
         """Register a lookup that waits for pins to be dropped."""
