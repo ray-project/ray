@@ -206,7 +206,10 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
 
     # Operator Progress
     def update_operator_progress(
-        self, opstate: "OpState", resource_manager: "ResourceManager"
+        self,
+        opstate: "OpState",
+        resource_manager: "ResourceManager",
+        extra_summary: str = "",
     ):
         op_metrics = self._op_progress_metrics.get(opstate)
         if op_metrics is not None:
@@ -217,7 +220,11 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
                 total = op_metrics.completed
             if total is not None:
                 op_metrics.total = total
-            op_metrics.desc = format_op_state_summary(opstate, resource_manager)
+            op_metrics.desc = format_op_state_summary(
+                opstate,
+                resource_manager,
+                extra_summary=extra_summary,
+            )
 
 
 def _format_progress(m: _LoggingMetrics) -> str:

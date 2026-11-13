@@ -128,6 +128,13 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
+    @override
+    def min_num_rows_needed_to_make_progress(self) -> int:
+        rows_per_bundle = max(1, self._buffer.num_rows() // max(1, len(self._buffer)))
+        locality_rows = math.ceil(self._max_buffer_size) * rows_per_bundle
+        equal_rows = self.num_output_splits() * rows_per_bundle if self._equal else 0
+        return max(locality_rows, equal_rows)
+
     def num_outputs_total(self) -> Optional[int]:
         # OutputSplitter does not change the number of blocks,
         # so we can return the number of blocks from the input op.

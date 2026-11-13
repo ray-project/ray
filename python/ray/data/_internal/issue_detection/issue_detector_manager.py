@@ -71,9 +71,9 @@ class IssueDetectorManager:
     def _report_issues(self, issues: List[Issue]) -> None:
         operators: Dict[str, "PhysicalOperator"] = {}
         op_to_id: Dict["PhysicalOperator", str] = {}
-        for i, operator in enumerate(self.executor._topology.keys()):
+        for operator, op_state in self.executor._topology.items():
             operators[operator.id] = operator
-            op_to_id[operator] = self.executor._get_operator_id(operator, i)
+            op_to_id[operator] = op_state.op_tag()
 
         for issue in issues:
             logger.warning(issue.message)

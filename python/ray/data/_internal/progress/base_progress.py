@@ -181,13 +181,17 @@ class BaseExecutionProgressManager(ABC):
 
     @abstractmethod
     def update_operator_progress(
-        self, opstate: "OpState", resource_manager: "ResourceManager"
+        self,
+        opstate: "OpState",
+        resource_manager: "ResourceManager",
+        extra_summary: str = "",
     ) -> None:
         """Update individual operator progress.
 
         Args:
             opstate: opstate of the operator.
             resource_manager: the ResourceManager.
+            extra_summary: optional extra status to append to the operator summary.
         """
         ...
 
@@ -253,6 +257,9 @@ class NoopExecutionProgressManager(BaseExecutionProgressManager):
         pass
 
     def update_operator_progress(
-        self, opstate: "OpState", resource_manager: "ResourceManager"
+        self,
+        opstate: "OpState",
+        resource_manager: "ResourceManager",
+        extra_summary: str = "",
     ) -> None:
         pass

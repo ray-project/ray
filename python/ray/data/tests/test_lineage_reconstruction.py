@@ -15,7 +15,10 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    TaskPullRequest,
+)
 from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.lineage_tracker import LineageTracker
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -70,7 +73,7 @@ def lose_output(monkeypatch):
         fired = []
         original_on_data_ready = DataOpTask.on_data_ready
 
-        def flaky_on_data_ready(self, max_bytes_to_read, metadata_fetcher):
+        def flaky_on_data_ready(self, *, max_to_read, metadata_fetcher):
             index = self.task_index()
             if victim in self.operator_name and index in pending:
                 if reads_seen.get(index, 0) >= reads_before_loss:
@@ -80,7 +83,9 @@ def lose_output(monkeypatch):
                         ray.ObjectRef.nil().hex(), None, "injected by test"
                     )
                 reads_seen[index] = reads_seen.get(index, 0) + 1
-            return original_on_data_ready(self, max_bytes_to_read, metadata_fetcher)
+            return original_on_data_ready(
+                self, max_to_read=max_to_read, metadata_fetcher=metadata_fetcher
+            )
 
         monkeypatch.setattr(DataOpTask, "on_data_ready", flaky_on_data_ready)
         return fired
@@ -959,10 +964,14 @@ def test_object_lost_in_task_output_raises_only_when_lineage_tracked(
 
     if task.is_lineage_tracked:
         with pytest.raises(ObjectLostError):
-            task.on_data_ready(None, metadata_fetcher)
+            task.on_data_ready(
+                max_to_read=TaskPullRequest.inf(), metadata_fetcher=metadata_fetcher
+            )
         metadata_fetcher.in_data_ready_done.assert_not_called()
     else:
-        task.on_data_ready(None, metadata_fetcher)
+        task.on_data_ready(
+            max_to_read=TaskPullRequest.inf(), metadata_fetcher=metadata_fetcher
+        )
         assert task.task_error is error
         assert task.is_drained()
         metadata_fetcher.in_data_ready_done.assert_called_once_with(task)
@@ -992,7 +1001,7 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
         reconstruction_attempts.append(task.task_index())
         raise LineageReconstructionError(lost_error, "failed by test")
 
-    def lost_output(self, max_bytes_to_read, metadata_fetcher):
+    def lost_output(self, *, max_to_read, metadata_fetcher):
         # A lost output stays lost: every read raises until the executor stops
         # polling the task.
         raise ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
