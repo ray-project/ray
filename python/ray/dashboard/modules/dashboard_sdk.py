@@ -406,7 +406,10 @@ class SubmissionClient:
             package_uri = get_uri_for_package(Path(package_path))
         else:
             package_uri = get_uri_for_directory(
-                package_path, include_gitignore, excludes=excludes
+                package_path,
+                include_gitignore,
+                excludes=excludes,
+                include_parent_dir=include_parent_dir,
             )
 
         if not self._package_exists(package_uri):

@@ -108,6 +108,7 @@ def upload_py_modules_if_needed(
                         module_path,
                         include_gitignore=include_gitignore,
                         excludes=excludes,
+                        include_parent_dir=True,
                     )
                 else:
                     module_uri = get_uri_for_file(module_path)
