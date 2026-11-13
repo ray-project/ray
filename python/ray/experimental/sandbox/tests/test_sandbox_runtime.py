@@ -828,6 +828,28 @@ def test_a_boot_that_works_ends_its_profiles_pause(monkeypatch):
     runtime.close()
 
 
+def test_a_boot_skipped_for_a_pause_that_has_ended_boots_again(monkeypatch):
+    """A boot that starts during a pause is skipped. If a boot that worked
+    ended the pause meanwhile, and cancelled its timer, the skipped boot's
+    slot must not wait for a timer that's gone."""
+    runtime = _pooled_runtime([{"image": "img", "size": 1}])
+    pool = runtime._warm
+    (key,) = pool._profiles
+    (slot,) = pool._slots[key]
+    # Empty the slot, as a delete would, with the profile paused when the
+    # slot's boot starts and not anymore when it ends.
+    with pool._lock:
+        pool._held.pop(slot.sandbox_id)
+        pool._ready[key].clear()
+        slot.state, slot.sandbox_id = "booting", None
+    answers = iter([1.0])
+    monkeypatch.setattr(pool, "_paused_for", lambda key: next(answers, 0.0))
+    pool._boot(slot)
+    assert runtime.wait_for_warm_pool(timeout_seconds=5)
+    assert len(runtime._backend.configs) == 2
+    runtime.close()
+
+
 def test_dead_pooled_sandboxes_are_deleted_a_few_at_a_time():
     """A pool whose sandboxes died together deletes them on a few threads,
     not one thread each."""

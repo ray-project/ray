@@ -269,6 +269,7 @@ class _WarmPool:
 
     def _boot(self, slot: _Slot) -> None:
         instance_id = None
+        failed = False
         with self._lock:
             # Another boot of this profile failed while this one queued: the
             # timer that failure started refills the profile.
@@ -280,20 +281,19 @@ class _WarmPool:
                 )
             except Exception as exc:
                 logger.warning("A warm-pool sandbox failed to boot: %s", exc)
-                with self._lock:
-                    # Boots that started together fail together: they cause
-                    # one pause, not one each.
-                    if self._paused_for(slot.key) <= 0:
-                        self._failures[slot.key] = self._failures.get(slot.key, 0) + 1
-                        self._failed_at[slot.key] = time.monotonic()
-                    self._refill_later(slot.key, max(0.0, self._paused_for(slot.key)))
-        recovered = False
+                failed = True
+        refill = False
         with self._lock:
+            # Boots that started together fail together: they cause one
+            # pause, not one each.
+            if failed and self._paused_for(slot.key) <= 0:
+                self._failures[slot.key] = self._failures.get(slot.key, 0) + 1
+                self._failed_at[slot.key] = time.monotonic()
             if instance_id is not None and not self._closed:
                 # A boot that works ends the profile's pause: the slots that
                 # a failed boot left empty refill now, not when the pause's
                 # timer fires.
-                recovered = self._failed_at.pop(slot.key, None) is not None
+                refill = self._failed_at.pop(slot.key, None) is not None
                 self._failures.pop(slot.key, None)
                 timer = self._retries.pop(slot.key, None)
                 if timer is not None:
@@ -305,10 +305,19 @@ class _WarmPool:
                 instance_id = None
             else:
                 slot.state = _EMPTY
+                # Whoever empties a slot sees that it boots again: after the
+                # pause, or at once if the profile isn't paused, which a boot
+                # that worked since this one failed or was skipped may have
+                # seen to.
+                paused_for = self._paused_for(slot.key)
+                if paused_for > 0:
+                    self._refill_later(slot.key, paused_for)
+                else:
+                    refill = not self._closed
             self._changed.notify_all()
         if instance_id is not None:  # closed while it booted
             self._delete_quietly(instance_id, "warm-pool")
-        if recovered:
+        if refill:
             self.refill(slot.key)
 
     def _full(self) -> bool:
