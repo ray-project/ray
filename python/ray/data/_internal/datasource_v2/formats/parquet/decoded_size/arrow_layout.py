@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-
 import pyarrow as pa
-
 
 # Array kinds. ``_LIST`` has one offsets buffer: a list, large_list or map. A
 # fixed_size_list has none; its children hold ``list_size`` elements per element.
