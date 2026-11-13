@@ -183,7 +183,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         # than a single, possibly tiny, row group.
         self._small_shuffle_chunk_size = small_shuffle_chunk_size
         # For the footer readers' size estimate: the read tasks' ``ParquetFileFormat``
-        # kwargs and the dataset schema they cast to.
+        # kwargs, the dataset schema they cast to, and the columns they synthesize.
         self._format_kwargs = dict(format_kwargs or {})
         self._read_schema = read_schema
         self._synthesized_columns = frozenset(synthesized_columns)
