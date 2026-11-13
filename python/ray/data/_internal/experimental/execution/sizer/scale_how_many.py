@@ -252,6 +252,8 @@ class OpSizingPolicy:
         op: "ExperimentalActorPoolMapOperator",
         op_state: "OpState",
         backpressured_with_demand: Set["ExperimentalActorPoolMapOperator"],
+        *,
+        blocks_upstream: bool = False,
     ) -> Optional[ActorPoolScalingRequest]:
         """Size one operator from its queues. States are checked in this order,
         first match wins:
@@ -262,6 +264,7 @@ class OpSizingPolicy:
         | no       |   no     |          -           | idle for N ticks | downscale |
         | no       |   no     |          -           | idle < N ticks   | hold      |
         | no       |   yes    |         yes          |                  | hold      |
+        | no       |   yes    |         no           | upstream blocked | upscale   |
         | no       |   yes    |         no           | below demand     | upscale   |
         | no       |   yes    |         no           | at demand or max | hold      |
 
@@ -270,6 +273,14 @@ class OpSizingPolicy:
         mid-flight would be wrong. Upscales are bounded by demand, which is
         load-bearing -- at cold start the output queue is empty, so unbounded
         growth would fill the cluster before any backpressure appeared.
+
+        "Upstream blocked" (``blocks_upstream``, from the optimizer's signal
+        windows): the op stayed busy while an upstream actor-pool op's output
+        stayed backpressured. Then the op's backlog sits in the producer's
+        blocked outputs rather than its own input queue, so the demand above
+        reads too low; the op grows one step past its current size instead.
+        This is how a sink, which is never output-backpressured and so never a
+        silent bottleneck, asks to grow when it limits the pipeline.
         Downscales are hysteretic, never breach min_size, and take only
         pending/idle actors; busy ones leave by attrition.
 
@@ -302,7 +313,14 @@ class OpSizingPolicy:
                 backpressured_with_demand.add(op)
         else:
             streak.reset()
-            request, decision = self._grow_toward_demand(op, demand=demand)
+            if blocks_upstream and demand <= cur:
+                request, decision = self._grow_toward_demand(
+                    op,
+                    demand=cur + self.max_growth_step(op),
+                    reason="busy, upstream output backpressured",
+                )
+            else:
+                request, decision = self._grow_toward_demand(op, demand=demand)
 
         logger.debug(
             "OperatorSizer: warm %s in_q=%d out_blocked=%d/%d demand=%d "
@@ -339,16 +357,18 @@ class OpSizingPolicy:
         )
 
     def _grow_toward_demand(
-        self, op: "ExperimentalActorPoolMapOperator", *, demand: int
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        *,
+        demand: int,
+        reason: str = "has work, output not backpressured",
     ) -> Tuple[Optional[ActorPoolScalingRequest], str]:
         """Has work and is not backpressured: grow toward demand."""
         step = self._step_toward(op, demand=demand)
         if step > 0:
             return (
-                ActorPoolScalingRequest.upscale(
-                    delta=step, reason="has work, output not backpressured"
-                ),
-                f"want +{step} (demand={demand})",
+                ActorPoolScalingRequest.upscale(delta=step, reason=reason),
+                f"want +{step} (demand={demand}, {reason})",
             )
         if demand <= op.actor_pool.serving_size():
             return None, f"hold (at demand={demand})"

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, AbstractSet, Callable, Dict, Sequence, Tuple
 
 from ray.data._internal.execution.execution_flags import (
     SIZER_SHORTFALL_TICKS,
     SIZER_SIGNAL_WINDOW_SAMPLES,
+    SIZER_SILENT_BOTTLENECK_BUSY_FRACTION,
 )
 from ray.data._internal.experimental.execution.sizer.models import OpShortfall
 from ray.data._internal.experimental.execution.sizer.signals import (
@@ -109,6 +111,32 @@ class SignalObserver:
     ) -> None:
         """Carry unplaced rule wants into the next sizing pass."""
         self._silent_shortfalls.update(silent)
+
+    def blocks_upstream(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        producers: Sequence["ExperimentalActorPoolMapOperator"],
+    ) -> bool:
+        """Whether ``op`` held up a producer for the whole signal window: most
+        of its actors stayed busy (``SIZER_SILENT_BOTTLENECK_BUSY_FRACTION``,
+        as the silent-bottleneck rule judges it) while some producer's output
+        stayed backpressured.
+
+        The busy check is what makes ``op`` the cause: a producer blocked by
+        its own per-actor output limits while ``op`` sits idle is the
+        silent-bottleneck rule's case, and growing ``op`` would not help.
+        """
+        busy = self._busy_tasks_signal.get(op)
+        fewest_tasks = busy.minimum() if busy is not None else None
+        if fewest_tasks is None or fewest_tasks < math.ceil(
+            SIZER_SILENT_BOTTLENECK_BUSY_FRACTION * op.actor_pool.serving_size()
+        ):
+            return False
+        return any(
+            (streak := self._backpressured_streak.get(producer)) is not None
+            and streak.is_streak()
+            for producer in producers
+        )
 
     def reset(self, op: "ExperimentalActorPoolMapOperator") -> None:
         """Forget ``op``'s windows, so rules wait for a full window of fresh

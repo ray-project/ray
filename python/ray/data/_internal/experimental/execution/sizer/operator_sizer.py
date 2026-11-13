@@ -319,7 +319,12 @@ class OperatorSizer:
                 want = self._policy.warmup_delta(op, ctx.capacity.get_global_limits())
             else:
                 want = self._policy.warm_delta(
-                    op, self._topology[op], backpressured_with_demand
+                    op,
+                    self._topology[op],
+                    backpressured_with_demand,
+                    blocks_upstream=self._optimizer.blocks_upstream(
+                        op, self._profiles.prev_ops.get(op, ())
+                    ),
                 )
             below_min = pool.min_size() - pool.serving_size()
             if below_min > 0 and (want is None or want.delta < below_min):

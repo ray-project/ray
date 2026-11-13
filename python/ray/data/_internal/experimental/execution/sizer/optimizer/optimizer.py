@@ -84,6 +84,14 @@ class PipelineOptimizer:
         """Sample per-op signals; cheap to call every scheduling-loop step."""
         self._signals.observe(ops)
 
+    def blocks_upstream(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        producers: Sequence["ExperimentalActorPoolMapOperator"],
+    ) -> bool:
+        """See ``SignalObserver.blocks_upstream``; read by the warm loop."""
+        return self._signals.blocks_upstream(op, producers)
+
     def record_sizing_results(
         self,
         ordered_ops: Sequence["ExperimentalActorPoolMapOperator"],
