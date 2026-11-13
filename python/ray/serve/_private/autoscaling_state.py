@@ -394,6 +394,14 @@ class DeploymentAutoscalingState:
         else:
             target_num_replicas = curr_target_num_replicas
 
+        # The gang size can change between deployments, leaving the previous
+        # target on a boundary that doesn't match the new size. Round up so
+        # the scheduler never sees a partial gang.
+        if self._gang_size > 1:
+            target_num_replicas = (
+                math.ceil(target_num_replicas / self._gang_size) * self._gang_size
+            )
+
         self._deployment_info = info
         self._config = config
         # Apply default autoscaling config to the policy
@@ -716,6 +724,21 @@ class DeploymentAutoscalingState:
             current_policy_state = self._policy_state.copy()
         else:
             current_policy_state = {}
+        config = self._config
+        if config is not None and self._gang_size > 1:
+            # Everything else in the context is in replicas, so expose the
+            # configured gang-unit bounds converted to replicas as well.
+            config = config.model_copy(
+                update={
+                    "min_replicas": config.min_replicas * self._gang_size,
+                    "max_replicas": config.max_replicas * self._gang_size,
+                    "initial_replicas": (
+                        None
+                        if config.initial_replicas is None
+                        else config.initial_replicas * self._gang_size
+                    ),
+                }
+            )
         return AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
@@ -728,7 +751,7 @@ class DeploymentAutoscalingState:
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
             policy_state=current_policy_state,
             current_time=time.time(),
-            config=self._config,
+            config=config,
             total_queued_requests=self._get_queued_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics,
             raw_metrics=self._get_raw_custom_metrics,

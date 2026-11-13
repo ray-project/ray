@@ -96,7 +96,11 @@ class AutoscalingContext:
         last_scale_down_time: Unix timestamp, in seconds, of the last scale-down,
             or None if the deployment hasn't scaled down.
         current_time: Unix timestamp, in seconds, when Serve built this context.
-        config: The deployment's autoscaling configuration.
+        config: The deployment's autoscaling configuration. For gang-scheduled
+            deployments, ``min_replicas``, ``max_replicas``, and
+            ``initial_replicas`` are converted from gang counts to replica counts
+            so that they can be compared against ``current_num_replicas`` and
+            ``target_num_replicas``.
     """
 
     def __init__(
