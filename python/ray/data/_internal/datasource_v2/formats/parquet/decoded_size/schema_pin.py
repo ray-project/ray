@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import pyarrow as pa
 from pyarrow.parquet import ParquetSchema
 
@@ -11,8 +10,8 @@ from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout 
     _is_list,
 )
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_walk import (
-    _SchemaWalk,
     _matches,
+    _SchemaWalk,
     _walk,
 )
 

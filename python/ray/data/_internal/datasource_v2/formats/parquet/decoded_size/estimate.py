@@ -7,6 +7,10 @@ from typing import Any, Iterable, Mapping
 import pyarrow as pa
 from pyarrow.parquet import FileMetaData, ParquetSchema, RowGroupMetaData
 
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.added_columns import (
+    Read,
+    estimate_added_columns,
+)
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout import (
     _BINARY,
     _BOOLEAN,
@@ -17,22 +21,18 @@ from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout 
     _ZERO_COPY_PHYSICAL_TYPES,
     _bytes_for_bits,
 )
-from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_walk import (
-    LeafProfile,
-    _ArrowNode,
-    _matches,
-    _walk,
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.footer_counts import (
+    LeafChunk,
 )
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_pin import (
     _cast_keeps_bitmap,
     _pinned_walk,
 )
-from ray.data._internal.datasource_v2.formats.parquet.decoded_size.footer_counts import (
-    LeafChunk,
-)
-from ray.data._internal.datasource_v2.formats.parquet.decoded_size.added_columns import (
-    Read,
-    estimate_added_columns,
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_walk import (
+    LeafProfile,
+    _ArrowNode,
+    _matches,
+    _walk,
 )
 
 
