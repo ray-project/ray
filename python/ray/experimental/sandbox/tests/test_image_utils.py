@@ -1167,6 +1167,52 @@ def test_pull_keeps_archived_modes_whatever_the_umask(tmp_path, umask):
     assert tree["app/run.sh"].mode == 0o755
 
 
+def test_pull_gives_a_hardlink_its_targets_mode_and_owner(tmp_path):
+    """A hardlink header's mode and owner may be 0. The re-pack walks names
+    in sorted order, so it emits the link (a_link.sh) as the file before its
+    target (z_target.sh): the inode must still get the target's attributes."""
+    tree = _pull_members(
+        tmp_path,
+        ("opt/z_target.sh", b"#!/bin/sh\n", {"mode": 0o755, "uid": 38, "gid": 38}),
+        (
+            "opt/a_link.sh",
+            {"typ": tarfile.LNKTYPE, "mode": 0o000, "linkname": "opt/z_target.sh"},
+        ),
+    )
+    assert tree["opt/a_link.sh"].isreg()
+    assert tree["opt/a_link.sh"].mode == 0o755
+    assert (tree["opt/a_link.sh"].uid, tree["opt/a_link.sh"].gid) == (38, 38)
+
+
+def test_extract_tar_layer_records_a_hardlink_as_its_target(tmp_path):
+    """A hardlink copies its target's recorded mode and owner, across layers
+    too, and drops a stale record when its target has none."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    ownership, modes = {}, {}
+
+    def layer(*members):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            for member in members:
+                _add_member(tar, *member[:-1], **member[-1])
+        extract_tar_layer(buf.getvalue(), str(dest), ownership=ownership, modes=modes)
+
+    layer(
+        ("bin/tool", b"t", {"mode": 0o4755, "uid": 7, "gid": 8}),
+        ("bin/old", b"o", {"mode": 0o700, "uid": 9}),
+    )
+    layer(
+        ("bin/a", {"typ": tarfile.LNKTYPE, "mode": 0, "linkname": "bin/tool"}),
+        # Re-ships bin/old as a hardlink to a symlink, which has no record.
+        ("bin/sym", {"typ": tarfile.SYMTYPE, "linkname": "tool"}),
+        ("bin/old", {"typ": tarfile.LNKTYPE, "uid": 5, "linkname": "bin/sym"}),
+    )
+    assert modes["bin/a"] == 0o4755
+    assert ownership["bin/a"] == (7, 8)
+    assert "bin/old" not in modes and "bin/old" not in ownership
+
+
 def test_pull_keeps_a_shipped_tmp_world_writable(tmp_path):
     """The keep file stops runsc from mounting a tmpfs over /tmp, so a /tmp
     the image ships without 1777 still gets it, as a symlinked one does."""
