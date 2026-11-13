@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import TYPE_CHECKING, Iterable, List, Literal, Optional, Union
 
@@ -38,7 +39,12 @@ from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.in_memory_size_estimator import (
     InMemorySizeEstimator,
 )
-from ray.data._internal.util import _is_local_scheme, _normalize_paths_to_strings
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    _normalize_paths_to_strings,
+)
+from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -136,7 +142,10 @@ class TextDatasourceV2(FileDataSourceV2):
         # The resolved paths above lose their URI scheme; lineage tracking
         # reads the caller's paths through ``source_paths``.
         self._source_paths = _normalize_paths_to_strings(paths)
-        self._filesystem = resolved_filesystem
+        self._filesystem = RetryingPyFileSystem.wrap(
+            resolved_filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
+        )
         self._encoding = encoding
         self._drop_empty_lines = drop_empty_lines
         self._partitioning = partitioning
@@ -181,6 +190,9 @@ class TextDatasourceV2(FileDataSourceV2):
     ) -> Optional[FilePartitioner]:
         if hints is None:
             return None
+        if DataContext.get_current().execution_options.preserve_order:
+            # One bucket fills in listing order; several deal files round-robin.
+            hints = dataclasses.replace(hints, num_buckets=1)
         return RoundRobinPartitioner(_OnDiskSizeEstimator(), hints=hints)
 
     @property
@@ -202,6 +214,11 @@ class TextDatasourceV2(FileDataSourceV2):
                     name for path in sample_paths for name in parser(path).keys()
                 )
             )
+            if TEXT_COLUMN_NAME in partition_names:
+                raise ValueError(
+                    f"Partition field {TEXT_COLUMN_NAME!r} clashes with the column "
+                    "`read_text` produces. Rename the partition directory."
+                )
             if partition_names:
                 partition_schema = _partition_field_types_to_pa_schema(
                     field_names=partition_names,

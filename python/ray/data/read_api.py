@@ -91,6 +91,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
+    _normalize_paths_to_strings,
     get_compute_strategy_for_read_api,
     get_table_block_metadata_schema,
     merge_resources_to_ray_remote_args,
@@ -2694,8 +2695,7 @@ def _text_read_uses_v2(
         return False
     if arrow_open_stream_args is not None:
         return False
-    path_list = paths if isinstance(paths, list) else [paths]
-    if any(_is_http_url(str(path)) for path in path_list):
+    if any(_is_http_url(path) for path in _normalize_paths_to_strings(paths)):
         return False
     if filesystem is None:
         return True
@@ -2834,7 +2834,7 @@ def read_text(
         )
 
         datasource_v2 = TextDatasourceV2(
-            paths=paths if isinstance(paths, list) else [paths],
+            paths=_normalize_paths_to_strings(paths),
             encoding=encoding,
             drop_empty_lines=drop_empty_lines,
             filesystem=filesystem,

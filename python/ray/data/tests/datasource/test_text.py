@@ -124,6 +124,29 @@ def test_read_text_root_files_next_to_partitions(
     assert _to_lines(ds.filter(expr=col("path") == root_path).take_all()) == ["root"]
 
 
+def test_read_text_preserve_order_keeps_files_in_order(
+    ray_start_regular_shared, tmp_path, text_reader_version, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx.execution_options, "preserve_order", True)
+    # Two read tasks for five files: round-robin would deal files 0, 2, 4 to
+    # the first task and 1, 3 to the second.
+    monkeypatch.setattr(ctx, "read_op_min_num_blocks", 2)
+    monkeypatch.setattr(ctx, "target_min_block_size", 1)
+    paths = []
+    for i in range(5):
+        path = os.path.join(tmp_path, f"{i}.txt")
+        with open(path, "w") as f:
+            f.write(f"{i}a\n{i}b\n")
+        paths.append(path)
+
+    ds = ray.data.read_text(paths)
+
+    assert _to_lines(ds.take_all()) == [f"{i}{s}" for i in range(5) for s in "ab"]
+
+
 def test_read_text_compressed(ray_start_regular_shared, tmp_path, text_reader_version):
     import gzip
 

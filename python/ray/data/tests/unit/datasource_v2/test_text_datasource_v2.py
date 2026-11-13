@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import pyarrow as pa
 import pytest
+from pyarrow.fs import LocalFileSystem
 
 import ray.data.read_api as read_api
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
@@ -31,6 +32,7 @@ from ray.data._internal.datasource_v2.formats.text.text_reader import (
 from ray.data._internal.datasource_v2.formats.text.text_scanner import TextScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
+from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
@@ -427,6 +429,52 @@ def test_datasource_infer_schema_with_untyped_root_file(tmp_path):
     schema = datasource.infer_schema(_manifest(root, nested))
 
     assert schema == pa.schema([(TEXT_COLUMN_NAME, pa.string()), ("year", pa.string())])
+
+
+def test_datasource_infer_schema_rejects_partition_field_named_text(tmp_path):
+    path = _write(tmp_path / "text=a" / "data.txt", "line\n")
+    datasource = TextDatasourceV2(
+        [str(tmp_path)],
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+    )
+
+    with pytest.raises(ValueError, match="Partition field 'text'"):
+        datasource.infer_schema(_manifest(path))
+
+
+def test_datasource_filesystem_retries_listing_errors(tmp_path):
+    datasource = TextDatasourceV2([str(tmp_path)])
+
+    assert isinstance(datasource.filesystem, RetryingPyFileSystem)
+    assert isinstance(datasource.filesystem.unwrap(), LocalFileSystem)
+
+
+@pytest.mark.parametrize("preserve_order", [False, True])
+def test_datasource_uses_one_bucket_when_order_is_preserved(
+    tmp_path, monkeypatch, preserve_order
+):
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", preserve_order
+    )
+    paths = [_write(tmp_path / f"{i}.txt", f"{i}\n") for i in range(5)]
+    datasource = TextDatasourceV2([str(tmp_path)])
+
+    partitioner = datasource.get_file_partitioner(
+        hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=2)
+    )
+
+    assert isinstance(partitioner, RoundRobinPartitioner)
+    assert partitioner.num_buckets == (1 if preserve_order else 2)
+    for path in paths:
+        partitioner.add_input(_manifest(path))
+    partitioner.finalize()
+    partitions = []
+    while partitioner.has_partition():
+        partitions.append(partitioner.next_partition().paths.tolist())
+    if preserve_order:
+        assert partitions == [[str(path) for path in paths]]
+    else:
+        assert sorted(sum(partitions, [])) == [str(path) for path in paths]
 
 
 def test_datasource_reuses_generic_file_components(tmp_path):
