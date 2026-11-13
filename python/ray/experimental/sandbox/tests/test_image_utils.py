@@ -542,6 +542,11 @@ def test_repull_crash_keeps_the_new_image(tmp_path, monkeypatch):
 
     monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
     monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
+    # A cache hit leaves what was moved aside a moment ago to whoever is
+    # deleting it, and sweeps it up once that process must be gone.
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert len(_renamed_for_deletion(image_dir)) == 1
+    monkeypatch.setattr(image_utils, "_STALE_DELETION_SECONDS", 0.0)
     pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
     assert os.path.isdir(image_dir)
     assert os.path.getmtime(marker) == new_marker_mtime
@@ -1677,9 +1682,11 @@ def test_layer_cache_reclaimed_before_images(tmp_path, monkeypatch, pressure):
     for i, path in enumerate(paths):
         newer = time.time() + i + 10
         os.utime(path, (newer, newer))
+    # Under size pressure: room for this image, the one pulled below, and
+    # one of the two layers.
     monkeypatch.setenv(
         "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES",
-        str(image_size + 10) if pressure == "size" else "0",
+        str(2 * image_size + 10) if pressure == "size" else "0",
     )
     monkeypatch.setenv(
         "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "90" if pressure == "free" else "0"
@@ -1692,7 +1699,7 @@ def test_layer_cache_reclaimed_before_images(tmp_path, monkeypatch, pressure):
 
     if pressure == "size":
         # A cache hit doesn't grow the cache, so it leaves the size cap to
-        # the next pull.
+        # a pull, which checks it again once its own image counts.
         other_tar = tmp_path / "other.tar"
         _write_sample_tar(other_tar)
         pull_and_extract_container_image(str(other_tar), images_dir)

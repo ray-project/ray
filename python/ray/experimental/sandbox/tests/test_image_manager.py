@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import tarfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
@@ -105,14 +106,75 @@ def test_only_a_pull_scans_the_cache_for_eviction(tmp_path, monkeypatch):
     local_tar = _hello_tar(tmp_path)
 
     image_dir = mgr.pull_image(str(local_tar), instance_id="sb-1")
-    # The pull makes room under both the size cap and the free-space floor.
+    # The pull makes room under both the size cap and the free-space floor,
+    # before it starts and again once its own image counts.
     assert [(s["keep"], s["min_free_bytes"]) for s in scans] == [
         (os.path.basename(image_dir), 12345)
-    ]
+    ] * 2
     assert mgr.pull_image(str(local_tar), instance_id="sb-2") == image_dir
-    assert len(scans) == 1
+    assert len(scans) == 2
     # A hit still registers its sandbox as a user of the image.
     assert sorted(os.listdir(os.path.join(image_dir, ".users"))) == ["sb-1", "sb-2"]
+
+
+def test_a_pull_that_takes_the_cache_over_its_size_cap_evicts_at_once(
+    tmp_path, monkeypatch
+):
+    """The scan before a pull can't count the image being pulled, and cache
+    hits don't check the size cap. Without a scan after the pull, the cache
+    would stay over its cap until the next pull."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    first = mgr.pull_image(str(_hello_tar(tmp_path, "first.tar")))
+    size = sum(
+        os.path.getsize(os.path.join(root, name))
+        for root, _, names in os.walk(first)
+        for name in names
+    )
+    # Room for one image and a half.
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", str(size * 3 // 2))
+    second = mgr.pull_image(str(_hello_tar(tmp_path, "second.tar")))
+    assert os.path.isdir(second)
+    assert not os.path.exists(first)
+
+
+def test_a_cache_hit_leaves_a_deletion_in_progress_to_its_owner(tmp_path, monkeypatch):
+    """A cache hit finishes the deletions that killed workers left, but not
+    one that an eviction started a moment ago and is still running: the hit
+    would wait for it."""
+    from ray.experimental.sandbox._internal import image_utils
+
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = _hello_tar(tmp_path)
+    mgr.pull_image(str(local_tar))
+    moved_aside = tmp_path / "images" / ".deleting.0123456789ab"
+    (moved_aside / "rootfs").mkdir(parents=True)
+    mgr.pull_image(str(local_tar))
+    assert moved_aside.exists()
+    # Once it has sat untouched for long enough, its owner is gone.
+    monkeypatch.setattr(image_utils, "_STALE_DELETION_SECONDS", 0.0)
+    mgr.pull_image(str(local_tar))
+    assert not moved_aside.exists()
+
+
+def test_a_burst_of_first_creates_runs_runsc_spec_once(tmp_path, monkeypatch):
+    runsc = tmp_path / "runsc"
+    runsc.write_text("")
+    monkeypatch.setattr(image_manager_mod.shutil, "which", lambda name: str(runsc))
+    monkeypatch.setattr(image_manager_mod, "_default_spec_cache", {})
+    calls = []
+
+    def slow_run(args, cwd, check, **kwargs):
+        calls.append(args)
+        time.sleep(0.05)
+        with open(os.path.join(cwd, "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"ociVersion": "1.0.2"}, f)
+
+    monkeypatch.setattr(image_manager_mod.subprocess, "run", slow_run)
+    with ThreadPoolExecutor(8) as pool:
+        specs = list(pool.map(lambda _: get_default_oci_spec(), range(8)))
+    assert specs == [{"ociVersion": "1.0.2"}] * 8
+    # With the runsc that the cache is keyed on, not another one on PATH.
+    assert calls == [[str(runsc), "spec"]]
 
 
 def test_a_cache_hit_below_the_free_space_floor_evicts(tmp_path, monkeypatch):

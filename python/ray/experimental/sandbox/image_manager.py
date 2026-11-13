@@ -54,18 +54,23 @@ def get_default_oci_spec() -> Dict[str, Any]:
         key = (runsc, os.stat(runsc).st_mtime_ns) if runsc else None
     except OSError:
         key = None
+    # Held while runsc runs, so the first creates of a burst run it once.
     with _default_spec_lock:
         cached = _default_spec_cache.get(key) if key else None
-    if cached is None:
-        from ray.experimental.sandbox.backend.gvisor import runsc_env
+        if cached is None:
+            from ray.experimental.sandbox.backend.gvisor import runsc_env
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            subprocess.run(["runsc", "spec"], cwd=temp_dir, check=True, env=runsc_env())
-            config_path = os.path.join(temp_dir, "config.json")
-            with open(config_path, "r", encoding="utf-8") as f:
-                cached = json.load(f)
-        if key:
-            with _default_spec_lock:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                subprocess.run(
+                    [runsc or "runsc", "spec"],
+                    cwd=temp_dir,
+                    check=True,
+                    env=runsc_env(),
+                )
+                config_path = os.path.join(temp_dir, "config.json")
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cached = json.load(f)
+            if key:
                 _default_spec_cache[key] = cached
     return copy.deepcopy(cached)
 

@@ -16,6 +16,7 @@ import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1045,12 +1046,32 @@ def _rename_for_deletion(image_dir: str) -> str:
     return renamed
 
 
-def _remove_stale_deletions(images_dir: str) -> None:
+# A directory moved aside for deletion less than this long ago is left to
+# the process that moved it, which is still deleting it.
+_STALE_DELETION_SECONDS = 60.0
+
+
+def _remove_stale_deletions(images_dir: str, older_than: float = 0.0) -> None:
     """Finish deleting image directories whose deletion was interrupted (see
-    ``_rename_for_deletion``)."""
+    ``_rename_for_deletion``).
+
+    Args:
+        images_dir: Root image cache directory.
+        older_than: Skip directories that changed less than this many seconds
+            ago. Moving a directory aside and deleting from it both change
+            it, so one that an eviction is deleting right now is skipped.
+    """
+    cutoff = time.time() - older_than
     for name in os.listdir(images_dir):
         if name.startswith(".deleting."):
-            shutil.rmtree(os.path.join(images_dir, name), ignore_errors=True)
+            path = os.path.join(images_dir, name)
+            if older_than:
+                try:
+                    if os.lstat(path).st_ctime > cutoff:
+                        continue
+                except OSError:
+                    continue
+            shutil.rmtree(path, ignore_errors=True)
 
 
 def evict_least_recently_used_images(
@@ -1229,8 +1250,9 @@ def pull_and_extract_container_image(
 
     # Finish deleting what a killed worker moved aside. One listdir, so a
     # cache hit pays it too, and a node that only ever hits its cache still
-    # gets that space back.
-    _remove_stale_deletions(images_dir)
+    # gets that space back. What an eviction is deleting right now is left
+    # to it, so that a hit doesn't wait for another process's deletion.
+    _remove_stale_deletions(images_dir, older_than=_STALE_DELETION_SECONDS)
 
     expected_marker = expected_extract_marker()
 
@@ -1363,6 +1385,13 @@ def pull_and_extract_container_image(
             for user in users:
                 _mark_image_in_use(target_dir, user)
 
+            if max_cache > 0:
+                # Again, now that the new image counts. The scan before the
+                # pull couldn't see it, and cache hits don't check the size
+                # cap, so the cache would stay over it until the next pull.
+                evict_least_recently_used_images(
+                    images_dir, max_cache, keep=safe_name, min_free_bytes=min_free
+                )
             return _finish()
         finally:
             try:
