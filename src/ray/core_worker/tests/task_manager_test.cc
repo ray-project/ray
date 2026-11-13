@@ -5095,6 +5095,44 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
   CompletePendingStreamingTask(spec2, caller_address, 0);
 }
 
+TEST_F(TaskManagerLineageTest, MarkGeneratorFailedAndResubmitKeepsPendingCount) {
+  rpc::Address caller_address;
+
+  // A running streaming generator whose resubmit is queued up for object recovery.
+  did_queue_generator_resubmit_ = true;
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  manager_.AddPendingTask(caller_address, spec, "", 2);
+  ASSERT_EQ(manager_.NumPendingTasks(), 1);
+  ASSERT_EQ(num_retries_, 0);
+
+  // The second cycle resubmits an attempt that is itself a resubmit, and must keep the
+  // count at 1 too.
+  for (int cycle = 1; cycle <= 2; cycle++) {
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+    std::vector<ObjectID> task_deps;
+    // The generator is still running, so the resubmit is queued rather than performed.
+    ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps), std::nullopt);
+    ASSERT_EQ(manager_.NumPendingTasks(), 1);
+
+    // The generator's reply arrives and the queued resubmit fires. One attempt is in
+    // flight before and after, so the count must not change.
+    manager_.MarkGeneratorFailedAndResubmit(spec.TaskId());
+    ASSERT_EQ(manager_.NumPendingTasks(), 1);
+    // The resubmit actually happened, so the count above is not right for the wrong
+    // reason (such as a fix that skipped SetupTaskEntryForResubmit entirely).
+    ASSERT_EQ(num_retries_, cycle);
+  }
+
+  CompletePendingStreamingTask(spec, caller_address, 0);
+  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+}
+
 TEST_F(TaskManagerLineageTest, TestStreamingGeneratorReconstructableWhileLineageInScope) {
   /**
    * Streaming generator's return objects should still be reconstructable as

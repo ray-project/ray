@@ -602,6 +602,10 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end());
     auto &task_entry = it->second;
+    // The attempt has to still be counted as pending, since below we release its count
+    // and hand it to the new attempt.
+    RAY_CHECK(task_entry.IsPending())
+        << "Tried to resubmit a generator whose attempt already finished " << task_id;
 
     rpc::RayErrorInfo error_info;
     error_info.set_error_type(
@@ -610,6 +614,11 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
                   rpc::TaskStatus::FAILED,
                   worker::TaskStatusEvent::TaskStateUpdate(error_info));
 
+    // Neither CompletePendingTask nor FailPendingTask runs on this path, so release the
+    // finished attempt's count before SetupTaskEntryForResubmit adds one for the new one.
+    // The decrement stays here because ResubmitTask, its other caller, arrives with the
+    // count already released.
+    num_pending_tasks_--;
     SetupTaskEntryForResubmit(task_entry);
     spec = task_entry.spec_;
   }
