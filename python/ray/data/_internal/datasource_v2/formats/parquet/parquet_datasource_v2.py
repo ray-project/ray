@@ -61,6 +61,9 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
+        OnlineBinPacker,
+    )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 logger = logging.getLogger(__name__)
@@ -221,41 +224,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
     def get_file_partitioner(self, **kwargs):
         # Listing rows carry per-row-group stats, so bin-pack them into read
         # units instead of size-estimating whole files.
-        from ray.data._internal.datasource_v2.common.online_bin_packer import (
-            OnlineBinPacker,
-        )
-        from ray.data._internal.util import MiB
-
-        max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
-        max_shared_open_bins = env_integer(
-            "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
-        )
-        split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
-        # A row-group shuffle feeds runs from many files interleaved; per-file
-        # heavy bins would split them back apart, so pack everything shared.
-        isolate_heavy_files = not self._is_row_group_shuffle()
-        logger.debug(
-            "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
-            "split_coalesced=%s, isolate_heavy_files=%s)",
-            max_bin_bytes,
-            max_shared_open_bins,
-            split_coalesced,
-            isolate_heavy_files,
-        )
-        return OnlineBinPacker(
-            max_bin_bytes=max_bin_bytes,
-            max_shared_open_bins=max_shared_open_bins,
-            split_coalesced=split_coalesced,
-            isolate_heavy_files=isolate_heavy_files,
-        )
-
-    def _is_row_group_shuffle(self) -> bool:
-        from ray.data.datasource.file_based_datasource import FileShuffleConfig
-
-        return (
-            isinstance(self._shuffle, FileShuffleConfig)
-            and self._shuffle.small_chunks_shuffle
-        )
+        return make_row_group_bin_packer(self._shuffle)
 
     @override
     def resolve_partitioning(
@@ -393,3 +362,49 @@ class ParquetDatasourceV2(FileDataSourceV2):
             target_block_size=DataContext.get_current().target_max_block_size,
             parquet_format_kwargs=dict(self._parquet_format_kwargs),
         )
+
+
+def make_row_group_bin_packer(
+    shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]],
+) -> "OnlineBinPacker":
+    """Bin packer for the per-row-group listing rows ``FooterFileIndexer`` emits.
+
+    Shared by every source whose listing goes through ``FooterFileIndexer``.
+
+    Args:
+        shuffle: The read's shuffle setting.
+
+    Returns:
+        The ``OnlineBinPacker``, configured from the environment.
+    """
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
+        OnlineBinPacker,
+    )
+    from ray.data._internal.util import MiB
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
+    max_shared_open_bins = env_integer(
+        "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
+    )
+    split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
+    # A row-group shuffle feeds runs from many files interleaved; per-file
+    # heavy bins would split them back apart, so pack everything shared.
+    row_group_shuffle = (
+        isinstance(shuffle, FileShuffleConfig) and shuffle.small_chunks_shuffle
+    )
+    isolate_heavy_files = not row_group_shuffle
+    logger.debug(
+        "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
+        "split_coalesced=%s, isolate_heavy_files=%s)",
+        max_bin_bytes,
+        max_shared_open_bins,
+        split_coalesced,
+        isolate_heavy_files,
+    )
+    return OnlineBinPacker(
+        max_bin_bytes=max_bin_bytes,
+        max_shared_open_bins=max_shared_open_bins,
+        split_coalesced=split_coalesced,
+        isolate_heavy_files=isolate_heavy_files,
+    )

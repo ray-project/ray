@@ -72,6 +72,9 @@ def build_autoencoder_model() -> tf.keras.Model:
 def train_func(config: dict):
 
     per_worker_batch_size = config.get("batch_size", 64)
+    # The dataset batch size is the global batch size, which TensorFlow splits
+    # evenly across workers.
+    global_batch_size = per_worker_batch_size * train.get_context().get_world_size()
     epochs = config.get("epochs", 3)
 
     dataset_shard = train.get_dataset_shard("train")
@@ -110,7 +113,7 @@ def train_func(config: dict):
     for epoch in range(epochs):
         tf_dataset = to_tf_dataset(
             dataset=dataset_shard,
-            batch_size=per_worker_batch_size,
+            batch_size=global_batch_size,
         )
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[ReportCheckpointCallback()]

@@ -14,6 +14,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 from ray.train.v2.tests.util import create_dummy_training_reports
 
 
@@ -249,6 +250,59 @@ async def test_pending_checkpoint_management(tmp_path):
         high_initial_low_final_training_report.checkpoint,  # keep latest checkpoint
         low_initial_high_final_training_report.checkpoint,  # keep highest score checkpoint
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "validation_result",
+    [
+        ({"score": 5}, ReportedCheckpointStatus.VALIDATED),
+        ({}, ReportedCheckpointStatus.VALIDATION_FAILED),
+    ],
+)
+async def test_scoreless_checkpoint_is_worst_in_min_mode(tmp_path, validation_result):
+    """A checkpoint without the score attribute (for example, one whose
+    validation is pending or failed) must rank below every scored checkpoint in
+    "min" mode too, not above them."""
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="scoreless_checkpoint_min_mode_experiment",
+    )
+    checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute="score",
+            checkpoint_score_order="min",
+        ),
+    )
+    best_report, pending_report, latest_report = create_dummy_training_reports(
+        num_results=3, storage_context=storage_context
+    )
+    best_report.metrics = {"score": 1}
+    pending_report.metrics = {}
+    pending_report.validation = ValidationTaskConfig()
+    latest_report.metrics = {"score": 2}
+
+    checkpoint_manager.register_checkpoint(best_report)
+    checkpoint_manager.register_checkpoint(pending_report)
+    checkpoint_manager.register_checkpoint(latest_report)
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        pending_report.checkpoint,  # keep pending
+        latest_report.checkpoint,  # keep latest
+        best_report.checkpoint,  # keep lowest score
+    ]
+
+    checkpoint_manager.update_checkpoints_with_validation_result(
+        {pending_report.checkpoint: validation_result}
+    )
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        latest_report.checkpoint,  # keep latest
+        best_report.checkpoint,  # keep lowest score
+    ]
+    assert (
+        checkpoint_manager.best_checkpoint_result.checkpoint == best_report.checkpoint
+    )
 
 
 @pytest.mark.asyncio
