@@ -121,6 +121,42 @@ def test_every_way_buildkite_takes_a_command_is_read(step: dict):
     assert [i.name for i in expected_images(pipeline)] == ["ray-py3.12-tpu"]
 
 
+def test_only_the_scan_command_is_parsed():
+    """Another command's options must not leak into the scan's."""
+    step = {
+        "key": "s",
+        "commands": ["bazel run //x:setup -- --architecture aarch64", TPU_SCAN],
+    }
+    assert [i.name for i in expected_images({"steps": [step]})] == ["ray-py3.12-tpu"]
+
+
+@pytest.mark.parametrize(
+    ("command", "error"),
+    [
+        pytest.param(
+            f"{TPU_SCAN} && echo --image ray:3.11",
+            "passes scan_images unexpected arguments ['&&', 'echo']",
+            id="trailing-command",
+        ),
+        pytest.param(
+            f"{TPU_SCAN} --bogus x --image ray:3.13",
+            "No such option: --bogus",
+            id="unknown-option",
+        ),
+        pytest.param(
+            f"{SCAN} --architecture x86_64 --platform tpu --image",
+            "Option '--image' requires an argument",
+            id="option-without-value",
+        ),
+    ],
+)
+def test_a_scan_command_with_anything_unexpected_is_an_error(command: str, error: str):
+    """Parsing leniently would drop or invent images without a word."""
+    with pytest.raises(ValueError, match=re.escape(error)) as info:
+        expected_images({"steps": [{"key": "images_scan_x", "commands": [command]}]})
+    assert "images_scan_x" in str(info.value)
+
+
 @pytest.mark.parametrize(
     ("step", "error"),
     [

@@ -70,29 +70,51 @@ def _commands(step: Mapping[str, Any]) -> list[str]:
     return found
 
 
+def _scan_args(command: str, key: str) -> list[str]:
+    """The arguments after the `--` that follows the scan_images target."""
+    args = shlex.split(command)
+    if SCAN_TARGET not in args:
+        raise ValueError(f"step {key} names scan_images in a form this can't read")
+    try:
+        separator = args.index("--", args.index(SCAN_TARGET) + 1)
+    except ValueError:
+        raise ValueError(
+            f"step {key} has no `--` before scan_images' arguments"
+        ) from None
+    return args[separator + 1 :]
+
+
+def _parse_scan_args(args: list[str], key: str) -> dict[str, Any]:
+    """Parse with scan_images' own options, strictly: an unknown option or a
+    stray argument (e.g. `&& echo`) is an error, not something to skip."""
+    parser = scan_images.main.make_parser(click.Context(scan_images.main))
+    try:
+        params, extra, _ = parser.parse_args(args=list(args))
+    except click.UsageError as e:
+        raise ValueError(f"step {key}: {e.format_message()}") from e
+    if extra:
+        raise ValueError(f"step {key} passes scan_images unexpected arguments {extra}")
+    return params
+
+
 def _step_images(step: Mapping[str, Any]) -> list[Image]:
     """The images one step scans, or none if it doesn't run scan_images.
     A scan step this can't read exactly is an error: guessing would make
     the coverage check quietly wrong."""
     key = step.get("key") or step.get("label") or "?"
-    text = " ".join(_commands(step))
-    runs = text.count(SCAN_TARGET)
+    scans = [c for c in _commands(step) if SCAN_TARGET in c]
+    runs = sum(c.count(SCAN_TARGET) for c in scans)
     if not runs:
         return []
     if runs > 1:
         raise ValueError(f"step {key} runs scan_images {runs} times")
     images = []
     for platform in (step.get("array") or {}).get("platform") or [""]:
-        expanded = text.replace("{{array.platform}}", platform)
+        expanded = scans[0].replace("{{array.platform}}", platform)
         leftover = re.search(r"\{\{[^}]*\}\}", expanded)
         if leftover:
             raise ValueError(f"step {key} leaves {leftover.group()} unexpanded")
-        args = shlex.split(expanded)
-        if "--" not in args:
-            raise ValueError(f"step {key} has no `--` before scan_images' arguments")
-        params = scan_images.main.make_context(
-            "scan_images", args[args.index("--") + 1 :], resilient_parsing=True
-        ).params
+        params = _parse_scan_args(_scan_args(expanded, key), key)
         for option in ("architecture", "platform"):
             if not params.get(option):
                 raise ValueError(f"step {key} gives no --{option}")
