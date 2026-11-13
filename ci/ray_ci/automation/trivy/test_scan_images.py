@@ -850,9 +850,15 @@ def put_db(s3: FakeS3, tmp_path: Path) -> dict:
     return {"db": {"source": DB.upstream, "manifest": MANIFEST, "blob": blob}}
 
 
+UPSTREAM_CREATED = "2026-11-10T19:01:23Z"
+
+
 def upstream(layer_digest: str):
     """public.ecr.aws's manifest for MANIFEST, with this DB layer."""
-    manifest = {"layers": [{"mediaType": DB.media_type, "digest": layer_digest}]}
+    manifest = {
+        "annotations": {"org.opencontainers.image.created": UPSTREAM_CREATED},
+        "layers": [{"mediaType": DB.media_type, "digest": layer_digest}],
+    }
     return mock.patch.object(
         scan_images.registry, "manifest", mock.Mock(return_value=manifest)
     )
@@ -861,13 +867,20 @@ def upstream(layer_digest: str):
 def test_fetch_db_extracts_the_pinned_tarball(tmp_path: Path):
     s3 = FakeS3()
     pins = put_db(s3, tmp_path)
-    # The pin's own "source" is never trusted for where to check it.
+    # The pin's own "source" and "created" are never trusted: what is
+    # recorded comes from DB_SOURCES and the verified manifest.
     pins["db"]["source"] = "registry.example/not-trivy:1"
+    pins["db"]["created"] = "2099-01-01T00:00:00Z"
     with upstream(pins["db"]["blob"]) as manifest:
         dest, pin = scan_images.fetch_db(DB, store(s3), pins, tmp_path)
     manifest.assert_called_once_with(f"{DB.upstream_repo}@{MANIFEST}")
     assert sorted(p.name for p in dest.iterdir()) == ["metadata.json", "trivy.db"]
-    assert pin == {**pins["db"], "created": ""}
+    assert pin == {
+        "source": DB.upstream,
+        "manifest": MANIFEST,
+        "blob": pins["db"]["blob"],
+        "created": UPSTREAM_CREATED,
+    }
     assert not (tmp_path / DB.file_name).exists()
 
 

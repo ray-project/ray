@@ -59,6 +59,7 @@ from ci.ray_ci.automation.trivy.trivy_db import (
     DB_SOURCES,
     DbSource,
     db_layer,
+    manifest_created,
 )
 from ci.ray_ci.docker_container import RayType
 from ci.ray_ci.ray_image import RayImageError
@@ -272,7 +273,8 @@ def fetch_db(
         raise ScanError(f"{DB_METADATA} has no valid {source.name} pin: {pin!r}")
     # crane refuses a manifest whose digest differs from the one requested.
     pinned = f"{source.upstream_repo}@{manifest_digest}"
-    upstream = db_layer(registry.manifest(pinned), source.media_type)["digest"]
+    manifest = registry.manifest(pinned)
+    upstream = db_layer(manifest, source.media_type)["digest"]
     if upstream != blob:
         raise ScanError(
             f"{DB_METADATA} pins {source.name} blob {blob}, but {pinned} has {upstream}"
@@ -284,8 +286,13 @@ def fetch_db(
     dest = workdir / source.name
     _safe_extract(tarball, dest, DB_FILES[source.name])
     tarball.unlink()
-    recorded = ("source", "manifest", "blob", "created")
-    return dest, {key: pin.get(key, "") for key in recorded}
+    # Recorded from what was verified, never from the pin.
+    return dest, {
+        "source": source.upstream,
+        "manifest": manifest_digest,
+        "blob": blob,
+        "created": manifest_created(manifest),
+    }
 
 
 def _run(args: Sequence[str], check: bool = True) -> str:

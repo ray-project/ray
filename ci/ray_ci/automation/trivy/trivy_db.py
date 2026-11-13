@@ -87,7 +87,7 @@ def db_layer(manifest: Mapping[str, Any], media_type: str) -> Mapping[str, Any]:
     return layers[0]
 
 
-def _created(manifest: Mapping[str, Any]) -> str:
+def manifest_created(manifest: Mapping[str, Any]) -> str:
     created = (manifest.get("annotations") or {}).get(CREATED_ANNOTATION)
     if not created:
         layers = manifest.get("layers") or [{}]
@@ -138,7 +138,7 @@ def stage_db(
         "blob": layer["digest"],
         "size": layer.get("size", 0),
         "media_type": source.media_type,
-        "created": _created(manifest),
+        "created": manifest_created(manifest),
         "object": url,
         "ghcr_layer_matches": ghcr_matches,
     }
