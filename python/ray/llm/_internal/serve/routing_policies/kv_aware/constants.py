@@ -48,7 +48,6 @@ DEFAULT_KV_INDEXER_THREADS = 4
 # Router-local workload snapshot keys. The KV token tracker produces these
 # signals; Serve's autoscaling metrics path transports them in a later layer.
 OUTSTANDING_EFFECTIVE_PREFILL_TOKENS = "outstanding_effective_prefill_tokens"
-ACTIVE_DECODE_REQUESTS = "active_decode_requests"
 
 # The engine's KV-event replay (ROUTER) socket sits this many ports above its PUB
 # port, a separate range so it never collides with the PUB ports of colocated

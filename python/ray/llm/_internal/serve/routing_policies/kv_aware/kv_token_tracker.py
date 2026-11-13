@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Type
 import ray
 from ray import serve
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    ACTIVE_DECODE_REQUESTS,
     DEFAULT_KV_INDEXER_THREADS,
     DEFAULT_SESSION_AFFINITY_TTL_S,
     KV_INDEXER_THREADS_KEY,
@@ -230,7 +229,6 @@ class KVTokenTracker:
         self._requests: "OrderedDict[str, RequestLifecycle]" = OrderedDict()
         # Current workload snapshot, used by the autoscaler.
         self._outstanding_effective_prefill_tokens = 0
-        self._active_decode_requests = 0
         self._autoscaling_metrics_callback: Optional[
             Callable[[Dict[str, int]], None]
         ] = None
@@ -363,7 +361,6 @@ class KVTokenTracker:
             OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: (
                 self._outstanding_effective_prefill_tokens
             ),
-            ACTIVE_DECODE_REQUESTS: self._active_decode_requests,
         }
 
     def _publish_autoscaling_snapshot(self) -> None:
@@ -733,7 +730,6 @@ class KVTokenTracker:
             return
         state.prefill_completed = True
         self._outstanding_effective_prefill_tokens -= state.effective_prefill_tokens
-        self._active_decode_requests += 1
         self._publish_autoscaling_snapshot()
         await self._svc.prefill_complete(request_id)
 
@@ -768,10 +764,8 @@ class KVTokenTracker:
         await self._svc.free_reservation(request_id)
 
     def _remove_autoscaling_load(self, state: RequestLifecycle) -> None:
-        """Remove one request's contribution from its current lifecycle phase."""
-        if state.prefill_completed:
-            self._active_decode_requests -= 1
-        else:
+        """Remove a request's outstanding prefill tokens if it is still in prefill."""
+        if not state.prefill_completed:
             self._outstanding_effective_prefill_tokens -= state.effective_prefill_tokens
 
     async def get_autoscaling_snapshot(self) -> Dict[str, int]:

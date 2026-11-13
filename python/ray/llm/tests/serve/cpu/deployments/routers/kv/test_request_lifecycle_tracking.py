@@ -14,7 +14,6 @@ import ray.cloudpickle
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    ACTIVE_DECODE_REQUESTS,
     OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
     REQUEST_TRACKING_TTL_S,
 )
@@ -134,7 +133,6 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._outstanding_effective_prefill_tokens = 0
-        self._active_decode_requests = 0
         self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
@@ -188,7 +186,6 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._outstanding_effective_prefill_tokens = 0
-        self._active_decode_requests = 0
         self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
@@ -765,33 +762,29 @@ async def test_autoscaling_snapshot_tracks_request_phases():
     actor.set_autoscaling_metrics_callback(published.append)
     assert published == []
 
-    await reserve(actor, "cached", 1, list(range(20)))
-    assert await actor.get_autoscaling_snapshot() == {
-        OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 3,
-        ACTIVE_DECODE_REQUESTS: 0,
-    }
-    assert published[-1] == await actor.get_autoscaling_snapshot()
+    await reserve(actor, "a", 1, list(range(20)))
+    await reserve(actor, "b", 1, list(range(20, 40)))
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 6}
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
 
-    await actor.on_prefill_complete("cached")
-    expected = {
-        OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
-        ACTIVE_DECODE_REQUESTS: 1,
-    }
+    # Prefill completion drops the request's prefill tokens.
+    await actor.on_prefill_complete("a")
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 3}
     assert await actor.get_autoscaling_snapshot() == expected
     assert published[-1] == expected
 
     # Duplicate lifecycle events are idempotent.
-    await actor.on_prefill_complete("cached")
-    assert await actor.get_autoscaling_snapshot() == {
-        OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
-        ACTIVE_DECODE_REQUESTS: 1,
-    }
+    await actor.on_prefill_complete("a")
+    assert await actor.get_autoscaling_snapshot() == expected
 
-    await actor.on_request_completed("cached")
-    expected = {
-        OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
-        ACTIVE_DECODE_REQUESTS: 0,
-    }
+    # Completing a decoding request leaves prefill tokens unchanged.
+    await actor.on_request_completed("a")
+    assert await actor.get_autoscaling_snapshot() == expected
+
+    # Completing a request still in prefill drops its prefill tokens.
+    await actor.on_request_completed("b")
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0}
     assert await actor.get_autoscaling_snapshot() == expected
     assert published[-1] == expected
 
