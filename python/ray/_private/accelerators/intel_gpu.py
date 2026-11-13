@@ -59,9 +59,14 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
 
         num_gpus = 0
         try:
-            dev_info = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ONEAPI_DEVICE_TYPE
-            context = dpctl.SyclContext(dev_info)
-            num_gpus = context.device_count
+            # Count devices without creating a SyclContext: dpctl caches a queue on
+            # every device for the life of the process, which holds ~20 MiB of
+            # device memory per GPU in every process that imports ray.
+            num_gpus = len(
+                dpctl.get_devices(
+                    backend=ONEAPI_DEVICE_BACKEND_TYPE, device_type=ONEAPI_DEVICE_TYPE
+                )
+            )
         except Exception:
             num_gpus = 0
         return num_gpus
