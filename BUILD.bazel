@@ -22,6 +22,11 @@ package(
 
 exports_files([
     ".rayciversion",
+    # Read by //ci/ray_ci/automation/trivy:test_workspace_contexts.
+    "WORKSPACE",
+    "ci/docker/ray-core.wanda.yaml",
+    "ci/docker/ray-cpp-core.wanda.yaml",
+    "ci/docker/ray-java.wanda.yaml",
     "python/setup.py",
     "ray-images.json",
 ])
