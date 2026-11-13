@@ -1,5 +1,6 @@
 import gzip
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -96,6 +97,79 @@ def test_the_pipeline_asks_for_every_published_image_once():
         "ray-llm-extra-py3.12-cu13.0.0-cudnn",
         "ray-extra-py3.14-cu13.3.1-cudnn-aarch64",
     } <= set(names)
+
+
+SCAN = "bazel run //ci/ray_ci/automation/trivy:scan_images --"
+
+
+def test_a_single_command_step_is_read_too():
+    pipeline = {
+        "steps": [
+            {
+                "key": "s",
+                "command": f"{SCAN} --architecture x86_64 --platform tpu "
+                "--image ray:3.12",
+            }
+        ]
+    }
+    assert [i.name for i in expected_images(pipeline)] == ["ray-py3.12-tpu"]
+
+
+@pytest.mark.parametrize(
+    ("step", "error"),
+    [
+        pytest.param(
+            {
+                "commands": [
+                    f"{SCAN} --architecture x86_64 --platform cpu "
+                    "--image ray:{{array.python}}"
+                ],
+                "array": {"python": ["3.12"]},
+            },
+            "leaves {{array.python}}",
+            id="other-array-dimension",
+        ),
+        pytest.param(
+            {"commands": [f"{SCAN} --architecture x86_64 --platform cpu"]},
+            "no --image",
+            id="no-images",
+        ),
+        pytest.param(
+            {"commands": [f"{SCAN} --platform cpu --image ray:3.12"]},
+            "no --architecture",
+            id="no-architecture",
+        ),
+        pytest.param(
+            {
+                "commands": [
+                    "bazel run //ci/ray_ci/automation/trivy:scan_images "
+                    "--architecture x86_64 --platform cpu --image ray:3.12"
+                ]
+            },
+            "no `--`",
+            id="no-separator",
+        ),
+        pytest.param(
+            {"commands": [f"{SCAN} --architecture x86_64 --platform tpu"] * 2},
+            "runs scan_images 2 times",
+            id="two-scans",
+        ),
+        pytest.param(
+            {
+                "commands": [
+                    f"{SCAN} --architecture x86_64 --platform tpu --image ray-llm:3.12"
+                ]
+            },
+            "ray-llm",
+            id="unpublished-variant",
+        ),
+    ],
+)
+def test_a_scan_step_it_cannot_read_is_an_error(step: dict, error: str):
+    """Guessing would make the coverage check quietly wrong."""
+    with pytest.raises(ValueError, match=re.escape(error)) as info:
+        expected_images({"steps": [{"key": "images_scan_x", **step}]})
+    assert "images_scan_x" in str(info.value)
 
 
 def test_two_steps_scanning_the_same_image_are_rejected():

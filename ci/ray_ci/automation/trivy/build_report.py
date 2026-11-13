@@ -47,7 +47,7 @@ from ci.ray_ci.automation.trivy.scan_store import (
 )
 from ci.ray_ci.automation.trivy.trivy_db import DB_METADATA
 from ci.ray_ci.automation.trivy.trivy_report import Image, ImageScan
-from ci.ray_ci.ray_image import RayImage
+from ci.ray_ci.ray_image import RayImage, RayImageError
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
@@ -58,36 +58,66 @@ RESULT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.(status\.json|json\.gz)$
 DOWNLOAD_THREADS = 16
 
 
-def expected_images(pipeline: Mapping[str, Any]) -> list[Image]:
-    """Every image the pipeline's scan steps are asked to scan, read with
-    scan_images' own option parser."""
-    images: list[Image] = []
-    for step in pipeline.get("steps") or []:
-        command = " ".join(step.get("commands") or [])
-        if SCAN_TARGET not in command:
-            continue
-        for platform in (step.get("array") or {}).get("platform") or [""]:
-            args = shlex.split(command.replace("{{array.platform}}", platform))
-            ctx = scan_images.main.make_context(
-                "scan_images", args[args.index("--") + 1 :], resilient_parsing=True
-            )
-            for spec in ctx.params.get("images") or ():
+def _step_images(step: Mapping[str, Any]) -> list[Image]:
+    """The images one step scans, or none if it doesn't run scan_images.
+    A scan step this can't read exactly is an error: guessing would make
+    the coverage check quietly wrong."""
+    key = step.get("key") or step.get("label") or "?"
+    command = step.get("command")
+    commands = [command] if isinstance(command, str) else step.get("commands") or []
+    text = " ".join(commands)
+    runs = text.count(SCAN_TARGET)
+    if not runs:
+        return []
+    if runs > 1:
+        raise ValueError(f"step {key} runs scan_images {runs} times")
+    images = []
+    for platform in (step.get("array") or {}).get("platform") or [""]:
+        expanded = text.replace("{{array.platform}}", platform)
+        leftover = re.search(r"\{\{[^}]*\}\}", expanded)
+        if leftover:
+            raise ValueError(f"step {key} leaves {leftover.group()} unexpanded")
+        args = shlex.split(expanded)
+        if "--" not in args:
+            raise ValueError(f"step {key} has no `--` before scan_images' arguments")
+        params = scan_images.main.make_context(
+            "scan_images", args[args.index("--") + 1 :], resilient_parsing=True
+        ).params
+        for option in ("architecture", "platform"):
+            if not params.get(option):
+                raise ValueError(f"step {key} gives no --{option}")
+        if not params.get("images"):
+            raise ValueError(f"step {key} gives no --image")
+        for spec in params["images"]:
+            try:
                 image_type, python_version = scan_images.parse_image(spec)
                 ray_image = RayImage(
                     image_type,
                     python_version,
-                    ctx.params["platform"],
-                    ctx.params["architecture"],
+                    params["platform"],
+                    params["architecture"],
                 )
-                images.append(
-                    Image(
-                        name=ray_image.wanda_image_name,
-                        image_type=image_type,
-                        python_version=python_version,
-                        platform=ray_image.platform,
-                        architecture=ray_image.architecture,
-                    )
+                ray_image.validate()
+            except (click.BadParameter, RayImageError) as e:
+                raise ValueError(f"step {key}: {e}") from e
+            images.append(
+                Image(
+                    name=ray_image.wanda_image_name,
+                    image_type=image_type,
+                    python_version=python_version,
+                    platform=ray_image.platform,
+                    architecture=ray_image.architecture,
                 )
+            )
+    return images
+
+
+def expected_images(pipeline: Mapping[str, Any]) -> list[Image]:
+    """Every image the pipeline's scan steps are asked to scan, read with
+    scan_images' own option parser."""
+    images = [
+        image for step in pipeline.get("steps") or [] for image in _step_images(step)
+    ]
     names = [image.name for image in images]
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
