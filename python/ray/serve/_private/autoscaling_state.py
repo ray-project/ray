@@ -31,7 +31,6 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     TargetCapacityDirection,
     TimeSeries,
-    TimeStampedValue,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
@@ -741,7 +740,7 @@ class DeploymentAutoscalingState:
             total_queued_requests=self._get_queued_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics,
             raw_metrics=self._get_raw_custom_metrics,
-            raw_router_metrics=self._get_raw_router_metrics,
+            aggregated_router_metrics=self._get_aggregated_router_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
         )
@@ -1053,25 +1052,30 @@ class DeploymentAutoscalingState:
 
         return dict(raw_metrics)
 
-    def _get_raw_router_metrics(self) -> Dict[str, Dict[str, TimeSeries]]:
-        """Extract router-owned metric series, keyed by metric and handle ID."""
-        raw_metrics: Dict[str, Dict[str, TimeSeries]] = defaultdict(dict)
+    def _get_aggregated_router_metrics(self) -> Dict[str, Dict[str, float]]:
+        """Aggregate each handle's router-owned metrics over the look-back window.
+
+        Returns:
+            Dict mapping metric name to dict of handle ID to aggregated value.
+        """
+        aggregated: Dict[str, Dict[str, float]] = defaultdict(dict)
 
         for handle_id, object_report in self._handle_store.objects.items():
             router_metrics = getattr(object_report, "router_metrics", {})
             for metric_name, timeseries in router_metrics.items():
-                raw_metrics[metric_name][handle_id] = timeseries
+                if timeseries:
+                    aggregated[metric_name][
+                        handle_id
+                    ] = self._merge_and_aggregate_timeseries([timeseries])
 
         for handle_id, columnar_report in self._handle_store.columnar.items():
             for metric_name, samples in columnar_report.router_metrics.items():
-                raw_metrics[metric_name][handle_id] = [
-                    TimeStampedValue(timestamp, value)
-                    for timestamp, value in zip(
-                        samples.timestamps.tolist(), samples.values.tolist()
+                if samples.timestamps.size:
+                    aggregated[metric_name][handle_id] = self._aggregate_samples(
+                        [samples]
                     )
-                ]
 
-        return dict(raw_metrics)
+        return dict(aggregated)
 
 
 class ApplicationAutoscalingState:
