@@ -1428,6 +1428,62 @@ def test_derived_predicate_failure_falls_back_to_original(
     assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
 
 
+def test_derived_bounds_prune_under_negation(tmp_path):
+    # ~((id + 1) >= 901) kept every row group while the bounds were only
+    # necessary conditions: PyArrow cannot evaluate the addition, so its
+    # negation could not be evaluated either.
+    values = list(range(25)) + list(range(900, 925)) + list(range(950, 975))
+    table = pa.table({"id": values})
+    path, size = _write(tmp_path / "negation.parquet", table, row_group_size=25)
+    predicate = ~((col("id") + 1) >= 901)
+
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+    assert set(by_idx) == {0}
+    assert by_idx[0] is True
+
+
+def test_derived_bounds_mark_arithmetic_groups_fully_matched(tmp_path):
+    # Groups lying entirely inside (id + 1) >= 26 get exact survivor counts
+    # -- the input limit push-down needs.
+    table = pa.table({"id": list(range(75))})
+    path, size = _write(tmp_path / "full-match.parquet", table, row_group_size=25)
+    predicate = (col("id") + 1) >= 26
+
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+    assert set(by_idx) == {1, 2}
+    assert by_idx[1] is True
+    assert by_idx[2] is True
+
+
+def test_derived_bounds_exclude_the_signed_wrap_region(tmp_path):
+    # int8 addition computes at the column's width: 127 + 1 wraps back below
+    # the threshold, so a group of nothing but 127s matches nothing.
+    table = pa.table({"x": pa.array([127, 127, 75, 126], type=pa.int8())})
+    path, size = _write(tmp_path / "wrap.parquet", table, row_group_size=2)
+    predicate = (col("x") + 1) >= 76
+
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+    assert set(by_idx) == {1}
+    assert by_idx[1] is True
+
+
+def test_derived_unsigned_addition_is_exact(tmp_path):
+    # Unsigned columns promote to a wider type before adding, so no sum
+    # wraps and a group at the very top of the range is fully matched.
+    table = pa.table({"x": pa.array([74, 75, 255, 255], type=pa.uint8())})
+    path, size = _write(tmp_path / "unsigned.parquet", table, row_group_size=2)
+    predicate = (col("x") + 1) >= 76
+
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+    assert set(by_idx) == {0, 1}
+    assert by_idx[0] is False
+    assert by_idx[1] is True
+
+
 if __name__ == "__main__":
     import sys
 
