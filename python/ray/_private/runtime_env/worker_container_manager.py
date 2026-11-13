@@ -199,13 +199,19 @@ class WorkerContainerManager:
                         await asyncio.shield(record.creator)
                     except (OSError, RuntimeError, asyncio.TimeoutError):
                         pass
-                if record.unsettled is not None and not record.unsettled.done():
-                    raise RuntimeError("Podman command is still running")
+                if record.unsettled is not None:
+                    # An unsignallable command still owns its slot. Wait for exit
+                    # without spending cleanup retries or delaying removal afterward.
+                    try:
+                        await asyncio.shield(record.unsettled)
+                    except (OSError, RuntimeError, asyncio.TimeoutError):
+                        pass
                 await self._remove(record.identity)
                 return
             except (OSError, RuntimeError, asyncio.TimeoutError) as error:
                 if isinstance(error, UnsettledCommandError):
                     self._retain_command(record, error.completion)
+                    continue
                 attempt += 1
                 logger.warning(
                     "Container cleanup %s failed (%s/%s): %s",

@@ -11,7 +11,10 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from ray._private.runtime_env.agent.runtime_env_agent import RuntimeEnvAgent
 from ray._private.runtime_env.container_launch import split_container_options
-from ray._private.runtime_env.worker_container_manager import WorkerContainerManager
+from ray._private.runtime_env.worker_container_manager import (
+    UnsettledCommandError,
+    WorkerContainerManager,
+)
 from ray.core.generated import runtime_env_agent_pb2 as protocol
 
 pytestmark = pytest.mark.skipif(
@@ -628,6 +631,77 @@ def test_permission_denied_retains_creator_until_exit_then_recovers(tmp_path):
                 manager.check_admission()
         finally:
             await manager.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("command", ["create", "ps", "rm"])
+@pytest.mark.parametrize("completion_error", [False, True])
+def test_unsettled_command_resumes_cleanup_on_exit(tmp_path, command, completion_error):
+    async def run():
+        async with managed(tmp_path, cleanup_attempts=1, operation_timeout=30) as (
+            manager,
+            engine,
+        ):
+            identity = launch()
+            completion = asyncio.get_running_loop().create_future()
+            interrupted = asyncio.Event()
+
+            async def run_command(args, environment=None, cwd=None, timeout=None):
+                if args[0] == command and not interrupted.is_set():
+                    engine.containers[identity["launch_id"]] = "a" * 64
+                    interrupted.set()
+                    raise UnsettledCommandError(completion)
+                return await engine.run(args, environment, cwd, timeout)
+
+            manager._run = run_command
+            manager.register(identity)
+            if command == "create":
+                with pytest.raises(UnsettledCommandError):
+                    await create(manager, identity)
+            else:
+                await create(manager, identity)
+                manager.stop(identity)
+            await asyncio.wait_for(interrupted.wait(), 1)
+            await asyncio.sleep(0)
+            cleanup = manager.records[identity["launch_id"]].cleanup
+            assert not cleanup.done()
+            assert not any(args[0] == "rm" for args in engine.calls)
+            with pytest.raises(RuntimeError, match="cleanup is pending"):
+                manager.check_admission()
+
+            if completion_error:
+                completion.set_exception(OSError("Command communication failed"))
+            else:
+                completion.set_result((b"", b""))
+            # Exit alone must resume cleanup, without waiting for the 30s cooldown.
+            await asyncio.wait_for(asyncio.shield(cleanup), 1)
+            assert not engine.containers
+            manager.check_admission()
+
+    asyncio.run(run())
+
+
+def test_close_cancels_cleanup_without_cancelling_unsettled_command(tmp_path):
+    async def run():
+        async with managed(tmp_path) as (manager, engine):
+            identity = launch()
+            manager.register(identity)
+            completion = asyncio.get_running_loop().create_future()
+
+            async def run_command(*args, **kwargs):
+                raise UnsettledCommandError(completion)
+
+            manager._run = run_command
+            with pytest.raises(UnsettledCommandError):
+                await create(manager, identity)
+            await asyncio.sleep(0)
+            cleanup = manager.records[identity["launch_id"]].cleanup
+            await manager.close()
+            assert cleanup.cancelled()
+            assert not completion.done()
+            assert not engine.calls
+            completion.set_result((b"", b""))
 
     asyncio.run(run())
 
