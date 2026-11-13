@@ -20,6 +20,7 @@ Example:
         --annotation-dir /artifact-mount/annotations
 """
 
+import dataclasses
 import gzip
 import logging
 import os
@@ -30,7 +31,7 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 import click
 import runfiles
@@ -45,7 +46,7 @@ from ci.ray_ci.automation.trivy.scan_store import (
     StoreError,
 )
 from ci.ray_ci.automation.trivy.trivy_db import DB_METADATA
-from ci.ray_ci.automation.trivy.trivy_report import Image
+from ci.ray_ci.automation.trivy.trivy_report import Image, ImageScan
 from ci.ray_ci.ray_image import RayImage
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
@@ -94,13 +95,17 @@ def expected_images(pipeline: Mapping[str, Any]) -> list[Image]:
     return images
 
 
-def download_results(store: ScanStore, dest: Path) -> list[str]:
-    """Download every status record and result; returns what went wrong."""
+RESULT_FILES = {".status.json": "status record", ".json.gz": "result"}
+
+
+def download_results(store: ScanStore, dest: Path) -> tuple[list[str], dict[str, str]]:
+    """Download every status record and result. Returns the build-wide
+    issues, and why each image whose files failed to download lacks them."""
     dest.mkdir(parents=True)
     try:
         names = store.names(RESULTS_FOLDER)
     except StoreError as e:
-        return [f"could not list the scan results: {e}"]
+        return [f"could not list the scan results: {e}"], {}
     for name in names:
         if not RESULT_NAME.match(name):
             logger.warning(f"Ignoring unexpected file {name} in results/")
@@ -112,10 +117,29 @@ def download_results(store: ScanStore, dest: Path) -> list[str]:
             return str(e)
         return ""
 
+    wanted = [n for n in names if RESULT_NAME.match(n)]
     # names() made the client; boto3 clients are thread-safe once made.
     with ThreadPoolExecutor(max_workers=DOWNLOAD_THREADS) as pool:
-        errors = pool.map(fetch, [n for n in names if RESULT_NAME.match(n)])
-        return [error for error in errors if error]
+        errors = list(pool.map(fetch, wanted))
+    failed = {}
+    for name, error in zip(wanted, errors):
+        if error:
+            suffix = next(s for s in RESULT_FILES if name.endswith(s))
+            image = name[: -len(suffix)]
+            failed[image] = f"could not download its {RESULT_FILES[suffix]}: {error}"
+    return [], failed
+
+
+def explain_failed_downloads(
+    scans: Sequence[ImageScan], failed: Mapping[str, str]
+) -> list[ImageScan]:
+    """A scan whose result failed to download says so, not "no result file"."""
+    return [
+        dataclasses.replace(s, error=failed[s.image.name])
+        if s.image.name in failed and not s.scanned
+        else s
+        for s in scans
+    ]
 
 
 def load_scanner(store: ScanStore, workdir: Path) -> tuple[dict[str, Any], str]:
@@ -180,13 +204,20 @@ def report_build(
 
     with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
         workdir = Path(tmp)
-        issues = download_results(store, workdir / "results")
+        issues, failed = download_results(store, workdir / "results")
         scanner, issue = load_scanner(store, workdir)
         if issue:
             issues.append(issue)
-        scans = trivy_report.add_missing(
-            trivy_report.load_scans(workdir / "results"), expected
+        scans = explain_failed_downloads(
+            trivy_report.load_scans(workdir / "results"), failed
         )
+        scans = trivy_report.add_missing(scans, expected, failed)
+        expected_names = {image.name for image in expected}
+        issues += [
+            f"`{name}`: {error}"
+            for name, error in sorted(failed.items())
+            if name not in expected_names
+        ]
         code = trivy_report.write_report(
             output_dir,
             scans,

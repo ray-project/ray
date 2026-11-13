@@ -321,12 +321,16 @@ def load_scans(results_dir: Path) -> list[ImageScan]:
 
 
 def add_missing(
-    scans: Sequence[ImageScan], expected: Sequence[Image]
+    scans: Sequence[ImageScan],
+    expected: Sequence[Image],
+    reasons: Optional[Mapping[str, str]] = None,
 ) -> list[ImageScan]:
-    """Add each expected image that has no status record, as not scanned."""
+    """Add each expected image that has no status record, as not scanned,
+    with its reason from ``reasons`` when one is known."""
     found = {s.image.name for s in scans}
+    reasons = reasons or {}
     missing = [
-        ImageScan(image=image, error=MISSING_STATUS)
+        ImageScan(image=image, error=reasons.get(image.name, MISSING_STATUS))
         for image in expected
         if image.name not in found
     ]

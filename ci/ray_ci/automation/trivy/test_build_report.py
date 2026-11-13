@@ -242,5 +242,29 @@ def test_the_failure_annotation_cannot_break_its_markdown():
     assert len(body) < 2000
 
 
+def test_a_failed_download_is_named_on_its_image(tmp_path: Path):
+    """The image's own line must give the real cause, not 'did not run'."""
+    s3 = FakeS3()
+    put_metadata(s3)
+    put_scan(s3, "ray-py3.12-cpu-aarch64", CLEAN_RESULT)
+    put_scan(s3, "ray-extra-py3.12-cpu-aarch64", CLEAN_RESULT)
+    s3.broken.add(f"{PREFIX}/results/ray-py3.12-cpu-aarch64.status.json")
+    s3.broken.add(f"{PREFIX}/results/ray-extra-py3.12-cpu-aarch64.json.gz")
+    result = run(tmp_path, s3)
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert (
+        "`ray-py3.12-cpu-aarch64`: could not download its status record: "
+        "download of s3://"
+    ) in report
+    assert (
+        "`ray-extra-py3.12-cpu-aarch64`: could not download its result: "
+        "download of s3://"
+    ) in report
+    assert "InternalError" in report
+    # Images with nothing in S3 keep the usual reason.
+    assert f"`ray-py3.11-tpu`: {MISSING_STATUS}" in report
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
