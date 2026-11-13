@@ -34,8 +34,8 @@ from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
     [
-        # Runs first so the key columns it derives from ``Join.condition`` are
-        # visible to the rules that reason about join keys (predicate pushdown).
+        # Idempotent and independent of the rules below: it only moves
+        # equalities from ``Join.condition`` into the join's condition keys.
         ExtractEquiJoinKeys,
         LimitPushdownRule,
         ProjectionPushdown,

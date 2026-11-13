@@ -12,11 +12,13 @@ class ExtractEquiJoinKeys(Rule):
     """Turn the equality conjuncts of a ``Join.condition`` into hash keys.
 
     ``join(on=("l_suppkey",), right_on=("s_suppkey",),
-    condition=col("c_nationkey") == col("s_nationkey"))`` becomes a join on
-    ``("l_suppkey", "c_nationkey") = ("s_suppkey", "s_nationkey")``, so the
-    second equality is enforced by the hash partitioning instead of being
-    checked after every probe match has been materialized. The remainder stays
-    on the operator as the residual condition (ray-project/ray#66835).
+    condition=col("c_nationkey") == col("s_nationkey"))`` becomes a join that
+    hashes on ``("l_suppkey", "c_nationkey") = ("s_suppkey", "s_nationkey")``,
+    so the second equality is enforced by the hash partitioning instead of
+    being checked after every probe match has been materialized. Unlike the
+    ``on`` keys, the extracted pair isn't coalesced: ``c_nationkey`` and
+    ``s_nationkey`` both stay in the output. The remainder stays on the
+    operator as the residual condition (ray-project/ray#66835).
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
@@ -32,15 +34,17 @@ class ExtractEquiJoinKeys(Rule):
         if resolved is None:
             return op
         residual = resolved.residual
-        if resolved.left_key_columns == op.left_key_columns and (
-            residual is not None and residual.structurally_equals(op.condition)
+        if (
+            resolved.left_condition_key_columns == op.left_condition_key_columns
+            and residual is not None
+            and residual.structurally_equals(op.condition)
         ):
             return op
         return replace(
             op,
             left_input_op=op.input_dependencies[0],
             right_input_op=op.input_dependencies[1],
-            left_key_columns=resolved.left_key_columns,
-            right_key_columns=resolved.right_key_columns,
+            left_condition_key_columns=resolved.left_condition_key_columns,
+            right_condition_key_columns=resolved.right_condition_key_columns,
             condition=residual,
         )

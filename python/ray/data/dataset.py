@@ -3749,14 +3749,15 @@ class Dataset:
             condition: (Optional) Additional join condition, as an expression over
                 the *input* column names of both operands (before any suffix is
                 applied). Every conjunct of the form ``col("a") == col("b")``
-                with ``a`` from one operand and ``b`` from the other is added to
-                the hash keys, so ``on=("k",), right_on=("k2",),
-                condition=col("a") == col("b")`` is the same join as
-                ``on=("k", "a"), right_on=("k2", "b")``. A column name that
-                exists in both operands is ambiguous and raises. ``condition``
-                complements ``on``; it can't replace it, and any other kind of
-                conjunct (``<``, a comparison against a literal, ``|``, ...) is
-                not supported yet.
+                with ``a`` from one operand and ``b`` from the other is hashed
+                on like the ``on`` keys, so the join only produces the rows
+                that satisfy it. Unlike the ``on`` keys, the two columns
+                aren't merged into one: both stay in the output, as with
+                ``join(...).filter(col("a") == col("b"))`` on an inner join. A
+                column name that exists in both operands is ambiguous and
+                raises. ``condition`` complements ``on``; it can't replace it,
+                and any other kind of conjunct (``<``, a comparison against a
+                literal, ``|``, ...) is not supported yet.
             partition_size_hint: (Optional) **Deprecated** and ignored. The join is
                 now executed on the v2 hash-shuffle path, which sizes reduce-task
                 memory from observed partition sizes rather than a hint. This
@@ -3869,8 +3870,7 @@ class Dataset:
 
         # Fails now on an unknown or ambiguous column when the input schemas are
         # inferable; otherwise the planner reports it.
-        if condition is not None:
-            op.resolve_condition()
+        resolved = op.resolve_condition() if condition is not None else None
 
         # NOTE: By default validating schemas are disabled as it could be arbitrarily
         #       expensive (potentially executing whole pipeline to completion) to fetch
@@ -3879,12 +3879,14 @@ class Dataset:
             left_op_schema: Optional["Schema"] = self.schema()
             right_op_schema: Optional["Schema"] = ds.schema()
 
-            left_keys, right_keys = on, right_on
-            if condition is not None:
+            if condition is not None and resolved is None:
+                # The schemas couldn't be inferred; resolve against the
+                # executed ones.
                 resolved = op.resolve_condition(left_op_schema, right_op_schema)
-                if resolved is not None:
-                    left_keys = resolved.left_key_columns
-                    right_keys = resolved.right_key_columns
+            left_keys, right_keys = tuple(on), tuple(right_on)
+            if resolved is not None:
+                left_keys += resolved.left_condition_key_columns
+                right_keys += resolved.right_condition_key_columns
             Join._validate_schemas(
                 left_op_schema, right_op_schema, left_keys, right_keys
             )

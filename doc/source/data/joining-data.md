@@ -47,7 +47,7 @@ See {meth}`Dataset.join <ray.data.Dataset.join>` for the current list.
 
 `on` and `right_on` name the key columns that Ray Data hash-partitions both datasets on, and they accept several columns. When the two datasets must agree on more than one column pair, list every pair as a key instead of filtering after the join: a filter runs only after the join has materialized every row pair that matches the first key, while a composite key lets the hash partitioning enforce all of them.
 
-You can also pass the extra equalities as a `condition` expression over the input column names. Ray Data moves each `col("a") == col("b")` conjunct that compares a column of one dataset with a column of the other into the join keys, so the two joins below are the same:
+You can also pass the extra equalities as a `condition` expression over the input column names. Ray Data hash-partitions on each `col("a") == col("b")` conjunct that compares a column of one dataset with a column of the other, the same as on a key pair, so the two joins below match the same rows:
 
 ```{testcode}
 from ray.data.expressions import col
@@ -77,7 +77,7 @@ condition_ds = orders_ds.join(
 )
 ```
 
-A column that becomes a key this way behaves like any other key column: the result keeps the left column, `region`, and coalesces the right one, `home_region`, into it, so the right column doesn't appear in the output. A `condition` complements `on`; it can't replace it. A column name that exists in both datasets is ambiguous in a `condition`, so rename it on one side first. Each column can be a key only once, so a `condition` can't compare a column that's already in `on` or `right_on`, or the same column with two columns of the other dataset. Conjuncts that aren't an equality between a column of each dataset, such as `col("quantity") < col("limit")`, aren't supported yet; apply those with {meth}`Dataset.filter <ray.data.Dataset.filter>` after the join.
+The two differ in their output columns. A key pair from `on` and `right_on` becomes one column, named after the left key, so `composite_key_ds` has `region` but no `home_region`. A pair from a `condition` keeps both columns with their own values, so `condition_ds` has `region` and `home_region`, the same columns as filtering on `col("region") == col("home_region")` after the join. In an outer join, a row without a match has nulls in the other dataset's columns, including its `condition` column. A `condition` complements `on`; it can't replace it. A column name that exists in both datasets is ambiguous in a `condition`, so rename it on one side first. Each column can be matched on only once, so a `condition` can't compare a column that's already in `on` or `right_on`, or the same column with two columns of the other dataset. Conjuncts that aren't an equality between a column of each dataset, such as `col("quantity") < col("limit")`, aren't supported yet; apply those with {meth}`Dataset.filter <ray.data.Dataset.filter>` after the join.
 
 Internally, joins hash-partition both datasets on the join keys and join each partition with Polars. By default, joins use {ref}`shuffle v2 <shuffle-v2>`, which is the `ShuffleStrategy.SHUFFLE_V2` strategy. See {ref}`Tune shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE` before you create a `Dataset`.
 

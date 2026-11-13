@@ -1,4 +1,5 @@
 from typing import Optional
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -2221,11 +2222,13 @@ def _join_condition_inputs():
     return left, right
 
 
-def _expected_composite_key_join(left: Dataset, right: Dataset, how: str):
+def _expected_condition_join(left: Dataset, right: Dataset, how: str):
+    """``k = k2`` is the ``on`` pair, coalesced into ``k``; ``a = b`` is the
+    ``condition`` pair, so both of its columns stay."""
     expected = left.to_pandas().merge(
         right.to_pandas(), left_on=["k", "a"], right_on=["k2", "b"], how=how
     )
-    return expected.drop(columns=["k2", "b"])
+    return expected.drop(columns=["k2"])
 
 
 def _optimized_join(ds: Dataset) -> Join:
@@ -2246,7 +2249,7 @@ def test_join_condition_extracts_equi_keys(
     ray_start_regular_shared_2_cpus, join_type, condition
 ):
     """An equality between a left and a right column in ``condition`` becomes
-    a hash key, whichever side of ``==`` each column is on."""
+    a condition key, whichever side of ``==`` each column is on."""
     left, right = _join_condition_inputs()
 
     joined = left.join(
@@ -2259,17 +2262,18 @@ def test_join_condition_extracts_equi_keys(
     )
 
     join_op = _optimized_join(joined)
-    assert join_op.left_key_columns == ("k", "a")
-    assert join_op.right_key_columns == ("k2", "b")
+    assert join_op.left_key_columns == ("k",)
+    assert join_op.right_key_columns == ("k2",)
+    assert join_op.left_condition_key_columns == ("a",)
+    assert join_op.right_condition_key_columns == ("b",)
     assert join_op.condition is None
 
-    expected = _expected_composite_key_join(
+    expected = _expected_condition_join(
         left, right, "inner" if join_type == "inner" else "left"
     )
     actual = joined.to_pandas()
+    assert sorted(actual.columns) == ["a", "b", "k", "x", "y"]
     assert rows_same(actual[expected.columns], expected)
-    # The plan-time schema (inferred before the rule rewrites the operator)
-    # must already reflect the extracted key: ``b`` is coalesced into ``a``.
     assert joined.schema().names == list(actual.columns)
 
 
@@ -2288,7 +2292,9 @@ def test_join_condition_matches_composite_key_join(ray_start_regular_shared_2_cp
         condition=col("a") == col("b"),
     )
 
-    assert rows_same(via_condition.to_pandas(), via_keys.to_pandas())
+    assert rows_same(
+        via_condition.to_pandas().drop(columns=["b"]), via_keys.to_pandas()
+    )
 
 
 def test_join_condition_skips_pairs_already_in_keys(ray_start_regular_shared_2_cpus):
@@ -2306,12 +2312,12 @@ def test_join_condition_skips_pairs_already_in_keys(ray_start_regular_shared_2_c
     )
 
     join_op = _optimized_join(joined)
-    assert join_op.left_key_columns == ("k", "a")
-    assert join_op.right_key_columns == ("k2", "b")
+    assert join_op.left_key_columns == ("k",)
+    assert join_op.left_condition_key_columns == ("a",)
+    assert join_op.right_condition_key_columns == ("b",)
     assert join_op.condition is None
-    assert rows_same(
-        joined.to_pandas(), _expected_composite_key_join(left, right, "inner")
-    )
+    expected = _expected_condition_join(left, right, "inner")
+    assert rows_same(joined.to_pandas()[expected.columns], expected)
 
 
 def test_join_condition_residual_is_rejected(ray_start_regular_shared_2_cpus):
@@ -2330,8 +2336,8 @@ def test_join_condition_residual_is_rejected(ray_start_regular_shared_2_cpus):
     )
 
     join_op = _optimized_join(joined)
-    assert join_op.left_key_columns == ("k", "a")
-    assert join_op.right_key_columns == ("k2", "b")
+    assert join_op.left_condition_key_columns == ("a",)
+    assert join_op.right_condition_key_columns == ("b",)
     assert join_op.condition.structurally_equals(col("x") < col("y"))
 
     with pytest.raises(NotImplementedError, match="Only equalities"):
@@ -2359,6 +2365,7 @@ def test_join_condition_without_cross_side_equality_is_rejected(
 
     join_op = _optimized_join(joined)
     assert join_op.left_key_columns == ("k",)
+    assert join_op.left_condition_key_columns == ()
     assert join_op.condition.structurally_equals(condition)
     with pytest.raises(NotImplementedError, match="Only equalities"):
         joined.materialize()
@@ -2408,9 +2415,9 @@ def test_join_condition_ambiguous_column_is_rejected(ray_start_regular_shared_2_
 def test_join_condition_repeated_key_column_is_rejected(
     ray_start_regular_shared_2_cpus, condition
 ):
-    """Hash partitioning needs distinct key names per side, so a second
-    equality on a column that is already a key is rejected rather than
-    appended as a duplicate key (``validate_schemas`` is off by default)."""
+    """Hash partitioning needs distinct column names per side, so a second
+    equality on a column that is already matched on is rejected rather than
+    hashed twice (``validate_schemas`` is off by default)."""
     left, right = _join_condition_inputs()
 
     with pytest.raises(ValueError, match="already a join key.*filter"):
@@ -2422,6 +2429,80 @@ def test_join_condition_repeated_key_column_is_rejected(
             right_on=("k2",),
             condition=condition,
         )
+
+
+def test_join_condition_resolution_is_cached(ray_start_regular_shared_2_cpus):
+    left, right = _join_condition_inputs()
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=col("a") == col("b"),
+    )
+    op = joined._logical_plan.dag
+
+    with patch.object(
+        type(op.input_dependencies[0]),
+        "infer_schema",
+        side_effect=AssertionError("schema inferred again"),
+    ):
+        resolved = op.resolve_condition()
+
+    assert resolved.left_condition_key_columns == ("a",)
+    assert resolved.right_condition_key_columns == ("b",)
+
+
+_ON_CLAUSE_MATCHED = {"id": 1, "id1": 10, "a": "x", "id2": 10, "c": "p"}
+_ON_CLAUSE_LEFT_ONLY = {"id": 2, "id1": 20, "a": "y", "id2": None, "c": None}
+_ON_CLAUSE_RIGHT_ONLY = {"id": 2, "id1": None, "a": None, "id2": 99, "c": "q"}
+
+
+@pytest.mark.parametrize(
+    "join_type, expected",
+    [
+        ("inner", [_ON_CLAUSE_MATCHED]),
+        ("left_outer", [_ON_CLAUSE_MATCHED, _ON_CLAUSE_LEFT_ONLY]),
+        ("right_outer", [_ON_CLAUSE_MATCHED, _ON_CLAUSE_RIGHT_ONLY]),
+        (
+            "full_outer",
+            [_ON_CLAUSE_MATCHED, _ON_CLAUSE_LEFT_ONLY, _ON_CLAUSE_RIGHT_ONLY],
+        ),
+        ("left_semi", [{"id": 1, "id1": 10, "a": "x"}]),
+        ("left_anti", [{"id": 2, "id1": 20, "a": "y"}]),
+        ("right_semi", [{"id": 1, "id2": 10, "c": "p"}]),
+        ("right_anti", [{"id": 2, "id2": 99, "c": "q"}]),
+    ],
+)
+def test_join_condition_keeps_both_columns(
+    ray_start_regular_shared_2_cpus, join_type, expected
+):
+    """A ``condition`` pair has ``ON``-clause semantics: ``id1`` and ``id2``
+    both stay in the output with their own values, so an unmatched row has a
+    null in the other side's column instead of the two being coalesced. The
+    ``on`` key ``id`` is still coalesced."""
+    left = ray.data.from_items(
+        [{"id": 1, "id1": 10, "a": "x"}, {"id": 2, "id1": 20, "a": "y"}]
+    )
+    right = ray.data.from_items(
+        [{"id": 1, "id2": 10, "c": "p"}, {"id": 2, "id2": 99, "c": "q"}]
+    )
+
+    joined = left.join(
+        right,
+        join_type,
+        num_partitions=2,
+        on=("id",),
+        condition=col("id1") == col("id2"),
+    )
+
+    def _sorted(rows):
+        return sorted(rows, key=lambda row: repr(sorted(row.items())))
+
+    actual = joined.take_all()
+    assert _sorted(actual) == _sorted(expected)
+    assert sorted(joined.schema().names) == sorted(expected[0])
 
 
 def test_join_condition_unresolvable_does_not_break_schema_inference(
@@ -2449,8 +2530,8 @@ def test_join_condition_unresolvable_does_not_break_schema_inference(
 def test_join_condition_validate_schemas_checks_extracted_keys(
     ray_start_regular_shared_2_cpus,
 ):
-    """``validate_schemas=True`` type-checks the keys the join will run with,
-    including the pair extracted from ``condition``."""
+    """``validate_schemas=True`` type-checks every pair the join matches on,
+    including the one extracted from ``condition``."""
     left, _ = _join_condition_inputs()
     right = ray.data.from_items(
         [{"k2": i % 4, "b": float(i % 3), "y": i * 10} for i in range(12)]

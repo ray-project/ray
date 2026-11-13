@@ -99,15 +99,17 @@ def main(args):
             ["l_suppkey", "l_extendedprice", "l_discount", "c_nationkey", "n_name"]
         )
 
-        # Composite key: ``c_nationkey = s_nationkey`` is part of the join
-        # keys rather than a filter after the join, so the hash partitioning
-        # enforces it instead of materializing every ``l_suppkey`` match first.
+        # ``c_nationkey = s_nationkey`` is a join ``condition`` rather than a
+        # filter after the join: it becomes a second hash key, so the hash
+        # partitioning enforces it instead of materializing every
+        # ``l_suppkey`` match first.
         ds = lineitem_orders.join(
             supplier,
             num_partitions=200,
             join_type="inner",
-            on=("l_suppkey", "c_nationkey"),
-            right_on=("s_suppkey", "s_nationkey"),
+            on=("l_suppkey",),
+            right_on=("s_suppkey",),
+            condition=col("c_nationkey") == col("s_nationkey"),
         ).select_columns(["n_name", "l_extendedprice", "l_discount"])
 
         ds = ds.with_column(
