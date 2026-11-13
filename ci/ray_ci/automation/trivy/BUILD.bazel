@@ -1,5 +1,18 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("//ci/ray_ci/automation/trivy/pin:trivy_versions.bzl", "TRIVY_SHA256", "TRIVY_SIGNER_IDENTITY", "TRIVY_VERSION")
+
+# The pin as data, so the scan tools record exactly what they ran.
+write_file(
+    name = "trivy_pin",
+    out = "trivy_pin.json",
+    content = [json.encode({
+        "signer": TRIVY_SIGNER_IDENTITY,
+        "tarball_sha256": TRIVY_SHA256,
+        "version": TRIVY_VERSION,
+    })],
+)
 
 py_library(
     name = "trivy_report",
@@ -18,6 +31,28 @@ py_test(
     ],
     deps = [
         ":trivy_report",
+        ci_require("pytest"),
+    ],
+)
+
+py_library(
+    name = "registry",
+    srcs = ["registry.py"],
+    data = ["@crane_linux_x86_64//:file"],
+    deps = [ci_require("bazel-runfiles")],
+)
+
+py_test(
+    name = "test_registry",
+    size = "small",
+    srcs = ["test_registry.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":registry",
         ci_require("pytest"),
     ],
 )
@@ -51,6 +86,36 @@ py_test(
     deps = [
         ":fake_s3",
         ":scan_store",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
+py_binary(
+    name = "trivy_db",
+    srcs = ["trivy_db.py"],
+    data = [":trivy_pin"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":registry",
+        ":scan_store",
+        ci_require("bazel-runfiles"),
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_trivy_db",
+    size = "small",
+    srcs = ["test_trivy_db.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":fake_s3",
+        ":trivy_db",
         ci_require("click"),
         ci_require("pytest"),
     ],
