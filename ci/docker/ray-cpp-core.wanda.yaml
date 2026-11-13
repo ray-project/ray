@@ -5,6 +5,8 @@ srcs:
   - .bazelversion
   - .bazelrc
   - WORKSPACE
+  # WORKSPACE loads the Trivy pin from here.
+  - ci/ray_ci/automation/trivy/pin/
   - BUILD.bazel
   - bazel/
   - thirdparty/

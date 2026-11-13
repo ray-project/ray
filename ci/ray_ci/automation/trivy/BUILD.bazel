@@ -21,3 +21,25 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+py_test(
+    name = "test_workspace_contexts",
+    size = "small",
+    srcs = ["test_workspace_contexts.py"],
+    data = [
+        "//:WORKSPACE",
+        "//:ci/docker/ray-core.wanda.yaml",
+        "//:ci/docker/ray-cpp-core.wanda.yaml",
+        "//:ci/docker/ray-java.wanda.yaml",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("bazel-runfiles"),
+        ci_require("pytest"),
+        ci_require("pyyaml"),
+    ],
+)
