@@ -138,6 +138,28 @@ _window_lock = threading.Lock()
 _window_next: Optional[int] = None
 
 
+def cpu_window_size() -> int:
+    """Read the node's ``RAY_SANDBOX_CPU_WINDOW``.
+
+    Returns:
+        The number of CPUs in a window, at least gVisor's minimum, or 0 if
+        the node sets no window.
+
+    Raises:
+        ValueError: If the variable isn't a non-negative integer.
+    """
+    raw = os.environ.get(_CPU_WINDOW_ENV, "").strip()
+    if not raw:
+        return 0
+    try:
+        size = int(raw)
+    except ValueError:
+        size = -1
+    if size < 0:
+        raise ValueError(f"{_CPU_WINDOW_ENV}={raw!r} isn't a number of CPUs such as 8")
+    return max(size, _MIN_SANDBOX_CPUS) if size else 0
+
+
 def unlimited_cpu_window(
     cgroup: Optional["SandboxCgroup"] = None,
 ) -> Optional[List[int]]:
@@ -148,44 +170,42 @@ def unlimited_cpu_window(
     node, so on a large node it holds several times the host threads of a
     small sandbox, and every sandbox boot on the node gets slower as the
     node's thread count grows. ``RAY_SANDBOX_CPU_WINDOW`` gives each such
-    sandbox that many CPUs instead. Windows rotate over the CPUs this
-    process may use, so sandboxes spread over the node, and they overlap
-    once there are more sandboxes than windows: a window sizes a sandbox,
-    it doesn't reserve CPUs for it. Unset or ``0`` leaves every CPU.
+    sandbox that many CPUs instead. Windows rotate over the CPUs the sandbox
+    may use, so sandboxes spread over the node, and they overlap once there
+    are more sandboxes than windows: a window sizes a sandbox, it doesn't
+    reserve CPUs for it. Unset or ``0`` leaves every CPU.
 
     Args:
         cgroup: The sandbox's cgroup, if it has one. A sandbox with only a
             memory limit has a cgroup and no CPU limit, so it gets a window
-            too. One with a CPU limit keeps the CPUs its cgroup chose.
+            too, from the CPUs its cgroup may use. One with a CPU limit keeps
+            the CPUs its cgroup chose.
 
     Returns:
         The window's CPUs, or None when the sandbox keeps its CPUs: it has a
-        CPU limit, the variable is unset, or the node has no more CPUs than
-        the window.
+        CPU limit, the variable is unset, or the sandbox has no more CPUs
+        than the window.
 
     Raises:
         ValueError: If the variable isn't a non-negative integer.
     """
-    raw = os.environ.get(_CPU_WINDOW_ENV, "").strip()
-    if not raw:
+    size = cpu_window_size()
+    if size == 0 or (cgroup is not None and "cpu.max" in cgroup.limits):
         return None
-    try:
-        size = int(raw)
-    except ValueError:
-        size = -1
-    if size < 0:
-        raise ValueError(f"{_CPU_WINDOW_ENV}={raw!r} isn't a number of CPUs such as 8")
-    if cgroup is not None and "cpu.max" in cgroup.limits:
-        return None
-    cpus = sorted(os.sched_getaffinity(0))
-    size = max(size, _MIN_SANDBOX_CPUS) if size else 0
-    if size == 0 or size >= len(cpus):
+    # The launcher joins the cgroup before it sets the affinity, and the
+    # cgroup's cpuset may be narrower than this process's CPUs.
+    cpus = sorted(
+        _pool_cpus(cgroup.path) if cgroup is not None else os.sched_getaffinity(0)
+    )
+    if size >= len(cpus):
         return None
     global _window_next
     with _window_lock:
         if _window_next is None:
-            # Processes on one node start at different CPUs.
-            _window_next = random.randrange(len(cpus))
+            # Processes on one node start at different windows. A multiple
+            # of the size, so that their windows coincide or don't overlap:
+            # a process that hosts one sandbox only ever takes this one.
+            _window_next = random.randrange(0, len(cpus), size)
         start = _window_next
         _window_next = (start + size) % len(cpus)
     return [cpus[(start + i) % len(cpus)] for i in range(size)]

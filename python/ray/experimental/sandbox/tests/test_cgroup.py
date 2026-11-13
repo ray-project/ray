@@ -308,7 +308,7 @@ def test_a_sandbox_with_only_a_memory_limit_gets_a_cpu_window(
         str(tmp_path),
         "workload",
     ]
-    # The backend passes the sandbox's cgroup when it asks for a window.
+    # The backend launches each sandbox on the window it chose for it.
     launched = []
 
     def popen(args, **kwargs):
@@ -320,7 +320,13 @@ def test_a_sandbox_with_only_a_memory_limit_gets_a_cpu_window(
     config = SandboxConfig(image="busybox:latest")
     for group in (memory_only, whole_pool):
         with pytest.raises(OSError):
-            backend._run_until_running(config, "sb-1", str(tmp_path), group)
+            backend._run_until_running(
+                config,
+                "sb-1",
+                str(tmp_path),
+                group,
+                cpu_window=cgroup.unlimited_cpu_window(group),
+            )
     assert launched[0][3:6] == [str(tmp_path), "--cpus", "4,5,6,7"]
     assert "--cpus" not in launched[1]
     monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", "many")
@@ -328,12 +334,70 @@ def test_a_sandbox_with_only_a_memory_limit_gets_a_cpu_window(
         cgroup.unlimited_cpu_window(whole_pool)
 
 
+def test_a_cpu_window_comes_from_the_cpus_of_the_sandboxs_cgroup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The launcher joins the sandbox's cgroup before it sets the affinity,
+    and the cgroup's cpuset can be narrower than this process's CPUs. A
+    window outside it would fail the launch, or leave fewer CPUs than gVisor
+    needs."""
+    monkeypatch.setattr(
+        os, "sched_getaffinity", lambda pid: set(range(16)), raising=False
+    )
+    monkeypatch.setattr(cgroup, "_window_next", 0)
+    monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", "2")
+    (tmp_path / "cpuset.cpus.effective").write_text("10-13")
+    memory_only = cgroup.SandboxCgroup(tmp_path, {"memory.max": "1073741824"})
+    windows = [cgroup.unlimited_cpu_window(memory_only) for _ in range(3)]
+    assert windows == [[10, 11], [12, 13], [10, 11]]
+    # A window as large as the cpuset restricts nothing.
+    monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", "4")
+    assert cgroup.unlimited_cpu_window(memory_only) is None
+
+
+def test_processes_start_at_whole_cpu_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each process starts at a random window, a multiple of the size, so the
+    windows of processes that host one sandbox each coincide or don't
+    overlap, instead of overlapping in part."""
+    monkeypatch.setattr(
+        os, "sched_getaffinity", lambda pid: set(range(16)), raising=False
+    )
+    monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", "4")
+    starts = set()
+    for _ in range(64):
+        monkeypatch.setattr(cgroup, "_window_next", None)
+        window = cgroup.unlimited_cpu_window()
+        assert window == list(range(window[0], window[0] + 4))
+        starts.add(window[0])
+    assert starts <= {0, 4, 8, 12} and len(starts) > 1
+
+
+def test_a_bad_cpu_window_fails_a_create_before_the_image_pull(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A node's bad RAY_SANDBOX_CPU_WINDOW fails every create early, one with
+    a CPU limit too, and the preflight that the HTTP API runs."""
+    from ray.experimental.sandbox import runtime as runtime_mod
+
+    monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", "many")
+    monkeypatch.setattr(gvisor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    images = Mock()
+    backend = GVisorSandboxBackend(image_manager=images)
+    for cpu in (0, 1):
+        with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_CPU_WINDOW"):
+            backend.create_sandbox(SandboxConfig(image="busybox:latest", cpu=cpu))
+    assert images.mock_calls == []
+    monkeypatch.setattr(runtime_mod, "ImageManager", Mock)
+    monkeypatch.setattr(runtime_mod, "GVisorSandboxBackend", Mock)
+    with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_CPU_WINDOW"):
+        runtime_mod.SandboxRuntime().check_resources()
+
+
 def test_a_sandbox_without_limits_boots_on_the_nodes_cpu_window(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """With RAY_SANDBOX_CPU_WINDOW set, the launch command of a sandbox
-    without a cgroup goes through the launcher with the window's CPUs. A
-    value that isn't a CPU count fails the create."""
+    without a cgroup goes through the launcher with the window's CPUs."""
     monkeypatch.setattr(
         os, "sched_getaffinity", lambda pid: set(range(16)), raising=False
     )
@@ -347,10 +411,16 @@ def test_a_sandbox_without_limits_boots_on_the_nodes_cpu_window(
     monkeypatch.setattr(gvisor.subprocess, "Popen", popen)
     backend = GVisorSandboxBackend()
     config = SandboxConfig(image="busybox:latest")
-    for value in ("4", "", "many"):
+    for value in ("4", ""):
         monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", value)
-        with pytest.raises((OSError, SandboxCreationError)):
-            backend._run_until_running(config, "sb-1", str(tmp_path), None)
+        with pytest.raises(OSError):
+            backend._run_until_running(
+                config,
+                "sb-1",
+                str(tmp_path),
+                None,
+                cpu_window=cgroup.unlimited_cpu_window(),
+            )
     assert len(launched) == 2
     assert launched[0][1] == "-S" and launched[0][3:6] == ["", "--cpus", "4,5,6,7"]
     assert "--cpus" not in launched[1]
