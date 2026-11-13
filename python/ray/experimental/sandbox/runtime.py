@@ -426,9 +426,17 @@ class _WarmPool:
                         self._failures[slot.key] = self._failures.get(slot.key, 0) + 1
                         self._failed_at[slot.key] = time.monotonic()
                     self._refill_later(slot.key, max(0.0, self._paused_for(slot.key)))
+        recovered = False
         with self._lock:
             if instance_id is not None and not self._closed:
+                # A boot that works ends the profile's pause: the slots that
+                # a failed boot left empty refill now, not when the pause's
+                # timer fires.
+                recovered = self._failed_at.pop(slot.key, None) is not None
                 self._failures.pop(slot.key, None)
+                timer = self._retries.pop(slot.key, None)
+                if timer is not None:
+                    timer.cancel()
                 slot.enter(_READY)
                 slot.sandbox_id = instance_id
                 self._held[instance_id] = slot
@@ -440,6 +448,8 @@ class _WarmPool:
             self._changed.notify_all()
         if instance_id is not None:  # closed while it booted
             self._delete_quietly(instance_id, "warm-pool")
+        if recovered:
+            self.refill(slot.key)
 
     def _full(self) -> bool:
         return all(

@@ -790,6 +790,44 @@ def test_a_failing_profile_pauses_longer_after_each_failure(monkeypatch):
     pool.close()
 
 
+def test_a_boot_that_works_ends_its_profiles_pause(monkeypatch):
+    """When one boot of a wave fails and another works, the slot that the
+    failure left empty refills at once, not when the pause's timer fires."""
+    from ray.experimental.sandbox.runtime import _WarmPool
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.runtime._WARM_FIRST_RETRY_SECONDS", 30.0
+    )
+    release = threading.Event()
+
+    class _FirstFailsSecondWaits(_CountingBackend):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def create_sandbox(self, config):
+            with self.ids_lock:
+                self.calls += 1
+                call = self.calls
+            if call == 1:
+                raise RuntimeError("boot failed")
+            if call == 2:
+                # Still booting when the first one fails.
+                assert release.wait(10)
+            return super().create_sandbox(config)
+
+    runtime = _fake_runtime()
+    runtime._backend = _FirstFailsSecondWaits()
+    pool = runtime._warm = _WarmPool(runtime, [{"image": "img", "size": 2}])
+    (key,) = pool._profiles
+    assert _wait_until(lambda: key in pool._failed_at)
+    release.set()
+    # Full well before the 30 s pause is over.
+    assert runtime.wait_for_warm_pool(timeout_seconds=5)
+    assert key not in pool._failed_at and key not in pool._retries
+    runtime.close()
+
+
 def test_dead_pooled_sandboxes_are_deleted_a_few_at_a_time():
     """A pool whose sandboxes died together deletes them on a few threads,
     not one thread each."""
