@@ -537,6 +537,21 @@ def _release_cgroup(sandbox_id: str, cgroup: Optional[SandboxCgroup]) -> bool:
     return True
 
 
+def _format_bytes(count: int) -> str:
+    """A byte count for people: 256 MiB rather than 268435456."""
+    for unit, size in (("GiB", 1 << 30), ("MiB", 1 << 20), ("KiB", 1 << 10)):
+        if count >= size and count % size == 0:
+            return f"{count // size} {unit}"
+    return f"{count} bytes"
+
+
+def _with_note(text: str, note: str) -> str:
+    """Add ``note`` to ``text`` as a line of its own."""
+    if note and text and not text.endswith("\n"):
+        text += "\n"
+    return text + note
+
+
 def _safe_join_under(base_dir: str, rel_path: str, param_name: str = "workdir") -> str:
     """Resolve rel_path under base_dir, rejecting any directory traversal."""
     resolved = os.path.abspath(os.path.join(base_dir, rel_path.lstrip("/")))
@@ -1390,30 +1405,47 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         stderr_text = "" if combine_output else stderr.decode("utf-8", errors="replace")
         output = stdout if combine_output else None
         if proc.returncode != 0:
-            # An out-of-memory kill takes the whole sandbox, and the command
-            # with it, while runsc only says that waiting for it failed.
-            cgroup = meta.get("cgroup")
-            reason = cgroup.termination_reason() if cgroup is not None else None
-            if reason:
-                note = (
-                    f"{reason} ({config.memory}), so the kernel killed the "
-                    "sandbox and this command with it.\n"
-                )
-                # With combine_output, stderr is part of the output.
-                if combine_output:
-                    if output and not output.endswith(b"\n"):
-                        output += b"\n"
-                    output += note.encode("utf-8")
-                else:
-                    if stderr_text and not stderr_text.endswith("\n"):
-                        stderr_text += "\n"
-                    stderr_text += note
+            note = self._oom_note(meta, "command")
+            # With combine_output, stderr is part of the output.
+            if combine_output:
+                if note and output and not output.endswith(b"\n"):
+                    output += b"\n"
+                output += note.encode("utf-8")
+            else:
+                stderr_text = _with_note(stderr_text, note)
         return ExecResult(
             exit_code=proc.returncode,
             stdout="" if combine_output else stdout.decode("utf-8", errors="replace"),
             stderr=stderr_text,
             duration_seconds=time.time() - start_time,
             output=output,
+        )
+
+    @staticmethod
+    def _oom_note(meta: Dict, what: str) -> str:
+        """Say that a sandbox's memory limit ended it, if that is why a
+        command or a file operation failed.
+
+        An out-of-memory kill takes the whole sandbox, and whatever runs in it,
+        while runsc only says that waiting for the command failed.
+
+        Args:
+            meta: The sandbox's metadata.
+            what: What failed: "command", "write" or "read".
+
+        Returns:
+            A line for the caller, or "" if no memory limit ended the sandbox.
+        """
+        cgroup = meta.get("cgroup")
+        reason = cgroup.termination_reason() if cgroup is not None else None
+        if not reason:
+            return ""
+        memory = meta["config"].memory
+        if not isinstance(memory, str):
+            memory = _format_bytes(parse_memory_bytes(memory) or 0)
+        return (
+            f"{reason} ({memory}), so the kernel killed the sandbox and this "
+            f"{what} with it.\n"
         )
 
     def _kill_exec(self, config: SandboxConfig, sandbox_id: str, pid_file: str) -> None:
@@ -1512,8 +1544,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             content_bytes,
         )
         if returncode != 0:
+            err = stderr.decode("utf-8", errors="replace")
             raise SandboxError(
-                f"Failed to write file '{path}': {stderr.decode('utf-8', errors='replace')}"
+                f"Failed to write file '{path}': "
+                + _with_note(err, self._oom_note(meta, "write"))
             )
 
     def _write_with(
@@ -1552,7 +1586,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
         stdout, stderr = proc.communicate()
         if proc.returncode != 0:
-            err = stderr.decode("utf-8", errors="replace")
+            err = _with_note(
+                stderr.decode("utf-8", errors="replace"), self._oom_note(meta, "read")
+            )
             raise SandboxError(
                 f"File not found or read error '{path}' inside sandbox '{sandbox_id}': {err}"
             )

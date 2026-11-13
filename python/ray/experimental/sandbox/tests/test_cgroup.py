@@ -185,6 +185,21 @@ def test_launcher_joins_the_cgroup_and_restricts_cpus(tmp_path):
     assert (tmp_path / "cgroup.procs").read_text() == pid.strip()
 
 
+def test_only_a_sandbox_with_a_memory_limit_reports_an_oom_kill(tmp_path: Path) -> None:
+    """The kernel also counts an OOM kill in a sandbox's cgroup when an
+    ancestor's limit, or the node running out of memory, kills one of its
+    processes. A sandbox without a memory limit didn't exceed one."""
+    (tmp_path / "memory.events").write_text("max 0\noom 0\noom_kill 1\n")
+    cpu_only = cgroup.SandboxCgroup(tmp_path, {"cpu.max": "100000 100000"})
+    assert cpu_only.termination_reason() is None
+    limited = cgroup.SandboxCgroup(tmp_path, {"memory.max": "268435456"})
+    assert limited.termination_reason() == (
+        "Sandbox exceeded its enforced memory limit"
+    )
+    (tmp_path / "memory.events").write_text("max 3\noom 0\noom_kill 0\n")
+    assert limited.termination_reason() is None
+
+
 @pytest.mark.parametrize("limited", [False, True])
 def test_launcher_sets_oom_priority_before_exec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limited: bool

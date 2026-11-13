@@ -23,7 +23,7 @@ from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 
 import pytest
 
-from ray.experimental.sandbox.exceptions import SandboxError
+from ray.experimental.sandbox.exceptions import SandboxError, SandboxTimeoutError
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 pytestmark = pytest.mark.skipif(
@@ -211,6 +211,18 @@ class _Observers:
         self.runtime.delete(self.neighbor)
 
 
+def _delete_all(runtime: SandboxRuntime, sandbox_ids: List[str]) -> None:
+    """Delete every sandbox, and only then raise the first failure."""
+    errors = []
+    for sandbox_id in sandbox_ids:
+        try:
+            runtime.delete(sandbox_id)
+        except Exception as err:
+            errors.append(err)
+    if errors:
+        raise errors[0]
+
+
 def _drive_past_limit(runtime: SandboxRuntime, sandbox_id: str, hog: str) -> Path:
     """Run ``hog`` in the sandbox and check that its own limit killed it whole."""
     cgroup = _cgroup(runtime, sandbox_id)
@@ -223,6 +235,11 @@ def _drive_past_limit(runtime: SandboxRuntime, sandbox_id: str, hog: str) -> Pat
         stdout, exit_code = result.stdout, result.exit_code
         # The command's own result says the sandbox's memory limit ended it.
         assert "memory limit" in result.stderr, result.stderr
+    except SandboxTimeoutError:
+        # The hog outlived its limit: its processes, or the children that
+        # hold its output open, were still running. That's the failure this
+        # test is for, not the sandbox dying under the command.
+        raise
     except SandboxError:
         # The sandbox died under the command.
         stdout, exit_code = "", None
@@ -368,9 +385,10 @@ def test_concurrent_out_of_memory_kills_stay_contained():
         assert max(latency for latency, _ in probes) < 10, probes
         observers.assert_untouched()
     finally:
-        for sid in ids:
-            runtime.delete(sid)
-        observers.close()
+        try:
+            _delete_all(runtime, ids)
+        finally:
+            observers.close()
     for cgroup in cgroups:
         assert not cgroup.exists()
 
