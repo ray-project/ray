@@ -16,22 +16,53 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <vector>
 
 namespace ray {
 namespace stats {
 
-int QuadraticBucketScheme::ToBucket(double value) const {
-  if (value <= 0.0) {
-    return 0;
-  } else if (value >= max_value_) {
-    return num_buckets_ - 1;
-  } else {
-    double scaled = value / scale_;
-    // Solve quadratic: b * (b + 1) / 2 = scaled
-    int bucket = static_cast<int>(-0.5 + std::sqrt(2.0 * scaled + 0.25));
-    // Clamp to guard against returning a value greater than num_buckets_ - 1
-    return std::min(bucket, num_buckets_ - 1);
+double QuadraticBucketScheme::UpperBound(int bucket) const {
+  RAY_CHECK(bucket >= 0 && bucket < num_buckets_)
+      << "bucket must be in [0, " << num_buckets_ << "), got " << bucket;
+  if (bucket == num_buckets_ - 1) {
+    return std::numeric_limits<double>::infinity();
   }
+  if (bucket == num_buckets_ - 2) {
+    // Pin the last finite bound to exactly max_value to avoid floating point drift.
+    return max_value_;
+  }
+  return scale_ * (bucket + 1) * (bucket + 2) / 2.0;
+}
+
+std::vector<double> QuadraticBucketScheme::ExplicitBounds() const {
+  std::vector<double> bounds;
+  bounds.reserve(num_buckets_ - 1);
+  for (int b = 0; b < num_buckets_ - 1; b++) {
+    bounds.push_back(UpperBound(b));
+  }
+  return bounds;
+}
+
+int QuadraticBucketScheme::ToBucket(double value) const {
+  if (value <= UpperBound(0)) {
+    return 0;
+  }
+  if (value > max_value_) {
+    return num_buckets_ - 1;
+  }
+  const double scaled = value / scale_;
+  int bucket = static_cast<int>(std::ceil(std::sqrt(2.0 * scaled + 0.25) - 1.5));
+  bucket = std::clamp(bucket, 1, num_buckets_ - 2);
+  // The closed form can be off by one from floating point error at a boundary, so
+  // settle the result against the exact bounds that are exported.
+  while (bucket > 1 && value <= UpperBound(bucket - 1)) {
+    bucket--;
+  }
+  while (bucket < num_buckets_ - 2 && value > UpperBound(bucket)) {
+    bucket++;
+  }
+  return bucket;
 }
 
 }  // namespace stats
