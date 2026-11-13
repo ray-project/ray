@@ -2,6 +2,7 @@ import io
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import tarfile
@@ -63,6 +64,30 @@ def test_sandbox_init_starts_sleep_again_after_a_kill(tmp_path):
         ):
             time.sleep(0.05)
         assert len(log.read_text().split()) == 3
+        assert init.poll() is None
+    finally:
+        init.kill()
+        init.wait()
+
+
+def test_sandbox_init_ignores_the_signals_that_would_end_it(tmp_path):
+    """gVisor delivers a signal to PID 1 as to any process, and PID 1's exit
+    stops the sandbox, so the init shell ignores what `kill 1` or `pkill sh`
+    send."""
+    started = tmp_path / "started"
+    fake = tmp_path / "sleep"
+    fake.write_text(f"#!/bin/sh\ntouch {started}\nexec /bin/sleep 60\n")
+    fake.chmod(0o755)
+    init = subprocess.Popen(
+        ["/bin/sh", *SANDBOX_INIT_ARGS[1:]], env={"PATH": f"{tmp_path}:/bin:/usr/bin"}
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not started.exists():
+            time.sleep(0.05)
+        for sig in ("TERM", "HUP", "INT", "QUIT", "USR1", "USR2"):
+            init.send_signal(getattr(signal, f"SIG{sig}"))
+        time.sleep(0.5)
         assert init.poll() is None
     finally:
         init.kill()
