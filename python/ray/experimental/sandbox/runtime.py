@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import concurrent.futures
+import dataclasses
 import logging
 import os
 import tempfile
@@ -10,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal import image_push
 from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
+from ray.experimental.sandbox._internal.image_utils import image_cache_name
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
@@ -26,8 +28,11 @@ logger = logging.getLogger(__name__)
 # creates that boot cold meanwhile.
 _WARM_BOOT_CONCURRENCY = 4
 # After a warm-pool boot fails (say, its image can't be pulled), its profile
-# boots nothing for this long, and then a timer refills it.
+# boots nothing for a while, and then a timer refills it: a second after the
+# first failure, so that a passing error costs little, then twice as long
+# after each failure that follows, up to this long.
 _WARM_RETRY_SECONDS = 30.0
+_WARM_FIRST_RETRY_SECONDS = 1.0
 
 
 def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
@@ -36,13 +41,14 @@ def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
     Everything that is fixed when the sandbox boots; ``env``, ``ttl_seconds``
     and ``timeout_seconds`` are not, except that a GPU sandbox's
     ``NVIDIA_DRIVER_CAPABILITIES`` sets the driver capabilities runsc allows
-    it at boot. None for a create no booted sandbox can serve (a custom OCI
-    spec transform).
+    it at boot. The image counts by its cache entry, so every spelling of
+    one image matches. None for a create no booted sandbox can serve (a
+    custom OCI spec transform).
     """
     if cfg._oci_spec_transform_fn is not None:
         return None
     return (
-        cfg.image,
+        image_cache_name(cfg.image),
         float(cfg.cpu or 0.0),
         parse_memory_bytes(cfg.memory) or 0,
         cfg.workdir,
@@ -110,6 +116,8 @@ class _WarmPool:
         # Sandbox ID -> the slot holding it, ready or claimed.
         self._held: Dict[str, _Slot] = {}
         self._failed_at: Dict[tuple, float] = {}
+        # Boot key -> how many pauses in a row its failed boots have caused.
+        self._failures: Dict[tuple, int] = {}
         # Boot key -> the timer that refills a profile once the pause after
         # its failed boot is over.
         self._retries: Dict[tuple, threading.Timer] = {}
@@ -139,7 +147,25 @@ class _WarmPool:
             max_workers=_WARM_BOOT_CONCURRENCY,
             thread_name_prefix="sandbox-warm-pool",
         )
+        # So do the deletes of sandboxes that died while ready. A pool whose
+        # sandboxes died together would otherwise delete them all at once.
+        self._discards = concurrent.futures.ThreadPoolExecutor(
+            max_workers=_WARM_BOOT_CONCURRENCY,
+            thread_name_prefix="sandbox-warm-pool-discard",
+        )
         self.refill_all()
+
+    def with_profile_env(self, cfg: SandboxConfig) -> SandboxConfig:
+        """Give a create that matches a profile the profile's env, under its own.
+
+        A sandbox of the pool booted with its profile's env. A create that
+        finds none ready boots cold, and it gets the same env this way, so a
+        create's env doesn't depend on whether a booted sandbox was free.
+        """
+        profile = self._profiles.get(_boot_key(cfg))
+        if profile is None or not profile.env:
+            return cfg
+        return dataclasses.replace(cfg, env={**profile.env, **(cfg.env or {})})
 
     def take(self, cfg: SandboxConfig) -> Optional[str]:
         """Claim a booted sandbox for ``cfg``, or return None.
@@ -151,7 +177,6 @@ class _WarmPool:
         if key not in self._profiles:
             return None
         taken = None
-        dead = []
         with self._lock:
             ready = self._ready[key]
             while ready and taken is None:
@@ -162,12 +187,10 @@ class _WarmPool:
                     slot.state = _CLAIMED
                     taken = slot.sandbox_id
                 else:
+                    # Died while ready: free what it holds. Submitted under
+                    # the lock, so none lands after close's shutdown.
                     slot.state = _DELETING
-                    dead.append(slot.sandbox_id)
-        for instance_id in dead:  # died while ready: free what it holds
-            threading.Thread(
-                target=self._discard, args=(instance_id,), daemon=True
-            ).start()
+                    self._discards.submit(self._discard, slot.sandbox_id)
         return taken
 
     def _discard(self, instance_id: str) -> None:
@@ -200,7 +223,12 @@ class _WarmPool:
         failed_at = self._failed_at.get(key)
         if failed_at is None:
             return 0.0
-        return failed_at + _WARM_RETRY_SECONDS - time.monotonic()
+        return failed_at + self._retry_delay(key) - time.monotonic()
+
+    def _retry_delay(self, key: tuple) -> float:
+        """How long a profile pauses after its latest failed boot."""
+        doublings = min(self._failures.get(key, 1) - 1, 16)
+        return min(_WARM_RETRY_SECONDS, _WARM_FIRST_RETRY_SECONDS * 2**doublings)
 
     def _refill_later(self, key: tuple, delay: float) -> None:
         """Refill a profile after ``delay`` seconds, unless a timer already will.
@@ -253,10 +281,15 @@ class _WarmPool:
             except Exception as exc:
                 logger.warning("A warm-pool sandbox failed to boot: %s", exc)
                 with self._lock:
-                    self._failed_at[slot.key] = time.monotonic()
-                    self._refill_later(slot.key, _WARM_RETRY_SECONDS)
+                    # Boots that started together fail together: they cause
+                    # one pause, not one each.
+                    if self._paused_for(slot.key) <= 0:
+                        self._failures[slot.key] = self._failures.get(slot.key, 0) + 1
+                        self._failed_at[slot.key] = time.monotonic()
+                    self._refill_later(slot.key, max(0.0, self._paused_for(slot.key)))
         with self._lock:
             if instance_id is not None and not self._closed:
+                self._failures.pop(slot.key, None)
                 slot.state = _READY
                 slot.sandbox_id = instance_id
                 self._held[instance_id] = slot
@@ -309,8 +342,10 @@ class _WarmPool:
         for timer in retries:
             timer.cancel()
         # Queued boots never start. One already booting deletes its sandbox
-        # when it finishes.
-        self._boots.shutdown(wait=False, cancel_futures=True)
+        # when it finishes, and close waits for it, and for the deletes of
+        # sandboxes that died: once it returns, the pool holds nothing.
+        self._boots.shutdown(wait=True, cancel_futures=True)
+        self._discards.shutdown(wait=True)
         return ready
 
 
@@ -330,7 +365,8 @@ class SandboxRuntime:
             profile's). A profile holds at most ``size`` sandboxes, ready or
             in use: the runtime boots a new one when a sandbox it handed out
             is deleted, not when it's handed out, and creates that find none
-            ready boot cold, outside the pool. None or empty keeps no pool.
+            ready boot cold, outside the pool, with the same ``env``. None or
+            empty keeps no pool.
     """
 
     def __init__(self, warm_pool: Optional[List[Dict[str, Any]]] = None):
@@ -487,6 +523,8 @@ class SandboxRuntime:
             disk=disk,
             **kwargs,
         )
+        if self._warm is not None:
+            cfg = self._warm.with_profile_env(cfg)
         instance_id = self._warm.take(cfg) if self._warm is not None else None
         if instance_id is not None:
             # It booted with the profile's env and TTL; from here on it has
@@ -905,8 +943,9 @@ class SandboxRuntime:
     def close(self) -> None:
         """Delete the warm pool's ready sandboxes, and stop refilling it.
 
-        Sandboxes that ``create`` returned stay; delete them with ``delete``,
-        which then boots nothing in their place.
+        Waits for the boots that are under way, which delete their sandboxes
+        when they end. Sandboxes that ``create`` returned stay; delete them
+        with ``delete``, which then boots nothing in their place.
         """
         if self._warm is not None:
             for instance_id in self._warm.close():
