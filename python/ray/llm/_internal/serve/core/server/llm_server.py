@@ -40,6 +40,11 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.metrics.framework_overhead import (
+    FrameworkOverheadRecorder,
+    RayFrameworkOverheadRecorder,
+    StreamingFrameworkOverheadTracker,
+)
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
@@ -222,6 +227,9 @@ class LLMServer(LLMServerProtocol):
         self._engine_cls = engine_cls or self._get_default_engine_class()
         self.engine: Optional[LLMEngine] = None
         self._init_multiplex_loader(model_downloader)
+        self._framework_overhead_recorder: FrameworkOverheadRecorder = (
+            RayFrameworkOverheadRecorder(model_id=llm_config.model_id)
+        )
 
     @classmethod
     def sync_init(
@@ -399,16 +407,33 @@ class LLMServer(LLMServerProtocol):
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
         """
 
+        is_stream = hasattr(request, "stream") and request.stream
+
+        # Tracker must be created before the request-id/LoRA awaits so that
+        # ingress overhead covers them (ray-project/ray#63585). Only streaming
+        # requests are instrumented: TTFT/TPOT are streaming-only concepts, and
+        # gating keeps all framework-overhead histograms on the same sample
+        # population.
+        tracker = (
+            StreamingFrameworkOverheadTracker(self._framework_overhead_recorder)
+            if is_stream
+            else None
+        )
+
         await self._maybe_add_request_id_to_request(request)
         await self._maybe_resolve_lora_from_multiplex()
 
-        is_stream = hasattr(request, "stream") and request.stream
         engine_stream = getattr(self.engine, engine_method)(request, raw_request_info)
+        if tracker is not None:
+            engine_stream = tracker.instrument_engine_stream(engine_stream)
 
         if is_stream and batch_output_stream:
             stream = self._batch_output_stream(engine_stream)
         else:
             stream = engine_stream
+
+        if tracker is not None:
+            stream = tracker.instrument_serve_stream(stream)
 
         return stream
 
