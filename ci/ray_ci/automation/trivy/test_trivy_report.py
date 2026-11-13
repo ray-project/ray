@@ -585,6 +585,26 @@ def test_write_report_for_a_clean_build(tmp_path: Path):
     assert "**0 fixable CRITICAL/HIGH**" in (tmp_path / "out" / "report.md").read_text()
 
 
+@pytest.mark.parametrize(
+    "content", [None, "{not json", "[1]"], ids=["missing", "invalid", "not-object"]
+)
+def test_unreadable_metadata_is_an_issue(tmp_path: Path, content: Optional[str]):
+    metadata = tmp_path / "metadata.json"
+    if content is not None:
+        metadata.write_text(content)
+    scanner, issue = trivy_report.load_metadata(metadata)
+    assert scanner == {}
+    assert issue.startswith("scanner metadata")
+
+    # The scan itself is clean, but its results can't be tied to a DB.
+    results = report_folder(
+        tmp_path, CPU, report=make_report(make_vuln(Severity="LOW"))
+    )
+    assert write_outputs(tmp_path, results, issues=[issue]) == EXIT_INCOMPLETE
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["issues"] == [issue]
+
+
 def test_write_report_shows_healthy_images_next_to_a_corrupt_one(tmp_path: Path):
     results = report_folder(tmp_path, CPU)
     (results / "x.status.json").write_text('{"name": "x", "image_')
@@ -598,6 +618,18 @@ def test_write_report_without_any_status_record(tmp_path: Path):
     results = report_folder(tmp_path)
     assert write_outputs(tmp_path, results) == EXIT_INCOMPLETE
     assert "no scan status records" in (tmp_path / "out" / "report.md").read_text()
+
+
+def test_add_missing_reports_expected_images_without_a_status():
+    """A scan job that never ran leaves no status; the expected list is
+    what makes its images show up as not scanned."""
+    scanned = ImageScan(image=Image(*CPU[:5]), packages=1)
+    expected = [Image(*CU128[:5]), Image(*CPU[:5])]
+    scans = trivy_report.add_missing([scanned], expected)
+    assert [s.image.name for s in scans] == [CPU[0], CU128[0]]
+    assert scans[0] is scanned
+    assert scans[1].error == trivy_report.MISSING_STATUS
+    assert exit_code(scans) == EXIT_INCOMPLETE
 
 
 def test_the_footer_is_the_given_files_note():
