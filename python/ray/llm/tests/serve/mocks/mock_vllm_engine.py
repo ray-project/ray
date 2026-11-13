@@ -690,6 +690,9 @@ class MockAsyncLLM:
         self.script = script
         self.error_after = error_after
 
+    def shutdown(self):
+        pass
+
     async def generate(self, prompt, sampling_params, request_id, **kwargs):
         for i, output in enumerate(self.script):
             if self.error_after is not None and i == self.error_after:

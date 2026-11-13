@@ -167,6 +167,14 @@ class _LocalKVTokenTracker(KVTokenTracker):
     to drive ``_on_deployment_targets`` directly with synthetic snapshots.
     """
 
+    def __init__(self):
+        with mock.patch("ray.serve.get_replica_context") as get_context:
+            get_context.return_value.replica_id = ReplicaID(
+                unique_id="router",
+                deployment_id=DeploymentID(name="LLMRouter", app_name="app"),
+            )
+            super().__init__()
+
     async def get_candidate_worker_ids(self) -> List[int]:
         """The workers currently tracked from running replicas.
 

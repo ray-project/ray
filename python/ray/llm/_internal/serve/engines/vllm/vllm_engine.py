@@ -67,6 +67,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    RequestLifecycleOwnerMiddleware,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     enable_native_kv_offload_events,
@@ -386,6 +389,14 @@ class VLLMEngine(LLMEngine):
         # replaces the engine error in the response.
         app.state.server = types.SimpleNamespace()
         if self._token_receiver is not None:
+            # The middleware stack may already be built; reset it so
+            # add_middleware can extend the existing middleware list.
+            app.middleware_stack = None
+            # Bind the owning LLMRouter's endpoint in a ContextVar before vLLM
+            # creates its handler task, which inherits the context. Keep it bound
+            # while the returned StreamingResponse is consumed outside that task,
+            # so token tracking sends progress/completion to the owning LLMRouter.
+            app.add_middleware(RequestLifecycleOwnerMiddleware)
             install_prompt_token_forwarding(
                 app.state,
                 self._prompt_token_store,

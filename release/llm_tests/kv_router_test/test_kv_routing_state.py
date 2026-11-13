@@ -1,13 +1,10 @@
 """Tests for KV routing state across LLMRouter ingress replicas.
 
-Each ingress owns a local KV selector. The routing ingress atomically selects
-and reserves a worker, then asynchronously broadcasts that already-selected
-reservation so peer ingresses can mirror the same load state. Engine lifecycle
-events are broadcast separately and advance or free reservations admitted
-locally. Cached KV blocks are tracked per replica: every ingress independently
-subscribes to each engine worker's KV-event stream. Session bindings stream
-from the routing ingress's selection service and are broadcast the same way,
-so a session stays on its worker whichever ingress routes its next turn.
+Each ingress owns a local KV selector. The selecting ingress reserves a worker
+and receives that request's engine lifecycle events over ZMQ. Dynamo's replica
+mesh replicates reservations, prefill completion, frees, and session bindings
+to peer ingresses. Every ingress independently subscribes to each engine
+worker's KV-event stream to track cached blocks.
 """
 
 import asyncio
@@ -180,8 +177,9 @@ class TestIngressSynchronization:
 
     @pytest.mark.asyncio
     async def test_booked_load(self, ingress_replicas_per_node, deployed_handle):
-        """One ingress selects atomically, then every ingress converges through
-        booking, prefill completion, and request completion."""
+        """One ingress selects atomically and owns the request. Its booking,
+        prefill completion, and request completion reach every ingress over the
+        replica mesh."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
         replica_ids = await _ingress_replica_ids(router, ingress_replicas_per_node)
         num_ingress_replicas = len(replica_ids)
@@ -197,11 +195,15 @@ class TestIngressSynchronization:
         assert selection["worker_id"] == worker_id
 
         async def reservation_converged():
-            states = await _broadcast(router, "get_request_lifecycle", "probe")
+            snapshots = await _broadcast(
+                router, "get_lifecycle_snapshot", "probe", worker_id
+            )
+            owners = [s["replica_id"] for s in snapshots if s["lifecycle"] is not None]
             loads = await _broadcast(router, "get_worker_load", worker_id)
             return (
-                len(states) == num_ingress_replicas
-                and all(state is not None for state in states)
+                len(snapshots) == num_ingress_replicas
+                # Only the selecting ingress tracks the request itself.
+                and len(owners) == 1
                 and all(load["active_requests"] == 1 for load in loads)
                 and len({load["potential_prefill_tokens"] for load in loads}) == 1
                 and loads[0]["potential_prefill_tokens"] > 0
@@ -210,7 +212,8 @@ class TestIngressSynchronization:
         await async_wait_for_condition(
             reservation_converged, timeout=30, retry_interval_ms=100
         )
-
+        # Every ingress receives the events but only the owner tracks the
+        # request. Its selection service replicates the change to the peers.
         await _broadcast(
             router, "on_lifecycle_events", [("on_prefill_complete", ("probe",))]
         )
@@ -218,9 +221,9 @@ class TestIngressSynchronization:
         async def prefill_converged():
             states = await _broadcast(router, "get_request_lifecycle", "probe")
             loads = await _broadcast(router, "get_worker_load", worker_id)
-            return all(
-                state is not None and state["prefill_completed"] for state in states
-            ) and all(
+            return [state["prefill_completed"] for state in states if state] == [
+                True
+            ] and all(
                 load["active_requests"] == 1 and load["potential_prefill_tokens"] == 0
                 for load in loads
             )
@@ -254,7 +257,7 @@ class TestIngressSynchronization:
         worker_id = await _registered_worker(router, num_ingress_replicas)
         # Atomic reservation happens in LLMRouter while HAProxy routes the
         # request. A backend HTTP endpoint bypasses that selection path, so it
-        # cannot exercise the reservation or its ingress-to-ingress broadcast.
+        # cannot exercise the reservation or its replica-mesh replication.
         endpoint = get_application_url(app_name=APP_NAME, use_localhost=True)
 
         # A long generation keeps the request in flight while we observe it.
