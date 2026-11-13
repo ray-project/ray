@@ -98,8 +98,11 @@ class MedianStoppingRule(FIFOScheduler):
         if mode:
             self._mode = mode
 
-        self._worst = float("-inf") if self._mode == "max" else float("inf")
-        self._compare_op = max if self._mode == "max" else min
+        # Without a mode, leave these unset so `on_trial_add` raises instead of
+        # silently minimizing.
+        if self._mode:
+            self._worst = float("-inf") if self._mode == "max" else float("inf")
+            self._compare_op = max if self._mode == "max" else min
 
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
