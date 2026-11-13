@@ -148,6 +148,43 @@ def test_metadata_count_preserves_storage_access(
             remove_placement_group(pg)
 
 
+def test_count_without_merge_schema_preserves_runtime_env(
+    monkeypatch, tmp_path, ray_start_2_cpus
+):
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = tmp_path / "data.parquet"
+    pq.write_table(pa.table({"id": [1, 2, 3]}), path)
+    trace = tmp_path / "reads.jsonl"
+    monkeypatch.setenv("RAY_METADATA_ACCESS", "enabled")
+    dataset = ray.data.read_parquet(
+        str(path),
+        merge_schema=False,
+        filesystem=_filesystem(trace, require_env="RAY_METADATA_ACCESS"),
+        runtime_env={"env_vars": {"RAY_METADATA_ACCESS": "enabled"}},
+    )
+    before = _records(trace)
+    count = (
+        PushdownCountFiles()
+        .apply(
+            LogicalPlan(
+                Count(input_dependencies=[dataset._logical_plan.dag]), dataset.context
+            )
+        )
+        .dag
+    )
+    assert isinstance(count, MapBatches)
+    assert (
+        count.ray_remote_args["runtime_env"]["env_vars"]["RAY_METADATA_ACCESS"]
+        == "enabled"
+    )
+    monkeypatch.delenv("RAY_METADATA_ACCESS")
+    assert dataset.count() == 3
+    reads = _records(trace)[len(before) :]
+    assert reads and all(
+        r["path"] == str(path) and r["pid"] != os.getpid() for r in reads
+    )
+
+
 @pytest.mark.parametrize("name,write,read", _FORMATS)
 def test_full_schema_candidates_survive_new_cluster(
     monkeypatch, tmp_path, ray_start_cluster, name, write, read
