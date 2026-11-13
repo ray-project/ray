@@ -270,6 +270,17 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEqual(trial_1.last_result["m"], 4 + 9)
         self.assertEqual(trial_2.last_result["m"], 8 + 9)
 
+    def testWithParametersYield(self):
+        def train_fn(config, extra=0):
+            for i in range(3):
+                yield {"m": config["a"] + i + extra}
+
+        (trial,) = tune.run(with_parameters(train_fn, extra=10), config={"a": 1}).trials
+
+        self.assertEqual(trial.status, "TERMINATED")
+        self.assertEqual(trial.last_result["m"], 1 + 2 + 10)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
+
 
 if __name__ == "__main__":
     import pytest
