@@ -30,6 +30,7 @@ from ray.tune.schedulers import (
     PopulationBasedTraining,
     TrialScheduler,
 )
+from ray.tune.schedulers.async_hyperband import _Bracket
 from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible,
@@ -2510,6 +2511,47 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler2.on_trial_result(None, new_trial, result(1, 2)),
             TrialScheduler.STOP,
         )
+
+    def testRungAtMaxTWhenMaxTIsPowerOfReductionFactor(self):
+        # log(243) / log(3) == 4.999999999999999 and log(1000) / log(10) ==
+        # 2.9999999999999996, which used to truncate away the rung at max_t.
+        for max_t, rf, num_rungs in [(243, 3, 6), (1000, 10, 4)]:
+            for s in range(2):
+                bracket = _Bracket(1, max_t, rf, s)
+                self.assertEqual(len(bracket._rungs), num_rungs - s)
+                self.assertEqual(bracket._rungs[0][0], max_t)
+
+    def testNoRungPastMaxTWhenReductionFactorIsJustAboveAnInteger(self):
+        # The epsilon must not add a rung past max_t when rf is just above 2.
+        bracket = _Bracket(1, 4, 2.0000000001, 0)
+        self.assertEqual([m for m, _ in bracket._rungs], [2.0000000001, 1.0])
+
+    def testRungAtMaxTCutsTrialsWithoutStopLastTrials(self):
+        scheduler = AsyncHyperBandScheduler(
+            metric="metric",
+            mode="max",
+            grace_period=1,
+            max_t=243,
+            reduction_factor=3,
+            stop_last_trials=False,
+        )
+        good, bad = Trial(MOCK_TRAINABLE_NAME), Trial(MOCK_TRAINABLE_NAME)
+        scheduler.on_trial_add(None, good)
+        scheduler.on_trial_add(None, bad)
+        for trial in (good, bad):
+            action = scheduler.on_trial_result(
+                None, trial, {"training_iteration": 81, "metric": 10}
+            )
+            self.assertEqual(action, TrialScheduler.CONTINUE)
+        action = scheduler.on_trial_result(
+            None, good, {"training_iteration": 243, "metric": 10}
+        )
+        self.assertEqual(action, TrialScheduler.CONTINUE)
+        # The worse trial is cut by the rung at max_t.
+        action = scheduler.on_trial_result(
+            None, bad, {"training_iteration": 243, "metric": 1}
+        )
+        self.assertEqual(action, TrialScheduler.STOP)
 
     def testAsyncHBNonStopTrials(self):
         trials = [Trial(MOCK_TRAINABLE_NAME) for i in range(4)]
