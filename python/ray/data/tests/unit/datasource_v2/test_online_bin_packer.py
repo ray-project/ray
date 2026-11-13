@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import pytest
 
@@ -8,6 +8,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
+from ray.data.block import BlockAccessor
 
 
 def _run(
@@ -52,18 +53,25 @@ def _manifest_map(manifest: FileManifest) -> dict[str, Optional[list[int]]]:
 def _pack(
     manifests: list[FileManifest],
     max_bin_bytes: int,
+    per_bin: Callable[[FileManifest], Any] = _manifest_map,
     **kwargs: Any,
-) -> list[dict[str, Optional[list[int]]]]:
+) -> list[Any]:
     packer = OnlineBinPacker(max_bin_bytes, **kwargs)
     bins = []
     for manifest in manifests:
         packer.add_input(manifest)
         while packer.has_partition():
-            bins.append(_manifest_map(packer.next_partition()))
+            bins.append(per_bin(packer.next_partition()))
     packer.finalize()
     while packer.has_partition():
-        bins.append(_manifest_map(packer.next_partition()))
+        bins.append(per_bin(packer.next_partition()))
     return bins
+
+
+def _consumer_memory_bytes(manifest: FileManifest) -> Optional[int]:
+    """What a bin tells its read task to request, read off the block's metadata."""
+    accessor = BlockAccessor.for_block(manifest.as_block())
+    return accessor.get_metadata().consumer_memory_bytes
 
 
 def _pairs(bins: list[dict[str, Optional[list[int]]]]) -> list[tuple[str, int]]:
@@ -293,6 +301,51 @@ def test_interleaved_heavy_files(
     assert _pairs(bins) == [(p, i) for p in ("a", "b") for i in range(4)]
     if not isolate_heavy_files:
         assert all(set(b) == {"a", "b"} for b in bins)
+
+
+@pytest.mark.parametrize("max_bin", [1, 50, 1000])
+@pytest.mark.parametrize("split_coalesced", [False, True])
+def test_bin_of_runs_requests_its_memory_estimates(
+    max_bin: int, split_coalesced: bool
+) -> None:
+    # Whatever the layout, a bin asks its read task for its runs' memory
+    # estimates, here twice their bytes: the 500-byte run over a 50-byte cap gets
+    # a bin of its own and asks for 1000, and a split coalesced run's pieces ask
+    # for their share.
+    def units(path: str, sizes: list[int]) -> FileManifest:
+        runs = [_run((i,), s, memory=2 * s) for i, s in enumerate(sizes)]
+        return _file(path, sum(sizes), runs)
+
+    coalesced = _run(
+        (0, 1, 2), 90, unit_sizes=(30, 30, 30), unit_rows=(3, 3, 4), memory=180
+    )
+    files = [
+        units("a", [30, 30, 30]),
+        units("b", [500]),
+        units("c", [10]),
+        _file("d", 90, [coalesced]),
+    ]
+    bins = _pack(
+        files,
+        max_bin_bytes=max_bin,
+        per_bin=lambda b: b,
+        split_coalesced=split_coalesced,
+    )
+    totals = [sum(c["size_bytes"] for c in b.file_chunk_metadatas) for b in bins]
+    assert [_consumer_memory_bytes(b) for b in bins] == [2 * t for t in totals]
+    assert sum(totals) == 690
+
+
+def test_bin_without_memory_estimates_requests_nothing() -> None:
+    # A whole-file row's bytes are its on-disk size, and a run from an indexer
+    # other than Parquet's carries no estimate, so the read task keeps its
+    # default request.
+    whole = FileManifest.construct_manifest(
+        paths=["w"], sizes=[40], chunk_metadatas=[None]
+    )
+    for manifest in (whole, _units("u", [30])):
+        bins = _pack([manifest], max_bin_bytes=100, per_bin=_consumer_memory_bytes)
+        assert bins == [None]
 
 
 def _with_extra(manifest: FileManifest, values: list[str]) -> FileManifest:

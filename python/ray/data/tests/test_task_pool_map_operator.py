@@ -1,14 +1,24 @@
+from typing import cast
 from unittest.mock import MagicMock, patch
 
+import pyarrow as pa
 import pytest
 
 import ray
 from ray.core.generated import common_pb2
-from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import (
+    get_safe_default_logical_memory,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data.block import Block, BlockMetadata
+from ray.types import ObjectRef
+from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_context):
@@ -209,6 +219,69 @@ def test_extra_resource_usage_ignores_other_operators(
         return_value=task_infos,
     ):
         assert op.extra_resource_usage() == ExecutionResources(cpu=2, gpu=0)
+
+
+def _bundle(*estimates):
+    """A bundle with one block per argument, each carrying that estimate."""
+    blocks = tuple(
+        BlockEntry(
+            ref=cast(ObjectRef[Block], ray.put(pa.table({"id": [1]}))),
+            metadata=BlockMetadata(
+                num_rows=1, size_bytes=1, exec_stats=None, consumer_memory_bytes=e
+            ),
+        )
+        for e in estimates
+    )
+    return RefBundle(blocks=blocks, owns_blocks=True, schema=None)
+
+
+def _memory_estimating_op(data_context, ray_remote_args=None, **kwargs):
+    return TaskPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        ray_remote_args=ray_remote_args or {"num_cpus": 1},
+        memory_from_input_estimate=True,
+        **kwargs,
+    )
+
+
+def test_memory_from_input_estimate(ray_start_regular_shared, restore_data_context):
+    """A task asks for its input blocks' estimates summed, capped at the safe default,
+    in place of the default memory; a memory the caller set wins, and a task in a
+    placement group asks for none."""
+    data_context = ray.data.DataContext.get_current()
+
+    def memory(op, *estimates):
+        bundle = _bundle(*estimates) if estimates else None
+        return op._get_dynamic_ray_remote_args(input_bundle=bundle).get("memory")
+
+    op = _memory_estimating_op(data_context)
+    cap = get_safe_default_logical_memory(op._ray_remote_args)
+    assert [memory(op, 100), memory(op, 50, 60)] == [100, 110]
+    assert memory(op, 10 * cap) == cap
+    # Without an estimate on every block, or without a bundle, the static args stand.
+    assert memory(op, 50, None) is None
+    assert memory(op) is None
+    # The per-task figure the resource manager admits tasks on stays static.
+    assert op.per_task_resource_allocation().memory == 0
+
+    # The default logical memory gives way to an estimate and stands without one.
+    op = _memory_estimating_op(data_context, default_logical_memory_enabled=True)
+    default = get_safe_default_logical_memory(op._ray_remote_args)
+    assert [memory(op, 100), memory(op, None)] == [100, default]
+    op = _memory_estimating_op(
+        data_context, ray_remote_args={"num_cpus": 1, "memory": 7}
+    )
+    assert memory(op, 100) == 7
+
+    # A placement group's bundles may hold no memory to give.
+    in_group = {
+        "num_cpus": 1,
+        "scheduling_strategy": PlacementGroupSchedulingStrategy(PlacementGroup.empty()),
+    }
+    op = _memory_estimating_op(data_context, ray_remote_args=in_group)
+    assert memory(op, 100) is None
 
 
 if __name__ == "__main__":

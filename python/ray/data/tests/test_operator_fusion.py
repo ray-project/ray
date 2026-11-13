@@ -2,6 +2,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -11,6 +13,9 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     BlockMapTransformFn,
+)
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -85,6 +90,21 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
     assert physical_op._logical_operators == [read_op, map1, map2, map3, map4]
+
+
+def test_read_fused_with_map_requests_memory_estimate(
+    tmp_path, ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """A DSv2 read fused with the map after it still requests its input's estimate."""
+    DataContext.get_current().use_datasource_v2 = True
+    pq.write_table(pa.table({"a": [1]}), str(tmp_path / "data.parquet"))
+    ds = ray.data.read_parquet(str(tmp_path)).map_batches(lambda batch: batch)
+
+    physical_plan, _ = get_execution_plan(ds._logical_plan)
+    fused_op = physical_plan.dag
+    assert isinstance(fused_op, TaskPoolMapOperator)
+    assert fused_op.name == "ReadFilesParquetV2->MapBatches(<lambda>)"
+    assert fused_op.memory_from_input_estimate
 
 
 def test_read_map_batches_operator_fusion_compatible_remote_args(

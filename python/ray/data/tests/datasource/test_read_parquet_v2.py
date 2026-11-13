@@ -38,6 +38,9 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsLimitPushdown
+from ray.data._internal.execution.operators.map_operator import (
+    get_safe_default_logical_memory,
+)
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
@@ -987,6 +990,30 @@ def _write_row_groups(path, *, num_files, rows_per_file, row_group_size):
             str(path / f"f{i}.parquet"),
             row_group_size=row_group_size,
         )
+
+
+def test_read_task_requests_its_bin_estimate(tmp_path, restore_ctx, monkeypatch):
+    """Each read task requests its bin's estimate as memory, below the safe default
+    it requested before; with a one-byte cap every row group is its own bin."""
+    _write_row_groups(tmp_path, num_files=2, rows_per_file=400, row_group_size=100)
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
+    restore_ctx.use_datasource_v2 = True
+
+    def tag_memory(table):
+        # The planner probes the udf on the driver, where nothing is assigned.
+        try:
+            memory = ray.get_runtime_context().get_assigned_resources().get("memory")
+        except AssertionError:
+            memory = None
+        return table.append_column(
+            "memory", pa.array([memory] * len(table), type=pa.float64())
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path), _block_udf=tag_memory)
+    memory = [row["memory"] for row in ds.take_all()]
+    assert len(memory) == 800
+    safe_default = get_safe_default_logical_memory({"num_cpus": 1})
+    assert all(m is not None and 0 < m < safe_default for m in memory)
 
 
 def _optimized_count_plan(ds):
