@@ -270,12 +270,13 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 "This is the column name of the label in the dataset."
             )
 
-        num_boost_round = num_boost_round or 10
+        if num_boost_round is None:
+            num_boost_round = 10
 
         _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
-        callbacks = xgboost_train_kwargs.get("callbacks", [])
+        callbacks = list(xgboost_train_kwargs.get("callbacks") or [])
         user_supplied_callback = any(
             isinstance(callback, RayTrainReportCallback) for callback in callbacks
         )
