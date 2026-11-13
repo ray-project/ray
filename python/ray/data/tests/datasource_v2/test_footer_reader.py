@@ -843,12 +843,9 @@ def test_derived_predicate_preserves_matching_rows(
     [
         (pa.float64(), (col("x") + 1) >= 76),
         (pa.uint64(), (col("x") + 1) >= 76),
-        (pa.int64(), (col("x") - 1) >= 76),
-        (pa.int64(), (col("x") + -1) >= 76),
         (pa.int64(), (col("x") + 1.0) >= 76),
         (pa.int64(), (col("x") + 1) >= 2**63),
         (pa.uint64(), (1 + col("x")) >= 76),
-        (pa.int64(), (-1 + col("x")) >= 76),
         (pa.int64(), (1 + col("x")) >= 2**63),
         (pa.int8(), (col("x") + 1) >= 128),
         (pa.int8(), (col("x") + 128) >= 76),
@@ -1482,6 +1479,222 @@ def test_derived_unsigned_addition_is_exact(tmp_path):
     assert set(by_idx) == {0, 1}
     assert by_idx[0] is False
     assert by_idx[1] is True
+
+
+def test_derived_arithmetic_comparisons_match_the_kernel_on_int8():
+    """Every modeled direction is exactly the wrapped arithmetic, per row.
+
+    The bound may only replace the leaf outright when it agrees with the
+    kernel on every value, including the wrapped ones at both edges. int8 is
+    exhaustive enough to catch a wrong edge while staying fast, and the same
+    table shapes run against the real kernel through ``to_pyarrow``.
+    """
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _add_statistics_bounds,
+    )
+    from ray.data.expressions import Operation
+
+    values = [None, -128, -127, -100, -1, 0, 1, 40, 74, 75, 76, 77, 100, 125, 126, 127]
+    table = pa.table({"x": pa.array(values, type=pa.int8())})
+    schema = pa.schema([("x", pa.int8())])
+
+    offsets = [1, 2, 75, 127, -1, -75, -128]
+    thresholds = [-128, -75, -1, 0, 75, 76, 126, 127]
+    for op, op_name in [
+        (Operation.GE, "__ge__"),
+        (Operation.GT, "__gt__"),
+        (Operation.LE, "__le__"),
+        (Operation.LT, "__lt__"),
+        (Operation.EQ, "__eq__"),
+        (Operation.NE, "__ne__"),
+    ]:
+        for offset in offsets:
+            for threshold in thresholds:
+                for addition in [
+                    col("x") + offset,
+                    offset + col("x"),
+                    col("x") - offset,
+                ]:
+                    predicate = getattr(addition, op_name)(threshold)
+                    derived = _add_statistics_bounds(predicate, schema)
+                    assert table.filter(derived.to_pyarrow()).equals(
+                        table.filter(predicate.to_pyarrow())
+                    ), (op, offset, threshold)
+
+
+def test_derived_arithmetic_comparisons_match_the_kernel_at_int64_edges():
+    """The same exactness at the int64 edges, where the wrap actually bites."""
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _add_statistics_bounds,
+    )
+
+    big, small = 2**63 - 1, -(2**63)
+    values = [small, small + 1, -1, 0, 74, 75, 76, big - 1, big]
+    table = pa.table({"x": pa.array(values, type=pa.int64())})
+    schema = pa.schema([("x", pa.int64())])
+
+    for op_name in ["__ge__", "__gt__", "__le__", "__lt__", "__eq__", "__ne__"]:
+        for offset in [1, 2, -1, -2]:
+            for threshold in [small, small + 1, -1, 0, 75, 76, big - 1, big]:
+                for addition in [col("x") + offset, col("x") - offset]:
+                    predicate = getattr(addition, op_name)(threshold)
+                    derived = _add_statistics_bounds(predicate, schema)
+                    assert table.filter(derived.to_pyarrow()).equals(
+                        table.filter(predicate.to_pyarrow())
+                    ), (op_name, offset, threshold)
+
+
+def test_derived_negative_offset_and_subtraction_are_modeled():
+    """The forms this PR adds stop passing through untouched."""
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _add_statistics_bounds,
+    )
+    from ray.data.expressions import lit
+
+    schema = pa.schema([("x", pa.int64())])
+    modeled = [
+        (col("x") - 1) >= 76,
+        (col("x") - 1) <= 76,
+        (col("x") - 1) == 76,
+        (col("x") - 1) != 76,
+        (col("x") + -1) >= 76,
+        (-1 + col("x")) >= 76,
+        (col("x") + 1) <= 76,
+        (col("x") + 1) < 76,
+        (col("x") + 1) == 76,
+        (col("x") + 1) != 76,
+        lit(901) <= (col("x") + 1),
+        lit(76) > (col("x") + 1),
+        (col("x") * 1) >= 76,
+        (col("x") * 1) != 76,
+    ]
+    for predicate in modeled:
+        assert _add_statistics_bounds(predicate, schema) is not predicate, predicate
+
+
+def test_derived_unmodelable_arithmetic_stays_conservative():
+    """Signed multipliers past 1 wrap somewhere, so no bound is claimed."""
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _add_statistics_bounds,
+    )
+
+    conservative = [
+        ((pa.int64(), pa.schema([("x", pa.int64())])), (col("x") * 2) >= 76),
+        ((pa.int64(), pa.schema([("x", pa.int64())])), (col("x") * -1) >= 76),
+        ((pa.int64(), pa.schema([("x", pa.int64())])), (-1 * col("x")) >= 76),
+        ((pa.uint8(), pa.schema([("x", pa.uint8())])), (col("x") - 1) >= 76),
+        ((pa.uint8(), pa.schema([("x", pa.uint8())])), (col("x") * 3) == 200),
+        ((pa.uint8(), pa.schema([("x", pa.uint8())])), (col("x") * 3) != 200),
+        ((pa.uint8(), pa.schema([("x", pa.uint8())])), (col("x") + -1) >= 76),
+    ]
+    for (_, schema), predicate in conservative:
+        assert _add_statistics_bounds(predicate, schema) is predicate, predicate
+
+
+def test_derived_bounds_prune_the_new_directions(tmp_path):
+    """Pruning and the fully-matched test for each newly modeled direction.
+
+    int8 keeps the wrap inside the fixture: 127 + 1 wraps to -128 and
+    -128 - 1 wraps to 127, so every group sits on an edge. Expected groups
+    follow from the wrapped arithmetic, not from the bounds.
+    """
+    table = pa.table(
+        {"x": pa.array([127, 127, 75, 126, -128, -100, 40, 41], type=pa.int8())}
+    )
+    path, size = _write(tmp_path / "directions.parquet", table, row_group_size=2)
+
+    # Groups: 0=[127, 127] 1=[75, 126] 2=[-128, -100] 3=[40, 41].
+    expectations = [
+        ((col("x") + 1) <= 76, {0, 1, 2, 3}, {0, 2, 3}),
+        ((col("x") + 1) < 76, {0, 2, 3}, {0, 2, 3}),
+        ((col("x") + 1) == 76, {1}, set()),
+        ((col("x") + 1) != 76, {0, 1, 2, 3}, {0, 2, 3}),
+        ((col("x") - 1) >= 76, {0, 1, 2}, {0}),
+        ((col("x") - 1) > 76, {0, 1, 2}, {0}),
+        ((col("x") - 1) <= 76, {1, 2, 3}, {3}),
+    ]
+    for predicate, selected, fully in expectations:
+        chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+        by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+        assert set(by_idx) == selected, (predicate, by_idx)
+        assert {i for i, f in by_idx.items() if f} == fully, (predicate, by_idx)
+
+
+def test_derived_bounds_mark_the_new_directions_fully_matched_int64(tmp_path):
+    """The same directions on int64, against the issue-sized value ranges."""
+    values = list(range(25)) + list(range(900, 925)) + list(range(950, 975))
+    table = pa.table({"id": values})
+    path, size = _write(tmp_path / "directions64.parquet", table, row_group_size=25)
+
+    # Groups: 0=[0, 24] 1=[900, 924] 2=[950, 974].
+    expectations = [
+        ((col("id") + 1) <= 900, {0}, {0}),
+        ((col("id") - 1) >= 901, {1, 2}, {2}),
+        ((col("id") + 1) == 901, {1}, set()),
+        ((col("id") + 1) != 901, {0, 1, 2}, {0, 2}),
+    ]
+    for predicate, selected, fully in expectations:
+        chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+        by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+        assert set(by_idx) == selected, (predicate, by_idx)
+        assert {i for i, f in by_idx.items() if f} == fully, (predicate, by_idx)
+
+
+def test_derived_literal_on_the_left_prunes_under_negation(tmp_path):
+    # lit(901) <= col("id") + 1 reaches the deriver unreflected (only the
+    # ``901 <= ...`` spelling folds in Python), and must prune like
+    # (col("id") + 1) >= 901 does.
+    values = list(range(25)) + list(range(900, 925)) + list(range(950, 975))
+    table = pa.table({"id": values})
+    path, size = _write(tmp_path / "literal-left.parquet", table, row_group_size=25)
+    from ray.data.expressions import lit
+
+    predicate = ~(lit(901) <= (col("id") + 1))
+
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+    assert set(by_idx) == {0}
+    assert by_idx[0] is True
+
+
+def test_derived_unsigned_new_directions_are_exact(tmp_path):
+    # No wrap on unsigned, so the folded comparison is the whole range and a
+    # group at the top of the range prunes or matches exactly.
+    table = pa.table({"x": pa.array([74, 75, 255, 255], type=pa.uint8())})
+    path, size = _write(
+        tmp_path / "unsigned-directions.parquet", table, row_group_size=2
+    )
+
+    expectations = [
+        ((col("x") + 1) <= 76, {0}, {0}),
+        ((col("x") + 1) == 76, {0}, set()),
+        ((col("x") + 1) != 76, {0, 1}, {1}),
+        ((col("x") + 1) < 76, {0}, set()),
+    ]
+    for predicate, selected, fully in expectations:
+        chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+        by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+        assert set(by_idx) == selected, (predicate, by_idx)
+        assert {i for i, f in by_idx.items() if f} == fully, (predicate, by_idx)
+
+
+def test_derived_unsigned_multiplication_is_exact(tmp_path):
+    # The product cannot leave int64 on a narrow unsigned column, so the
+    # comparison folds into a division: x * 2 >= 200 is x >= 100.
+    table = pa.table({"x": pa.array([0, 100, 200, 255], type=pa.uint8())})
+    path, size = _write(tmp_path / "unsigned-mul.parquet", table, row_group_size=2)
+
+    expectations = [
+        ((col("x") * 2) >= 200, {0, 1}, {1}),
+        ((col("x") * 2) <= 200, {0}, {0}),
+        ((col("x") * 2) == 200, {0}, set()),
+        ((col("x") * 2) != 200, {0, 1}, {1}),
+    ]
+    for predicate, selected, fully in expectations:
+        chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+        by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+        assert set(by_idx) == selected, (predicate, by_idx)
+        assert {i for i, f in by_idx.items() if f} == fully, (predicate, by_idx)
 
 
 if __name__ == "__main__":

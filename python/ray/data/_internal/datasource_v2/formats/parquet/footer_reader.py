@@ -96,18 +96,29 @@ def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
     PyArrow's row-group pruning only evaluates column-vs-literal comparisons
     against statistics, so a wrapped arithmetic comparison or a string prefix
     keeps every row group alive. Each modeled leaf is exactly equivalent to
-    comparisons PyArrow CAN evaluate: ``starts_with(p)`` is
-    ``col >= p and col < next(p)``, and ``(col + c) >= t`` is ``col >= t - c``
-    -- plus ``col <= MAX - c`` on signed columns, where the sum wraps --
-    whenever the literal reaches PyArrow as an int64 scalar. Because the
-    bound is then equivalent to the leaf, including under ``~`` and for
-    nulls, the leaf can be replaced outright: the rewritten filter stays
-    semantically equal to the original, so pruning and the fully-matched
-    negation test both see evaluable comparisons. Literals whose kernel path
-    is order-dependent only get the necessary lower bound appended. Every
-    other form is left untouched: PyArrow already prunes plain comparisons,
-    null checks and membership, so rewriting them would only run the same
-    split twice.
+    comparisons PyArrow CAN evaluate, so the leaf is replaced outright: the
+    rewritten filter stays semantically equal to the original, and pruning
+    and the fully-matched negation test both see evaluable comparisons.
+
+    On integer columns, ``(col + c) >= t`` is ``col >= t - c`` -- plus
+    ``col <= MAX - c`` on signed columns, where the sum wraps -- and the
+    other directions mirror it: ``<=``/``<`` is ``col <= t - c`` or, for the
+    wrapped rows, ``col > MAX - c``, and ``==``/``!=`` is ``col ==/!= t - c``
+    because a wrapped sum never hits the threshold exactly. ``col - c``
+    computes the same wrapped sum as ``col + (-c)``, with the wrap at the
+    bottom edge. ``col * c`` folds into a division while the product cannot
+    leave the column's width: unsigned columns promote to a wider type and a
+    bounded multiplier stays inside it, and ``c == 1`` is the one signed
+    multiplier that cannot wrap -- any wider signed multiplier wraps
+    somewhere in the column, and no column range describes the wrapped match
+    set. A string prefix stays as before: ``starts_with(p)`` is ``col >= p
+    and col < next(p)``. Guards keep the thresholds within an offset of an
+    edge out: there the wrapped sums land on both sides of the threshold,
+    which no conjunction of column bounds describes. Literals whose kernel
+    path is order-dependent only get the necessary lower bound appended.
+    Every other form is left untouched: PyArrow already prunes plain
+    comparisons, null checks and membership, so rewriting them would only
+    run the same split twice.
     """
     import pyarrow.compute as pc
 
@@ -141,85 +152,225 @@ def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
             return expr
         return ~operand
 
-    # (col + literal) >=/> literal: the statistics cannot evaluate the
-    # addition, but the equivalent column range they can.
-    if (
-        isinstance(expr, BinaryExpr)
-        and expr.op in (Operation.GE, Operation.GT)
-        and isinstance(expr.left, BinaryExpr)
-        and expr.left.op == Operation.ADD
-        and isinstance(expr.right, LiteralExpr)
+    # (col ± literal) cmp literal and (col * literal) cmp literal, with the
+    # comparison literal on either side: the statistics cannot run the
+    # arithmetic, but the equivalent column range they can.
+    if isinstance(expr, BinaryExpr) and expr.op in (
+        Operation.GE,
+        Operation.GT,
+        Operation.LE,
+        Operation.LT,
+        Operation.EQ,
+        Operation.NE,
     ):
-        addition = expr.left
-        column: ColumnExpr | None = None
-        literal: LiteralExpr | None = None
-        if isinstance(addition.left, ColumnExpr) and isinstance(
-            addition.right, LiteralExpr
+        left, right, op = expr.left, expr.right, expr.op
+        if isinstance(left, LiteralExpr) and isinstance(right, BinaryExpr):
+            # A filter can be built with the literal on the left
+            # (``lit(901) <= col("x") + 1``); Python's reflection only folds
+            # the ``901 <= ...`` spelling, not this one.
+            left, right = right, left
+            if op == Operation.GE:
+                op = Operation.LE
+            elif op == Operation.LE:
+                op = Operation.GE
+            elif op == Operation.GT:
+                op = Operation.LT
+            elif op == Operation.LT:
+                op = Operation.GT
+        if (
+            isinstance(right, LiteralExpr)
+            and isinstance(left, BinaryExpr)
+            and left.op in (Operation.ADD, Operation.SUB, Operation.MUL)
         ):
-            column, literal = addition.left, addition.right
-        elif isinstance(addition.left, LiteralExpr) and isinstance(
-            addition.right, ColumnExpr
-        ):
-            column, literal = addition.right, addition.left
+            arithmetic = left
+            target = right.value
+            column: ColumnExpr | None = None
+            literal: LiteralExpr | None = None
+            if arithmetic.op == Operation.ADD:
+                # Addition commutes, so either operand order pairs them.
+                if isinstance(arithmetic.left, ColumnExpr) and isinstance(
+                    arithmetic.right, LiteralExpr
+                ):
+                    column, literal = arithmetic.left, arithmetic.right
+                elif isinstance(arithmetic.left, LiteralExpr) and isinstance(
+                    arithmetic.right, ColumnExpr
+                ):
+                    column, literal = arithmetic.right, arithmetic.left
+            elif arithmetic.op == Operation.SUB:
+                # Only col - literal: literal - col negates the column, whose
+                # wrapped match set no column range describes.
+                if isinstance(arithmetic.left, ColumnExpr) and isinstance(
+                    arithmetic.right, LiteralExpr
+                ):
+                    column, literal = arithmetic.left, arithmetic.right
+            else:
+                # Multiplication commutes like addition.
+                if isinstance(arithmetic.left, ColumnExpr) and isinstance(
+                    arithmetic.right, LiteralExpr
+                ):
+                    column, literal = arithmetic.left, arithmetic.right
+                elif isinstance(arithmetic.left, LiteralExpr) and isinstance(
+                    arithmetic.right, ColumnExpr
+                ):
+                    column, literal = arithmetic.right, arithmetic.left
 
-        if column is not None and literal is not None:
-            offset = literal.value
-            target = expr.right.value
-            idx = schema.get_field_index(column.name)
-
-            value_type = schema.field(idx).type if idx >= 0 else None
-
-            # Mixed signed/unsigned kernels can narrow uint64 to int64.
-            # Keep uint64 conservative until its cast semantics are modeled.
-            if value_type is not None and (
-                pa.types.is_signed_integer(value_type)
-                or (
-                    pa.types.is_unsigned_integer(value_type)
-                    and value_type.bit_width < 64
-                )
-            ):
-                bit_width = value_type.bit_width
-                if pa.types.is_signed_integer(value_type):
-                    min_value = -(1 << (bit_width - 1))
-                    max_value = (1 << (bit_width - 1)) - 1
-                else:
-                    min_value = 0
-                    max_value = (1 << bit_width) - 1
-
-                if (
-                    isinstance(offset, (int, np.integer))
-                    and not isinstance(offset, (bool, np.bool_))
+            if (
+                column is not None
+                and literal is not None
+                and (
+                    isinstance(literal.value, (int, np.integer))
+                    and not isinstance(literal.value, (bool, np.bool_))
                     and isinstance(target, (int, np.integer))
                     and not isinstance(target, (bool, np.bool_))
+                )
+            ):
+                offset = literal.value
+                idx = schema.get_field_index(column.name)
+
+                value_type = schema.field(idx).type if idx >= 0 else None
+
+                # Mixed signed/unsigned kernels can narrow uint64 to int64.
+                # Keep uint64 conservative until its cast semantics are modeled.
+                if value_type is not None and (
+                    pa.types.is_signed_integer(value_type)
+                    or (
+                        pa.types.is_unsigned_integer(value_type)
+                        and value_type.bit_width < 64
+                    )
                 ):
+                    bit_width = value_type.bit_width
+                    if pa.types.is_signed_integer(value_type):
+                        min_value = -(1 << (bit_width - 1))
+                        max_value = (1 << (bit_width - 1)) - 1
+                    else:
+                        min_value = 0
+                        max_value = (1 << bit_width) - 1
+
                     # Python ints avoid overflow in NumPy scalar subtraction.
                     offset_val = int(offset)
-                    # Fold the strict comparison into the threshold: x + c > t
-                    # is x + c >= t + 1, so GE and GT share one formula.
-                    threshold = int(target) + (1 if expr.op == Operation.GT else 0)
-                    if (
-                        0 < offset_val <= max_value
-                        and min_value <= threshold <= max_value
-                        and threshold - offset_val >= min_value
+                    if arithmetic.op == Operation.SUB:
+                        # The kernel computes x - c as the wrapped sum
+                        # x + (-c), so the two share one analysis.
+                        offset_val = -offset_val
+                    threshold = int(target)
+
+                    # Fold the strict comparison into the threshold: x + d > t
+                    # is x + d >= t + 1, and x + d < t is x + d <= t - 1, so
+                    # GE, GT, LE and LT share two shapes.
+                    if op == Operation.GT:
+                        if threshold >= max_value:
+                            return expr
+                        threshold += 1
+                        op = Operation.GE
+                    elif op == Operation.LT:
+                        if threshold <= min_value:
+                            return expr
+                        threshold -= 1
+                        op = Operation.LE
+
+                    if arithmetic.op == Operation.MUL:
+                        # The product folds into a division only while it
+                        # cannot leave the column's width. A signed column
+                        # computes at its own width, where every multiplier
+                        # past 1 wraps somewhere in the column and no column
+                        # range describes the wrapped match set; c == 1 is
+                        # the one signed multiplier that cannot wrap.
+                        if offset_val == 1 and pa.types.is_signed_integer(value_type):
+                            if not min_value <= threshold <= max_value:
+                                return expr
+                            if op == Operation.GE:
+                                return column >= threshold
+                            if op == Operation.LE:
+                                return column <= threshold
+                            if op == Operation.EQ:
+                                return column == threshold
+                            return column != threshold
+                        if (
+                            pa.types.is_unsigned_integer(value_type)
+                            and 0 < offset_val <= ((1 << 63) - 1) // max_value
+                            and 0 <= threshold <= max_value
+                        ):
+                            # The kernel promotes to a wider type, so the
+                            # product cannot wrap and the comparison folds
+                            # into a division.
+                            if op == Operation.GE:
+                                return column >= (
+                                    (threshold + offset_val - 1) // offset_val
+                                )
+                            if op == Operation.LE:
+                                return column <= threshold // offset_val
+                            if threshold % offset_val == 0:
+                                if op == Operation.EQ:
+                                    return column == threshold // offset_val
+                                return column != threshold // offset_val
+                        return expr
+
+                    if offset_val == 0 or abs(offset_val) > max_value:
+                        return expr
+                    if not min_value <= threshold <= max_value:
+                        return expr
+                    bound = threshold - offset_val
+                    # A threshold within the offset of an edge makes the
+                    # wrapped sums land on both sides of it, which no
+                    # conjunction of column bounds describes.
+                    if (offset_val > 0 and bound < min_value) or (
+                        offset_val < 0 and bound > max_value
                     ):
-                        lower = column >= threshold - offset_val
-                        if pa.types.is_int64(pa.scalar(offset).type):
-                            # A Python int (or numpy int64) literal reaches
-                            # PyArrow as an int64 scalar. On a signed column
-                            # the kernel then computes at the column's own
-                            # width: sums above ``max_value`` wrap and come
-                            # back below the threshold, so those rows never
-                            # match and the exact range needs the upper side.
-                            # On an unsigned column the kernel promotes to
-                            # int64 instead, no sum can overflow, and the
-                            # lower side alone is the whole range.
-                            if pa.types.is_signed_integer(value_type):
-                                return lower & (column <= max_value - offset_val)
-                            return lower
+                        return expr
+                    if not pa.types.is_int64(pa.scalar(offset).type):
                         # Other numpy scalar types take kernel paths that
                         # differ by operand order, so only the necessary
-                        # lower bound is appended and the leaf stays.
-                        return expr & lower
+                        # lower bound is appended and the leaf stays. Only
+                        # the >= direction with a positive offset has one.
+                        if op == Operation.GE and offset_val > 0:
+                            return expr & (column >= bound)
+                        return expr
+                    if pa.types.is_signed_integer(value_type):
+                        # A Python int (or numpy int64) literal reaches
+                        # PyArrow as an int64 scalar. On a signed column
+                        # the kernel then computes at the column's own
+                        # width: sums above ``max_value`` wrap and come
+                        # back below the threshold, so those rows never
+                        # match and the exact range needs the upper side.
+                        # Below the bottom the wrapped sums land above the
+                        # threshold instead, which mirrors the two shapes.
+                        if offset_val > 0:
+                            if op == Operation.GE:
+                                return (column >= bound) & (
+                                    column <= max_value - offset_val
+                                )
+                            if op == Operation.LE:
+                                return (column <= bound) | (
+                                    column > max_value - offset_val
+                                )
+                            if op == Operation.EQ:
+                                return column == bound
+                            return column != bound
+                        if op == Operation.GE:
+                            return (column <= min_value - offset_val - 1) | (
+                                column >= bound
+                            )
+                        if op == Operation.LE:
+                            return (column >= min_value - offset_val) & (
+                                column <= bound
+                            )
+                        if op == Operation.EQ:
+                            return column == bound
+                        return column != bound
+                    # On an unsigned column the kernel promotes to a wider
+                    # type instead, no sum can wrap, and the folded
+                    # comparison is the whole range. A negative offset takes
+                    # a different kernel path there, so it stays
+                    # conservative.
+                    if offset_val < 0:
+                        return expr
+                    if op == Operation.GE:
+                        return column >= bound
+                    if op == Operation.LE:
+                        return column <= bound
+                    if op == Operation.EQ:
+                        return column == bound
+                    return column != bound
 
     # str.starts_with(col, prefix): the statistics cannot evaluate the match,
     # but the string range it spans they can.
@@ -484,7 +635,7 @@ class FooterReader:
         original_filter = self.filter
         # The deriver replaces the leaves PyArrow cannot prune with by the
         # exact column range each one spans: an arithmetic comparison becomes
-        # the equivalent two-sided bound, a string prefix the string range it
+        # the equivalent range bounds, a string prefix the string range it
         # covers. The rewrite is semantically equal to the original filter,
         # so one split over it prunes exactly as the original would while the
         # bounds stay evaluable -- including under ~, which PyArrow handles
