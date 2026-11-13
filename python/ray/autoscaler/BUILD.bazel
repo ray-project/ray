@@ -17,6 +17,7 @@ filegroup(
         "//python/ray/autoscaler/azure:default_config",
         "//python/ray/autoscaler/gcp:default_config",
         "//python/ray/autoscaler/local:default_config",
+        "//python/ray/autoscaler/oci:default_config",
     ],
     visibility = ["//:__pkg__"],
 )
