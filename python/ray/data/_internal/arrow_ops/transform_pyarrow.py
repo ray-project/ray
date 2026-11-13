@@ -807,7 +807,7 @@ def _backfill_missing_fields(
 
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
-        column = pa.concat_arrays(column.chunks)
+        column = column.combine_chunks()
 
     # Extract the current struct field names and their corresponding data
     current_fields = {

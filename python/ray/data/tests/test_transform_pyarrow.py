@@ -163,6 +163,24 @@ def test_pyarrow_conversion_error_handling(
         assert results == [{"id": i, "my_data": data[i]} for i in range(len(data))]
 
 
+def test_concat_empty_chunked_struct_column_with_extra_field():
+    from ray.data._internal.arrow_ops import transform_pyarrow
+
+    st1 = pa.struct([("x", pa.int64())])
+    st2 = pa.struct([("x", pa.int64()), ("y", pa.string())])
+
+    empty_filtered = pa.table({"s": pa.array([{"x": 1}], type=st1)}).filter(
+        pa.array([False])
+    )
+    assert empty_filtered.column("s").num_chunks == 0
+
+    non_empty = pa.table({"s": pa.array([{"x": 2, "y": "a"}], type=st2)})
+
+    result = transform_pyarrow.concat([empty_filtered, non_empty], promote_types=True)
+    assert result.schema.field("s").type == st2
+    assert result.to_pydict() == {"s": [{"x": 2, "y": "a"}]}
+
+
 @pytest.mark.parametrize(
     "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
 )
