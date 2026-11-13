@@ -38,7 +38,6 @@ from ray.exceptions import (
 )
 from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
-    QUEUED_REQUESTS_KEY as ROUTER_QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
@@ -400,10 +399,6 @@ class RouterMetricsManager:
         for name, value in metrics_dict.items():
             if not isinstance(name, str):
                 raise TypeError("Router autoscaling metric names must be strings.")
-            if name in (ROUTER_QUEUED_REQUESTS_KEY, RUNNING_REQUESTS_KEY):
-                raise ValueError(
-                    f"Router autoscaling metric name '{name}' is reserved."
-                )
             if not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise TypeError(
                     f"Router autoscaling metric '{name}' must be a finite number."
