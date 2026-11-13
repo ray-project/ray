@@ -774,8 +774,8 @@ class PopulationBasedTraining(FIFOScheduler):
         policy = [
             trial_name,
             trial_to_clone_name,
-            trial.last_result.get(TRAINING_ITERATION, 0),
-            trial_to_clone.last_result.get(TRAINING_ITERATION, 0),
+            (trial_state.last_result or {}).get(TRAINING_ITERATION, 0),
+            (new_state.last_result or {}).get(TRAINING_ITERATION, 0),
             trial_to_clone.config,
             new_config,
         ]
