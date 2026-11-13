@@ -22,7 +22,8 @@ from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
-from ray._common.network_utils import build_address
+import ray._private.prometheus_exporter as prometheus_exporter
+from ray._common.network_utils import build_address, get_localhost_ip
 from ray._common.test_utils import (
     fetch_prometheus,
     wait_for_condition,
@@ -476,6 +477,58 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
         return True
 
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
+
+
+@pytest.mark.parametrize(
+    "node_ip,expected_address",
+    [
+        ("10.0.0.42", "0.0.0.0"),
+        ("2001:db8::42", "::"),
+        ("127.0.0.1", get_localhost_ip()),
+        ("localhost", get_localhost_ip()),
+        ("::1", "::1"),
+    ],
+)
+def test_reporter_agent_metrics_exporter_address(
+    monkeypatch, tmp_path, node_ip, expected_address
+):
+    """The node exporter binds the address family of the node IP."""
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.log_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    dashboard_agent.ip = node_ip
+    dashboard_agent.metrics_collection_disabled = False
+    dashboard_agent.metrics_export_port = 8090
+    dashboard_agent.session_name = "test"
+
+    captured = {}
+
+    def fake_new_stats_exporter(options):
+        captured["address"] = options.address
+        exporter = MagicMock()
+        exporter.options = options
+        exporter.port = 8090
+        return exporter
+
+    metrics_agent = MagicMock()
+    metrics_agent.proxy_exporter_collector = None
+
+    monkeypatch.setattr(
+        prometheus_exporter, "new_stats_exporter", fake_new_stats_exporter
+    )
+    monkeypatch.setattr(
+        "ray.dashboard.modules.reporter.reporter_agent.MetricsAgent",
+        lambda *args, **kwargs: metrics_agent,
+    )
+    monkeypatch.setattr(
+        "ray.dashboard.modules.reporter.reporter_agent.persist_port", MagicMock()
+    )
+
+    ReporterAgent(dashboard_agent, MagicMock())
+
+    assert captured["address"] == expected_address
 
 
 def test_report_stats(tmp_path):

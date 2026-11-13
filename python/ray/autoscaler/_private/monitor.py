@@ -16,8 +16,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import (
     build_address,
-    get_localhost_ip,
-    is_localhost,
+    get_all_interfaces_ip_for_node,
     parse_address,
 )
 from ray._common.ray_constants import (
@@ -206,13 +205,10 @@ class Monitor:
                         AUTOSCALER_METRIC_PORT
                     )
                 )
-                kwargs = (
-                    {"addr": get_localhost_ip()} if is_localhost(head_node_ip) else {}
-                )
                 start_metrics_http_server(
                     port=AUTOSCALER_METRIC_PORT,
                     registry=self.prom_metrics.registry,
-                    **kwargs,
+                    addr=get_all_interfaces_ip_for_node(head_node_ip),
                 )
 
                 # Reset some gauges, since we don't know which labels have
