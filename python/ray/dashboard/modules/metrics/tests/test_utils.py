@@ -40,6 +40,24 @@ def test_router_prefill_panel_keeps_each_handle_separate():
     assert "{{actor_id}}" in target["legendFormat"]
 
 
+def test_autoscaling_prefill_panel_maxes_across_handles():
+    from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+        generate_serve_llm_grafana_dashboard,
+    )
+
+    dashboard, _ = generate_serve_llm_grafana_dashboard()
+    row = next(p for p in json.loads(dashboard)["panels"] if p["title"] == "KV Router")
+    panel = next(
+        p for p in row["panels"] if p["title"] == "Autoscaling uncached prefill tokens"
+    )
+    expr = panel["targets"][0]["expr"]
+    assert expr.startswith(
+        "max by (application, deployment) (ray_serve_autoscaling_router_metric{"
+    )
+    assert 'metric="outstanding_effective_prefill_tokens"' in expr
+    assert 'deployment=~"$deployment"' in expr
+
+
 @pytest.mark.parametrize(
     "headers, raises_error",
     [

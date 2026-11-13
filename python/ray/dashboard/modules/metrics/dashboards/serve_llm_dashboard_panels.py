@@ -1026,6 +1026,20 @@ _kv_router_panels = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=62,
+        title="Autoscaling uncached prefill tokens",
+        description="Uncached prefill tokens the token autoscaling policy scales on: each router's mean over the look-back window, maxed across routers.",
+        unit="tokens",
+        targets=[
+            Target(
+                expr='max by (application, deployment) (ray_serve_autoscaling_router_metric{{metric="outstanding_effective_prefill_tokens", deployment=~"$deployment", {global_filters}}})',
+                legend="{{application}}#{{deployment}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
 ]
 
 # ===================================================================
