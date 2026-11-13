@@ -128,14 +128,28 @@ def build_and_run_pipeline(
     if all_to_all_shuffle:
         ds = ds.random_shuffle()
 
-    ds = ds.map_batches(gen_data, batch_size=gen_batch_size, memory=gen_memory)
+    # The GPU nodes have CPUs for the GPU stage's actors; keep the CPU stages
+    # on the small-memory CPU nodes this test is about. Merged with the
+    # tenant's subcluster selector, if any.
+    cpu_nodes = {"node-pool": "cpu"}
+    ds = ds.map_batches(
+        gen_data,
+        batch_size=gen_batch_size,
+        memory=gen_memory,
+        label_selector=cpu_nodes,
+    )
 
-    ds = ds.map_batches(cpu_process, batch_size=cpu_batch_size, memory=cpu_memory)
+    ds = ds.map_batches(
+        cpu_process,
+        batch_size=cpu_batch_size,
+        memory=cpu_memory,
+        label_selector=cpu_nodes,
+    )
 
     ds = ds.map_batches(
         FakeGPUInference,
         batch_size=gpu_batch_size,
-        num_cpus=0,
+        num_cpus=1,
         num_gpus=1,
         concurrency=gpu_concurrency,
     )

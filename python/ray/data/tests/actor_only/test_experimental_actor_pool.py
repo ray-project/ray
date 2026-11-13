@@ -22,6 +22,7 @@ from ray.data._internal.execution.execution_flags import (
 )
 from ray.data._internal.execution.interfaces import ExecutionResources, NodeIdStr
 from ray.data._internal.execution.interfaces.common import ActorStatus
+from ray.data._internal.execution.interfaces.physical_operator import TaskPullRequest
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_transformer import (
@@ -1782,6 +1783,33 @@ def test_exact_resource_requests_lifecycle(pool_cls, removal, monkeypatch):
         else:
             pool._release_running_actor(actor)
     assert pool.get_resource_requests() == []
+def test_output_backpressured_actors_counts_serving_actors_only():
+    """``blocked`` and ``running`` cover the same actors: a draining or
+    restarting actor with an exhausted budget is not a stuck serving actor,
+    so it must not make ``blocked == running`` while a serving actor still
+    has budget."""
+    from types import SimpleNamespace
+
+    exhausted = {"draining", "restarting", "stuck"}
+    states = {
+        "free": SimpleNamespace(status=ActorStatus.ACTIVE),
+        "stuck": SimpleNamespace(status=ActorStatus.IDLE),
+        "draining": SimpleNamespace(status=ActorStatus.DRAINING),
+        "restarting": SimpleNamespace(status=ActorStatus.RESTARTING),
+    }
+    op = cast(Any, object.__new__(ExperimentalActorPoolMapOperator))
+    # ``running`` excludes draining and restarting actors.
+    op.get_actor_info = lambda: SimpleNamespace(running=2, pending=0)
+    op._actor_pull_budget = lambda actor_id: TaskPullRequest(
+        bytes_to_read=0 if actor_id in exhausted else 1,
+        blocks_to_read=0 if actor_id in exhausted else 1,
+    )
+    pool = SimpleNamespace(alive_actor_states_by_node=lambda: {"n1": states})
+
+    with mock.patch.object(
+        ExperimentalActorPoolMapOperator, "actor_pool", property(lambda self: pool)
+    ):
+        assert op.output_backpressured_actors() == (1, 2)
 
 
 if __name__ == "__main__":

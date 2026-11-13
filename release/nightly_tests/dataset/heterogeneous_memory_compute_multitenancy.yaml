@@ -19,6 +19,7 @@ worker_nodes:
       market_type: ON_DEMAND
       labels:
         ray-subcluster: tenant_a
+        node-pool: cpu
 
     # tenant_b CPU pool — mirrors the original CPU pool.
     - name: cpu-tenant-b
@@ -28,27 +29,29 @@ worker_nodes:
       market_type: ON_DEMAND
       labels:
         ray-subcluster: tenant_b
+        node-pool: cpu
 
-    # tenant_a "GPU" pool (logical GPUs, no CPUs).
+    # tenant_a "GPU" pool: logical GPUs plus one CPU per GPU for the GPU
+    # stage's actors. CPU stages are pinned to the CPU pools by label.
     - name: gpu-tenant-a
       instance_type: r5.4xlarge
       min_nodes: 2
       max_nodes: 2
       market_type: ON_DEMAND
       resources:
-        CPU: 0
+        CPU: 4
         GPU: 4
       labels:
         ray-subcluster: tenant_a
 
-    # tenant_b "GPU" pool (logical GPUs, no CPUs).
+    # tenant_b "GPU" pool: same as tenant_a's.
     - name: gpu-tenant-b
       instance_type: r5.4xlarge
       min_nodes: 2
       max_nodes: 2
       market_type: ON_DEMAND
       resources:
-        CPU: 0
+        CPU: 4
         GPU: 4
       labels:
         ray-subcluster: tenant_b
