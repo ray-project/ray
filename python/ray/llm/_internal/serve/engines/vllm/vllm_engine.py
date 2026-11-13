@@ -67,6 +67,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.metrics import (
+    init_tokenization_bypass_counter,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     enable_native_kv_offload_events,
@@ -347,6 +350,7 @@ class VLLMEngine(LLMEngine):
                 store=self._prompt_token_store,
             )
             self._prompt_token_zmq_advertised_endpoint = advertised_endpoint
+            init_tokenization_bypass_counter()
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
