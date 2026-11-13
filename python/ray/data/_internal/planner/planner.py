@@ -151,19 +151,28 @@ _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
 def _join_output_partitioning(
-    join_type: JoinType, left_keys: List[str], num_partitions: int
+    join_type: JoinType,
+    left_keys: List[str],
+    num_partitions: int,
+    has_condition_keys: bool = False,
 ) -> Optional[HashPartitioning]:
     """A SHUFFLE_V2 join's output partitioning: its left key columns.
 
     The join keeps one column per key pair, named after the left key
     (``on="id", right_on="rid"`` outputs ``id``). Right outer/semi/anti joins
     keep the right key's name and aren't handled, so they get ``None``.
+
+    Condition keys aren't coalesced: a full outer join's unmatched right rows
+    were partitioned on their right values but hold nulls in the left
+    condition key columns, so that case gets ``None`` too.
     """
     if join_type in (
         JoinType.RIGHT_OUTER,
         JoinType.RIGHT_SEMI,
         JoinType.RIGHT_ANTI,
     ):
+        return None
+    if has_condition_keys and join_type is JoinType.FULL_OUTER:
         return None
     return HashPartitioning(columns=tuple(left_keys), num_partitions=num_partitions)
 
@@ -173,8 +182,13 @@ def _plan_join_shuffle_v2(
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
-    left_keys = list(logical_op.left_key_columns)
-    right_keys = list(logical_op.right_key_columns)
+    # Hash on the condition keys too; only the reduce tells them apart.
+    left_keys = list(
+        logical_op.left_key_columns + logical_op.left_condition_key_columns
+    )
+    right_keys = list(
+        logical_op.right_key_columns + logical_op.right_condition_key_columns
+    )
     num_partitions = logical_op.num_partitions
     join_type = JoinType(logical_op.join_type)
 
@@ -205,10 +219,12 @@ def _plan_join_shuffle_v2(
 
     reduce_fn = _make_join_reduce_fn(
         join_type=join_type,
-        left_key_col_names=tuple(left_keys),
-        right_key_col_names=tuple(right_keys),
+        left_key_col_names=logical_op.left_key_columns,
+        right_key_col_names=logical_op.right_key_columns,
         left_columns_suffix=logical_op.left_columns_suffix,
         right_columns_suffix=logical_op.right_columns_suffix,
+        left_condition_key_col_names=logical_op.left_condition_key_columns,
+        right_condition_key_col_names=logical_op.right_condition_key_columns,
         left_schema=logical_op.input_dependencies[0].infer_schema(),
         right_schema=logical_op.input_dependencies[1].infer_schema(),
     )
@@ -226,9 +242,32 @@ def _plan_join_shuffle_v2(
         reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
         name=f"{prefix}JoinShuffleReduce(num_partitions={num_partitions})",
         output_partitioning=_join_output_partitioning(
-            join_type, left_keys, num_partitions
+            join_type,
+            left_keys,
+            num_partitions,
+            has_condition_keys=bool(logical_op.left_condition_key_columns),
         ),
         **reduce_kwargs,
+    )
+
+
+def _unsupported_join_condition_error(logical_op: Join) -> Exception:
+    """``ExtractEquiJoinKeys`` turns the equality conjuncts of a join
+    ``condition`` into condition keys; a condition still on the operator at
+    planning time is either unresolvable (unknown input schemas) or a residual
+    nothing can execute yet."""
+    if logical_op.resolve_condition() is None:
+        return ValueError(
+            "Cannot resolve the columns of the join `condition` "
+            f"{logical_op.condition} because the schema of at least one join "
+            "input could not be inferred. Pass the equality keys through "
+            "`on`/`right_on` instead."
+        )
+    return NotImplementedError(
+        "Only equalities between a column of the left input and a column of "
+        "the right input are supported in a join `condition`; the remainder "
+        f"{logical_op.condition} is not. Apply it with `filter()` after the "
+        "join instead."
     )
 
 
@@ -238,6 +277,8 @@ def plan_join_op(
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
+    if logical_op.condition is not None:
+        raise _unsupported_join_condition_error(logical_op)
     if data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
         return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
     return JoinOperator(
@@ -247,6 +288,8 @@ def plan_join_op(
         join_type=logical_op.join_type,
         left_key_columns=logical_op.left_key_columns,
         right_key_columns=logical_op.right_key_columns,
+        left_condition_key_columns=logical_op.left_condition_key_columns,
+        right_condition_key_columns=logical_op.right_condition_key_columns,
         left_columns_suffix=logical_op.left_columns_suffix,
         right_columns_suffix=logical_op.right_columns_suffix,
         num_partitions=logical_op.num_outputs,
