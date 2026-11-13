@@ -136,6 +136,7 @@ def _disk_shuffle_map_task(
     # Write to a temp file first; only ``rename`` once we've verified the full file.
     tmp_path = final_path + ".tmp"
     output_schema: Optional[pa.Schema] = None
+    has_nonempty_schema = False
 
     final_size_on_close = -1
     try:
@@ -148,10 +149,11 @@ def _disk_shuffle_map_task(
                 # already Arrow.
                 if not isinstance(block, pa.Table):
                     block = BlockAccessor.for_block(block).to_arrow()
-                if output_schema is None:
-                    # First-seen schema; reducer uses it to type empty
-                    # partitions (ShuffleHandle["schema"]).
-                    output_schema = getattr(block, "schema", None)
+                if output_schema is None or (
+                    block.num_rows and not has_nonempty_schema
+                ):
+                    output_schema = block.schema
+                    has_nonempty_schema = block.num_rows > 0
                 if block.num_rows == 0:
                     continue
                 for partition_id, shard in partition_fn(block).items():
