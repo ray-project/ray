@@ -10,7 +10,10 @@ from ray.serve._private.common import (
     RequestMetadata,
 )
 from ray.serve._private.request_router import PendingRequest, RequestRouter
-from ray.serve._private.request_router.request_router import FIFOMixin
+from ray.serve._private.request_router.request_router import (
+    FIFOMixin,
+    MultiplexMixin,
+)
 from ray.serve._private.test_utils import FakeRunningReplica
 from ray.serve._private.utils import generate_request_id
 
@@ -319,6 +322,65 @@ async def test_fifo_resets_backoff_after_successful_assignment(
             [0] * 3 if failures_per_assignment else []
         )
         assert router.curr_num_routing_tasks == 0
+    finally:
+        release_selection.set()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        routing_tasks = list(router._routing_tasks)
+        for task in routing_tasks:
+            task.cancel()
+        await asyncio.gather(*routing_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mixins",
+    [(), (MultiplexMixin,), (FIFOMixin, MultiplexMixin)],
+    ids=["base", "multiplex", "fifo_multiplex"],
+)
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_multiplexed_model_id_index_is_cleared(mixins, cancel):
+    """Completed or cancelled requests must not be retained by model ID."""
+    release_selection = asyncio.Event()
+    # Two requests per model ID, so entries can complete out of order.
+    requests = [fake_pending_request() for _ in range(6)]
+    for i, request in enumerate(requests):
+        request.metadata.multiplexed_model_id = f"model-{i % 3}"
+
+    class Router(*mixins, RequestRouter):
+        async def choose_replicas(self, candidate_replicas, pending_request=None):
+            if cancel:
+                await release_selection.wait()
+            return [candidate_replicas]
+
+    router = Router(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        use_replica_queue_len_cache=True,
+    )
+    replica = FakeRunningReplica("replica")
+    replica.set_queue_len_response(0)
+    router.update_replicas([replica])
+    tasks = [
+        asyncio.create_task(router._choose_replica_for_request(request))
+        for request in requests
+    ]
+    try:
+        if cancel:
+            await asyncio.sleep(0)
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        else:
+            assert (
+                await asyncio.wait_for(asyncio.gather(*tasks), timeout=2)
+                == [replica] * 6
+            )
+        assert router._pending_requests_by_model_id == {}
+        assert router._pending_requests_by_id == {}
     finally:
         release_selection.set()
         for task in tasks:

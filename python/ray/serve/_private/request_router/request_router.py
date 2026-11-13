@@ -901,10 +901,22 @@ class RequestRouter(ABC):
         """Remove a pending request from the dict indices."""
         internal_id = pending_request.metadata.internal_request_id
         self._pending_requests_by_id.pop(internal_id, None)
-        # Note: We don't eagerly remove from _pending_requests_by_model_id here
-        # because finding the item in the list would be O(n). Instead, we use lazy
-        # cleanup in _get_pending_request_matching_multiplexed_model_id() which
-        # removes done entries during lookup, amortizing the cleanup cost.
+
+        model_id = pending_request.metadata.multiplexed_model_id
+        if not model_id:
+            return
+        candidates = self._pending_requests_by_model_id.get(model_id)
+        if candidates is None:
+            return
+        # Finding the request in the deque would be O(n), so instead pop done
+        # entries from the front. Entries done out of order are popped once the
+        # ones ahead of them are done. Every completed or cancelled request calls
+        # this method, so the key is dropped once its last request is done, even
+        # for routers without FIFOMixin, which never look up by model ID.
+        while candidates and candidates[0].future.done():
+            candidates.popleft()
+        if not candidates:
+            self._pending_requests_by_model_id.pop(model_id, None)
 
     def _insert_pending_request_sorted(
         self, queue: Deque[PendingRequest], pending_request: PendingRequest
