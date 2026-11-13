@@ -1,3 +1,4 @@
+from ray.experimental.rdt.nixl_memory_pool import NixlMemoryPoolStats
 from ray.experimental.rdt.rdt_manager import (
     RDTManager,
     set_target_device_for_ref,
@@ -11,6 +12,7 @@ from ray.experimental.rdt.tensor_transport_manager import (
 )
 from ray.experimental.rdt.util import (
     deregister_nixl_memory,
+    get_nixl_memory_pool_stats,
     register_nixl_memory,
     register_nixl_memory_pool,
     register_tensor_transport,
@@ -24,6 +26,8 @@ __all__ = [
     "register_nixl_memory",
     "deregister_nixl_memory",
     "register_nixl_memory_pool",
+    "get_nixl_memory_pool_stats",
+    "NixlMemoryPoolStats",
     "set_nixl_cuda_stream",
     "TensorTransportManager",
     "TensorTransportMetadata",

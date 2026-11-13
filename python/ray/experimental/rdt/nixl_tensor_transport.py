@@ -18,6 +18,7 @@ from ray._private.ray_constants import (
 )
 from ray.experimental.rdt.nixl_memory_pool import (
     MemoryPoolManager,
+    NixlMemoryPoolStats,
     TensorLayout,
     group_tensors_by_desc,
     packed_offsets,
@@ -225,15 +226,34 @@ class NixlTensorTransport(TensorTransportManager):
         Raises:
             ValueError: If a memory pool is already registered.
         """
-        if self._memory_pool is not None:
-            raise ValueError(
-                "A memory pool is already registered. "
-                "Only one memory pool is supported."
-            )
-        nixl_agent = self.get_nixl_agent()
-        pool = MemoryPoolManager(pool_size=size, device=device)
-        nixl_agent.register_memory(pool.get_pool_tensor())
-        self._memory_pool = pool
+        # Hold the cache lock across check/create/register/publish so a second
+        # registration can't race in and overwrite the pool, and so a snapshot
+        # never observes a half-registered pool. On any failure the pool is left
+        # unset.
+        with self._cache_lock:
+            if self._memory_pool is not None:
+                raise ValueError(
+                    "A memory pool is already registered. "
+                    "Only one memory pool is supported."
+                )
+            nixl_agent = self.get_nixl_agent()
+            pool = MemoryPoolManager(pool_size=size, device=device)
+            nixl_agent.register_memory(pool.get_pool_tensor())
+            self._memory_pool = pool
+
+    def get_nixl_memory_pool_stats(self) -> Optional[NixlMemoryPoolStats]:
+        """Return a snapshot of the registered memory pool, or None.
+
+        Returns None when no memory pool has been registered. A configured pool
+        returns a non-None snapshot even when it is empty or completely full.
+        Runs under the cache lock, which every pool allocation and free already
+        holds, so the snapshot is consistent with in-flight transfers.
+        """
+        with self._cache_lock:
+            pool = self._memory_pool
+            if pool is None:
+                return None
+            return pool.get_stats()
 
     def deregister_nixl_memory(self, tensor: "torch.Tensor") -> None:
         """Decrements the reference count for the tensor's NIXL memory registration.
