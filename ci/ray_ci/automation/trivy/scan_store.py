@@ -138,6 +138,21 @@ class ScanStore:
             raise StoreError(f"check of s3://{BUCKET}/{key} failed: {e}") from e
         return True
 
+    def names(self, folder: str) -> list[str]:
+        """The files directly in ``folder``."""
+        prefix = f"{self.prefix}/{folder}/"
+
+        def list_keys() -> list[str]:
+            pages = self._s3().get_paginator("list_objects_v2")
+            return [
+                obj["Key"]
+                for page in pages.paginate(Bucket=BUCKET, Prefix=prefix)
+                for obj in page.get("Contents") or []
+            ]
+
+        keys = self._call("listing of", prefix, list_keys)
+        return sorted(k[len(prefix) :] for k in keys if "/" not in k[len(prefix) :])
+
 
 def build_options(f: Callable[..., Any]) -> Callable[..., Any]:
     """Click options naming the build's folder; the command gets ``store``."""

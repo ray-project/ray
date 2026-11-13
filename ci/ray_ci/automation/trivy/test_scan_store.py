@@ -82,6 +82,21 @@ def test_a_commit_that_is_not_a_sha_still_names_a_folder(commit: str, folder: st
     assert s.commit == commit
 
 
+def test_upload_download_and_list(tmp_path: Path):
+    s3 = FakeS3()
+    s = store(s3)
+    for name in ("b.json", "a.json", "c.json"):
+        (tmp_path / name).write_text(name)
+        s.upload(tmp_path / name, "results")
+    s3.put(BUCKET, f"{s.prefix}/results/nested/x.json", b"")
+    s3.put(BUCKET, f"{s.prefix}/db/metadata.json", b"")
+
+    assert s.names("results") == ["a.json", "b.json", "c.json"]
+    dest = s.download("results", "b.json", tmp_path / "copy.json")
+    assert dest.read_text() == "b.json"
+    assert s3.get(BUCKET, f"{s.prefix}/results/a.json") == b"a.json"
+
+
 def test_s3_errors_become_store_errors(tmp_path: Path):
     s3 = FakeS3()
     s = store(s3)
