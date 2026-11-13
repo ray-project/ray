@@ -711,6 +711,56 @@ def test_multiplexed_with_batching_same_model_batches_together(serve_instance):
     assert len(batch_sizes) == 1
 
 
+def test_multiplexed_with_batching_fills_batches_per_model_id(serve_instance):
+    """Test that each model ID fills its own batch.
+
+    Requests for two models arrive interleaved. Each model's requests must form
+    one full batch, rather than a shared batch with requests for both models
+    that is then split into partial batches.
+    """
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=20)
+    class BatchedModel:
+        def __init__(self):
+            self.arrivals = 0
+            self.batches = []
+
+        @serve.batch(max_batch_size=3, batch_wait_timeout_s=30)
+        async def batched_predict(self, inputs: List[str]):
+            model_id = serve.get_multiplexed_model_id()
+            self.batches.append((model_id, len(inputs)))
+            return [f"{model_id}:{inp}" for inp in inputs]
+
+        async def __call__(self, request):
+            # Nothing between counting the arrival and calling the batched
+            # method suspends, so arrival order is the order requests enqueue.
+            self.arrivals += 1
+            return await self.batched_predict(request)
+
+        def get_arrivals(self) -> int:
+            return self.arrivals
+
+        def get_batches(self):
+            return self.batches
+
+    handle = serve.run(BatchedModel.bind())
+
+    # Wait for each request to arrive before sending the next, so arrivals
+    # alternate between the models.
+    refs = []
+    model_ids = ["model_a", "model_b"] * 3
+    for i, model_id in enumerate(model_ids):
+        refs.append(handle.options(multiplexed_model_id=model_id).remote(f"input_{i}"))
+        wait_for_condition(lambda: handle.get_arrivals.remote().result() == i + 1)
+
+    results = [ref.result() for ref in refs]
+    assert results == [f"{model_id}:input_{i}" for i, model_id in enumerate(model_ids)]
+    assert sorted(handle.get_batches.remote().result()) == [
+        ("model_a", 3),
+        ("model_b", 3),
+    ]
+
+
 def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_instance):
     # Two signals for two-phase synchronization
     signal_barrier = SignalActor.remote()
@@ -752,7 +802,7 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
     handle = serve.run(ConcurrentBatchedModel.bind())
 
     # Send concurrent requests with different model IDs.
-    # These will be split into separate sub-batches and processed concurrently.
+    # Each model ID is batched in its own queue, and the batches run concurrently.
     refs = []
     model_ids = ["model_a", "model_b", "model_c"]
     requests_per_model = 3

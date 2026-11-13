@@ -106,7 +106,7 @@ Increase this timeout if your models take a long time to load and you prefer to 
 
 ## Using model multiplexing with batching
 
-You can combine model multiplexing with the `@serve.batch` decorator for efficient batched inference. When you use both features together, Ray Serve automatically splits batches by model ID to ensure each batch contains only requests for the same model. This prevents issues where a single batch would contain requests targeting different models.
+You can combine model multiplexing with the `@serve.batch` decorator for efficient batched inference. When you use both features together, Ray Serve batches requests for each model ID separately, so each batch contains only requests for one model. Each model ID fills its own batch up to `max_batch_size` or until `batch_wait_timeout_s` passes, and `max_concurrent_batches` applies to each model ID.
 
 The following example shows how to combine multiplexing with batching:
 
