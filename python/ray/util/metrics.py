@@ -1,7 +1,7 @@
 import logging
 import re
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray._private.ray_constants import env_bool
 from ray._raylet import (
@@ -297,6 +297,35 @@ class Histogram(Metric):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
         self._record(value, tags)
+
+    def _observe_many(
+        self,
+        values: Iterable[Union[int, float]],
+        tags: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Observe many values that share the same tags.
+
+        Equivalent to calling :meth:`observe` once per value, but the final tag
+        dict and its validation are computed only once. This is for hot paths
+        that buffer observations and flush them in a batch; the per-value cost
+        is dominated by the underlying record call, so a batched record in the
+        core metrics layer can later slot in here without changing callers.
+
+        Args:
+            values: Values to record.
+            tags: Tags to set or override for these observations.
+        """
+        if self._discard_metric:
+            return
+
+        final_tags = self._get_final_tags(tags)
+        self._validate_tags(final_tags)
+
+        record = self._metric.record
+        for value in values:
+            if not isinstance(value, (int, float)):
+                raise TypeError(f"value must be int or float, got {type(value)}.")
+            record(value, tags=final_tags)
 
     def __reduce__(self):
         deserializer = Histogram

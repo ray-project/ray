@@ -7,7 +7,7 @@ import sys
 import time
 import warnings
 from pprint import pformat
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import numpy as np
 import pytest
@@ -1159,6 +1159,35 @@ def test_custom_metrics_with_extra_tags(metric_mock):
     histogram.observe(8, tags=extra_tags)
     metric_mock.record.assert_called_with(8, tags=extra_tags)
     metric_mock.reset_mock()
+
+
+def test_custom_metrics_observe_many(metric_mock):
+    """A batch records every value with the same, once-validated tag dict."""
+    histogram = Histogram(
+        "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b")
+    ).set_default_tags({"b": "b"})
+    histogram._metric = metric_mock
+
+    histogram._observe_many([1.0, 2.0, 3.0], tags={"a": "x"})
+    assert metric_mock.record.call_args_list == [
+        call(1.0, tags={"a": "x", "b": "b"}),
+        call(2.0, tags={"a": "x", "b": "b"}),
+        call(3.0, tags={"a": "x", "b": "b"}),
+    ]
+    metric_mock.reset_mock()
+
+    # Missing required tags are rejected before anything is recorded.
+    with pytest.raises(ValueError):
+        histogram._observe_many([1.0, 2.0], tags={})
+    metric_mock.record.assert_not_called()
+
+
+def test_custom_metrics_observe_many_invalid_value(metric_mock):
+    histogram = Histogram("hist", description="hist", boundaries=[1.0, 3.0])
+    histogram._metric = metric_mock
+
+    with pytest.raises(TypeError):
+        histogram._observe_many([1.0, "bad"])
 
 
 def test_custom_metrics_info(metric_mock):
