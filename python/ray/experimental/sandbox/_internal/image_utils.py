@@ -705,12 +705,18 @@ def extract_tar_layer(
                 except OSError:
                     pass
             elif member.islnk():
+                link_rel = None
                 _makedirs_recorded(dest_dir, parent_dir, created, parent_mtimes)
                 link_name = member.linkname.lstrip("/")
                 if ".." not in link_name.split("/"):
                     link_dir, link_base = os.path.split(os.path.normpath(link_name))
                     try:
-                        link_parent, _ = _resolve_in_root(dest_dir, link_dir)
+                        link_parent, link_parent_rel = _resolve_in_root(
+                            dest_dir, link_dir
+                        )
+                        link_rel = os.path.normpath(
+                            os.path.join(link_parent_rel, link_base)
+                        )
                         # A hardlink names another member; if that is a
                         # symlink, link the symlink itself, not what it
                         # points at on the host.
@@ -723,22 +729,32 @@ def extract_tar_layer(
                         pass
 
             # Hardlinks are recorded under their own name too: the re-pack
-            # looks owners up by path, and whichever name of the inode it
-            # emits first decides the owner mkfs.erofs stores.
-            if ownership is not None and rel != ".":
-                if member.uid or member.gid:
-                    ownership[rel] = (member.uid, member.gid)
-                else:
-                    # A later layer re-shipping the path as root wins.
-                    ownership.pop(rel, None)
-            # Hardlinks too: the re-pack emits whichever name of the inode
-            # it meets first as the file.
-            if (
-                modes is not None
-                and rel != "."
-                and (member.isreg() or member.isdir() or member.islnk())
-            ):
-                modes[rel] = stat.S_IMODE(member.mode)
+            # looks owners and modes up by path, and whichever name of the
+            # inode it emits first (sorted order, not archive order) decides
+            # what mkfs.erofs stores. A hardlink shares its target's inode,
+            # so it takes the target's recorded owner and mode, not the ones
+            # in its own header (often 0: tar writers need not fill them).
+            if member.islnk():
+                for attrs in (ownership, modes):
+                    if attrs is None or rel == ".":
+                        continue
+                    if link_rel is not None and link_rel in attrs:
+                        attrs[rel] = attrs[link_rel]
+                    else:
+                        attrs.pop(rel, None)
+            else:
+                if ownership is not None and rel != ".":
+                    if member.uid or member.gid:
+                        ownership[rel] = (member.uid, member.gid)
+                    else:
+                        # A later layer re-shipping the path as root wins.
+                        ownership.pop(rel, None)
+                if (
+                    modes is not None
+                    and rel != "."
+                    and (member.isreg() or member.isdir())
+                ):
+                    modes[rel] = stat.S_IMODE(member.mode)
             # The layer ships this path: it keeps the archived mtime.
             if created is not None:
                 created.discard(rel)
