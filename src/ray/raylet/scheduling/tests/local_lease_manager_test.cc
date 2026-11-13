@@ -637,7 +637,6 @@ TEST_F(LocalLeaseManagerTest, TestFairShareAcrossMultipleFeasibleClasses) {
   // Test that fair share correctly limits granting when multiple feasible
   // classes compete for limited CPUs. Verifies pre computed aggregates
   // are maintained correctly.
-  //
   // Setup:
   //   Node: 3 CPUs, 3 workers.
   //   3 classes ("a", "b", "c"), each with 2 leases × {1 CPU}.
