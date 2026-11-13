@@ -98,6 +98,16 @@ def test_upload_and_download(tmp_path: Path):
     assert dest.read_text() == "a"
 
 
+def test_names_lists_only_the_files_directly_in_the_folder():
+    s3 = FakeS3()
+    s = store(s3)
+    for name in ("b.json", "a.json", "c.json"):
+        s3.put(BUCKET, f"{s.prefix}/results/{name}", b"")
+    s3.put(BUCKET, f"{s.prefix}/results/nested/x.json", b"")
+    s3.put(BUCKET, f"{s.prefix}/db/metadata.json", b"")
+    assert s.names("results") == ["a.json", "b.json", "c.json"]
+
+
 def test_s3_errors_become_store_errors(tmp_path: Path):
     s3 = FakeS3()
     s = store(s3)
