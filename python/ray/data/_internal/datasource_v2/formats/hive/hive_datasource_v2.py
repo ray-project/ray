@@ -42,7 +42,6 @@ class _HiveIndexer(FileIndexer):
         predicate=None,
         limit=None,
         projected_columns=None,
-        exact_count=False,
         shuffle_config=None,
         execution_idx=0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,

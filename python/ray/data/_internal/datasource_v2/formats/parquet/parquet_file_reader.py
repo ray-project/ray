@@ -224,7 +224,7 @@ def is_exact_count_read(
     separate manifest rows, so stubbing reorders that file's rows. Count does
     not care, but a user asking for ordered output does.
 
-    Shared by :class:`ParquetFileReader` and :class:`ParquetScanner` so the
+    Shared by :class:`ParquetFileReader` and ``FooterFileIndexer`` so the
     listing's stub decision and the reader's gate cannot drift.
     """
     return (

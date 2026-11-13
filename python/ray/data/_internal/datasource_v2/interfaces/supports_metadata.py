@@ -17,9 +17,9 @@ class MetadataType(Enum):
 class SupportsMetadata(abc.ABC):
     """A mix-in for readers that can cheaply produce ``BlockMetadata``.
 
-    The ``PushdownCountFiles`` rule uses this interface to optimize an
-    unfiltered row count: when it applies, ``Dataset.count()`` reads only file
-    metadata (e.g. the Parquet footer) instead of the actual data columns.
+    The ``PushdownCountFiles`` rule uses this interface to optimize row
+    counting: when it applies, ``Dataset.count()`` reads only file metadata
+    (e.g. the Parquet footer) instead of the actual data columns.
 
     Unlike V1 datasources, a V2 :class:`FileReader` already owns the
     ``filesystem`` (and any pushdowns), so ``read_metadata`` takes only the
@@ -35,7 +35,7 @@ class SupportsMetadata(abc.ABC):
         """Yield ``BlockMetadata`` for the files in ``file_manifest``.
 
         Used by the ``PushdownCountFiles`` rule to avoid reading data columns
-        for an unfiltered count.
+        when only the row count is needed.
 
         Args:
             file_manifest: A manifest of files to read metadata from.

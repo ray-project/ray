@@ -158,7 +158,6 @@ class NonSamplingFileIndexer(FileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
-        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
@@ -174,7 +173,7 @@ class NonSamplingFileIndexer(FileIndexer):
             3. Emit one ``FileChunk`` row per run of remaining pieces.
 
         ``FooterFileIndexer`` is the Parquet example. This default ignores
-        ``predicate``, ``limit``, ``projected_columns`` and ``exact_count``.
+        ``predicate``, ``limit`` and ``projected_columns``.
         """
         # ``list_file_infos`` already skips zero-size files and applies pruners,
         # so this method only batches them into manifests, one row per file.
@@ -201,7 +200,6 @@ class NonSamplingFileIndexer(FileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
-        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,

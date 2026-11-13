@@ -161,13 +161,12 @@ class FooterReader:
             filter_expr,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        # Set by the indexer only when the consuming scanner reports its reader
-        # will answer a fully matched run from its ``num_rows`` (the reader's
-        # exact-count gate; see ``is_exact_count_read`` in
-        # ``parquet_file_reader``). A matched run then costs zero read bytes,
-        # so the bin packer's byte budget must not charge for data it will
-        # never fetch. Outside that shape a matched run is read like any other,
-        # and its size stays real.
+        # Set by the indexer when the reader will answer a fully matched run
+        # from its ``num_rows`` (the exact-count gate; see
+        # ``is_exact_count_read`` in ``parquet_file_reader``). A matched run
+        # then costs zero read bytes, so the bin packer's byte budget must not
+        # charge for data it will never fetch. Outside that shape a matched run
+        # is read like any other, and its size stays real.
         self._stub_fully_matched = stub_fully_matched
         self._partition_value_parser = (
             _PartitionValueParser(self.partitioning)
@@ -248,9 +247,6 @@ class FooterReader:
             # only the read-byte estimate the bin packer budgets is zeroed.
             size_bytes=0 if stubbed else uncompressed,
             fully_matched=fully_matched,
-            # The packer keeps stubs in their own manifest rows. Record the
-            # decision on the chunk so a zero size cannot be mistaken for it.
-            stubbed=stubbed,
         )
 
     def _locate_filter_columns(

@@ -32,9 +32,7 @@ class DeriveListFilesPushdown(Rule):
     The limit is never derived onto a ``ListFiles`` that shuffles row groups
     (``FileShuffleConfig.small_chunks_shuffle``): the shuffle runs on the listed
     rows, so an early stop would shrink the shuffle pool. The scanner keeps its
-    limit; it applies after the shuffle. ``exact_count`` comes from the scanner
-    separately, so clearing the listing limit cannot make listing believe the
-    reader will stub runs it still has to read.
+    limit; it applies after the shuffle.
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
@@ -66,7 +64,6 @@ class DeriveListFilesPushdown(Rule):
                     # expression, not a bool. Rebuilt per call, so this is
                     # unequal whenever a pruner exists.
                     or input_op.partition_pruner is not pushdown.partition_pruner
-                    or input_op.exact_count != pushdown.exact_count
                 ):
                     # Spelled out rather than ``**asdict(pushdown)``: that
                     # deep-copies, which would clone the pruner on every pass.
@@ -76,7 +73,6 @@ class DeriveListFilesPushdown(Rule):
                         projected_columns=pushdown.projected_columns,
                         limit=limit,
                         partition_pruner=pushdown.partition_pruner,
-                        exact_count=pushdown.exact_count,
                     )
                     changed = True
                 new_inputs.append(input_op)

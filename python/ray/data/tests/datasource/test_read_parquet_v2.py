@@ -1105,8 +1105,12 @@ def test_count_uses_footer_matches_for_filter(tmp_path, restore_ctx, merge_schem
     assert sorted(row["a"] for row in rows) == [3, 4]
 
 
-def test_unfiltered_count_pushdown_preserves_read_remote_args(tmp_path, restore_ctx):
-    """The metadata count pass keeps the read's resource config."""
+def test_unfiltered_count_pushdown_keeps_its_cpu_share(tmp_path, restore_ctx):
+    """A footer-only count task must not inherit the read's resource request.
+
+    The task never decodes a data page, so charging it the read's 4 CPUs and
+    8 GiB would reserve resources it cannot use.
+    """
     from ray.data._internal.logical.operators.map_operator import MapBatches
 
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
@@ -1114,13 +1118,12 @@ def test_unfiltered_count_pushdown_preserves_read_remote_args(tmp_path, restore_
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(
         str(tmp_path),
-        ray_remote_args={"resources": {"count_pushdown_test": 0.001}},
+        ray_remote_args={"num_cpus": 4, "memory": 8 * 1024**3},
     )
 
     dag = _optimized_count_plan(ds).dag
     assert isinstance(dag, MapBatches)
-    assert dag.ray_remote_args["resources"] == {"count_pushdown_test": 0.001}
-    assert "num_cpus" in dag.ray_remote_args
+    assert dag.ray_remote_args == {"num_cpus": 0.5}
 
 
 def test_count_with_row_reducing_block_udf_reads(tmp_path, restore_ctx):
@@ -1294,10 +1297,11 @@ def test_filtered_count_reads_only_partial_runs(tmp_path, restore_ctx, monkeypat
 
     records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
     assert records
-    # Only f2's *partial* row group is opened. Its matched row group and f3
-    # must not be pulled into the read row by the packer's merge.
+    # f2 mixes a partial and a matched row group. The packer keeps them in one
+    # manifest row, so the file is read as a whole; only a wholly matched file
+    # such as f3 is answered from its footer.
     assert [row for record in records for row in record] == [
-        {"path": str(tmp_path / "f2.parquet"), "unit_ids": [0]}
+        {"path": str(tmp_path / "f2.parquet"), "unit_ids": [0, 1]}
     ]
 
 
@@ -1306,12 +1310,10 @@ def test_filtered_read_preserves_order_across_fully_matched_runs(
 ):
     """An ordered filtered read must not stub matched runs ahead of partial ones.
 
-    Listing splits this file at the match boundary (row groups 0 and 2 are
-    partial, row group 1 is fully matched). The reader used to emit every stub
-    before reading the rest, so the matched run's rows arrived ahead of the
-    earlier partial run. The packer keeping the same boundary for every
-    filtered read made the split unconditional, so gating only the reader
-    would still leave the file's runs in the wrong order.
+    Row group 1 is fully matched while 0 and 2 are partial. Stubs are emitted
+    before the runs that are read, so taking the shortcut here would move row
+    group 1 ahead of row group 0. Ordered reads therefore skip the shortcut and
+    read the file in order.
     """
     monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
     pq.write_table(

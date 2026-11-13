@@ -23,6 +23,9 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     ChunkedFile,
     FooterReaderActor,
 )
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+    is_exact_count_read,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
@@ -223,7 +226,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
-        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
@@ -247,7 +249,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
-            exact_count=exact_count,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
@@ -263,7 +264,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
-        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
@@ -290,7 +290,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
-            exact_count=exact_count,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
@@ -306,7 +305,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"],
         limit: Optional[int],
         projected_columns: Optional[List[str]],
-        exact_count: bool,
         shuffle_config: Optional["FileShuffleConfig"],
         execution_idx: int,
         excluded_read_unit_ids: Optional[AbstractSet[str]],
@@ -325,18 +323,25 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         coalesce_bytes = self._coalesce_bytes
         if shuffle_row_groups:
             coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
-        # ``exact_count`` is the reader's gate, decided by the scanner, not
-        # recomputed here from ``limit``: a row-group shuffle clears the
-        # listing limit while the scanner (and so the reader) keeps it. A zero
-        # size is only honest when the reader will answer the run from its
-        # footer, and the footer must have matched a predicate the reader
-        # applies; without one, ``fully_matched`` is the default rather than
-        # evidence.
+        # A zero size is only honest when the reader will answer a matched run
+        # from its footer instead of opening it, which is the exact-count gate.
+        # The listing carries the same predicate, projection and limit the
+        # scanner pushed, so it can make that call here; the footer must also
+        # have matched a predicate the reader applies, or ``fully_matched`` is
+        # the default rather than evidence. If the two ever disagree (a
+        # row-group shuffle clears the listing limit while the scanner keeps
+        # it), only task sizes change -- a run is opened that the packer
+        # thought was free -- never a count.
         read_predicate = combine_predicates(
             predicate,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        stub_fully_matched = exact_count and read_predicate is not None
+        stub_fully_matched = is_exact_count_read(
+            predicate=read_predicate,
+            limit=limit,
+            columns=projected_columns,
+            preserve_order=preserve_order,
+        )
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,

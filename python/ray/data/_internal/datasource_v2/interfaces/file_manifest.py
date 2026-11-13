@@ -34,20 +34,10 @@ class FileChunk:
 
     unit_ids: Tuple[int, ...]
     num_rows: int  # summed over the run
-    # Summed over the run; what a partitioner budgets on. A Parquet footer
-    # indexer sets this to 0 for a fully matched run only when an exact-count
-    # read will answer it from metadata instead of reading it.
-    size_bytes: int
+    size_bytes: int  # summed over the run; what a partitioner budgets on
     # Whether every row in the run survives the pushed predicate, so
     # ``num_rows`` is an exact survivor count that limit push-down may use.
     fully_matched: bool = True
-    # Whether the reader will answer this run from the listing's metadata
-    # (``num_rows``) instead of opening the file. Only an exact-count read may:
-    # see ``is_exact_count_read`` in ``parquet_file_reader``. The indexer sets
-    # it only under that gate, and the bin packer uses it -- not a zero
-    # ``size_bytes`` -- to keep stubs in their own manifest rows. A zero-size
-    # run that is not stubbed (e.g. an empty row group) is read normally.
-    stubbed: bool = False
     # Per-unit breakdown in ``unit_ids`` order, only for runs of more than
     # one unit, so a partitioner can split the run at exact boundaries.
     unit_sizes: Tuple[int, ...] = ()
@@ -72,9 +62,6 @@ class FileChunk:
             num_rows=int(metadata["num_rows"]),
             size_bytes=int(metadata["size_bytes"]),
             fully_matched=bool(metadata["fully_matched"]),
-            # ``get`` for chunk metadata written before this field existed and
-            # for sources that compose their own dicts.
-            stubbed=bool(metadata.get("stubbed", False)),
             unit_sizes=tuple(metadata["unit_sizes"]),
             unit_rows=tuple(metadata["unit_rows"]),
         )

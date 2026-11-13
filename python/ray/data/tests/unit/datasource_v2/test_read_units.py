@@ -252,31 +252,45 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
     "list_kwargs,expected",
     [
         pytest.param(
-            {"predicate": col("id") >= 0, "exact_count": True},
+            {"predicate": col("id") >= 0, "projected_columns": []},
             True,
-            id="reader-exact-count",
+            id="exact-count",
         ),
         pytest.param(
-            {"predicate": col("id") >= 0, "exact_count": False},
+            {"predicate": col("id") >= 0},
             False,
-            id="reader-will-read",
+            id="projected-columns",
         ),
         pytest.param(
-            {"predicate": None, "exact_count": True},
+            {"predicate": None, "projected_columns": []},
             False,
-            id="no-listing-predicate",
+            id="no-predicate",
+        ),
+        pytest.param(
+            {"predicate": col("id") >= 0, "projected_columns": [], "limit": 2},
+            False,
+            id="limit",
+        ),
+        pytest.param(
+            {
+                "predicate": col("id") >= 0,
+                "projected_columns": [],
+                "preserve_order": True,
+            },
+            False,
+            id="ordered",
         ),
     ],
 )
-def test_footer_indexer_stubs_only_when_the_reader_gate_allows(
+def test_footer_indexer_stubs_only_for_an_exact_count_read(
     tmp_path, monkeypatch, list_kwargs, expected
 ):
-    """The listing must charge zero bytes only for runs the reader will stub.
+    """The listing charges zero bytes only when the reader will not open a run.
 
-    ``exact_count`` is derived from the scanner's reader gate by
-    ``DeriveListFilesPushdown`` and forwarded through the listing task. The
-    indexer additionally needs a predicate the footer was matched against;
-    without one, ``fully_matched`` is the field's default rather than evidence.
+    It sees the same predicate, projection, limit and ordering the scanner
+    pushed, so it applies the reader's own gate: an empty projection, no limit,
+    a predicate the footer was matched against, and unordered output. Without a
+    predicate ``fully_matched`` is the field's default, not evidence.
     """
     import ray
 
