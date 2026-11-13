@@ -90,20 +90,28 @@ class BlockOutputBuffer:
         self._buffer = DelegatingBlockBuilder()
         self._finalized = False
         self._has_yielded_blocks = False
+        # When only a row target is set, the buffer is built once and output blocks
+        # are sliced off by row offset (see ``_next_row_sized_block``). While a built
+        # block is pending, ``self._buffer`` is empty.
+        self._pending_block: Optional[BlockAccessor] = None
+        self._pending_offset = 0
 
     def add(self, item: Any) -> None:
         """Add a single item to this output buffer."""
         assert not self._finalized
+        self._flush_pending_block()
         self._buffer.add(item)
 
     def add_batch(self, batch: DataBatch) -> None:
         """Add a data batch to this output buffer."""
         assert not self._finalized
+        self._flush_pending_block()
         self._buffer.add_batch(batch)
 
     def add_block(self, block: Block) -> None:
         """Add a data block to this output buffer."""
         assert not self._finalized
+        self._flush_pending_block()
         self._buffer.add_block(block)
 
     def finalize(self) -> None:
@@ -111,13 +119,33 @@ class BlockOutputBuffer:
         assert not self._finalized
         self._finalized = True
 
+    def _flush_pending_block(self) -> None:
+        # Move the rows that haven't been emitted yet back into the builder, so that
+        # newly added items are appended after them.
+        if self._pending_block is None:
+            return
+        assert self._buffer.num_rows() == 0
+        self._buffer.add_block(
+            self._pending_block.slice(
+                self._pending_offset, self._pending_block.num_rows(), copy=False
+            )
+        )
+        self._pending_block = None
+        self._pending_offset = 0
+
+    def _num_buffered_rows(self) -> int:
+        num_rows = self._buffer.num_rows()
+        if self._pending_block is not None:
+            num_rows += self._pending_block.num_rows() - self._pending_offset
+        return num_rows
+
     def _exceeded_buffer_row_limit(self) -> bool:
         if self._output_block_size_option.disable_block_shaping:
             return False
 
         return (
             self._max_num_rows_per_block() is not None
-            and self._buffer.num_rows() > self._max_num_rows_per_block()
+            and self._num_buffered_rows() > self._max_num_rows_per_block()
         )
 
     def _exceeded_buffer_size_limit(self) -> bool:
@@ -152,7 +180,7 @@ class BlockOutputBuffer:
 
         # TODO remove emitting empty blocks
         if self._finalized:
-            return not self._has_yielded_blocks or self._buffer.num_rows() > 0
+            return not self._has_yielded_blocks or self._num_buffered_rows() > 0
         elif self._output_block_size_option is None:
             # NOTE: When block sizing is disabled, buffer won't be producing
             #       incrementally, until the whole sequence is ingested. This
@@ -184,9 +212,39 @@ class BlockOutputBuffer:
             and block.num_rows() > self._max_num_rows_per_block()
         )
 
+    def _next_row_sized_block(self) -> Block:
+        # With only a row target, the slice size doesn't depend on the buffered data,
+        # so build the buffer once and hand out zero-copy slices by row offset instead
+        # of rebuilding the remainder after every output block.
+        target_num_rows = self._max_num_rows_per_block()
+        if self._pending_block is None:
+            block = self._buffer.build()
+            self._buffer = DelegatingBlockBuilder()
+            accessor = BlockAccessor.for_block(block)
+            if accessor.num_rows() <= target_num_rows:
+                return block
+            self._pending_block = accessor
+
+        start = self._pending_offset
+        end = min(start + target_num_rows, self._pending_block.num_rows())
+        block = self._pending_block.slice(start, end, copy=False)
+        if end == self._pending_block.num_rows():
+            self._pending_block = None
+            self._pending_offset = 0
+        else:
+            self._pending_offset = end
+        return block
+
     def next(self) -> Block:
         """Returns the next complete output block."""
         assert self.has_next()
+
+        if (
+            self._max_num_rows_per_block() is not None
+            and self._max_bytes_per_block() is None
+        ):
+            self._has_yielded_blocks = True
+            return self._next_row_sized_block()
 
         block = self._buffer.build()
 
