@@ -40,7 +40,7 @@ namespace: ray-system
 resources:
 - github.com/kuberay-project/kuberay/ray-operator/config/default?ref=v1.7.0
 EOF
-kubectl create -k kuberay-operator
+kubectl apply -k kuberay-operator
 ```
 
 ## Step 3: Validate Installation
