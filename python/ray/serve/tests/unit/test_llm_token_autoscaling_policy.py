@@ -40,7 +40,7 @@ def _context(
 def test_scales_from_time_weighted_mean():
     policy = LLMTokenAutoscalingPolicy(
         target_prefill_tokens_per_replica=100,
-        upscale_lookback_s=30,
+        lookback_s=30,
     )
 
     replicas, state = policy(
@@ -92,7 +92,7 @@ def test_router_clock_offsets_do_not_change_mean():
 def test_carries_gauge_across_window_boundary():
     policy = LLMTokenAutoscalingPolicy(
         target_prefill_tokens_per_replica=100,
-        upscale_lookback_s=20,
+        lookback_s=20,
     )
 
     replicas, _ = policy(
@@ -166,7 +166,7 @@ def test_clamps_negative_snapshots_to_zero():
 def test_lookback_longer_than_history_averages_available_samples():
     policy = LLMTokenAutoscalingPolicy(
         target_prefill_tokens_per_replica=100,
-        upscale_lookback_s=60,
+        lookback_s=60,
     )
 
     replicas, _ = policy(
@@ -186,7 +186,7 @@ def test_lookback_longer_than_history_averages_available_samples():
         (
             {
                 "target_prefill_tokens_per_replica": 100,
-                "upscale_lookback_s": 0,
+                "lookback_s": 0,
             },
             "positive and finite",
         ),

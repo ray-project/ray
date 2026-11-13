@@ -46,13 +46,13 @@ class LLMTokenAutoscalingPolicy:
     """Scale an LLM deployment based on outstanding uncached prefill tokens.
 
     Each KV router reports the same global workload history. The policy computes a
-    time-weighted mean over ``upscale_lookback_s`` for each router, then takes the
+    time-weighted mean over ``lookback_s`` for each router, then takes the
     maximum to conservatively reconcile their replicated global views.
 
     Args:
         target_prefill_tokens_per_replica: Mean outstanding uncached prefill tokens
             that one replica should handle.
-        upscale_lookback_s: Window used for the time-weighted mean. A window
+        lookback_s: Window used for the time-weighted mean. A window
             longer than the retained history (``look_back_period_s``) averages
             over the history that is available.
     """
@@ -60,7 +60,7 @@ class LLMTokenAutoscalingPolicy:
     def __init__(
         self,
         target_prefill_tokens_per_replica: int,
-        upscale_lookback_s: float = 30,
+        lookback_s: float = 30,
     ):
         if (
             not math.isfinite(target_prefill_tokens_per_replica)
@@ -69,11 +69,11 @@ class LLMTokenAutoscalingPolicy:
             raise ValueError(
                 "target_prefill_tokens_per_replica must be positive and finite"
             )
-        if not math.isfinite(upscale_lookback_s) or upscale_lookback_s <= 0:
-            raise ValueError("upscale_lookback_s must be positive and finite")
+        if not math.isfinite(lookback_s) or lookback_s <= 0:
+            raise ValueError("lookback_s must be positive and finite")
 
         self._target_prefill_tokens_per_replica = target_prefill_tokens_per_replica
-        self._upscale_lookback_s = upscale_lookback_s
+        self._lookback_s = lookback_s
 
     def _required_capacity(self, prefill_tokens: float) -> float:
         return prefill_tokens / self._target_prefill_tokens_per_replica
@@ -85,7 +85,7 @@ class LLMTokenAutoscalingPolicy:
         capacity_by_source = []
         for snapshots in snapshots_by_source.values():
             window_end = snapshots[-1][0]
-            window_start = window_end - self._upscale_lookback_s
+            window_start = window_end - self._lookback_s
             capacity_samples = [
                 (timestamp, self._required_capacity(prefill_tokens))
                 for timestamp, prefill_tokens in snapshots
