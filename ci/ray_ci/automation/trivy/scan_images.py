@@ -4,10 +4,12 @@ For each image the build pushed to its wanda cache, this:
 1. checks the ref is a single-platform image for the expected architecture;
 2. pulls every image of the group into one shared OCI layout with crane, so
    layers shared across Python versions and image types are stored once;
-3. runs the pinned Trivy on each image, by digest, in a throwaway container
+3. downloads this build's vulnerability DBs from its S3 folder (staged by
+   ``trivy_db``) and checks each against the sha256 pinned in metadata.json;
+4. runs the pinned Trivy on each image, by digest, in a throwaway container
    with no network, no credentials, no inherited environment, a non-root
    user, a read-only root and no capabilities;
-4. writes ``<name>.status.json`` and ``<name>.json.gz``, the input contract
+5. writes ``<name>.status.json`` and ``<name>.json.gz``, the input contract
    of ``trivy_report``.
 
 The job talks to the host's docker daemon, so bind mounts would resolve host
@@ -43,12 +45,13 @@ import click
 import runfiles
 
 from ci.ray_ci.automation.push_ray_image import RayImagePushContext
-from ci.ray_ci.automation.trivy import registry
+from ci.ray_ci.automation.trivy import registry, scan_store
+from ci.ray_ci.automation.trivy.scan_store import ScanStore, StoreError
 from ci.ray_ci.automation.trivy.trivy_db import (
+    DB_FOLDER,
+    DB_METADATA,
     DB_SOURCES,
     DbSource,
-    db_layer,
-    mirror_ref,
 )
 from ci.ray_ci.docker_container import RayType
 from ci.ray_ci.ray_image import RayImageError
@@ -87,6 +90,7 @@ DB_FILES = {
     "db": {"trivy.db", "metadata.json"},
     "java_db": {"trivy-java.db", "metadata.json"},
 }
+SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class ScanError(Exception):
@@ -182,7 +186,7 @@ def build_targets(
 
 def _describe(e: BaseException) -> str:
     """Expected failures read as their message; anything else names its type."""
-    if isinstance(e, (ScanError, registry.RegistryError)):
+    if isinstance(e, (ScanError, StoreError, registry.RegistryError)):
         return str(e)
     return f"{type(e).__name__}: {e}"
 
@@ -232,19 +236,35 @@ def _safe_extract(tarball: Path, dest: Path, allowed: set[str]) -> None:
         raise ScanError(f"{tarball.name} lacks {sorted(missing)}")
 
 
+def load_db_pins(store: ScanStore, workdir: Path) -> dict[str, Any]:
+    """The DB pins trivy_db recorded for this build."""
+    path = store.download(DB_FOLDER, DB_METADATA, workdir / DB_METADATA)
+    try:
+        pins = json.loads(path.read_text())
+    except ValueError as e:
+        raise ScanError(f"{store.url(DB_FOLDER)}{DB_METADATA} is not JSON: {e}")
+    if not isinstance(pins, dict):
+        raise ScanError(f"{store.url(DB_FOLDER)}{DB_METADATA} is not a JSON object")
+    return pins
+
+
 def fetch_db(
-    source: DbSource, db_repo: str, build_id: str, workdir: Path
+    source: DbSource, store: ScanStore, pins: dict[str, Any], workdir: Path
 ) -> tuple[Path, dict[str, Any]]:
-    """Fetch this build's DB mirror by digest and verify it."""
-    ref = mirror_ref(db_repo, build_id, source)
-    manifest_digest = registry.digest(ref)
-    layer = db_layer(registry.manifest(ref), source.media_type)
-    tarball = workdir / f"{source.name}.tar.gz"
-    registry.fetch_blob(ref.rsplit(":", 1)[0], layer["digest"], tarball)
+    """Download this build's copy of a DB and verify it against its pin."""
+    pin = pins.get(source.name)
+    blob = pin.get("blob") if isinstance(pin, dict) else None
+    if not isinstance(blob, str) or not SHA256_DIGEST.match(blob):
+        raise ScanError(f"{DB_METADATA} has no valid {source.name} pin: {pin!r}")
+    tarball = store.download(DB_FOLDER, source.file_name, workdir / source.file_name)
+    actual = registry.sha256_file(tarball)
+    if actual != blob:
+        raise ScanError(f"{source.file_name} has digest {actual}, pinned {blob}")
     dest = workdir / source.name
     _safe_extract(tarball, dest, DB_FILES[source.name])
     tarball.unlink()
-    return dest, {"ref": ref, "manifest": manifest_digest, "blob": layer["digest"]}
+    recorded = ("source", "manifest", "blob", "created")
+    return dest, {key: pin.get(key, "") for key in recorded}
 
 
 def _run(args: Sequence[str], check: bool = True) -> str:
@@ -495,8 +515,7 @@ def write_status(results_dir: Path, target: Target) -> None:
 def scan_group(
     targets: Sequence[Target],
     architecture: str,
-    db_repo: str,
-    build_id: str,
+    store: ScanStore,
     results_dir: Path,
     workdir: Path,
     base_image: str,
@@ -510,9 +529,7 @@ def scan_group(
             check_target(target, architecture)
         ready = [t for t in targets if not t.error]
         if ready:
-            _scan_ready(
-                ready, architecture, db_repo, build_id, results_dir, workdir, base_image
-            )
+            _scan_ready(ready, architecture, store, results_dir, workdir, base_image)
     except Exception as e:
         for target in targets:
             if not target.error and not target.scanned:
@@ -527,18 +544,16 @@ def scan_group(
 def _scan_ready(
     ready: Sequence[Target],
     architecture: str,
-    db_repo: str,
-    build_id: str,
+    store: ScanStore,
     results_dir: Path,
     workdir: Path,
     base_image: str,
 ) -> None:
     dbs: dict[str, Path] = {}
     pins: dict[str, Any] = {}
+    db_pins = load_db_pins(store, workdir)
     for source in DB_SOURCES:
-        dbs[source.name], pins[source.name] = fetch_db(
-            source, db_repo, build_id, workdir
-        )
+        dbs[source.name], pins[source.name] = fetch_db(source, store, db_pins, workdir)
     layout = workdir / "layout"
     platform = f"linux/{OCI_ARCH[architecture]}"
     registry.pull(sorted({t.pinned_ref for t in ready}), layout, platform)
@@ -580,15 +595,10 @@ def _scan_ready(
 @click.option("--work-dir", type=click.Path(file_okay=False, path_type=Path))
 @click.option("--rayci-work-repo", required=True, envvar="RAYCI_WORK_REPO")
 @click.option("--rayci-build-id", required=True, envvar="RAYCI_BUILD_ID")
-@click.option(
-    "--db-repo",
-    help="Repo holding this build's DB mirror (default: the work repo).",
-)
-@click.option("--branch", required=True, envvar="BUILDKITE_BRANCH")
-@click.option("--commit", required=True, envvar="BUILDKITE_COMMIT")
 @click.option("--rayci-schedule", default="", envvar="RAYCI_SCHEDULE")
 @click.option("--pull-request", default="false", envvar="BUILDKITE_PULL_REQUEST")
 @click.option("--base-image", default=BASE_IMAGE, show_default=True)
+@scan_store.build_options
 def main(
     architecture: str,
     platform: str,
@@ -597,12 +607,10 @@ def main(
     work_dir: Optional[Path],
     rayci_work_repo: str,
     rayci_build_id: str,
-    db_repo: Optional[str],
-    branch: str,
-    commit: str,
     rayci_schedule: str,
     pull_request: str,
     base_image: str,
+    store: ScanStore,
 ) -> None:
     signal.signal(signal.SIGTERM, _exit_on_sigterm)
     targets = build_targets(
@@ -611,28 +619,22 @@ def main(
         architecture,
         rayci_work_repo,
         rayci_build_id,
-        branch,
-        commit,
+        store.branch,
+        store.commit,
         rayci_schedule,
         pull_request,
     )
-    db_repo = db_repo or rayci_work_repo
-
-    def login() -> None:
-        for repo in sorted({rayci_work_repo, db_repo}):
-            registry.login_if_ecr(repo, ecr_docker_login)
 
     results_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
         scan_group(
             targets,
             architecture,
-            db_repo,
-            rayci_build_id,
+            store,
             results_dir,
             Path(tmp),
             base_image,
-            login,
+            lambda: registry.login_if_ecr(rayci_work_repo, ecr_docker_login),
         )
     failed = [t for t in targets if t.error]
     for target in failed:

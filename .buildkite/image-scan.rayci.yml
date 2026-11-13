@@ -8,13 +8,14 @@
 # soft_fail: a scan must never block a release.
 # Tooling: ci/ray_ci/automation/trivy/.
 #
-# trivy_db mirrors the vulnerability DBs into the build's work repo once.
-# Each scan job then scans one (architecture, platform) group by digest, with
-# Trivy in a network-less container, and writes trivy/results/ artifacts.
-# Images sharing a platform share most layers, so a group pulls them once.
+# trivy_db stages the vulnerability DBs in the build's S3 folder once
+# (scan_store.py names it). Each scan job then scans one (architecture,
+# platform) group by digest, with Trivy in a network-less container, and
+# writes trivy/results/ artifacts. Images sharing a platform share most
+# layers, so a group pulls them once.
 group: image scan
 steps:
-  - label: ":shield: trivy: mirror vulnerability DBs"
+  - label: ":shield: trivy: stage vulnerability DBs"
     key: trivy_db
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: small

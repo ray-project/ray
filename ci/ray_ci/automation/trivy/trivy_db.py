@@ -1,13 +1,14 @@
-"""Mirror Trivy's vulnerability DBs into this build's ECR work repo.
+"""Stage Trivy's vulnerability DBs in this build's S3 folder.
 
 Runs once per scanning build, before the scan jobs. Each DB is resolved to a
-digest once, then copied by that digest to
-``${RAYCI_WORK_REPO}:${RAYCI_BUILD_ID}-trivy-db`` (and ``-trivy-java-db``), so
-every scan job in the build uses the same DB snapshot, and the public mirror
+digest once, and its layer is downloaded by that digest (crane checks the
+sha256) and uploaded to the build's ``db/`` folder (see ``scan_store``). Every
+scan job in the build then uses the same DB snapshot, and the public mirror
 sees one pull per build instead of one per scan job.
 
-Also writes ``metadata.json`` (the Trivy pin and the DB pins) for
-``trivy_report --metadata``.
+``metadata.json`` records the Trivy pin and the DB pins. It goes up last,
+so a scan job that finds it can count on both DBs being in place; it is also
+written to ``--output`` for ``trivy_report --metadata``.
 
 Example:
     bazel run //ci/ray_ci/automation/trivy:trivy_db -- \\
@@ -17,7 +18,9 @@ Example:
 import json
 import logging
 import os
+import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional
@@ -25,18 +28,20 @@ from typing import Any, Mapping, Optional
 import click
 import runfiles
 
-from ci.ray_ci.automation.trivy import registry
-from ci.ray_ci.utils import ecr_docker_login
+from ci.ray_ci.automation.trivy import registry, scan_store
+from ci.ray_ci.automation.trivy.scan_store import ScanStore
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 TRIVY_PIN_RUNFILE = "io_ray/ci/ray_ci/automation/trivy/trivy_pin.json"
 CREATED_ANNOTATION = "org.opencontainers.image.created"
+DB_FOLDER = "db"
+DB_METADATA = "metadata.json"
 
 
 class TrivyDbError(Exception):
-    """The DB could not be mirrored or verified."""
+    """The DB could not be staged or verified."""
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,10 @@ class DbSource:
     @property
     def upstream_repo(self) -> str:
         return self.upstream.rsplit(":", 1)[0]
+
+    @property
+    def file_name(self) -> str:
+        return f"trivy-{self.name.replace('_', '-')}.tar.gz"
 
 
 DB_SOURCES = (
@@ -65,10 +74,6 @@ DB_SOURCES = (
         media_type="application/vnd.aquasec.trivy.javadb.layer.v1.tar+gzip",
     ),
 )
-
-
-def mirror_ref(work_repo: str, build_id: str, source: DbSource) -> str:
-    return f"{work_repo}:{build_id}-trivy-{source.name.replace('_', '-')}"
 
 
 def db_layer(manifest: Mapping[str, Any], media_type: str) -> Mapping[str, Any]:
@@ -111,23 +116,22 @@ def _ghcr_layer_matches(source: DbSource, layer_digest: str) -> Optional[bool]:
     return True
 
 
-def mirror_db(
-    source: DbSource, work_repo: str, build_id: str, check_ghcr: bool = True
+def stage_db(
+    source: DbSource, store: ScanStore, workdir: Path, check_ghcr: bool = True
 ) -> dict[str, Any]:
+    """Upload one DB, pinned by digest, to the build's db/ folder."""
     manifest_digest = registry.digest(source.upstream)
     pinned = f"{source.upstream_repo}@{manifest_digest}"
     manifest = registry.manifest(pinned)
     layer = db_layer(manifest, source.media_type)
     ghcr_matches = _ghcr_layer_matches(source, layer["digest"]) if check_ghcr else None
 
-    mirror = mirror_ref(work_repo, build_id, source)
-    registry.copy(pinned, mirror)
-    mirrored = registry.digest(mirror)
-    if mirrored != manifest_digest:
-        raise TrivyDbError(
-            f"{mirror} has digest {mirrored} after copying {manifest_digest}"
-        )
-    logger.info(f"Mirrored {source.upstream} ({manifest_digest}) to {mirror}")
+    tarball = workdir / source.file_name
+    registry.fetch_blob(source.upstream_repo, layer["digest"], tarball)
+    store.upload(tarball, DB_FOLDER)
+    tarball.unlink()
+    url = store.url(DB_FOLDER) + source.file_name
+    logger.info(f"Uploaded {pinned} ({layer['digest']}) to {url}")
     return {
         "source": source.upstream,
         "manifest": manifest_digest,
@@ -135,7 +139,7 @@ def mirror_db(
         "size": layer.get("size", 0),
         "media_type": source.media_type,
         "created": _created(manifest),
-        "mirror": mirror,
+        "object": url,
         "ghcr_layer_matches": ghcr_matches,
     }
 
@@ -146,8 +150,6 @@ def load_trivy_pin() -> dict[str, Any]:
 
 
 @click.command()
-@click.option("--rayci-work-repo", required=True, envvar="RAYCI_WORK_REPO")
-@click.option("--rayci-build-id", required=True, envvar="RAYCI_BUILD_ID")
 @click.option(
     "--output",
     required=True,
@@ -155,24 +157,32 @@ def load_trivy_pin() -> dict[str, Any]:
     help="Where to write metadata.json.",
 )
 @click.option(
+    "--work-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Where to download the DBs (default: a temp dir).",
+)
+@click.option(
     "--check-ghcr/--no-check-ghcr",
     default=True,
     help="Compare each DB layer with ghcr.io's copy.",
 )
+@scan_store.build_options
 def main(
-    rayci_work_repo: str, rayci_build_id: str, output: Path, check_ghcr: bool
+    output: Path, work_dir: Optional[Path], check_ghcr: bool, store: ScanStore
 ) -> None:
     if not output.is_absolute():
         output = Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")) / output
-    registry.login_if_ecr(rayci_work_repo, ecr_docker_login)
     metadata = {"trivy": load_trivy_pin()}
-    for source in DB_SOURCES:
-        metadata[source.name] = mirror_db(
-            source, rayci_work_repo, rayci_build_id, check_ghcr
-        )
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(metadata, indent=2) + "\n")
-    logger.info(f"Wrote {output}")
+    with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
+        for source in DB_SOURCES:
+            metadata[source.name] = stage_db(source, store, Path(tmp), check_ghcr)
+        staged = Path(tmp) / DB_METADATA
+        staged.write_text(json.dumps(metadata, indent=2) + "\n")
+        # Last: scan jobs take metadata.json to mean every DB is in place.
+        store.upload(staged, DB_FOLDER)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(staged, output)
+    logger.info(f"Wrote {output} and {store.url(DB_FOLDER)}{DB_METADATA}")
 
 
 if __name__ == "__main__":

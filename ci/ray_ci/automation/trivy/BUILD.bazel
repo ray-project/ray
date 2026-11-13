@@ -62,6 +62,39 @@ py_test(
     ],
 )
 
+py_library(
+    name = "scan_store",
+    srcs = ["scan_store.py"],
+    deps = [
+        ci_require("boto3"),
+        ci_require("click"),
+    ],
+)
+
+py_library(
+    name = "fake_s3",
+    testonly = True,
+    srcs = ["fake_s3.py"],
+    deps = [ci_require("botocore")],
+)
+
+py_test(
+    name = "test_scan_store",
+    size = "small",
+    srcs = ["test_scan_store.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":fake_s3",
+        ":scan_store",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
 py_binary(
     name = "trivy_db",
     srcs = ["trivy_db.py"],
@@ -69,7 +102,7 @@ py_binary(
     exec_compatible_with = ["//bazel:py3"],
     deps = [
         ":registry",
-        "//ci/ray_ci:ray_ci_lib",
+        ":scan_store",
         ci_require("bazel-runfiles"),
         ci_require("click"),
     ],
@@ -85,6 +118,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":fake_s3",
         ":trivy_db",
         ci_require("click"),
         ci_require("pytest"),
@@ -98,6 +132,7 @@ py_binary(
     exec_compatible_with = ["//bazel:py3"],
     deps = [
         ":registry",
+        ":scan_store",
         ":trivy_db",
         # RayImagePushContext, so refs and tags match the publish step's.
         "//ci/ray_ci/automation",
@@ -118,6 +153,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":fake_s3",
         ":scan_images",
         ":trivy_report",
         ci_require("click"),

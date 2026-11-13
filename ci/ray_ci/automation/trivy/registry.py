@@ -46,11 +46,6 @@ def config(ref: str) -> dict[str, Any]:
     return json.loads(_crane(["config", ref]))
 
 
-def copy(src: str, dst: str) -> None:
-    """Copy by reference; crane keeps the manifest digest unchanged."""
-    _crane(["copy", src, dst])
-
-
 def pull(refs: Sequence[str], layout: Path, platform: str) -> None:
     """Pull every ref into one OCI layout, storing shared layers once."""
     _crane(["pull", "--format", "oci", "--platform", platform, *refs, str(layout)])

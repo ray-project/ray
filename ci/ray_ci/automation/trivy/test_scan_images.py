@@ -14,6 +14,7 @@ from click.testing import CliRunner
 
 from ci.ray_ci.automation import push_ray_image
 from ci.ray_ci.automation.trivy import registry, scan_images
+from ci.ray_ci.automation.trivy.fake_s3 import FakeS3
 from ci.ray_ci.automation.trivy.scan_images import (
     ContainedTrivy,
     ScanError,
@@ -22,24 +23,37 @@ from ci.ray_ci.automation.trivy.scan_images import (
     parse_image,
     scan_group,
 )
-from ci.ray_ci.automation.trivy.trivy_db import TrivyDbError
+from ci.ray_ci.automation.trivy.scan_store import BUCKET, ScanStore
+from ci.ray_ci.automation.trivy.trivy_db import DB_SOURCES, TrivyDbError
 from ci.ray_ci.automation.trivy.trivy_report import load_scans
 
 FIXTURE = Path(__file__).parent / "testdata" / "ray-py3.12-cpu.json"
 WORK_REPO = "123.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp"
 OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 OCI_INDEX = "application/vnd.oci.image.index.v1+json"
+COMMIT = "80ceee083e49b1ae709c149d3a15862fe12ce8cb"
+BUILD_ENV = {
+    "BUILDKITE_PIPELINE_SLUG": "postmerge",
+    "BUILDKITE_BRANCH": "master",
+    "BUILDKITE_BUILD_NUMBER": "20897",
+    "BUILDKITE_COMMIT": COMMIT,
+}
+
+
+def store(s3: Optional[FakeS3] = None) -> ScanStore:
+    return ScanStore.for_build("postmerge", "master", "20897", COMMIT, client=s3)
 
 
 @pytest.fixture(autouse=True)
 def no_real_processes(monkeypatch):
-    """Fail any test that would run real crane or docker, i.e. reach a
-    registry or the docker host instead of the fakes."""
+    """Fail any test that would run real crane or docker, or make an S3
+    client, i.e. reach a registry, the docker host or S3 instead of the fakes."""
 
     def refuse(args, *a, **k):
         raise AssertionError(f"test tried to run {list(args)[:3]}")
 
     monkeypatch.setattr(scan_images.subprocess, "run", refuse)
+    monkeypatch.setattr(scan_images.scan_store.boto3, "client", refuse)
 
 
 def targets(*images: tuple, platform: str = "cpu", arch: str = "x86_64") -> list:
@@ -238,11 +252,13 @@ def run_group(tmp_path: Path, group: list, docker: FakeDocker, manifests: dict):
         digest=digest,
         pull=fake_pull,
     ), mock.patch.object(scan_images, "_run", docker), mock.patch.object(
+        scan_images, "load_db_pins", return_value={}
+    ), mock.patch.object(
         scan_images, "fetch_db", side_effect=lambda s, *_: (tmp_path, {"blob": s.name})
     ), mock.patch.object(
         scan_images, "stage", fake_stage
     ):
-        scan_group(group, "x86_64", WORK_REPO, "abc123", results, tmp_path, "base")
+        scan_group(group, "x86_64", store(), results, tmp_path, "base")
     return results
 
 
@@ -303,8 +319,12 @@ def test_a_group_failure_marks_every_image(tmp_path: Path):
         config=mock.Mock(return_value={"architecture": "amd64"}),
         digest=mock.Mock(return_value="sha256:d"),
         pull=broken_pull,
-    ), mock.patch.object(scan_images, "fetch_db", return_value=(tmp_path, {})):
-        scan_group(group, "x86_64", WORK_REPO, "abc123", results, tmp_path, "base")
+    ), mock.patch.object(
+        scan_images, "load_db_pins", return_value={}
+    ), mock.patch.object(
+        scan_images, "fetch_db", return_value=(tmp_path, {})
+    ):
+        scan_group(group, "x86_64", store(), results, tmp_path, "base")
     for scan in load_scans(results):
         assert "group failed before scanning: toomanyrequests" in scan.error
 
@@ -424,19 +444,12 @@ def test_main_exits_nonzero_when_any_image_was_not_scanned(
                 WORK_REPO,
                 "--rayci-build-id",
                 "abc123",
-                "--db-repo",
-                "localhost:5000/citemp",
-                "--branch",
-                "master",
-                "--commit",
-                "80ceee083e49b1ae709c149d3a15862fe12ce8cb",
             ],
+            env=BUILD_ENV,
         )
     assert result.exit_code == code, result.output
-    assert {c.args[0] for c in login.call_args_list} == {
-        WORK_REPO,
-        "localhost:5000/citemp",
-    }
+    # Only the images need a login; the DBs come from S3.
+    assert [c.args[0] for c in login.call_args_list] == [WORK_REPO]
 
 
 def statuses(results: Path) -> dict:
@@ -454,9 +467,11 @@ def test_an_unexpected_group_error_is_recorded_for_every_image(tmp_path: Path):
         config=mock.Mock(return_value={"architecture": "amd64"}),
         digest=mock.Mock(return_value="sha256:d"),
     ), mock.patch.object(
+        scan_images, "load_db_pins", return_value={}
+    ), mock.patch.object(
         scan_images, "fetch_db", side_effect=TrivyDbError("expected one layer, found 0")
     ):
-        scan_group(group, "x86_64", WORK_REPO, "abc123", tmp_path, tmp_path, "base")
+        scan_group(group, "x86_64", store(), tmp_path, tmp_path, "base")
     for record in statuses(tmp_path).values():
         assert record["status"] == "error"
         assert "TrivyDbError: expected one layer, found 0" in record["error"]
@@ -469,7 +484,7 @@ def test_an_unexpected_check_error_is_recorded(tmp_path: Path):
         digest=mock.Mock(return_value="sha256:d1"),
         manifest=mock.Mock(side_effect=json.JSONDecodeError("bad", "", 0)),
     ):
-        scan_group(group, "x86_64", WORK_REPO, "abc123", tmp_path, tmp_path, "base")
+        scan_group(group, "x86_64", store(), tmp_path, tmp_path, "base")
     (record,) = statuses(tmp_path).values()
     assert record["status"] == "error"
     assert "JSONDecodeError" in record["error"]
@@ -497,11 +512,8 @@ def test_a_login_failure_is_recorded_for_every_image(tmp_path: Path):
                 WORK_REPO,
                 "--rayci-build-id",
                 "abc123",
-                "--branch",
-                "master",
-                "--commit",
-                "80ceee083e49b1ae709c149d3a15862fe12ce8cb",
             ],
+            env=BUILD_ENV,
         )
     assert result.exit_code == 1, result.output
     records = statuses(results)
@@ -676,6 +688,65 @@ def test_db_extraction_reads_the_tarball_once(tmp_path: Path):
             tarball, tmp_path / "db", {"trivy.db", "metadata.json"}
         )
     assert modes == ["r|gz"]
+
+
+DB, JAVA_DB = DB_SOURCES
+DB_TARBALL_MEMBERS = {"trivy.db": b"x", "metadata.json": b"{}"}
+
+
+def put_db(s3: FakeS3, tmp_path: Path, pinned_blob: Optional[str] = None) -> dict:
+    """Upload a DB tarball as trivy_db would; returns the pins."""
+    tarball = tmp_path / "upload.tar.gz"
+    make_tar(tarball, DB_TARBALL_MEMBERS)
+    data = tarball.read_bytes()
+    s3.put(BUCKET, f"{store().prefix}/db/{DB.file_name}", data)
+    blob = pinned_blob or "sha256:" + hashlib.sha256(data).hexdigest()
+    return {"db": {"source": DB.upstream, "manifest": "sha256:m", "blob": blob}}
+
+
+def test_fetch_db_extracts_the_pinned_tarball(tmp_path: Path):
+    s3 = FakeS3()
+    pins = put_db(s3, tmp_path)
+    dest, pin = scan_images.fetch_db(DB, store(s3), pins, tmp_path)
+    assert sorted(p.name for p in dest.iterdir()) == ["metadata.json", "trivy.db"]
+    assert pin == {**pins["db"], "created": ""}
+    assert not (tmp_path / DB.file_name).exists()
+
+
+@pytest.mark.parametrize(
+    ("pins", "error"),
+    [
+        pytest.param({}, "no valid db pin", id="no-pin"),
+        pytest.param({"db": {"blob": "sha256:short"}}, "no valid db pin", id="bad-pin"),
+        pytest.param(
+            {"db": {"blob": "sha256:" + "0" * 64}}, "has digest", id="wrong-digest"
+        ),
+    ],
+)
+def test_fetch_db_refuses_a_tarball_its_pin_does_not_match(
+    tmp_path: Path, pins: dict, error: str
+):
+    s3 = FakeS3()
+    put_db(s3, tmp_path)
+    with pytest.raises(ScanError, match=error):
+        scan_images.fetch_db(DB, store(s3), pins, tmp_path)
+    assert not (tmp_path / "db").exists()
+
+
+def test_a_build_without_staged_dbs_records_why(tmp_path: Path):
+    """trivy_db failed, so metadata.json was never uploaded."""
+    group = targets(("ray", "3.12"))
+    with mock.patch.multiple(
+        scan_images.registry,
+        manifest=mock.Mock(return_value={"mediaType": OCI_MANIFEST}),
+        config=mock.Mock(return_value={"architecture": "amd64"}),
+        digest=mock.Mock(return_value="sha256:d"),
+    ):
+        scan_group(group, "x86_64", store(FakeS3()), tmp_path, tmp_path, "base")
+    (record,) = statuses(tmp_path).values()
+    assert record["status"] == "error"
+    assert record["error"].startswith("group failed before scanning: download of s3://")
+    assert "/db/metadata.json failed" in record["error"]
 
 
 if __name__ == "__main__":
