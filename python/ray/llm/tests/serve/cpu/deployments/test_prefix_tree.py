@@ -297,6 +297,22 @@ class TestPrefixTreeMatch:
         assert matched_text == "hellothere"
         assert matched_tenants == ["tenant_2"]
 
+    def test_prefix_match_long_full_segments(self, tree: PrefixTree) -> None:
+        """Test matching long nodes shared by multiple tenants."""
+        shared = "shared context " * 512
+        tenant_1_text = shared + "alpha"
+        tree.add_tenants(["tenant_1", "tenant_2"], 0)
+        tree.insert(tenant_1_text, "tenant_1", 1)
+        tree.insert(shared + "beta", "tenant_2", 2)
+        tree.insert(tenant_1_text, "tenant_1", 3)
+
+        matched_text, matched_tenants = tree.prefix_match(
+            tenant_1_text + " continuation", ["tenant_1", "tenant_2"]
+        )
+
+        assert matched_text == tenant_1_text
+        assert matched_tenants == ["tenant_1"]
+
     def test_prefix_match_exact_match(self, tree: PrefixTree) -> None:
         """Test prefix_match with an exact match for a single tenant."""
         tree.add_tenants(["tenant_1"], 0)
