@@ -219,7 +219,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         local_path = os.path.normpath(os.path.expanduser(str(local_path)))
 
         if not user_provided_path:
-            self._download_to_temporary_dir(local_path)
+            self._download_to_temporary_dir(local_path, keep=True)
             return local_path
 
         os.makedirs(local_path, exist_ok=True)
@@ -245,7 +245,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
         return local_path
 
-    def _download_to_temporary_dir(self, local_path: str) -> None:
+    def _download_to_temporary_dir(self, local_path: str, keep: bool) -> None:
         """Download the checkpoint into its temporary directory, at most once.
 
         All processes on a node that access this checkpoint share this directory,
@@ -257,16 +257,26 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
         Args:
             local_path: The temporary directory to download the checkpoint to.
+            keep: Whether to keep the directory after all ``as_directory()``
+                readers exit. ``to_directory()`` callers can't unregister when
+                they're done, so they register a reader that never exits.
         """
         download_complete_path = _get_download_complete_path(local_path)
         with TempFileLock(local_path, timeout=-1):
-            if os.path.exists(download_complete_path):
-                return
-            os.makedirs(local_path, exist_ok=True)
-            _download_from_fs_path(
-                fs=self.filesystem, fs_path=self.path, local_path=local_path
-            )
-            Path(download_complete_path).touch()
+            if not os.path.exists(download_complete_path):
+                os.makedirs(local_path, exist_ok=True)
+                try:
+                    _download_from_fs_path(
+                        fs=self.filesystem, fs_path=self.path, local_path=local_path
+                    )
+                except Exception:
+                    # No one reads the directory before the marker exists, so it's
+                    # safe to remove the partial download.
+                    shutil.rmtree(local_path, ignore_errors=True)
+                    raise
+                Path(download_complete_path).touch()
+            if keep:
+                Path(_get_del_lock_path(local_path, suffix="keep")).touch()
 
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
@@ -315,16 +325,17 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path
         else:
-            del_lock_path = _get_del_lock_path(self._get_temporary_checkpoint_dir())
+            temp_dir = os.path.normpath(self._get_temporary_checkpoint_dir())
+            del_lock_path = _get_del_lock_path(temp_dir)
             open(del_lock_path, "a").close()
 
-            temp_dir = self.to_directory()
             try:
+                self._download_to_temporary_dir(temp_dir, keep=False)
                 yield temp_dir
             finally:
                 # Always cleanup the del lock after we're done with the directory.
                 # This avoids leaving a lock file behind in the case of an exception
-                # in the user code.
+                # in the download or in the user code.
                 try:
                     os.remove(del_lock_path)
                 except Exception:
@@ -335,21 +346,28 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
                 # If there are no more del lock files, there are no more readers
                 # of this directory, and we can safely delete it. Check while
-                # holding the lock that `to_directory()` downloads under: a reader
-                # that registered after we removed our del lock is either seen
-                # here, so the directory is kept, or is blocked in `to_directory()`
-                # until the deletion finishes, and then downloads again.
+                # holding the lock that downloads take: a reader that registered
+                # after we removed our del lock is either seen here, so the
+                # directory is kept, or is blocked on the lock until the deletion
+                # finishes, and then downloads again.
                 # In the edge case (process crash before del lock file is removed),
                 # we do not remove the directory at all.
                 # Since it's in /tmp, this is not that big of a deal.
-                with TempFileLock(temp_dir, timeout=-1):
-                    if not _list_existing_del_locks(temp_dir):
-                        # Remove the marker first, so that a partially deleted
-                        # directory is never treated as a complete download.
-                        Path(_get_download_complete_path(temp_dir)).unlink(
-                            missing_ok=True
-                        )
-                        shutil.rmtree(temp_dir, ignore_errors=True)
+                try:
+                    with TempFileLock(temp_dir, timeout=-1):
+                        if not _list_existing_del_locks(temp_dir):
+                            # Remove the marker first, so that a partially deleted
+                            # directory is never treated as a complete download.
+                            Path(_get_download_complete_path(temp_dir)).unlink(
+                                missing_ok=True
+                            )
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+                except Exception:
+                    # Don't mask an exception raised in the user code.
+                    logger.warning(
+                        f"Could not clean up temporary checkpoint directory "
+                        f"{temp_dir}. Traceback:\n{traceback.format_exc()}"
+                    )
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir that this checkpoint

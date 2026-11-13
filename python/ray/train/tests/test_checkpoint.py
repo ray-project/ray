@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import List
 
 import pyarrow.fs
 import pytest
@@ -181,16 +182,23 @@ def test_as_directory_download_error(checkpoint: Checkpoint, monkeypatch):
             "there's no error handling to test."
         )
 
+    from ray.train import _checkpoint
+
     error_text = "original error"
 
-    def to_directory_error(*args, **kwargs):
+    def download_error(*args, **kwargs):
         raise RuntimeError(error_text)
 
-    monkeypatch.setattr(checkpoint, "to_directory", to_directory_error)
+    monkeypatch.setattr(_checkpoint, "_download_from_fs_path", download_error)
 
     with pytest.raises(RuntimeError, match=error_text):
         with checkpoint.as_directory() as _:
             pass
+
+    # The failed download leaves no deletion lock or partial directory behind.
+    temp_dir = checkpoint._get_temporary_checkpoint_dir()
+    assert not _list_existing_del_locks(temp_dir)
+    assert not Path(temp_dir).exists()
 
 
 def test_as_directory_reader_arrives_during_cleanup(checkpoint: Checkpoint, tmp_path):
@@ -232,28 +240,37 @@ def test_as_directory_reader_arrives_during_cleanup(checkpoint: Checkpoint, tmp_
     ray.get(ref)
 
 
-def test_to_directory_reuses_complete_download(checkpoint: Checkpoint, monkeypatch):
-    """A caller that arrives after the shared temporary directory was fully
-    downloaded reuses it, instead of downloading again over files that other
+def _count_downloads(monkeypatch) -> List[int]:
+    """Count calls to `_download_from_fs_path`. Returns a one-element counter."""
+    from ray.train import _checkpoint
+
+    num_downloads = [0]
+    original_download = _checkpoint._download_from_fs_path
+
+    def counting_download(*args, **kwargs):
+        num_downloads[0] += 1
+        return original_download(*args, **kwargs)
+
+    monkeypatch.setattr(_checkpoint, "_download_from_fs_path", counting_download)
+    return num_downloads
+
+
+def test_as_directory_reuses_complete_download(checkpoint: Checkpoint, monkeypatch):
+    """A reader that arrives while the shared temporary directory is complete
+    and in use reuses it, instead of downloading again over files that other
     readers may be reading."""
     if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
         pytest.skip("Local checkpoints are not downloaded to a temp dir.")
 
-    from ray.train import _checkpoint
+    num_downloads = _count_downloads(monkeypatch)
 
-    num_downloads = 0
-    original_download = _checkpoint._download_from_fs_path
-
-    def counting_download(*args, **kwargs):
-        nonlocal num_downloads
-        num_downloads += 1
-        return original_download(*args, **kwargs)
-
-    monkeypatch.setattr(_checkpoint, "_download_from_fs_path", counting_download)
-
+    monkeypatch.setattr(os, "getpid", lambda: 11111)
     with checkpoint.as_directory() as checkpoint_dir:
-        assert checkpoint.to_directory() == checkpoint_dir
-        assert num_downloads == 1
+        # Pretend that the 2nd `as_directory` is called from a different process.
+        monkeypatch.setattr(os, "getpid", lambda: 22222)
+        with checkpoint.as_directory() as checkpoint_dir_2:
+            assert checkpoint_dir_2 == checkpoint_dir
+        assert num_downloads[0] == 1
 
     # The last reader deleted the directory and its marker, so the next reader
     # downloads the checkpoint again.
@@ -261,7 +278,25 @@ def test_to_directory_reuses_complete_download(checkpoint: Checkpoint, monkeypat
     assert not Path(_get_download_complete_path(checkpoint_dir)).exists()
     with checkpoint.as_directory() as checkpoint_dir:
         assert (Path(checkpoint_dir) / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
-    assert num_downloads == 2
+    assert num_downloads[0] == 2
+
+
+def test_to_directory_survives_as_directory_cleanup(
+    checkpoint: Checkpoint, monkeypatch
+):
+    """`to_directory()` callers can't tell Ray when they're done with the shared
+    temporary directory, so the `as_directory()` cleanup must not delete a
+    directory that `to_directory()` returned."""
+    if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+        pytest.skip("Local checkpoints are not downloaded to a temp dir.")
+
+    num_downloads = _count_downloads(monkeypatch)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        assert checkpoint.to_directory() == checkpoint_dir
+
+    assert num_downloads[0] == 1
+    assert (Path(checkpoint_dir) / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
 
 
 def test_to_directory_retries_failed_download(checkpoint: Checkpoint, monkeypatch):
@@ -280,6 +315,8 @@ def test_to_directory_retries_failed_download(checkpoint: Checkpoint, monkeypatc
     monkeypatch.setattr(_checkpoint, "_download_from_fs_path", failing_download)
     with pytest.raises(RuntimeError, match="download failed"):
         checkpoint.to_directory()
+    # The partial download was removed.
+    assert not Path(checkpoint._get_temporary_checkpoint_dir()).exists()
 
     monkeypatch.setattr(_checkpoint, "_download_from_fs_path", original_download)
     checkpoint_dir = checkpoint.to_directory()
