@@ -19,7 +19,12 @@ import pandas as pd
 import pyarrow
 
 from ray._common.utils import env_integer
-from ray.data._internal.arrow_aggregation import is_boolean_arrow_type
+from ray.data._internal.arrow_aggregation import (
+    _INTEGER_SUM_TYPE,
+    is_boolean_arrow_type,
+    is_integer_arrow_type,
+    is_unsigned_integer_arrow_type,
+)
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
@@ -680,8 +685,34 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
     def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         import pyarrow.compute as pac
 
-        res = pac.sum(self._column, skip_nulls=ignore_nulls)
-        return res.as_py() if as_py else res
+        column = self._column
+        if pyarrow.types.is_run_end_encoded(column.type):
+            column = pac.run_end_decode(column)
+
+        if not is_integer_arrow_type(column.type):
+            res = pac.sum(column, skip_nulls=ignore_nulls)
+            return res.as_py() if as_py else res
+
+        # Arrow's native integer sum kernel wraps on overflow before the scalar
+        # can be converted to Python.  Widen the accumulator first, then return
+        # a Python int (or the historical native scalar when it still fits).
+        res = pac.sum(pac.cast(column, _INTEGER_SUM_TYPE), skip_nulls=ignore_nulls)
+        if as_py:
+            value = res.as_py()
+            return None if value is None else int(value)
+
+        output_type = (
+            pyarrow.uint64()
+            if is_unsigned_integer_arrow_type(column.type)
+            else pyarrow.int64()
+        )
+        value = res.as_py()
+        if value is None:
+            return pyarrow.scalar(None, type=output_type)
+        try:
+            return pyarrow.scalar(int(value), type=output_type)
+        except (OverflowError, pyarrow.ArrowInvalid):
+            return res
 
     def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         import pyarrow.compute as pac
