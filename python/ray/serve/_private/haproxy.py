@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
-from ray._common.network_utils import get_localhost_ip
+from ray._common.network_utils import (
+    get_all_interfaces_ip_for_node,
+    get_localhost_ip,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private.authentication import authentication_utils as auth_utils
 from ray._private.authentication.http_token_authentication import (
@@ -2025,6 +2028,7 @@ class HAProxyManager(ProxyActorInterface):
             self._exporter_server = start_metrics_wsgi_server(
                 self._haproxy.cfg.metrics_port,
                 make_exporter_proxy_app(self._haproxy.cfg),
+                addr=get_all_interfaces_ip_for_node(self._node_ip_address),
                 # Co-located managers share the port when HAProxy uses
                 # SO_REUSEPORT for its own listeners.
                 reuse_port=self._haproxy.cfg.enable_so_reuseport,

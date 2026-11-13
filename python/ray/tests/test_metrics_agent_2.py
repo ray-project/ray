@@ -20,6 +20,10 @@ from opencensus.stats.view_manager import ViewManager
 from prometheus_client.core import REGISTRY
 
 import ray._private.prometheus_exporter as prometheus_exporter
+from ray._common.network_utils import (
+    get_all_interfaces_ip_for_node,
+    get_localhost_ip,
+)
 from ray._common.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
@@ -612,58 +616,155 @@ def _ipv6_loopback_available() -> bool:
     return True
 
 
+def _ipv6_dualstack_available() -> bool:
+    """Whether "::" with IPV6_V6ONLY cleared accepts IPv4 loopback."""
+    if not socket.has_dualstack_ipv6():
+        return False
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            sock.bind(("::", 0))
+            sock.listen()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as ipv4_sock:
+                ipv4_sock.settimeout(1)
+                ipv4_sock.connect(("127.0.0.1", sock.getsockname()[1]))
+    except OSError:
+        return False
+    return True
+
+
 def _ok_app(environ, start_response):
     start_response("200 OK", [("Content-Type", "text/plain")])
     return [b"ok"]
+
+
+def _http_get(host: str, port: int):
+    conn = http.client.HTTPConnection(host, port, timeout=5)
+    try:
+        conn.request("GET", "/metrics")
+        response = conn.getresponse()
+        return response.status, response.read()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "node_ip,expected",
+    [
+        ("127.0.0.1", get_localhost_ip()),
+        ("::1", get_localhost_ip()),
+        ("localhost", get_localhost_ip()),
+        ("0.0.0.0", "0.0.0.0"),
+        ("10.0.0.1", "0.0.0.0"),
+        ("::", "::"),
+        ("2001:db8::1", "::"),
+    ],
+)
+def test_get_all_interfaces_ip_for_node(node_ip, expected):
+    assert get_all_interfaces_ip_for_node(node_ip) == expected
+
+
+@pytest.mark.parametrize("addr", ["", "127.0.0.1", "0.0.0.0", "::", "::1"])
+def test_start_metrics_wsgi_server_listen_addresses(monkeypatch, addr):
+    """Every supported listen address serves /metrics behind token auth."""
+    if addr in ("::", "::1") and not _ipv6_loopback_available():
+        pytest.skip("IPv6 loopback is not available")
+
+    if addr == "":
+        # Pin the host default so the test does not depend on how localhost
+        # resolves on this machine.
+        monkeypatch.setattr(
+            "ray._common.network_utils.get_all_interfaces_ip", lambda: "0.0.0.0"
+        )
+        connect_host = "127.0.0.1"
+    elif addr in ("127.0.0.1", "0.0.0.0"):
+        connect_host = "127.0.0.1"
+    else:
+        connect_host = "::1"
+
+    monkeypatch.setattr(
+        "ray._private.authentication.authentication_utils.is_token_auth_enabled",
+        lambda: True,
+    )
+    monkeypatch.delenv("RAY_AUTH_SKIP_METRICS", raising=False)
+
+    httpd = start_metrics_wsgi_server(0, _ok_app, addr=addr)
+    try:
+        # A request without a token is rejected while token auth is on.
+        status, _ = _http_get(connect_host, httpd.server_address[1])
+        assert status == 401
+
+        # The same listener serves once metrics auth is explicitly skipped.
+        monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+        status, body = _http_get(connect_host, httpd.server_address[1])
+        assert (status, body) == (200, b"ok")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
 
 
 @pytest.mark.parametrize("addr", [None, ""])
 @pytest.mark.skipif(
     not _ipv6_loopback_available(), reason="IPv6 loopback is not available"
 )
-def test_start_metrics_wsgi_server_binds_all_interfaces_for_ipv6(monkeypatch, addr):
-    monkeypatch.setattr(
-        "ray._common.network_utils.get_all_interfaces_ip", lambda: "::1"
-    )
+def test_start_metrics_wsgi_server_binds_ipv6_wildcard_by_default(monkeypatch, addr):
+    """The host default binds the IPv6 wildcard, not an IPv6 loopback."""
+    monkeypatch.setattr("ray._common.network_utils.get_all_interfaces_ip", lambda: "::")
     monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+
     httpd = start_metrics_wsgi_server(0, _ok_app, addr=addr)
     try:
-        assert httpd.server_address[0] == "::1"
-        conn = http.client.HTTPConnection("::1", httpd.server_address[1], timeout=5)
-        try:
-            conn.request("GET", "/metrics")
-            resp = conn.getresponse()
-            assert resp.status == 200
-            assert resp.read() == b"ok"
-        finally:
-            conn.close()
+        assert httpd.server_address[0] == "::"
+        assert _http_get("::1", httpd.server_address[1]) == (200, b"ok")
     finally:
         httpd.shutdown()
         httpd.server_close()
 
 
-@pytest.mark.parametrize("address", ["::1", ""])
+@pytest.mark.parametrize("reuse_port", [False, True])
+def test_start_metrics_wsgi_server_ipv6_wildcard_accepts_ipv4_loopback(
+    monkeypatch, reuse_port
+):
+    """Clearing IPV6_V6ONLY keeps IPv4 loopback scrapes working."""
+    if not _ipv6_dualstack_available():
+        pytest.skip("The kernel cannot bind a dual-stack IPv6 wildcard")
+    if reuse_port and not hasattr(socket, "SO_REUSEPORT"):
+        pytest.skip("SO_REUSEPORT is not available")
+
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+    httpd = start_metrics_wsgi_server(0, _ok_app, addr="::", reuse_port=reuse_port)
+    try:
+        assert httpd.server_address[0] == "::"
+        assert _http_get("::1", httpd.server_address[1]) == (200, b"ok")
+        assert _http_get("127.0.0.1", httpd.server_address[1]) == (200, b"ok")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+@pytest.mark.parametrize(
+    "address,namespace",
+    [
+        ("::1", "test_ipv6_loopback"),
+        ("::", "test_ipv6_wildcard"),
+        ("", "test_ipv6_default"),
+    ],
+)
 @pytest.mark.skipif(
     not _ipv6_loopback_available(), reason="IPv6 loopback is not available"
 )
-def test_prometheus_stats_exporter_binds_ipv6(monkeypatch, address):
+def test_prometheus_stats_exporter_binds_ipv6(monkeypatch, address, namespace):
     monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
     if address == "":
         monkeypatch.setattr(
-            "ray._common.network_utils.get_all_interfaces_ip", lambda: "::1"
+            "ray._common.network_utils.get_all_interfaces_ip", lambda: "::"
         )
-    namespace = "test_ipv6_default" if address == "" else "test_ipv6_loopback"
     exporter = prometheus_exporter.new_stats_exporter(
         prometheus_exporter.Options(namespace=namespace, port=0, address=address)
     )
     try:
-        conn = http.client.HTTPConnection("::1", exporter.port, timeout=5)
-        try:
-            conn.request("GET", "/metrics")
-            resp = conn.getresponse()
-            assert resp.status == 200
-        finally:
-            conn.close()
+        status, _ = _http_get("::1", exporter.port)
+        assert status == 200
     finally:
         exporter.shutdown()
         REGISTRY.unregister(exporter.collector)

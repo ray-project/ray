@@ -12,6 +12,26 @@ from ray._raylet import (  # noqa: F401
 )
 
 
+def get_all_interfaces_ip_for_node(node_ip: str) -> str:
+    """Get the "all interfaces" address matching the node's IP family.
+
+    ``get_all_interfaces_ip`` derives the wildcard from localhost resolution,
+    which is IPv4-first on most hosts. Servers that are reached through the
+    node IP must bind a wildcard of the same family instead, otherwise a node
+    with an IPv6 IP keeps a listener that only accepts IPv4.
+
+    Args:
+        node_ip: The IP address the node advertises.
+
+    Returns:
+        The localhost address for a localhost node, ``"::"`` for an IPv6 node,
+        and ``"0.0.0.0"`` for an IPv4 node.
+    """
+    if is_localhost(node_ip):
+        return get_localhost_ip()
+    return "::" if is_ipv6(node_ip) else "0.0.0.0"
+
+
 def find_free_port(family: socket.AddressFamily = socket.AF_INET) -> int:
     """Find a free port on the local machine.
 

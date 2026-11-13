@@ -625,6 +625,11 @@ class ReporterAgent(
                 prometheus_exporter.Options(
                     namespace="ray",
                     port=dashboard_agent.metrics_export_port,
+                    # NOTE: this still follows localhost resolution, so an
+                    # IPv6 node binds 0.0.0.0 here. coreyhu's patch replaces
+                    # this with node-IP-based selection (see
+                    # get_all_interfaces_ip_for_node) and adds the reporter
+                    # tests; left unchanged here to avoid guessing it.
                     address=get_localhost_ip() if is_localhost(self._ip) else "",
                 )
             )
