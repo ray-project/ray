@@ -148,29 +148,31 @@ trainer.fit()
 
 When you use {class}`~ray.train.torch.TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for [TorchTPU](https://torchtpu.readthedocs.io/en/latest/), sets the `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` through {func}`ray.train.torch.get_device`.
 
-The following example runs one training step with TorchTPU on 16 per-device workers:
+The following example trains a model with TorchTPU on 16 per-device workers:
 
 ```python
 import torch
+from torch.utils.data import DataLoader, TensorDataset
 
 import ray.train
 from ray.train import ScalingConfig
-from ray.train.torch import TorchTrainer, get_device, prepare_model
+from ray.train.torch import TorchTrainer, prepare_data_loader, prepare_model
 
 
 def train_func():
-    device = get_device()
-    model = torch.nn.Linear(128, 10).to(device)
+    model = torch.nn.Linear(128, 10)
     model = prepare_model(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
-    inputs = torch.randn(32, 128, device=device)
-    targets = torch.randint(0, 10, (32,), device=device)
+    dataset = TensorDataset(torch.randn(1024, 128), torch.randint(0, 10, (1024,)))
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    dataloader = prepare_data_loader(dataloader)
 
-    optimizer.zero_grad()
-    loss = torch.nn.functional.cross_entropy(model(inputs), targets)
-    loss.backward()
-    optimizer.step()
+    for inputs, targets in dataloader:
+        optimizer.zero_grad()
+        loss = torch.nn.functional.cross_entropy(model(inputs), targets)
+        loss.backward()
+        optimizer.step()
 
     ray.train.report({"loss": loss.item()})
 
@@ -313,6 +315,29 @@ trainer = TorchTrainer(
     ),
     torch_config=TorchConfig(backend="gloo"),
 )
+```
+
+(pytorch-prefetch-batches-with-streams)=
+
+### PyTorch: Prefetch batches with device streams
+
+With `auto_transfer=True`, {func}`ray.train.torch.prepare_data_loader` prefetches the next batch onto a separate device stream, such as a `torch.cuda.Stream` or `torch.tpu.Stream`, while the current stream runs the training step. `prepare_data_loader` enables stream prefetching by default when `move_to_device=True` and skips it on devices without stream support, such as CPUs:
+
+```python
+from torch.utils.data import DataLoader
+from ray.train.torch import prepare_data_loader
+
+
+def train_func():
+    ...
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    # auto_transfer=True is enabled by default; set auto_transfer=False to disable
+    # asynchronous host-to-device stream prefetching.
+    dataloader = prepare_data_loader(dataloader, auto_transfer=True)
+
+    for inputs, targets in dataloader:
+        # Batches are prefetched onto the device stream automatically.
+        ...
 ```
 
 (nccl-setting-the-communication-network-interface)=

@@ -13,9 +13,13 @@ import pyarrow as pa
 import pytest
 
 from ray.data._internal.datasource_v2.formats.mcap import mcap_message_rows
+from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
+    SelectedMessageReader,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
     MCAPDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import ChunkReads
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     _MessageTableBuilder,
     message_schema,
@@ -33,11 +37,13 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     SHARED_SCHEMA,
     STEP,
     SeekLog,
+    as_read_task,
     chunks_read,
     infer_schema,
     list_manifests,
     mixed_encoding_messages,
     read_all,
+    record_parsed_chunks,
     round_robin_messages,
     scanner_for,
     selected_messages,
@@ -315,13 +321,17 @@ def test_file_without_a_chunk_index_is_sorted_by_its_task(
 
 
 @pytest.mark.parametrize("log_time_order", [True, False])
-def test_limit_reads_only_the_chunks_it_needs(chunked_file, log_time_order):
-    """A limit of two reads the two chunks holding the first two messages and no
-    other chunk, in log-time and in file order."""
+def test_limit_parses_only_the_chunks_it_needs(
+    chunked_file, log_time_order, monkeypatch
+):
+    """A limit of two parses the two chunks holding the first two messages and no
+    other chunk, in log-time and in file order. The small file's chunks are
+    fetched in one ranged read."""
     datasource = MCAPDatasourceV2([chunked_file], log_time_order=log_time_order)
     (manifest,) = list_manifests(datasource)
     seek_log = SeekLog()
     scanner = dataclasses.replace(scanner_for(datasource), filesystem=seek_log)
+    parsed = record_parsed_chunks(monkeypatch)
 
     table = read_all(datasource, manifest, scanner=scanner.push_limit(2))
 
@@ -329,7 +339,88 @@ def test_limit_reads_only_the_chunks_it_needs(chunked_file, log_time_order):
     offsets = sorted(
         c.chunk_start_offset for c in summary_of(chunked_file).chunk_indexes
     )
-    assert chunks_read(seek_log, chunked_file) == offsets[:2]
+    assert parsed == offsets[:2]
+    assert chunks_read(seek_log, chunked_file) == offsets[:1]
+
+
+def selected_rows(path, chunk_reads, topics=None, log_time_order=True, f=None):
+    """``(log_time, row_id)`` of each message the reader selects from ``path``."""
+    reader = SelectedMessageReader(
+        MCAPSelection.create(topics, None, None), log_time_order, chunk_reads
+    )
+    stream = f if f is not None else open(path, "rb")
+    with stream:
+        messages = reader.iter_chunks(stream, path, summary_of(path), None)
+        return [(message.log_time, row_id) for _, _, message, row_id in messages]
+
+
+ONE_CHUNK_PER_READ = ChunkReads(max_bytes=0, max_gap_bytes=0, first_bytes=0)
+# Small enough that the ``chunked_file`` fixture takes several reads, some of
+# them spanning more than one chunk.
+SMALL_READS = ChunkReads(max_bytes=400, max_gap_bytes=100, first_bytes=100)
+
+
+@pytest.mark.parametrize("log_time_order", [True, False])
+@pytest.mark.parametrize("topics", [None, ["/a"]])
+def test_rows_do_not_depend_on_how_chunks_are_fetched(
+    chunked_file, log_time_order, topics
+):
+    """The selected messages, their order and their row ids are the same whether
+    each chunk is fetched alone or with its neighbours, with or without a topic
+    filter."""
+    expected = selected_rows(chunked_file, ONE_CHUNK_PER_READ, topics, log_time_order)
+
+    rows = selected_rows(chunked_file, SMALL_READS, topics, log_time_order)
+
+    assert rows == expected
+    assert len(rows) == (3 if topics else CHUNKED_FILE_MESSAGES)
+
+
+@pytest.mark.parametrize(
+    "max_gap_bytes, expected_reads",
+    # /a is in chunks 0, 3 and 6: a 1 KiB gap spans the two chunks in between.
+    [(0, [0, 3, 6]), (1024, [0])],
+)
+def test_a_gap_up_to_the_limit_is_read_through(
+    chunked_file, max_gap_bytes, expected_reads
+):
+    """Chunks a topic filter selects share one read when the chunks between them
+    fit in ``max_gap_bytes``, and are read one by one otherwise."""
+    seek_log = SeekLog()
+    chunk_reads = ChunkReads(max_bytes=1 << 20, max_gap_bytes=max_gap_bytes)
+
+    selected_rows(
+        chunked_file,
+        chunk_reads,
+        topics=["/a"],
+        f=seek_log.open_input_file(chunked_file),
+    )
+
+    offsets = sorted(
+        c.chunk_start_offset for c in summary_of(chunked_file).chunk_indexes
+    )
+    assert chunks_read(seek_log, chunked_file) == [offsets[i] for i in expected_reads]
+
+
+def test_log_time_merge_fetches_chunks_in_the_order_it_expands_them(tmp_path):
+    """The merge expands chunks by first log time. A chunk that comes later in
+    time but earlier in the file starts a new read, and the rows stay in
+    log-time order."""
+    # One message per chunk; chunk 1 holds the earliest time.
+    path = os.path.join(tmp_path, "out_of_order.mcap")
+    messages = [
+        {"topic": "/a", "data": {"seq": seq}, "log_time": log_time}
+        for seq, log_time in enumerate((20, 10, 30))
+    ]
+    write_mcap(path, messages)
+    offsets = sorted(c.chunk_start_offset for c in summary_of(path).chunk_indexes)
+    seek_log = SeekLog()
+
+    rows = selected_rows(path, ChunkReads(), f=seek_log.open_input_file(path))
+
+    assert [log_time for log_time, _ in rows] == [10, 20, 30]
+    # Chunk 1 is read alone; chunk 0 then starts a read that spans chunk 2.
+    assert chunks_read(seek_log, path) == [offsets[1], offsets[0]]
 
 
 def test_limit_never_decodes_the_messages_past_it(tmp_path):
@@ -377,23 +468,23 @@ def test_reader_cuts_tables_at_target_block_size(chunked_file):
     """A 1-byte target block size yields a table per message, and no target yields
     one table."""
     datasource = MCAPDatasourceV2([chunked_file])
-    (manifest,) = list_manifests(datasource)
+    task = as_read_task(*list_manifests(datasource))
     scanner = scanner_for(datasource)
 
     one_byte = dataclasses.replace(scanner, target_block_size=1)
-    tables = list(one_byte.create_reader().read(manifest))
+    tables = list(one_byte.create_reader().read(task))
     assert len(tables) == CHUNKED_FILE_MESSAGES
     assert all(t.num_rows == 1 for t in tables)
 
     unbounded = dataclasses.replace(scanner, target_block_size=None)
-    assert len(list(unbounded.create_reader().read(manifest))) == 1
+    assert len(list(unbounded.create_reader().read(task))) == 1
 
 
 def test_scanner_prunes_columns_and_pushes_limit(chunked_file):
     """A pruned, limited scanner reads only its columns and rows, and an empty
     projection still yields every row."""
     datasource = MCAPDatasourceV2([chunked_file], include_paths=True)
-    (manifest,) = list_manifests(datasource)
+    task = as_read_task(*list_manifests(datasource))
     scanner = scanner_for(datasource)
 
     assert isinstance(scanner, MCAPScanner)
@@ -401,13 +492,13 @@ def test_scanner_prunes_columns_and_pushes_limit(chunked_file):
     assert pruned.read_schema().names == ["log_time", "path"]
     assert pruned.pushed_limit() == 4
 
-    table = pa.concat_tables(list(pruned.create_reader().read(manifest)))
+    table = pa.concat_tables(list(pruned.create_reader().read(task)))
     assert table.column_names == ["log_time", "path"]
     assert table.num_rows == 4
 
     # An empty projection, as in ``count()``, keeps the row count through a stub column.
     empty = scanner.prune_columns([])
-    table = pa.concat_tables(list(empty.create_reader().read(manifest)))
+    table = pa.concat_tables(list(empty.create_reader().read(task)))
     assert table.num_rows == CHUNKED_FILE_MESSAGES
     assert empty.read_schema().names == []
     assert empty.prune_columns(["topic"]).read_schema().names == []
@@ -556,11 +647,11 @@ def test_reader_cuts_tables_at_the_target_counting_every_column(tmp_path):
     path = os.path.join(tmp_path, "mixed.mcap")
     write_mixed_channels(path, num_messages=400)
     datasource = MCAPDatasourceV2([path], include_row_id=True, include_paths=True)
-    (manifest,) = list_manifests(datasource)
+    task = as_read_task(*list_manifests(datasource))
     target = 8 * 1024
     scanner = dataclasses.replace(scanner_for(datasource), target_block_size=target)
 
-    tables = list(scanner.create_reader().read(manifest))
+    tables = list(scanner.create_reader().read(task))
 
     assert len(tables) > 1
     # One row of about 350 bytes past the target, at most.

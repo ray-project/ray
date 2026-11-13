@@ -4,6 +4,7 @@ steps:
   - name: ray-core-build
     label: "wanda: core binary parts py{{array.python}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
+    depends_on: bazel-glibc217-x86_64
     array:
       python:
         - "3.10"
@@ -32,6 +33,7 @@ steps:
   - name: ray-java-build
     label: "wanda: java build (x86_64)"
     wanda: ci/docker/ray-java.wanda.yaml
+    depends_on: bazel-glibc217-x86_64
     env_file: rayci.env
     env:
       ARCH_SUFFIX: ""
