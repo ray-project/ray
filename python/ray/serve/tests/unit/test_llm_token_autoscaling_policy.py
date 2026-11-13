@@ -78,6 +78,18 @@ def test_holds_target_for_missing_metric(aggregated_router_metrics):
     assert state == {}
 
 
+@pytest.mark.parametrize("target_num_replicas", [0, 3])
+def test_scales_from_zero_for_requests_without_metric(target_num_replicas):
+    policy = LLMTokenAutoscalingPolicy(target_prefill_tokens_per_replica=100)
+    ctx = _context(target_num_replicas=target_num_replicas, total_num_requests=2)
+    ctx.aggregated_router_metrics = {}
+
+    replicas, state = policy(ctx)
+
+    assert replicas == max(1, target_num_replicas)
+    assert state == {}
+
+
 def test_keeps_one_replica_when_requests_are_in_flight():
     policy = LLMTokenAutoscalingPolicy(target_prefill_tokens_per_replica=100)
 

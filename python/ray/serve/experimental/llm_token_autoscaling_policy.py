@@ -35,6 +35,8 @@ class LLMTokenAutoscalingPolicy:
             OUTSTANDING_EFFECTIVE_PREFILL_TOKENS, {}
         )
         if not prefill_tokens_by_handle:
+            if ctx.total_num_requests > 0:
+                return max(1, ctx.target_num_replicas), {}
             return ctx.target_num_replicas, {}
 
         prefill_tokens = max(0, max(prefill_tokens_by_handle.values()))
