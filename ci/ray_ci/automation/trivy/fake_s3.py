@@ -1,7 +1,7 @@
 """An in-memory stand-in for the boto3 S3 client calls ScanStore makes."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from botocore.exceptions import ClientError
 
@@ -45,6 +45,19 @@ class FakeS3:
                 {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
             )
         return {}
+
+    def get_paginator(self, operation: str) -> "FakeS3":
+        assert operation == "list_objects_v2"
+        return self
+
+    def paginate(self, Bucket: str, Prefix: str) -> Iterator[dict[str, Any]]:
+        keys = sorted(
+            k for b, k in self.objects if b == Bucket and k.startswith(Prefix)
+        )
+        # Two pages, so callers must follow pagination.
+        half = len(keys) // 2
+        for page in (keys[:half], keys[half:]):
+            yield {"Contents": [{"Key": k} for k in page]} if page else {}
 
     def put(self, bucket: str, key: str, data: bytes) -> None:
         self.objects[(bucket, key)] = data

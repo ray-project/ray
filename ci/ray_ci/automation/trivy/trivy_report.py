@@ -4,6 +4,7 @@ Each scan job writes, per image, a ``<name>.status.json`` record and, when the
 scan succeeded, Trivy's JSON result as ``<name>.json.gz``. ``load_scans``
 reads them all; ``write_report`` writes ``report.md``, ``vulns.csv`` and
 ``summary.json``; ``render_annotation`` renders the build's annotation.
+``build_report`` drives all of it in CI.
 
 Only fixable CRITICAL/HIGH findings count against the build. ``exit_code``
 gives 0 clean, 10 fixable CRITICAL/HIGH findings, 11 incomplete coverage
@@ -13,6 +14,7 @@ gives 0 clean, 10 fixable CRITICAL/HIGH findings, 11 incomplete coverage
 import csv
 import gzip
 import json
+import os
 import re
 import zlib
 from collections import Counter
@@ -32,6 +34,7 @@ EXIT_FINDINGS = 10
 EXIT_INCOMPLETE = 11
 
 ANNOTATION_CONTEXT = "trivy-scan"
+MISSING_STATUS = "no status record: its scan job did not run or did not upload"
 # A package with more no-fix CVEs than this in one image shows a count: kernel
 # headers alone carry ~500 per CUDA image, too many to list for every image.
 NO_FIX_LIST_LIMIT = 10
@@ -319,6 +322,23 @@ def load_scans(results_dir: Path) -> list[ImageScan]:
         else:
             scans.append(_load_scan(results_dir, image, record))
     return sorted(scans, key=lambda s: _image_sort_key(s.image))
+
+
+def add_missing(
+    scans: Sequence[ImageScan],
+    expected: Sequence[Image],
+    reasons: Optional[Mapping[str, str]] = None,
+) -> list[ImageScan]:
+    """Add each expected image that has no status record, as not scanned,
+    with its reason from ``reasons`` when one is known."""
+    found = {s.image.name for s in scans}
+    reasons = reasons or {}
+    missing = [
+        ImageScan(image=image, error=reasons.get(image.name, MISSING_STATUS))
+        for image in expected
+        if image.name not in found
+    ]
+    return sorted([*scans, *missing], key=lambda s: _image_sort_key(s.image))
 
 
 def _python_key(version: str) -> tuple[int, ...]:
@@ -914,3 +934,25 @@ def write_report(
     summary = build_summary(scans, scanner, build, issues)
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return exit_code(scans, issues)
+
+
+def resolve_path(path: Path) -> Path:
+    """Resolve relative paths against the workspace under ``bazel run``."""
+    if path.is_absolute():
+        return path
+    return Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")) / path
+
+
+def load_metadata(path: Path) -> tuple[dict[str, Any], str]:
+    """Read the scanner metadata, or say why it can't be used.
+
+    Without it, results can't be tied to a Trivy binary or DB snapshot, so a
+    missing file is an issue, not something to skip silently.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as e:
+        return {}, f"scanner metadata unreadable ({path}): {e}"
+    if not isinstance(data, dict):
+        return {}, f"scanner metadata in {path} is not a JSON object"
+    return data, ""

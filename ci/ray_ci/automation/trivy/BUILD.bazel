@@ -179,16 +179,21 @@ py_test(
     ],
 )
 
-py_library(
+py_binary(
     name = "build_report",
     srcs = ["build_report.py"],
     # The scan steps, to know which images the build should have scanned.
     data = ["//.buildkite:image-scan.rayci.yml"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
         ":scan_images",
+        ":scan_store",
+        ":trivy_db",
         ":trivy_report",
         "//ci/ray_ci:ray_ci_lib",
+        ci_require("bazel-runfiles"),
         ci_require("click"),
+        ci_require("pyyaml"),
     ],
 )
 
@@ -204,8 +209,10 @@ py_test(
     ],
     deps = [
         ":build_report",
+        ":fake_s3",
         "//ci/ray_ci:ray_ci_lib",
         ci_require("bazel-runfiles"),
+        ci_require("click"),
         ci_require("pytest"),
         ci_require("pyyaml"),
     ],
