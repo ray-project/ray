@@ -214,7 +214,14 @@ class SandboxCgroup:
         return None
 
     def task_limit_reached(self) -> bool:
-        """Whether the kernel refused the sandbox a task over its pids.max."""
+        """Whether the kernel refused the sandbox a task over its pids.max.
+
+        Only for a sandbox with a task limit of its own: the kernel counts a
+        refusal here too when a limit above the sandbox, such as its Pod's,
+        refuses one of its tasks.
+        """
+        if "pids.max" not in self.limits:
+            return False
         try:
             events = _read(self.path / "pids.events")
             values = dict(line.split() for line in events.splitlines())

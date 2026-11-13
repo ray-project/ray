@@ -261,6 +261,14 @@ def test_a_sandbox_that_starts_into_the_task_limit_says_so(
     with pytest.raises(SandboxCreationError) as err:
         backend._provision(config, backend._cgroup_manager_for(config), start)
     assert str(err.value) == "newosproc: resource temporarily unavailable"
+    # So does a refusal by a limit above the sandbox, such as its Pod's, on
+    # a node that sets no cap of its own: the sandbox has no pids.max to name.
+    monkeypatch.delenv("RAY_SANDBOX_PIDS_MAX")
+    events[0] = "max 3\n"
+    limited = SandboxConfig("busybox", cpu=1)
+    with pytest.raises(SandboxCreationError) as err:
+        backend._provision(limited, backend._cgroup_manager_for(limited), start)
+    assert str(err.value) == "newosproc: resource temporarily unavailable"
 
 
 def test_resource_preflight_checks_a_node_pids_limit(shared, monkeypatch):
