@@ -837,6 +837,246 @@ def test_shuffle_ops_report_per_task_exec_stats(
         ), phase
 
 
+# --- Adaptive map-side partial aggregation (DATA-3654) -----------------------
+
+
+def _partial_agg_test_aggs():
+    from ray.data.aggregate import (
+        Count,
+        Max,
+        Mean,
+        Min,
+        MissingValuePercentage,
+        Sum,
+        ZeroPercentage,
+    )
+
+    return (
+        Sum("v"),
+        Sum("v", ignore_nulls=False, alias_name="sum_v_nulls"),
+        Count(),
+        Count("v", ignore_nulls=True, alias_name="count_v_valid"),
+        Count("v", alias_name="count_v_all"),
+        Mean("f"),
+        Mean("f", ignore_nulls=False, alias_name="mean_f_nulls"),
+        Min("v"),
+        Max("f"),
+        Max("b"),
+        ZeroPercentage("v"),
+        ZeroPercentage("v", ignore_nulls=False, alias_name="zero_v_all"),
+        MissingValuePercentage("f"),
+    )
+
+
+def _partial_agg_test_table(num_rows: int, num_keys: int) -> pa.Table:
+    rng = np.random.default_rng(42)
+    v = rng.integers(-3, 4, num_rows).astype(np.int32)
+    f = rng.normal(size=num_rows)
+    f[::7] = np.nan
+    return pa.table(
+        {
+            "k": pa.array(np.arange(num_rows) % num_keys),
+            # int32 values exercise casting raw state to the int64 partial sums.
+            "v": pa.array(v, mask=(np.arange(num_rows) % 11 == 0)),
+            "f": pa.array(f, mask=(np.arange(num_rows) % 13 == 0)),
+            "b": pa.array(v > 0),
+            "unused": pa.array(np.zeros(num_rows)),
+        }
+    )
+
+
+def _make_partial_agg_transformer(mode, probe_rows=100, threshold=0.8):
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggPolicy,
+        _make_aggregating_transformer,
+    )
+
+    return _make_aggregating_transformer(
+        ("k",),
+        _partial_agg_test_aggs(),
+        policy=PartialAggPolicy(
+            mode=mode, probe_rows=probe_rows, unique_ratio_threshold=threshold
+        ),
+    )
+
+
+def _is_partial(table: pa.Table) -> bool:
+    return any(name.startswith("__agg") for name in table.schema.names)
+
+
+def test_partial_agg_probe_skips_high_cardinality():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=1000, num_keys=1000)
+    out = _make_partial_agg_transformer(PartialAggMode.PROBE)(table)
+
+    assert not _is_partial(out)
+    # Pruned to keys + the columns the aggregations read.
+    assert out.schema.names == ["k", "v", "f", "b"]
+    assert out.num_rows == 1000
+
+
+def test_partial_agg_probe_keeps_low_cardinality():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=1000, num_keys=10)
+    out = _make_partial_agg_transformer(PartialAggMode.PROBE)(table)
+
+    assert _is_partial(out)
+    assert out.num_rows == 10
+
+
+def test_partial_agg_probe_skips_probing_small_blocks():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=50, num_keys=50)
+    out = _make_partial_agg_transformer(PartialAggMode.PROBE, probe_rows=100)(table)
+
+    assert _is_partial(out)
+
+
+@pytest.mark.parametrize("mode,expect_partial", [("always", True), ("never", False)])
+def test_partial_agg_forced_modes(mode, expect_partial):
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=1000, num_keys=10)
+    out = _make_partial_agg_transformer(PartialAggMode(mode))(table)
+
+    assert _is_partial(out) == expect_partial
+
+
+def _reduce_shards(shards):
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _make_aggregating_reduce_fn,
+    )
+
+    reduce_fn = _make_aggregating_reduce_fn(("k",), _partial_agg_test_aggs())
+    (out,) = list(reduce_fn(0, [shards]))
+    return out.to_pandas().sort_values("k").reset_index(drop=True)
+
+
+@pytest.mark.parametrize(
+    "layout",
+    [
+        ("never", "never", "never"),
+        ("always", "never", "never"),
+        ("never", "always", "never"),
+        ("always", "always", "never"),
+    ],
+)
+def test_partial_agg_reduce_merges_raw_and_partial_shards(layout):
+    """Any mix of raw and pre-aggregated shards reduces to the same result as
+    the classic all-partial plan."""
+    import pandas as pd
+
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=900, num_keys=40)
+    chunks = [table.slice(i * 300, 300) for i in range(3)]
+
+    def shards_for(modes):
+        return [
+            _make_partial_agg_transformer(PartialAggMode(mode))(chunk)
+            for mode, chunk in zip(modes, chunks)
+        ]
+
+    expected = _reduce_shards(shards_for(("always", "always", "always")))
+    actual = _reduce_shards(shards_for(layout))
+
+    pd.testing.assert_frame_equal(actual, expected, check_exact=False)
+
+
+def test_choose_partial_agg_policy(restore_data_context):
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+    from ray.data._internal.planner.plan_all_to_all_op import (
+        _choose_partial_agg_policy,
+    )
+
+    ctx = restore_data_context
+    op = MagicMock()
+
+    ctx.enable_adaptive_partial_aggregation = False
+    assert _choose_partial_agg_policy(op, ctx).mode == PartialAggMode.ALWAYS
+
+    ctx.enable_adaptive_partial_aggregation = True
+    ctx.partial_aggregation_mode = None
+    ctx.adaptive_partial_aggregation_probe_rows = 123
+    ctx.adaptive_partial_aggregation_unique_ratio_threshold = 0.5
+    policy = _choose_partial_agg_policy(op, ctx)
+    assert policy.mode == PartialAggMode.PROBE
+    assert policy.probe_rows == 123
+    assert policy.unique_ratio_threshold == 0.5
+
+    ctx.partial_aggregation_mode = "never"
+    assert _choose_partial_agg_policy(op, ctx).mode == PartialAggMode.NEVER
+
+    ctx.partial_aggregation_mode = "bogus"
+    with pytest.raises(ValueError):
+        _choose_partial_agg_policy(op, ctx)
+
+
+@pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
+@pytest.mark.parametrize("mode", [None, "always", "never"])
+def test_adaptive_partial_agg_e2e(
+    ray_start_regular_shared_2_cpus, restore_data_context, use_disk, mode
+):
+    """One map task sees unique keys (skips), the other few keys (aggregates);
+    the result matches pandas either way."""
+    import pandas as pd
+
+    from ray.data.aggregate import Count, Max, Mean, Min, Sum
+
+    ctx = restore_data_context
+    ctx.use_disk_based_hash_shuffle = use_disk
+    ctx.shuffle_input_batch_bytes = 0  # one map task per input block
+    ctx.enable_adaptive_partial_aggregation = True
+    ctx.partial_aggregation_mode = mode
+    ctx.adaptive_partial_aggregation_probe_rows = 10
+
+    high = pd.DataFrame({"k": np.arange(200), "v": np.arange(200) % 7})
+    low = pd.DataFrame({"k": np.arange(200) % 5, "v": np.arange(200) % 3})
+    ds = ray.data.from_pandas([high, low])
+
+    actual = (
+        ds.groupby("k", num_partitions=4)
+        .aggregate(Sum("v"), Count(), Mean("v"), Min("v"), Max("v"))
+        .to_pandas()
+        .sort_values("k")
+        .reset_index(drop=True)
+    )
+
+    df = pd.concat([high, low])
+    expected = (
+        df.groupby("k")["v"]
+        .agg(["sum", "count", "mean", "min", "max"])
+        .reset_index()
+        .rename(
+            columns={
+                "sum": "sum(v)",
+                "count": "count()",
+                "mean": "mean(v)",
+                "min": "min(v)",
+                "max": "max(v)",
+            }
+        )
+    )
+    pd.testing.assert_frame_equal(
+        actual, expected, check_exact=False, check_dtype=False
+    )
+
+
 if __name__ == "__main__":
     import sys
 

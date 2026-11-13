@@ -1,11 +1,13 @@
 import logging
-from typing import List, Tuple, Type
+from typing import List, Optional, Tuple, Type
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    PartialAggMode,
+    PartialAggPolicy,
     _make_aggregating_reduce_fn,
     _make_aggregating_transformer,
 )
@@ -259,6 +261,45 @@ def _plan_sort_v2(
     )
 
 
+# Estimated distinct-keys / rows at or below which pre-aggregating is
+# clearly worth it, so map tasks needn't probe.
+_LOW_CARDINALITY_UNIQUE_RATIO = 0.1
+
+
+def _estimate_key_unique_ratio(logical_op: Aggregate) -> Optional[float]:
+    """Plan-time estimate of distinct group keys / input rows, or None.
+
+    Hook for statistics-driven decisions (e.g. Iceberg NDV sketches, Parquet
+    integer min/max bounds). Nothing provides an estimate yet, so map tasks
+    probe their own input.
+    """
+    return None
+
+
+def _choose_partial_agg_policy(
+    logical_op: Aggregate, data_context: DataContext
+) -> PartialAggPolicy:
+    """Picks how the map side of a SHUFFLE_V2 aggregation pre-aggregates."""
+    if not data_context.enable_adaptive_partial_aggregation:
+        return PartialAggPolicy(mode=PartialAggMode.ALWAYS)
+    if data_context.partial_aggregation_mode is not None:
+        return PartialAggPolicy(
+            mode=PartialAggMode(data_context.partial_aggregation_mode)
+        )
+    threshold = data_context.adaptive_partial_aggregation_unique_ratio_threshold
+    ratio = _estimate_key_unique_ratio(logical_op)
+    if ratio is not None:
+        if ratio <= _LOW_CARDINALITY_UNIQUE_RATIO:
+            return PartialAggPolicy(mode=PartialAggMode.ALWAYS)
+        if ratio > threshold:
+            return PartialAggPolicy(mode=PartialAggMode.NEVER)
+    return PartialAggPolicy(
+        mode=PartialAggMode.PROBE,
+        probe_rows=data_context.adaptive_partial_aggregation_probe_rows,
+        unique_ratio_threshold=threshold,
+    )
+
+
 def _plan_hash_shuffle_aggregate_v2(
     data_context: DataContext,
     logical_op: Aggregate,
@@ -280,7 +321,9 @@ def _plan_hash_shuffle_aggregate_v2(
         num_partitions = 1
 
     partition_fn = _make_hash_partition_fn(key_list, num_partitions)
-    block_transformer = _make_aggregating_transformer(key_columns, aggs)
+    block_transformer = _make_aggregating_transformer(
+        key_columns, aggs, policy=_choose_partial_agg_policy(logical_op, data_context)
+    )
     reduce_fn = _make_aggregating_reduce_fn(key_columns, aggs)
 
     map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)

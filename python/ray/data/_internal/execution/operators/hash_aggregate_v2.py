@@ -1,6 +1,9 @@
+import enum
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.types as pa_types
 
 from ray.data._internal.arrow_aggregation import ArrowAggSpec, arrow_agg_options
@@ -14,6 +17,34 @@ from ray.data.block import Block, BlockAccessor
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import TaskContext
     from ray.data.aggregate import AggregateFn, AggregateFnV2
+
+
+class PartialAggMode(str, enum.Enum):
+    """Whether the map side of a hash aggregation pre-aggregates its input."""
+
+    # Always pre-aggregate (the classic two-phase plan).
+    ALWAYS = "always"
+    # Never pre-aggregate: ship column-pruned rows, aggregate once on the reducer.
+    NEVER = "never"
+    # Decide per map task by counting distinct keys in a prefix of its input.
+    PROBE = "probe"
+
+
+@dataclass(frozen=True)
+class PartialAggPolicy:
+    """Map-side partial aggregation policy, resolved at planning time.
+
+    Pre-aggregating pays off only when it collapses many rows per key. With
+    nearly unique keys it costs a full hash aggregation (and its memory) on the
+    mapper, shrinks nothing, and can even grow the shuffled bytes (e.g. Mean
+    ships a sum and a count per row). Under ``PROBE`` a map task groups its
+    first ``probe_rows`` rows by key and skips partial aggregation when
+    distinct keys / probed rows exceeds ``unique_ratio_threshold``.
+    """
+
+    mode: PartialAggMode = PartialAggMode.PROBE
+    probe_rows: int = 100_000
+    unique_ratio_threshold: float = 0.8
 
 
 def _agg_specs(
@@ -77,6 +108,40 @@ def _aggregate_raw_rows(
     grouped = table.group_by(keys, use_threads=False).aggregate(agg_specs)
     grouped = grouped.rename_columns(keys + names)
     return grouped, comps
+
+
+def _raw_rows_to_partial_state(
+    table: pa.Table,
+    keys: List[str],
+    aggs: Tuple["AggregateFnV2", ...],
+    specs: List[ArrowAggSpec],
+) -> pa.Table:
+    """Turns raw rows into the partial-state layout ``_aggregate_raw_rows``
+    produces, treating every row as its own group, so they can be merged with
+    real partials in a single group_by. Uses each spec's ``raw_to_state``
+    projection (no hashing); falls back to ``_aggregate_raw_rows`` if any spec
+    lacks one."""
+    if any(spec.raw_to_state is None for spec in specs):
+        partials, _ = _aggregate_raw_rows(table, keys, aggs, specs)
+        return partials
+
+    # Cast each state column to the type the map-side group_by would produce
+    # (e.g. int32 values -> int64 sums), so it concatenates with real partials.
+    target_schema = _aggregate_raw_rows(table.slice(0, 0), keys, aggs, specs)[0].schema
+
+    columns = {k: table[k] for k in keys}
+    for i, (agg, spec) in enumerate(zip(aggs, specs)):
+        col = agg.get_target_column()
+        opts = arrow_agg_options(agg._ignore_nulls)
+        if spec.prep is not None:
+            table = spec.prep(i, col, table)
+        raw_to_state = spec.raw_to_state
+        assert raw_to_state is not None  # checked above
+        states = raw_to_state(table, i, col, opts)
+        for component, state in zip(spec.components, states):
+            name = f"__agg{i}_{component}"
+            columns[name] = pc.cast(state, target_schema.field(name).type)
+    return pa.table(columns)
 
 
 def _finalize_aggregates(
@@ -167,9 +232,17 @@ def _make_complete_aggregating_block_fn(
 def _make_aggregating_transformer(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple["AggregateFn", ...],
+    policy: Optional[PartialAggPolicy] = None,
 ) -> BlockTransformer:
+    """Map-side block transformer for a hash aggregation.
+
+    ``policy`` only applies to the vectorized engine; ``None`` means always
+    pre-aggregate. The Python fallback always pre-aggregates: its partial
+    columns are named after the aggregations, so a reducer couldn't tell them
+    apart from raw rows.
+    """
     return _make_vectorized_aggregating_transformer(
-        key_columns, aggregation_fns
+        key_columns, aggregation_fns, policy
     ) or _fallback_aggregating_transformer(key_columns, aggregation_fns)
 
 
@@ -182,9 +255,28 @@ def _make_aggregating_reduce_fn(
     ) or _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
 
 
+def _should_skip_partial_aggregation(
+    block: pa.Table, keys: List[str], policy: Optional[PartialAggPolicy]
+) -> bool:
+    """Whether a map task should ship ``block``'s rows without pre-aggregating."""
+    if policy is None or policy.mode == PartialAggMode.ALWAYS:
+        return False
+    if policy.mode == PartialAggMode.NEVER:
+        return True
+    if block.num_rows < policy.probe_rows:
+        # Small inputs are cheap to aggregate and can't blow up memory.
+        return False
+    # A prefix's distinct ratio is never below the whole block's, so this leans
+    # toward skipping; the reducer still produces the same result either way.
+    probe = block.select(keys).slice(0, policy.probe_rows)
+    num_groups = probe.group_by(keys, use_threads=False).aggregate([]).num_rows
+    return num_groups > policy.unique_ratio_threshold * probe.num_rows
+
+
 def _make_vectorized_aggregating_transformer(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple["AggregateFn", ...],
+    policy: Optional[PartialAggPolicy] = None,
 ) -> Optional[BlockTransformer]:
     """Arrow-vectorized map-side combiner, driven by each agg's own spec, or None
     if the query isn't vectorizable (caller falls back to the Python engine)."""
@@ -197,11 +289,11 @@ def _make_vectorized_aggregating_transformer(
     if not _is_vectorizable(keys, specs):
         return None
     has_collection = any(spec.collection for spec in specs)
+    keep = _key_and_target_columns(keys, aggs)
 
     if has_collection:
         # All-collection query: the map prunes to keys + source columns;
         # the reduce aggregates the raw rows directly.
-        keep = _key_and_target_columns(keys, aggs)
 
         def _prune_transform(block: pa.Table) -> pa.Table:
             block_schema = BlockAccessor.for_block(block).schema()
@@ -220,6 +312,11 @@ def _make_vectorized_aggregating_transformer(
 
         if block.num_rows == 0:
             return block
+
+        if _should_skip_partial_aggregation(block, keys, policy):
+            # Raw rows, pruned like a collection query's; the reducer detects
+            # them by the missing ``__agg0_*`` column (see _arrow_reduce).
+            return block.select(keep)
 
         partials, _ = _aggregate_raw_rows(block, keys, aggs, specs)
         return partials
@@ -244,6 +341,32 @@ def _make_vectorized_aggregating_reduce_fn(
     _fallback_reduce = _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
     src_cols = [a.get_target_column() for a in aggs] if has_collection else []
 
+    # Partial-state column layout (reduction queries only).
+    comps: List[Tuple[str, ...]] = (
+        []
+        if has_collection
+        else [
+            tuple(f"__agg{i}_{c}" for c in spec.components)
+            for i, spec in enumerate(specs)
+        ]
+    )
+    merged_names = keys + [c for agg_comps in comps for c in agg_comps]
+    # Every partial shard has this column; raw shards (from map tasks that
+    # skipped partial aggregation) never do.
+    partial_marker = comps[0][0] if comps else None
+
+    def _merge(partials: List[pa.Table]) -> pa.Table:
+        # Built per call: PyArrow aggregate options aren't picklable, so they
+        # can't be captured in this closure (it ships to reduce tasks).
+        merge_specs: List[tuple] = []
+        for agg, spec, out_cols in zip(aggs, specs, comps):
+            assert spec.merge_specs is not None  # reduction specs define it
+            opts = arrow_agg_options(agg._ignore_nulls)
+            merge_specs += spec.merge_specs(out_cols, opts)
+        combined = concat(partials, promote_types=True)
+        merged = combined.group_by(keys, use_threads=False).aggregate(merge_specs)
+        return merged.rename_columns(merged_names)
+
     def _arrow_reduce(
         partition_id: int, tables_by_input: List[List[pa.Table]]
     ) -> Iterable[Block]:
@@ -251,6 +374,26 @@ def _make_vectorized_aggregating_reduce_fn(
         tables = [t for t in shards if t.num_rows > 0]
         if not tables:
             return
+
+        if not has_collection:
+            partials = [t for t in tables if partial_marker in t.schema.names]
+            raws = [t for t in tables if partial_marker not in t.schema.names]
+            if not partials:
+                # Every map task skipped partial aggregation: one raw pass.
+                merged, _ = _aggregate_raw_rows(
+                    concat(raws, promote_types=True), keys, aggs, specs
+                )
+            else:
+                if raws:
+                    partials.append(
+                        _raw_rows_to_partial_state(
+                            concat(raws, promote_types=True), keys, aggs, specs
+                        )
+                    )
+                merged = _merge(partials)
+            yield _finalize_aggregates(merged, keys, aggs, specs, comps)
+            return
+
         combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
 
         # The distinct/count_distinct kernels have no impl for a nested source
@@ -262,25 +405,9 @@ def _make_vectorized_aggregating_reduce_fn(
             yield from _fallback_reduce(partition_id, [[_fallback_map(combined)]])
             return
 
-        if has_collection:
-            # Collection aggs: the map sent raw rows, so this gives final values.
-            merged, comps = _aggregate_raw_rows(combined, keys, aggs, specs)
-        else:
-            # Other aggs: merge the map's partial results.
-            agg_specs: List[tuple] = []
-            comps = []
-            names: List[str] = []
-            for i, (agg, spec) in enumerate(zip(aggs, specs)):
-                out_cols = tuple(f"__agg{i}_{c}" for c in spec.components)
-                comps.append(out_cols)
-                names.extend(out_cols)
-                assert spec.merge_specs is not None  # reduction specs define it
-                opts = arrow_agg_options(agg._ignore_nulls)
-                agg_specs += spec.merge_specs(out_cols, opts)
-            merged = combined.group_by(keys, use_threads=False).aggregate(agg_specs)
-            merged = merged.rename_columns(keys + names)
-
-        yield _finalize_aggregates(merged, keys, aggs, specs, comps)
+        # Collection aggs: the map sent raw rows, so this gives final values.
+        merged, collection_comps = _aggregate_raw_rows(combined, keys, aggs, specs)
+        yield _finalize_aggregates(merged, keys, aggs, specs, collection_comps)
 
     return _arrow_reduce
 
