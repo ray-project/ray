@@ -334,6 +334,11 @@ class RunningReplica:
         """Returns current queue len for the replica.
         `deadline_s` is passed to verify backoff for testing.
 
+        This is the queue length probe the request router calls. The router
+        cancels it at the response deadline or with its routing task; it then
+        requests cancellation of the RPC and re-raises `CancelledError` without
+        awaiting the replica.
+
         Args:
             deadline_s: Deadline, in seconds, for the replica to respond. This
                 implementation doesn't use it.
