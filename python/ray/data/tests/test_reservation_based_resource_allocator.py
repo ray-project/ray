@@ -964,6 +964,106 @@ class TestReservationOpResourceAllocator:
         )
         assert total_gpu_reserved + allocator._total_shared.gpu == 8
 
+    @pytest.mark.parametrize("max_actors", [2, float("inf")])
+    def test_gpu_not_reserved_for_join_operator(self, restore_data_context, max_actors):
+        """Test that JoinOperator (and HashShufflingOperatorBase subclasses)
+        reports max gpu=0 so it does not receive reserved or shared GPU budget.
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        left_in = InputDataBuffer(DataContext.get_current(), [])
+        right_in = InputDataBuffer(DataContext.get_current(), [])
+
+        infer1_op = mock_map_op(left_in, ray_remote_args={"num_gpus": 1}, name="Infer1")
+        infer1_op.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
+                ExecutionResources(
+                    cpu=0, gpu=max_actors, object_store_memory=float("inf")
+                ),
+            )
+        )
+
+        infer2_op = mock_map_op(
+            right_in, ray_remote_args={"num_gpus": 1}, name="Infer2"
+        )
+        infer2_op.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
+                ExecutionResources(
+                    cpu=0, gpu=max_actors, object_store_memory=float("inf")
+                ),
+            )
+        )
+
+        join_op = mock_join_op(infer1_op, infer2_op)
+        _, join_max_req = join_op.min_max_resource_requirements()
+        assert join_max_req.gpu == 0
+
+        topo = build_streaming_topology(join_op, ExecutionOptions(), noop_counter())
+
+        global_limits = ExecutionResources(cpu=8, gpu=4, object_store_memory=10_000_000)
+        ops = [left_in, right_in, infer1_op, infer2_op, join_op]
+        op_usages = {op: ExecutionResources.zero() for op in ops}
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys(ops, 0)
+        resource_manager._mem_op_outputs = dict.fromkeys(ops, 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(limits=global_limits)
+
+        assert allocator._op_reserved[join_op].gpu == 0
+        assert allocator._op_budgets[join_op].gpu == 0
+        assert allocator._op_budgets[infer1_op].gpu == 2
+        assert allocator._op_budgets[infer2_op].gpu == 2
+
+    @pytest.mark.parametrize(
+        "num_partitions,num_cpus,num_gpus,expected_max_gpu",
+        [
+            (1, 1, None, 0),
+            (1, 1, 0, 0),
+            (1, 1, 0.5, 0.5),
+            (4, 4, 0.5, 2.0),
+        ],
+    )
+    def test_join_max_gpu_reflects_aggregator_override(
+        self,
+        restore_data_context,
+        num_partitions,
+        num_cpus,
+        num_gpus,
+        expected_max_gpu,
+    ):
+        """A ``num_gpus`` aggregator override is reflected in the join's
+        declared max so GPU accounting matches what the pool acquires."""
+        left_in = InputDataBuffer(DataContext.get_current(), [])
+        right_in = InputDataBuffer(DataContext.get_current(), [])
+
+        infer1_op = mock_map_op(left_in, ray_remote_args={"num_gpus": 1}, name="Infer1")
+        infer2_op = mock_map_op(
+            right_in, ray_remote_args={"num_gpus": 1}, name="Infer2"
+        )
+
+        join_op = mock_join_op(
+            infer1_op,
+            infer2_op,
+            num_partitions=num_partitions,
+            num_cpus=num_cpus,
+            aggregator_ray_remote_args_override={"num_gpus": num_gpus},
+        )
+        _, join_max_req = join_op.min_max_resource_requirements()
+        assert join_max_req.gpu == expected_max_gpu
+
     def test_reservation_accounts_for_completed_ops(self, restore_data_context):
         """Test that resource reservation properly accounts for completed ops."""
         DataContext.get_current().op_resource_reservation_enabled = True
