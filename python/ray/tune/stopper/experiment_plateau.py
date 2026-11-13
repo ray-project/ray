@@ -63,7 +63,12 @@ class ExperimentPlateauStopper(Stopper):
 
     def __call__(self, trial_id, result):
         """Return a boolean representing if the tuning has to stop."""
-        self._top_values.append(result[self._metric])
+        metric_value = result[self._metric]
+        if metric_value != metric_value:
+            # A NaN would stay in the top values and block plateau detection.
+            # (`!=` instead of np.isnan, which raises on ints past int64.)
+            return self.stop_all()
+        self._top_values.append(metric_value)
         if self._mode == "min":
             self._top_values = sorted(self._top_values)[: self._top]
         else:
