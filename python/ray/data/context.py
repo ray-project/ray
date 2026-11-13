@@ -177,7 +177,7 @@ DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION = env_bool(
 )
 
 DEFAULT_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION = env_bool(
-    "RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION", False
+    "RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION", True
 )
 
 DEFAULT_PARTIAL_AGGREGATION_MODE = os.environ.get(
@@ -950,11 +950,12 @@ class DataContext:
             may skip its map-side partial aggregation when the group keys are
             nearly unique, shipping column-pruned rows to the reducers instead.
             Defaults to the ``RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION``
-            environment variable (``False`` when unset).
-        partial_aggregation_mode: Forces the map-side partial aggregation on
-            (``"always"``) or off (``"never"``) for every map task when
-            ``enable_adaptive_partial_aggregation`` is set. ``None`` (default)
-            lets each map task decide by probing its input.
+            environment variable (``True`` when unset).
+        partial_aggregation_mode: How map tasks choose, when
+            ``enable_adaptive_partial_aggregation`` is set: ``"probe"`` makes
+            each map task decide by probing its input, ``"always"``
+            pre-aggregates in every map task, and ``"never"`` skips it in every
+            map task. ``None`` (default) means ``"probe"``.
         adaptive_partial_aggregation_probe_rows: Number of leading rows a map
             task inspects to decide whether to skip partial aggregation. Tasks
             with fewer input rows always aggregate.

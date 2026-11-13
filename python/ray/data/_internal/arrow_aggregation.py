@@ -67,7 +67,7 @@ class ArrowAggSpec(NamedTuple):
     # group of one.  Lets a reducer turn raw rows (shipped when a map task
     # skipped partial aggregation) into partial state without a group_by, so
     # one ``merge_specs`` pass covers raw and partial shards alike.
-    raw_to_state: Optional[Callable[..., List["pa.ChunkedArray"]]] = None
+    raw_to_partial: Optional[Callable[..., List["pa.ChunkedArray"]]] = None
 
 
 # --- reusable finalizers (multi-line; referenced from AggregateFn specs) ------
@@ -118,7 +118,9 @@ def sum_spec() -> ArrowAggSpec:
             (input_cols[0], "sum", options.value_opts)
         ],
         finalize=lambda merged, component_cols: merged[component_cols[0]],
-        raw_to_state=lambda block, agg_index, source_col, options: [block[source_col]],
+        raw_to_partial=lambda block, agg_index, source_col, options: [
+            block[source_col]
+        ],
     )
 
 
@@ -137,7 +139,7 @@ def count_spec() -> ArrowAggSpec:
         finalize=lambda merged, component_cols: pc.cast(
             merged[component_cols[0]], pa.int64()
         ),
-        raw_to_state=lambda block, agg_index, source_col, options: [
+        raw_to_partial=lambda block, agg_index, source_col, options: [
             _count_state(block, source_col, options)
         ],
     )
@@ -153,7 +155,9 @@ def minmax_spec(kind: str) -> ArrowAggSpec:
             (input_cols[0], kind, options.value_opts)
         ],
         finalize=lambda merged, component_cols: merged[component_cols[0]],
-        raw_to_state=lambda block, agg_index, source_col, options: [block[source_col]],
+        raw_to_partial=lambda block, agg_index, source_col, options: [
+            block[source_col]
+        ],
     )
 
 
@@ -169,7 +173,7 @@ def mean_spec() -> ArrowAggSpec:
             (input_cols[1], "sum", options.zero_sum_opts),
         ],
         finalize=_finalize_mean,
-        raw_to_state=lambda block, agg_index, source_col, options: [
+        raw_to_partial=lambda block, agg_index, source_col, options: [
             block[source_col],
             _count_state(block, source_col, options),
         ],
@@ -193,7 +197,7 @@ def missing_pct_spec() -> ArrowAggSpec:
             (input_cols[1], "sum", options.zero_sum_opts),
         ],
         finalize=_finalize_pct,
-        raw_to_state=lambda block, agg_index, source_col, options: [
+        raw_to_partial=lambda block, agg_index, source_col, options: [
             block[f"__d{agg_index}_miss"],
             _ones(block),
         ],
@@ -225,7 +229,7 @@ def zero_pct_spec() -> ArrowAggSpec:
             (input_cols[1], "sum", options.zero_sum_opts),
         ],
         finalize=_finalize_pct,
-        raw_to_state=lambda block, agg_index, source_col, options: [
+        raw_to_partial=lambda block, agg_index, source_col, options: [
             block[f"__d{agg_index}_zero"],
             _count_state(block, source_col, options),
         ],

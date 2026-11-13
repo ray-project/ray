@@ -26,7 +26,7 @@ class PartialAggMode(str, enum.Enum):
     ALWAYS = "always"
     # Never pre-aggregate: ship column-pruned rows, aggregate once on the reducer.
     NEVER = "never"
-    # Decide per map task by counting distinct keys in a prefix of its input.
+    # Decide per map task by counting distinct keys in a subset of its input rows.
     PROBE = "probe"
 
 
@@ -34,7 +34,7 @@ class PartialAggMode(str, enum.Enum):
 class PartialAggPolicy:
     """Map-side partial aggregation policy, resolved at planning time.
 
-    Pre-aggregating pays off only when it collapses many rows per key. With
+    Pre-aggregating pays off only when it collapses many rows per key (low cardinality). With
     nearly unique keys it costs a full hash aggregation (and its memory) on the
     mapper, shrinks nothing, and can even grow the shuffled bytes (e.g. Mean
     ships a sum and a count per row). Under ``PROBE`` a map task groups its
@@ -110,7 +110,7 @@ def _aggregate_raw_rows(
     return grouped, comps
 
 
-def _raw_rows_to_partial_state(
+def _raw_rows_to_partials(
     table: pa.Table,
     keys: List[str],
     aggs: Tuple["AggregateFnV2", ...],
@@ -118,10 +118,10 @@ def _raw_rows_to_partial_state(
 ) -> pa.Table:
     """Turns raw rows into the partial-state layout ``_aggregate_raw_rows``
     produces, treating every row as its own group, so they can be merged with
-    real partials in a single group_by. Uses each spec's ``raw_to_state``
+    real partials in a single group_by. Uses each spec's ``raw_to_partial``
     projection (no hashing); falls back to ``_aggregate_raw_rows`` if any spec
     lacks one."""
-    if any(spec.raw_to_state is None for spec in specs):
+    if any(spec.raw_to_partial is None for spec in specs):
         partials, _ = _aggregate_raw_rows(table, keys, aggs, specs)
         return partials
 
@@ -135,9 +135,9 @@ def _raw_rows_to_partial_state(
         opts = arrow_agg_options(agg._ignore_nulls)
         if spec.prep is not None:
             table = spec.prep(i, col, table)
-        raw_to_state = spec.raw_to_state
-        assert raw_to_state is not None  # checked above
-        states = raw_to_state(table, i, col, opts)
+        raw_to_partial = spec.raw_to_partial
+        assert raw_to_partial is not None  # checked above
+        states = raw_to_partial(table, i, col, opts)
         for component, state in zip(spec.components, states):
             name = f"__agg{i}_{component}"
             columns[name] = pc.cast(state, target_schema.field(name).type)
@@ -237,9 +237,10 @@ def _make_aggregating_transformer(
     """Map-side block transformer for a hash aggregation.
 
     ``policy`` only applies to the vectorized engine; ``None`` means always
-    pre-aggregate. The Python fallback always pre-aggregates: its partial
-    columns are named after the aggregations, so a reducer couldn't tell them
-    apart from raw rows.
+    pre-aggregate. The Python fallback always pre-aggregates: its accumulators
+    have no per-row raw-to-partial projection, so a reducer would have to
+    accumulate raw rows and then combine them, which moves the work rather
+    than removing it.
     """
     return _make_vectorized_aggregating_transformer(
         key_columns, aggregation_fns, policy
@@ -266,8 +267,8 @@ def _should_skip_partial_aggregation(
     if block.num_rows < policy.probe_rows:
         # Small inputs are cheap to aggregate and can't blow up memory.
         return False
-    # A prefix's distinct ratio is never below the whole block's, so this leans
-    # toward skipping; the reducer still produces the same result either way.
+    # Probe a subset of the data to see if the key cardinality is high enough
+    # to justify skipping partial aggregation.
     probe = block.select(keys).slice(0, policy.probe_rows)
     num_groups = probe.group_by(keys, use_threads=False).aggregate([]).num_rows
     return num_groups > policy.unique_ratio_threshold * probe.num_rows
@@ -386,7 +387,7 @@ def _make_vectorized_aggregating_reduce_fn(
             else:
                 if raws:
                     partials.append(
-                        _raw_rows_to_partial_state(
+                        _raw_rows_to_partials(
                             concat(raws, promote_types=True), keys, aggs, specs
                         )
                     )

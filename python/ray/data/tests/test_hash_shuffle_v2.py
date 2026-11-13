@@ -837,7 +837,7 @@ def test_shuffle_ops_report_per_task_exec_stats(
         ), phase
 
 
-# --- Adaptive map-side partial aggregation (DATA-3654) -----------------------
+# --- Adaptive map-side partial aggregation -----------------------
 
 
 def _partial_agg_test_aggs():
@@ -1005,26 +1005,35 @@ def test_choose_partial_agg_policy(restore_data_context):
     )
 
     ctx = restore_data_context
-    op = MagicMock()
 
     ctx.enable_adaptive_partial_aggregation = False
-    assert _choose_partial_agg_policy(op, ctx).mode == PartialAggMode.ALWAYS
+    assert _choose_partial_agg_policy(ctx).mode == PartialAggMode.ALWAYS
 
     ctx.enable_adaptive_partial_aggregation = True
     ctx.partial_aggregation_mode = None
     ctx.adaptive_partial_aggregation_probe_rows = 123
     ctx.adaptive_partial_aggregation_unique_ratio_threshold = 0.5
-    policy = _choose_partial_agg_policy(op, ctx)
+    policy = _choose_partial_agg_policy(ctx)
     assert policy.mode == PartialAggMode.PROBE
     assert policy.probe_rows == 123
     assert policy.unique_ratio_threshold == 0.5
 
     ctx.partial_aggregation_mode = "never"
-    assert _choose_partial_agg_policy(op, ctx).mode == PartialAggMode.NEVER
+    assert _choose_partial_agg_policy(ctx).mode == PartialAggMode.NEVER
+
+    ctx.partial_aggregation_mode = "always"
+    assert _choose_partial_agg_policy(ctx).mode == PartialAggMode.ALWAYS
+
+    # A forced probe still uses the configured probe size and threshold.
+    ctx.partial_aggregation_mode = "probe"
+    policy = _choose_partial_agg_policy(ctx)
+    assert policy.mode == PartialAggMode.PROBE
+    assert policy.probe_rows == 123
+    assert policy.unique_ratio_threshold == 0.5
 
     ctx.partial_aggregation_mode = "bogus"
     with pytest.raises(ValueError):
-        _choose_partial_agg_policy(op, ctx)
+        _choose_partial_agg_policy(ctx)
 
 
 @pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
