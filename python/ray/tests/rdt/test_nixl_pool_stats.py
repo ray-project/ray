@@ -432,6 +432,35 @@ class NixlPoolStatsActor:
 
         get_tensor_transport_manager("NIXL")
 
+    def register_pool(self, size=1024):
+        # Register a CPU pool on this actor using a fake NIXL agent, so the
+        # public getter can be exercised end-to-end without real NIXL. The fake
+        # agent is defined locally so this method carries no reference to the
+        # test module (which is not importable on the worker).
+        import torch
+
+        from ray.experimental.rdt.util import get_tensor_transport_manager
+
+        class _FakeAgent:
+            def register_memory(self, tensor):
+                pass
+
+        transport = get_tensor_transport_manager("NIXL")
+        transport._nixl_agent = _FakeAgent()
+        transport.register_nixl_memory_pool(size, torch.device("cpu"))
+
+    def allocate(self, obj_id, numel):
+        # Carve a live object into the registered pool so a later snapshot
+        # reports non-zero allocated_bytes through the public API.
+        import torch
+
+        from ray.experimental.rdt.util import get_tensor_transport_manager
+
+        transport = get_tensor_transport_manager("NIXL")
+        transport._memory_pool.allocate_group(
+            obj_id, [torch.zeros(numel, dtype=torch.float32)]
+        )
+
     def transport_state(self):
         from ray.experimental.rdt import util as _rdt_util
 
@@ -471,6 +500,34 @@ def test_untouched_actor_returns_none(ray_start_regular):
     actor = NixlPoolStatsActor.remote()
     assert ray.get(actor.ready.remote()) is True
     assert get_nixl_memory_pool_stats(actor) is None
+
+
+def test_public_api_roundtrip_returns_registered_pool_snapshot(ray_start_regular):
+    # The full public path: register a pool on the actor, then query it from
+    # the driver and get back a non-None snapshot whose fields match the pool,
+    # including a live allocation made after registration.
+    actor = NixlPoolStatsActor.remote()
+    ray.get(actor.register_pool.remote(1024), timeout=10)
+
+    stats = get_nixl_memory_pool_stats(actor)
+    assert isinstance(stats, NixlMemoryPoolStats)
+    assert stats.device == "cpu"
+    assert stats.capacity_bytes == 1024
+    assert stats.allocated_bytes == 0
+    assert stats.free_bytes == 1024
+    assert stats.largest_free_block_bytes == 1024
+    assert stats.num_allocated_objects == 0
+    assert stats.num_free_blocks == 1
+    assert stats.allocation_failures == 0
+
+    # A live allocation is reflected in a later snapshot (16 float32 = 64 B).
+    ray.get(actor.allocate.remote("o1", 16), timeout=10)
+    stats = get_nixl_memory_pool_stats(actor)
+    assert stats.allocated_bytes == 64
+    assert stats.free_bytes == 1024 - 64
+    assert stats.num_allocated_objects == 1
+    assert stats.num_free_blocks == 1
+    assert stats.capacity_bytes == stats.allocated_bytes + stats.free_bytes
 
 
 def test_untouched_actor_does_not_initialize(ray_start_regular):
