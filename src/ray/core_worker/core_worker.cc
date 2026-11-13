@@ -488,6 +488,16 @@ CoreWorker::CoreWorker(
     absl::MutexLock lock(&wait_async_->mu);
     wait_async_->memory_store = memory_store_.get();
   }
+  // Objects can go out of scope through internal reference-counter paths that
+  // have no caller to hand a `deleted` vector to (e.g. when a borrower drops the
+  // last reference and this owner is notified asynchronously). Let the reference
+  // counter delete those objects' in-process values itself so the memory-store
+  // entries do not leak. Capture the memory store by value so the callback stays
+  // valid for as long as the reference counter holds it.
+  reference_counter_->SetMemoryStoreDeleteCallback(
+      [memory_store = memory_store_](const std::vector<ObjectID> &deleted) {
+        memory_store->Delete(deleted);
+      });
   RAY_CHECK(RayConfig::instance().max_free_local_objects_batch_size() > 0)
       << "max_free_local_objects_batch_size must be positive, got "
       << RayConfig::instance().max_free_local_objects_batch_size();
