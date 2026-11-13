@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.util import yield_block_with_stats
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -141,7 +142,9 @@ def _shuffle_map_task(
     output_schema = TableBlockAccessor.try_convert_block_type(
         shard_source_blocks[0], block_type=BlockType.ARROW
     ).schema
-    empty_shard = _encode_partition_ipc(output_schema.empty_table(), ipc_write_options)
+    empty_shard = _encode_partition_ipc(
+        _create_empty_table(output_schema), ipc_write_options
+    )
 
     shard_sizes: Dict[int, Tuple[int, int]] = {}
     partition_bufs: List[pa.Buffer] = []

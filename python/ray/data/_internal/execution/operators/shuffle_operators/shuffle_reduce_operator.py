@@ -36,6 +36,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     _shuffle_reduce_task,
 )
 from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
@@ -357,7 +358,7 @@ class ShuffleReduceOp(PhysicalOperator):
         reached for schema-preserving reduces (``should_emit_empty_partitions=True``);
         aggregation disables this path instead of emitting a partial-schema block.
         """
-        empty_block = schema.empty_table()
+        empty_block = _create_empty_table(schema)
         block_meta = BlockAccessor.for_block(empty_block).get_metadata()
         out_bundle = RefBundle(
             (

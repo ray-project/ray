@@ -22,6 +22,7 @@ from ray.data._internal.logical.operators.map_operator import AbstractMap, Filte
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockMetadata,
@@ -319,7 +320,7 @@ class ReadFiles(
         # probe fails — the UDF may require a non-empty input.
         if self.block_udf is not None:
             try:
-                transformed = self.block_udf(schema.empty_table()).schema
+                transformed = self.block_udf(_create_empty_table(schema)).schema
                 schema = transformed.with_metadata(schema.metadata)
             except Exception:
                 pass

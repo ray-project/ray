@@ -49,6 +49,7 @@ from ray.data._internal.util import (
     _is_local_scheme,
     iterate_with_retry,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
@@ -936,7 +937,7 @@ class ParquetDatasource(Datasource):
             # Try to infer dataset schema by passing dummy table through UDF.
             try:
                 # An empty table with extensions will fail for pyarrow==9.0.0
-                dummy_table = target_schema.empty_table()
+                dummy_table = _create_empty_table(target_schema)
                 target_schema = _block_udf(dummy_table).schema.with_metadata(
                     target_schema.metadata
                 )
