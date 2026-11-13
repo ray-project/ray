@@ -13,7 +13,8 @@
 # platform) group by digest, with Trivy in a network-less container, and
 # uploads its results to that folder (also kept as trivy/results/
 # artifacts). Images sharing a platform share most layers, so a group pulls
-# them once.
+# them once. Last, trivy_report reads the folder and leaves the build's
+# annotation for .buildkite/hooks/post-command to post.
 group: image scan
 steps:
   - label: ":shield: trivy: stage vulnerability DBs"
@@ -163,4 +164,29 @@ steps:
       - trivy_db
       - ray_llm_images_cuda_push_aarch64(*)
       - ray_llm_extra_images_cuda_push_aarch64(*)
+      - forge
+
+  # Runs whatever the scans did, so a failed or skipped scan job still shows
+  # up, as its images missing from the report.
+  - label: ":shield: trivy: report"
+    key: trivy_report
+    if: build.env("RAYCI_IMAGE_SCAN") == "1"
+    instance_type: small
+    soft_fail: true
+    allow_dependency_failure: true
+    tags:
+      - docker
+      - oss
+      - skip-on-premerge
+    commands:
+      - bazel run //ci/ray_ci/automation/trivy:build_report --
+        --output-dir /artifact-mount/trivy/report
+        --annotation-dir /artifact-mount/annotations
+    depends_on:
+      - trivy_db
+      - images_scan(*)
+      - images_scan_tpu
+      - images_scan_aarch64(*)
+      - images_scan_llm
+      - images_scan_llm_aarch64
       - forge

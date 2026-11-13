@@ -684,5 +684,36 @@ def test_cli_rejects_empty_results_dir(tmp_path: Path):
     assert "no scan status records" in (tmp_path / "out" / "report.md").read_text()
 
 
+def test_add_missing_reports_expected_images_without_a_status():
+    """A scan job that never ran leaves no status; the expected list is
+    what makes its images show up as not scanned."""
+    scanned = ImageScan(image=Image(*CPU[:5]), packages=1)
+    expected = [Image(*CU128[:5]), Image(*CPU[:5])]
+    scans = trivy_report.add_missing([scanned], expected)
+    assert [s.image.name for s in scans] == [CPU[0], CU128[0]]
+    assert scans[0] is scanned
+    assert scans[1].error == trivy_report.MISSING_STATUS
+    assert exit_code(scans, []) == EXIT_INCOMPLETE
+
+
+def test_files_note_replaces_the_footer():
+    scans = [ImageScan(image=Image(*CPU[:5]), packages=1)]
+    body = render_annotation(scans, [], SCANNER, files_note="Files: `s3://b/p/`")
+    assert body.endswith("Files: `s3://b/p/`\n")
+    assert "artifacts" not in body
+
+
+def test_write_report_writes_the_three_files(tmp_path: Path):
+    scans = [ImageScan(image=Image(*CPU[:5]), packages=1)]
+    build = trivy_report.build_info({"BUILDKITE_BUILD_NUMBER": "7"})
+    code = trivy_report.write_report(tmp_path / "out", scans, SCANNER, build)
+    assert code == EXIT_CLEAN
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
+        "report.md",
+        "summary.json",
+        "vulns.csv",
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
