@@ -34,6 +34,8 @@ from ray.experimental.sandbox._internal import cdi, egress_guard, overlayfs
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
+    cpu_window_size,
+    unlimited_cpu_window,
     wrap_command,
 )
 from ray.experimental.sandbox._internal.image_utils import (
@@ -596,12 +598,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return sandbox_id
 
     def _check_host_requirements(self, config: SandboxConfig) -> None:
-        """Fail early when the node lacks a binary that the sandbox needs."""
+        """Fail early when the node lacks a binary that the sandbox needs, or
+        has a CPU window that can't be read."""
         if not shutil.which("runsc"):
             raise SandboxCreationError(
                 "gVisor executable 'runsc' not found in PATH. "
                 "Please install gVisor (runsc) on the node."
             )
+        try:
+            cpu_window_size()
+        except ValueError as err:
+            raise SandboxCreationError(str(err)) from None
         if config.network == "public":
             missing = [
                 b
@@ -917,6 +924,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 raise SandboxCreationError(
                     f"Failed to write the egress ruleset for '{root_dir}': {err}"
                 ) from err
+        # A sandbox with a CPU limit runs on its cgroup's CPUs. One without,
+        # whether or not a memory limit gives it a cgroup, gets a window of
+        # the node's CPUs if the node sets one, and keeps it for its life.
+        try:
+            cpu_window = unlimited_cpu_window(cgroup)
+        except ValueError as err:
+            raise SandboxCreationError(str(err)) from None
         proc, stderr_file = self._run_until_running(
             config,
             sandbox_id,
@@ -925,6 +939,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             restore=restore,
             gpu_run_args=gpu_run_args,
             rootfs_overlay=rootfs_overlay,
+            cpu_window=cpu_window,
         )
 
         # The namespaces set_egress_allowlist must find behind netns.pid,
@@ -952,6 +967,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "enter_userns": netns_ids is None
             or netns_ids[0] != _namespace_ids(os.getpid())[0],
             "cgroup": cgroup,
+            # The CPUs of a sandbox without a CPU limit on a node that sets
+            # RAY_SANDBOX_CPU_WINDOW, or None.
+            "cpu_window": cpu_window,
             # The kernel overlay the sandbox boots from, or None for an EROFS
             # sandbox.
             "rootfs_overlay": rootfs_overlay,
@@ -972,6 +990,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         restore: Optional["_RestoreImage"] = None,
         gpu_run_args: Sequence[str] = (),
         rootfs_overlay: Optional[overlayfs.RootfsOverlay] = None,
+        cpu_window: Optional[List[int]] = None,
     ) -> Tuple[subprocess.Popen, IO[str]]:
         """Start the launch process and wait for the container to run.
 
@@ -990,6 +1009,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 has any.
             rootfs_overlay: The kernel overlay to boot the sandbox from, or
                 None to boot it straight from its EROFS image.
+            cpu_window: The CPUs that the launch process restricts itself
+                to, from ``unlimited_cpu_window``, or None.
 
         Returns:
             The launch process and its open stderr log.
@@ -1002,7 +1023,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_run_args=gpu_run_args,
             rootfs_overlay=rootfs_overlay,
         )
-        run_args = wrap_command(run_args, cgroup, config.oom_score_adj)
+        run_args = wrap_command(run_args, cgroup, config.oom_score_adj, cpus=cpu_window)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -1993,6 +2014,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             meta.get("cgroup"),
             restore=restore,
             rootfs_overlay=meta.get("rootfs_overlay"),
+            # The same CPUs as before, rather than the next window.
+            cpu_window=meta.get("cpu_window"),
         )
         meta["proc"] = proc
         meta["stderr_file"] = stderr_file

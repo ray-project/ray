@@ -9,8 +9,10 @@ when it deletes the sandbox or reclaims the bundle of an owner that died.
 
 import math
 import os
+import random
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set
@@ -129,10 +131,91 @@ def _shared_affinity(
     return sorted(sorted(load, key=lambda c: (load[c], c))[:count])
 
 
+# How many of the node's CPUs a sandbox without a CPU limit sees and runs on.
+_CPU_WINDOW_ENV = "RAY_SANDBOX_CPU_WINDOW"
+_window_lock = threading.Lock()
+# Where the next window starts in this process's list of CPUs.
+_window_next: Optional[int] = None
+
+
+def cpu_window_size() -> int:
+    """Read the node's ``RAY_SANDBOX_CPU_WINDOW``.
+
+    Returns:
+        The number of CPUs in a window, at least gVisor's minimum, or 0 if
+        the node sets no window.
+
+    Raises:
+        ValueError: If the variable isn't a non-negative integer.
+    """
+    raw = os.environ.get(_CPU_WINDOW_ENV, "").strip()
+    if not raw:
+        return 0
+    try:
+        size = int(raw)
+    except ValueError:
+        size = -1
+    if size < 0:
+        raise ValueError(f"{_CPU_WINDOW_ENV}={raw!r} isn't a number of CPUs such as 8")
+    return max(size, _MIN_SANDBOX_CPUS) if size else 0
+
+
+def unlimited_cpu_window(
+    cgroup: Optional["SandboxCgroup"] = None,
+) -> Optional[List[int]]:
+    """The CPUs for the next sandbox, if it sets no CPU limit.
+
+    gVisor sizes a sandbox's vCPUs and thread pools from the CPUs its
+    processes may run on. A sandbox with no limit sees every CPU of the
+    node, so on a large node it holds several times the host threads of a
+    small sandbox, and every sandbox boot on the node gets slower as the
+    node's thread count grows. ``RAY_SANDBOX_CPU_WINDOW`` gives each such
+    sandbox that many CPUs instead. Windows rotate over the CPUs the sandbox
+    may use, so sandboxes spread over the node, and they overlap once there
+    are more sandboxes than windows: a window sizes a sandbox, it doesn't
+    reserve CPUs for it. Unset or ``0`` leaves every CPU.
+
+    Args:
+        cgroup: The sandbox's cgroup, if it has one. A sandbox with only a
+            memory limit has a cgroup and no CPU limit, so it gets a window
+            too, from the CPUs its cgroup may use. One with a CPU limit keeps
+            the CPUs its cgroup chose.
+
+    Returns:
+        The window's CPUs, or None when the sandbox keeps its CPUs: it has a
+        CPU limit, the variable is unset, or the sandbox has no more CPUs
+        than the window.
+
+    Raises:
+        ValueError: If the variable isn't a non-negative integer.
+    """
+    size = cpu_window_size()
+    if size == 0 or (cgroup is not None and "cpu.max" in cgroup.limits):
+        return None
+    # The launcher joins the cgroup before it sets the affinity, and the
+    # cgroup's cpuset may be narrower than this process's CPUs.
+    cpus = sorted(
+        _pool_cpus(cgroup.path) if cgroup is not None else os.sched_getaffinity(0)
+    )
+    if size >= len(cpus):
+        return None
+    global _window_next
+    with _window_lock:
+        if _window_next is None:
+            # Processes on one node start at different windows. A multiple
+            # of the size, so that their windows coincide or don't overlap:
+            # a process that hosts one sandbox only ever takes this one.
+            _window_next = random.randrange(0, len(cpus), size)
+        start = _window_next
+        _window_next = (start + size) % len(cpus)
+    return [cpus[(start + i) % len(cpus)] for i in range(size)]
+
+
 def wrap_command(
     command: List[str],
     cgroup: Optional["SandboxCgroup"] = None,
     oom_score_adj: Optional[int] = None,
+    cpus: Optional[Iterable[int]] = None,
 ) -> List[str]:
     """Apply sandbox placement and OOM priority in a child launcher.
 
@@ -140,11 +223,16 @@ def wrap_command(
         command: The workload to execute.
         cgroup: The sandbox's cgroup, or None to leave placement unchanged.
         oom_score_adj: OOM score adjustment, or None to inherit it.
+        cpus: The CPUs to run a sandbox on whose cgroup, if it has one,
+            chose none, or None for every CPU. A cgroup's own CPUs take
+            precedence.
 
     Returns:
         The wrapped command, or the original when no changes are requested.
     """
-    if cgroup is None and oom_score_adj is None:
+    if cgroup is not None and cgroup.affinity:
+        cpus = cgroup.affinity
+    if cgroup is None and oom_score_adj is None and not cpus:
         return command
     launcher = Path(__file__).with_name("cgroup_launcher.py")
     args = [
@@ -153,8 +241,8 @@ def wrap_command(
         str(launcher),
         str(cgroup.path) if cgroup is not None else "",
     ]
-    if cgroup is not None and cgroup.affinity:
-        args.extend(["--cpus", _cpu_list(set(cgroup.affinity))])
+    if cpus:
+        args.extend(["--cpus", _cpu_list(set(cpus))])
     if oom_score_adj is not None:
         args.extend(["--oom-score-adj", str(oom_score_adj)])
     return [*args, *command]

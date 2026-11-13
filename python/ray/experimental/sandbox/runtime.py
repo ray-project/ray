@@ -5,7 +5,10 @@ import threading
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal import image_push
-from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
+from ray.experimental.sandbox._internal.cgroup import (
+    SandboxCgroupManager,
+    cpu_window_size,
+)
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
@@ -64,6 +67,7 @@ class SandboxRuntime:
             memory_bytes = parse_memory_bytes(config.memory) or 0
             if config.cpu > 0 or memory_bytes > 0:
                 SandboxCgroupManager().check(config.cpu, memory_bytes)
+            cpu_window_size()  # A bad RAY_SANDBOX_CPU_WINDOW fails every create.
         except Exception as err:
             raise SandboxCreationError(
                 f"Cannot enforce sandbox resources: {err}"
