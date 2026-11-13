@@ -438,7 +438,8 @@ def test_a_task_fails_at_its_first_corrupt_chunk_when_errors_are_not_skipped(
 
     # b's rows before the corrupt chunk were still being built into a table.
     assert rows_of(tables) == file_rows(a)
-    assert "b.mcap" in str(error)
+    # The retry wrapper names the file in a note, leaving the message as raised.
+    assert "b.mcap" in "\n".join(getattr(error, "__notes__", []))
 
 
 def test_an_error_reading_the_file_is_not_skipped_as_a_corrupt_chunk(
