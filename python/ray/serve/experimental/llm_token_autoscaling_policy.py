@@ -113,7 +113,7 @@ class LLMTokenAutoscalingPolicy:
             return ctx.target_num_replicas, {}
 
         required_replicas = math.ceil(mean_required_capacity)
-        if ctx.total_queued_requests > 0:
+        if ctx.total_num_requests > 0:
             required_replicas = max(1, required_replicas)
 
         outstanding_prefill_tokens = max(

@@ -16,7 +16,7 @@ def _context(
     *,
     prefill_by_handle=None,
     target_num_replicas=2,
-    total_queued_requests=0,
+    total_num_requests=0,
     look_back_period_s=30,
 ):
     prefill_by_handle = prefill_by_handle or {}
@@ -35,7 +35,7 @@ def _context(
         },
         config=SimpleNamespace(look_back_period_s=look_back_period_s),
         target_num_replicas=target_num_replicas,
-        total_queued_requests=total_queued_requests,
+        total_num_requests=total_num_requests,
     )
 
 
@@ -136,14 +136,14 @@ def test_holds_target_for_missing_snapshot(prefill_by_handle):
     assert state == {}
 
 
-def test_keeps_one_replica_when_requests_are_queued():
+def test_keeps_one_replica_when_requests_are_in_flight():
     policy = LLMTokenAutoscalingPolicy(target_prefill_tokens_per_replica=100)
 
     replicas, state = policy(
         _context(
             prefill_by_handle={"a": [(0, 0), (30, 0)]},
             target_num_replicas=0,
-            total_queued_requests=1,
+            total_num_requests=1,
         )
     )
 
