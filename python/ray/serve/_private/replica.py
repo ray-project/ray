@@ -68,7 +68,7 @@ from ray.serve._private.common import (
     gRPCRequest,
     gRPCStreamingRequest,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig, get_gang_size
 from ray.serve._private.constants import (
     DRAIN_WAITING_LOG_INTERVAL_S,
     GRPC_CONTEXT_ARG_NAME,
@@ -1350,8 +1350,14 @@ class Replica:
         servable_object: Optional[Callable] = None,
         rank: Optional[ReplicaRank] = None,
     ):
-        # Calculate world_size from deployment config instead of storing it
-        world_size = self._deployment_config.num_replicas
+        # Calculate world_size from deployment config instead of storing it.
+        # `num_replicas` is in gangs when gang scheduling is enabled.
+        num_gangs = self._deployment_config.num_replicas
+        world_size = (
+            None
+            if num_gangs is None
+            else num_gangs * get_gang_size(self._deployment_config)
+        )
 
         # Create callback for registering dynamically created handles
         def register_handle_callback(deployment_id: DeploymentID) -> None:

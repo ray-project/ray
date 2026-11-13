@@ -255,7 +255,7 @@ def test_gang_replica_startup_status_transitions(ray_cluster):
 
     @serve.deployment(
         ray_actor_options={"num_cpus": 0.75},
-        num_replicas=2,
+        num_replicas=1,
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
     )
     class GangDeployment:

@@ -153,7 +153,9 @@ enum GangRuntimeFailurePolicy {
 
 // Configuration for gang scheduling of deployment replicas.
 message GangSchedulingConfig {
-  // Number of replicas per gang. num_replicas must be a multiple of gang_size.
+  // Number of replicas per gang. When set, num_replicas and autoscaling
+  // bounds refer to the number of gangs, so the total number of replicas
+  // is num_gangs * gang_size.
   int32 gang_size = 1;
 
   // Placement strategy for replicas within a gang.

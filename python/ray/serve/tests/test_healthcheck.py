@@ -470,7 +470,7 @@ def test_gang_health_check_restarts_gang(serve_instance):
 
     h = serve.run(
         GangPatient.options(
-            num_replicas=num_replicas,
+            num_replicas=num_gangs,
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         ).bind()
     )

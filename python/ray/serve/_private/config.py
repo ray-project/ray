@@ -317,23 +317,6 @@ class DeploymentConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_gang_scheduling_config(self):
-        if self.gang_scheduling_config is None:
-            return self
-        # Skip the num_replicas alignment check when autoscaling is enabled
-        if (
-            self.autoscaling_config is None
-            and self.num_replicas is not None
-            and self.num_replicas % self.gang_scheduling_config.gang_size != 0
-        ):
-            raise ValueError(
-                f"num_replicas ({self.num_replicas}) must be a multiple of "
-                f"gang_size ({self.gang_scheduling_config.gang_size})."
-            )
-
-        return self
-
-    @model_validator(mode="after")
     def validate_deployment_actors_unique_names(self):
         if self.deployment_actors is None:
             return self
@@ -671,98 +654,10 @@ def handle_num_replicas_auto(
     return max_ongoing_requests, autoscaling_config
 
 
-_GANG_ALIGNED_AUTOSCALING_BOUNDS = (
-    "min_replicas",
-    "max_replicas",
-    "initial_replicas",
-)
-
-
-def validate_gang_scheduling_bounds(
-    gang_size: int,
-    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]],
-    *,
-    ignore_default_bounds: bool = False,
-) -> None:
-    """Validate that explicitly set autoscaling bounds are multiples of gang_size.
-
-    Set ``ignore_default_bounds`` for configs read back from a deployment, where
-    ``handle_num_replicas_auto`` marks merged defaults as explicitly set.
-    """
-    if autoscaling_config is None:
-        return
-
-    if isinstance(autoscaling_config, AutoscalingConfig):
-        defaults = AutoscalingConfig.default() if ignore_default_bounds else None
-        bounds = {
-            name: getattr(autoscaling_config, name)
-            for name in autoscaling_config.model_fields_set
-            if name in _GANG_ALIGNED_AUTOSCALING_BOUNDS
-            and (
-                defaults is None
-                or getattr(autoscaling_config, name) != getattr(defaults, name)
-            )
-        }
-    else:
-        bounds = {
-            name: autoscaling_config[name]
-            for name in _GANG_ALIGNED_AUTOSCALING_BOUNDS
-            if name in autoscaling_config
-        }
-
-    for field_name, value in bounds.items():
-        if value is not None and value % gang_size != 0:
-            raise ValueError(
-                f"autoscaling_config.{field_name} ({value}) must be a multiple of "
-                f"gang_size ({gang_size})."
-            )
-
-
-def validate_gang_scheduling_autoscaling_config(
-    gang_scheduling_config: Union[Dict, GangSchedulingConfig],
-    autoscaling_config: Union[Dict, AutoscalingConfig],
-    *,
-    ignore_default_bounds: bool = False,
-) -> None:
-    """Validate autoscaling bounds against an explicit gang configuration."""
-    if isinstance(gang_scheduling_config, dict):
-        gang_size = gang_scheduling_config.get("gang_size")
-    else:
-        gang_size = gang_scheduling_config.gang_size
-    if gang_size is not None:
-        validate_gang_scheduling_bounds(
-            gang_size,
-            autoscaling_config,
-            ignore_default_bounds=ignore_default_bounds,
-        )
-
-
-def validate_gang_scheduling_options(
-    gang_scheduling_config: Any,
-    autoscaling_config: Any,
-    current_gang_scheduling_config: Optional[GangSchedulingConfig],
-    current_autoscaling_config: Optional[AutoscalingConfig],
-) -> None:
-    """Validate an options update against the deployment's resulting config.
-
-    Options left at ``DEFAULT.VALUE`` fall back to the deployment's current
-    config. Kept at module scope so ``Deployment.options()`` does not add
-    helper locals to ``locals()``.
-    """
-    if gang_scheduling_config is DEFAULT.VALUE:
-        gang_scheduling_config = current_gang_scheduling_config
-    autoscaling_config_from_current = autoscaling_config is DEFAULT.VALUE
-    if autoscaling_config_from_current:
-        autoscaling_config = current_autoscaling_config
-
-    if gang_scheduling_config is None or autoscaling_config is None:
-        return
-
-    validate_gang_scheduling_autoscaling_config(
-        gang_scheduling_config,
-        autoscaling_config,
-        ignore_default_bounds=autoscaling_config_from_current,
-    )
+def get_gang_size(deployment_config: "DeploymentConfig") -> int:
+    """Return the deployment's gang size, or 1 if gang scheduling is disabled."""
+    gang_config = deployment_config.gang_scheduling_config
+    return 1 if gang_config is None else gang_config.gang_size
 
 
 class ReplicaConfig:

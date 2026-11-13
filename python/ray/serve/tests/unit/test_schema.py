@@ -489,7 +489,7 @@ class TestDeploymentSchema:
 
     def test_gang_scheduling_config_basic(self):
         deployment_schema = self.get_minimal_deployment_schema()
-        deployment_schema["num_replicas"] = 8
+        deployment_schema["num_replicas"] = 2
         deployment_schema["gang_scheduling_config"] = {
             "gang_size": 4,
             "gang_placement_strategy": "SPREAD",
@@ -519,35 +519,28 @@ class TestDeploymentSchema:
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
         deployment_schema["autoscaling_config"] = {
-            "min_replicas": 4,
+            "min_replicas": 3,
             "max_replicas": 8,
+            "initial_replicas": 5,
         }
         schema = DeploymentSchema.model_validate(deployment_schema)
         assert schema.gang_scheduling_config.gang_size == 4
         assert schema.num_replicas == "auto"
 
-    @pytest.mark.parametrize(
-        "autoscaling_config,invalid_field",
-        [
-            ({"min_replicas": 3, "max_replicas": 8}, "min_replicas"),
-            ({"min_replicas": 4, "max_replicas": 9}, "max_replicas"),
-            (
-                {"min_replicas": 4, "max_replicas": 8, "initial_replicas": 5},
-                "initial_replicas",
-            ),
-        ],
-    )
-    def test_gang_scheduling_config_auto_replicas_invalid_bounds(
-        self, autoscaling_config, invalid_field
-    ):
+    def test_gang_scheduling_config_bounds_are_gangs(self):
+        """Bounds don't need to be multiples of gang_size; they're gang counts."""
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
-        deployment_schema["autoscaling_config"] = autoscaling_config
-        with pytest.raises(
-            ValueError, match=f"autoscaling_config.{invalid_field}.*must be a multiple"
-        ):
-            DeploymentSchema.model_validate(deployment_schema)
+        deployment_schema["autoscaling_config"] = {
+            "min_replicas": 3,
+            "max_replicas": 9,
+            "initial_replicas": 5,
+        }
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.autoscaling_config["min_replicas"] == 3
+        assert schema.autoscaling_config["max_replicas"] == 9
+        assert schema.autoscaling_config["initial_replicas"] == 5
 
     def test_gang_scheduling_config_scale_to_zero(self):
         deployment_schema = self.get_minimal_deployment_schema()
@@ -555,21 +548,20 @@ class TestDeploymentSchema:
         deployment_schema["gang_scheduling_config"] = {"gang_size": 3}
         deployment_schema["autoscaling_config"] = {
             "min_replicas": 0,
-            "max_replicas": 9,
+            "max_replicas": 3,
         }
         schema = DeploymentSchema.model_validate(deployment_schema)
         assert schema.autoscaling_config["min_replicas"] == 0
         assert schema.gang_scheduling_config.gang_size == 3
 
-    def test_gang_scheduling_config_invalid_num_replicas(self):
+    def test_gang_scheduling_config_num_replicas_is_gangs(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = 5
         deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
 
-        with pytest.raises(
-            ValueError, match="num_replicas.*must be a multiple of gang_size"
-        ):
-            DeploymentSchema.model_validate(deployment_schema)
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.num_replicas == 5
+        assert schema.gang_scheduling_config.gang_size == 4
 
     @pytest.mark.parametrize("gang_size", [0, -1])
     def test_gang_scheduling_config_invalid_gang_size(self, gang_size):

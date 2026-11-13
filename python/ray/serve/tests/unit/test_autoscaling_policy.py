@@ -1387,7 +1387,7 @@ class TestGangSchedulingAutoscalingPolicy:
         info.target_capacity_direction = None
         info.config_changed.return_value = False
 
-        state.register(info, curr_target_num_replicas=min_replicas)
+        state.register(info, curr_target_num_replicas=min_replicas * gang_size)
         state._running_replicas = list(range(running))
         return state
 
@@ -1418,8 +1418,9 @@ class TestGangSchedulingAutoscalingPolicy:
     def test_integration_scale_up_respects_max(self):
         """Gang alignment rounds up, but apply_bounds clips to max."""
         state = self._create_state(
-            gang_size=4, min_replicas=4, max_replicas=8, running=4
+            gang_size=4, min_replicas=1, max_replicas=2, running=4
         )
+        # Bounds are gangs: 1 gang -> 4 replicas, 2 gangs -> 8 replicas.
         # ceil(9/4)*4 = 12, clipped to max_replicas=8
         state._policy = GangSchedulingAutoscalingPolicy(
             lambda ctx: (9, {}), gang_size=4
@@ -1430,8 +1431,9 @@ class TestGangSchedulingAutoscalingPolicy:
     def test_integration_scale_down_respects_min(self):
         """Gang alignment rounds up, but apply_bounds clips to min."""
         state = self._create_state(
-            gang_size=4, min_replicas=4, max_replicas=16, running=8
+            gang_size=4, min_replicas=1, max_replicas=4, running=8
         )
+        # Bounds are gangs: 1 gang -> 4 replicas, 4 gangs -> 16 replicas.
         # ceil(1/4)*4 = 4, clipped to min_replicas=4
         state._policy = GangSchedulingAutoscalingPolicy(
             lambda ctx: (1, {}), gang_size=4

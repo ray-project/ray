@@ -1413,8 +1413,10 @@ class GangSchedulingConfig(BaseModel):
 
     gang_size: int = Field(
         description=(
-            "Number of replicas per gang. "
-            "num_replicas must be a multiple of gang_size."
+            "Number of replicas per gang. When gang scheduling is configured, "
+            "`num_replicas` and the autoscaling `min_replicas`, `max_replicas`, "
+            "and `initial_replicas` refer to the number of gangs, so the total "
+            "number of replicas is `num_gangs * gang_size`."
         ),
         ge=1,
     )

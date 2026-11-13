@@ -32,6 +32,7 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
     TimeSeries,
 )
+from ray.serve._private.config import get_gang_size
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -322,6 +323,8 @@ class DeploymentAutoscalingState:
         self._cached_running_replica_strs: Set[str] = set()
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        # Configs are in gang units when gang scheduling is enabled.
+        self._gang_size: int = 1
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
@@ -376,10 +379,18 @@ class DeploymentAutoscalingState:
             raise ValueError(
                 f"Autoscaling config is not set for deployment {self._deployment_id}"
             )
+
+        self._target_capacity = info.target_capacity
+        self._target_capacity_direction = info.target_capacity_direction
+        self._gang_size = get_gang_size(info.deployment_config)
+
         if (
             self._deployment_info is None or self._deployment_info.config_changed(info)
         ) and config.initial_replicas is not None:
-            target_num_replicas = config.initial_replicas
+            # `initial_replicas` is in gangs when gang scheduling is enabled.
+            target_num_replicas = self._capacity_adjusted_replicas(
+                config.initial_replicas
+            )
         else:
             target_num_replicas = curr_target_num_replicas
 
@@ -389,13 +400,10 @@ class DeploymentAutoscalingState:
         self._policy = _apply_autoscaling_config(
             _resolve_policy_callable(self._config.policy)
         )
-        gang_size = getattr(
-            info.deployment_config.gang_scheduling_config, "gang_size", None
-        )
-        if gang_size is not None and gang_size > 1:
-            self._policy = GangSchedulingAutoscalingPolicy(self._policy, gang_size)
-        self._target_capacity = info.target_capacity
-        self._target_capacity_direction = info.target_capacity_direction
+        if self._gang_size > 1:
+            self._policy = GangSchedulingAutoscalingPolicy(
+                self._policy, self._gang_size
+            )
         self._policy_state = {}
 
         # Log when custom autoscaling policy is used for deployment
@@ -414,25 +422,23 @@ class DeploymentAutoscalingState:
             del self._replica_metrics[replica_id]
         self._replica_running_memo.pop(replica_id, None)
 
+    def _capacity_adjusted_replicas(self, num_gangs: int) -> int:
+        """Convert a gang count to replicas, adjusted by target capacity."""
+        return (
+            get_capacity_adjusted_num_replicas(num_gangs, self._target_capacity)
+            * self._gang_size
+        )
+
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
             self._target_capacity_direction == TargetCapacityDirection.UP
         ):
-            return get_capacity_adjusted_num_replicas(
-                self._config.initial_replicas,
-                self._target_capacity,
-            )
+            return self._capacity_adjusted_replicas(self._config.initial_replicas)
         else:
-            return get_capacity_adjusted_num_replicas(
-                self._config.min_replicas,
-                self._target_capacity,
-            )
+            return self._capacity_adjusted_replicas(self._config.min_replicas)
 
     def get_num_replicas_upper_bound(self) -> int:
-        return get_capacity_adjusted_num_replicas(
-            self._config.max_replicas,
-            self._target_capacity,
-        )
+        return self._capacity_adjusted_replicas(self._config.max_replicas)
 
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""

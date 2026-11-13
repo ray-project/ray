@@ -17,7 +17,6 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
-    validate_gang_scheduling_autoscaling_config,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -698,7 +697,10 @@ def deployment(
         gang_scheduling_config: Configuration for gang scheduling of deployment replicas.
             Gang scheduling ensures that groups of replicas are scheduled together
             atomically, which is essential for distributed workloads that require
-            coordination between replicas. See `GangSchedulingConfig` for options.
+            coordination between replicas. When set, `num_replicas` and the
+            `autoscaling_config` bounds refer to the number of gangs rather than
+            the number of replicas, so the total number of replicas is
+            `num_gangs * gang_size`. See `GangSchedulingConfig` for options.
         deployment_actors: List of deployment-scoped Ray actors managed by the controller.
             Each actor is shared across all replicas of this deployment. Use
             `serve.get_deployment_actor(actor_name)` from within a replica to get
@@ -748,16 +750,6 @@ def deployment(
             "gang_scheduling_config is provided. Use "
             "gang_scheduling_config.gang_placement_strategy instead."
         )
-    # Validate the user-provided bounds before handle_num_replicas_auto()
-    # merges in defaults, so only explicitly set bounds are checked.
-    if gang_scheduling_config not in [
-        DEFAULT.VALUE,
-        None,
-    ] and autoscaling_config not in [DEFAULT.VALUE, None]:
-        validate_gang_scheduling_autoscaling_config(
-            gang_scheduling_config, autoscaling_config
-        )
-
     if num_replicas == "auto":
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
