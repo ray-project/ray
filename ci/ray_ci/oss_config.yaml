@@ -27,4 +27,5 @@ release_image_step:
   ray_cpu: anyscalecpubuild
   ray_cuda: anyscalecudabuild
   ray_llm: anyscalellmbuild
+  ray_llm_vllm: anyscalellmvllmbuild
   ray_torch_cuda: anyscaletorchcudabuild

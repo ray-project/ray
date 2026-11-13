@@ -1,0 +1,13 @@
+# CUDA_VERSION is a label shared with ray-llm so release tags line up (cu130);
+# the CUDA toolkit comes from the vLLM image. Keep the vLLM tag in sync with
+# vllm in python/requirements/llm/llm-requirements.txt.
+name: "ray-llm-vllm-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX"
+froms: ["vllm/vllm-openai:v0.33.0"]
+dockerfile: docker/ray-llm-vllm/Dockerfile
+srcs:
+  - python/requirements/llm/patches/vllm-device-aware-compile-cache.patch
+  - python/requirements/llm/patches/vllm-preserve-model-eos-tokens.patch
+build_args:
+  - BASE_IMAGE=vllm/vllm-openai:v0.33.0
+tags:
+  - cr.ray.io/rayproject/ray-llm-vllm-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX
