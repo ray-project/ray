@@ -8,17 +8,10 @@ import sys
 
 import numpy as np
 import pytest
-from packaging.version import parse as parse_version
 
 pa = pytest.importorskip("pyarrow")
 pds = pytest.importorskip("pyarrow.dataset")
 pq = pytest.importorskip("pyarrow.parquet")
-
-# Modelled on PyArrow 24's reader; 17 writes no SizeStatistics (18 to 22 unchecked).
-requires_pyarrow_23 = pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("23.0.0"),
-    reason="Modelled on PyArrow 24",
-)
 
 N = 200_000
 
@@ -137,7 +130,6 @@ _CASES = {
 }
 
 
-@requires_pyarrow_23
 @pytest.mark.parametrize("label", list(_CASES))
 def test_estimate_bounds_measured_peak(tmp_path, monkeypatch, label):
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader

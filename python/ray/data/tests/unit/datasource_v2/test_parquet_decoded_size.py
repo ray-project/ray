@@ -13,7 +13,6 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
     Read,
@@ -40,14 +39,6 @@ from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_walk i
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
     LeafSizeStats,
     read_footer_stats,
-)
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
-# PyArrow 17 writes no SizeStatistics; 23 does (18 to 22 unchecked).
-pyarrow_version = get_pyarrow_version()
-requires_pyarrow_23 = pytest.mark.skipif(
-    pyarrow_version is None or pyarrow_version < parse_version("23.0.0"),
-    reason="PyArrow 17 writes no SizeStatistics",
 )
 
 N = 5000
@@ -88,7 +79,7 @@ def _read_size_statistics(metadata):
 
 
 def _no_size_statistics(metadata):
-    """``_read_size_statistics`` for a writer that records none, as PyArrow 17."""
+    """``_read_size_statistics`` for a writer that records none."""
     return None
 
 
@@ -127,7 +118,7 @@ def _estimate(
 def _case(label, table, stats=True, write=None):
     """A ``_CASES`` row, whose estimate must equal what PyArrow allocates."""
     case = SimpleNamespace(table=table, stats=stats, write=write or {})
-    return pytest.param(case, id=label, marks=[requires_pyarrow_23] if stats else [])
+    return pytest.param(case, id=label)
 
 
 # Fixed-width types, each two values repeated.
@@ -319,7 +310,6 @@ def _with(stats_for_leaf_0):
     return size_statistics
 
 
-@requires_pyarrow_23
 def test_partial_size_statistics(tmp_path):
     """Histograms alone size a leaf; ones that disagree with the footer are dropped."""
     ints = _write(_table(np.arange(N, dtype="int64")), tmp_path / "ints.parquet")
@@ -475,7 +465,6 @@ def test_dictionaries_and_type_options_fall_back(
     assert profiles == expected
 
 
-@requires_pyarrow_23
 def test_dictionary_columns_leave_only_their_leaves(tmp_path):
     """``dictionary_columns`` leaves the BYTE_ARRAY leaves it names to the caller,
     pinned or not; a name that isn't one of this file's changes nothing."""
