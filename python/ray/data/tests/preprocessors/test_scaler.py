@@ -885,6 +885,41 @@ def test_standard_scaler_exact_zero_std():
     assert np.allclose(out_df["C"], 0.0), "Constant column should be scaled to zeros"
 
 
+def test_robust_scaler_zero_and_near_zero_iqr():
+    """Test RobustScaler preserves nulls and handles zero and near-zero IQR."""
+    # Column A: constant non-null values with a trailing missing value (diff == 0)
+    # Column B: >=50% identical non-null values so low_quantile == high_quantile == 2,
+    #           with non-median outlier values and a missing value (diff == 0)
+    # Column C: near-zero quantile range (0 < diff < _EPSILON)
+    in_df = pd.DataFrame.from_dict(
+        {
+            "A": [5.0, 5.0, 5.0, 5.0, 5.0, None],
+            "B": [-1.0, 2.0, 2.0, 2.0, 3.0, None],
+            "C": [10.0, 10.0, 10.0 + 1e-10, 10.0 + 1e-10, 10.0 + 1e-10, None],
+        }
+    )
+    ds = ray.data.from_pandas(in_df)
+
+    scaler = RobustScaler(["A", "B", "C"])
+    scaler.fit(ds)
+    out_df = scaler.transform(ds).to_pandas()
+
+    # Non-null rows in zero/near-zero IQR columns must be scaled to 0.0, while
+    # missing values must be preserved as NaN/<NA> rather than overwritten with 0.0.
+    for col in ("A", "B", "C"):
+        assert np.allclose(out_df[col].iloc[:5], 0.0)
+        assert pd.isna(out_df[col].iloc[5])
+
+    # Inverted quantile_range (diff < 0 with abs(diff) >= _EPSILON) should still
+    # scale with a sign flip rather than being zeroed out.
+    inv_df = pd.DataFrame.from_dict({"X": [-2.0, -1.0, 0.0, 1.0, 2.0]})
+    inv_ds = ray.data.from_pandas(inv_df)
+    inv_scaler = RobustScaler(["X"], quantile_range=(0.75, 0.25))
+    inv_scaler.fit(inv_ds)
+    inv_out = inv_scaler.transform(inv_ds).to_pandas()
+    assert np.allclose(inv_out["X"], [1.0, 0.5, 0.0, -0.5, -1.0])
+
+
 if __name__ == "__main__":
     import sys
 
