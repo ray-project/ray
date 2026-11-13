@@ -542,11 +542,6 @@ def test_repull_crash_keeps_the_new_image(tmp_path, monkeypatch):
 
     monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
     monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
-    # A cache hit leaves what was moved aside a moment ago to whoever is
-    # deleting it, and sweeps it up once that process must be gone.
-    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
-    assert len(_renamed_for_deletion(image_dir)) == 1
-    monkeypatch.setattr(image_utils, "_STALE_DELETION_SECONDS", 0.0)
     pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
     assert os.path.isdir(image_dir)
     assert os.path.getmtime(marker) == new_marker_mtime

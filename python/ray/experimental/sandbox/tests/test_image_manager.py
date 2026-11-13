@@ -137,21 +137,23 @@ def test_a_pull_that_takes_the_cache_over_its_size_cap_evicts_at_once(
     assert not os.path.exists(first)
 
 
-def test_a_cache_hit_leaves_a_deletion_in_progress_to_its_owner(tmp_path, monkeypatch):
-    """A cache hit finishes the deletions that killed workers left, but not
-    one that an eviction started a moment ago and is still running: the hit
-    would wait for it."""
-    from ray.experimental.sandbox._internal import image_utils
-
+def test_a_cache_hit_leaves_a_deletion_in_progress_to_its_owner(tmp_path):
+    """A deletion holds a lock on the directory it deletes. A cache hit
+    finishes the deletions that killed workers left, but not one that
+    another process is running: the hit would wait for it."""
     mgr = ImageManager(images_dir=str(tmp_path / "images"))
     local_tar = _hello_tar(tmp_path)
     mgr.pull_image(str(local_tar))
     moved_aside = tmp_path / "images" / ".deleting.0123456789ab"
     (moved_aside / "rootfs").mkdir(parents=True)
-    mgr.pull_image(str(local_tar))
-    assert moved_aside.exists()
-    # Once it has sat untouched for long enough, its owner is gone.
-    monkeypatch.setattr(image_utils, "_STALE_DELETION_SECONDS", 0.0)
+    deleting = os.open(moved_aside, os.O_RDONLY)
+    try:
+        fcntl.flock(deleting, fcntl.LOCK_EX)
+        mgr.pull_image(str(local_tar))
+        assert moved_aside.exists()
+    finally:
+        # As when the process that was deleting it dies.
+        os.close(deleting)
     mgr.pull_image(str(local_tar))
     assert not moved_aside.exists()
 

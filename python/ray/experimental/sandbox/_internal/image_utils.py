@@ -16,7 +16,6 @@ import subprocess
 import tarfile
 import tempfile
 import threading
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1046,32 +1045,31 @@ def _rename_for_deletion(image_dir: str) -> str:
     return renamed
 
 
-# A directory moved aside for deletion less than this long ago is left to
-# the process that moved it, which is still deleting it.
-_STALE_DELETION_SECONDS = 60.0
-
-
-def _remove_stale_deletions(images_dir: str, older_than: float = 0.0) -> None:
+def _remove_stale_deletions(images_dir: str) -> None:
     """Finish deleting image directories whose deletion was interrupted (see
     ``_rename_for_deletion``).
 
-    Args:
-        images_dir: Root image cache directory.
-        older_than: Skip directories that changed less than this many seconds
-            ago. Moving a directory aside and deleting from it both change
-            it, so one that an eviction is deleting right now is skipped.
+    Each deletion holds a lock on its directory, and a directory that another
+    process or thread is deleting is left to it, so nobody waits for a
+    deletion that isn't its own. The lock goes with its process, so what a
+    killed worker left is taken at once.
     """
-    cutoff = time.time() - older_than
     for name in os.listdir(images_dir):
-        if name.startswith(".deleting."):
-            path = os.path.join(images_dir, name)
-            if older_than:
-                try:
-                    if os.lstat(path).st_ctime > cutoff:
-                        continue
-                except OSError:
-                    continue
+        if not name.startswith(".deleting."):
+            continue
+        path = os.path.join(images_dir, name)
+        try:
+            fd = os.open(path, os.O_RDONLY)
+        except OSError:
+            continue  # Gone since the listing.
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                continue  # Being deleted.
             shutil.rmtree(path, ignore_errors=True)
+        finally:
+            os.close(fd)
 
 
 def evict_least_recently_used_images(
@@ -1252,7 +1250,7 @@ def pull_and_extract_container_image(
     # cache hit pays it too, and a node that only ever hits its cache still
     # gets that space back. What an eviction is deleting right now is left
     # to it, so that a hit doesn't wait for another process's deletion.
-    _remove_stale_deletions(images_dir, older_than=_STALE_DELETION_SECONDS)
+    _remove_stale_deletions(images_dir)
 
     expected_marker = expected_extract_marker()
 
