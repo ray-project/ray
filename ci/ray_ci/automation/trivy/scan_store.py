@@ -57,7 +57,6 @@ class ScanStore:
     branch: str
     build_number: str
     commit: str
-    bucket: str = BUCKET
     # A boto3 S3 client, created on first use.
     client: Any = field(default=None, repr=False)
 
@@ -68,7 +67,6 @@ class ScanStore:
         branch: str,
         build_number: str,
         commit: str,
-        bucket: str = BUCKET,
         client: Any = None,
     ) -> "ScanStore":
         if not re.fullmatch(r"[0-9]+", build_number):
@@ -79,7 +77,7 @@ class ScanStore:
             raise StoreError(f"pipeline {pipeline!r} has no usable name")
         if not _clean_path(branch):
             raise StoreError(f"branch {branch!r} has no usable name")
-        return cls(pipeline, branch, build_number, commit, bucket, client)
+        return cls(pipeline, branch, build_number, commit, client)
 
     @property
     def prefix(self) -> str:
@@ -91,7 +89,7 @@ class ScanStore:
         return f"{self.prefix}/{folder}/{name}"
 
     def url(self, folder: str = "") -> str:
-        return f"s3://{self.bucket}/{self.prefix}/" + (f"{folder}/" if folder else "")
+        return f"s3://{BUCKET}/{self.prefix}/" + (f"{folder}/" if folder else "")
 
     def _s3(self) -> Any:
         if self.client is None:
@@ -106,14 +104,14 @@ class ScanStore:
         try:
             return call()
         except (Boto3Error, BotoCoreError, ClientError) as e:
-            raise StoreError(f"{what} s3://{self.bucket}/{key} failed: {e}") from e
+            raise StoreError(f"{what} s3://{BUCKET}/{key} failed: {e}") from e
 
     def upload(self, path: Path, folder: str) -> str:
         key = self.key(folder, path.name)
         self._call(
             "upload to",
             key,
-            lambda: self._s3().upload_file(str(path), self.bucket, key),
+            lambda: self._s3().upload_file(str(path), BUCKET, key),
         )
         return key
 
@@ -122,7 +120,7 @@ class ScanStore:
         self._call(
             "download of",
             key,
-            lambda: self._s3().download_file(self.bucket, key, str(dest)),
+            lambda: self._s3().download_file(BUCKET, key, str(dest)),
         )
         return dest
 
@@ -131,13 +129,13 @@ class ScanStore:
         error raises, rather than pass for "absent"."""
         key = self.key(folder, name)
         try:
-            self._s3().head_object(Bucket=self.bucket, Key=key)
+            self._s3().head_object(Bucket=BUCKET, Key=key)
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey"):
                 return False
-            raise StoreError(f"check of s3://{self.bucket}/{key} failed: {e}") from e
+            raise StoreError(f"check of s3://{BUCKET}/{key} failed: {e}") from e
         except (Boto3Error, BotoCoreError) as e:
-            raise StoreError(f"check of s3://{self.bucket}/{key} failed: {e}") from e
+            raise StoreError(f"check of s3://{BUCKET}/{key} failed: {e}") from e
         return True
 
     def names(self, folder: str) -> list[str]:
@@ -148,7 +146,7 @@ class ScanStore:
             pages = self._s3().get_paginator("list_objects_v2")
             return [
                 obj["Key"]
-                for page in pages.paginate(Bucket=self.bucket, Prefix=prefix)
+                for page in pages.paginate(Bucket=BUCKET, Prefix=prefix)
                 for obj in page.get("Contents") or []
             ]
 
@@ -163,7 +161,6 @@ def build_options(f: Callable[..., Any]) -> Callable[..., Any]:
     @click.option("--branch", required=True, envvar="BUILDKITE_BRANCH")
     @click.option("--build-number", required=True, envvar="BUILDKITE_BUILD_NUMBER")
     @click.option("--commit", required=True, envvar="BUILDKITE_COMMIT")
-    @click.option("--bucket", default=BUCKET, show_default=True)
     @functools.wraps(f)
     def wrapper(
         *args: Any,
@@ -171,11 +168,10 @@ def build_options(f: Callable[..., Any]) -> Callable[..., Any]:
         branch: str,
         build_number: str,
         commit: str,
-        bucket: str,
         **kwargs: Any,
     ) -> Any:
         try:
-            store = ScanStore.for_build(pipeline, branch, build_number, commit, bucket)
+            store = ScanStore.for_build(pipeline, branch, build_number, commit)
         except StoreError as e:
             raise click.UsageError(str(e)) from e
         return f(*args, store=store, **kwargs)

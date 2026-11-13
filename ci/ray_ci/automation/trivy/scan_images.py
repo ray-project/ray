@@ -659,24 +659,20 @@ def upload_result(store: ScanStore, results_dir: Path, target: Target) -> str:
     default="/artifact-mount/trivy/results",
     type=click.Path(file_okay=False, path_type=Path),
 )
-@click.option("--work-dir", type=click.Path(file_okay=False, path_type=Path))
 @click.option("--rayci-work-repo", required=True, envvar="RAYCI_WORK_REPO")
 @click.option("--rayci-build-id", required=True, envvar="RAYCI_BUILD_ID")
 @click.option("--rayci-schedule", default="", envvar="RAYCI_SCHEDULE")
 @click.option("--pull-request", default="false", envvar="BUILDKITE_PULL_REQUEST")
-@click.option("--base-image", default=BASE_IMAGE, show_default=True)
 @scan_store.build_options
 def main(
     architecture: str,
     platform: str,
     images: tuple[str, ...],
     results_dir: Path,
-    work_dir: Optional[Path],
     rayci_work_repo: str,
     rayci_build_id: str,
     rayci_schedule: str,
     pull_request: str,
-    base_image: str,
     store: ScanStore,
 ) -> None:
     signal.signal(signal.SIGTERM, _exit_on_sigterm)
@@ -700,14 +696,14 @@ def main(
             upload_failures.append(failure)
 
     results_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
+    with tempfile.TemporaryDirectory() as tmp:
         scan_group(
             targets,
             architecture,
             store,
             results_dir,
             Path(tmp),
-            base_image,
+            BASE_IMAGE,
             login=lambda: registry.login_if_ecr(rayci_work_repo, ecr_docker_login),
             report=report,
         )

@@ -14,13 +14,9 @@ write_file(
     })],
 )
 
-py_binary(
+py_library(
     name = "trivy_report",
     srcs = ["trivy_report.py"],
-    exec_compatible_with = ["//bazel:py3"],
-    deps = [
-        ci_require("click"),
-    ],
 )
 
 py_test(
@@ -35,7 +31,6 @@ py_test(
     ],
     deps = [
         ":trivy_report",
-        ci_require("click"),
         ci_require("pytest"),
     ],
 )

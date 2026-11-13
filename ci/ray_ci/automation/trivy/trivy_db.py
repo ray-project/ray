@@ -8,8 +8,8 @@ sees one pull per build instead of one per scan job.
 
 ``metadata.json`` records the Trivy pin and the DB pins. It goes up last,
 so a scan job that finds it can count on both DBs being in place; it is also
-written to ``--output`` for ``trivy_report --metadata``. A retried job finds
-it and keeps that snapshot, so one build never mixes two DBs.
+written to ``--output``, the job's artifact. A retried job finds it and keeps
+that snapshot, so one build never mixes two DBs.
 
 Example:
     bazel run //ci/ray_ci/automation/trivy:trivy_db -- \\
@@ -116,15 +116,13 @@ def _ghcr_layer_matches(source: DbSource, layer_digest: str) -> Optional[bool]:
     return True
 
 
-def stage_db(
-    source: DbSource, store: ScanStore, workdir: Path, check_ghcr: bool = True
-) -> dict[str, Any]:
+def stage_db(source: DbSource, store: ScanStore, workdir: Path) -> dict[str, Any]:
     """Upload one DB, pinned by digest, to the build's db/ folder."""
     manifest_digest = registry.digest(source.upstream)
     pinned = f"{source.upstream_repo}@{manifest_digest}"
     manifest = registry.manifest(pinned)
     layer = db_layer(manifest, source.media_type)
-    ghcr_matches = _ghcr_layer_matches(source, layer["digest"]) if check_ghcr else None
+    ghcr_matches = _ghcr_layer_matches(source, layer["digest"])
 
     tarball = workdir / source.file_name
     registry.fetch_blob(source.upstream_repo, layer["digest"], tarball)
@@ -156,20 +154,8 @@ def load_trivy_pin() -> dict[str, Any]:
     type=click.Path(dir_okay=False, path_type=Path),
     help="Where to write metadata.json.",
 )
-@click.option(
-    "--work-dir",
-    type=click.Path(file_okay=False, path_type=Path),
-    help="Where to download the DBs (default: a temp dir).",
-)
-@click.option(
-    "--check-ghcr/--no-check-ghcr",
-    default=True,
-    help="Compare each DB layer with ghcr.io's copy.",
-)
 @scan_store.build_options
-def main(
-    output: Path, work_dir: Optional[Path], check_ghcr: bool, store: ScanStore
-) -> None:
+def main(output: Path, store: ScanStore) -> None:
     if not output.is_absolute():
         output = Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")) / output
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -179,9 +165,9 @@ def main(
         logger.info(f"Reusing the DB snapshot in {store.url(DB_FOLDER)}")
         return
     metadata = {"trivy": load_trivy_pin()}
-    with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
+    with tempfile.TemporaryDirectory() as tmp:
         for source in DB_SOURCES:
-            metadata[source.name] = stage_db(source, store, Path(tmp), check_ghcr)
+            metadata[source.name] = stage_db(source, store, Path(tmp))
         staged = Path(tmp) / DB_METADATA
         staged.write_text(json.dumps(metadata, indent=2) + "\n")
         # Last: scan jobs take metadata.json to mean every DB is in place.

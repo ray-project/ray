@@ -1,17 +1,14 @@
 """Report the CRITICAL/HIGH findings of a build's Trivy image scans.
 
 Each scan job writes, per image, a ``<name>.status.json`` record and, when the
-scan succeeded, Trivy's JSON result as ``<name>.json`` or ``<name>.json.gz``.
-This tool reads them all and writes ``report.md``, ``vulns.csv`` and
-``summary.json``, and can post the report as a Buildkite annotation.
+scan succeeded, Trivy's JSON result as ``<name>.json.gz``. ``load_scans``
+reads them all; ``write_report`` writes ``report.md``, ``vulns.csv`` and
+``summary.json``; ``render_annotation`` renders the build's annotation.
+``build_report`` drives all of it in CI.
 
-Only fixable CRITICAL/HIGH findings count against the build. Exit codes:
-0 clean, 10 fixable CRITICAL/HIGH findings, 11 incomplete coverage (takes
-precedence over 10).
-
-Example:
-    bazel run //ci/ray_ci/automation/trivy:trivy_report -- \\
-        trivy/results --output-dir trivy --metadata trivy/metadata.json --annotate
+Only fixable CRITICAL/HIGH findings count against the build. ``exit_code``
+gives 0 clean, 10 fixable CRITICAL/HIGH findings, 11 incomplete coverage
+(takes precedence over 10).
 """
 
 import csv
@@ -19,16 +16,12 @@ import gzip
 import json
 import os
 import re
-import subprocess
-import sys
 import zlib
 from collections import Counter
 from dataclasses import dataclass, field
 from itertools import groupby
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
-
-import click
 
 GATED_SEVERITIES = ("CRITICAL", "HIGH")
 # Trivy statuses meaning no usable fix exists, even if FixedVersion is set.
@@ -41,10 +34,6 @@ EXIT_FINDINGS = 10
 EXIT_INCOMPLETE = 11
 
 ANNOTATION_CONTEXT = "trivy-scan"
-FILES_NOTE = (
-    "`report.md`, `vulns.csv`, `summary.json` and the raw Trivy results are "
-    "in this build's `trivy/` artifacts."
-)
 MISSING_STATUS = "no status record: its scan job did not run or did not upload"
 # Buildkite rejects annotation bodies over 1 MiB; keep some headroom.
 ANNOTATION_LIMIT_BYTES = 1024 * 1024 - 16 * 1024
@@ -254,13 +243,10 @@ def parse_trivy_report(report: Mapping[str, Any]) -> ParsedReport:
 
 
 def _read_result(results_dir: Path, name: str) -> Optional[Mapping[str, Any]]:
-    gz_path = results_dir / f"{name}.json.gz"
-    if gz_path.is_file():
-        return json.loads(gzip.decompress(gz_path.read_bytes()))
-    path = results_dir / f"{name}.json"
-    if path.is_file():
-        return json.loads(path.read_text())
-    return None
+    path = results_dir / f"{name}.json.gz"
+    if not path.is_file():
+        return None
+    return json.loads(gzip.decompress(path.read_bytes()))
 
 
 def _load_scan(results_dir: Path, image: Image, record: Mapping[str, Any]) -> ImageScan:
@@ -493,12 +479,8 @@ def describe_images(images: Sequence[Image], everything: Sequence[Image]) -> str
     )
 
 
-def exit_code(
-    scans: Sequence[ImageScan],
-    failed_steps: Sequence[str],
-    issues: Sequence[str] = (),
-) -> int:
-    if failed_steps or issues or not scans or any(not s.scanned for s in scans):
+def exit_code(scans: Sequence[ImageScan], issues: Sequence[str] = ()) -> int:
+    if issues or not scans or any(not s.scanned for s in scans):
         return EXIT_INCOMPLETE
     if any(g.fixable for g in group_findings(scans)):
         return EXIT_FINDINGS
@@ -634,12 +616,12 @@ def _scanner_text(scanner: Mapping[str, Any]) -> str:
 
 def render_markdown(
     scans: Sequence[ImageScan],
-    failed_steps: Sequence[str],
     scanner: Mapping[str, Any],
     max_rows: Optional[int] = None,
     per_image: bool = True,
     issues: Sequence[str] = (),
-    files_note: str = FILES_NOTE,
+    *,
+    files_note: str,
 ) -> str:
     """Render the report. ``max_rows`` caps each table, for the annotation."""
     everything = [s.image for s in scans if s.scanned]
@@ -658,12 +640,11 @@ def render_markdown(
     ]
 
     not_scanned = [s for s in scans if not s.scanned]
-    if not_scanned or failed_steps or issues or not scans:
+    if not_scanned or issues or not scans:
         lines += ["### Incomplete", ""]
         if not scans:
             lines.append("- no scan status records found in the results directory")
         lines += [f"- `{s.image.name}`: {_cell(s.error)}" for s in not_scanned]
-        lines += [f"- scan step `{step}` did not pass" for step in failed_steps]
         lines += [f"- {_cell(issue)}" for issue in issues]
         lines.append("")
 
@@ -691,11 +672,11 @@ def render_markdown(
 
 def render_annotation(
     scans: Sequence[ImageScan],
-    failed_steps: Sequence[str],
     scanner: Mapping[str, Any],
     limit: int = ANNOTATION_LIMIT_BYTES,
     issues: Sequence[str] = (),
-    files_note: str = FILES_NOTE,
+    *,
+    files_note: str,
 ) -> str:
     """The longest rendering of the report that fits in ``limit`` bytes."""
     for max_rows, per_image in (
@@ -707,7 +688,7 @@ def render_annotation(
         (0, False),
     ):
         body = render_markdown(
-            scans, failed_steps, scanner, max_rows, per_image, issues, files_note
+            scans, scanner, max_rows, per_image, issues, files_note=files_note
         )
         if len(body.encode()) <= limit:
             return body
@@ -718,21 +699,6 @@ def annotation_style(scans: Sequence[ImageScan], code: int) -> str:
     if any(g.fixable for g in group_findings(scans)):
         return "error"
     return "warning" if code == EXIT_INCOMPLETE else "success"
-
-
-def annotate(body: str, style: str) -> None:
-    subprocess.run(
-        [
-            "buildkite-agent",
-            "annotate",
-            "--context",
-            ANNOTATION_CONTEXT,
-            "--style",
-            style,
-        ],
-        input=body.encode(),
-        check=True,
-    )
 
 
 def build_info(env: Mapping[str, str]) -> dict[str, Any]:
@@ -797,7 +763,6 @@ def _write_row(
 
 def build_summary(
     scans: Sequence[ImageScan],
-    failed_steps: Sequence[str],
     scanner: Mapping[str, Any],
     build: Mapping[str, Any],
     issues: Sequence[str] = (),
@@ -833,7 +798,6 @@ def build_summary(
         "schema_version": SUMMARY_SCHEMA_VERSION,
         "build": dict(build),
         "scanner": dict(scanner),
-        "failed_steps": list(failed_steps),
         "issues": list(issues),
         "totals": {
             "images": len(scans),
@@ -851,20 +815,18 @@ def write_report(
     scans: Sequence[ImageScan],
     scanner: Mapping[str, Any],
     build: Mapping[str, Any],
-    failed_steps: Sequence[str] = (),
     issues: Sequence[str] = (),
-    files_note: str = FILES_NOTE,
+    *,
+    files_note: str,
 ) -> int:
     """Write report.md, vulns.csv and summary.json; return the exit code."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    report = render_markdown(
-        scans, failed_steps, scanner, issues=issues, files_note=files_note
-    )
+    report = render_markdown(scans, scanner, issues=issues, files_note=files_note)
     (output_dir / "report.md").write_text(report)
     write_csv(output_dir / "vulns.csv", scans, build)
-    summary = build_summary(scans, failed_steps, scanner, build, issues)
+    summary = build_summary(scans, scanner, build, issues)
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    return exit_code(scans, failed_steps, issues)
+    return exit_code(scans, issues)
 
 
 def resolve_path(path: Path) -> Path:
@@ -887,64 +849,3 @@ def load_metadata(path: Path) -> tuple[dict[str, Any], str]:
     if not isinstance(data, dict):
         return {}, f"scanner metadata in {path} is not a JSON object"
     return data, ""
-
-
-@click.command()
-@click.argument("results_dir", type=click.Path(file_okay=False, path_type=Path))
-@click.option(
-    "--output-dir",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-    help="Where to write report.md, vulns.csv and summary.json.",
-)
-@click.option(
-    "--metadata",
-    "metadata_path",
-    type=click.Path(dir_okay=False, path_type=Path),
-    help="metadata.json with the Trivy version and DB pin of this build.",
-)
-@click.option(
-    "--failed-step",
-    "failed_steps",
-    multiple=True,
-    help="Key of a scan step that did not pass. Repeatable.",
-)
-@click.option(
-    "--annotate",
-    "post_annotation",
-    is_flag=True,
-    help="Also post the report as a Buildkite annotation.",
-)
-def main(
-    results_dir: Path,
-    output_dir: Path,
-    metadata_path: Optional[Path],
-    failed_steps: tuple[str, ...],
-    post_annotation: bool,
-) -> None:
-    results_dir = resolve_path(results_dir)
-    output_dir = resolve_path(output_dir)
-    scans = load_scans(results_dir) if results_dir.is_dir() else []
-    scanner: dict[str, Any] = {}
-    issues: list[str] = []
-    if metadata_path:
-        scanner, issue = load_metadata(resolve_path(metadata_path))
-        if issue:
-            issues.append(issue)
-    code = write_report(
-        output_dir, scans, scanner, build_info(os.environ), failed_steps, issues
-    )
-    if post_annotation:
-        try:
-            annotate(
-                render_annotation(scans, failed_steps, scanner, issues=issues),
-                annotation_style(scans, code),
-            )
-        except (subprocess.CalledProcessError, OSError) as e:
-            # The report files are written; keep the exit code meaningful.
-            click.echo(f"warning: could not post the annotation: {e}", err=True)
-    sys.exit(code)
-
-
-if __name__ == "__main__":
-    main()

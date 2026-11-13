@@ -100,12 +100,6 @@ def test_ghcr_disagreement_is_recorded_not_fatal(tmp_path: Path, ghcr, expected)
     assert pin["ghcr_layer_matches"] is expected
 
 
-def test_ghcr_check_can_be_skipped(tmp_path: Path):
-    with fake_registry(ghcr_manifest=registry.RegistryError("never called")):
-        pin = stage_db(DB, store(FakeS3()), tmp_path, check_ghcr=False)
-    assert pin["ghcr_layer_matches"] is None
-
-
 @pytest.mark.parametrize(
     "layers",
     [
@@ -140,7 +134,7 @@ def run_main(tmp_path: Path, s3: FakeS3, stage=None):
     ):
         result = CliRunner().invoke(
             trivy_db.main,
-            ["--output", str(out), "--work-dir", str(tmp_path)],
+            ["--output", str(out)],
             env={
                 "BUILDKITE_PIPELINE_SLUG": "postmerge",
                 "BUILDKITE_BRANCH": "master",

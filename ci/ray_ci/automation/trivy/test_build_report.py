@@ -253,13 +253,8 @@ def run(tmp_path: Path, s3: FakeS3, pipeline: dict = PIPELINE):
         "--annotation-dir",
         str(tmp_path / "annotations"),
     ]
-    with mock.patch.object(
-        build_report.scan_store.boto3, "client", return_value=s3
-    ), mock.patch.object(build_report.trivy_report, "annotate") as annotate:
-        result = CliRunner().invoke(build_report.main, args, env=BUILD_ENV)
-    # Postmerge containers have no buildkite-agent; the hook posts the file.
-    annotate.assert_not_called()
-    return result
+    with mock.patch.object(build_report.scan_store.boto3, "client", return_value=s3):
+        return CliRunner().invoke(build_report.main, args, env=BUILD_ENV)
 
 
 def put_metadata(s3: FakeS3) -> None:

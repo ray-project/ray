@@ -259,7 +259,6 @@ def report_build(
     output_dir: Path,
     annotation_dir: Path,
     pipeline_file: Optional[Path],
-    work_dir: Optional[Path],
     store: ScanStore,
 ) -> int:
     """Write the report and the annotation; returns the exit code."""
@@ -268,7 +267,7 @@ def report_build(
     expected = expected_images(yaml.safe_load(pipeline_file.read_text()))
     note = files_note(store)
 
-    with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
+    with tempfile.TemporaryDirectory() as tmp:
         workdir = Path(tmp)
         issues, failed = download_results(store, workdir / "results")
         scanner, issue = load_scanner(store, workdir)
@@ -300,7 +299,7 @@ def report_build(
             output_dir, scans, scanner, build, issues=issues, files_note=note
         )
     body = trivy_report.render_annotation(
-        scans, [], scanner, issues=issues, files_note=note
+        scans, scanner, issues=issues, files_note=note
     )
     annotation = write_annotation(annotation_dir, body, style)
     logger.info(f"Wrote {output_dir} and {annotation}")
@@ -329,13 +328,11 @@ def report_build(
     type=click.Path(dir_okay=False, path_type=Path),
     help="The scan steps (default: the image-scan.rayci.yml built in).",
 )
-@click.option("--work-dir", type=click.Path(file_okay=False, path_type=Path))
 @scan_store.build_options
 def main(
     output_dir: Path,
     annotation_dir: Path,
     pipeline_file: Optional[Path],
-    work_dir: Optional[Path],
     store: ScanStore,
 ) -> None:
     output_dir = trivy_report.resolve_path(output_dir)
@@ -343,7 +340,7 @@ def main(
     if pipeline_file:
         pipeline_file = trivy_report.resolve_path(pipeline_file)
     try:
-        code = report_build(output_dir, annotation_dir, pipeline_file, work_dir, store)
+        code = report_build(output_dir, annotation_dir, pipeline_file, store)
     except Exception as e:
         # Without an annotation, a soft-failed report job goes unnoticed.
         logger.exception("The Trivy report failed")

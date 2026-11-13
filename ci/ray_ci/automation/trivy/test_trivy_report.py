@@ -1,14 +1,11 @@
 import csv
 import gzip
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
-from unittest import mock
 
 import pytest
-from click.testing import CliRunner
 
 from ci.ray_ci.automation.trivy import trivy_report
 from ci.ray_ci.automation.trivy.trivy_report import (
@@ -55,6 +52,7 @@ LLM = (
     "ray-llm-py3.12-cu13.0.0-cudnn.json",
 )
 
+NOTE = "Files: in this test's folder."
 SCANNER = {
     "trivy": {"version": "0.76.1", "tarball_sha256": "c7cbe313"},
     "db": {
@@ -71,7 +69,6 @@ def write_scan(
     status: str = "scanned",
     error: str = "",
     report: Optional[dict] = None,
-    gz: bool = False,
 ) -> None:
     """Write a status record and (optionally) a result file, as a scan job does."""
     name, image_type, python_version, platform, architecture, fixture = spec
@@ -95,10 +92,7 @@ def write_scan(
         if report is not None
         else (FIXTURES / fixture).read_bytes()
     )
-    if gz:
-        (results_dir / f"{name}.json.gz").write_bytes(gzip.compress(payload))
-    else:
-        (results_dir / f"{name}.json").write_bytes(payload)
+    (results_dir / f"{name}.json.gz").write_bytes(gzip.compress(payload))
 
 
 def make_vuln(**overrides) -> dict:
@@ -219,9 +213,8 @@ def test_parse_real_report_with_suppressed_finding():
     )
 
 
-@pytest.mark.parametrize("gz", [False, True])
-def test_load_scans_reads_plain_and_gzipped_results(tmp_path: Path, gz: bool):
-    write_scan(tmp_path, CPU, gz=gz)
+def test_load_scans_reads_gzipped_results(tmp_path: Path):
+    write_scan(tmp_path, CPU)
     (scan,) = load_scans(tmp_path)
     assert scan.scanned
     assert scan.image.name == "ray-py3.12-cpu"
@@ -245,9 +238,19 @@ def test_load_scans_marks_images_not_scanned(
     assert expected_error in scan.error
 
 
+def test_load_scans_ignores_an_uncompressed_result(tmp_path: Path):
+    """Scan jobs only write <name>.json.gz."""
+    write_scan(tmp_path, CPU)
+    result = tmp_path / "ray-py3.12-cpu.json.gz"
+    (tmp_path / "ray-py3.12-cpu.json").write_bytes(gzip.decompress(result.read_bytes()))
+    result.unlink()
+    (scan,) = load_scans(tmp_path)
+    assert scan.error == "no result file"
+
+
 def test_load_scans_flags_missing_result_file(tmp_path: Path):
     write_scan(tmp_path, CPU)
-    (tmp_path / "ray-py3.12-cpu.json").unlink()
+    (tmp_path / "ray-py3.12-cpu.json.gz").unlink()
     (scan,) = load_scans(tmp_path)
     assert not scan.scanned
     assert "no result file" in scan.error
@@ -268,7 +271,7 @@ GZ_FIXTURE = gzip.compress((FIXTURES / "ray-py3.12-cpu.json").read_bytes())
             id="corrupt-deflate",
         ),
         pytest.param("x.json.gz", b"not gzip at all", id="not-gzip"),
-        pytest.param("x.json", b'{"Results": [', id="truncated-json"),
+        pytest.param("x.json.gz", gzip.compress(b'{"Results": ['), id="truncated-json"),
     ],
 )
 def test_load_scans_isolates_unreadable_results(
@@ -277,7 +280,7 @@ def test_load_scans_isolates_unreadable_results(
     write_scan(tmp_path, CPU)
     bad = ("x", "ray", "3.12", "tpu", "x86_64", "")
     write_scan(tmp_path, bad, report={})
-    (tmp_path / "x.json").unlink()
+    (tmp_path / "x.json.gz").unlink()
     (tmp_path / filename).write_bytes(payload)
 
     scans = {s.image.name: s for s in load_scans(tmp_path)}
@@ -360,7 +363,7 @@ def test_group_findings_counts_an_image_once_but_keeps_every_location():
 
 def test_report_and_csv_list_every_install_location(tmp_path: Path):
     scan = two_path_scan()
-    report = trivy_report.render_markdown([scan], [], SCANNER)
+    report = trivy_report.render_markdown([scan], SCANNER, files_note=NOTE)
     assert "`a/site-packages`, `b/site-packages`" in report
 
     trivy_report.write_csv(tmp_path / "v.csv", [scan], trivy_report.build_info({}))
@@ -387,7 +390,7 @@ def test_fixability_is_decided_per_image_not_by_image_order(fixed_first: bool):
     fixed_type = "ray" if fixed_first else "zzz"
     wont_type = "zzz" if fixed_first else "ray"
 
-    assert exit_code(scans, []) == EXIT_FINDINGS
+    assert exit_code(scans) == EXIT_FINDINGS
     groups = group_findings(scans)
     fixable = [g for g in groups if g.fixable]
     no_fix = [g for g in groups if not g.fixable]
@@ -484,18 +487,19 @@ def scan_with(*vulns: dict, error: str = "") -> ImageScan:
 
 
 @pytest.mark.parametrize(
-    ("scans", "failed_steps", "expected"),
+    ("scans", "issues", "expected"),
     [
         ([scan_with(make_vuln(FixedVersion="", Status="affected"))], [], EXIT_CLEAN),
         ([scan_with(make_vuln(Severity="MEDIUM"))], [], EXIT_CLEAN),
         ([scan_with(make_vuln())], [], EXIT_FINDINGS),
         ([scan_with(error="crane pull failed")], [], EXIT_INCOMPLETE),
-        ([scan_with()], ["images_scan--platformcpu"], EXIT_INCOMPLETE),
+        ([scan_with()], ["scanner metadata unreadable"], EXIT_INCOMPLETE),
         ([scan_with(make_vuln()), scan_with(error="boom")], [], EXIT_INCOMPLETE),
+        ([], [], EXIT_INCOMPLETE),
     ],
 )
-def test_exit_code(scans: list, failed_steps: list, expected: int):
-    assert exit_code(scans, failed_steps) == expected
+def test_exit_code(scans: list, issues: list, expected: int):
+    assert exit_code(scans, issues) == expected
 
 
 def test_annotation_stays_under_limit_and_says_so():
@@ -504,71 +508,55 @@ def test_annotation_stays_under_limit_and_says_so():
         for i in range(3000)
     ]
     scans = [scan_with(*vulns)]
-    full = render_annotation(scans, [], SCANNER, limit=10**9)
+    full = render_annotation(scans, SCANNER, files_note=NOTE, limit=10**9)
     assert "truncated" not in full
 
     limit = 20_000
-    body = render_annotation(scans, [], SCANNER, limit=limit)
+    body = render_annotation(scans, SCANNER, files_note=NOTE, limit=limit)
     assert len(body.encode()) <= limit
     assert "truncated" in body
     assert "3000 fixable" in body
 
 
-def test_annotate_posts_to_buildkite():
-    with mock.patch.object(trivy_report.subprocess, "run") as run:
-        trivy_report.annotate("body", "error")
-    run.assert_called_once_with(
-        [
-            "buildkite-agent",
-            "annotate",
-            "--context",
-            "trivy-scan",
-            "--style",
-            "error",
-        ],
-        input=b"body",
-        check=True,
-    )
-
-
-def run_cli(tmp_path: Path, *args: str, env: Optional[dict] = None):
-    results = tmp_path / "results"
-    out = tmp_path / "out"
-    metadata = tmp_path / "metadata.json"
-    metadata.write_text(json.dumps(SCANNER))
-    runner = CliRunner()
-    return runner.invoke(
-        trivy_report.main,
-        [str(results), "--output-dir", str(out), "--metadata", str(metadata), *args],
-        env=env or {},
-    )
-
-
-def test_cli_end_to_end(tmp_path: Path):
+def report_folder(tmp_path: Path, *specs: tuple, **kwargs) -> Path:
     results = tmp_path / "results"
     results.mkdir()
-    for spec in (CPU, CPU_ARM, CU128, LLM):
-        write_scan(results, spec, gz=spec is LLM)
+    for spec in specs:
+        write_scan(results, spec, **kwargs)
+    return results
+
+
+def write_outputs(tmp_path: Path, results: Path, issues=(), env=None) -> int:
+    return trivy_report.write_report(
+        tmp_path / "out",
+        load_scans(results),
+        SCANNER,
+        trivy_report.build_info(env or {}),
+        issues=issues,
+        files_note=NOTE,
+    )
+
+
+def test_write_report_end_to_end(tmp_path: Path):
+    results = report_folder(tmp_path, CPU, CPU_ARM, CU128, LLM)
     broken = ("ray-py3.12-tpu", "ray", "3.12", "tpu", "x86_64", "")
     write_scan(results, broken, status="error", error="crane pull failed")
-
     env = {
         "BUILDKITE_PIPELINE_SLUG": "postmerge",
         "BUILDKITE_BUILD_NUMBER": "123",
         "BUILDKITE_COMMIT": "80ceee083e49b1ae709c149d3a15862fe12ce8cb",
         "BUILDKITE_BRANCH": "master",
     }
-    result = run_cli(tmp_path, "--failed-step", "images_scan--platformtpu", env=env)
 
-    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    assert write_outputs(tmp_path, results, env=env) == EXIT_INCOMPLETE
     out = tmp_path / "out"
     report = (out / "report.md").read_text()
     assert "4/5 images scanned" in report
     assert "`ray-py3.12-tpu`: crane pull failed" in report
-    assert "`images_scan--platformtpu`" in report
     assert "CVE-2026-102268" in report and "| all 4 images |" in report
     assert "`linux-libc-dev`" in report
     assert "Trivy 0.76.1" in report and "DB 2026-11-10" in report
+    assert report.endswith(NOTE + "\n")
 
     with open(out / "vulns.csv") as f:
         rows = list(csv.DictReader(f))
@@ -579,7 +567,7 @@ def test_cli_end_to_end(tmp_path: Path):
     assert summary["schema_version"] == 1
     assert summary["build"]["pipeline"] == "postmerge"
     assert summary["scanner"] == SCANNER
-    assert summary["failed_steps"] == ["images_scan--platformtpu"]
+    assert "failed_steps" not in summary
     by_name = {i["name"]: i for i in summary["images"]}
     assert by_name["ray-py3.12-tpu"]["scanned"] is False
     assert by_name["ray-py3.12-cpu"]["digest"] == "sha256:ray-py3.12-cpu"
@@ -588,99 +576,46 @@ def test_cli_end_to_end(tmp_path: Path):
     assert summary["totals"]["scanned"] == 4
 
 
-def test_cli_clean_build_exits_zero(tmp_path: Path):
-    results = tmp_path / "results"
-    results.mkdir()
-    write_scan(results, CPU, report=make_report(make_vuln(Severity="LOW")))
-    result = run_cli(tmp_path)
-    assert result.exit_code == EXIT_CLEAN, result.output
+def test_write_report_for_a_clean_build(tmp_path: Path):
+    results = report_folder(
+        tmp_path, CPU, report=make_report(make_vuln(Severity="LOW"))
+    )
+    assert write_outputs(tmp_path, results) == EXIT_CLEAN
     assert "**0 fixable CRITICAL/HIGH**" in (tmp_path / "out" / "report.md").read_text()
 
 
-def test_cli_annotates_when_asked(tmp_path: Path):
-    results = tmp_path / "results"
-    results.mkdir()
-    write_scan(results, CPU)
-    with mock.patch.object(trivy_report, "annotate") as annotate:
-        result = run_cli(tmp_path, "--annotate")
-    assert result.exit_code == EXIT_FINDINGS, result.output
-    body, style = annotate.call_args.args
-    assert style == "error"
-    assert "fixable CRITICAL/HIGH" in body
-
-
-@pytest.mark.parametrize("content", [None, "{not json"], ids=["missing", "invalid"])
-def test_cli_flags_unreadable_metadata(tmp_path: Path, content: Optional[str]):
-    results = tmp_path / "results"
-    results.mkdir()
-    write_scan(results, CPU, report=make_report(make_vuln(Severity="LOW")))
+@pytest.mark.parametrize(
+    "content", [None, "{not json", "[1]"], ids=["missing", "invalid", "not-object"]
+)
+def test_unreadable_metadata_is_an_issue(tmp_path: Path, content: Optional[str]):
     metadata = tmp_path / "metadata.json"
     if content is not None:
         metadata.write_text(content)
-
-    result = CliRunner().invoke(
-        trivy_report.main,
-        [
-            str(results),
-            "--output-dir",
-            str(tmp_path / "out"),
-            "--metadata",
-            str(metadata),
-        ],
-    )
+    scanner, issue = trivy_report.load_metadata(metadata)
+    assert scanner == {}
+    assert issue.startswith("scanner metadata")
 
     # The scan itself is clean, but its results can't be tied to a DB.
-    assert result.exit_code == EXIT_INCOMPLETE, result.output
-    assert "scanner metadata" in (tmp_path / "out" / "report.md").read_text()
-    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
-    assert summary["issues"] and "scanner metadata" in summary["issues"][0]
-
-
-def test_cli_without_metadata_flag_has_no_issue(tmp_path: Path):
-    results = tmp_path / "results"
-    results.mkdir()
-    write_scan(results, CPU, report=make_report(make_vuln(Severity="LOW")))
-    result = CliRunner().invoke(
-        trivy_report.main, [str(results), "--output-dir", str(tmp_path / "out")]
+    results = report_folder(
+        tmp_path, CPU, report=make_report(make_vuln(Severity="LOW"))
     )
-    assert result.exit_code == EXIT_CLEAN, result.output
+    assert write_outputs(tmp_path, results, issues=[issue]) == EXIT_INCOMPLETE
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["issues"] == [issue]
 
 
-@pytest.mark.parametrize(
-    "error",
-    [
-        subprocess.CalledProcessError(1, "buildkite-agent"),
-        FileNotFoundError("buildkite-agent"),
-    ],
-    ids=["agent-error", "agent-missing"],
-)
-def test_cli_keeps_exit_code_when_annotation_fails(tmp_path: Path, error: Exception):
-    results = tmp_path / "results"
-    results.mkdir()
-    write_scan(results, CPU, report=make_report(make_vuln(Severity="LOW")))
-    with mock.patch.object(trivy_report.subprocess, "run", side_effect=error):
-        result = run_cli(tmp_path, "--annotate")
-    assert result.exit_code == EXIT_CLEAN, result.output
-    assert "could not post the annotation" in result.output
-    assert (tmp_path / "out" / "summary.json").is_file()
-
-
-def test_cli_reports_healthy_images_next_to_a_corrupt_one(tmp_path: Path):
-    results = tmp_path / "results"
-    results.mkdir()
-    write_scan(results, CPU)
+def test_write_report_shows_healthy_images_next_to_a_corrupt_one(tmp_path: Path):
+    results = report_folder(tmp_path, CPU)
     (results / "x.status.json").write_text('{"name": "x", "image_')
-    result = run_cli(tmp_path)
-    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    assert write_outputs(tmp_path, results) == EXIT_INCOMPLETE
     report = (tmp_path / "out" / "report.md").read_text()
     assert "CVE-2026-102268" in report
     assert "`x`: malformed status record" in report
 
 
-def test_cli_rejects_empty_results_dir(tmp_path: Path):
-    (tmp_path / "results").mkdir()
-    result = run_cli(tmp_path)
-    assert result.exit_code == EXIT_INCOMPLETE
+def test_write_report_without_any_status_record(tmp_path: Path):
+    results = report_folder(tmp_path)
+    assert write_outputs(tmp_path, results) == EXIT_INCOMPLETE
     assert "no scan status records" in (tmp_path / "out" / "report.md").read_text()
 
 
@@ -693,12 +628,12 @@ def test_add_missing_reports_expected_images_without_a_status():
     assert [s.image.name for s in scans] == [CPU[0], CU128[0]]
     assert scans[0] is scanned
     assert scans[1].error == trivy_report.MISSING_STATUS
-    assert exit_code(scans, []) == EXIT_INCOMPLETE
+    assert exit_code(scans) == EXIT_INCOMPLETE
 
 
-def test_files_note_replaces_the_footer():
+def test_the_footer_is_the_given_files_note():
     scans = [ImageScan(image=Image(*CPU[:5]), packages=1)]
-    body = render_annotation(scans, [], SCANNER, files_note="Files: `s3://b/p/`")
+    body = render_annotation(scans, SCANNER, files_note="Files: `s3://b/p/`")
     assert body.endswith("Files: `s3://b/p/`\n")
     assert "artifacts" not in body
 
@@ -706,7 +641,9 @@ def test_files_note_replaces_the_footer():
 def test_write_report_writes_the_three_files(tmp_path: Path):
     scans = [ImageScan(image=Image(*CPU[:5]), packages=1)]
     build = trivy_report.build_info({"BUILDKITE_BUILD_NUMBER": "7"})
-    code = trivy_report.write_report(tmp_path / "out", scans, SCANNER, build)
+    code = trivy_report.write_report(
+        tmp_path / "out", scans, SCANNER, build, files_note=NOTE
+    )
     assert code == EXIT_CLEAN
     assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
         "report.md",
@@ -735,7 +672,7 @@ def test_a_wrongly_shaped_result_fails_only_its_image(tmp_path: Path, report):
 
 def render_all(results: Path) -> str:
     scans = load_scans(results)
-    return trivy_report.render_markdown(scans, [], SCANNER)
+    return trivy_report.render_markdown(scans, SCANNER, files_note=NOTE)
 
 
 @pytest.mark.parametrize(
