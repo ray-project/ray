@@ -1,6 +1,7 @@
 import contextlib
 import ctypes
 import errno
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -1906,7 +1907,7 @@ def test_create_public_sandbox_installs_the_default_allowlist(tmp_path, monkeypa
 
     def fake_popen(args, **kwargs):
         # The failed create deletes its bundle, so read the ruleset now.
-        (root_dir,) = tmp_path.iterdir()
+        (root_dir,) = tmp_path.glob("ray-sandbox-*")
         rulesets.append((root_dir / "egress.nft").read_text())
         raise _Started(args)
 
@@ -2846,9 +2847,11 @@ def test_prepare_bundle_readonly_host_mounts(
     assert inspected_specs == [spec]
 
 
-def test_reclaim_takes_only_bundles_whose_owner_is_gone(private_bundles, monkeypatch):
-    """A bundle whose owner file nobody holds loses its runsc state, its files
-    and its image pin. A live owner's bundle, one still being created, one an
+def test_reclaim_takes_only_bundles_whose_owner_is_gone(
+    private_bundles, monkeypatch, orphan
+):
+    """A bundle whose owner is gone loses its runsc state, its files and its
+    image pin. A live owner's bundle, one still being created, one an
     earlier Ray made, and anything not named like a bundle stay."""
     monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS")
     images = _RecordingImageManager()
@@ -2861,21 +2864,20 @@ def test_reclaim_takes_only_bundles_whose_owner_is_gone(private_bundles, monkeyp
         (root / "overlay").write_bytes(b"\0" * 1024)
         if image:
             config = GVisorSandboxConfig(image=image, **config)
-            return backend._own_bundle(config, str(root))
+            backend._own_bundle(config, str(root))
+        return root
 
     live = bundle("ray-sandbox-00000000000a", "busybox:latest")
-    bundle("ray-sandbox-00000000000b", "python:3.12-slim", rootless=False).close()
+    orphan(bundle("ray-sandbox-00000000000b", "python:3.12-slim", rootless=False))
     bundle("ray-sandbox-00000000000c")  # Being created, or from an earlier Ray.
-    bundle("ray-sandbox-other", "busybox:latest").close()
-    try:
-        assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000b"]
-        assert sorted(os.listdir(bundles)) == [
-            "ray-sandbox-00000000000a",
-            "ray-sandbox-00000000000c",
-            "ray-sandbox-other",
-        ]
-    finally:
-        live.close()
+    orphan(bundle("ray-sandbox-other", "busybox:latest"))
+    assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000b"]
+    assert sorted(os.listdir(bundles)) == [
+        ".owners",
+        "ray-sandbox-00000000000a",
+        "ray-sandbox-00000000000c",
+        "ray-sandbox-other",
+    ]
     assert images.released == [("python:3.12-slim", "ray-sandbox-00000000000b")]
     # With the owner's flags, and a kill first: an owner that wasn't a Ray
     # worker may have left its sandbox running.
@@ -2884,8 +2886,170 @@ def test_reclaim_takes_only_bundles_whose_owner_is_gone(private_bundles, monkeyp
         "--root /tmp/runsc delete -force ray-sandbox-00000000000b",
     ]
 
-    # The owner of the first bundle closed its file, so it goes next.
+    # Once the owner of the first bundle is gone, it goes next.
+    orphan(live)
     assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000a"]
+
+
+def test_an_owner_is_alive_while_its_process_runs(private_bundles):
+    """A bundle's owner is the process that holds the lock its owner file
+    names. Once that process exits, its lock is free, and deleted, and the PID
+    in the lock's name shows the owner is gone. What can't be checked counts
+    as alive, since reclaiming a bundle kills its sandbox."""
+    locks = Path(gvisor._owner_locks_dir())
+    locks.mkdir(parents=True)
+    owner = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import fcntl, os, sys\n"
+            "f = open(f'{sys.argv[1]}/{os.getpid()}-0123456789ab.lock', 'x')\n"
+            "fcntl.flock(f, fcntl.LOCK_EX)\n"
+            "print(flush=True)\n"
+            "sys.stdin.read()\n",
+            str(locks),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    owner.stdout.readline()
+    record = {"owner_lock": f"{owner.pid}-0123456789ab.lock"}
+    assert gvisor._owner_alive(record)
+    gvisor._remove_dead_owner_locks()
+    assert os.listdir(locks) == [record["owner_lock"]]
+
+    owner.stdin.close()
+    owner.wait()
+    assert not gvisor._owner_alive(record)
+    gvisor._remove_dead_owner_locks()
+    assert os.listdir(locks) == []
+    assert not gvisor._owner_alive(record)
+    # A lock deleted while its owner runs, here this process.
+    assert gvisor._owner_alive({"owner_lock": f"{os.getpid()}-0123456789ab.lock"})
+    assert gvisor._owner_alive({"owner_lock": "../../0-0123456789ab.lock"})
+    assert gvisor._owner_alive({"owner_lock": 7})
+    # No lock: let go of by its owner, or an earlier Ray's owner file.
+    assert not gvisor._owner_alive({"owner_lock": None})
+    assert not gvisor._owner_alive({"image": "busybox:latest"})
+
+
+def test_an_owner_that_dies_during_the_lock_sweep_keeps_its_lock(
+    private_bundles, monkeypatch
+):
+    """The bundles' owner files are read after the locks are found free. An
+    owner can write an owner file and die between the two, and read the other
+    way round, its lock would go while its bundle still names it."""
+    locks = Path(gvisor._owner_locks_dir())
+    locks.mkdir(parents=True)
+    name = "1-0123456789ab.lock"
+    (locks / name).touch()
+    bundle = Path(gvisor._RAY_SANDBOX_DIR, "ray-sandbox-00000000000a")
+    named = gvisor._owner_locks_named
+
+    def owner_writes_its_file_and_dies():
+        # Runs once the lock was found free, as the scan of the bundles starts.
+        bundle.mkdir()
+        (bundle / ".owner").write_text(json.dumps({"owner_lock": name}))
+        return named()
+
+    monkeypatch.setattr(gvisor, "_owner_locks_named", owner_writes_its_file_and_dies)
+    gvisor._remove_dead_owner_locks()
+    assert os.listdir(locks) == [name]
+    # The lock goes once the bundle does.
+    monkeypatch.setattr(gvisor, "_owner_locks_named", named)
+    shutil.rmtree(bundle)
+    gvisor._remove_dead_owner_locks()
+    assert os.listdir(locks) == []
+
+
+def test_a_forked_child_doesnt_hold_its_parents_owner_lock(tmp_path):
+    """A child forked from an owner shares the owner's open lock file, which
+    would keep the lock held, and the owner's sandboxes unreclaimed, for as
+    long as the child outlived it. The child closes its copy at the fork."""
+    script = (
+        "import os, sys, time\n"
+        "from ray.experimental.sandbox.backend import gvisor\n"
+        "gvisor._RAY_SANDBOX_DIR = sys.argv[1]\n"
+        "name = gvisor._process_owner_lock()\n"
+        "child = os.fork()\n"
+        "if child == 0:\n"
+        "    held = len(gvisor._owner_locks)\n"
+        "    print(name, held, os.getpid(), flush=True)\n"
+        "    time.sleep(60)\n"
+        "    os._exit(0)\n"
+        "os._exit(0)\n"  # The owner dies, and its child lives on.
+    )
+    owner = subprocess.Popen(
+        [sys.executable, "-c", script, str(tmp_path)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    name, held, child = owner.stdout.readline().split()
+    owner.wait()
+    try:
+        assert held == "0"
+        lock = tmp_path / ".owners" / name
+        deadline = time.time() + 10
+        while True:
+            with open(lock) as probe:
+                try:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break  # Free: the owner is seen as gone.
+                except OSError:
+                    assert time.time() < deadline, "the child holds the lock"
+            time.sleep(0.05)
+    finally:
+        os.kill(int(child), signal.SIGKILL)
+
+
+def test_a_dead_owners_lock_stays_while_a_bundle_names_it(
+    private_bundles, monkeypatch, orphan
+):
+    """A bundle that a pass couldn't reclaim keeps its dead owner's lock, so
+    the next pass still finds the owner gone after another process gets the
+    owner's PID. The lock goes once no bundle names it."""
+    root = Path(gvisor._RAY_SANDBOX_DIR, "ray-sandbox-00000000000f")
+    root.mkdir(parents=True)
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    backend._own_bundle(GVisorSandboxConfig(image="busybox:latest"), str(root))
+    orphan(root)
+    lock = json.loads((root / ".owner").read_text())["owner_lock"]
+    remove = gvisor.SandboxCgroupManager.remove
+
+    def stuck(self, sandbox_id):
+        raise RuntimeError("the cgroup still has processes")
+
+    monkeypatch.setattr(gvisor.SandboxCgroupManager, "remove", stuck)
+    assert backend._reclaim_unowned_bundles() == []
+    assert lock in os.listdir(gvisor._owner_locks_dir())
+
+    monkeypatch.setattr(gvisor.SandboxCgroupManager, "remove", remove)
+    monkeypatch.setattr(gvisor, "_pid_running", lambda pid: True)
+    assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000f"]
+    assert lock not in os.listdir(gvisor._owner_locks_dir())
+
+
+def test_a_process_holds_one_descriptor_for_all_its_sandboxes(private_bundles):
+    """Every bundle a process owns names the one lock that the process holds,
+    so owning more sandboxes opens no more files: each runsc command that a
+    process runs forks it, which copies all its descriptors."""
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    config = GVisorSandboxConfig(image="busybox:latest")
+    fd_dir = "/proc/self/fd" if os.path.isdir("/proc/self/fd") else "/dev/fd"
+    roots = [Path(gvisor._RAY_SANDBOX_DIR, f"ray-sandbox-{i:012x}") for i in range(8)]
+    for root in roots:
+        root.mkdir(parents=True)
+    backend._own_bundle(config, str(roots[0]))
+    open_fds = len(os.listdir(fd_dir))
+    for root in roots[1:]:
+        backend._own_bundle(config, str(root))
+    assert len(os.listdir(fd_dir)) == open_fds
+    (lock,) = os.listdir(gvisor._owner_locks_dir())
+    for root in roots:
+        owner = json.loads((root / ".owner").read_text())
+        assert owner["owner_lock"] == lock
+        assert owner["pid"] == os.getpid()
+    assert backend._reclaim_unowned_bundles() == []
 
 
 def test_reclaim_never_runs_a_command_from_the_owner_file(private_bundles):
@@ -2910,7 +3074,7 @@ def test_reclaim_never_runs_a_command_from_the_owner_file(private_bundles):
     )
 
 
-def test_reclaim_deletes_the_owner_file_last(private_bundles, monkeypatch):
+def test_reclaim_deletes_the_owner_file_last(private_bundles, monkeypatch, orphan):
     """A reclaim pass runs in a daemon thread, so it can be cut short, say with
     the process that runs it. Everything but the owner file goes first, so a
     later pass still finds the bundle and finishes."""
@@ -2921,7 +3085,8 @@ def test_reclaim_deletes_the_owner_file_last(private_bundles, monkeypatch):
     images = _RecordingImageManager()
     backend = GVisorSandboxBackend(image_manager=images)
     config = GVisorSandboxConfig(image="busybox:latest")
-    backend._own_bundle(config, str(root)).close()
+    backend._own_bundle(config, str(root))
+    orphan(root)
     rmtree = shutil.rmtree
 
     def cut_short(path, *args, **kwargs):
@@ -2961,7 +3126,7 @@ def test_failed_create_leaves_no_bundle(private_bundles, monkeypatch, failure):
         monkeypatch.setattr(images, "prepare_oci_bundle", bad_spec, raising=False)
     with pytest.raises(SandboxCreationError):
         backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
-    assert os.listdir(gvisor._RAY_SANDBOX_DIR) == []
+    assert not list(Path(gvisor._RAY_SANDBOX_DIR).glob("ray-sandbox-*"))
     assert [image for image, _ in images.released] == ["busybox:latest"]
 
 

@@ -16,6 +16,7 @@ from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.checkpoint_utils import copy_fs_tree
 from ray.experimental.sandbox.backend.gvisor import (
     GVisorSandboxBackend,
+    _owner_alive,
     _RestoreImage,
 )
 from ray.experimental.sandbox.config import SandboxConfig
@@ -49,14 +50,8 @@ class TestCheckpointRestore(unittest.TestCase):
         self.addCleanup(cgroups.stop)
 
     def tearDown(self):
-        for sandbox_id in list(self.backend._sandbox_metadata):
-            owner_file = self.backend._sandbox_metadata[sandbox_id].get("owner_file")
-            if owner_file is not None:
-                owner_file.close()
-                shutil.rmtree(
-                    self.backend._sandbox_metadata[sandbox_id]["root_dir"],
-                    ignore_errors=True,
-                )
+        for meta in self.backend._sandbox_metadata.values():
+            shutil.rmtree(meta["root_dir"], ignore_errors=True)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     @staticmethod
@@ -1035,7 +1030,8 @@ class TestCheckpointRestore(unittest.TestCase):
         assert prep["readonly"] is True
         assert prep["_oci_spec_transform_fn"] is sample_transform
         assert meta["egress_allowlist"] == ["198.51.100.0/24"]
-        assert meta["owner_file"] is not None
+        with open(os.path.join(meta["root_dir"], ".owner")) as f:
+            assert _owner_alive(json.load(f))
         with open(os.path.join(meta["root_dir"], "hosts")) as f:
             assert "added-by-guest" in f.read()
         # Launched with the same wrapping as a created network="public" sandbox.
