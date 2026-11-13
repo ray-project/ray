@@ -464,12 +464,11 @@ class Worker:
         # tensor_transport, to avoid circular import and because it imports
         # third-party dependencies like PyTorch.
         self._rdt_manager = None
-        # When the worker is constructed. Record the original value of the
+        # Lazily record the initial value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
-        self.original_visible_accelerator_ids = (
-            ray._private.utils.get_visible_accelerator_ids()
-        )
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables
+        # so importing ray._private.worker does not probe accelerator SDKs pre-fork.
+        self._original_visible_accelerator_ids = None
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -523,6 +522,18 @@ class Worker:
 
             self._rdt_manager = RDTManager()
         return self._rdt_manager
+
+    @property
+    def original_visible_accelerator_ids(self):
+        if self._original_visible_accelerator_ids is None:
+            self._original_visible_accelerator_ids = (
+                ray._private.utils.get_visible_accelerator_ids()
+            )
+        return self._original_visible_accelerator_ids
+
+    @original_visible_accelerator_ids.setter
+    def original_visible_accelerator_ids(self, value):
+        self._original_visible_accelerator_ids = value
 
     @property
     def connected(self):
