@@ -569,6 +569,35 @@ def _release_cgroup(sandbox_id: str, cgroup: Optional[SandboxCgroup]) -> bool:
     return True
 
 
+def _keep_checkpointed_init(checkpoint_path: str, root_dir: str) -> None:
+    """Give a restored bundle the first process that its checkpoint ran.
+
+    runsc refuses a restore whose ``process.args`` differ from the
+    checkpoint's. They do when the checkpoint was taken before sandboxes
+    started a reaping shell (it ran ``sleep infinity``), or when an OCI
+    transformation changed them at creation.
+
+    Args:
+        checkpoint_path: The checkpoint bundle, which holds the spec that the
+            sandbox ran with.
+        root_dir: The restored sandbox's bundle, with its new spec.
+    """
+    try:
+        with open(os.path.join(checkpoint_path, "config.json"), encoding="utf-8") as f:
+            args = json.load(f)["process"]["args"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return  # No spec in the checkpoint to go by.
+    if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
+        return
+    path = os.path.join(root_dir, "config.json")
+    with open(path, encoding="utf-8") as f:
+        spec = json.load(f)
+    if spec.get("process", {}).get("args") != args:
+        spec.setdefault("process", {})["args"] = args
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(spec, f, indent=2)
+
+
 def _safe_join_under(base_dir: str, rel_path: str, param_name: str = "workdir") -> str:
     """Resolve rel_path under base_dir, rejecting any directory traversal."""
     resolved = os.path.abspath(os.path.join(base_dir, rel_path.lstrip("/")))
@@ -2188,6 +2217,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         rootfs_overlay = self._prepare_bundle(
             config, root_dir, workdir_path, container_cwd
         )
+        _keep_checkpointed_init(checkpoint_path, root_dir)
         # /etc/hosts is writable inside the sandbox; keep its checkpointed
         # contents over the freshly generated file.
         saved_hosts = os.path.join(checkpoint_path, "hosts")

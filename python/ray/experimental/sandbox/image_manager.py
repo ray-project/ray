@@ -84,6 +84,25 @@ def _build_gpu_cdi_devices_transform_fn(
     return _transform
 
 
+# A sandbox's PID 1. Processes whose parents exit become its children, and
+# the shell reaps them while it waits for its sleep, as an init system does.
+# A PID 1 that never waits, such as `sleep infinity`, leaves each of them a
+# zombie until the sandbox runs out of process IDs.
+#
+# gVisor delivers a signal to PID 1 as to any other process, so the shell
+# ignores the ones that would end it, and the sandbox with it: `kill 1` and
+# `pkill sh` leave the sandbox running. A sleep that is killed is started
+# again. One the image lacks (exit status 127) or can't run (126) ends the
+# loop instead of spinning. So does a sleep that can't be started because the
+# sandbox is out of process IDs, since a shell gives up when it can't fork.
+SANDBOX_INIT_ARGS = (
+    "sh",
+    "-c",
+    "trap '' HUP INT QUIT TERM USR1 USR2; "
+    "while :; do sleep 2147483647; s=$?; case $s in 126|127) exit $s;; esac; done",
+)
+
+
 class BaseImageManager(ABC):
     """Abstract Base Class defining the contract for Container Image Managers.
 
@@ -494,7 +513,7 @@ class ImageManager(BaseImageManager):
         spec["root"]["readonly"] = readonly
 
         spec.setdefault("process", {})
-        spec["process"]["args"] = ["sleep", "infinity"]
+        spec["process"]["args"] = list(SANDBOX_INIT_ARGS)
         spec["process"]["cwd"] = container_cwd
 
         # Inherit Env from image config by default
