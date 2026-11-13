@@ -87,6 +87,41 @@ def test_deprecated_decorator_error():
             old_func()
 
 
+def test_deprecated_decorator_error_raises_on_every_call():
+    # `log_once` is not patched: it returns False after the first call.
+    @Deprecated(old="old_func_raises_every_call", error=True)
+    def old_func():
+        pass
+
+    @Deprecated(old="OldClassRaisesEveryCall", error=True)
+    class OldClass:
+        pass
+
+    @Deprecated(old="old_func_raises_type_error_every_call", error=TypeError)
+    def old_func_type_error():
+        pass
+
+    for _ in range(2):
+        with pytest.raises(ValueError):
+            old_func()
+        with pytest.raises(ValueError):
+            OldClass()
+        with pytest.raises(TypeError):
+            old_func_type_error()
+
+
+def test_deprecated_decorator_warns_once():
+    with patch("ray._common.deprecation.logger.warning") as mock_warning:
+
+        @Deprecated(old="old_func_warns_once", new="new_func", error=False)
+        def old_func():
+            return "result"
+
+        assert old_func() == "result"
+        assert old_func() == "result"
+        mock_warning.assert_called_once()
+
+
 def test_deprecated_value_constant():
     assert (
         DEPRECATED_VALUE == -1
