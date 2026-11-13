@@ -146,14 +146,11 @@ def _file_digest(path: str) -> str:
     return digest.hexdigest()
 
 
-@pytest.mark.parametrize("readonly", [True, False])
-def test_sandbox_gpu_leaves_cached_image_untouched(
-    overlay_mount, readonly, monkeypatch
-):
+def test_sandbox_gpu_leaves_cached_image_untouched(overlay_mount, monkeypatch):
     """A GPU sandbox runs nvidia-smi through each way of mounting its
-    overlayfs rootfs, read-only or writable. NVIDIA's createContainer hooks
-    write into the rootfs, and runsc creates mount points for the GPU's
-    driver files and device nodes. None of it may reach the cached EROFS
+    overlayfs rootfs. NVIDIA's createContainer hooks write into the rootfs,
+    runsc creates mount points for the GPU's driver files and device nodes,
+    and the sandbox writes to it too. None of it may reach the cached EROFS
     image the overlay sits on."""
     image = "nvidia/cuda:12.4.0-base-ubuntu22.04"
     # The sandbox is created in this process rather than a Sandbox actor, so
@@ -168,13 +165,13 @@ def test_sandbox_gpu_leaves_cached_image_untouched(
         before = _file_digest(rootfs_image)
 
         sandbox_id = backend.create_sandbox(
-            GVisorSandboxConfig(image=image, readonly=readonly, gpu_ids=["0"])
+            GVisorSandboxConfig(image=image, gpu_ids=["0"])
         )
         try:
             result = backend.exec_command(sandbox_id, "nvidia-smi")
             assert result.exit_code == 0, result.stderr
             probe = backend.exec_command(sandbox_id, "touch /etc/probe")
-            assert (probe.exit_code == 0) is not readonly
+            assert probe.exit_code == 0, probe.stderr
         finally:
             backend.delete_sandbox(sandbox_id)
 

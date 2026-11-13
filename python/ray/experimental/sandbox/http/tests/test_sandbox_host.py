@@ -34,7 +34,6 @@ def _make_host(
         "ttl_seconds": 3600,
         "network": "none",
         "rootless": True,
-        "readonly": False,
         "capabilities": list(DOCKER_DEFAULT_CAPABILITIES),
         "cpu_limit": 2.0,
         "memory_limit_mb": 1024,
@@ -87,13 +86,12 @@ def test_boot_reaches_running_with_expected_create_kwargs() -> None:
     assert create_call["workdir"] == "/"
     # The API owns the TTL; the upstream runtime must not double-manage it.
     assert create_call["ttl_seconds"] is None
-    # Writability follows the runtime's (readonly, workdir) contract; no
-    # extra knobs are forwarded.
+    # Every sandbox has a writable root filesystem; no knob is forwarded.
     assert "mount_workdir" not in create_call
+    assert "readonly" not in create_call
     assert create_call["timeout_seconds"] == 45.0
     assert create_call["rootless"] is True
     assert create_call["network"] == "none"
-    assert create_call["readonly"] is False
     assert create_call["capabilities"] == list(DOCKER_DEFAULT_CAPABILITIES)
     assert "_oci_spec_transform_fn" not in create_call
 

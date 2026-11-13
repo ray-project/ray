@@ -64,6 +64,7 @@ from ray.experimental.sandbox.config import (
     normalize_cidr_allowlist,
     parse_cidr_allowlist_entry,
     parse_memory_bytes,
+    pop_removed_readonly,
 )
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -479,17 +480,10 @@ def _write_egress_ruleset(
 
 
 # The bundle directory where gVisor's --overlay2 layer keeps writes made inside
-# a writable overlayfs sandbox. runsc keeps them under root.path by default,
-# but an overlayfs sandbox's root.path is its kernel overlay, whose upper layer
-# is a small tmpfs.
+# an overlayfs sandbox. runsc keeps them under root.path by default, but an
+# overlayfs sandbox's root.path is its kernel overlay, whose upper layer is a
+# small tmpfs.
 _OVERLAY2_DIRNAME = "runsc-overlay2"
-
-
-def _caps_workdir(config: SandboxConfig) -> bool:
-    """Whether ``config``'s disk cap applies to its workdir, a host directory
-    bind-mounted into a readonly sandbox."""
-    disk_bytes = parse_memory_bytes(config.disk) or 0
-    return bool(config.readonly and config.workdir and disk_bytes > 0)
 
 
 def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
@@ -567,17 +561,6 @@ def _release_cgroup(sandbox_id: str, cgroup: Optional[SandboxCgroup]) -> bool:
         )
         return False
     return True
-
-
-def _safe_join_under(base_dir: str, rel_path: str, param_name: str = "workdir") -> str:
-    """Resolve rel_path under base_dir, rejecting any directory traversal."""
-    resolved = os.path.abspath(os.path.join(base_dir, rel_path.lstrip("/")))
-    base_abs = os.path.abspath(base_dir)
-    if not (resolved == base_abs or resolved.startswith(base_abs + os.sep)):
-        raise SandboxCreationError(
-            f"Invalid {param_name} '{rel_path}': Path traversal detected."
-        )
-    return resolved
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
@@ -761,33 +744,21 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 instance_id=sandbox_id,
             )
             # The process cwd: an explicit workdir, else the image's WORKDIR.
+            # runsc creates it in the sandbox's overlay if the image lacks it.
             container_cwd = (
                 config.workdir or self._image_manager.get_workdir(config.image) or "/"
             )
-
-            # A host-backed scratch directory exists only for an *explicitly*
-            # requested workdir on a readonly rootfs — the sandbox's single
-            # writable path there. A writable rootfs needs none (the overlay
-            # covers writes), and an inherited image WORKDIR is never
-            # silently made writable.
-            workdir_path = None
-            if config.workdir and config.readonly:
-                workdir_path = _safe_join_under(root_dir, config.workdir)
-                os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
 
         # Prepare OCI bundle config for long-running container process
-        rootfs_overlay = self._prepare_bundle(
-            config, root_dir, workdir_path, container_cwd
-        )
+        rootfs_overlay = self._prepare_bundle(config, root_dir, container_cwd)
         self._launch_sandbox(
             config,
             sandbox_id,
             root_dir,
-            workdir_path,
             container_cwd,
             owner_file,
             cgroup,
@@ -801,7 +772,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         self,
         config: SandboxConfig,
         root_dir: str,
-        workdir_path: Optional[str],
         container_cwd: str,
     ) -> Optional[overlayfs.RootfsOverlay]:
         """Write the bundle's config.json, resolv.conf and hosts for ``config``.
@@ -809,7 +779,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         Args:
             config: The sandbox's configuration.
             root_dir: The sandbox's bundle directory.
-            workdir_path: The host directory mounted at the workdir, if any.
             container_cwd: The sandbox's working directory.
 
         Returns:
@@ -846,13 +815,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         config_json_path = self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
-            workdir_path=workdir_path,
             container_cwd=container_cwd,
             image=config.image,
             env_dict=config.env,
             cpu=config.cpu,
             memory=config.memory,
-            readonly=config.readonly,
             capabilities=config.capabilities,
             network=config.network,
             dns=config.dns,
@@ -865,9 +832,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             spec = json.load(f)
         # Boot the sandbox from a kernel overlay over its cached EROFS image
         # if its final spec needs one.
-        if _caps_workdir(config):
-            # gVisor's --overlay2 layer keeps the capped workdir's writes here.
-            os.makedirs(os.path.join(root_dir, _OVERLAY2_DIRNAME), exist_ok=True)
         if not overlayfs.needs_rootfs_overlay(spec):
             return None
         return self._prepare_rootfs_overlay(config, spec, root_dir)
@@ -877,7 +841,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig,
         sandbox_id: str,
         root_dir: str,
-        workdir_path: Optional[str],
         container_cwd: str,
         owner_file: IO[str],
         cgroup: Optional[SandboxCgroup],
@@ -891,7 +854,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             config: The sandbox's configuration.
             sandbox_id: The sandbox's ID, which also names its bundle.
             root_dir: The sandbox's prepared bundle directory.
-            workdir_path: The host directory mounted at the workdir, if any.
             container_cwd: The sandbox's working directory.
             owner_file: The bundle's owner file, which this backend holds.
             cgroup: The sandbox's cgroup, or None if it has no limits.
@@ -934,7 +896,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
-            "workdir": workdir_path,
             "cwd": container_cwd,
             "config": config,
             # The egress allowlist in force (None: not network="public");
@@ -1849,10 +1810,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 try:
                     self._reap_launch_process(meta, sandbox_id, timeout_seconds)
 
-                    # Step 4: Snapshot the copy-on-write rootfs overlay and writable workdir into staging.
+                    # Step 4: Snapshot the copy-on-write rootfs overlay into staging.
                     stage.copy_bundle_filesystems(
                         root_dir=root_dir,
-                        workdir=meta.get("workdir"),
                         sandbox_id=sandbox_id,
                     )
 
@@ -1861,7 +1821,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         sandbox_id=sandbox_id,
                         config=config,
                         cwd=meta["cwd"],
-                        workdir=meta.get("workdir"),
                         leave_running=leave_running,
                         node_id=node_id,
                         compression=compression,
@@ -2018,6 +1977,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         configuration with any overrides applied, and is owned, limited and
         cleaned up like a created one.
         """
+        # The option is gone, but callers written for it still pass it. The
+        # other overrides are SandboxConfig fields; this one would be skipped
+        # as unknown, and readonly=True would restore a writable sandbox.
+        pop_removed_readonly(kwargs)
         # Step 1: Validate checkpoint bundle directory and load stored manifest configuration.
         checkpoint_path = os.path.abspath(checkpoint_path)
         if not os.path.exists(checkpoint_path):
@@ -2073,12 +2036,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         restore = _RestoreImage(state_dir, background=background, direct=direct)
 
         def start(config, sandbox_id, root_dir, owner_file, cgroup):
-            (
-                image_dir,
-                workdir_path,
-                container_cwd,
-                rootfs_overlay,
-            ) = self._prepare_restored_bundle(
+            image_dir, container_cwd, rootfs_overlay = self._prepare_restored_bundle(
                 config,
                 checkpoint_path,
                 sandbox_id,
@@ -2089,7 +2047,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 config,
                 sandbox_id,
                 root_dir,
-                workdir_path,
                 container_cwd,
                 owner_file,
                 cgroup,
@@ -2110,7 +2067,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         sandbox_id: str,
         root_dir: str,
         image_fingerprint: Optional[str] = None,
-    ) -> Tuple[str, Optional[str], str, Optional[overlayfs.RootfsOverlay]]:
+    ) -> Tuple[str, str, Optional[overlayfs.RootfsOverlay]]:
         """Fill a new bundle from a checkpoint bundle.
 
         Copies the checkpoint's filesystem state into the bundle, then
@@ -2127,9 +2084,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 checkpoint was taken on, if recorded.
 
         Returns:
-            The cached image directory, the host directory mounted at the
-            workdir (or None), the sandbox's working directory, and the
-            kernel overlay to restore the sandbox in (or None).
+            The cached image directory, the sandbox's working directory, and
+            the kernel overlay to restore the sandbox in (or None).
         """
         try:
             # Pin this node's copy of the image for the restored sandbox.
@@ -2156,7 +2112,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 config.workdir or self._image_manager.get_workdir(config.image) or "/"
             )
 
-            # Step 4: Restore filesystem state (copy-on-write upper rootfs overlay layer & workdir).
+            # Step 4: Restore filesystem state (copy-on-write upper rootfs overlay layer).
             rootfs_dir = os.path.join(root_dir, "rootfs")
             os.makedirs(rootfs_dir, exist_ok=True)
             for cand in ("rootfs", "upper"):
@@ -2168,32 +2124,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         ignore_patterns=[".gvisor.filestore*"],
                     )
                     break
-
-            # The same rule as _start_sandbox: only an explicit workdir on a
-            # readonly rootfs is host-backed. build_restored_config keeps
-            # workdir and readonly as they were checkpointed.
-            workdir_path = None
-            if config.workdir and config.readonly:
-                workdir_path = _safe_join_under(root_dir, config.workdir)
-                os.makedirs(workdir_path, mode=0o777, exist_ok=True)
-                saved_workdir = os.path.join(checkpoint_path, "fs", "workdir")
-                if os.path.isdir(saved_workdir):
-                    copy_fs_tree(saved_workdir, workdir_path)
         except Exception as err:
             raise SandboxCreationError(
                 f"Failed to prepare restored sandbox '{sandbox_id}': {err}"
             ) from err
 
         # Step 5: Generate the OCI bundle from the restored configuration.
-        rootfs_overlay = self._prepare_bundle(
-            config, root_dir, workdir_path, container_cwd
-        )
+        rootfs_overlay = self._prepare_bundle(config, root_dir, container_cwd)
         # /etc/hosts is writable inside the sandbox; keep its checkpointed
         # contents over the freshly generated file.
         saved_hosts = os.path.join(checkpoint_path, "hosts")
         if os.path.isfile(saved_hosts):
             shutil.copy2(saved_hosts, os.path.join(root_dir, "hosts"))
-        return image_dir, workdir_path, container_cwd, rootfs_overlay
+        return image_dir, container_cwd, rootfs_overlay
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""
@@ -2263,8 +2206,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         mountpoint = os.path.join(root_dir, spec["root"]["path"])
 
         # gVisor's --overlay2 layer keeps writes made inside the sandbox here.
-        # A readonly sandbox gets it too, where it stays empty and is removed
-        # with the bundle.
         os.makedirs(os.path.join(root_dir, _OVERLAY2_DIRNAME), exist_ok=True)
 
         return overlayfs.prepare(
@@ -2300,16 +2241,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         Two types of sandboxes can be started, an EROFS sandbox or an overlayfs
         sandbox. An EROFS sandbox boots straight from the cached EROFS image,
         which the sandbox's gVisor annotations point runsc at (see
-        ``ImageManager.create_oci_spec``). If the sandbox is writable, those
-        annotations also give it an overlay of its own, so runsc gets no
-        ``--overlay2`` flag.
+        ``ImageManager.create_oci_spec``). Those annotations also give it an
+        overlay of its own, so runsc gets no ``--overlay2`` flag.
 
         An overlayfs sandbox, on the other hand, mounts the cached EROFS image
         on the host, and boots from a kernel overlay layered on top of it,
         mounted at the sandbox's root.path. The overlay's upper layer is a small
         tmpfs for host-side writes into the sandbox, such as those from OCI
-        hooks and the mount points runsc creates. A writable sandbox's own
-        writes go to gVisor's ``--overlay2`` layer.
+        hooks and the mount points runsc creates. The sandbox's own writes go
+        to gVisor's ``--overlay2`` layer.
         """
         # If an overlayfs sandbox needs a user namespace, rootfs_overlay.wrap()
         # creates it when wrapping the runsc command at the end of this method.
@@ -2352,17 +2292,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
-        # Always pass --overlay2 for an overlayfs sandbox. runsc only layers
-        # gVisor's overlay over a writable root and ignores the flag for a
-        # read-only one, so a readonly sandbox's root stays read-only. Its size
-        # caps the writes made inside the sandbox, as the rootfs annotations
-        # do for an EROFS sandbox. Where the cap applies to a readonly
-        # sandbox's workdir, the overlay covers that bind-mounted host
-        # directory too, so the workdir's writes land in the bundle, capped.
-        workdir_capped = _caps_workdir(config)
-        if rootfs_overlay is not None or workdir_capped:
-            scope = "all" if workdir_capped else "root"
-            overlay2 = f"{scope}:dir={os.path.join(root_dir, _OVERLAY2_DIRNAME)}"
+        # An overlayfs sandbox keeps the writes made inside it in gVisor's
+        # --overlay2 layer. Its size caps them, as the rootfs annotations do
+        # for an EROFS sandbox.
+        if rootfs_overlay is not None:
+            overlay2 = f"root:dir={os.path.join(root_dir, _OVERLAY2_DIRNAME)}"
             disk_bytes = parse_memory_bytes(config.disk) or 0
             if disk_bytes > 0:
                 overlay2 += f",size={disk_bytes}"
@@ -2866,13 +2800,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def _prepare_oci_bundle(
         self,
         root_dir: str,
-        workdir_path: str,
         container_cwd: str,
         image: str,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
-        readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
@@ -2882,13 +2814,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
-            workdir_path=workdir_path,
             container_cwd=container_cwd,
             image=image,
             env_dict=env_dict,
             cpu=cpu,
             memory=memory,
-            readonly=readonly,
             capabilities=capabilities,
             network=network,
             dns=dns,

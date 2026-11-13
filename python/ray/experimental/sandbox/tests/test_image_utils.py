@@ -955,10 +955,12 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     assert owners["opt/data"] == (38, 38)
     assert owners["opt/data/f.txt"] == (38, 38)
     assert owners["etc/passwd"] == (0, 0)
+    assert owners["tmp"] == (0, 0)
     assert owners["tmp/.ray-sandbox-keep"] == (0, 0)  # Docker-parity /tmp seed
-    # runsc's mount points, which an immutable image cannot grow on demand.
-    for mountpoint in ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp"):
-        assert owners[mountpoint] == (0, 0)
+    # No mount points are added: runsc creates the ones an image lacks in
+    # the sandbox's overlay.
+    for mountpoint in ("proc", "sys", "dev", "run", "etc/hosts", "etc/resolv.conf"):
+        assert mountpoint not in owners
 
 
 def _tar_members(path):
@@ -1201,40 +1203,24 @@ def test_pull_keeps_owners_shipped_through_symlinked_dirs(tmp_path):
 
 
 def test_seeding_stays_inside_the_tree(tmp_path):
-    """An image whose etc, dev or tmp links to a host directory gets its
-    mount-point and /tmp seeds inside the tree, at the path the sandbox will
-    see them at; the host directories are untouched."""
-    root = tmp_path / "rootfs"
-    root.mkdir()
-    host_etc = tmp_path / "host-etc"
+    """An image whose tmp links to a host directory gets its /tmp seed
+    inside the tree, at the path the sandbox will see it at; the host
+    directory is untouched."""
     host_tmp = tmp_path / "host-tmp"
-    host_etc.mkdir()
     host_tmp.mkdir()
     host_tmp_mode = host_tmp.stat().st_mode
-    (root / "etc").symlink_to(host_etc)  # absolute host path
-    (root / "dev").symlink_to("../escape")  # climbs past the root
-    # tmp gets a tree of its own, linked relatively: tmp_path is often
-    # under /tmp, and in the image a /tmp naming a path under /tmp is a
-    # symlink loop, which seeding rightly gives up on.
+    # tmp is linked relatively: tmp_path is often under /tmp, and in the
+    # image a /tmp naming a path under /tmp is a symlink loop, which
+    # seeding rightly gives up on.
     tmp_root = tmp_path / "tmp-rootfs"
     tmp_root.mkdir()
     (tmp_root / "tmp").symlink_to("../host-tmp")
 
-    for tree in (root, tmp_root):
-        image_utils._seed_tmp(str(tree))
-        image_utils._seed_mountpoints(str(tree))
+    image_utils._seed_tmp(str(tmp_root))
 
-    assert os.listdir(host_etc) == []
     assert os.listdir(host_tmp) == []
     assert host_tmp.stat().st_mode == host_tmp_mode
-    assert not (tmp_path / "escape").exists()
-    # In the image, /etc -> /<abs> makes /etc/hosts /<abs>/hosts.
-    inside_etc = root / str(host_etc).lstrip("/")
-    for name in ("resolv.conf", "hosts", "hostname"):
-        assert (inside_etc / name).is_file()
-    assert (root / "escape" / "pts").is_dir()
-    assert (root / "escape" / "shm").is_dir()
-    # And /tmp -> ../host-tmp is /host-tmp: ".." stops at the root.
+    # /tmp -> ../host-tmp is /host-tmp: ".." stops at the root.
     inside_tmp = tmp_root / "host-tmp"
     assert (inside_tmp / ".ray-sandbox-keep").is_file()
     assert (inside_tmp.stat().st_mode & 0o7777) == 0o1777

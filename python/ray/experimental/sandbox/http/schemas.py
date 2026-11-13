@@ -10,7 +10,13 @@ import os
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 # Re-exported so the wire contract documents its default in one place; the
 # canonical definition (and rationale) lives in the core sandbox config.
@@ -31,6 +37,9 @@ ExecStatusName = Literal["running", "completed", "timeout", "error"]
 
 _MAX_LABELS = 16
 _MAX_LABEL_LENGTH = 256
+
+# Reads a value the way a ``bool`` field does.
+_BOOL_ADAPTER = TypeAdapter(bool)
 
 
 @PublicAPI(stability="alpha")
@@ -55,8 +64,8 @@ class ResourceSpec(BaseModel):
         default=None,
         gt=0,
         description=(
-            "Size cap of the sandbox's writable rootfs, in MiB. Writes past it "
-            "fail with ENOSPC. Requires readonly=false or a workdir."
+            "Size cap of the sandbox's root filesystem overlay, in MiB. "
+            "Writes past it fail with ENOSPC."
         ),
     )
     custom: Optional[Dict[str, float]] = Field(
@@ -83,8 +92,9 @@ class CreateSandboxRequest(BaseModel):
     workdir: Optional[str] = Field(
         default=None,
         description=(
-            "Sandbox-level working directory; also the default cwd for execs. "
-            "None uses the image's own WORKDIR, like Docker."
+            "Sandbox-level working directory, as an absolute path; also the "
+            "default cwd for execs. None uses the image's own WORKDIR, like "
+            "Docker."
         ),
     )
     ttl_seconds: Optional[int] = Field(
@@ -146,7 +156,6 @@ class CreateSandboxRequest(BaseModel):
             "otherwise gets 403."
         ),
     )
-    readonly: bool = True
     resources: Optional[ResourceSpec] = None
     labels: Dict[str, str] = Field(default_factory=dict)
     capabilities: Optional[List[str]] = Field(
@@ -170,6 +179,36 @@ class CreateSandboxRequest(BaseModel):
         ),
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_readonly(cls, data):
+        # Earlier versions had a ``readonly`` field, which defaulted to true.
+        # readonly=false asked for what every sandbox has now, and is ignored
+        # like any other unknown field. readonly=true asked for a restriction
+        # that no longer exists; ignoring it would hand the client a sandbox
+        # that can write where it was told not to. The value is read the way
+        # the field read it, so "false" and 0 still mean false.
+        if isinstance(data, dict) and data.get("readonly") is not None:
+            readonly = _BOOL_ADAPTER.validate_python(data["readonly"])
+        else:
+            readonly = False
+        if readonly:
+            raise ValueError(
+                "readonly=true is no longer supported: every sandbox has a "
+                "writable root filesystem, private to it and discarded with "
+                "it. Remove the readonly field."
+            )
+        return data
+
+    @field_validator("workdir")
+    @classmethod
+    def _validate_workdir(cls, workdir: Optional[str]) -> Optional[str]:
+        # runsc only rejects a relative path at container start, long after
+        # this request was answered with 202.
+        if workdir and not workdir.startswith("/"):
+            raise ValueError("workdir must be an absolute path")
+        return workdir
+
     @field_validator("network")
     @classmethod
     def _validate_network(cls, network: str) -> str:
@@ -178,21 +217,6 @@ class CreateSandboxRequest(BaseModel):
         if network not in VALID_NETWORK_MODES:
             raise ValueError(f"network must be one of {VALID_NETWORK_MODES}")
         return network
-
-    @model_validator(mode="after")
-    def _validate_disk_limit(self) -> "CreateSandboxRequest":
-        # The same rule as SandboxConfig's, answered with a 422 up front.
-        if (
-            self.resources
-            and self.resources.disk_limit_mb
-            and self.readonly
-            and not self.workdir
-        ):
-            raise ValueError(
-                "resources.disk_limit_mb caps the writable rootfs; it requires "
-                "readonly=false or a workdir"
-            )
-        return self
 
     @model_validator(mode="after")
     def _validate_cidr_allowlist(self) -> "CreateSandboxRequest":

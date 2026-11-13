@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from unittest.mock import Mock
 
 import pytest
@@ -22,6 +23,7 @@ from ray.experimental.sandbox.backend.base import ExecResult, SandboxStatus
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxError
 from ray.experimental.sandbox.runtime import SandboxRuntime
+from ray.util.annotations import RayDeprecationWarning
 
 
 class _FakeImageManager:
@@ -137,7 +139,6 @@ def test_create_forwards_config_fields_to_backend():
         dns=["10.0.0.2"],
         capabilities=["CAP_CHOWN"],
         rootless=True,
-        readonly=False,
         shell="/bin/bash",
         oom_score_adj=0,
     )
@@ -150,9 +151,55 @@ def test_create_forwards_config_fields_to_backend():
     assert config.dns == ["10.0.0.2"]
     assert config.capabilities == ["CAP_CHOWN"]
     assert config.rootless is True
-    assert config.readonly is False
     assert config.shell == "/bin/bash"
     assert config.oom_score_adj == 0
+
+
+def test_create_ignores_readonly_false():
+    """Callers written for the removed readonly option still pass
+    readonly=False. It warns and changes nothing: every sandbox is writable."""
+    runtime = _fake_runtime()
+    with pytest.warns(RayDeprecationWarning, match="'readonly' option was removed"):
+        runtime.create(image="fake:latest", readonly=False)
+    (config,) = runtime._backend.configs
+    assert not hasattr(config, "readonly")
+
+    # Other unknown options still fail.
+    with pytest.raises(TypeError, match="writable"):
+        runtime.create(image="fake:latest", writable=True)
+
+
+def test_create_ignores_readonly_none():
+    """A wrapper that forwards its own unset readonly passes None. That
+    isn't a use of the option, so it doesn't warn."""
+    runtime = _fake_runtime()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        runtime.create(image="fake:latest", readonly=None)
+    (config,) = runtime._backend.configs
+    assert not hasattr(config, "readonly")
+
+
+def test_create_refuses_readonly_true():
+    """readonly=True asked for a root filesystem the sandbox can't write.
+    No sandbox has one now, so the call fails instead of starting a writable
+    sandbox."""
+    runtime = _fake_runtime()
+    with pytest.raises(ValueError, match="readonly=True is no longer supported"):
+        runtime.create(image="fake:latest", readonly=True)
+    assert runtime._backend.configs == []
+
+
+def test_restore_handles_the_removed_readonly_option():
+    runtime = _fake_runtime()
+    runtime._backend.restore_sandbox = Mock(return_value="restored-1")
+    with pytest.raises(ValueError, match="readonly=True is no longer supported"):
+        runtime.restore("/ckpt", readonly=True)
+    runtime._backend.restore_sandbox.assert_not_called()
+
+    with pytest.warns(RayDeprecationWarning, match="'readonly' option was removed"):
+        assert runtime.restore("/ckpt", readonly=False) == "restored-1"
+    assert "readonly" not in runtime._backend.restore_sandbox.call_args.kwargs
 
 
 def _fake_running_backend(tmp_path):
@@ -335,20 +382,18 @@ def test_concurrent_exports_of_one_sandbox_run_one_at_a_time(tmp_path, monkeypat
 
 
 @pytest.mark.parametrize(
-    "readonly, target, cached_base, match",
+    "target, cached_base, match",
     [
-        (True, "registry.example/target:new", True, "readonly=False"),
         (
-            False,
             f"registry.example/target@sha256:{'0' * 64}",
             True,
             "needs a tag, not a digest",
         ),
-        (False, "registry.example/target:new", False, "Cannot commit base image"),
+        ("registry.example/target:new", False, "Cannot commit base image"),
     ],
 )
 def test_commit_fails_before_exporting_the_rootfs(
-    tmp_path, readonly: bool, target: str, cached_base: bool, match: str
+    tmp_path, target: str, cached_base: bool, match: str
 ) -> None:
     base = "registry.example/source:old"
     if cached_base:
@@ -359,9 +404,7 @@ def test_commit_fails_before_exporting_the_rootfs(
     runtime = _fake_runtime()
     runtime._image_manager = Mock(images_dir=str(tmp_path))
     runtime._backend = Mock()
-    runtime._backend.get_config.return_value = SandboxConfig(
-        image=base, readonly=readonly
-    )
+    runtime._backend.get_config.return_value = SandboxConfig(image=base)
 
     with pytest.raises(SandboxError, match=match):
         runtime.commit("sandbox", target)

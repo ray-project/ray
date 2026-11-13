@@ -2,8 +2,11 @@ import ipaddress
 import math
 import os
 import re
+import warnings
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+
+from ray.util.annotations import RayDeprecationWarning
 
 # Sandbox network modes. "none", "host", and "sandbox" map directly to runsc
 # --network; "public" runs runsc with host networking inside a per-sandbox
@@ -208,6 +211,43 @@ DOCKER_DEFAULT_CAPABILITIES = [
 ]
 
 
+def pop_removed_readonly(options: Dict[str, Any], stacklevel: int = 2) -> None:
+    """Take the removed ``readonly`` option out of a caller's keyword arguments.
+
+    ``readonly=False`` asked for what every sandbox has now, so it is dropped
+    with a deprecation warning. ``readonly=True`` asked for a restriction
+    that no longer exists, so it is refused: ignoring it would hand the
+    caller a sandbox that can write where it was told not to.
+    ``readonly=None`` is how a wrapper forwards an option its own caller
+    left unset, so it is dropped without a warning.
+
+    Args:
+        options: The keyword arguments a caller passed. ``readonly`` is
+            removed in place.
+        stacklevel: The ``warnings.warn`` stacklevel, counted from the
+            function that calls this one.
+
+    Raises:
+        ValueError: If ``readonly`` is true.
+    """
+    readonly = options.pop("readonly", None)
+    if readonly is None:
+        return
+    if readonly:
+        raise ValueError(
+            "readonly=True is no longer supported: every sandbox writes to a "
+            "private overlay over its image, which is discarded with the "
+            "sandbox. Remove the 'readonly' argument."
+        )
+    warnings.warn(
+        "The sandbox 'readonly' option was removed, and readonly=False is "
+        "ignored: every sandbox writes to a private overlay over its image, "
+        "which is discarded with the sandbox. Stop passing 'readonly'.",
+        RayDeprecationWarning,
+        stacklevel=stacklevel + 1,
+    )
+
+
 def parse_memory_bytes(memory: Optional[Union[str, int, float]]) -> Optional[int]:
     """Parse memory specifier string (e.g. '1Gi', '512Mi', '2GB') or number into integer bytes."""
     if memory is None:
@@ -262,12 +302,10 @@ class SandboxConfig:
             capabilities runsc allows, such as compute,utility,profiling.
             Without it, gVisor uses compute,utility. An image's environment
             cannot raise the allowed capabilities.
-        workdir: Working directory for commands (the process cwd). None
-            (default) uses the image's WORKDIR, or "/" if the image sets
-            none. On a readonly rootfs, an *explicitly* passed workdir is
-            also bind-mounted as the sandbox's only writable path
-            (host-backed scratch); an inherited image WORKDIR is never
-            silently made writable.
+        workdir: Working directory for commands (the process cwd), as an
+            absolute path. None (default) uses the image's WORKDIR, or "/"
+            if the image sets none. A workdir the image lacks is created in
+            the sandbox's root filesystem.
         ttl_seconds: Optional time-to-live in seconds, measured wall-clock
             from creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -321,22 +359,15 @@ class SandboxConfig:
         shell: Shell for *string* commands (list commands bypass it).
             Defaults to "/bin/bash", which string commands overwhelmingly
             assume; set to "/bin/sh" for images without bash.
-        readonly: If True (default), the rootfs is read-only and only an
-            explicitly passed ``workdir`` is writable — with no workdir,
-            nothing on the rootfs is (safe by default; standard tmpfs mounts
-            such as /tmp remain writable). If False, the entire rootfs is
-            writable through the per-sandbox copy-on-write overlay: image
-            content stays visible, sandboxes don't interfere with each
-            other, and the base image is never modified.
-        disk: Size cap of the writable rootfs overlay (e.g. "10Gi"), in the
-            units ``memory`` takes. Writes past it fail with ENOSPC inside
+        disk: Size cap of the sandbox's root filesystem overlay (e.g.
+            "10Gi"), in the units ``memory`` takes. Every sandbox writes to
+            a private copy-on-write overlay over its image: image content
+            stays visible, sandboxes don't interfere with each other, the
+            cached image is never modified, and the overlay is discarded
+            with the sandbox. Writes past the cap fail with ENOSPC inside
             the sandbox, and the sandbox keeps running. Zero (default) means
-            no cap. Requires ``readonly=False`` or a ``workdir``: a readonly
-            rootfs stays read-only, so the cap applies to its explicit
-            workdir, whose writes then go to a file in the sandbox's
-            directory on the node instead of the workdir's host directory.
-            In-memory mounts such as /dev/shm count toward the sandbox's
-            memory instead.
+            no cap. In-memory mounts such as /dev/shm count toward the
+            sandbox's memory instead.
         gpu_ids: GPU ids or UUIDs, in the format ``ray.get_gpu_ids()`` uses,
             to expose inside the sandbox through CDI. None (default) gives no
             GPU access. Every id must be one Ray assigned the calling actor or
@@ -368,7 +399,6 @@ class SandboxConfig:
     cidr_allowlist: Optional[List[str]] = None
     capabilities: Optional[List[str]] = None
     shell: str = "/bin/bash"
-    readonly: bool = True
     gpu_ids: Optional[List[Union[int, str]]] = None
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
@@ -389,6 +419,11 @@ class SandboxConfig:
             raise ValueError("memory must be non-negative")
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
             raise ValueError("A valid container image name must be specified.")
+        if self.workdir and not (
+            isinstance(self.workdir, str) and os.path.isabs(self.workdir)
+        ):
+            # runsc only rejects this at container start, after the pull.
+            raise ValueError(f"workdir must be an absolute path, got {self.workdir!r}.")
         if self.mounts is not None:
             if not isinstance(self.mounts, dict):
                 raise TypeError("mounts must be a dictionary.")
@@ -433,13 +468,6 @@ class SandboxConfig:
         disk_bytes = parse_memory_bytes(self.disk) or 0
         if disk_bytes < 0:
             raise ValueError("disk must be non-negative")
-        if disk_bytes > 0 and self.readonly and not self.workdir:
-            # Only a read-only rootfs without a workdir has no overlay to cap
-            # (see ImageManager.create_oci_spec).
-            raise ValueError(
-                "disk caps the writable rootfs; it requires readonly=False or "
-                "a workdir"
-            )
         self._validate_gpu_ids()
 
     def _validate_gpu_ids(self):

@@ -56,6 +56,7 @@ from ray.experimental.sandbox.exceptions import (
     SandboxTimeoutError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+from ray.util.annotations import RayDeprecationWarning
 
 _BUSYBOX_CACHE = os.path.join(DEFAULT_IMAGES_DIR, image_cache_name("busybox:latest"))
 
@@ -134,6 +135,30 @@ def test_create_threads_num_gpus_into_actor_options():
         create("busybox:latest", num_gpus=2)
 
     assert captured_options.get("num_gpus") == 2
+
+
+def test_create_handles_the_removed_readonly_option_in_the_caller():
+    """create() checks the removed readonly option before it starts the
+    actor: readonly=True fails in the caller, and readonly=False warns there
+    and isn't passed on."""
+    remote_kwargs = []
+
+    class _FakeSandboxHandle:
+        def remote(self, *args, **kwargs):
+            remote_kwargs.append(kwargs)
+            return "sandbox-actor-handle"
+
+    with patch(
+        "ray.experimental.sandbox.Sandbox.options",
+        side_effect=lambda **kwargs: _FakeSandboxHandle(),
+    ):
+        with pytest.raises(ValueError, match="readonly=True is no longer supported"):
+            create("busybox:latest", readonly=True)
+        assert remote_kwargs == []
+
+        with pytest.warns(RayDeprecationWarning, match="'readonly' option was removed"):
+            create("busybox:latest", readonly=False)
+    assert "readonly" not in remote_kwargs[0]
 
 
 def test_create_num_gpus_reaches_real_ray_scheduling():
@@ -241,13 +266,11 @@ def test_gvisor_backend_container_image_overlay_isolation():
         image="busybox:latest",
         shell="/bin/sh",
         workdir="/workspace",
-        readonly=False,
     )
     cfg2 = GVisorSandboxConfig(
         image="busybox:latest",
         shell="/bin/sh",
         workdir="/workspace",
-        readonly=False,
     )
 
     sb1 = backend.create_sandbox(cfg1)
@@ -283,7 +306,6 @@ def test_gvisor_backend_container_image_overlay_isolation():
         image="busybox:latest",
         shell="/bin/sh",
         workdir="/workspace",
-        readonly=False,
     )
     sb3 = backend.create_sandbox(cfg3)
     try:
@@ -293,37 +315,43 @@ def test_gvisor_backend_container_image_overlay_isolation():
         backend.delete_sandbox(sb3)
 
 
-# readonly=True with an explicit workdir boots from a kernel overlay, where
-# runsc can create the workdir's mount point, so the rest of the rootfs stays
-# read-only. A worker that can't mount one runs the sandbox on a private
-# writable overlay instead.
-def test_gvisor_backend_readonly_rootfs(ensure_overlayfs_mount):
+def test_gvisor_backend_rootfs_is_writable_by_default():
+    """Every sandbox writes to a private overlay over its image: the whole
+    root filesystem is writable, an explicit workdir the image lacks
+    included, and nothing reaches the cached image."""
     backend = GVisorSandboxBackend()
-    # Default is readonly=True
     cfg = GVisorSandboxConfig(
         image="busybox:latest",
         shell="/bin/sh",
         workdir="/workspace",
     )
-    assert cfg.readonly is True
     sandbox_id = backend.create_sandbox(cfg)
     try:
-        # Writing to rootfs should fail because readonly=True by default
         res = backend.exec_command(
-            sandbox_id, "/bin/sh -c 'echo test > /test_readonly.txt'"
-        )
-        assert res.exit_code != 0
-        assert "Read-only file system" in res.stderr
-
-        # Writing to /workspace should still succeed because it is mounted rw
-        res_ws = backend.exec_command(
             sandbox_id,
-            "/bin/sh -c 'echo ws_ok > /workspace/ws.txt && cat /workspace/ws.txt'",
+            "echo root_ok > /probe.txt && cat /probe.txt && "
+            "echo ws_ok > /workspace/ws.txt && cat /workspace/ws.txt && pwd",
+            timeout=30,
         )
-        assert res_ws.exit_code == 0
-        assert "ws_ok" in res_ws.stdout
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.split() == ["root_ok", "ws_ok", "/workspace"]
+
+        # The workdir and /tmp are plain directories of the root filesystem,
+        # not mounts, so a rename between them and the rest of it works.
+        mounts = backend.exec_command(sandbox_id, "cat /proc/mounts").stdout
+        mount_points = [line.split()[1] for line in mounts.splitlines()]
+        assert "/workspace" not in mount_points
+        assert "/tmp" not in mount_points
+        res = backend.exec_command(
+            sandbox_id,
+            "echo t > /tmp/t && mv /tmp/t /workspace/t && mv /workspace/t /t",
+            timeout=30,
+        )
+        assert res.exit_code == 0, res.stderr
     finally:
         backend.delete_sandbox(sandbox_id)
+    # The writes went to the sandbox's overlay, not the shared image cache.
+    assert not os.path.exists(os.path.join(_BUSYBOX_CACHE, "probe.txt"))
 
 
 def test_gvisor_backend_ignore_cgroups_flag():
@@ -497,9 +525,7 @@ def test_string_exec_shell_configuration():
     # default a string exec fails loudly instead of degrading to sh, so this
     # image configures the shell explicitly.
     runtime = SandboxRuntime()
-    instance_id = runtime.create(
-        image="busybox:latest", readonly=False, shell="/bin/sh"
-    )
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
     try:
         result = runtime.exec(instance_id, "echo hello-$0")
         assert result.exit_code == 0
@@ -513,9 +539,7 @@ def test_string_exec_shell_configuration():
 
 def test_disk_caps_the_writable_overlay():
     runtime = SandboxRuntime()
-    instance_id = runtime.create(
-        image="busybox:latest", shell="/bin/sh", readonly=False, disk="64Mi"
-    )
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh", disk="64Mi")
     try:
         result = runtime.exec(instance_id, "dd if=/dev/zero of=/fill bs=1M count=128")
         assert result.exit_code != 0
@@ -530,23 +554,21 @@ def test_disk_caps_the_writable_overlay():
         runtime.delete(instance_id)
 
 
-def test_disk_caps_a_readonly_sandbox_with_a_workdir(ensure_overlayfs_mount):
-    """A readonly sandbox's cap bounds its workdir, whose writes go to a file
-    in the sandbox's directory on the node. The rest of the rootfs stays
-    read-only."""
+def test_disk_caps_the_workdir_too():
+    """The workdir lives in the sandbox's overlay, so the cap bounds its
+    writes together with the rest of the root filesystem's."""
     runtime = SandboxRuntime()
     instance_id = runtime.create(
         image="busybox:latest", shell="/bin/sh", workdir="/workspace", disk="64Mi"
     )
     try:
+        result = runtime.exec(instance_id, "dd if=/dev/zero of=/fill bs=1M count=48")
+        assert result.exit_code == 0, result.stderr
         result = runtime.exec(
-            instance_id, "dd if=/dev/zero of=/workspace/fill bs=1M count=128"
+            instance_id, "dd if=/dev/zero of=/workspace/fill bs=1M count=48"
         )
         assert result.exit_code != 0
         assert "No space left on device" in result.stderr
-        result = runtime.exec(instance_id, "dd if=/dev/zero of=/fill bs=1M count=8")
-        assert result.exit_code != 0
-        assert "Read-only file system" in result.stderr
     finally:
         runtime.delete(instance_id)
 
@@ -579,7 +601,6 @@ def test_checkpoint_restore_keeps_an_overlayfs_sandboxs_files(
         image="busybox:latest",
         shell="/bin/sh",
         rootless=False,
-        readonly=False,
         _oci_spec_transform_fn=_add_createcontainer_hook,
     )
     sandbox_ids = [backend.create_sandbox(config)]
@@ -720,72 +741,36 @@ def test_exec_replaces_output_that_is_not_utf8():
         runtime.delete(instance_id)
 
 
-def test_readonly_rootfs_with_workdir_runs_on_private_overlay(monkeypatch):
-    """On a worker that can't mount an overlayfs rootfs, readonly + explicit
-    workdir runs on a private writable overlay. The workdir works, and rootfs
-    writes land in the overlay and are discarded with the sandbox rather
-    than rejected."""
-    monkeypatch.setattr(overlayfs, "can_mount_rootfs_overlay", lambda: False)
-    backend = GVisorSandboxBackend()
-    sb = backend.create_sandbox(
-        GVisorSandboxConfig(
-            image="busybox:latest", shell="/bin/sh", workdir="/workspace"
-        )
-    )
-    try:
-        res = backend.exec_command(
-            sb,
-            "echo ws_ok > /workspace/ws.txt && cat /workspace/ws.txt && "
-            "echo root_ok > /probe.txt && cat /probe.txt",
-            timeout=30,
-        )
-        assert res.exit_code == 0, res.stderr
-        assert res.stdout.split() == ["ws_ok", "root_ok"]
-    finally:
-        backend.delete_sandbox(sb)
-    # The write went to the sandbox's overlay, not the shared image cache.
-    assert not os.path.exists(os.path.join(_BUSYBOX_CACHE, "probe.txt"))
-
-
-def test_workdir_writability_matrix():
-    """readonly=True + workdir=None -> nothing writable; explicit workdir is
-    the only writable path; readonly=False -> everything writable."""
+def test_workdir_is_the_cwd_and_the_whole_rootfs_is_writable():
+    """With or without a workdir, everything in the root filesystem is
+    writable. An explicit workdir is created if the image lacks it, and is
+    the cwd."""
     runtime = SandboxRuntime()
 
-    # Default (readonly=True, workdir=None): the rootfs is not writable.
-    # (Standard tmpfs mounts like /tmp are, as in any container runtime.)
     instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
     try:
-        assert runtime.exec(instance_id, "touch /probe").exit_code != 0
-        assert runtime.exec(instance_id, "touch /etc/probe").exit_code != 0
+        assert runtime.exec(instance_id, "touch /probe").exit_code == 0
+        assert runtime.exec(instance_id, "touch /etc/probe").exit_code == 0
+        assert runtime.exec(instance_id, "touch /tmp/probe").exit_code == 0
+        assert runtime.exec(instance_id, "pwd").stdout.strip() == "/"
     finally:
         runtime.delete(instance_id)
 
-    # readonly=True, explicit workdir: the workdir is writable and is the
-    # cwd. Whether the rest of the root stays read-only depends on whether
-    # this worker can mount a kernel overlay.
     instance_id = runtime.create(
-        image="busybox:latest", workdir="/data", shell="/bin/sh"
+        image="busybox:latest", workdir="/data/deep", shell="/bin/sh"
     )
     try:
-        assert runtime.exec(instance_id, "touch /data/probe").exit_code == 0
-        assert runtime.exec(instance_id, "pwd").stdout.strip() == "/data"
-    finally:
-        runtime.delete(instance_id)
-
-    # readonly=False: everything is writable, with or without a workdir.
-    instance_id = runtime.create(
-        image="busybox:latest", readonly=False, shell="/bin/sh"
-    )
-    try:
+        assert runtime.exec(instance_id, "touch /data/deep/probe").exit_code == 0
+        assert runtime.exec(instance_id, "pwd").stdout.strip() == "/data/deep"
         assert runtime.exec(instance_id, "touch /etc/probe").exit_code == 0
     finally:
         runtime.delete(instance_id)
 
 
-def test_image_workdir_sets_cwd_without_becoming_writable():
-    """The image's own WORKDIR is inherited as the process cwd only — its
-    content stays visible and it is never silently made writable."""
+def test_image_workdir_sets_cwd_and_keeps_its_content():
+    """The image's own WORKDIR is inherited as the process cwd. Its content
+    stays visible, with nothing mounted over it, and it's writable like the
+    rest of the root filesystem."""
     runtime = SandboxRuntime()
     # golang:alpine sets WORKDIR /go and ships /go/bin and /go/src.
     instance_id = runtime.create(image="golang:1.22-alpine", shell="/bin/sh")
@@ -793,17 +778,6 @@ def test_image_workdir_sets_cwd_without_becoming_writable():
         assert runtime.exec(instance_id, "pwd").stdout.strip() == "/go"
         listing = runtime.exec(instance_id, "ls /go").stdout
         assert "bin" in listing and "src" in listing
-        # Inherited WORKDIR is not a scratch mount: still readonly.
-        assert runtime.exec(instance_id, "touch /go/probe").exit_code != 0
-    finally:
-        runtime.delete(instance_id)
-
-    # With a writable rootfs the same path is writable and unshadowed.
-    instance_id = runtime.create(
-        image="golang:1.22-alpine", readonly=False, shell="/bin/sh"
-    )
-    try:
-        assert "bin" in runtime.exec(instance_id, "ls /go").stdout
         assert runtime.exec(instance_id, "touch /go/probe").exit_code == 0
     finally:
         runtime.delete(instance_id)
@@ -910,7 +884,6 @@ def test_erofs_baked_ownership_and_chown(tmp_path):
             image=tar_path,
             shell="/bin/sh",
             network="none",
-            readonly=False,
             capabilities=list(DOCKER_DEFAULT_CAPABILITIES),
             env={"PATH": "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
         )
@@ -951,21 +924,67 @@ def test_erofs_baked_ownership_and_chown(tmp_path):
         backend.delete_sandbox(sb)
 
 
-def test_erofs_readonly_rootfs():
-    """readonly=True keeps / read-only while /tmp stays writable, and the
-    sandbox still boots (its mount points were seeded into the image)."""
+def _bare_busybox_tar(tar_path: str) -> None:
+    """A local image tar of busybox's /bin and /lib alone: no /etc, /proc,
+    /sys, /dev, /run or workdir for the sandbox's mounts to land on."""
+    import shutil
+    import tarfile
+    import tempfile
+
+    from ray.experimental.sandbox._internal.image_utils import _extract_image_layers
+
+    work = tempfile.mkdtemp(prefix="bare-busybox-")
+    try:
+        busybox_rootfs = os.path.join(work, "rootfs")
+        os.makedirs(busybox_rootfs)
+        _extract_image_layers("busybox:latest", busybox_rootfs, work, 120.0, work)
+
+        def _as_root(ti):
+            ti.uid = ti.gid = 0
+            ti.uname = ti.gname = ""
+            return ti
+
+        with tarfile.open(tar_path, "w") as tar:
+            for name in ("bin", "lib", "lib64"):
+                path = os.path.join(busybox_rootfs, name)
+                if os.path.lexists(path):
+                    tar.add(path, arcname=f"./{name}", filter=_as_root)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_image_without_mount_points_boots(tmp_path):
+    """runsc creates the mount points an image lacks in the sandbox's
+    overlay, directories and files alike, so the image doesn't have to ship
+    them."""
+    tar_path = str(tmp_path / "bare-busybox.tar")
+    _bare_busybox_tar(tar_path)
+    host_dir = tmp_path / "host"
+    host_dir.mkdir()
+    (host_dir / "hello").write_text("hi\n")
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(
-        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network="none")
+        GVisorSandboxConfig(
+            image=tar_path,
+            shell="/bin/sh",
+            # Mounts a generated /etc/resolv.conf next to /etc/hosts.
+            network="host",
+            dns=["1.1.1.1"],
+            workdir="/work",
+            mounts={"/data/in": str(host_dir)},
+            env={"PATH": "/bin"},
+        )
     )
     try:
         res = backend.exec_command(
             sb,
-            "touch /x 2>/dev/null; test ! -e /x && echo ro && echo hi > /tmp/x && cat /tmp/x",
+            "cat /etc/resolv.conf /data/in/hello && grep -q localhost /etc/hosts && "
+            "pwd && test -d /proc/self && test -c /dev/null && test -d /sys && "
+            "echo x > /etc/new && echo x > /tmp/t && mv /tmp/t /moved",
             timeout=30,
         )
         assert res.exit_code == 0, res.stderr
-        assert res.stdout.split() == ["ro", "hi"]
+        assert res.stdout.split() == ["nameserver", "1.1.1.1", "hi", "/work"]
     finally:
         backend.delete_sandbox(sb)
 
@@ -1124,7 +1143,6 @@ def _overlayfs_run_argv(
     network: str,
     in_userns: bool,
     rootless: bool = True,
-    writable: bool = True,
     disk: str = "0",
 ) -> list:
     """`_build_run_command` for an overlayfs sandbox over fixed paths."""
@@ -1132,7 +1150,6 @@ def _overlayfs_run_argv(
         image="busybox:latest",
         network=network,
         rootless=rootless,
-        readonly=not writable,
         disk=disk,
     )
     return GVisorSandboxBackend()._build_run_command(
@@ -1210,30 +1227,18 @@ def test_build_run_command_overlayfs_userns_gets_its_own_gofer_netns(
 
 
 def test_build_run_command_disk_caps_an_overlayfs_sandboxs_overlay2():
-    """disk caps a writable overlayfs sandbox's --overlay2 layer, as the rootfs
+    """disk caps an overlayfs sandbox's --overlay2 layer, as the rootfs
     annotations cap an EROFS sandbox's overlay."""
     cmd = _overlayfs_run_argv("none", in_userns=True, disk="64Mi")
     assert "--overlay2 root:dir=/tmp/rd/runsc-overlay2,size=67108864" in " ".join(cmd)
 
 
-@pytest.mark.parametrize("overlayfs_sandbox", [True, False])
-def test_build_run_command_disk_caps_a_readonly_sandboxs_workdir(overlayfs_sandbox):
-    """A readonly sandbox's cap applies to its workdir, so gVisor's overlay
-    covers that bind mount too, whether the sandbox boots from a kernel
-    overlay or, where none can mount, from its EROFS image."""
+def test_build_run_command_erofs_sandbox_with_a_capped_workdir_has_no_overlay2():
+    """An EROFS sandbox's workdir lives in the overlay its rootfs annotations
+    give it, which they cap too, so runsc gets no --overlay2 flag."""
     cfg = GVisorSandboxConfig(image="busybox:latest", workdir="/work", disk="64Mi")
-    rootfs_overlay = _rootfs_overlay_for(True) if overlayfs_sandbox else None
-    cmd = GVisorSandboxBackend()._build_run_command(
-        cfg, "/tmp/rd", "sb-1", rootfs_overlay=rootfs_overlay
-    )
-    assert "--overlay2 all:dir=/tmp/rd/runsc-overlay2,size=67108864" in " ".join(cmd)
-
-
-def test_build_run_command_readonly_overlayfs_sandbox_has_overlay2():
-    """A readonly overlayfs sandbox gets --overlay2 too, which runsc ignores
-    for a read-only root."""
-    cmd = _overlayfs_run_argv("none", in_userns=True, writable=False)
-    assert "--overlay2 root:dir=/tmp/rd/runsc-overlay2" in " ".join(cmd)
+    cmd = GVisorSandboxBackend()._build_run_command(cfg, "/tmp/rd", "sb-1")
+    assert not any(a.startswith("--overlay2") for a in cmd)
 
 
 @pytest.mark.parametrize("in_userns", [True, False])
@@ -1325,7 +1330,6 @@ def _create_until_run(
     overlay,
     userns=UserNamespaceType.PRIVATE,
     image_mount_mode=ImageMountMode.FUSE,
-    readonly=False,
     gpu_ids=None,
 ):
     """Run create_sandbox with a recording image manager up to the point it
@@ -1361,9 +1365,7 @@ def _create_until_run(
     monkeypatch.setattr(backend, "_build_run_command", _capture)
     with pytest.raises(SandboxCreationError) as err:
         backend.create_sandbox(
-            GVisorSandboxConfig(
-                image="busybox:latest", readonly=readonly, gpu_ids=gpu_ids
-            )
+            GVisorSandboxConfig(image="busybox:latest", gpu_ids=gpu_ids)
         )
     assert isinstance(err.value.__cause__, _StopBeforeRun)
     return captured, manager
@@ -1399,21 +1401,13 @@ def test_create_sandbox_prepares_overlayfs_sandbox(
     assert captured["has_overlay2_dir"]
 
 
-def test_create_sandbox_readonly_overlayfs_sandbox_has_overlay2_dir(
-    tmp_path, monkeypatch
-):
-    """A readonly overlayfs sandbox gets a directory for gVisor's --overlay2
-    layer too, which stays empty."""
-    captured, _ = _create_until_run(tmp_path, monkeypatch, True, readonly=True)
-    assert captured["has_overlay2_dir"]
-
-
 def test_create_sandbox_erofs_sandbox_skips_overlay(tmp_path, monkeypatch):
     """A sandbox that doesn't need a kernel overlay boots straight from its
     EROFS image."""
     captured, manager = _create_until_run(tmp_path, monkeypatch, False)
 
     assert captured["rootfs_overlay"] is None
+    assert not captured["has_overlay2_dir"]
     assert manager.rootfs_image_calls == []
 
 
@@ -1550,23 +1544,24 @@ def test_overlayfs_sandbox_leaves_cached_image_untouched(monkeypatch, overlay_mo
             GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
         )
         _boot_from_overlays(monkeypatch)
-        writable = backend.create_sandbox(
-            GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", readonly=False)
+        first = backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
         )
-        readonly = backend.create_sandbox(
+        second = backend.create_sandbox(
             GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
         )
         try:
-            assert backend.exec_command(writable, "touch /etc/probe").exit_code == 0
-            assert backend.exec_command(readonly, "touch /etc/probe").exit_code != 0
-            assert backend.exec_command(readonly, "test -e /etc/probe").exit_code != 0
+            assert backend.exec_command(first, "touch /etc/probe").exit_code == 0
+            for other in (second, erofs):
+                res = backend.exec_command(other, "test -e /etc/probe")
+                assert res.exit_code != 0
             stat_root_mode = "stat -c %a /"
             assert (
-                backend.exec_command(writable, stat_root_mode).stdout
+                backend.exec_command(first, stat_root_mode).stdout
                 == backend.exec_command(erofs, stat_root_mode).stdout
             )
         finally:
-            for sb in (erofs, readonly, writable):
+            for sb in (erofs, first, second):
                 backend.delete_sandbox(sb)
         assert _file_digest(image) == before
     finally:
@@ -1584,7 +1579,6 @@ def test_overlayfs_sandbox_with_host_network_can_write_rootfs(
             image="busybox:latest",
             shell="/bin/sh",
             network="host",
-            readonly=False,
         )
     )
     try:
@@ -1600,9 +1594,7 @@ def test_overlayfs_sandbox_disk_caps_its_writes(monkeypatch, overlay_mount):
     _boot_from_overlays(monkeypatch)
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(
-        GVisorSandboxConfig(
-            image="busybox:latest", shell="/bin/sh", readonly=False, disk="64Mi"
-        )
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", disk="64Mi")
     )
     try:
         res = backend.exec_command(sb, "dd if=/dev/zero of=/fill bs=1M count=128")
@@ -1629,7 +1621,6 @@ def test_overlayfs_sandbox_with_public_network(
             image="busybox:latest",
             shell="/bin/sh",
             network="public",
-            readonly=False,
         )
     )
     try:
@@ -1662,15 +1653,7 @@ def test_overlayfs_sandbox_runs_prestart_hooks_in_its_overlay(overlay_mount):
     try:
         image = manager.get_rootfs_image("busybox:latest")
         before = _file_digest(image)
-        writable = backend.create_sandbox(
-            GVisorSandboxConfig(
-                image="busybox:latest",
-                shell="/bin/sh",
-                readonly=False,
-                _oci_spec_transform_fn=_with_prestart_hook,
-            )
-        )
-        readonly = backend.create_sandbox(
+        hooked = backend.create_sandbox(
             GVisorSandboxConfig(
                 image="busybox:latest",
                 shell="/bin/sh",
@@ -1681,13 +1664,12 @@ def test_overlayfs_sandbox_runs_prestart_hooks_in_its_overlay(overlay_mount):
             GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
         )
         try:
-            for sb in (writable, readonly):
-                res = backend.exec_command(sb, "cat /hook-marker")
-                assert res.stdout.strip() == "hook", res.stderr
+            res = backend.exec_command(hooked, "cat /hook-marker")
+            assert res.stdout.strip() == "hook", res.stderr
+            assert backend.exec_command(hooked, "touch /etc/probe").exit_code == 0
             assert backend.exec_command(erofs, "test -e /hook-marker").exit_code != 0
-            assert backend.exec_command(readonly, "touch /etc/probe").exit_code != 0
         finally:
-            for sb in (erofs, readonly, writable):
+            for sb in (erofs, hooked):
                 backend.delete_sandbox(sb)
         assert _file_digest(image) == before
     finally:
@@ -2295,7 +2277,7 @@ def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):
     tokens = {sb1: "SB1-TOKEN", sb2: "SB2-TOKEN"}
     try:
         for sb, token in tokens.items():
-            # /tmp stays a writable tmpfs on the readonly rootfs.
+            # /tmp is writable, like the rest of the root filesystem.
             backend.write_file(sb, "/tmp/www/token", token)
             # busybox httpd daemonizes; sharing one netns, the second bind
             # would fail with EADDRINUSE.
@@ -2825,7 +2807,7 @@ def test_prepare_bundle_readonly_host_mounts(
     config = GVisorSandboxConfig(
         image="busybox:latest", mounts=mounts, _oci_spec_transform_fn=transform
     )
-    assert backend._prepare_bundle(config, str(tmp_path), None, "/") is None
+    assert backend._prepare_bundle(config, str(tmp_path), "/") is None
 
     spec = json.loads((tmp_path / "config.json").read_text())
     expected_mounts = [
@@ -3261,7 +3243,7 @@ def test_exec_as_named_user_resolves_inside_the_sandbox():
     their numeric ids."""
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(
-        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", readonly=False)
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
     )
     try:
         by_name = backend.exec_command(sb, "id -u", user="nobody", timeout=30)

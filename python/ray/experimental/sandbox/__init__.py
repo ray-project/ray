@@ -18,6 +18,7 @@ from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_DNS,
     DOCKER_DEFAULT_CAPABILITIES,
     parse_memory_bytes,
+    pop_removed_readonly,
 )
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -52,7 +53,6 @@ def create(
     cidr_allowlist: Optional[List[str]] = None,
     capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
-    readonly: bool = True,
     disk: Union[str, int, float] = 0,
     num_gpus: Optional[float] = None,
     **kwargs,
@@ -64,15 +64,17 @@ def create(
     sandbox management on the current node (e.g., inside custom worker actors), use
     :class:`~ray.experimental.sandbox.runtime.SandboxRuntime` instead.
 
+    The sandbox writes to a private copy-on-write overlay over its image.
+    Sandboxes that share an image don't see each other's writes, the cached
+    image is never modified, and the overlay is discarded with the sandbox.
+
     Args:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
         workdir: Working directory for commands; None uses the image's
-            WORKDIR. On a readonly rootfs an explicit workdir is also the
-            sandbox's only writable path; see
-            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+            WORKDIR.
         ttl_seconds: Optional time-to-live in seconds, wall-clock from
             creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -93,23 +95,23 @@ def create(
             runtime default; ``[]`` means none). Use
             ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
         resources: Custom logical resource requirements.
-        readonly: If True (default), mount container image rootfs in read-only mode
-            such that only ``workdir`` is writable. If False, the entire root filesystem
-            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
-            filesystem, ensuring multiple sandboxes running the same container image do
-            not interfere with each other or modify the base image.
-        disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past it
-            fail with ENOSPC. Zero (default) means no cap. Requires
-            ``readonly=False`` or a ``workdir``; see
+        disk: Size cap of the root filesystem overlay (e.g. "10Gi"); writes
+            past it fail with ENOSPC. Zero (default) means no cap; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         num_gpus: Number of GPUs to schedule the sandbox actor with. The
             sandbox gets every GPU Ray assigns the actor, exposed through CDI.
             This is the only way to give a sandbox created here GPUs.
-        **kwargs: Additional options.
+        **kwargs: Additional options. The removed ``readonly`` option is
+            still recognized: ``readonly=False`` is ignored with a
+            deprecation warning, and ``readonly=True`` raises a
+            ``ValueError``.
 
     Returns:
         A Sandbox actor handle.
     """
+    # Checked here so that readonly=True fails in the caller, not in the
+    # actor's constructor.
+    pop_removed_readonly(kwargs)
     actor_opts = {}
     # Separate Ray actor options from Sandbox container configuration
     from ray._common.ray_option_utils import actor_options as _RAY_ACTOR_OPTIONS_SCHEMA
@@ -143,7 +145,6 @@ def create(
         dns=dns,
         cidr_allowlist=cidr_allowlist,
         capabilities=capabilities,
-        readonly=readonly,
         disk=disk,
         **kwargs,
     )
@@ -180,11 +181,13 @@ def restore(
         ttl_seconds: Optional time-to-live in seconds.
         timeout_seconds: Timeout in seconds for restore.
         resources: Custom logical resource requirements for the Ray actor.
-        **kwargs: Additional options.
+        **kwargs: Additional options. The removed ``readonly`` option is
+            handled as in ``create``.
 
     Returns:
         A Sandbox actor handle.
     """
+    pop_removed_readonly(kwargs)
     recorded_cpu = None
     recorded_memory = None
     target_node_id = None

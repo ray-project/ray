@@ -11,8 +11,12 @@ from ray.experimental.sandbox.backend.base import (
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
-from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
+from ray.experimental.sandbox.config import (
+    SandboxConfig,
+    parse_memory_bytes,
+    pop_removed_readonly,
+)
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
 
@@ -95,7 +99,6 @@ class SandboxRuntime:
         dns: Optional[List[str]] = None,
         cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
-        readonly: bool = True,
         gpu_ids: Optional[List[Union[int, str]]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
@@ -104,15 +107,18 @@ class SandboxRuntime:
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
 
+        The sandbox writes to a private copy-on-write overlay over its image.
+        Sandboxes that share an image don't see each other's writes, the
+        cached image is never modified, and the overlay is discarded with
+        the sandbox.
+
         Args:
             image: Container image for the sandbox environment.
             cpu: Number of CPU cores allocated to the sandbox.
             memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
             env: Environment variables to inject into the sandbox.
             workdir: Working directory for commands; None uses the image's
-                WORKDIR. On a readonly rootfs an explicit workdir is also the
-                sandbox's only writable path; see
-                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+                WORKDIR.
             ttl_seconds: Optional time-to-live in seconds, wall-clock from
                 creation (not idle time), enforced by this runtime with a
                 daemon timer. None (default) or <= 0 disables it.
@@ -134,26 +140,25 @@ class SandboxRuntime:
             capabilities: Linux capabilities, written exactly (None keeps
                 the runtime default; ``[]`` means none). Use
                 ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
-            readonly: If True (default), mount container image rootfs in read-only mode
-                such that only ``workdir`` is writable. If False, the entire root filesystem
-                is writable. Writes are isolated within a per-sandbox copy-on-write overlay
-                filesystem, ensuring multiple sandboxes running the same container image do
-                not interfere with each other or modify the base image.
             gpu_ids: GPU device ids/UUIDs to expose via CDI; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
             _oci_spec_transform_fn: PRIVATE — development/testing only. Called with the fully-built OCI
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
             _ignore_cgroups: PRIVATE — testing only. If True, passes --ignore-cgroups to runsc.
-            disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past
-                it fail with ENOSPC. Zero means no cap. Requires
-                ``readonly=False`` or a ``workdir``; see
+            disk: Size cap of the root filesystem overlay (e.g. "10Gi");
+                writes past it fail with ENOSPC. Zero means no cap; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
-            **kwargs: Additional parameters.
+            **kwargs: Additional parameters. The removed ``readonly`` option
+                is still recognized: ``readonly=False`` is ignored with a
+                deprecation warning, and ``readonly=True`` raises a
+                ``ValueError``.
 
         Returns:
             A unique string identifier for the created sandbox.
         """
+        # The option is gone, but callers written for it still pass it.
+        pop_removed_readonly(kwargs)
         cfg = SandboxConfig(
             image=image,
             cpu=cpu,
@@ -167,7 +172,6 @@ class SandboxRuntime:
             dns=dns,
             cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
-            readonly=readonly,
             gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,
@@ -366,7 +370,6 @@ class SandboxRuntime:
     ) -> str:
         """Push the sandbox's base image and root filesystem changes to a registry.
 
-        The sandbox must have been created with ``readonly=False``.
         Mounts aren't included. Commit leaves the sandbox in the state it was
         in: a running sandbox is paused only while its changes are exported,
         and a paused sandbox stays paused. Registry credentials come from
@@ -383,12 +386,6 @@ class SandboxRuntime:
         """
         cfg = self._backend.get_config(instance_id)
         # Fail before the export, which pauses a running sandbox.
-        if cfg.readonly:
-            raise SandboxError(
-                f"Cannot commit sandbox '{instance_id}': its root filesystem is "
-                "read-only, so it has no changes to export. Create the sandbox "
-                "with readonly=False to commit it."
-            )
         image_push.validate_commit(cfg.image, image, self._image_manager.images_dir)
         with tempfile.TemporaryDirectory(
             prefix="commit-", dir=self._backend.sandbox_dir(instance_id)
@@ -466,11 +463,13 @@ class SandboxRuntime:
             memory: Memory allocation override.
             ttl_seconds: Optional time-to-live for the restored sandbox.
             timeout_seconds: Timeout for the restore operation.
-            **kwargs: Backend-specific arguments.
+            **kwargs: Backend-specific arguments. The removed ``readonly``
+                option is handled as in ``create``.
 
         Returns:
             A unique string identifier for the restored sandbox.
         """
+        pop_removed_readonly(kwargs)
         instance_id = self._backend.restore_sandbox(
             checkpoint_path=checkpoint_path,
             cpu=cpu,

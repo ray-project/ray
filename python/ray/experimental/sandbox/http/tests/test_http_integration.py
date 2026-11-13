@@ -93,7 +93,6 @@ def test_full_sandbox_lifecycle(api_base_url):
             f"{api_base_url}/sandboxes",
             json={
                 "image": _IMAGE,
-                "readonly": False,
                 "network": "none",
                 "ttl_seconds": 600,
                 "labels": {"suite": "integration"},

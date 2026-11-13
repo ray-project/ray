@@ -675,7 +675,6 @@ class _ControlServicer(ModalClientServicer):
             "cidr_allowlist": cidr_allowlist,
             "shell": "/bin/bash",
             "rootless": True,
-            "readonly": False,
             "capabilities": list(settings.default_capabilities),
             "cpu_limit": cpu_limit,
             "memory_limit_mb": memory_limit_mb,
