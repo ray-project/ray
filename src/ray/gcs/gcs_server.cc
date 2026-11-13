@@ -884,6 +884,10 @@ void GcsServer::InitGcsActorManager(
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
+      [this](const PlacementGroupID &placement_group_id) {
+        return gcs_placement_group_manager_->IsPlacementGroupRegistered(
+            placement_group_id);
+      },
       raylet_client_pool_,
       worker_client_pool_,
       *ray_event_recorder_,
@@ -1310,6 +1314,12 @@ void GcsServer::InstallEventListeners() {
     gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
   });
+
+  // Install placement group event listeners.
+  gcs_placement_group_manager_->AddPlacementGroupRemovedListener(
+      [this](const PlacementGroupID &placement_group_id) {
+        gcs_actor_manager_->OnPlacementGroupRemoved(placement_group_id);
+      });
 }
 
 void GcsServer::RecordMetrics() const {

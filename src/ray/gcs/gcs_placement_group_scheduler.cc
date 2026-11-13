@@ -343,8 +343,11 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   // TOCTOU: this method is called after an async write to Redis. If the PG is cancelled
   // after the write, we don't commit the bundles. Instead we just return them.
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
-    DestroyPlacementGroupCommittedBundleResources(
-        lease_status_tracker->GetPlacementGroup()->GetPlacementGroupID());
+    const auto &placement_group_id =
+        lease_status_tracker->GetPlacementGroup()->GetPlacementGroupID();
+    DestroyPlacementGroupPreparedBundleResources(placement_group_id);
+    DestroyPlacementGroupCommittedBundleResources(placement_group_id);
+    placement_group_leasing_in_progress_.erase(placement_group_id);
     // The next ray-syncer broadcast from each raylet whose bundles were
     // cancelled will reconcile GCS's view.
     schedule_failure_handler(lease_status_tracker->GetPlacementGroup(),

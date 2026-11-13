@@ -135,6 +135,31 @@ const ray::rpc::ActorDeathCause GenActorRefDeletedCause(
   return death_cause;
 }
 
+const ray::rpc::ActorDeathCause GenPlacementGroupRemovedCause(
+    const ray::rpc::ActorTableData *actor_data) {
+  ray::rpc::ActorDeathCause death_cause;
+  const auto placement_group_id =
+      ray::PlacementGroupID::FromBinary(actor_data->placement_group_id());
+  const auto actor_state = actor_data->state();
+  if (actor_state == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY ||
+      actor_state == ray::rpc::ActorTableData::PENDING_CREATION) {
+    death_cause.mutable_actor_unschedulable_context()->set_error_message(
+        absl::StrCat("Could not create the actor because its associated placement "
+                     "group was removed. Placement group id: ",
+                     placement_group_id.Hex()));
+  } else {
+    auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
+    actor_died_error_ctx->set_reason(
+        ray::rpc::ActorDiedErrorContext::PLACEMENT_GROUP_REMOVED);
+    AddActorInfo(actor_data, actor_died_error_ctx);
+    actor_died_error_ctx->set_error_message(
+        absl::StrCat("The actor is dead because its placement group was removed. "
+                     "Placement group id: ",
+                     placement_group_id.Hex()));
+  }
+  return death_cause;
+}
+
 const ray::rpc::ActorDeathCause GenActorNotLoadableAtInitCause(
     const ray::rpc::ActorTableData *actor_data) {
   ray::rpc::ActorDeathCause death_cause;
@@ -251,6 +276,7 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GCSFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+    std::function<bool(const PlacementGroupID &)> is_placement_group_registered,
     rpc::RayletClientPool &raylet_client_pool,
     rpc::CoreWorkerClientPool &worker_client_pool,
     observability::RayEventRecorderInterface &ray_event_recorder,
@@ -270,6 +296,7 @@ GcsActorManager::GcsActorManager(
       session_name_(session_name),
       destroy_owned_placement_group_if_needed_(
           std::move(destroy_owned_placement_group_if_needed)),
+      is_placement_group_registered_(std::move(is_placement_group_registered)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
       usage_stats_client_(nullptr),
@@ -278,6 +305,7 @@ GcsActorManager::GcsActorManager(
       gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge),
       clock_(clock) {
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
+  RAY_CHECK(is_placement_group_registered_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
   // On change, only retract keys that dropped to zero (emit their final 0). Live
@@ -864,6 +892,13 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
     return Status::OK();
   }
 
+  // The actor may have been registered after its placement group was removed.
+  const auto &registered_actor_data = iter->second->GetActorTableData();
+  if (RequiresRemovedPlacementGroup(registered_actor_data)) {
+    DestroyActor(actor_id, GenPlacementGroupRemovedCause(&registered_actor_data));
+    return Status::OK();
+  }
+
   // Remove the actor from the unresolved actor map.
   const auto &actor_namespace = iter->second->GetRayNamespace();
   RAY_CHECK(!actor_namespace.empty())
@@ -1116,9 +1151,12 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
              mutable_actor_table_data->death_cause()
                      .actor_died_error_context()
                      .reason() == rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
-             death_cause.actor_died_error_context().reason() ==
-                 rpc::ActorDiedErrorContext::REF_DELETED) {
-    // Update death cause from restartable OUT_OF_SCOPE to non-restartable REF_DELETED
+             (death_cause.actor_died_error_context().reason() ==
+                  rpc::ActorDiedErrorContext::REF_DELETED ||
+              death_cause.actor_died_error_context().reason() ==
+                  rpc::ActorDiedErrorContext::PLACEMENT_GROUP_REMOVED)) {
+    // Update death cause from restartable OUT_OF_SCOPE to non-restartable REF_DELETED or
+    // PLACEMENT_GROUP_REMOVED
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
   }
   mutable_actor_table_data->set_timestamp(time);
@@ -1644,6 +1682,34 @@ void GcsActorManager::RestartActor(
   }
 }
 
+bool GcsActorManager::RequiresRemovedPlacementGroup(
+    const rpc::ActorTableData &actor_data) const {
+  const auto placement_group_id =
+      PlacementGroupID::FromBinary(actor_data.placement_group_id());
+  return !placement_group_id.IsNil() &&
+         !is_placement_group_registered_(placement_group_id);
+}
+
+void GcsActorManager::OnPlacementGroupRemoved(
+    const PlacementGroupID &placement_group_id) {
+  // DestroyActor erases from registered_actors_, so do not destroy while iterating it.
+  std::vector<std::shared_ptr<GcsActor>> actors_to_destroy;
+  const std::string placement_group_id_binary = placement_group_id.Binary();
+  for (const auto &[actor_id, actor] : registered_actors_) {
+    const auto &actor_data = actor->GetActorTableData();
+    if (actor_data.placement_group_id() == placement_group_id_binary &&
+        (actor->GetState() != rpc::ActorTableData::DEAD ||
+         IsActorRestartable(actor_data))) {
+      actors_to_destroy.push_back(actor);
+    }
+  }
+  for (const auto &actor : actors_to_destroy) {
+    DestroyActor(actor->GetActorID(),
+                 GenPlacementGroupRemovedCause(&actor->GetActorTableData()),
+                 /*force_kill=*/false);
+  }
+}
+
 void GcsActorManager::OnActorSchedulingFailed(
     std::shared_ptr<GcsActor> actor,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -1664,11 +1730,7 @@ void GcsActorManager::OnActorSchedulingFailed(
   ray::rpc::ActorDeathCause death_cause;
   switch (failure_type) {
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED:
-    error_msg = absl::StrCat(
-        "Could not create the actor because its associated placement group was "
-        "removed.\n",
-        scheduling_failure_message);
-    death_cause.mutable_actor_unschedulable_context()->set_error_message(error_msg);
+    death_cause = GenPlacementGroupRemovedCause(&actor->GetActorTableData());
     break;
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED:
     error_msg = absl::StrCat(
@@ -1786,7 +1848,10 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     //   - Actors whose state != DEAD.
     //   - Non-deatched actors whose owner (job or root_detached_actor) is alive.
     //   - Detached actors which lives even when their original owner is dead.
-    if (OnInitializeActorShouldLoad(gcs_init_data, actor_id)) {
+    //   - Actors whose placement group, if they require one, is not removed.
+    const bool placement_group_removed = RequiresRemovedPlacementGroup(actor_table_data);
+    if (!placement_group_removed &&
+        OnInitializeActorShouldLoad(gcs_init_data, actor_id)) {
       const auto &actor_task_spec = map_find_or_die(actor_task_specs, actor_id);
       auto actor = std::make_shared<GcsActor>(actor_table_data,
                                               actor_task_spec,
@@ -1865,7 +1930,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         observability_data.set_end_time(time);
         observability_data.set_timestamp(time);
         observability_data.mutable_death_cause()->CopyFrom(
-            GenActorNotLoadableAtInitCause(&actor_table_data));
+            placement_group_removed ? GenPlacementGroupRemovedCause(&actor_table_data)
+                                    : GenActorNotLoadableAtInitCause(&actor_table_data));
         gcs_table_storage_->ActorTable().Put(
             actor_id,
             observability_data,

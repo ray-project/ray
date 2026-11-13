@@ -399,6 +399,7 @@ message ActorDiedErrorContext {
     RAY_KILL = 4;
     OUT_OF_SCOPE = 5;
     REF_DELETED = 6;
+    PLACEMENT_GROUP_REMOVED = 7;
   }
 
   string error_message = 1;

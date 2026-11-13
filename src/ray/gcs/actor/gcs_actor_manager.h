@@ -99,6 +99,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
+  /// \param is_placement_group_registered Returns whether a placement group exists and
+  /// has not been removed.
   /// \param observability_publisher If non-null, used for `PublishError`.
   GcsActorManager(
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
@@ -108,6 +110,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       RuntimeEnvManager &runtime_env_manager,
       GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+      std::function<bool(const PlacementGroupID &)> is_placement_group_registered,
       rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
@@ -204,6 +207,15 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       std::shared_ptr<GcsActor> actor,
       const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message);
+
+  /**
+   * @brief Handle the removal of a placement group. This should be called once the
+   * removal is stored. All actors that require this placement group are destroyed and
+   * are not restarted.
+   *
+   * @param placement_group_id ID of the removed placement group.
+   */
+  void OnPlacementGroupRemoved(const PlacementGroupID &placement_group_id);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
@@ -419,6 +431,15 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// exist in either map.
   const rpc::ActorTableData *GetActorTableData(const ActorID &actor_id) const;
 
+  /**
+   * @brief Check whether an actor requires a placement group that has been removed.
+   *
+   * @param actor_data The table data of the actor.
+   * @return True if the actor requires a placement group and that placement group is
+   * not registered.
+   */
+  bool RequiresRemovedPlacementGroup(const rpc::ActorTableData &actor_data) const;
+
   /// Remove a pending actor.
   ///
   /// \param actor The actor to be removed.
@@ -517,6 +538,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
+  /// Whether a placement group exists and has not been removed.
+  const std::function<bool(const PlacementGroupID &)> is_placement_group_registered_;
   /// Runtime environment manager for GC purpose
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
