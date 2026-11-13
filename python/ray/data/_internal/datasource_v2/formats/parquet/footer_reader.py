@@ -185,6 +185,9 @@ class _FilterLeaves(NamedTuple):
 class FooterReader:
     """Reads Parquet footers and chunks files into row-group runs.
 
+    Each run carries its estimated decoded size and PyArrow's estimated peak
+    memory decoding it, both from the footer.
+
     Run as a pool of Ray actors (see :data:`FooterReaderActor`) to spread footer
     IO across the cluster instead of bottlenecking on the driver. ``read_footers``
     is a streaming generator that yields ``ChunkedFile`` in small batches as their

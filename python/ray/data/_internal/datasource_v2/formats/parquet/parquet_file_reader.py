@@ -198,9 +198,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
     Extends :class:`FileReader` with:
 
-    - **Metadata-based batch size estimation**: Uses Parquet row group metadata
-      (uncompressed column sizes) to estimate an optimal batch size before
-      reading any data.
+    - **Metadata-based batch size estimation**: Uses the decoded size the listing
+      estimated from the footer, or a row group's uncompressed column sizes when
+      the manifest carries none, to estimate a batch size before reading any data.
     - **Adaptive refinement**: After reading each batch, refines the batch size
       estimate from actual in-memory sizes for subsequent reads.
 
