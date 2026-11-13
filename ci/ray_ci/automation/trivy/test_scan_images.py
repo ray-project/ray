@@ -225,7 +225,9 @@ def fake_pull(refs, layout, platform):
     )
 
 
-def run_group(tmp_path: Path, group: list, docker: FakeDocker, manifests: dict):
+def run_group(
+    tmp_path: Path, group: list, docker: FakeDocker, manifests: dict, report=None
+):
     results = tmp_path / "results"
     results.mkdir()
 
@@ -258,7 +260,15 @@ def run_group(tmp_path: Path, group: list, docker: FakeDocker, manifests: dict):
     ), mock.patch.object(
         scan_images, "stage", fake_stage
     ):
-        scan_group(group, "x86_64", store(), results, tmp_path, "base")
+        scan_group(
+            group,
+            "x86_64",
+            store(),
+            results,
+            tmp_path,
+            "base",
+            report=report or (lambda target: None),
+        )
     return results
 
 
@@ -432,8 +442,7 @@ def invoke_main(results: Path, *images: str, s3: Optional[FakeS3] = None):
 def test_main_exits_nonzero_when_any_image_was_not_scanned(
     tmp_path: Path, errors: list, code: int
 ):
-    def fake_scan_group(group, *args):
-        login = args[-1]
+    def fake_scan_group(group, *args, login, report):
         login()
         for target, error in zip(group, errors):
             target.error = error
@@ -455,7 +464,7 @@ def scan_writing_results(*scanned: str, then=None):
     something to upload: a result for each scanned image, and a status for
     every image."""
 
-    def fake(group, architecture, store, results_dir, *rest):
+    def fake(group, architecture, store, results_dir, *rest, login, report):
         for target in group:
             if target.name in scanned:
                 (results_dir / f"{target.name}.json.gz").write_bytes(b"gz")
@@ -463,6 +472,7 @@ def scan_writing_results(*scanned: str, then=None):
             else:
                 target.error = "boom"
             scan_images.write_status(results_dir, target)
+            report(target)
         if then:
             then()
 
@@ -514,17 +524,54 @@ def test_a_failed_upload_fails_the_job_and_keeps_the_status_back(
     ]
 
 
-def test_a_cancelled_job_still_uploads_its_statuses(tmp_path: Path):
+def scan_and_report(
+    tmp_path: Path, group: list, s3: FakeS3, cancel_at: Optional[str] = None
+) -> list:
+    """Run the real scan_group, uploading to ``s3`` as main does. Returns
+    the order of scans and uploads."""
+    events = []
+    original = scan_images.ContainedTrivy.scan
+
+    def scan(self, target, dest):
+        events.append(("scan", target.name))
+        if target.name == cancel_at:
+            scan_images._exit_on_sigterm(15, None)
+        original(self, target, dest)
+
+    def report(target):
+        events.append(("report", target.name))
+        assert not scan_images.upload_result(store(s3), tmp_path / "results", target)
+
+    with mock.patch.object(scan_images.ContainedTrivy, "scan", scan):
+        run_group(tmp_path, group, FakeDocker(), {}, report)
+    return events
+
+
+def test_each_image_is_uploaded_as_soon_as_it_is_scanned(tmp_path: Path):
+    """A job killed after its grace period then keeps what it scanned."""
+    group = targets(("ray", "3.11"), ("ray", "3.12"))
+    events = scan_and_report(tmp_path, group, FakeS3())
+    assert events == [
+        ("scan", "ray-py3.11-cpu"),
+        ("report", "ray-py3.11-cpu"),
+        ("scan", "ray-py3.12-cpu"),
+        ("report", "ray-py3.12-cpu"),
+    ]
+
+
+def test_a_cancelled_job_keeps_what_it_scanned_and_reports_the_rest(tmp_path: Path):
     s3 = FakeS3()
-    with mock.patch.object(
-        scan_images,
-        "scan_group",
-        scan_writing_results(then=lambda: scan_images._exit_on_sigterm(15, None)),
-    ):
-        result = invoke_main(tmp_path / "r", "ray:3.12", s3=s3)
-    assert result.exit_code == 143, result.output
-    record = json.loads(s3.get(BUCKET, f"{RESULTS_PREFIX}/ray-py3.12-cpu.status.json"))
-    assert record["status"] == "error"
+    group = targets(("ray", "3.11"), ("ray", "3.12"), ("ray", "3.13"))
+    with pytest.raises(SystemExit):
+        scan_and_report(tmp_path, group, s3, cancel_at="ray-py3.12-cpu")
+
+    def uploaded(name: str) -> dict:
+        return json.loads(s3.get(BUCKET, f"{RESULTS_PREFIX}/{name}.status.json"))
+
+    assert uploaded("ray-py3.11-cpu")["status"] == "scanned"
+    assert (BUCKET, f"{RESULTS_PREFIX}/ray-py3.11-cpu.json.gz") in s3.objects
+    for name in ("ray-py3.12-cpu", "ray-py3.13-cpu"):
+        assert uploaded(name)["error"] == "scan did not complete"
 
 
 def statuses(results: Path) -> dict:

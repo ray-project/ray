@@ -11,8 +11,8 @@ For each image the build pushed to its wanda cache, this:
    with no network, no credentials, no inherited environment, a non-root
    user, a read-only root and no capabilities;
 5. writes ``<name>.status.json`` and ``<name>.json.gz``, the input contract
-   of ``trivy_report``, and uploads them to the build's S3 ``results/``
-   folder, where the report job reads them.
+   of ``trivy_report``, and uploads each image's pair to the build's S3
+   ``results/`` folder as soon as it is final, for the report job.
 
 The job talks to the host's docker daemon, so bind mounts would resolve host
 paths. Files reach the Trivy containers through docker volumes filled with
@@ -115,6 +115,8 @@ class Target:
     db: dict[str, Any] = field(default_factory=dict)
     # Set only once the result file is written.
     scanned: bool = False
+    # Set once the final status is written and handed to the reporter.
+    reported: bool = False
 
     @property
     def name(self) -> str:
@@ -531,6 +533,14 @@ def write_status(results_dir: Path, target: Target) -> None:
     path.write_text(json.dumps(target.status_record(), indent=2) + "\n")
 
 
+def _finish(
+    results_dir: Path, target: Target, report: Callable[[Target], None]
+) -> None:
+    write_status(results_dir, target)
+    report(target)
+    target.reported = True
+
+
 def scan_group(
     targets: Sequence[Target],
     architecture: str,
@@ -539,25 +549,33 @@ def scan_group(
     workdir: Path,
     base_image: str,
     login: Callable[[], None] = lambda: None,
+    report: Callable[[Target], None] = lambda target: None,
 ) -> None:
     """Scan every target. Each one ends with a status record either way, and
-    any failure, expected or not, becomes the affected images' error."""
+    any failure, expected or not, becomes the affected images' error.
+
+    ``report`` gets each target as soon as its status is final, so a job
+    killed midway has already handed over the images it finished."""
     try:
         login()
         for target in targets:
             check_target(target, architecture)
         ready = [t for t in targets if not t.error]
         if ready:
-            _scan_ready(ready, architecture, store, results_dir, workdir, base_image)
+            _scan_ready(
+                ready, architecture, store, results_dir, workdir, base_image, report
+            )
     except Exception as e:
         for target in targets:
             if not target.error and not target.scanned:
                 target.error = f"group failed before scanning: {_describe(e)}"
     finally:
         for target in targets:
+            if target.reported:
+                continue
             if not target.error and not target.scanned:
                 target.error = "scan did not complete"
-            write_status(results_dir, target)
+            _finish(results_dir, target, report)
 
 
 def _scan_ready(
@@ -567,6 +585,7 @@ def _scan_ready(
     results_dir: Path,
     workdir: Path,
     base_image: str,
+    report: Callable[[Target], None],
 ) -> None:
     dbs: dict[str, Path] = {}
     pins: dict[str, Any] = {}
@@ -594,25 +613,21 @@ def _scan_ready(
                 target.scanned = True
             except Exception as e:
                 target.error = _describe(e)
+            _finish(results_dir, target, report)
 
 
-def publish_results(
-    store: ScanStore, results_dir: Path, targets: Sequence[Target]
-) -> list[str]:
-    """Upload each image's result, then its status record, so a status found
-    in S3 always has its result beside it. Returns the failures."""
-    failures = []
-    for target in targets:
-        for name in (f"{target.name}.json.gz", f"{target.name}.status.json"):
-            path = results_dir / name
-            if not path.is_file():
-                continue
-            try:
-                store.upload(path, RESULTS_FOLDER)
-            except Exception as e:
-                failures.append(f"{target.name}: {_describe(e)}")
-                break
-    return failures
+def upload_result(store: ScanStore, results_dir: Path, target: Target) -> str:
+    """Upload the image's result, then its status record, so a status found
+    in S3 always has its result beside it. Returns the failure, if any."""
+    for name in (f"{target.name}.json.gz", f"{target.name}.status.json"):
+        path = results_dir / name
+        if not path.is_file():
+            continue
+        try:
+            store.upload(path, RESULTS_FOLDER)
+        except Exception as e:
+            return f"{target.name}: {_describe(e)}"
+    return ""
 
 
 @click.command()
@@ -663,21 +678,25 @@ def main(
         pull_request,
     )
 
+    upload_failures: list[str] = []
+
+    def report(target: Target) -> None:
+        failure = upload_result(store, results_dir, target)
+        if failure:
+            upload_failures.append(failure)
+
     results_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
-            scan_group(
-                targets,
-                architecture,
-                store,
-                results_dir,
-                Path(tmp),
-                base_image,
-                lambda: registry.login_if_ecr(rayci_work_repo, ecr_docker_login),
-            )
-    finally:
-        # Also after SIGTERM: the report needs every status it can get.
-        upload_failures = publish_results(store, results_dir, targets)
+    with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
+        scan_group(
+            targets,
+            architecture,
+            store,
+            results_dir,
+            Path(tmp),
+            base_image,
+            login=lambda: registry.login_if_ecr(rayci_work_repo, ecr_docker_login),
+            report=report,
+        )
     failed = [t for t in targets if t.error]
     for target in failed:
         logger.error(f"{target.name}: {target.error}")
