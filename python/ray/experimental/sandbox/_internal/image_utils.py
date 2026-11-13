@@ -22,7 +22,7 @@ import urllib.request
 import uuid
 from collections import deque
 from functools import lru_cache
-from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
+from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 from ray.experimental.sandbox._internal import docker_config, layer_cache
 from ray.experimental.sandbox.exceptions import SandboxCreationError
@@ -40,7 +40,7 @@ ROOTFS_IMAGE = "rootfs.erofs"
 # Cache format recorded in each image's ``.extracted`` marker. A mismatch (an
 # extracted-directory cache left by an earlier Ray, say) re-pulls the image
 # once; sandboxes already running on the old cache keep it until they exit.
-_EXTRACT_FORMAT = 3
+_EXTRACT_FORMAT = 4
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
 # How many of an image's layers download at once, as in Docker.
@@ -434,9 +434,79 @@ def _resolve_in_root(root: str, rel: str) -> Tuple[str, str]:
     return os.path.join(root, *resolved), "/".join(resolved) or "."
 
 
-def _create_nofollow(path: str) -> None:
-    """Create ``path`` as an empty file if absent, never through a symlink at it."""
-    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o644))
+def _create_nofollow(path: str) -> bool:
+    """Create ``path`` as an empty 0644 file if absent, never through a symlink
+    at it. Returns whether it created the file."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    except FileExistsError:
+        return False
+    try:
+        # The open mode is masked by the umask; the image must not be.
+        os.fchmod(fd, 0o644)
+    finally:
+        os.close(fd)
+    return True
+
+
+def _snapshot_mtime(mtimes: Dict[str, int], dir_path: str) -> None:
+    """Record ``dir_path``'s mtime in ``mtimes``, unless already recorded."""
+    if dir_path not in mtimes:
+        try:
+            mtimes[dir_path] = os.lstat(dir_path).st_mtime_ns
+        except OSError:
+            pass
+
+
+def _restore_mtimes(mtimes: Dict[str, int]) -> None:
+    """Put back the directory mtimes ``_snapshot_mtime`` recorded."""
+    for dir_path, mtime_ns in mtimes.items():
+        try:
+            os.utime(dir_path, ns=(mtime_ns, mtime_ns), follow_symlinks=False)
+        except OSError:
+            pass
+
+
+def _makedirs_recorded(
+    root: str,
+    path: str,
+    created: Optional[Set[str]],
+    mtimes: Optional[Dict[str, int]],
+) -> None:
+    """``os.makedirs(path, exist_ok=True)`` for a path resolved inside ``root``,
+    recording what it creates.
+
+    Each directory it creates gets mode 0755 whatever the umask, and its
+    canonical path goes into ``created``: the image build zeroes the mtimes of
+    the entries Ray made, which would otherwise carry the build's wall-clock
+    time. The existing directory that gains the first new entry has its mtime
+    recorded in ``mtimes`` first, so the caller can restore it.
+    """
+    rel = os.path.relpath(path, root)
+    if rel == ".":
+        return
+    current = root
+    for part in rel.split("/"):
+        parent, current = current, os.path.join(current, part)
+        if os.path.isdir(current):
+            continue
+        if mtimes is not None:
+            _snapshot_mtime(mtimes, parent)
+        os.mkdir(current)
+        os.chmod(current, 0o755)
+        if created is not None:
+            created.add(os.path.relpath(current, root))
+
+
+def _drop_created(created: Optional[Set[str]], rel: str, keep_self: bool) -> None:
+    """Forget created paths under ``rel`` (and ``rel`` itself unless ``keep_self``)."""
+    if not created:
+        return
+    prefix = "" if rel == "." else rel + "/"
+    for path in [p for p in created if p.startswith(prefix)]:
+        created.discard(path)
+    if not keep_self:
+        created.discard(rel)
 
 
 def extract_tar_layer(
@@ -444,6 +514,8 @@ def extract_tar_layer(
     dest_dir: str,
     ownership: Optional[Dict[str, Tuple[int, int]]] = None,
     dir_attrs: Optional[Dict[str, Tuple[int, int]]] = None,
+    created: Optional[Set[str]] = None,
+    modes: Optional[Dict[str, int]] = None,
 ) -> None:
     """Extract a tar archive layer onto dest_dir with OCI whiteout handling.
 
@@ -465,6 +537,18 @@ def extract_tar_layer(
     read-only directory (0555) locked after its own layer would stop an
     unprivileged worker from extracting a later layer's files, or whiteouts,
     inside it. Without it the attributes are applied when this layer ends.
+
+    ``created``, shared the same way, collects the canonical paths of the
+    parent directories the layers imply but don't ship (tools such as ko or
+    rules_oci emit ``app/main.py`` with no ``app/`` entry); a later entry for
+    the path removes it. Directories the layer adds to, or removes from,
+    without shipping an entry for them keep the mtimes they had.
+
+    ``modes``, shared the same way, collects the archived permission bits of
+    each file and directory, which the EROFS image build applies. On disk a
+    file always stays readable by its owner, whatever its archived mode
+    (``0000`` for ``/etc/shadow``, ``4111`` for ``sudo``) or the worker's
+    umask, so the build can read it.
     """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
@@ -474,6 +558,9 @@ def extract_tar_layer(
     apply_now = dir_attrs is None
     if dir_attrs is None:
         dir_attrs = {}
+    # The mtime of every existing directory this layer changes, from before
+    # the change: adding or removing an entry sets a directory's mtime to now.
+    parent_mtimes: Dict[str, int] = {}
     # Iterating reads the layer once; getmembers() first would decompress it
     # twice, since extractfile() then rewinds a compressed stream. Not stream
     # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
@@ -497,15 +584,20 @@ def extract_tar_layer(
                 continue
             target_path = os.path.join(parent_dir, basename)
             rel = os.path.normpath(os.path.join(parent_rel, basename))
+            if os.path.isdir(parent_dir):
+                _snapshot_mtime(parent_mtimes, parent_dir)
 
             # Handle OCI opaque whiteout (.wh..wh..opq)
             if basename == ".wh..wh..opq":
                 if ownership is not None:
                     _drop_ownership_children(ownership, parent_rel)
+                if modes is not None:
+                    _drop_ownership_children(modes, parent_rel)
                 opaque_attrs = dir_attrs.get(parent_rel)
                 _drop_ownership_children(dir_attrs, parent_rel)
                 if opaque_attrs is not None:
                     dir_attrs[parent_rel] = opaque_attrs
+                _drop_created(created, parent_rel, keep_self=True)
                 if os.path.isdir(parent_dir):
                     for item in os.listdir(parent_dir):
                         item_path = os.path.join(parent_dir, item)
@@ -527,7 +619,10 @@ def extract_tar_layer(
                 del_rel = os.path.normpath(os.path.join(parent_rel, del_name))
                 if ownership is not None:
                     _drop_ownership_subtree(ownership, del_rel)
+                if modes is not None:
+                    _drop_ownership_subtree(modes, del_rel)
                 _drop_ownership_subtree(dir_attrs, del_rel)
+                _drop_created(created, del_rel, keep_self=False)
                 if os.path.isdir(del_path) and not os.path.islink(del_path):
                     shutil.rmtree(del_path, ignore_errors=True)
                 elif os.path.exists(del_path) or os.path.islink(del_path):
@@ -541,6 +636,8 @@ def extract_tar_layer(
             if os.path.exists(target_path) or os.path.islink(target_path):
                 if not (os.path.isdir(target_path) and member.isdir()):
                     _drop_ownership_subtree(dir_attrs, rel)
+                    if modes is not None:
+                        _drop_ownership_subtree(modes, rel)
                     try:
                         if os.path.isdir(target_path) and not os.path.islink(
                             target_path
@@ -550,6 +647,7 @@ def extract_tar_layer(
                             os.remove(target_path)
                     except OSError:
                         pass
+                    _drop_created(created, rel, keep_self=False)
                 else:
                     # If target_path is a directory or a symlink to an existing directory
                     # inside dest_dir, preserve it (e.g. UsrMerge /bin -> usr/bin).
@@ -558,7 +656,7 @@ def extract_tar_layer(
             # Use safe extraction
             member.name = name
             if member.isreg():
-                os.makedirs(parent_dir, exist_ok=True)
+                _makedirs_recorded(dest_dir, parent_dir, created, parent_mtimes)
                 # The conflict pass above removed any symlink at target_path;
                 # O_NOFOLLOW turns a leftover one into an error, not a write
                 # through it.
@@ -571,8 +669,10 @@ def extract_tar_layer(
                     f_in = tar.extractfile(member)
                     if f_in:
                         shutil.copyfileobj(f_in, f_out)
-                if member.mode:
-                    os.chmod(target_path, member.mode)
+                # Always set: the open mode is masked by the worker's umask.
+                # The owner keeps read access so the image build can read
+                # the file; the image gets the archived mode (see modes).
+                os.chmod(target_path, stat.S_IMODE(member.mode) | stat.S_IRUSR)
                 # Preserve the archived mtime: tools inside the sandbox rely
                 # on it (apt revalidates its package lists with
                 # If-Modified-Since from the file mtime, and a reset-to-now
@@ -583,7 +683,7 @@ def extract_tar_layer(
                 except OSError:
                     pass
             elif member.isdir():
-                os.makedirs(target_path, exist_ok=True)
+                _makedirs_recorded(dest_dir, target_path, created, parent_mtimes)
                 # Deferred to apply_dir_attrs: tar lists a directory before
                 # its contents, so a restrictive archived mode (0500) applied
                 # here would break extracting the children. Preserved
@@ -591,18 +691,32 @@ def extract_tar_layer(
                 if not os.path.islink(target_path):
                     dir_attrs[rel] = (member.mode, member.mtime)
             elif member.issym():
-                os.makedirs(parent_dir, exist_ok=True)
+                _makedirs_recorded(dest_dir, parent_dir, created, parent_mtimes)
                 try:
                     os.symlink(member.linkname, target_path)
+                    try:
+                        os.utime(
+                            target_path,
+                            (member.mtime, member.mtime),
+                            follow_symlinks=False,
+                        )
+                    except OSError:
+                        pass
                 except OSError:
                     pass
             elif member.islnk():
-                os.makedirs(parent_dir, exist_ok=True)
+                link_rel = None
+                _makedirs_recorded(dest_dir, parent_dir, created, parent_mtimes)
                 link_name = member.linkname.lstrip("/")
                 if ".." not in link_name.split("/"):
                     link_dir, link_base = os.path.split(os.path.normpath(link_name))
                     try:
-                        link_parent, _ = _resolve_in_root(dest_dir, link_dir)
+                        link_parent, link_parent_rel = _resolve_in_root(
+                            dest_dir, link_dir
+                        )
+                        link_rel = os.path.normpath(
+                            os.path.join(link_parent_rel, link_base)
+                        )
                         # A hardlink names another member; if that is a
                         # symlink, link the symlink itself, not what it
                         # points at on the host.
@@ -615,15 +729,39 @@ def extract_tar_layer(
                         pass
 
             # Hardlinks are recorded under their own name too: the re-pack
-            # looks owners up by path, and whichever name of the inode it
-            # emits first decides the owner mkfs.erofs stores.
-            if ownership is not None and rel != ".":
-                if member.uid or member.gid:
-                    ownership[rel] = (member.uid, member.gid)
-                else:
-                    # A later layer re-shipping the path as root wins.
-                    ownership.pop(rel, None)
+            # looks owners and modes up by path, and whichever name of the
+            # inode it emits first (sorted order, not archive order) decides
+            # what mkfs.erofs stores. A hardlink shares its target's inode,
+            # so it takes the target's recorded owner and mode, not the ones
+            # in its own header (often 0: tar writers need not fill them).
+            if member.islnk():
+                for attrs in (ownership, modes):
+                    if attrs is None or rel == ".":
+                        continue
+                    if link_rel is not None and link_rel in attrs:
+                        attrs[rel] = attrs[link_rel]
+                    else:
+                        attrs.pop(rel, None)
+            else:
+                if ownership is not None and rel != ".":
+                    if member.uid or member.gid:
+                        ownership[rel] = (member.uid, member.gid)
+                    else:
+                        # A later layer re-shipping the path as root wins.
+                        ownership.pop(rel, None)
+                if (
+                    modes is not None
+                    and rel != "."
+                    and (member.isreg() or member.isdir())
+                ):
+                    modes[rel] = stat.S_IMODE(member.mode)
+            # The layer ships this path: it keeps the archived mtime.
+            if created is not None:
+                created.discard(rel)
 
+    # Before apply_dir_attrs (now or after the last layer), so the times that
+    # directory entries set win.
+    _restore_mtimes(parent_mtimes)
     if apply_now:
         apply_dir_attrs(dest_dir, dir_attrs)
 
@@ -664,15 +802,53 @@ def mkfs_erofs_path() -> Optional[str]:
     path = shutil.which("mkfs.erofs")
     if path is None:
         return None
+    if "--tar" not in _mkfs_erofs_help(path):
+        return None
+    return path
+
+
+@lru_cache(maxsize=4)
+def _mkfs_erofs_help(path: str) -> str:
+    """What ``mkfs.erofs --help`` prints, or "" if it can't run."""
     try:
         res = subprocess.run(
             [path, "--help"], capture_output=True, text=True, timeout=30
         )
     except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return res.stdout + res.stderr
+
+
+@lru_cache(maxsize=4)
+def _mkfs_erofs_version(path: str) -> Optional[str]:
+    """What ``mkfs.erofs -V`` prints (``mkfs.erofs 1.8.5``), or None if it
+    can't run."""
+    try:
+        res = subprocess.run(
+            [path, "-V"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
         return None
-    if "--tar" not in res.stdout + res.stderr:
+    lines = (res.stdout + res.stderr).strip().splitlines()
+    # erofs-utils 1.7 prints its version and then rejects -V, exiting 1.
+    if not lines or not lines[0].startswith("mkfs.erofs"):
         return None
-    return path
+    return lines[0].strip()
+
+
+def mkfs_erofs_pins_build_time() -> bool:
+    """Whether ``mkfs.erofs`` has ``--mkfs-time`` (erofs-utils 1.8+).
+
+    With it, ``-T0 --mkfs-time`` fixes only the superblock's build time and
+    leaves each file's mtime alone; without it, ``-T`` would also reset
+    every file's mtime.
+    """
+    path = mkfs_erofs_path()
+    return path is not None and "--mkfs-time" in _mkfs_erofs_help(path)
 
 
 # EROFS keeps its superblock at this offset, in this many bytes.
@@ -726,15 +902,44 @@ def require_mkfs_erofs() -> str:
 
 
 def expected_extract_marker() -> str:
-    """The ``.extracted`` content a cache entry of the current format carries."""
-    return json.dumps({"format": _EXTRACT_FORMAT}, sort_keys=True)
+    """The ``.extracted`` content a cache entry of the current format carries.
+
+    It names the ``mkfs.erofs`` version too: erofs-utils releases lay out
+    the same tree differently (1.8 numbers inodes from 0, 1.9 from 1), so an
+    upgrade rebuilds cached images rather than mixing builds that a
+    checkpoint can't restore across.
+    """
+    path = mkfs_erofs_path()
+    version = _mkfs_erofs_version(path) if path is not None else None
+    return json.dumps(
+        {"format": _EXTRACT_FORMAT, "mkfs_erofs": version}, sort_keys=True
+    )
 
 
-def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
-    """``tar.add`` filter giving members the image's recorded owners."""
+def _owner_filter(
+    ownership: Dict[str, Tuple[int, int]],
+    created: Optional[Set[str]] = None,
+    modes: Optional[Dict[str, int]] = None,
+):
+    """``tar.add`` filter giving members the image's recorded owners.
+
+    The root and the entries Ray created (``created``: seeded mount points
+    and /tmp, parents a layer implied) get mtime 0, so separate nodes and
+    rebuilt image caches produce identical images. Entries the image ships
+    keep their archived mtimes, and their archived modes (``modes``) rather
+    than the ones on disk, which the worker's umask and the build's need to
+    read them can change.
+    """
+    created = created or set()
+    modes = modes or {}
 
     def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo:
-        ids = ownership.get(os.path.normpath(ti.name))
+        norm = os.path.normpath(ti.name)
+        if norm == "." or norm in created:
+            ti.mtime = 0
+        if norm in modes:
+            ti.mode = modes[norm]
+        ids = ownership.get(norm)
         ti.uid, ti.gid = ids if ids else (0, 0)
         ti.uname = ti.gname = ""
         return ti
@@ -742,21 +947,41 @@ def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
     return _filter
 
 
-def _seed_tmp(rootfs_dir: str) -> None:
+def _seed_tmp(
+    rootfs_dir: str,
+    created: Optional[Set[str]] = None,
+    modes: Optional[Dict[str, int]] = None,
+) -> None:
     """Docker parity for /tmp: world-writable, sticky, and non-empty.
 
     runsc mounts a private tmpfs over an *empty* /tmp, which breaks
     rename(2) from /tmp with EXDEV; one dotfile keeps /tmp on the rootfs.
     A ``tmp`` symlink is followed inside the tree (``_resolve_in_root``):
     the directory it names in the image is what gets the mode and the file.
+    The canonical paths of the entries it creates go into ``created``, and
+    the directories it adds them to keep their mtimes. The directory's
+    archived mode leaves ``modes``, so the image gets 1777.
     """
+    mtimes: Dict[str, int] = {}
     try:
-        tmp_dir, _ = _resolve_in_root(rootfs_dir, "tmp")
-        os.makedirs(tmp_dir, exist_ok=True)
+        tmp_dir, tmp_rel = _resolve_in_root(rootfs_dir, "tmp")
+        _makedirs_recorded(rootfs_dir, tmp_dir, created, mtimes)
         os.chmod(tmp_dir, 0o1777)
-        _create_nofollow(os.path.join(tmp_dir, ".ray-sandbox-keep"))
+        # The keep file stops runsc from mounting a tmpfs over /tmp, so /tmp
+        # must be world-writable and sticky in the image too, whatever mode
+        # the image shipped it with: the build takes this one from disk.
+        if modes is not None:
+            modes.pop(os.path.normpath(tmp_rel), None)
+        _snapshot_mtime(mtimes, tmp_dir)
+        if _create_nofollow(os.path.join(tmp_dir, ".ray-sandbox-keep")):
+            if created is not None:
+                created.add(
+                    os.path.normpath(os.path.join(tmp_rel, ".ray-sandbox-keep"))
+                )
     except OSError:
         pass
+    finally:
+        _restore_mtimes(mtimes)
 
 
 # Mount points runsc needs in the root filesystem: its mandatory mounts plus
@@ -766,27 +991,40 @@ _MOUNTPOINT_DIRS = ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp")
 _MOUNTPOINT_FILES = ("etc/resolv.conf", "etc/hosts", "etc/hostname")
 
 
-def _seed_mountpoints(rootfs_dir: str) -> None:
+def _seed_mountpoints(rootfs_dir: str, created: Optional[Set[str]] = None) -> None:
     """Create the mount points runsc expects, where the image lacks them.
 
     Each parent is resolved inside the tree (``_resolve_in_root``), so an
     image whose ``etc`` or ``dev`` is a symlink to a host directory gets its
     seeds where the sandbox will look for them, never on the host. A last
     component that already exists, as a symlink included, is left alone.
+    The canonical paths of the entries it creates, missing parents included,
+    go into ``created``. Existing parent directories keep their timestamps,
+    so seeding does not perturb the image's extracted directory mtimes.
     """
-    for rel in _MOUNTPOINT_DIRS + _MOUNTPOINT_FILES:
-        try:
-            parent, _ = _resolve_in_root(rootfs_dir, os.path.dirname(rel))
-            path = os.path.join(parent, os.path.basename(rel))
-            if os.path.lexists(path):
-                continue
-            if rel in _MOUNTPOINT_DIRS:
-                os.makedirs(path, mode=0o755)
-            else:
-                os.makedirs(parent, exist_ok=True)
-                _create_nofollow(path)
-        except OSError:
-            pass
+    mtimes: Dict[str, int] = {}
+    try:
+        for rel in _MOUNTPOINT_DIRS + _MOUNTPOINT_FILES:
+            try:
+                parent, parent_rel = _resolve_in_root(rootfs_dir, os.path.dirname(rel))
+                path = os.path.join(parent, os.path.basename(rel))
+                if os.path.lexists(path):
+                    continue
+                if rel in _MOUNTPOINT_DIRS:
+                    _makedirs_recorded(rootfs_dir, path, created, mtimes)
+                    continue
+                _makedirs_recorded(rootfs_dir, parent, created, mtimes)
+                _snapshot_mtime(mtimes, parent)
+                if _create_nofollow(path) and created is not None:
+                    created.add(
+                        os.path.normpath(
+                            os.path.join(parent_rel, os.path.basename(rel))
+                        )
+                    )
+            except OSError:
+                pass
+    finally:
+        _restore_mtimes(mtimes)
 
 
 def _stream_tree(tar: tarfile.TarFile, path: str, arcname: str, owner_filter) -> None:
@@ -821,7 +1059,11 @@ def _stream_tree(tar: tarfile.TarFile, path: str, arcname: str, owner_filter) ->
 
 
 def build_erofs_image(
-    rootfs_dir: str, ownership: Dict[str, Tuple[int, int]], out_path: str
+    rootfs_dir: str,
+    ownership: Dict[str, Tuple[int, int]],
+    out_path: str,
+    created: Optional[Set[str]] = None,
+    modes: Optional[Dict[str, int]] = None,
 ) -> None:
     """Build an EROFS image of ``rootfs_dir`` carrying the image's real owners.
 
@@ -845,13 +1087,35 @@ def build_erofs_image(
             they're read; the caller removes what's left.
         ownership: {path: (uid, gid)} recorded during extraction.
         out_path: Destination image file.
+        created: Canonical paths of the entries Ray created rather than
+            the image shipped; they get mtime 0, like the root.
+        modes: {path: archived permission bits} recorded during
+            extraction, which replace the modes on disk.
     """
     mkfs = require_mkfs_erofs()
     # mkfs.erofs's output goes to a file: with a pipe, it could block on a
     # full pipe while this side blocks on a full stdin.
     with tempfile.TemporaryFile() as output:
         proc = subprocess.Popen(
-            [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", out_path],
+            [
+                mkfs,
+                "--tar=f",
+                f"-b{mmap.PAGESIZE}",
+                "-E^inline_data",
+                # Build the same image byte for byte on every node and every
+                # time: a checkpointed sandbox restores only onto an
+                # identical image (gVisor rejects an EROFS root filesystem
+                # whose superblock differs at all), whether on another node
+                # or after the cached image was evicted and rebuilt.
+                # Extended inodes, which carry each file's own mtime, keep
+                # the layout independent of when mkfs runs, and a fixed UUID
+                # and build time keep the superblock the same. Files keep
+                # their mtimes.
+                "-Eforce-inode-extended",
+                "-U00000000-0000-0000-0000-000000000000",
+                *(["-T0", "--mkfs-time"] if mkfs_erofs_pins_build_time() else []),
+                out_path,
+            ],
             stdin=subprocess.PIPE,
             stdout=output,
             stderr=subprocess.STDOUT,
@@ -861,7 +1125,9 @@ def build_erofs_image(
                 with tarfile.open(
                     fileobj=proc.stdin, mode="w|", bufsize=1 << 20
                 ) as tar:
-                    _stream_tree(tar, rootfs_dir, ".", _owner_filter(ownership))
+                    _stream_tree(
+                        tar, rootfs_dir, ".", _owner_filter(ownership, created, modes)
+                    )
                 proc.stdin.close()
             except BrokenPipeError:
                 # mkfs.erofs stopped reading; its exit status and output say why.
@@ -1268,16 +1534,32 @@ def pull_and_extract_container_image(
             os.makedirs(tmp_extract_dir, mode=0o755, exist_ok=True)
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
+            # The image's root directory: its mode must not depend on the
+            # worker's umask.
+            os.chmod(tmp_rootfs_dir, 0o755)
+            # Canonical paths of the entries Ray creates rather than the image
+            # ships, which the build gives a fixed mtime.
+            created: Set[str] = set()
+            # Archived modes of the files and directories the image ships.
+            modes: Dict[str, int] = {}
             try:
                 ownership = _extract_image_layers(
-                    image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
+                    image,
+                    tmp_rootfs_dir,
+                    tmp_extract_dir,
+                    timeout_seconds,
+                    images_dir,
+                    created,
+                    modes,
                 )
-                _seed_tmp(tmp_rootfs_dir)
-                _seed_mountpoints(tmp_rootfs_dir)
+                _seed_tmp(tmp_rootfs_dir, created, modes)
+                _seed_mountpoints(tmp_rootfs_dir, created)
                 build_erofs_image(
                     tmp_rootfs_dir,
                     ownership,
                     os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
+                    created,
+                    modes,
                 )
             except Exception:
                 shutil.rmtree(tmp_extract_dir, ignore_errors=True)
@@ -1386,6 +1668,8 @@ def _extract_image_layers(
     image_dir: str,
     timeout_seconds: float,
     blob_dir: str,
+    created: Optional[Set[str]] = None,
+    modes: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Tuple[int, int]]:
     """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
 
@@ -1400,6 +1684,10 @@ def _extract_image_layers(
         image_dir: Directory that receives the image config.
         timeout_seconds: Network request timeout.
         blob_dir: Image cache directory, whose layer cache keeps the blobs.
+        created: Receives the canonical paths of the parent directories the
+            layers imply but don't ship (see ``extract_tar_layer``).
+        modes: Receives the archived permission bits of the files and
+            directories the layers ship (see ``extract_tar_layer``).
 
     Returns:
         {path: (uid, gid)} for every path shipped with a non-root owner.
@@ -1411,7 +1699,9 @@ def _extract_image_layers(
     if os.path.isfile(image):
         try:
             with open(image, "rb") as f:
-                extract_tar_layer(f, rootfs_dir, ownership=ownership)
+                extract_tar_layer(
+                    f, rootfs_dir, ownership=ownership, created=created, modes=modes
+                )
         except Exception as err:
             raise SandboxCreationError(
                 f"Failed to extract local image archive '{image}': {err}"
@@ -1512,7 +1802,12 @@ def _extract_image_layers(
             for blob in blobs:
                 with blob:
                     extract_tar_layer(
-                        blob, rootfs_dir, ownership=ownership, dir_attrs=dir_attrs
+                        blob,
+                        rootfs_dir,
+                        ownership=ownership,
+                        dir_attrs=dir_attrs,
+                        created=created,
+                        modes=modes,
                     )
             apply_dir_attrs(rootfs_dir, dir_attrs)
 
