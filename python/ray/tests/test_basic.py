@@ -243,12 +243,12 @@ def test_default_worker_import_dependency(shutdown_only):
     [
         pytest.param(
             {"RAY_enable_ray_task_event_recorder": "0"},
-            {21, 22, 23, 24},
+            {22, 23, 24, 25},
             id="task_event_recorder_off",
         ),
         pytest.param(
             {"RAY_enable_ray_event": "1", "RAY_enable_ray_task_event_recorder": "1"},
-            {22, 23, 24, 25},
+            {23, 24, 25, 26},
             id="task_event_recorder_on",
         ),
     ],
