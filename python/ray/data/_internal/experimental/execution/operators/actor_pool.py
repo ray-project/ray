@@ -177,6 +177,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # Per-actor resource usage, needed because ray_remote_args_fn can
         # produce different resources for each actor.
         self._actor_resource_usage: Dict[ActorHandle, ExecutionResources] = {}
+        # Exact creation requests retain custom resources for cluster autoscaling.
+        self._actor_resource_requests: Dict[ActorHandle, Dict[str, float]] = {}
         # Cached aggregate resource counters.
         self._total_usage = ExecutionResources.zero()
         self._pending_or_restarting_usage = ExecutionResources.zero()
@@ -565,6 +567,16 @@ class _ExperimentalActorPool(AutoscalingActorPool):
     def get_pending_actor_refs(self) -> List[ObjectRef]:
         return list(self._pending_actors.keys())
 
+    def record_resource_request(
+        self, actor: ActorHandle, request: Dict[str, float]
+    ) -> None:
+        """Record the exact remote-args resource request at actor creation."""
+        self._actor_resource_requests[actor] = request
+
+    @override
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        return list(self._actor_resource_requests.values())
+
     @override
     def select_actors(
         self,
@@ -849,6 +861,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         remain, and roll back its pending/committed usage.
         """
         usage = self._actor_resource_usage.pop(actor)
+        self._actor_resource_requests.pop(actor, None)
         self._total_usage = self._total_usage.subtract(usage)
         self._pending_or_restarting_usage = self._pending_or_restarting_usage.subtract(
             usage
@@ -1100,6 +1113,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         actor = self._pending_actors.pop(ready_ref)
         info = self._pending_actor_info.pop(ready_ref, None)
         usage = self._actor_resource_usage.pop(actor)
+        self._actor_resource_requests.pop(actor, None)
         self._total_usage = self._total_usage.subtract(usage)
         self._pending_or_restarting_usage = self._pending_or_restarting_usage.subtract(
             usage
@@ -1144,6 +1158,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             actor = self._pending_actors.pop(ready_ref)
             info = self._pending_actor_info.pop(ready_ref)
             usage = self._actor_resource_usage.pop(actor)
+            self._actor_resource_requests.pop(actor, None)
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1172,6 +1187,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._pending_actor_info.clear()
         for ready_ref, actor in pending.items():
             usage = self._actor_resource_usage.pop(actor)
+            self._actor_resource_requests.pop(actor, None)
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1254,6 +1270,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self.resource_bank.deregister_actor(actor_id=logical_id)
 
         usage = self._actor_resource_usage.pop(actor)
+        self._actor_resource_requests.pop(actor, None)
         self._total_usage = self._total_usage.subtract(usage)
         # Release this running actor's committed usage at its node.
         self._remove_committed_usage(node_id, usage)

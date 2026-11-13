@@ -1519,6 +1519,7 @@ def test_expired_pending_actor_is_released_and_killed(monkeypatch):
         )
     }
     pool._actor_resource_usage = {actor: usage}
+    pool._actor_resource_requests = {actor: {"CPU": 1, "GPU": 1}}
     pool._total_usage = usage
     pool._pending_or_restarting_usage = usage
     pool._actor_to_logical_id = {actor: "la-1"}
@@ -1537,6 +1538,7 @@ def test_expired_pending_actor_is_released_and_killed(monkeypatch):
     assert pool._total_usage.cpu == 0
     assert pool._pending_or_restarting_usage.cpu == 0
     assert actor not in pool._actor_to_logical_id
+    assert pool.get_resource_requests() == []
 
 
 def test_input_queue_bytes_by_node_tracks_queued_bundles():
@@ -1608,6 +1610,65 @@ def test_backpressure_progress_str_reads_write_through_cache():
         op._output_backpressured_actors_cache_ts = float("-inf")
         op.output_backpressured_actors = lambda: (1, 5)
         assert op.backpressure_progress_str() == "[blocked=1/5]"
+
+
+@pytest.mark.parametrize(
+    "pool_cls", [_ExperimentalActorPool, pool_mod._NodeAwareExperimentalActorPool]
+)
+@pytest.mark.parametrize(
+    "removal",
+    ["pending", "all_pending", "expired", "init_failed", "running", "drained"],
+)
+def test_exact_resource_requests_lifecycle(pool_cls, removal, monkeypatch):
+    """Exact requests survive readiness/draining, but not actor removal."""
+    pool = pool_cls(
+        create_actor_fn=mock.Mock(),
+        config=AutoscalingActorConfig(
+            min_size=1,
+            max_size=2,
+            initial_size=1,
+            max_tasks_in_flight_per_actor=1,
+            max_actor_concurrency=1,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+            max_num_output_bytes_per_actor=1024,
+        ),
+    )
+    pool.set_resource_bank(_RecordingResourceBank())
+    if isinstance(pool, pool_mod._NodeAwareExperimentalActorPool):
+        pool._get_draining_nodes = lambda: {}
+        pool._get_actor_locations = lambda ids: {}
+    actor, ready_ref = mock.Mock(), mock.Mock()
+    request = {"CPU": 1, "GPU": 0.5, "custom": 2}
+    assert pool.get_resource_requests() == []
+    # Mirrors the operator callback, which records before _add_pending_actor.
+    pool.record_resource_request(actor, request)
+    pool._actor_to_logical_id[actor] = "actor1"
+    pool._add_pending_actor(actor, ready_ref, ExecutionResources(cpu=1, gpu=0.5))
+    assert pool.get_resource_requests() == [request]
+    monkeypatch.setattr(ray, "kill", mock.Mock())
+    if removal == "pending":
+        assert pool._try_remove_pending_actor()
+    elif removal == "all_pending":
+        pool._release_pending_actors(force=True)
+    elif removal == "expired":
+        assert pool.release_expired_pending_actors(now=float("inf")) == 1
+    elif removal == "init_failed":
+        monkeypatch.setattr(
+            ray, "get", mock.Mock(side_effect=ValueError("init failed"))
+        )
+        with pytest.raises(ValueError, match="init failed"):
+            pool.pending_to_running(ready_ref)
+    else:
+        monkeypatch.setattr(ray, "get", lambda ref: "node1")
+        pool.pending_to_running(ready_ref)
+        assert pool.get_resource_requests() == [request]
+        if removal == "drained":
+            pool.begin_draining(actor, reason=pool_mod.DrainReason.RESIZE)
+            assert pool.get_resource_requests() == [request]
+            pool.process_draining_actors()
+        else:
+            pool._release_running_actor(actor)
+    assert pool.get_resource_requests() == []
 
 
 if __name__ == "__main__":
