@@ -1,5 +1,9 @@
+import datetime
+import decimal
 import os
 import random
+import sys
+import uuid
 from types import SimpleNamespace
 from typing import Any, Dict, Generator, List, Tuple, Type
 
@@ -15,9 +19,9 @@ from pyiceberg import (
 )
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
-from pyiceberg.manifest import FileFormat
+from pyiceberg.manifest import DataFile, FileFormat
 from pyiceberg.partitioning import PartitionField, PartitionSpec
-from pyiceberg.table import Table
+from pyiceberg.table import FileScanTask, Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -3020,7 +3024,420 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     assert len(result.data_files) > 0, "Expected data files in result"
 
 
-if __name__ == "__main__":
-    import sys
+class TestIcebergDatasourceV2:
+    """Tests for the V2-only machinery, which has no V1 counterpart."""
 
+    @staticmethod
+    def _load_table() -> Table:
+        return pyi_catalog.load_catalog(**_CATALOG_KWARGS).load_table(
+            f"{_DB_NAME}.{_TABLE_NAME}"
+        )
+
+    def test_manifest_preserves_every_field_the_reader_uses(self):
+        """A manifest round trip must rebuild each scan task field-for-field."""
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        tasks = list(table.scan().plan_files())
+        assert tasks, "fixture table should plan at least one file"
+
+        manifest = manifest_from_scan_tasks(tasks, table.metadata)
+        assert len(manifest) == len(tasks)
+
+        rebuilt = list(scan_tasks_from_manifest(manifest, table.metadata))
+        assert len(rebuilt) == len(tasks)
+        for original, copied in zip(tasks, rebuilt):
+            assert copied.file.file_path == original.file.file_path
+            assert copied.file.file_format == original.file.file_format
+            assert copied.file.spec_id == original.file.spec_id
+            assert copied.file.record_count == original.file.record_count
+            assert copied.file.file_size_in_bytes == original.file.file_size_in_bytes
+            # Identity partition values back a projected column that is
+            # missing from the data file, so they must survive verbatim --
+            # including their Iceberg-internal Python types (a date is an int
+            # of days), which is what the typed struct column preserves.
+            assert copied.file.partition == original.file.partition
+            assert [type(v) for v in copied.file.partition] == [
+                type(v) for v in original.file.partition
+            ]
+            assert sorted(f.file_path for f in copied.delete_files) == sorted(
+                f.file_path for f in original.delete_files
+            )
+
+    def test_manifest_carries_delete_files(self):
+        """Delete files attached to a task must survive the round trip.
+
+        Built by hand rather than from the fixture: PyIceberg 0.11.1 deletes
+        copy-on-write (it rewrites the data files), so no scan task it plans
+        ever carries one -- yet a table written by an engine that deletes
+        merge-on-read will, and dropping them would silently resurrect deleted
+        rows.
+        """
+        from pyiceberg.manifest import DataFileContent, FileFormat
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        task = list(table.scan().plan_files())[0]
+        delete_paths = [
+            "s3://bucket/deletes/b.parquet",
+            "s3://bucket/deletes/a.parquet",
+        ]
+        deletes = {
+            DataFile.from_args(
+                content=DataFileContent.POSITION_DELETES,
+                file_path=path,
+                file_format=FileFormat.PARQUET,
+                partition=task.file.partition,
+                record_count=1,
+                file_size_in_bytes=1,
+            )
+            for path in delete_paths
+        }
+        with_deletes = FileScanTask(task.file, delete_files=deletes)
+
+        (rebuilt,) = scan_tasks_from_manifest(
+            manifest_from_scan_tasks([with_deletes], table.metadata), table.metadata
+        )
+        # A set on both sides: PyIceberg holds delete files unordered, so only
+        # membership is meaningful (the manifest column itself is sorted, which
+        # is what makes a row reproducible).
+        assert {f.file_path for f in rebuilt.delete_files} == set(delete_paths)
+        assert all(
+            f.content == DataFileContent.POSITION_DELETES for f in rebuilt.delete_files
+        )
+
+    def test_rebuilt_scan_tasks_decode_identically(self):
+        """The rebuilt tasks must read byte-for-byte what the originals do."""
+        from pyiceberg.io.pyarrow import ArrowScan
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        scan = table.scan()
+        tasks = list(scan.plan_files())
+        rebuilt = list(
+            scan_tasks_from_manifest(
+                manifest_from_scan_tasks(tasks, table.metadata), table.metadata
+            )
+        )
+
+        def read(scan_tasks):
+            return ArrowScan(
+                table_metadata=table.metadata,
+                io=table.io,
+                projected_schema=scan.projection(),
+                row_filter=pyi_expr.AlwaysTrue(),
+                case_sensitive=True,
+            ).to_table(scan_tasks)
+
+        assert read(rebuilt).equals(read(tasks))
+
+    @staticmethod
+    def _typed_partition_metadata(*specs: PartitionSpec):
+        """Table metadata over a schema wide enough to partition on every
+        awkward type, without writing a table (writing a transformed partition
+        needs the ``pyiceberg_core`` extra)."""
+        from pyiceberg.table.metadata import TableMetadataV2
+        from pyiceberg.table.sorting import UNSORTED_SORT_ORDER
+
+        schema = pyi_schema.Schema(
+            pyi_types.NestedField(1, "region", pyi_types.StringType(), required=False),
+            pyi_types.NestedField(2, "ts", pyi_types.TimestampType(), required=False),
+            pyi_types.NestedField(
+                3, "amount", pyi_types.DecimalType(9, 2), required=False
+            ),
+            pyi_types.NestedField(4, "gid", pyi_types.UUIDType(), required=False),
+            pyi_types.NestedField(5, "blob", pyi_types.BinaryType(), required=False),
+            pyi_types.NestedField(6, "flag", pyi_types.BooleanType(), required=False),
+        )
+        return TableMetadataV2(
+            location="file:///tmp/typed_partitions",
+            last_column_id=6,
+            current_schema_id=0,
+            schemas=[schema],
+            partition_specs=list(specs),
+            default_spec_id=specs[0].spec_id,
+            last_partition_id=1005,
+            sort_orders=[UNSORTED_SORT_ORDER],
+            default_sort_order_id=UNSORTED_SORT_ORDER.order_id,
+        )
+
+    @staticmethod
+    def _scan_task(spec_id: int, partition, path: str) -> FileScanTask:
+        from pyiceberg.manifest import DataFileContent, FileFormat
+
+        data_file = DataFile.from_args(
+            content=DataFileContent.DATA,
+            file_path=path,
+            file_format=FileFormat.PARQUET,
+            partition=partition,
+            record_count=7,
+            file_size_in_bytes=99,
+        )
+        data_file.spec_id = spec_id
+        return FileScanTask(data_file)
+
+    def test_partition_column_is_typed_and_lossless(self):
+        """Partition values survive as Iceberg's own internal representations.
+
+        The manifest stores them as an Arrow struct typed by the partition spec
+        -- the same shape Iceberg stores them in -- so a date stays the int of
+        days PyIceberg reads positionally, not a ``datetime.date``. The types
+        here are the ones a naive encoding gets wrong: a transform whose result
+        type differs from its source (``day(ts)`` is a date over a timestamp),
+        a decimal, a UUID (which Arrow maps to an extension type), raw binary,
+        and a bucket transform.
+        """
+        from pyiceberg.transforms import BucketTransform, DayTransform
+        from pyiceberg.typedef import Record
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            partition_arrow_type,
+            scan_tasks_from_manifest,
+        )
+
+        spec = PartitionSpec(
+            PartitionField(1, 1000, IdentityTransform(), "region"),
+            PartitionField(2, 1001, DayTransform(), "ts_day"),
+            PartitionField(3, 1002, IdentityTransform(), "amount"),
+            PartitionField(4, 1003, IdentityTransform(), "gid"),
+            PartitionField(5, 1004, IdentityTransform(), "blob"),
+            PartitionField(6, 1005, BucketTransform(16), "flag_bucket"),
+            spec_id=0,
+        )
+        metadata = self._typed_partition_metadata(spec)
+        partition_type = partition_arrow_type(metadata)
+        assert partition_type is not None
+        assert [field.name for field in partition_type] == [
+            "region",
+            "ts_day",
+            "amount",
+            "gid",
+            "blob",
+            "flag_bucket",
+        ]
+
+        tasks = [
+            # 19723 = 2024-01-01 in days since the epoch; -1 is pre-epoch.
+            self._scan_task(
+                0,
+                Record(
+                    "us-west-2",
+                    19723,
+                    decimal.Decimal("1.25"),
+                    uuid.UUID(int=7),
+                    b"\x01\x02",
+                    3,
+                ),
+                "a.parquet",
+            ),
+            self._scan_task(
+                0, Record(None, -1, decimal.Decimal("0.01"), None, None, 0), "b.parquet"
+            ),
+        ]
+        manifest = manifest_from_scan_tasks(tasks, metadata)
+        assert manifest.as_block().schema.field("__ib_partition").type == partition_type
+
+        for original, copied in zip(
+            tasks, scan_tasks_from_manifest(manifest, metadata)
+        ):
+            assert copied.file.partition == original.file.partition
+            assert [type(v) for v in copied.file.partition] == [
+                type(v) for v in original.file.partition
+            ]
+
+    # One identity-partition column per Iceberg primitive type, each with a
+    # null so one file carries a null partition value.
+    _IDENTITY_PARTITION_CASES = [
+        (pyi_types.BooleanType(), pa.array([True, False, None])),
+        (pyi_types.IntegerType(), pa.array([7, -1, None], pa.int32())),
+        (pyi_types.LongType(), pa.array([2**40, -1, None], pa.int64())),
+        (pyi_types.FloatType(), pa.array([1.5, -0.25, None], pa.float32())),
+        (pyi_types.DoubleType(), pa.array([1.5, -0.25, None], pa.float64())),
+        (
+            pyi_types.DecimalType(9, 2),
+            pa.array(
+                [decimal.Decimal("1.25"), decimal.Decimal("-0.01"), None],
+                pa.decimal128(9, 2),
+            ),
+        ),
+        (
+            pyi_types.DateType(),
+            pa.array([datetime.date(2024, 1, 1), datetime.date(1969, 12, 31), None]),
+        ),
+        (
+            pyi_types.TimeType(),
+            pa.array(
+                [datetime.time(12, 30), datetime.time(0, 0, 0, 1), None],
+                pa.time64("us"),
+            ),
+        ),
+        (
+            pyi_types.TimestampType(),
+            pa.array(
+                [
+                    datetime.datetime(2024, 1, 1, 12),
+                    datetime.datetime(1969, 12, 31),
+                    None,
+                ],
+                pa.timestamp("us"),
+            ),
+        ),
+        (
+            pyi_types.TimestamptzType(),
+            pa.array(
+                [
+                    datetime.datetime(2024, 1, 1, 12),
+                    datetime.datetime(1969, 12, 31),
+                    None,
+                ],
+                pa.timestamp("us", tz="UTC"),
+            ),
+        ),
+        (pyi_types.StringType(), pa.array(["us-west-2", "", None])),
+        # PyIceberg cannot write a pa.uuid() partition column, so the UUIDs go
+        # in as their 16 bytes.
+        (
+            pyi_types.UUIDType(),
+            pa.array(
+                [uuid.UUID(int=7).bytes, uuid.UUID(int=8).bytes, None], pa.binary(16)
+            ),
+        ),
+        (pyi_types.FixedType(4), pa.array([b"abcd", b"\x00" * 4, None], pa.binary(4))),
+        (pyi_types.BinaryType(), pa.array([b"\x01\x02", b"", None])),
+    ]
+
+    @pytest.mark.parametrize(
+        "field_type, column",
+        _IDENTITY_PARTITION_CASES,
+        ids=[str(field_type) for field_type, _ in _IDENTITY_PARTITION_CASES],
+    )
+    def test_real_table_partition_round_trip(self, tmp_path, field_type, column):
+        """Partition values PyIceberg plans from a real table survive the manifest.
+
+        The tests above build partition records by hand, so they only check our
+        guess at the Python types PyIceberg uses. Here PyIceberg writes the
+        table and plans it, and the rebuilt tasks must carry the same partition
+        values and read the same rows.
+        """
+        from pyiceberg.io.pyarrow import ArrowScan
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        catalog = SqlCatalog(
+            "round_trip",
+            uri=f"sqlite:///{tmp_path}/catalog.db",
+            warehouse=f"file://{tmp_path}",
+        )
+        catalog.create_namespace("db")
+        table = catalog.create_table(
+            "db.t",
+            schema=pyi_schema.Schema(
+                pyi_types.NestedField(1, "id", pyi_types.IntegerType(), required=False),
+                pyi_types.NestedField(2, "p", field_type, required=False),
+            ),
+            partition_spec=PartitionSpec(
+                PartitionField(2, 1000, IdentityTransform(), "p")
+            ),
+        )
+        table.append(
+            pa.table({"id": pa.array(range(len(column)), pa.int32()), "p": column})
+        )
+        tasks = list(table.scan().plan_files())
+        assert len(tasks) == len(column)
+
+        rebuilt = list(
+            scan_tasks_from_manifest(
+                manifest_from_scan_tasks(tasks, table.metadata), table.metadata
+            )
+        )
+        for original, copied in zip(tasks, rebuilt):
+            assert copied.file.partition == original.file.partition
+            assert [type(v) for v in copied.file.partition] == [
+                type(v) for v in original.file.partition
+            ]
+
+        def read(scan_tasks):
+            return ArrowScan(
+                table_metadata=table.metadata,
+                io=table.io,
+                projected_schema=table.schema(),
+                row_filter=pyi_expr.AlwaysTrue(),
+                case_sensitive=True,
+            ).to_table(scan_tasks)
+
+        assert read(rebuilt).equals(read(tasks))
+
+    def test_partition_column_survives_partition_evolution(self):
+        """Files written under different specs decode against their own spec.
+
+        The struct is the union of every spec's fields keyed by partition-field
+        id, so a row fills only its own spec's children -- and a record rebuilt
+        for the narrower spec has that spec's arity, not the union's.
+        """
+        from pyiceberg.typedef import Record
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        wide = PartitionSpec(
+            PartitionField(1, 1000, IdentityTransform(), "region"),
+            PartitionField(3, 1002, IdentityTransform(), "amount"),
+            spec_id=0,
+        )
+        narrow = PartitionSpec(
+            PartitionField(1, 1000, IdentityTransform(), "region"), spec_id=1
+        )
+        metadata = self._typed_partition_metadata(wide, narrow)
+        tasks = [
+            self._scan_task(0, Record("us", decimal.Decimal("2.00")), "a.parquet"),
+            self._scan_task(1, Record("eu"), "b.parquet"),
+        ]
+
+        rebuilt = list(
+            scan_tasks_from_manifest(
+                manifest_from_scan_tasks(tasks, metadata), metadata
+            )
+        )
+        assert [len(t.file.partition) for t in rebuilt] == [2, 1]
+        for original, copied in zip(tasks, rebuilt):
+            assert copied.file.partition == original.file.partition
+
+    def test_unpartitioned_table_has_no_partition_struct(self):
+        """An unpartitioned table carries a null column, not an empty struct."""
+        from pyiceberg.typedef import Record
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            partition_arrow_type,
+            scan_tasks_from_manifest,
+        )
+
+        metadata = self._typed_partition_metadata(PartitionSpec(spec_id=0))
+        assert partition_arrow_type(metadata) is None
+
+        tasks = [self._scan_task(0, Record(), "a.parquet")]
+        (rebuilt,) = scan_tasks_from_manifest(
+            manifest_from_scan_tasks(tasks, metadata), metadata
+        )
+        assert rebuilt.file.partition == Record()
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
