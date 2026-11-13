@@ -1,4 +1,4 @@
-"""Unit tests for the output-limit escape hatch (``relieve_output_limit_deadlock``).
+"""Unit tests for the output-limit escape hatch (``relieve_output_deadlock``).
 
 Fake-driven: the hatch only reads a handful of operator methods and one
 ResourceBank field, so the fakes implement exactly that surface.
@@ -21,7 +21,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 )
 from ray.data._internal.experimental.execution.output_limit_escape_hatch import (
     num_rows_required,
-    relieve_output_limit_deadlock,
+    relieve_output_deadlock,
 )
 from ray.data.context import DataContext
 from ray.data.tests.conftest import noop_counter
@@ -110,9 +110,16 @@ class _FakeActorPoolOp(_FakeQueueOp, ExperimentalActorPoolMapOperator):
         return self._has_budget
 
     @override
-    def upgrade_output_limit(self) -> bool:
+    def relieve_backpressure_deadlock(self) -> bool:
         self.upgrade_calls += 1
         return True
+
+    # Set by a test to make this op report a withheld-output wedge it relieved.
+    withheld_wedge = False
+
+    @override
+    def relieve_withheld_deadlock(self) -> bool:
+        return self.withheld_wedge
 
     @override
     # pyrefly: ignore[bad-override]  # partial test double
@@ -133,7 +140,7 @@ class _FakeResourceBank(ResourceBankBase):
 
 
 def _detect(output_op):
-    return relieve_output_limit_deadlock(
+    return relieve_output_deadlock(
         output_operator=output_op, resource_bank=_FakeResourceBank()
     )
 
@@ -223,7 +230,7 @@ def test_at_most_one_upgrade_per_call_and_detection_converges():
 
     class _FillingOp(_FakeActorPoolOp):
         @override
-        def upgrade_output_limit(self) -> bool:
+        def relieve_backpressure_deadlock(self) -> bool:
             # Raise the cap by one block and let the stalled actor fill it,
             # which is what the next tick observes.
             self.upgrade_calls += 1
@@ -341,3 +348,15 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_withheld_wedge_is_relieved_before_the_upgrade_walk():
+    """An actor stuck on withheld reconstruction outputs is relieved first,
+    and the pass ends there: no cap upgrade in the same pass, even where the
+    walk would have upgraded."""
+    producer = _FakeActorPoolOp("map", output_backpressured=True, pulled_output_rows=3)
+    producer.withheld_wedge = True
+    consumer = _FakeQueueOp("split", inputs=[producer], rows_needed=4)
+
+    assert _detect(consumer) is producer
+    assert producer.upgrade_calls == 0

@@ -684,8 +684,15 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
 
     @override
     def _enqueue_reconstruction_output(self, bundle: RefBundle, task_index: int):
-        self._output_queue.add(bundle, key=task_index)
+        self._output_queue.add(bundle, **self._output_add_kwargs(task_index))
         self._metrics.on_output_queued(bundle)
+
+    def _on_output_withheld(
+        self, task_index: int, output: RefBundle, displaced: Optional[RefBundle]
+    ) -> None:
+        """Hook: ``output`` of ``task_index`` is withheld for a reconstruction
+        child. ``displaced`` is an earlier copy of the same slot it replaced
+        (a re-run re-produced it), which no consumer will read."""
 
     def _submit_data_task(
         self,
@@ -769,14 +776,16 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                         # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
                         # child reconstruction task against part of its input.
                         if status is ObjectReuseStatus.OBJECT_REUSED:
-                            self._reconstruction_outputs.setdefault(
+                            held = self._reconstruction_outputs.setdefault(
                                 reconstruction_plan_id, {}
-                            )[
-                                ParentBlockOutput(
-                                    parent_lineage_task_id=lineage_task_id,
-                                    output_index=output_index,
-                                )
-                            ] = output
+                            )
+                            slot = ParentBlockOutput(
+                                parent_lineage_task_id=lineage_task_id,
+                                output_index=output_index,
+                            )
+                            displaced = held.get(slot)
+                            held[slot] = output
+                            self._on_output_withheld(task_index, output, displaced)
                         # NEW: no earlier attempt delivered this output, so queue it now.
                         # Only the plan this task is the target of returns NEW, so this
                         # runs at most once per output. An output is never both NEW and
@@ -786,6 +795,8 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                                 lineage_task_id, output_index, reconstruction_plan_id
                             )
                             self._enqueue_reconstruction_output(output, task_index)
+                            if task_output_ready_callback:
+                                task_output_ready_callback(output)
                     # Outputs arrive in index order. So once the last withheld output
                     # is produced, every output this task withholds is held, and the
                     # child reconstruction tasks whose whole input set is held are released now instead

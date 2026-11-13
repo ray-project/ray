@@ -44,12 +44,15 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
     _ACTOR_STATE_ALIVE,
     _ACTOR_STATE_DEAD,
     DrainReason,
+    HeadroomFunding,
+    HeadroomReason,
     ScaleDownRequest,
     ScaleUpRequest,
 )
 from ray.data._internal.util import MiB
 from ray.data.block import UNKNOWN_NODE_ID, Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.exceptions import LineageReconstructionError
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
@@ -83,6 +86,26 @@ class _RecordingResourceBank(ResourceBankBase):
         # Per-actor live object store the drain gate reads; tests set an
         # actor's outstanding output blocks here.
         self.live_by_actor: Dict[str, LiveObjStore] = {}
+        # Free object store per node, for escape-hatch grants; reservations
+        # come out of it.
+        self.free_bytes_by_node: Dict[str, float] = {}
+
+    @override
+    def free_object_store_bytes(self, *, node_id: NodeIdStr) -> float:
+        return self.free_bytes_by_node.get(node_id, 0)
+
+    @override
+    def reserve_headroom(self, *, node_id: NodeIdStr, num_bytes: int) -> int:
+        self.free_bytes_by_node[node_id] = (
+            self.free_bytes_by_node.get(node_id, 0) - num_bytes
+        )
+        return num_bytes
+
+    @override
+    def release_headroom(self, *, node_id: NodeIdStr, num_bytes: int) -> None:
+        self.free_bytes_by_node[node_id] = (
+            self.free_bytes_by_node.get(node_id, 0) + num_bytes
+        )
 
     @override
     def live_object_store(self, op=None, node_id=None, actor_id=None) -> LiveObjStore:
@@ -115,6 +138,41 @@ class _RecordingActorOnlyMetrics:
 
     def record_output_limit_overshoot(self, op_tag: str) -> None:
         self.events.append(("output_limit_overshoot", op_tag))
+
+    def record_backpressure_deadlock_grant(self, op_tag: str) -> None:
+        self.events.append(("backpressure_deadlock_grant", op_tag))
+
+    def record_withheld_deadlock_grant(self, op_tag: str) -> None:
+        self.events.append(("withheld_deadlock_grant", op_tag))
+
+    def record_withheld_deadlock_wait(self, op_tag: str) -> None:
+        self.events.append(("withheld_deadlock_wait", op_tag))
+
+    def record_loan_orphaned(self, op_tag: str, num_bytes: int) -> None:
+        self.events.append(("loan_orphaned", op_tag, num_bytes))
+
+    def record_loan_adopted(self, op_tag: str, num_bytes: int) -> None:
+        self.events.append(("loan_adopted", op_tag, num_bytes))
+
+    def record_headroom_grant(
+        self,
+        op_tag: str,
+        reason: str,
+        *,
+        bytes_from_free_space: int,
+        bytes_by_lender: int,
+        bytes_unbacked: int,
+    ) -> None:
+        self.events.append(
+            (
+                "headroom_grant",
+                op_tag,
+                reason,
+                bytes_from_free_space,
+                bytes_by_lender,
+                bytes_unbacked,
+            )
+        )
 
     def record_drain_started(self, op_tag: str, reason: str) -> None:
         self.events.append(("started", op_tag, reason))
@@ -766,6 +824,439 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert pool.num_tasks_in_flight() == 0
         assert pool.select_actors() is None
 
+    def _cap(self, pool: _ExperimentalActorPool, actor: ActorHandle) -> float:
+        return pool._running_actors[actor].max_num_output_bytes
+
+    def test_grant_takes_free_node_store_first_and_reserves_it(self):
+        """A grant comes out of the node's free object store first, and that
+        part is reserved, so the next grant can't count it again. Giving it
+        back lowers the cap and frees the reservation."""
+        pool = self._create_pool()
+        bank = cast(_RecordingResourceBank, pool.resource_bank)
+        bank.free_bytes_by_node["node1"] = 1000
+        actor = self._add_ready_actor(pool, node_id="node1")
+        actor_id = pool.get_actor_logical_id(actor)
+        default = self._cap(pool, actor)
+
+        granted = pool.grant_output_headroom(
+            actor_id,
+            reason=HeadroomReason.WITHHELD_DEADLOCK,
+            num_bytes=300,
+            num_outputs=2,
+        )
+
+        assert granted == 300
+        assert self._cap(pool, actor) == default + 300
+        assert bank.free_bytes_by_node["node1"] == 700
+        assert pool.holds_headroom(actor_id, HeadroomReason.WITHHELD_DEADLOCK)
+
+        pool.release_output_headroom(
+            actor_id, reason_filter=HeadroomReason.WITHHELD_DEADLOCK
+        )
+        assert self._cap(pool, actor) == default
+        assert bank.free_bytes_by_node["node1"] == 1000
+        assert not pool.holds_headroom(actor_id, HeadroomReason.WITHHELD_DEADLOCK)
+
+    def test_grant_borrows_unused_budget_from_node_peers(self):
+        """With no free store on the node, the grant borrows unused budget
+        from other actors on the same node, whose caps go down by the same
+        amount, so the node total is unchanged. Giving it back restores the
+        lender; a lender that died first is skipped."""
+        pool = self._create_pool()
+        borrower = self._add_ready_actor(pool, node_id="node1")
+        lender = self._add_ready_actor(pool, node_id="node1")
+        other_node = self._add_ready_actor(pool, node_id="node2")
+        borrower_id = pool.get_actor_logical_id(borrower)
+        default = self._cap(pool, borrower)
+        node1_total = self._cap(pool, borrower) + self._cap(pool, lender)
+
+        granted = pool.grant_output_headroom(
+            borrower_id,
+            reason=HeadroomReason.WITHHELD_DEADLOCK,
+            num_bytes=300,
+            num_outputs=1,
+        )
+
+        assert granted == 300
+        assert self._cap(pool, borrower) == default + 300
+        assert self._cap(pool, lender) == default - 300
+        assert self._cap(pool, borrower) + self._cap(pool, lender) == node1_total
+        assert self._cap(pool, other_node) == default  # other nodes never lend
+
+        pool.release_output_headroom(borrower_id)
+        assert self._cap(pool, borrower) == default
+        assert self._cap(pool, lender) == default
+
+        # Alone on a full node: nothing to reserve or borrow, so the grant is
+        # unfunded rather than leaving the actor stuck.
+        other_id = pool.get_actor_logical_id(other_node)
+        assert (
+            pool.grant_output_headroom(
+                other_id,
+                reason=HeadroomReason.BACKPRESSURE_DEADLOCK,
+                num_bytes=300,
+                num_outputs=1,
+            )
+            == 300
+        )
+        assert self._cap(pool, other_node) == default + 300
+        pool.release_output_headroom(other_id)
+
+        # A lender that is released before the grant is given back.
+        pool.grant_output_headroom(
+            borrower_id,
+            reason=HeadroomReason.WITHHELD_DEADLOCK,
+            num_bytes=300,
+            num_outputs=1,
+        )
+        pool._release_running_actor(lender)
+        pool.release_output_headroom(borrower_id)
+        assert self._cap(pool, borrower) == default
+
+    def test_withheld_grant_waits_for_peers_before_oversubscribing(self):
+        """A withheld-output grant waits while a neighbour's budget is busy
+        but would cover the need once its outputs are consumed, and
+        oversubscribes the node only for a need beyond every neighbour's whole
+        budget."""
+        pool = self._create_pool()
+        bank = cast(_RecordingResourceBank, pool.resource_bank)
+        borrower = self._add_ready_actor(pool, node_id="node1")
+        lender = self._add_ready_actor(pool, node_id="node1")
+        borrower_id = pool.get_actor_logical_id(borrower)
+        lender_id = pool.get_actor_logical_id(lender)
+        default = int(self._cap(pool, borrower))
+
+        # The lender's whole budget is in use: wait, and change nothing.
+        bank.live_by_actor[lender_id] = LiveObjStore(num_pulled_output_bytes=default)
+        assert (
+            pool.grant_output_headroom(
+                borrower_id,
+                reason=HeadroomReason.WITHHELD_DEADLOCK,
+                num_bytes=300,
+                num_outputs=1,
+                funding=HeadroomFunding.WAIT_FOR_PEERS,
+            )
+            == 0
+        )
+        assert self._cap(pool, borrower) == default
+        assert self._cap(pool, lender) == default
+
+        # Its outputs are consumed: the grant is borrowed.
+        bank.live_by_actor[lender_id] = LiveObjStore()
+        assert (
+            pool.grant_output_headroom(
+                borrower_id,
+                reason=HeadroomReason.WITHHELD_DEADLOCK,
+                num_bytes=300,
+                num_outputs=1,
+                funding=HeadroomFunding.WAIT_FOR_PEERS,
+            )
+            == 300
+        )
+        assert self._cap(pool, lender) == default - 300
+        pool.release_output_headroom(borrower_id)
+
+        # More than the lender's whole budget: no amount of waiting covers it,
+        # so take what it has and oversubscribe the rest.
+        need = default + 300
+        assert (
+            pool.grant_output_headroom(
+                borrower_id,
+                reason=HeadroomReason.WITHHELD_DEADLOCK,
+                num_bytes=need,
+                num_outputs=1,
+                funding=HeadroomFunding.WAIT_FOR_PEERS,
+            )
+            == need
+        )
+        assert self._cap(pool, lender) == 0
+        assert self._cap(pool, borrower) == default + need
+
+    def test_withheld_grant_does_not_wait_on_deadlocked_peers(self):
+        """A neighbour in the same deadlock never frees its budget by waiting,
+        so the grant goes through instead of waiting on it."""
+        pool = self._create_pool()
+        bank = cast(_RecordingResourceBank, pool.resource_bank)
+        borrower = self._add_ready_actor(pool, node_id="node1")
+        lender = self._add_ready_actor(pool, node_id="node1")
+        borrower_id = pool.get_actor_logical_id(borrower)
+        lender_id = pool.get_actor_logical_id(lender)
+        default = int(self._cap(pool, borrower))
+        bank.live_by_actor[lender_id] = LiveObjStore(num_pulled_output_bytes=default)
+
+        def grant(stuck_peer_ids):
+            return pool.grant_output_headroom(
+                borrower_id,
+                reason=HeadroomReason.WITHHELD_DEADLOCK,
+                num_bytes=300,
+                num_outputs=1,
+                funding=HeadroomFunding.WAIT_FOR_PEERS,
+                stuck_peer_ids=stuck_peer_ids,
+            )
+
+        # A busy neighbour that will drain: wait.
+        assert grant(frozenset()) == 0
+        # The same neighbour, deadlocked: grant now, unfunded.
+        assert grant(frozenset({lender_id})) == 300
+        assert self._cap(pool, lender) == default
+        assert self._cap(pool, borrower) == default + 300
+
+    def test_withheld_grant_does_not_wait_on_pinned_peer_bytes(self):
+        """A neighbour's withheld blocks of a plan that won't complete never
+        free up by waiting, even when the neighbour still has budget left and
+        is not deadlocked itself. Those pinned bytes don't count toward what
+        it could lend later; withheld blocks of a plan that will complete do."""
+        pool = self._create_pool()
+        bank = cast(_RecordingResourceBank, pool.resource_bank)
+        borrower = self._add_ready_actor(pool, node_id="node1")
+        lender = self._add_ready_actor(pool, node_id="node1")
+        borrower_id = pool.get_actor_logical_id(borrower)
+        lender_id = pool.get_actor_logical_id(lender)
+        default = int(self._cap(pool, borrower))
+        bank.live_by_actor[lender_id] = LiveObjStore(
+            num_pulled_output_bytes=default,
+            num_withheld_output_bytes=default - 100,
+        )
+
+        def grant(num_bytes, pinned_bytes_by_peer):
+            return pool.grant_output_headroom(
+                borrower_id,
+                reason=HeadroomReason.WITHHELD_DEADLOCK,
+                num_bytes=num_bytes,
+                num_outputs=1,
+                funding=HeadroomFunding.WAIT_FOR_PEERS,
+                pinned_bytes_by_peer=pinned_bytes_by_peer,
+            )
+
+        # The withheld plan will complete: its bytes free up, so wait.
+        assert grant(300, {}) == 0
+        pinned = {lender_id: default - 100}
+        # Pinned, draining still frees 100 bytes: enough here, so wait.
+        assert grant(100, pinned) == 0
+        # Draining can never free 300: grant now, unfunded.
+        assert grant(300, pinned) == 300
+        assert self._cap(pool, lender) == default
+        assert self._cap(pool, borrower) == default + 300
+
+    def test_new_actor_takes_over_a_departed_lenders_loan(self):
+        """A lender that leaves can't be repaid. The next actor on its node
+        takes the loan over, starting with that much less budget, so the
+        node's total doesn't grow by the loan. Giving the grant back repays
+        the new lender."""
+        pool = self._create_pool()
+        borrower = self._add_ready_actor(pool, node_id="node1")
+        lender = self._add_ready_actor(pool, node_id="node1")
+        borrower_id = pool.get_actor_logical_id(borrower)
+        default = int(self._cap(pool, borrower))
+        node1_total = 2 * default
+
+        assert (
+            pool.grant_output_headroom(
+                borrower_id,
+                reason=HeadroomReason.WITHHELD_DEADLOCK,
+                num_bytes=300,
+                num_outputs=1,
+            )
+            == 300
+        )
+        pool._release_running_actor(lender)
+        # The borrower keeps the room: its blocks may already be using it.
+        assert self._cap(pool, borrower) == default + 300
+        self._check_node_caps(pool, "node1")
+
+        # An actor on another node doesn't take it over.
+        other_node = self._add_ready_actor(pool, node_id="node2")
+        assert self._cap(pool, other_node) == default
+
+        replacement = self._add_ready_actor(pool, node_id="node1")
+        assert self._cap(pool, replacement) == default - 300
+        assert self._cap(pool, borrower) + self._cap(pool, replacement) == (node1_total)
+        self._check_node_caps(pool, "node1")
+
+        pool.release_output_headroom(borrower_id)
+        assert self._cap(pool, borrower) == default
+        assert self._cap(pool, replacement) == default
+
+    def _check_node_caps(self, pool: _ExperimentalActorPool, node_id: str) -> None:
+        """Loans cancel out: a node's caps add up to its actors' base caps plus
+        what grants took from free space, left unbacked, or lost to departed
+        lenders. Each actor's lent bytes match the grants that hold them."""
+        states = list(pool._node_to_actor_states.get(node_id, {}).values())
+        grants = [grant for state in states for grant in state.grants]
+        assert sum(state.max_num_output_bytes for state in states) == sum(
+            state.default_max_num_output_bytes for state in states
+        ) + sum(
+            grant.bytes_from_free_space + grant.bytes_unbacked + grant.bytes_orphaned
+            for grant in grants
+        )
+        for state in states:
+            assert state.lent_bytes == sum(
+                grant.bytes_by_lender.get(state.actor_id, 0) for grant in grants
+            )
+
+    def test_within_node_budget_grant_never_oversubscribes(self):
+        """A within-node-budget grant takes free space and peers' unused
+        budget, and grants nothing at all when those fall short."""
+        pool = self._create_pool()
+        bank = cast(_RecordingResourceBank, pool.resource_bank)
+        borrower = self._add_ready_actor(pool, node_id="node1")
+        lender = self._add_ready_actor(pool, node_id="node1")
+        borrower_id = pool.get_actor_logical_id(borrower)
+        lender_id = pool.get_actor_logical_id(lender)
+        default = int(self._cap(pool, borrower))
+        bank.free_bytes_by_node["node1"] = 100
+        bank.live_by_actor[lender_id] = LiveObjStore(
+            num_pulled_output_bytes=default - 100
+        )
+
+        def grant(num_bytes):
+            return pool.grant_output_headroom(
+                borrower_id,
+                reason=HeadroomReason.WITHHELD_DEADLOCK,
+                num_bytes=num_bytes,
+                num_outputs=1,
+                funding=HeadroomFunding.WITHIN_NODE_BUDGET,
+            )
+
+        # 100 free plus the peer's 100 unused don't cover 300: nothing changes.
+        assert grant(300) == 0
+        assert self._cap(pool, borrower) == default
+        assert self._cap(pool, lender) == default
+        assert bank.free_bytes_by_node["node1"] == 100
+        # They cover 200 exactly.
+        assert grant(200) == 200
+        assert self._cap(pool, borrower) == default + 200
+        assert self._cap(pool, lender) == default - 100
+        assert bank.free_bytes_by_node["node1"] == 0
+        self._check_node_caps(pool, "node1")
+
+    def test_draining_peer_lends_before_a_serving_one(self):
+        """A draining peer's budget is leaving the node anyway, so it lends
+        first even with less unused budget than a serving peer."""
+        pool = self._create_pool()
+        bank = cast(_RecordingResourceBank, pool.resource_bank)
+        borrower = self._add_ready_actor(pool, node_id="node1")
+        serving = self._add_ready_actor(pool, node_id="node1")
+        draining = self._add_ready_actor(pool, node_id="node1")
+        borrower_id = pool.get_actor_logical_id(borrower)
+        draining_id = pool.get_actor_logical_id(draining)
+        default = int(self._cap(pool, borrower))
+        bank.live_by_actor[draining_id] = LiveObjStore(
+            num_pulled_output_bytes=default - 100
+        )
+        pool.begin_draining(draining, reason=DrainReason.RESIZE)
+
+        assert (
+            pool.grant_output_headroom(
+                borrower_id,
+                reason=HeadroomReason.WITHHELD_DEADLOCK,
+                num_bytes=150,
+                num_outputs=1,
+            )
+            == 150
+        )
+        assert self._cap(pool, draining) == default - 100
+        assert self._cap(pool, serving) == default - 50
+        self._check_node_caps(pool, "node1")
+
+    def test_adoption_leaves_a_new_actor_the_floor(self):
+        """A new actor takes over orphaned loans only down to one block of
+        budget (its whole budget if a block is bigger), so it can always make
+        progress. The rest waits for the next arrival. The node's caps add up
+        either way."""
+        default = 10_000_000
+        # Target block size -> floor. Unknown target: budget-derived blocks.
+        cases = [
+            (None, int(default * BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO)),
+            (1_000_000, 1_000_000),
+            (128 * MiB, default),
+        ]
+        for target, floor in cases:
+            with self.subTest(target=target):
+                pool = self._create_pool(max_num_output_bytes_per_actor=default)
+                pool._target_block_size_fn = lambda: target
+                borrower = self._add_ready_actor(pool, node_id="node1")
+                lender = self._add_ready_actor(pool, node_id="node1")
+                borrower_id = pool.get_actor_logical_id(borrower)
+
+                # Borrow the lender's whole budget, then lose the lender.
+                assert (
+                    pool.grant_output_headroom(
+                        borrower_id,
+                        reason=HeadroomReason.WITHHELD_DEADLOCK,
+                        num_bytes=default,
+                        num_outputs=1,
+                    )
+                    == default
+                )
+                assert self._cap(pool, lender) == 0
+                pool._release_running_actor(lender)
+                self._check_node_caps(pool, "node1")
+
+                first = self._add_ready_actor(pool, node_id="node1")
+                assert self._cap(pool, first) == floor
+                self._check_node_caps(pool, "node1")
+                second = self._add_ready_actor(pool, node_id="node1")
+                # The first adopted ``default - floor``; ``floor`` is left.
+                assert self._cap(pool, second) == default - min(floor, default - floor)
+                self._check_node_caps(pool, "node1")
+
+                pool.release_output_headroom(borrower_id)
+                for actor in (borrower, first, second):
+                    assert self._cap(pool, actor) == default
+                self._check_node_caps(pool, "node1")
+
+    def test_block_bytes_follows_the_real_block_size(self):
+        """Without budget-based sizing, a block is the operator's target
+        block size whatever the budget; with it, the smaller of the two. With
+        no known target, the budget-derived size is the guess."""
+        pool = self._create_pool()
+        limit = 64 * MiB
+        budget_based = limit * BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO
+        cases = [
+            (None, False, budget_based),
+            (None, True, budget_based),
+            (128 * MiB, False, 128 * MiB),
+            (128 * MiB, True, budget_based),
+            (4 * MiB, True, 4 * MiB),
+        ]
+        for target, budget_sizing, expected in cases:
+            with self.subTest(target=target, budget_sizing=budget_sizing):
+                pool._target_block_size_fn = lambda: target
+                with mock.patch.object(
+                    pool_mod, "BUDGET_BASED_BLOCK_SIZING", budget_sizing
+                ):
+                    assert pool.block_bytes(limit) == pytest.approx(expected)
+
+    def test_reset_output_limit_gives_back_only_upgrade_grants(self):
+        """The output-limit hatch's bumps reset when the op has pending actors;
+        withheld-output grants stay until their withheld outputs are released."""
+        pool = self._create_pool()
+        cast(_RecordingResourceBank, pool.resource_bank).free_bytes_by_node[
+            "node1"
+        ] = 10_000
+        actor = self._add_ready_actor(pool, node_id="node1")
+        actor_id = pool.get_actor_logical_id(actor)
+        default = self._cap(pool, actor)
+        pool.grant_output_headroom(
+            actor_id,
+            reason=HeadroomReason.BACKPRESSURE_DEADLOCK,
+            num_bytes=100,
+            num_outputs=1,
+        )
+        pool.grant_output_headroom(
+            actor_id,
+            reason=HeadroomReason.WITHHELD_DEADLOCK,
+            num_bytes=200,
+            num_outputs=1,
+        )
+
+        pool.release_backpressure_deadlock_headroom()
+
+        assert self._cap(pool, actor) == default + 200
+        assert pool.holds_headroom(actor_id, HeadroomReason.WITHHELD_DEADLOCK)
+        assert not pool.holds_headroom(actor_id, HeadroomReason.BACKPRESSURE_DEADLOCK)
+
     def test_drain_metrics_cancelled_on_reclaim(self):
         metrics = self._drain_metrics()
         pool = self._create_pool_with_metrics(metrics, max_tasks_in_flight=4)
@@ -1314,14 +1805,56 @@ def test_wait_for_min_actors_aborts_on_stalled_startup(monkeypatch):
     assert clock["t"] < 30
 
 
-def test_create_task_context_clamps_block_size_to_configured_target(
-    restore_data_context,
+def test_create_task_context_ignores_budget_by_default(restore_data_context):
+    """By default a task's block size does not depend on its actor's budget,
+    so a lineage re-run on an actor with a different budget cuts the same
+    blocks as the original task."""
+    restore_data_context.target_max_block_size = 10 * MiB
+    op = _make_actor_op({"num_cpus": 1})
+    with mock.patch.object(op.actor_pool, "output_bytes_limit") as output_limit:
+        ctx = op._create_task_context(mock.Mock(name="actor"))
+    output_limit.assert_not_called()
+    assert ctx.target_max_block_size_override == op.target_max_block_size_override
+
+
+@pytest.mark.parametrize(
+    "budget_sizing, lineage_enabled, warns",
+    [(True, True, True), (True, False, False), (False, True, False)],
+)
+def test_start_warns_on_budget_block_sizing_with_lineage(
+    monkeypatch, budget_sizing, lineage_enabled, warns
 ):
-    """``_create_task_context`` sizes blocks as
+    """Budget-based block sizing can cut a reconstructed task's rows into
+    different blocks than the original, so starting with it while lineage
+    reconstruction is on logs a warning."""
+    monkeypatch.setattr(op_mod, "BUDGET_BASED_BLOCK_SIZING", budget_sizing)
+    monkeypatch.setattr(op_mod, "log_once", lambda _key: True)
+    logger = mock.Mock()
+    monkeypatch.setattr(op_mod, "logger", logger)
+    op = _make_actor_op({"num_cpus": 1})
+    with (
+        mock.patch.object(op.actor_pool, "set_resource_bank"),
+        mock.patch.object(op_mod.ActorPoolMapOperator, "start"),
+    ):
+        op.start(
+            mock.Mock(),
+            mock.Mock(),
+            mock.Mock() if lineage_enabled else None,
+            resource_bank=mock.Mock(),
+        )
+    warnings = " ".join(str(c.args) for c in logger.warning.call_args_list)
+    assert ("BUDGET_BASED_BLOCK_SIZING" in warnings) == warns
+
+
+def test_create_task_context_clamps_block_size_to_configured_target(
+    restore_data_context, monkeypatch
+):
+    """With budget-based sizing on, ``_create_task_context`` sizes blocks as
     ``min(output_limit * ratio, configured target)``: the actor's output
     budget may shrink the target block size, but must not raise it above the
     configured DataContext / op override.
     """
+    monkeypatch.setattr(op_mod, "BUDGET_BASED_BLOCK_SIZING", True)
     configured = 10 * MiB
     restore_data_context.target_max_block_size = configured
     op = _make_actor_op({"num_cpus": 1})
@@ -1502,6 +2035,29 @@ def test_dead_actor_is_released_before_its_task_is_reversed():
     )
 
     assert [c.args[0] for c in calls.call_args_list] == ["release", "complete"]
+
+
+def test_dead_actor_is_released_when_reconstruction_could_not_start():
+    """When lineage reconstruction can't start, the task is aborted with a
+    ``LineageReconstructionError`` wrapping the actor's death; the dead actor
+    is still released at once, so nothing else is dispatched to it."""
+    op = _make_actor_op({"num_cpus": 1})
+    pool = mock.create_autospec(_ExperimentalActorPool, instance=True)
+    op._actor_pool = pool
+    op._resource_bank = mock.Mock()
+    op._task_ray_id[0] = ray.TaskID.nil()
+    actor = mock.Mock(name="actor")
+
+    op._on_task_done(
+        _make_bundle(100),
+        task_index=0,
+        exception=LineageReconstructionError(
+            ray.exceptions.RayActorError(), "reconstruction is disabled"
+        ),
+        actor_to_return=actor,
+    )
+
+    pool.release_dead_actor.assert_called_once_with(actor)
 
 
 def test_init_death_budget_counts_runtime_env_failures(restore_data_context):

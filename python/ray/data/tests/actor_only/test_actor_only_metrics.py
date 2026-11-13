@@ -21,6 +21,9 @@ from ray.data._internal.experimental.execution.operators.actor_pool import (
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (
     ExperimentalActorPoolMapOperator,
 )
+from ray.data._internal.experimental.execution.withheld_deadlock import (
+    WithheldDeadlock,
+)
 
 # Every recorder on ``ActorOnlyRecorders`` the tests below assert against.
 RECORDER_NAMES = [
@@ -28,11 +31,16 @@ RECORDER_NAMES = [
     "node_num_actors",
     "node_op_num_actors",
     "node_op_input_locality",
-    "output_limit_upgrades",
+    "escape_hatch_grants",
+    "escape_hatch_granted_bytes",
+    "escape_hatch_waits",
+    "escape_hatch_loan_bytes",
     "op_output_limit",
     "op_output_backpressured_actors",
     "op_output_overshoots",
     "num_draining_actors",
+    "op_withheld_outputs",
+    "op_withheld_deadlocked_actors",
     "actor_drains_started",
     "actor_drains_completed",
     "actor_drains_interrupted",
@@ -93,6 +101,7 @@ def _mock_actor_pool_op(*, counts_by_node, limits_by_actor, blocked):
     op.actor_pool = pool
     op.actor_counts_by_node.return_value = counts_by_node
     op.cached_output_backpressured_actors.return_value = (blocked, 0)
+    op.withheld_deadlock.return_value = WithheldDeadlock()
     return op
 
 
@@ -130,13 +139,49 @@ def test_stale_tracking_gauge_zeroes_series_that_stop_being_written():
 
 def test_counters_are_tagged_per_operator(recorders):
     metrics = aom.ActorOnlyMetrics(dataset_id="ds", update_interval=0)
-    metrics.record_output_limit_upgrade("Map_1")
-    metrics.record_output_limit_upgrade("Map_1")
+    metrics.record_backpressure_deadlock_grant("Map_1")
+    metrics.record_backpressure_deadlock_grant("Map_1")
     metrics.record_block_size_overshoot("Map_1")
     metrics.record_output_limit_overshoot("Map_1")
+    metrics.record_withheld_deadlock_grant("Map_1")
+    metrics.record_withheld_deadlock_wait("Map_1")
+    metrics.record_loan_orphaned("Map_1", 300)
+    metrics.record_loan_adopted("Map_1", 120)
+    metrics.record_headroom_grant(
+        "Map_1",
+        "withheld_deadlock",
+        bytes_from_free_space=100,
+        bytes_by_lender=200,
+        bytes_unbacked=0,
+    )
+    metrics.record_headroom_grant(
+        "Map_1",
+        "backpressure_deadlock",
+        bytes_from_free_space=0,
+        bytes_by_lender=0,
+        bytes_unbacked=50,
+    )
 
     tags = dict(dataset="ds", operator="Map_1")
-    assert _total(recorders["output_limit_upgrades"], **tags) == 2
+    grants = recorders["escape_hatch_grants"]
+    assert _total(grants, **tags, reason="backpressure_deadlock") == 2
+    assert _total(grants, **tags, reason="withheld_deadlock") == 1
+    granted = recorders["escape_hatch_granted_bytes"]
+    assert (
+        _total(granted, **tags, reason="withheld_deadlock", cause="free_space") == 100
+    )
+    assert _total(granted, **tags, reason="withheld_deadlock", cause="lent") == 200
+    assert (
+        _total(granted, **tags, reason="backpressure_deadlock", cause="unbacked") == 50
+    )
+    # Empty causes write no series.
+    assert not _writes(
+        granted, "inc", **tags, reason="withheld_deadlock", cause="unbacked"
+    )
+    assert _total(recorders["escape_hatch_waits"], **tags) == 1
+    loans = recorders["escape_hatch_loan_bytes"]
+    assert _total(loans, **tags, kind="orphaned") == 300
+    assert _total(loans, **tags, kind="adopted") == 120
     overshoots = recorders["op_output_overshoots"]
     assert _total(overshoots, **tags, kind="block_size") == 1
     assert _total(overshoots, **tags, kind="output_bytes") == 1
@@ -201,6 +246,13 @@ def test_maybe_update_emits_every_family_and_honors_the_interval(recorders):
         num_prebuffered_output_bytes=20,
         num_prebuffered_output_blocks=1,
     )
+    # Withheld outputs per actor; "a" holds none and still counts.
+    withheld_by_actor = {
+        "a": LiveObjStore(),
+        "b": LiveObjStore(num_withheld_output_bytes=15, num_withheld_output_blocks=1),
+        "c": LiveObjStore(num_withheld_output_bytes=30, num_withheld_output_blocks=2),
+    }
+    op.withheld_deadlock.return_value = WithheldDeadlock(deadlocked={"a", "b"})
     cumulative = CumulativeObjStore(
         output_bytes=_tracker([30, 30, 30]),  # 90 bytes / 3 blocks ever pulled
         input_bytes_local=_tracker([5, 5]),
@@ -211,7 +263,10 @@ def test_maybe_update_emits_every_family_and_honors_the_interval(recorders):
         SimpleNamespace(
             node_ids=lambda: {"n1"},
             op_node_ids=lambda: {(op, "n1")},
-            live_object_store=lambda **kw: live,
+            # Per-actor reads get that actor's store; op/node reads get `live`.
+            live_object_store=lambda actor_id=None, **kw: withheld_by_actor.get(
+                actor_id, live
+            ),
             cumulative_object_store=lambda **kw: cumulative,
         ),
     )
@@ -261,6 +316,12 @@ def test_maybe_update_emits_every_family_and_honors_the_interval(recorders):
 
     assert _latest(recorders["op_output_backpressured_actors"], **op_tags) == 1
     assert _latest(recorders["num_draining_actors"], **op_tags) == 1
+    withheld = recorders["op_withheld_outputs"]
+    assert _latest(withheld, **op_tags, unit="bytes", stat="min") == 0
+    assert _latest(withheld, **op_tags, unit="bytes", stat="max") == 30
+    assert _latest(withheld, **op_tags, unit="bytes", stat="mean") == 15
+    assert _latest(withheld, **op_tags, unit="blocks", stat="p50") == 1
+    assert _latest(recorders["op_withheld_deadlocked_actors"], **op_tags) == 2
 
     # Within the interval nothing is re-read; ``force`` bypasses it.
     op.cached_output_backpressured_actors.return_value = (3, 0)

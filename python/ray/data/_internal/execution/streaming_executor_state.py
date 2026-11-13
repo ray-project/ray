@@ -30,6 +30,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     TaskPullRequest,
     Waitable,
+    is_data_lineage_recoverable_error,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -48,7 +49,7 @@ from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
 from ray.data.exceptions import LineageReconstructionError
-from ray.exceptions import ObjectLostError, UserCodeException
+from ray.exceptions import ObjectLostError, RayActorError, UserCodeException
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -712,7 +713,7 @@ def _reconstruct_lost_object(
     lineage_tracker: "LineageTracker",
     state: "OpState",
     task: OpTask,
-    lost_error: ObjectLostError,
+    lost_error: Exception,
 ) -> None:
     """Plan and trigger a reconstruction for a lost task output.
 
@@ -888,6 +889,121 @@ def _handle_data_op_task_exception(
     return num_errored_blocks
 
 
+def recover_or_count_lost_output(
+    *,
+    topology: Topology,
+    lineage_tracker: Optional["LineageTracker"],
+    state: "OpState",
+    task: OpTask,
+    error: Exception,
+    max_errored_blocks: int,
+    num_errored_blocks: int,
+) -> Tuple[int, bool]:
+    """Start lineage reconstruction for a task whose output was lost (or whose
+    actor died), else count ``error`` against ``max_errored_blocks``.
+
+    Reconstruction applies only to a still-live, lineage-tracked task and a
+    recoverable error (see ``is_data_lineage_recoverable_error``). Returns the
+    updated errored-block count and whether a reconstruction started.
+    """
+    if (
+        lineage_tracker is None
+        or not isinstance(task, DataOpTask)
+        or not task.is_lineage_tracked
+        or task.has_finished
+        or not is_data_lineage_recoverable_error(error)
+    ):
+        num_errored_blocks = _handle_data_op_task_exception(
+            error, state.op.name, max_errored_blocks, num_errored_blocks
+        )
+        return num_errored_blocks, False
+    logger.info(
+        "[lineage-reconstruction] Detected %s on task %s of operator %r; "
+        "attempting lineage reconstruction.",
+        type(error).__name__,
+        task.task_index(),
+        state.op.name,
+    )
+    lineage_tracker.num_object_reconstruction_attempts += 1
+    try:
+        _reconstruct_lost_object(topology, lineage_tracker, state, task, error)
+    except LineageReconstructionError as recon_error:
+        # Reconstruction could not start: abort the task once and count it.
+        task.mark_aborted(recon_error)
+        num_errored_blocks = _handle_data_op_task_exception(
+            recon_error, state.op.name, max_errored_blocks, num_errored_blocks
+        )
+        return num_errored_blocks, False
+    return num_errored_blocks, True
+
+
+def recover_or_count_fetch_failures(
+    *,
+    topology: Topology,
+    lineage_tracker: Optional["LineageTracker"],
+    failures: List[Tuple[DataOpTask, BaseException]],
+    max_errored_blocks: int,
+    num_errored_blocks: int,
+) -> int:
+    """Route deferred metadata-fetch failures like inline ``on_data_ready``
+    errors: a lost block of a tracked task is reconstructed, anything else is
+    counted against ``max_errored_blocks``.
+
+    A task can fail several fetches in one pass. Once one of them starts a
+    reconstruction, the plan re-produces all of that task's outputs, so its
+    remaining failures are dropped rather than counted."""
+    if not failures:
+        return num_errored_blocks
+    state_by_op_id = {op.id: op_state for op, op_state in topology.items()}
+    reconstructed: Set[DataOpTask] = set()
+    for task, error in failures:
+        if task in reconstructed:
+            continue
+        state = state_by_op_id.get(task.producer_id)
+        if state is None or not isinstance(error, Exception):
+            num_errored_blocks = _handle_data_op_task_exception(
+                error, task.operator_name, max_errored_blocks, num_errored_blocks
+            )
+            continue
+        num_errored_blocks, started = recover_or_count_lost_output(
+            topology=topology,
+            lineage_tracker=lineage_tracker,
+            state=state,
+            task=task,
+            error=error,
+            max_errored_blocks=max_errored_blocks,
+            num_errored_blocks=num_errored_blocks,
+        )
+        if started:
+            reconstructed.add(task)
+    return num_errored_blocks
+
+
+def route_metadata_fetch_failures(
+    *,
+    topology: Topology,
+    lineage_tracker: Optional["LineageTracker"],
+    metadata_fetcher: "MetadataFetcher",
+    max_errored_blocks: int,
+    num_errored_blocks: int,
+) -> int:
+    """Emit the fetcher's ready pairs and fire its postponed done-callbacks,
+    routing each step's failures through ``recover_or_count_fetch_failures``.
+
+    Emit failures are routed before done-callbacks fire: a drained task whose
+    last fetch failed is still live then, so it can be reconstructed rather
+    than marked done and its loss counted."""
+    for step in (metadata_fetcher.emit_ready, metadata_fetcher.fire_done_callbacks):
+        num_errored_blocks = recover_or_count_fetch_failures(
+            topology=topology,
+            lineage_tracker=lineage_tracker,
+            failures=step(),
+            max_errored_blocks=max_errored_blocks,
+            num_errored_blocks=num_errored_blocks,
+        )
+    return num_errored_blocks
+
+
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
@@ -994,7 +1110,7 @@ def process_completed_tasks(
         # - threaded mode: every pulled pair is deferred (budget arithmetic uses
         #   the block's local ``object_size``, no per-ref ``ray.get``) and handed
         #   to the background fetcher by ``submit``; emission and the postponed
-        #   done-callback happen in ``emit_ready_and_fire_done_callbacks``, preserving the per-op,
+        #   done-callback happen in ``route_metadata_fetch_failures``, preserving the per-op,
         #   per-task, per-pair emission order.
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
@@ -1032,39 +1148,16 @@ def process_completed_tasks(
                                     0,
                                 )
                             op_data_tasks.append(task)
-                        except ObjectLostError as e:
-                            # Experimental lineage reconstruction: if we can trace
-                            # the lost output back to a tracked seed input,
-                            # resubmit that seed input's chain instead of
-                            # counting an error.
-                            if lineage_tracker is None:
-                                num_errored_blocks = _handle_data_op_task_exception(
-                                    e,
-                                    state.op.name,
-                                    max_errored_blocks,
-                                    num_errored_blocks,
-                                )
-                                continue
-                            logger.info(
-                                "[lineage-reconstruction] Detected lost object while "
-                                f"reading output of task {task.task_index()} on "
-                                f'operator "{state.op.name}"; attempting lineage '
-                                "reconstruction."
+                        except (ObjectLostError, RayActorError) as e:
+                            num_errored_blocks, _ = recover_or_count_lost_output(
+                                topology=topology,
+                                lineage_tracker=lineage_tracker,
+                                state=state,
+                                task=task,
+                                error=e,
+                                max_errored_blocks=max_errored_blocks,
+                                num_errored_blocks=num_errored_blocks,
                             )
-                            lineage_tracker.num_object_reconstruction_attempts += 1
-                            try:
-                                _reconstruct_lost_object(
-                                    topology, lineage_tracker, state, task, e
-                                )
-                            except LineageReconstructionError as recon_error:
-                                # In case lineage reconstruction fails, abort the task
-                                task.mark_aborted(recon_error)
-                                num_errored_blocks = _handle_data_op_task_exception(
-                                    recon_error,
-                                    state.op.name,
-                                    max_errored_blocks,
-                                    num_errored_blocks,
-                                )
                         except Exception as e:
                             num_errored_blocks = _handle_data_op_task_exception(
                                 e,
@@ -1090,16 +1183,13 @@ def process_completed_tasks(
     # would strand them and stall output forever. Deferred metadata-fetch
     # failures go through the same `max_errored_blocks` accounting as inline
     # `on_data_ready` errors. (Inline mode returns nothing here.)
-    for (
-        failed_op_name,
-        fetch_exc,
-    ) in metadata_fetcher.emit_ready_and_fire_done_callbacks():
-        num_errored_blocks = _handle_data_op_task_exception(
-            fetch_exc,
-            failed_op_name,
-            max_errored_blocks,
-            num_errored_blocks,
-        )
+    num_errored_blocks = route_metadata_fetch_failures(
+        topology=topology,
+        lineage_tracker=lineage_tracker,
+        metadata_fetcher=metadata_fetcher,
+        max_errored_blocks=max_errored_blocks,
+        num_errored_blocks=num_errored_blocks,
+    )
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():

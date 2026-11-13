@@ -1892,23 +1892,34 @@ ACTOR_ONLY_NODE_INPUT_LOCALITY_PCT_PANEL = Panel(
     stack=False,
 )
 
-ACTOR_ONLY_OUTPUT_LIMIT_UPGRADES_PANEL = Panel(
+ACTOR_ONLY_ESCAPE_HATCH_GRANTS_PANEL = Panel(
     id=_ids.next(),
-    title="Actor-Only Output Limit Upgrades",
-    description="Times the output-limit escape hatch raised an operator's per-actor output limit to break a deadlock.",
+    title="Actor-Only Escape Hatch Grants by Reason",
+    description="Times an escape hatch raised output limits to break a deadlock, per 5m. upgrade: raised an operator's per-actor output limit because its consumer was starved | withheld: gave one actor more room because it was deadlocked on outputs withheld by lineage reconstruction.",
     unit="short",
     targets=[
         Target(
-            expr='sum(increase(ray_data_actor_only_output_limit_upgrades_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator)',
-            legend="Upgrades / 5m: {{dataset}}, {{operator}}",
-        ),
-        Target(
-            expr='sum(ray_data_actor_only_output_limit_upgrades_total{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
-            legend="Upgrades Total: {{dataset}}, {{operator}}",
+            expr='sum(increase(ray_data_actor_only_escape_hatch_grants_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator, reason)',
+            legend="{{reason}}: {{dataset}}, {{operator}}",
         ),
     ],
     fill=0,
     stack=False,
+)
+
+ACTOR_ONLY_ESCAPE_HATCH_GRANTED_BYTES_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Escape Hatch Granted Bytes",
+    description="Output-limit bytes the escape hatches granted, per 5m, by reason and by where the bytes came from. free_space: free object store on the node | lent: other actors' unused budget on the node, whose limits go down by as much | unbacked: beyond both, so the node is oversubscribed and may spill.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(increase(ray_data_actor_only_escape_hatch_granted_bytes_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator, reason, cause)',
+            legend="{{reason}} {{cause}}: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=0,
+    stack=True,
 )
 
 ACTOR_ONLY_OP_OUTPUT_LIMIT_BYTES_PANEL = Panel(
@@ -1979,6 +1990,65 @@ ACTOR_ONLY_OP_OUTPUT_OVERSHOOTS_PANEL = Panel(
     fill=0,
     stack=False,
 )
+
+ACTOR_ONLY_OP_WITHHELD_OUTPUTS_BYTES_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Withheld Outputs (Bytes)",
+    description=(
+        "Snapshot distribution (min/p50/p90/max/mean) of per-actor output bytes "
+        "withheld by lineage reconstruction until their child's whole input set "
+        "is re-made. They count against their actors' output budgets, but no "
+        "consumer can drain them yet."
+    ),
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_operator_withheld_outputs{{{global_filters}, unit="bytes", operator=~"$Operator"}}) by (dataset, operator, stat)',
+            legend="{{stat}}: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OP_WITHHELD_OUTPUTS_BLOCKS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Withheld Outputs (Blocks)",
+    description=(
+        "Snapshot distribution (min/p50/p90/max/mean) of per-actor blocks "
+        "withheld by lineage reconstruction until their child's whole input set "
+        "is re-made."
+    ),
+    unit="blocks",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_operator_withheld_outputs{{{global_filters}, unit="blocks", operator=~"$Operator"}}) by (dataset, operator, stat)',
+            legend="{{stat}}: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OP_WITHHELD_DEADLOCKED_ACTORS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Actors Deadlocked on Withheld Outputs",
+    description=(
+        "Actors whose output budgets are full of withheld outputs and that no "
+        "amount of waiting frees. The escape hatch grants one of them more "
+        "room per pass, so this should drop back to 0 quickly."
+    ),
+    unit="short",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_operator_withheld_deadlocked_actors{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Deadlocked Actors: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 
 # Overview: totals only. The detailed rows keep the breakdowns.
 ACTOR_ONLY_NODE_OBJ_STORE_LIVE_BYTES_TOTALS_PANEL = Panel(
@@ -2294,10 +2364,14 @@ ACTOR_ONLY_INPUT_LOCALITY_PANELS = [
 ]
 
 ACTOR_ONLY_OUTPUT_LIMITS_PANELS = [
-    ACTOR_ONLY_OUTPUT_LIMIT_UPGRADES_PANEL,
+    ACTOR_ONLY_ESCAPE_HATCH_GRANTS_PANEL,
+    ACTOR_ONLY_ESCAPE_HATCH_GRANTED_BYTES_PANEL,
     ACTOR_ONLY_OP_OUTPUT_LIMIT_BYTES_PANEL,
     ACTOR_ONLY_OP_OUTPUT_LIMIT_BLOCKS_PANEL,
     ACTOR_ONLY_OP_OUTPUT_OVERSHOOTS_PANEL,
+    ACTOR_ONLY_OP_WITHHELD_OUTPUTS_BYTES_PANEL,
+    ACTOR_ONLY_OP_WITHHELD_OUTPUTS_BLOCKS_PANEL,
+    ACTOR_ONLY_OP_WITHHELD_DEADLOCKED_ACTORS_PANEL,
 ]
 
 OPERATOR_PANELS = [
