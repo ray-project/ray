@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -24,7 +25,11 @@ from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
-from ray.experimental.sandbox._internal import docker_config, layer_cache
+from ray.experimental.sandbox._internal import (
+    docker_config,
+    image_build_child,
+    layer_cache,
+)
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -1186,6 +1191,173 @@ def reserve_image_cache_space(image_dir: str, needed_bytes: int) -> None:
         )
 
 
+# Flattening an image's layers and streaming the tree into mkfs.erofs read
+# and write every file through tarfile, which holds the interpreter lock, so
+# a process that pulls several images at once would build them one at a
+# time, whatever the node's CPUs. While one build runs in a process, the
+# next ones run in child interpreters.
+_builds_lock = threading.Lock()
+_building_here = False
+
+
+def _cgroup_and_parents(root: str, path: str) -> Iterator[str]:
+    """The cgroup at ``path`` under ``root``, then each one above it."""
+    root = os.path.normpath(root)
+    directory = os.path.normpath(os.path.join(root, path.lstrip("/")))
+    while directory == root or directory.startswith(root + os.sep):
+        yield directory
+        if directory == root:
+            return
+        directory = os.path.dirname(directory)
+
+
+def _cgroup_cpu_quota(
+    cgroup_root: str = "/sys/fs/cgroup", proc_cgroup: str = "/proc/self/cgroup"
+) -> Optional[float]:
+    """The CPUs that this process's cgroups allow it, or None without a quota.
+
+    The smallest quota of the process's own cgroup and the ones above it. A
+    container without a cgroup namespace of its own, as a privileged Pod can
+    be, sees the node's whole hierarchy, where its quota isn't at the top.
+    """
+    v2_path, v1_path = "", ""
+    try:
+        with open(proc_cgroup, encoding="utf-8") as f:
+            for line in f:
+                _, controllers, path = line.rstrip("\n").split(":", 2)
+                if not controllers:
+                    v2_path = path
+                elif "cpu" in controllers.split(","):
+                    v1_path = path
+    except (OSError, ValueError):
+        pass
+    quotas = []
+    for directory in _cgroup_and_parents(cgroup_root, v2_path):
+        try:
+            with open(os.path.join(directory, "cpu.max"), encoding="utf-8") as f:
+                quota, period = f.read().split()
+            if quota != "max":
+                quotas.append(int(quota) / int(period))
+        except (OSError, ValueError):
+            pass
+    for mount in ("cpu", "cpu,cpuacct"):  # cgroup v1
+        for directory in _cgroup_and_parents(os.path.join(cgroup_root, mount), v1_path):
+            try:
+                with open(os.path.join(directory, "cpu.cfs_quota_us")) as f:
+                    quota_us = int(f.read())
+                with open(os.path.join(directory, "cpu.cfs_period_us")) as f:
+                    period_us = int(f.read())
+                if quota_us > 0 and period_us > 0:
+                    quotas.append(quota_us / period_us)
+            except (OSError, ValueError):
+                pass
+    return min(quotas) if quotas else None
+
+
+def _usable_cpus(
+    cgroup_root: str = "/sys/fs/cgroup", proc_cgroup: str = "/proc/self/cgroup"
+) -> int:
+    """The CPUs this process may use: its affinity, within its cgroup's quota.
+
+    ``os.cpu_count()`` is the node's count. In a container with a CPU limit,
+    such as a Kubernetes Pod, that can be many times what the process gets.
+    """
+    try:
+        count = len(os.sched_getaffinity(0))
+    except AttributeError:  # Not Linux.
+        count = os.cpu_count() or 1
+    quota = _cgroup_cpu_quota(cgroup_root, proc_cgroup)
+    if quota is not None:
+        count = min(count, int(quota))
+    return max(1, count)
+
+
+# Builds run at most one per two CPUs in children, plus one in this process.
+# A build takes one of these slots before it looks at this process, so builds
+# that waited for a slot use this process as soon as its build ends.
+_builds = threading.BoundedSemaphore(1 + max(1, _usable_cpus() // 2))
+# The line a child build's error comes back on, among whatever else the
+# child prints.
+_CHILD_ERROR = image_build_child.CHILD_ERROR
+# What a child runs: this module and the few it imports, without Ray.
+_CHILD_ENTRYPOINT = os.path.abspath(image_build_child.__file__)
+# The packages a child stands in for, so that it imports their modules.
+_CHILD_PACKAGES = (
+    "ray",
+    "ray.util",
+    "ray.experimental",
+    "ray.experimental.sandbox",
+    "ray.experimental.sandbox._internal",
+)
+
+
+def _child_packages() -> Dict[str, List[str]]:
+    """Where this process loaded the child's packages from, so that a child
+    finds the same files however Ray is installed."""
+    return {name: list(sys.modules[name].__path__) for name in _CHILD_PACKAGES}
+
+
+def _build_rootfs_image(
+    image: str, rootfs_dir: str, image_dir: str, timeout_seconds: float, blob_dir: str
+) -> None:
+    """Flatten ``image`` into ``rootfs_dir`` and build its EROFS image in
+    ``image_dir``, as ``_extract_image_layers`` and ``build_erofs_image`` do."""
+    ownership = _extract_image_layers(
+        image, rootfs_dir, image_dir, timeout_seconds, blob_dir
+    )
+    _seed_tmp(rootfs_dir)
+    _seed_mountpoints(rootfs_dir)
+    build_erofs_image(rootfs_dir, ownership, os.path.join(image_dir, ROOTFS_IMAGE))
+
+
+def _build_rootfs_image_here_or_in_a_child(*args) -> None:
+    """``_build_rootfs_image`` in this process, or in a child interpreter
+    while another build runs in this process."""
+    global _building_here
+    with _builds:
+        with _builds_lock:
+            here = not _building_here
+            _building_here = _building_here or here
+        if not here:
+            _build_rootfs_image_in_a_child(*args)
+            return
+        try:
+            _build_rootfs_image(*args)
+        finally:
+            with _builds_lock:
+                _building_here = False
+
+
+def _build_rootfs_image_in_a_child(*args) -> None:
+    """``_build_rootfs_image`` in a new interpreter. Its logs go to this
+    process's stderr; its error, if any, comes back as the message of a
+    ``SandboxCreationError``."""
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            _CHILD_ENTRYPOINT,
+            json.dumps(_child_packages()),
+            json.dumps(args),
+            # The child stops if this process dies.
+            str(os.getpid()),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    if proc.returncode != 0:
+        message = f"Building the image failed (exit status {proc.returncode})"
+        for line in reversed(proc.stdout.splitlines()):
+            if line.startswith(_CHILD_ERROR):
+                try:
+                    message = json.loads(line[len(_CHILD_ERROR) :]) or message
+                except ValueError:
+                    pass
+                break
+        raise SandboxCreationError(message)
+
+
 def pull_and_extract_container_image(
     image: str,
     images_dir: str = DEFAULT_IMAGES_DIR,
@@ -1269,17 +1441,12 @@ def pull_and_extract_container_image(
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
             try:
-                ownership = _extract_image_layers(
+                _build_rootfs_image_here_or_in_a_child(
                     image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
                 )
-                _seed_tmp(tmp_rootfs_dir)
-                _seed_mountpoints(tmp_rootfs_dir)
-                build_erofs_image(
-                    tmp_rootfs_dir,
-                    ownership,
-                    os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
-                )
-            except Exception:
+            except BaseException:
+                # An interrupt or an exiting actor too: nothing else ever
+                # removes this directory.
                 shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                 raise
             # The image replaces the tree; nothing reads the tree once the
