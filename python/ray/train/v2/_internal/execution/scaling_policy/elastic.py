@@ -24,6 +24,11 @@ from ray.train.v2.api.config import ScalingConfig
 logger = logging.getLogger(__name__)
 
 
+def _to_resource_units(amount: float) -> int:
+    """Convert a resource amount to the scheduler's fixed-point units."""
+    return round(amount * ray._raylet.RESOURCE_UNIT_SCALING)
+
+
 class ElasticScalingPolicy(ScalingPolicy):
 
     # Minimum interval in seconds between querying the AutoscalingCoordinator for reserved resources.
@@ -57,7 +62,6 @@ class ElasticScalingPolicy(ScalingPolicy):
         Returns:
             The number of workers that can be started/restarted with the current resources.
         """
-        # TODO: Fractional resources do not work well here.
         single_worker_resources = self.scaling_config._resources_per_worker_not_none
         total_num_workers = 0
 
@@ -66,9 +70,11 @@ class ElasticScalingPolicy(ScalingPolicy):
             return self.scaling_config.max_workers
 
         for resources in reserved_resources.values():
+            # Divide in fixed-point units: in floats, 1 // 0.1 == 9.0.
             num_workers = min(
                 [
-                    resources.get(resource, 0.0) // single_worker_resources[resource]
+                    _to_resource_units(resources.get(resource, 0.0))
+                    // max(_to_resource_units(single_worker_resources[resource]), 1)
                     for resource in single_worker_resources
                     if single_worker_resources[resource] > 0
                 ]

@@ -45,6 +45,11 @@ DEFAULT_KV_TOKEN_PORT_BASE = 7557
 KV_INDEXER_THREADS_KEY = "KV_INDEXER_THREADS"
 DEFAULT_KV_INDEXER_THREADS = 4
 
+# Autoscaling snapshot key: estimated uncached prefill tokens of all in-flight
+# requests that are queued or in prefill.
+# KVTokenTracker publishes the snapshot via set_autoscaling_metrics_callback.
+OUTSTANDING_EFFECTIVE_PREFILL_TOKENS = "outstanding_effective_prefill_tokens"
+
 # The engine's KV-event replay (ROUTER) socket sits this many ports above its PUB
 # port, a separate range so it never collides with the PUB ports of colocated
 # replicas (PORT_BASE + replica rank). Dynamo's selection service dials it to recover

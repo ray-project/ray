@@ -232,6 +232,19 @@ class MessageRowLayout:
             per_row += len(path.encode()) + _INT32_BYTES
         return per_row
 
+    @staticmethod
+    def payload_factor(channels: Iterable["Channel"]) -> int:
+        """Bytes a row of one of ``channels`` holds per payload byte.
+
+        ``data`` holds decoded JSON only when every selected channel is
+        JSON-encoded (``mcap_data_column``). Decoded JSON is held as Python
+        objects until its table is built, so it counts
+        ``_DECODED_JSON_BYTES_PER_PAYLOAD_BYTE``.
+        """
+        if {c.message_encoding for c in channels} == {"json"}:
+            return _DECODED_JSON_BYTES_PER_PAYLOAD_BYTE
+        return 1
+
 
 def _int_array(values: array, type_: pa.DataType) -> pa.Array:
     """Wrap an ``array.array`` of int32 or int64 values as an Arrow array, no copy."""

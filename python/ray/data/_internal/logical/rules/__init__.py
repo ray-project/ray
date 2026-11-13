@@ -13,6 +13,7 @@ from .eliminate_aggregate_shuffle import (
     EliminateAggregateShuffle,
     EnsureLocalAggregateReadsWholePartitions,
 )
+from .extract_equi_join_keys import ExtractEquiJoinKeys
 from .inherit_target_max_block_size import InheritTargetMaxBlockSizeRule
 from .limit_pushdown import LimitPushdownRule
 from .operator_fusion import FuseOperators, are_remote_args_compatible
@@ -23,6 +24,7 @@ from .set_read_parallelism import (
     SetReadParallelismRule,
     compute_additional_split_factor,
 )
+from .top_n_rewrite import TopNRewriteRule
 
 __all__ = [
     "BindGeneratedIdColumn",
@@ -34,6 +36,7 @@ __all__ = [
     "DeriveListFilesPushdown",
     "EliminateAggregateShuffle",
     "EnsureLocalAggregateReadsWholePartitions",
+    "ExtractEquiJoinKeys",
     "FuseOperators",
     "InheritTargetMaxBlockSizeRule",
     "LimitPushdownRule",
@@ -41,6 +44,7 @@ __all__ = [
     "ProjectionPushdown",
     "PushdownCountFiles",
     "SetReadParallelismRule",
+    "TopNRewriteRule",
     "are_remote_args_compatible",
     "compute_additional_split_factor",
 ]

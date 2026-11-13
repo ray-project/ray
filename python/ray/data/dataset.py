@@ -3708,6 +3708,7 @@ class Dataset:
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
+        condition: Optional[Expr] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
@@ -3745,6 +3746,18 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
+            condition: (Optional) Additional join condition, as an expression over
+                the *input* column names of both operands (before any suffix is
+                applied). Every conjunct of the form ``col("a") == col("b")``
+                with ``a`` from one operand and ``b`` from the other is hashed
+                on like the ``on`` keys, so the join only produces the rows
+                that satisfy it. Unlike the ``on`` keys, the two columns
+                aren't merged into one: both stay in the output, as with
+                ``join(...).filter(col("a") == col("b"))`` on an inner join. A
+                column name that exists in both operands is ambiguous and
+                raises. ``condition`` complements ``on``; it can't replace it,
+                and any other kind of conjunct (``<``, a comparison against a
+                literal, ``|``, ...) is not supported yet.
             partition_size_hint: (Optional) **Deprecated** and ignored. The join is
                 now executed on the v2 hash-shuffle path, which sizes reduce-task
                 memory from observed partition sizes rather than a hint. This
@@ -3823,6 +3836,11 @@ class Dataset:
                 f"Expected tuple or list as `right_on` (got {type(right_on).__name__})"
             )
 
+        if condition is not None and not isinstance(condition, Expr):
+            raise ValueError(
+                f"Expected an `Expr` as `condition` (got {type(condition).__name__})"
+            )
+
         # NOTE: If no separate keys provided for the right side, assume just the left
         #       side ones
         right_on = right_on or on
@@ -3836,15 +3854,6 @@ class Dataset:
                 stacklevel=2,
             )
 
-        # NOTE: By default validating schemas are disabled as it could be arbitrarily
-        #       expensive (potentially executing whole pipeline to completion) to fetch
-        #       one currently
-        if validate_schemas:
-            left_op_schema: Optional["Schema"] = self.schema()
-            right_op_schema: Optional["Schema"] = ds.schema()
-
-            Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
-
         op = Join(
             left_input_op=self._logical_plan.dag,
             right_input_op=ds._logical_plan.dag,
@@ -3856,7 +3865,31 @@ class Dataset:
             right_columns_suffix=right_suffix,
             partition_size_hint=partition_size_hint,
             aggregator_ray_remote_args=aggregator_ray_remote_args,
+            condition=condition,
         )
+
+        # Fails now on an unknown or ambiguous column when the input schemas are
+        # inferable; otherwise the planner reports it.
+        resolved = op.resolve_condition() if condition is not None else None
+
+        # NOTE: By default validating schemas are disabled as it could be arbitrarily
+        #       expensive (potentially executing whole pipeline to completion) to fetch
+        #       one currently
+        if validate_schemas:
+            left_op_schema: Optional["Schema"] = self.schema()
+            right_op_schema: Optional["Schema"] = ds.schema()
+
+            if condition is not None and resolved is None:
+                # The schemas couldn't be inferred; resolve against the
+                # executed ones.
+                resolved = op.resolve_condition(left_op_schema, right_op_schema)
+            left_keys, right_keys = tuple(on), tuple(right_on)
+            if resolved is not None:
+                left_keys += resolved.left_condition_key_columns
+                right_keys += resolved.right_condition_key_columns
+            Join._validate_schemas(
+                left_op_schema, right_op_schema, left_keys, right_keys
+            )
 
         return Dataset._from_parent(self, LogicalPlan(op, self.context))
 

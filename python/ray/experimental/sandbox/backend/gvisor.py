@@ -236,6 +236,12 @@ class _RestoreImage(NamedTuple):
     direct: bool = False
 
 
+@functools.lru_cache(maxsize=None)
+def _choom() -> Optional[str]:
+    """Return the path of util-linux's ``choom``, or None without it."""
+    return shutil.which("choom")
+
+
 def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
     """runsc and the global flags that its run/exec/kill/delete share."""
     args = ["runsc"]
@@ -1608,6 +1614,44 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ) or "Sandbox runtime stopped unexpectedly"
         return None
 
+    def get_config(self, sandbox_id: str) -> SandboxConfig:
+        """Return the configuration of a tracked sandbox."""
+        return self._get_metadata_or_raise(sandbox_id)["config"]
+
+    def sandbox_dir(self, sandbox_id: str) -> str:
+        """Return the host bundle directory, which is removed with the sandbox."""
+        return self._get_metadata_or_raise(sandbox_id)["root_dir"]
+
+    def export_rootfs_changes(
+        self, sandbox_id: str, path: str, timeout: float = 1800.0
+    ) -> None:
+        """Export gVisor's rootfs upper layer, preserving the sandbox's pause state.
+
+        Deletions are 0/0 character devices. Opaque directories carry
+        ``trusted.overlay.opaque``. Bind mounts and host-side changes aren't
+        included.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        # One export at a time per sandbox: overlapping ones would both try
+        # to pause it, or one would resume it under the other's export.
+        with meta.setdefault("export_lock", threading.Lock()):
+            paused = meta.get("status") == SandboxStatus.PAUSED
+            if not paused:
+                self.pause_sandbox(sandbox_id, timeout_seconds=60)
+            try:
+                self._run_runsc_command(
+                    meta["config"],
+                    "tar",
+                    sandbox_id,
+                    "rootfs-upper",
+                    "--file",
+                    path,
+                    timeout_seconds=timeout,
+                )
+            finally:
+                if not paused:
+                    self.resume_sandbox(sandbox_id, timeout_seconds=60)
+
     def _run_runsc_command(
         self,
         config: SandboxConfig,
@@ -2167,7 +2211,23 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     @staticmethod
     def _wrap_workload(meta, args):
-        return wrap_command(args, meta.get("cgroup"), meta["config"].oom_score_adj)
+        """Give a `runsc exec` the sandbox's OOM score, without its cgroup.
+
+        The command runs in the sandbox's Sentry, which is already in the
+        sandbox's cgroup, and `runsc exec` only relays it. Joining the cgroup
+        per call meant a cgroup migration, which takes a global lock and waits
+        for an RCU grace period: on a 352-thread host, exec went from 3 ms to
+        49 ms and every sandbox's execs queued on it.
+
+        That leaves only the OOM score to set. ``choom`` sets it and execs in
+        well under a millisecond. The Python launcher takes a few, so it's
+        the fallback for a node without util-linux's ``choom``.
+        """
+        score = meta["config"].oom_score_adj
+        choom = _choom() if score is not None else None
+        if choom:
+            return [choom, "-n", str(score), "--", *args]
+        return wrap_command(args, oom_score_adj=score)
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.
