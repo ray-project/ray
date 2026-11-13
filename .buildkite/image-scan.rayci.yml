@@ -169,6 +169,7 @@ steps:
   # Runs whatever the scans did, so a failed or skipped scan job still shows
   # up, as its images missing from the report.
   - label: ":shield: trivy: report"
+    # post-command posts the trivy-scan annotation only from this key.
     key: trivy_report
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: small
