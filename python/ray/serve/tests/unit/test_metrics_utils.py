@@ -1590,38 +1590,74 @@ class TestSelfHealthPush:
         assert m._consecutive_failures == 0
 
     @pytest.mark.asyncio
-    async def test_replica_shutdown_stops_the_self_check_before_the_destructor(self):
-        """__del__ may free what check_health uses, so a check in flight must not go
-        on to finish alongside it, nor report what it saw."""
+    async def test_graceful_shutdown_ends_the_self_check_before_the_destructor(self):
+        """__del__ may free what check_health uses. Both run on the user code loop, so
+        the check in flight must be cancelled there before __del__ starts, and must
+        not report what it saw."""
+        import threading
+        from types import SimpleNamespace
         from unittest.mock import Mock
 
         import ray.serve._private.replica as replica_mod
 
-        m = self._manager()
+        user_loop = asyncio.new_event_loop()
+        user_thread = threading.Thread(target=user_loop.run_forever, daemon=True)
+        user_thread.start()
+        main_loop = asyncio.get_running_loop()
         started = asyncio.Event()
-        release = asyncio.Event()
-        finished = []
+        events = []
 
-        async def check():
-            started.set()
-            await release.wait()
-            finished.append(1)
+        def on_user_loop(coro):
+            # What _run_user_code does when user code has its own thread.
+            return asyncio.wrap_future(
+                asyncio.run_coroutine_threadsafe(coro, user_loop)
+            )
 
-        m.start_self_health_pusher(check, 10.0)
-        await started.wait()
+        async def user_check():
+            events.append("check")
+            main_loop.call_soon_threadsafe(started.set)
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                events.append("check cancelled")
+                raise
+
+        async def user_destructor():
+            events.append("destructor")
+
+        m = self._manager()
         r = replica_mod.Replica.__new__(replica_mod.Replica)
-        r._metrics_manager = m
+        r._deployment_config = SimpleNamespace(
+            health_check_period_s=10.0,
+            graceful_shutdown_timeout_s=5.0,
+            graceful_shutdown_wait_loop_s=0.01,
+        )
         r._user_callable_initialized = True
+        r._ingress = False
+        r.get_num_ongoing_requests = lambda: 0
+        r._direct_ingress_http_server = None
+        r._direct_ingress_http_server_task = None
+        r._direct_ingress_grpc_server = None
+        r._direct_ingress_grpc_server_task = None
+        r._internal_grpc_port = None
+        r._self_health_active = True
+        r._health_check_lock = asyncio.Lock()
+        r._metrics_manager = m
         r._user_callable_wrapper = Mock()
-
-        async def destructor():
-            release.set()
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-
-        r._user_callable_wrapper.call_destructor = destructor
-        await r.shutdown()
-        assert finished == []
+        r._user_callable_wrapper.call_user_health_check.side_effect = (
+            lambda: on_user_loop(user_check())
+        )
+        r._user_callable_wrapper.call_destructor.side_effect = lambda: on_user_loop(
+            user_destructor()
+        )
+        m.start_self_health_pusher(r._run_user_health_check, 10.0)
+        await started.wait()
+        try:
+            await r._perform_graceful_shutdown()
+        finally:
+            user_loop.call_soon_threadsafe(user_loop.stop)
+            user_thread.join(timeout=5)
+        assert events == ["check", "check cancelled", "destructor"]
         m._controller_handle.record_replica_health.remote.assert_not_called()
 
     @pytest.mark.asyncio

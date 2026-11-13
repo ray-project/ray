@@ -2333,9 +2333,6 @@ class Replica:
         await self._drain_ongoing_requests(check_immediately=True)
 
     async def shutdown(self):
-        # The self-check runs the user's check_health, which must not run alongside or
-        # after __del__, which may free what it uses.
-        self._metrics_manager.stop_self_health()
         try:
             self._user_callable_wrapper.stop_user_loop_watchdog()
             await self._user_callable_wrapper.call_destructor()
@@ -2371,6 +2368,11 @@ class Replica:
 
     async def _perform_graceful_shutdown(self):
         self._shutting_down = True
+        # The controller stops health-checking a replica once it is shutting down, so
+        # stop the self-check now too. Its cancel reaches the user code loop only once
+        # this loop runs again; the drain below yields before __del__ is queued there,
+        # so a check in flight on that loop is cancelled first.
+        self._metrics_manager.stop_self_health()
 
         # Shutdown budget, mirroring the controller's force-kill deadline (see
         # `DeploymentReplica.stop`). Each step below consumes from it; once
