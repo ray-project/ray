@@ -17,7 +17,6 @@ def _context(
     prefill_by_handle=None,
     target_num_replicas=2,
     total_num_requests=0,
-    look_back_period_s=30,
 ):
     prefill_by_handle = prefill_by_handle or {}
     series_by_handle = {}
@@ -33,7 +32,6 @@ def _context(
         raw_router_metrics={
             OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: series_by_handle,
         },
-        config=SimpleNamespace(look_back_period_s=look_back_period_s),
         target_num_replicas=target_num_replicas,
         total_num_requests=total_num_requests,
     )
@@ -165,14 +163,18 @@ def test_clamps_negative_snapshots_to_zero():
     assert state[OUTSTANDING_EFFECTIVE_PREFILL_TOKENS] == 0
 
 
-def test_rejects_lookback_larger_than_collected_history():
+def test_lookback_longer_than_history_averages_available_samples():
     policy = LLMTokenAutoscalingPolicy(
         target_prefill_tokens_per_replica=100,
-        upscale_lookback_s=31,
+        upscale_lookback_s=60,
     )
 
-    with pytest.raises(ValueError, match="must not exceed"):
-        policy(_context(prefill_by_handle={"a": (0, 100)}))
+    replicas, _ = policy(
+        _context(prefill_by_handle={"a": [(0, 100), (15, 300), (30, 300)]})
+    )
+
+    # (100 * 15s + 300 * 15s) / 30s observed = 200 tokens -> 2 replicas.
+    assert replicas == 2
 
 
 @pytest.mark.parametrize(

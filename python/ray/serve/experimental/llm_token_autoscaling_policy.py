@@ -52,7 +52,9 @@ class LLMTokenAutoscalingPolicy:
     Args:
         target_prefill_tokens_per_replica: Mean outstanding uncached prefill tokens
             that one replica should handle.
-        upscale_lookback_s: Window used for the time-weighted mean.
+        upscale_lookback_s: Window used for the time-weighted mean. A window
+            longer than the retained history (``look_back_period_s``) averages
+            over the history that is available.
     """
 
     def __init__(
@@ -99,14 +101,6 @@ class LLMTokenAutoscalingPolicy:
         return max(capacity_by_source) if capacity_by_source else None
 
     def __call__(self, ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
-        if ctx.config is None:
-            raise ValueError("Autoscaling context must include an autoscaling config")
-        if self._upscale_lookback_s > ctx.config.look_back_period_s:
-            raise ValueError(
-                "upscale_lookback_s must not exceed the autoscaling config's "
-                "look_back_period_s"
-            )
-
         snapshots_by_source = _prefill_snapshots_by_source(ctx)
         mean_required_capacity = self._mean_required_capacity(snapshots_by_source)
         if mean_required_capacity is None:
