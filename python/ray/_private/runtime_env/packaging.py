@@ -311,15 +311,28 @@ def is_tar_uri(uri: str) -> bool:
     return has_package_extension(path, TAR_EXTENSIONS)
 
 
-def _get_excludes(path: Path, excludes: List[str]) -> Callable:
+def _get_pathspec_matcher(path: Path, pathspec: PathSpec) -> Callable:
+    """Returns a function that checks if a path under `path` matches `pathspec`.
+
+    Patterns are matched against paths relative to `path`, so `path` itself is
+    never matched. Otherwise a pattern like ".*" would match "." and exclude the
+    whole directory.
+    """
     path = path.absolute()
-    pathspec = PathSpec.from_lines("gitwildmatch", excludes)
 
     def match(p: Path):
-        path_str = str(p.absolute().relative_to(path))
+        p = p.absolute()
+        if p == path:
+            return False
+        path_str = str(p.relative_to(path))
         return pathspec.match_file(path_str)
 
     return match
+
+
+def _get_excludes(path: Path, excludes: List[str]) -> Callable:
+    pathspec = PathSpec.from_lines("gitwildmatch", excludes)
+    return _get_pathspec_matcher(path, pathspec)
 
 
 def _get_ignore_file(path: Path, ignore_file: str) -> Optional[Callable]:
@@ -340,12 +353,7 @@ def _get_ignore_file(path: Path, ignore_file: str) -> Optional[Callable]:
     if ignore_file.is_file():
         with ignore_file.open("r") as f:
             pathspec = PathSpec.from_lines("gitwildmatch", f.readlines())
-
-        def match(p: Path):
-            path_str = str(p.absolute().relative_to(path))
-            return pathspec.match_file(path_str)
-
-        return match
+        return _get_pathspec_matcher(path, pathspec)
     else:
         return None
 
