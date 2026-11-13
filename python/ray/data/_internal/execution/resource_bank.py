@@ -23,11 +23,8 @@ are safe anytime on the executor thread.
          |
     finalize_dataset               # end of the execution
 
-When an actor restarts on a different node, `maybe_register_actor` moves its
-whole entry there, in-flight tasks and their inputs included, because Ray Core
-retries those tasks on the new node. The blocks it produced on the old node may
-still sit in that node's object store, but no task can reach them any more, so
-we stop counting them.
+An actor lives on one node for its whole life. A dead actor is deregistered
+like a downscaled one.
 """
 
 from __future__ import annotations
@@ -60,7 +57,7 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
     PhysicalOperator,
 )
-from ray.data._internal.execution.interfaces.common import LogicalActorId
+from ray.data._internal.execution.interfaces.common import ActorId
 from ray.data._internal.execution.interfaces.distribution_tracker import (
     DistributionTracker,
 )
@@ -259,16 +256,6 @@ class LiveObjStore:
         self.num_input_blocks -= task_info.live.num_input_blocks
         self.num_input_bytes -= task_info.live.num_input_bytes
 
-    def clear_outputs(self) -> None:
-        """Drop pulled / prebuffered outputs. Inputs stay, because
-        the in-flight tasks holding them are retried along with the actor."""
-        self.num_prebuffered_output_blocks = 0
-        self.num_prebuffered_output_bytes = 0
-        self.num_prebuffered_output_rows = 0
-        self.num_pulled_output_blocks = 0
-        self.num_pulled_output_bytes = 0
-        self.num_pulled_output_rows = 0
-
     def add(self, other: "LiveObjStore") -> None:
         """Add in place"""
         self.num_input_blocks += other.num_input_blocks
@@ -361,7 +348,7 @@ class TracksObjStore(Protocol):
     def on_task_submitted(
         self,
         *,
-        target_actor_id: LogicalActorId | None,
+        target_actor_id: ActorId | None,
         task_id: ray.TaskID | None,
         target_node_id: NodeIdStr,
         bms: List[BlockMetadata],
@@ -382,7 +369,7 @@ class TracksObjStore(Protocol):
 class TaskInfo:
     # None for actorless ops (read/input/limit). They generate
     # output through ray.put, or other means
-    actor_id: LogicalActorId | None
+    actor_id: ActorId | None
     task_id: ray.TaskID | None
     node_id: NodeIdStr
     # Set once the task's generator is exhausted. The task -> actor mapping is
@@ -407,20 +394,10 @@ class ActorInfo:
 
     live: LiveObjStore = field(default_factory=LiveObjStore)
 
-    def clone(self, *, node_id: NodeIdStr | None = None) -> "ActorInfo":
-        """A copy of this entry for another scope, sharing `op_stats`.
-
-        The in-flight task count and the live store are copied over: an entry
-        registered for the first time has neither, and an entry for an actor
-        that just restarted on another node has both. In that second case Ray
-        Core copies the retried tasks' inputs to the new node, and any outputs
-        still counted here were produced on that node too (the caller dropped
-        the rest), so the whole store belongs on the new node.
-
-        Pass `node_id` to place the copy on a different node than this entry.
-        """
+    def clone(self) -> "ActorInfo":
+        """A copy of this entry for another scope, sharing `op_stats`."""
         return ActorInfo(
-            node_id=node_id if node_id is not None else self.node_id,
+            node_id=self.node_id,
             op_stats=self.op_stats,
             downscaled=self.downscaled,
             num_tasks_in_flight=self.num_tasks_in_flight,
@@ -465,13 +442,12 @@ class ActorRegistry(TracksObjStore):
 
     # Currently-registered actors. An entry leaves `live` either when the
     # actor is downscaled (moved to `downscaled`).
-    actor_info_map: Dict[LogicalActorId, ActorInfo] = field(default_factory=dict)
+    actor_info_map: Dict[ActorId, ActorInfo] = field(default_factory=dict)
     # NOTE: Although an actor-pool operator should not support downscaling an actor
     # until its inputs are dropped, that concept is something that is bound to
     # Ray Data, meaning it is perfectly feasible to have a downscaled actor with
-    # unconsumed outputs. In rare cases where actors die unexpectedly, we track
-    # them here.
-    downscaled_actors: Dict[LogicalActorId, ActorInfo] = field(default_factory=dict)
+    # unconsumed outputs. Actors that die unexpectedly are tracked here too.
+    downscaled_actors: Dict[ActorId, ActorInfo] = field(default_factory=dict)
 
     # When None, technically there is no task , but it's to represent
     # the input operators that use ray.put (InputDataBuffer)
@@ -480,7 +456,7 @@ class ActorRegistry(TracksObjStore):
     def on_register_actor(
         self,
         *,
-        actor_id: LogicalActorId,
+        actor_id: ActorId,
         actor_info: ActorInfo,
     ):
         assert actor_id not in self.actor_info_map
@@ -490,48 +466,18 @@ class ActorRegistry(TracksObjStore):
     def on_deregister_actor(
         self,
         *,
-        actor_id: LogicalActorId,
+        actor_id: ActorId,
     ):
         if actor_id in self.actor_info_map:
             actor_info = self.actor_info_map.pop(actor_id)
             actor_info.to_downscaled()
             self.downscaled_actors[actor_id] = actor_info
 
-    def evict_actor(self, *, actor_id: LogicalActorId) -> ActorInfo | None:
-        """Drop this actor and its tasks from the registry, returning its entry.
-
-        The returned entry holds just this scope's share of the actor, which is
-        what the caller subtracts from the scope's totals.
-        """
-        actor_info = self.actor_info_map.pop(actor_id, None)
-        if actor_info is None:
-            actor_info = self.downscaled_actors.pop(actor_id, None)
-        for task_id, task_info in list(self.task_info_map.items()):
-            if task_info.actor_id == actor_id:
-                self.task_info_map.pop(task_id)
-        return actor_info
-
-    def adopt_actor(
-        self,
-        *,
-        actor_id: LogicalActorId,
-        actor_info: ActorInfo,
-        task_infos: List[TaskInfo],
-    ) -> None:
-        """Take over an actor (and its in-flight tasks) evicted from elsewhere."""
-        if actor_info.downscaled:
-            self.downscaled_actors[actor_id] = actor_info
-        else:
-            self.actor_info_map[actor_id] = actor_info
-        for task_info in task_infos:
-            task_info.node_id = actor_info.node_id
-            self.task_info_map[task_info.task_id] = task_info
-
     @override
     def on_task_submitted(
         self,
         *,
-        target_actor_id: LogicalActorId | None,
+        target_actor_id: ActorId | None,
         task_id: ray.TaskID | None,
         target_node_id: NodeIdStr,
         bms: List[BlockMetadata],
@@ -631,13 +577,13 @@ class ActorRegistry(TracksObjStore):
             return None
         return self.get_actor_info(actor_id=task_info.actor_id)
 
-    def get_actor_info(self, *, actor_id: LogicalActorId) -> ActorInfo | None:
+    def get_actor_info(self, *, actor_id: ActorId) -> ActorInfo | None:
         actor_info = self.actor_info_map.get(actor_id, None)
         if actor_info is None:
             return self.downscaled_actors.get(actor_id, None)
         return actor_info
 
-    def task_to_actor(self, *, task_id: ray.TaskID | None) -> LogicalActorId | None:
+    def task_to_actor(self, *, task_id: ray.TaskID | None) -> ActorId | None:
         task_info = self.get_task_info(task_id=task_id)
         if task_info is None:
             return None
@@ -660,7 +606,7 @@ class PerScopeStats(TracksObjStore):
     def on_task_submitted(
         self,
         *,
-        target_actor_id: LogicalActorId | None,
+        target_actor_id: ActorId | None,
         task_id: ray.TaskID | None,
         target_node_id: NodeIdStr,
         bms: List[BlockMetadata],
@@ -702,7 +648,7 @@ class PerScopeStats(TracksObjStore):
         if self.actors.has_task_info(task_id=task_id):
             self.actors.on_output_consumed(bm=bm, task_id=task_id)
 
-    def actor_ids(self) -> Set[LogicalActorId]:
+    def actor_ids(self) -> Set[ActorId]:
         """All actor ids tracked by this scope (live + downscaled)."""
         return self.actors.actor_info_map.keys() | self.actors.downscaled_actors.keys()
 
@@ -795,7 +741,7 @@ class ClusterStats:
     per_op_node: Dict[Tuple[PhysicalOperator, NodeIdStr], PerOpNodeStats] = field(
         default_factory=dict
     )
-    actor_to_operator: Dict[LogicalActorId, PerOpStats] = field(default_factory=dict)
+    actor_to_operator: Dict[ActorId, PerOpStats] = field(default_factory=dict)
 
     def on_register_node(self, *, node_id: NodeIdStr) -> PerNodeStats:
         node_stats = self.per_node.get(node_id)
@@ -833,7 +779,7 @@ class ClusterStats:
         *,
         node_id: NodeIdStr,
         op: PhysicalOperator,
-        actor_id: LogicalActorId,
+        actor_id: ActorId,
     ):
 
         node_stats = self.on_register_node(node_id=node_id)
@@ -842,117 +788,32 @@ class ClusterStats:
         actor_info = op_stats.actors.get_actor_info(actor_id=actor_id)
         self.actor_to_operator[actor_id] = op_stats
 
-        if actor_info is None:
-            # 1) First sighting -> register the actor on its node.
-            actor_info = ActorInfo(
-                node_id=node_id,
-                op_stats=op_stats,
-                downscaled=False,
-            )
-            op_stats.actors.on_register_actor(actor_id=actor_id, actor_info=actor_info)
-            node_stats.actors.on_register_actor(
-                actor_id=actor_id, actor_info=actor_info.clone()
-            )
-            op_node_stats.actors.on_register_actor(
-                actor_id=actor_id, actor_info=actor_info.clone()
+        if actor_info is not None:
+            # Already registered; actors never change nodes.
+            assert actor_info.node_id == node_id, (
+                f"actor {actor_id} registered on {actor_info.node_id} "
+                f"was seen on {node_id}"
             )
             return
 
-        old_node_id = actor_info.node_id
-
-        # 2) Already registered
-        if old_node_id == node_id:
-            return
-
-        # 3) The actor restarted on a different node. The only way this
-        # happens is the old node dying or being preempted. Ray Core retries
-        # the actor's in-flight tasks on the new node, which re-fetches their
-        # inputs there, so the actor keeps its tasks and inputs and its whole
-        # entry moves. The blocks it produced on the old node may still sit in
-        # that node's object store, but no task can reach them any more, so we
-        # stop counting them rather than charge a node for objects nobody
-        # will use.
-        #
-        # 3a) Take the actor off the old node. `maybe_register_actor` already
-        # subtracted its outputs there, so its entry now holds only the inputs
-        # of its in-flight tasks.
-        for old_scope in (
-            self.per_node.get(old_node_id),
-            self.per_op_node.get((op_stats.op, old_node_id)),
-        ):
-            if old_scope is None:
-                continue
-            old_entry = old_scope.actors.evict_actor(actor_id=actor_id)
-            if old_entry is None:
-                continue
-            # Subtract the entry belonging to THIS scope, we assume unconsumed
-            # outputs will be dropped.
-            old_scope.live.subtract(old_entry.live)
-
-        # 3b) Point the operator-level entry and its tasks at the new node.
-        # Anything that maps a task back to its node scopes reads
-        # `TaskInfo.node_id`, so it has to move too.
-        #
-        # Their outputs are left alone on purpose. Step 3a already dropped the
-        # ones on the old node. Anything still counted here was produced on the
-        # node the actor is moving to, by a retry that finished before we saw
-        # the actor there, and those blocks really are still in that node's
-        # object store.
-        actor_info.node_id = node_id
-        retried_tasks = [
-            task_info
-            for task_info in op_stats.actors.task_info_map.values()
-            if task_info.actor_id == actor_id
-        ]
-        for task_info in retried_tasks:
-            task_info.node_id = node_id
-
-        # 3c) Add the actor and its retried tasks to the new node, carrying
-        # the inputs and the in-flight task count across.
-        for new_scope in (node_stats, op_node_stats):
-            migrated = actor_info.clone(node_id=node_id)
-            new_scope.actors.adopt_actor(
-                actor_id=actor_id,
-                actor_info=migrated,
-                task_infos=[
-                    self._migrated_task_info(task_info=task_info, node_id=node_id)
-                    for task_info in retried_tasks
-                ],
-            )
-            # Only the inputs are new to this scope: Ray Core copies them onto
-            # this node along with the retried tasks. Any outputs the entry
-            # carries were already counted here when they were produced (see
-            # step 3b), so adding them again would count them twice.
-            new_inputs = migrated.live.clone()
-            new_inputs.clear_outputs()
-            new_scope.live.add(new_inputs)
-
-        logger.warning(
-            f"Actor on old_node_id={old_node_id} is relocating to new_node_id={node_id}. "
-            "This can only happen if the node dies or is preempted, so if that did not happen "
-            "then please contact the ray team with the full logs."
-        )
-
-    @staticmethod
-    def _migrated_task_info(*, task_info: TaskInfo, node_id: NodeIdStr) -> TaskInfo:
-        """A per-node copy of an operator-level task, moved onto ``node_id``.
-
-        Keeps the task's remaining outputs, which by this point are only ones a
-        retry produced on `node_id`, so the new scope can subtract them when
-        they are consumed.
-        """
-        return TaskInfo(
-            actor_id=task_info.actor_id,
-            task_id=task_info.task_id,
+        # First sighting -> register the actor on its node.
+        actor_info = ActorInfo(
             node_id=node_id,
-            completed=task_info.completed,
-            live=task_info.live.clone(),
+            op_stats=op_stats,
+            downscaled=False,
+        )
+        op_stats.actors.on_register_actor(actor_id=actor_id, actor_info=actor_info)
+        node_stats.actors.on_register_actor(
+            actor_id=actor_id, actor_info=actor_info.clone()
+        )
+        op_node_stats.actors.on_register_actor(
+            actor_id=actor_id, actor_info=actor_info.clone()
         )
 
     def on_task_submitted(
         self,
         *,
-        actor_id: LogicalActorId,
+        actor_id: ActorId,
         task_id: ray.TaskID,
         input_bms: List[BlockMetadata],
     ):
@@ -998,7 +859,7 @@ class ClusterStats:
     def maybe_release_actor(
         self,
         *,
-        actor_id: LogicalActorId,
+        actor_id: ActorId,
         actor_info: ActorInfo,
         op_stats: PerOpStats,
     ):
@@ -1082,7 +943,7 @@ class ClusterStats:
                     actor_id=actor_id, actor_info=actor_info, op_stats=op_stats
                 )
 
-    def on_deregister_actor(self, *, actor_id: LogicalActorId):
+    def on_deregister_actor(self, *, actor_id: ActorId):
         """Mark the actor into the deregistered state. However, we may continue
         to track the downscaled actor, because its outputs may still be alive. In this
         case, we rely on maybe_release_actor to fully stop tracking that actor"""
@@ -1135,15 +996,15 @@ class ResourceBankBase(ABC):
         self,
         *,
         op: PhysicalOperator,
-        actor_id: LogicalActorId,
-        new_node_id: NodeIdStr,
+        actor_id: ActorId,
+        node_id: NodeIdStr,
     ) -> None:
         raise NotImplementedError
 
     def on_task_submitted(
         self,
         *,
-        actor_id: LogicalActorId,
+        actor_id: ActorId,
         task_id: ray.TaskID,
         input_bms: List[BlockMetadata],
     ) -> None:
@@ -1168,12 +1029,12 @@ class ResourceBankBase(ABC):
     def drain_consumed_blocks(self) -> None:
         raise NotImplementedError
 
-    def deregister_actor(self, *, actor_id: LogicalActorId) -> None:
+    def deregister_actor(self, *, actor_id: ActorId) -> None:
         raise NotImplementedError
 
     def get_actor_id_from_task_id(
         self, *, op: PhysicalOperator, task_id: ray.TaskID | None
-    ) -> LogicalActorId | None:
+    ) -> ActorId | None:
         raise NotImplementedError
 
     def node_capacity(self, *, node_id: NodeIdStr) -> ExecutionResources:
@@ -1187,7 +1048,7 @@ class ResourceBankBase(ABC):
         *,
         op: PhysicalOperator | None = None,
         node_id: NodeIdStr | None = None,
-        actor_id: LogicalActorId | None = None,
+        actor_id: ActorId | None = None,
     ) -> LiveObjStore:
         raise NotImplementedError
 
@@ -1237,69 +1098,25 @@ class ResourceBank(ResourceBankBase):
         self,
         *,
         op: PhysicalOperator,
-        actor_id: LogicalActorId,
-        new_node_id: NodeIdStr,
+        actor_id: ActorId,
+        node_id: NodeIdStr,
     ) -> None:
-        """Register ``actor_id`` on first sighting, or move it to ``new_node_id``.
-
-        Seeing it on a different node means it restarted there. Stop counting
-        what it left on the old node, then move it across with its in-flight
-        tasks and their inputs, which Ray Core retries on the new node. Seeing it
-        on the node it is already on does nothing.
-        """
+        """Register ``actor_id`` on ``node_id`` on first sighting; later
+        sightings do nothing (actors never change nodes)."""
         if not actor_only_backend_enabled():
             raise NotImplementedError
 
-        op_stats = self.stats.per_operator.get(op)
-        existing = (
-            op_stats.actors.get_actor_info(actor_id=actor_id)
-            if op_stats is not None
-            else None
-        )
-        if existing is not None and existing.node_id != new_node_id:
-            self._release_refs_on_node(
-                op=op, actor_id=actor_id, node_id=existing.node_id
-            )
-
         self.stats.on_maybe_register_actor(
-            node_id=new_node_id,
+            node_id=node_id,
             actor_id=actor_id,
             op=op,
         )
-
-    def _release_refs_on_node(
-        self,
-        *,
-        op: PhysicalOperator,
-        actor_id: LogicalActorId,
-        node_id: NodeIdStr,
-    ) -> None:
-        """Stop counting ``actor_id``'s outstanding outputs on ``node_id``.
-
-        Subtracts them exactly as a real consumption would, and forgets their
-        refs, so that a consumption report arriving later does nothing and a
-        retry is free to produce the same ObjectRef again.
-
-        Only blocks on this node are dropped. Blocks the actor already produced
-        on the node it is moving to are still in that node's object store, so
-        they keep being counted.
-        """
-        to_release = [
-            ref_key
-            for ref_key, unique_bm in self.live_block_refs.items()
-            if unique_bm.op is op
-            and unique_bm.bm.node_id == node_id
-            and self.get_actor_id_from_task_id(op=op, task_id=unique_bm.task_id)
-            == actor_id
-        ]
-        for ref_key in to_release:
-            self._apply_consumed_ref(ref_key=ref_key)
 
     @override
     def on_task_submitted(
         self,
         *,
-        actor_id: LogicalActorId,
+        actor_id: ActorId,
         task_id: ray.TaskID,
         input_bms: List[BlockMetadata],
     ) -> None:
@@ -1329,9 +1146,9 @@ class ResourceBank(ResourceBankBase):
         ref_key = ref.hex()  # pyrefly: ignore[missing-attribute]
         if ref_key in self.live_block_refs:
             # A streaming generator derives its return ids from (task_id,
-            # put_index), so a task that gets retried yields the very same
-            # ObjectRefs again. That is still one object, just rebuilt, possibly
-            # on a different node. Subtract the previous one before adding this
+            # put_index), so a task that Ray Core retries on the same (live)
+            # actor yields the very same ObjectRefs again. That is still one
+            # object, just rebuilt. Subtract the previous one before adding this
             # one, or the block would be counted twice.
             self._apply_consumed_ref(ref_key=ref_key)
         self.stats.on_new_output(op=op, bm=bm, task_id=task_id)
@@ -1405,7 +1222,7 @@ class ResourceBank(ResourceBankBase):
         )
 
     @override
-    def deregister_actor(self, *, actor_id: LogicalActorId) -> None:
+    def deregister_actor(self, *, actor_id: ActorId) -> None:
         """Drop a downscaled actor from the live indexes."""
         if not actor_only_backend_enabled():
             raise NotImplementedError
@@ -1415,7 +1232,7 @@ class ResourceBank(ResourceBankBase):
     @override
     def get_actor_id_from_task_id(
         self, *, op: PhysicalOperator, task_id: ray.TaskID | None
-    ) -> LogicalActorId | None:
+    ) -> ActorId | None:
         """Given a task_id, returns the actor_id that generated that task_id"""
         if not actor_only_backend_enabled():
             raise NotImplementedError
@@ -1458,7 +1275,7 @@ class ResourceBank(ResourceBankBase):
         *,
         op: PhysicalOperator | None = None,
         node_id: NodeIdStr | None = None,
-        actor_id: LogicalActorId | None = None,
+        actor_id: ActorId | None = None,
     ) -> LiveObjStore:
         """Returns the object store based on the scope.
         Will go from most scoped (actor_id) to least scoped (op).

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 # Producing-actor identifier carried with each queued bundle. Typed loosely
 # (``Any``) so this queue doesn't depend on the actor-only backend's
-# ``LogicalActorId`` (a str); callers pass whatever id they key actors by.
+# ``ActorId`` (a str); callers pass whatever id they key actors by.
 ActorId = Any
 
 

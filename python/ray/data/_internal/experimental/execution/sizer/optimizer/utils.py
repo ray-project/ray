@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Optional, Set
 
-from ray.data._internal.execution.interfaces.common import LogicalActorId, NodeIdStr
+from ray.data._internal.execution.interfaces.common import ActorId, NodeIdStr
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     ScaleUpRequest,
 )
@@ -77,7 +77,7 @@ def upscale_request(
     return PlacedSizingRequest(request={op: request})
 
 
-def pending_actor_ids(pool: "_ExperimentalActorPool") -> Set[LogicalActorId]:
+def pending_actor_ids(pool: "_ExperimentalActorPool") -> Set[ActorId]:
     """Every actor the pool is currently waiting on, across target nodes."""
     return {
         actor_id
