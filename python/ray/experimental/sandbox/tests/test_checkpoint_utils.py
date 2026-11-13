@@ -200,6 +200,18 @@ class TestCheckpointUtils(unittest.TestCase):
         for rel in ("", "sub", os.path.join("sub", "f.txt")):
             assert chowned[os.path.normpath(os.path.join(dst, rel))] == (1234, 1234)
 
+    def test_copy_fs_tree_explains_root_squashed_storage(self):
+        src = os.path.join(self.temp_dir, "squash_src")
+        os.makedirs(src)
+        with open(os.path.join(src, "f.txt"), "w") as f:
+            f.write("x")
+        with (
+            patch("os.geteuid", return_value=0),
+            patch("os.lchown", side_effect=PermissionError(13, "Permission denied")),
+        ):
+            with pytest.raises(SandboxError, match="no_root_squash"):
+                copy_fs_tree(src, os.path.join(self.temp_dir, "squash_dst"))
+
     def test_staged_checkpoint_atomic_swap_and_rollback(self):
         target_dir = os.path.join(self.temp_dir, "bundle")
         os.makedirs(target_dir, exist_ok=True)

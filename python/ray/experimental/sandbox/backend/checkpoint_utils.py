@@ -43,9 +43,17 @@ def _copy_ownership(src: str, dst: str) -> None:
             )
             try:
                 st = os.lstat(src_path)
-                os.lchown(dst_path, st.st_uid, st.st_gid)
             except FileNotFoundError:
                 continue
+            try:
+                os.lchown(dst_path, st.st_uid, st.st_gid)
+            except PermissionError as err:
+                raise SandboxError(
+                    f"Can't give '{dst_path}' its owner {st.st_uid}:{st.st_gid} "
+                    f"({err}). Checkpoints keep the owners of the sandbox's files, "
+                    "so they need storage where root can set owners: an NFS "
+                    "export needs no_root_squash."
+                ) from err
 
 
 def copy_fs_tree(

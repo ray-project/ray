@@ -1626,6 +1626,11 @@ class TestCheckpointRestore(unittest.TestCase):
             call_kwargs = mock_options.call_args[1]
             assert call_kwargs["num_cpus"] == 3.0
             assert "scheduling_strategy" not in call_kwargs
+            # The handle's remote=True only decides scheduling here: the
+            # worker reads the manifest, which a later node-local checkpoint
+            # at the same path may have changed.
+            remote_kwargs = mock_options.return_value.remote.call_args.kwargs
+            assert remote_kwargs["remote"] is None
 
             # A plain path gets an error that says what to pass instead.
             with pytest.raises(SandboxError, match="pass the CheckpointPath"):

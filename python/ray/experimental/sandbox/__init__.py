@@ -267,16 +267,16 @@ def restore(
         except (ValueError, TypeError):
             pass
 
-    remote_arg = (
-        remote if remote is not None else (manifest_remote if manifest_remote else None)
-    )
-
+    # Pass on only what the caller asked for: the worker reads the manifest,
+    # whose "remote" wins over a CheckpointPath that a later checkpoint at
+    # the same path may have made stale. The inferred value above only
+    # decides scheduling, when this process can't read the manifest.
     return Sandbox.options(**actor_opts).remote(
         restore_from=checkpoint_path,
         cpu=cpu,
         memory=memory,
         ttl_seconds=ttl_seconds,
-        remote=remote_arg,
+        remote=remote,
         timeout_seconds=timeout_seconds,
         **kwargs,
     )
