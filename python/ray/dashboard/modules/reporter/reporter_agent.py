@@ -1391,7 +1391,9 @@ class ReporterAgent(
         return mem.shared
 
     async def _async_collect_stats(self):
-        now = dashboard_utils.to_posix_time(datetime.datetime.utcnow())
+        now = dashboard_utils.to_posix_time(
+            datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        )
         network_stats = self._get_network_stats()
         self._network_stats_hist.append((now, network_stats))
         network_speed_stats = self._compute_speed_from_hist(self._network_stats_hist)
