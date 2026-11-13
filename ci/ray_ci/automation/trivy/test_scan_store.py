@@ -52,8 +52,8 @@ def test_the_folder_is_named_after_the_build(branch: str, prefix: str):
     [
         {"build_number": "12a"},
         {"build_number": ""},
-        {"commit": "80ceee"},
-        {"commit": "not-a-sha-not-a-sha"},
+        {"commit": ""},
+        {"commit": "/.."},
         {"pipeline": ""},
         {"branch": "/"},
     ],
@@ -61,6 +61,22 @@ def test_the_folder_is_named_after_the_build(branch: str, prefix: str):
 def test_a_build_that_cannot_be_named_is_rejected(overrides: dict):
     with pytest.raises(StoreError):
         store(**overrides)
+
+
+@pytest.mark.parametrize(
+    ("commit", "folder"),
+    [
+        ("HEAD", "20897-HEAD"),
+        ("80ceee", "20897-80ceee"),
+        ("a/b c", "20897-a_b_c"),
+    ],
+)
+def test_a_commit_that_is_not_a_sha_still_names_a_folder(commit: str, folder: str):
+    """Only the first job of a build created with HEAD sees HEAD; a scan job
+    that ever did should still report, under a folder unique by build."""
+    s = store(commit=commit)
+    assert s.prefix == f"trivy-scans/postmerge/master/{folder}"
+    assert s.commit == commit
 
 
 def test_upload_download_and_list(tmp_path: Path):

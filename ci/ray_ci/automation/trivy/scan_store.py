@@ -43,6 +43,11 @@ def _clean_path(value: str) -> str:
     return "/".join(p for p in parts if p not in ("", ".", ".."))
 
 
+def _clean_commit(commit: str) -> str:
+    """Normally a SHA, but a build created with commit HEAD starts with HEAD."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", commit).strip("_.")
+
+
 @dataclass
 class ScanStore:
     pipeline: str
@@ -65,8 +70,8 @@ class ScanStore:
     ) -> "ScanStore":
         if not re.fullmatch(r"[0-9]+", build_number):
             raise StoreError(f"build number {build_number!r} is not a number")
-        if not re.fullmatch(r"[0-9a-f]{12,40}", commit):
-            raise StoreError(f"commit {commit!r} is not a git SHA")
+        if not _clean_commit(commit):
+            raise StoreError(f"commit {commit!r} has no usable name")
         if not _clean_path(pipeline.replace("/", "_")):
             raise StoreError(f"pipeline {pipeline!r} has no usable name")
         if not _clean_path(branch):
@@ -76,7 +81,7 @@ class ScanStore:
     @property
     def prefix(self) -> str:
         pipeline = _clean_path(self.pipeline.replace("/", "_"))
-        build = f"{self.build_number}-{self.commit[:12]}"
+        build = f"{self.build_number}-{_clean_commit(self.commit)[:12]}"
         return f"{ROOT}/{pipeline}/{_clean_path(self.branch)}/{build}"
 
     def key(self, folder: str, name: str) -> str:
