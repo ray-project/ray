@@ -16,6 +16,11 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _make_slice_partition_fn,
     _sort_reduce,
 )
+from ray.data._internal.execution.operators.random_shuffle import (
+    _RANDOM_SHUFFLE_REDUCE_PEAK_MEMORY_MULTIPLIER,
+    RandomShufflePartitioner,
+    make_random_shuffle_reduce_fn,
+)
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
     DiskHashShuffleMapOp,
 )
@@ -55,6 +60,7 @@ from ray.data._internal.planner.randomize_blocks import generate_randomize_block
 from ray.data._internal.planner.repartition import generate_repartition_fn
 from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data._internal.planner.top_n import plan_top_n_op
+from ray.data._internal.random_config import get_single_integer_random_seed
 from ray.data.context import DataContext, ShuffleStrategy
 
 logger = logging.getLogger(__name__)
@@ -265,6 +271,41 @@ def _plan_sort_v2(
     )
 
 
+def _plan_random_shuffle_v2(
+    data_context: DataContext,
+    logical_op: RandomShuffle,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    """Build the disk Map -> Reduce DAG for a SHUFFLE_V2 random shuffle."""
+    # Pinned at plan time so retried tasks reproduce their output.
+    seed = get_single_integer_random_seed(logical_op.seed_config, data_context)
+    num_partitions = (
+        logical_op.input_dependencies[0].estimated_num_outputs()
+        or data_context.default_hash_shuffle_parallelism
+    )
+
+    map_op = DiskHashShuffleMapOp(
+        input_physical_op,
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=RandomShufflePartitioner(num_partitions, seed),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        map_ray_remote_args=logical_op.ray_remote_args,
+        name=f"DiskRandomShuffleMap(partitions={num_partitions})",
+    )
+    return DiskHashShuffleReduceOp(
+        map_op,
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=make_random_shuffle_reduce_fn(seed),
+        # Partition order is the only block order a seed can reproduce.
+        preserve_partition_order=data_context.execution_options.preserve_order,
+        peak_memory_multiplier=_RANDOM_SHUFFLE_REDUCE_PEAK_MEMORY_MULTIPLIER,
+        reduce_ray_remote_args=logical_op.ray_remote_args,
+        name=f"DiskRandomShuffleReduce(partitions={num_partitions})",
+    )
+
+
 def _plan_hash_shuffle_aggregate_v2(
     data_context: DataContext,
     logical_op: Aggregate,
@@ -424,6 +465,13 @@ def plan_all_to_all_op(
         # want to inherit the upstream op's target max block size.
 
     elif isinstance(op, RandomShuffle):
+        # Only the disk transport gets a v2 random shuffle; the object-store
+        # transport is being retired, so it keeps the legacy all-to-all op.
+        if (
+            data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+            and data_context.use_disk_based_hash_shuffle
+        ):
+            return _plan_random_shuffle_v2(data_context, op, input_physical_dag)
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )

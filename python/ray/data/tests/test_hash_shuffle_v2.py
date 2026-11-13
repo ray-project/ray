@@ -509,7 +509,120 @@ def test_disk_shuffle_map_task_uses_context_label_selector(restore_data_context)
     }
 
 
-def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
+@pytest.mark.parametrize(
+    "remote_args, expected_options",
+    [
+        (
+            {
+                "num_cpus": 2,
+                "num_gpus": 1,
+                "resources": {"bar": 1},
+                "runtime_env": {"env_vars": {"CUSTOM": "x"}},
+                "name": "ignored",
+            },
+            {
+                "num_cpus": 2,
+                "num_gpus": 1,
+                "resources": {"bar": 1},
+                "runtime_env": {"env_vars": {"POLARS_MAX_THREADS": "1", "CUSTOM": "x"}},
+            },
+        ),
+        # None means "default" to ray.remote and must not override the operator's ask.
+        ({"num_cpus": None, "num_gpus": None, "memory": None}, {"num_cpus": 1}),
+    ],
+)
+def test_disk_shuffle_map_task_applies_map_ray_remote_args(
+    restore_data_context, remote_args, expected_options
+):
+    op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+        map_runtime_env={"env_vars": {"POLARS_MAX_THREADS": "1"}},
+        map_ray_remote_args=remote_args,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_map_operator._disk_shuffle_map_task"
+    ) as shuffle_map_task:
+        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_shuffle_map_task([], [])
+
+    kwargs = shuffle_map_task.options.call_args.kwargs
+    assert {k: kwargs[k] for k in expected_options} == expected_options
+    assert kwargs["name"] == op.name
+    # Estimates and logical usage must advertise the same ask as the task.
+    expected_usage = (kwargs["num_cpus"], kwargs.get("num_gpus", 0))
+    for usage in (op.incremental_resource_usage(), op.current_logical_usage()):
+        assert (usage.cpu, usage.gpu) == expected_usage
+
+
+def test_disk_shuffle_map_op_orders_handles_by_task_index(restore_data_context):
+    op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_map_operator._disk_shuffle_map_task"
+    ) as map_task:
+        map_task.options.return_value.remote.return_value = MagicMock()
+        for _ in range(3):
+            op._submit_shuffle_map_task([], [])
+    op._inputs_complete = True
+
+    # Complete the tasks last-first; the published handles must still be in
+    # task order so every reducer concatenates shards the same way.
+    with patch("ray.get", return_value={}), patch("ray.put", side_effect=tuple):
+        for task_idx in (2, 1, 0):
+            op._handle_map_done(task_idx, f"handle-{task_idx}", [])
+
+    assert op._shared_handles_ref == ("handle-0", "handle-1", "handle-2")
+
+
+def test_disk_shuffle_reduce_op_emits_partitions_in_order(restore_data_context):
+    map_op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+    )
+    op = DiskHashShuffleReduceOp(
+        map_op,
+        restore_data_context,
+        num_partitions=2,
+        reduce_fn=lambda partition_id, tables_by_input: iter(()),
+        preserve_partition_order=True,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_reduce_operator._disk_shuffle_reduce_task"
+    ) as reduce_task:
+        reduce_task.options.return_value.remote.return_value = MagicMock()
+        for partition_id in range(2):
+            op._submit_reduce_task(
+                partition_id, [RefBundle((), schema=None, owns_blocks=True)]
+            )
+
+    # Partition 1 finishes first; its output must wait behind partition 0's.
+    outputs = [RefBundle((), schema=None, owns_blocks=True) for _ in range(2)]
+    for partition_id in (1, 0):
+        op._handle_reduce_output_ready(partition_id, outputs[partition_id])
+        assert op.has_next() == (partition_id == 0)
+        op._handle_reduce_done(partition_id, [], None, None, None, False)
+
+    assert [op.get_next() for _ in range(2)] == outputs
+    assert not op.has_next()
+
+
+def test_disk_shuffle_reduce_task_applies_reduce_ray_remote_args(restore_data_context):
     restore_data_context.execution_options.label_selector = {
         "subcluster": "train",
         "zone": "us-west",
@@ -526,7 +639,10 @@ def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
         num_partitions=1,
         reduce_fn=lambda partition_id, tables_by_input: iter(()),
         reduce_ray_remote_args={
-            "label_selector": {"subcluster": "validation", "node": "worker-1"}
+            "num_cpus": 2,
+            "num_gpus": 1,
+            "memory": None,
+            "label_selector": {"subcluster": "validation", "node": "worker-1"},
         },
     )
     op.start(ExecutionOptions(), noop_counter())
@@ -538,11 +654,16 @@ def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
         shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
         op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
 
-    assert shuffle_reduce_task.options.call_args.kwargs["label_selector"] == {
+    kwargs = shuffle_reduce_task.options.call_args.kwargs
+    assert kwargs["label_selector"] == {
         "subcluster": "validation",
         "zone": "us-west",
         "node": "worker-1",
     }
+    assert "memory" not in kwargs  # None must not override the estimate
+    # Estimates and logical usage must advertise the same ask as the task.
+    for usage in (op.incremental_resource_usage(), op.current_logical_usage()):
+        assert (usage.cpu, usage.gpu) == (2, 1)
 
 
 # --- Multi-input reduce -------------------------------------------------------

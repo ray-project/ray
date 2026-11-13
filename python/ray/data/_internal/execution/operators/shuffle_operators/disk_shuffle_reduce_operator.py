@@ -40,12 +40,11 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     _SHUFFLE_REDUCE_RUNTIME_ENV,
-    _merged_reduce_runtime_env,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
-from ray.data._internal.execution.util import merge_label_selector
+from ray.data._internal.execution.util import merge_label_selector, merge_runtime_envs
 from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
@@ -172,11 +171,16 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
-        user_args = dict(self._reduce_ray_remote_args)
+        # None means "unset" to ray.remote, so it must not override the defaults.
+        user_args = {
+            k: v for k, v in self._reduce_ray_remote_args.items() if v is not None
+        }
         user_runtime_env = user_args.pop("runtime_env", None)
         remote_args.update(user_args)
         if user_runtime_env is not None:
-            remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
+            remote_args["runtime_env"] = merge_runtime_envs(
+                _SHUFFLE_REDUCE_RUNTIME_ENV, user_runtime_env
+            )
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         remote_args = merge_label_selector(
@@ -440,7 +444,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def has_completed(self) -> bool:
         return (
             not self._shuffle_reduce_tasks
-            and not self._output_queue
+            and len(self._output_queue) == 0
             and not self._pending_inputs
             and super().has_completed()
         )
@@ -470,14 +474,16 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def current_logical_usage(self) -> ExecutionResources:
         cpu: float = 0
+        gpu: float = 0
         memory: float = 0
         for task in self._shuffle_reduce_tasks.values():
             bundle = task.get_requested_resource_bundle()
             if bundle is None:
                 continue
             cpu += bundle.cpu
+            gpu += bundle.gpu
             memory += bundle.memory
-        return ExecutionResources(cpu=cpu, memory=memory)
+        return ExecutionResources(cpu=cpu, gpu=gpu, memory=memory)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         memory = 0

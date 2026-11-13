@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runti
     _group_by_server,
     _handles_to_sources,
     _is_disk_exhausted,
+    _order_tables_by_source,
     _PartitionWriter,
     _PwriteSink,
     _read_ipc,
@@ -45,6 +46,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     BlockTransformer,
     PartitionFn,
     ReduceFn,
+    TaskScopedPartitioner,
+    resolve_partition_fn,
 )
 from ray.data._internal.output_buffer import (
     BlockOutputBuffer,
@@ -70,7 +73,7 @@ _DEFAULT_FETCH_THREADS = 16
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _disk_shuffle_map_task(
     *blocks: Block,
-    partition_fn: PartitionFn,
+    partition_fn: Union[PartitionFn, TaskScopedPartitioner],
     num_partitions: int,
     out_dir: str,
     map_id: int,
@@ -141,6 +144,7 @@ def _disk_shuffle_map_task(
     try:
         with open(tmp_path, "wb") as out_file:
             writer = _PartitionWriter(out_file, map_id, compression)
+            partition_fn = resolve_partition_fn(partition_fn, map_id)
             for block in blocks:
                 # Accept any Ray Data Block (Arrow / pandas / ...) at the
                 # boundary and normalize to ``pa.Table`` here. Downstream
@@ -352,11 +356,6 @@ def _disk_shuffle_reduce_task(
 
         groups_by_input = [_group_by_server(srcs) for srcs in sources_by_input]
         flat_groups = [group for groups in groups_by_input for group in groups]
-        group_input_idx = [
-            input_idx
-            for input_idx, groups in enumerate(groups_by_input)
-            for _ in groups
-        ]
 
         try:
             # Fetch each source region in parallel, pwrite at pre-assigned offsets
@@ -364,9 +363,9 @@ def _disk_shuffle_reduce_task(
             # pwrite lands in page cache so the decode-side ``pread``s hit cache.
             total_size, base_offsets, node_sizes = _compute_prefetch_layout(flat_groups)
 
-            accum_tables_by_input: List[List[pa.Table]] = [
-                [] for _ in range(num_inputs)
-            ]
+            # One slot per fetch group so regions decode as they land;
+            # _order_tables_by_source restores map task order afterwards.
+            tables_by_group: List[List[pa.Table]] = [[] for _ in flat_groups]
             output_buffer: Optional[BlockOutputBuffer] = None
             # Codec from data_context.shuffle_compression (same field the map used).
             _compression = (
@@ -419,7 +418,12 @@ def _disk_shuffle_reduce_task(
 
                     n_threads = min(len(flat_groups), max(1, fetch_threads))
                     work = list(
-                        zip(base_offsets, node_sizes, flat_groups, group_input_idx)
+                        zip(
+                            range(len(flat_groups)),
+                            base_offsets,
+                            node_sizes,
+                            flat_groups,
+                        )
                     )
                     # Randomize submission order per reducer (seeded by partition_id →
                     # deterministic/retry-stable) so concurrent fan-in spreads evenly
@@ -446,18 +450,23 @@ def _disk_shuffle_reduce_task(
                                 group.node_id,
                                 group.members,
                                 max_bytes_per_fetch,
-                            ): (base, size, input_idx)
-                            for base, size, group, input_idx in work
+                            ): (base, size, group_idx)
+                            for group_idx, base, size, group in work
                         }
                         for fut in as_completed(futs):
                             fut.result()
-                            base, size, input_idx = futs[fut]
+                            base, size, group_idx = futs[fut]
                             if size > 0:
-                                _decode_region(
-                                    base, size, accum_tables_by_input[input_idx]
-                                )
+                                _decode_region(base, size, tables_by_group[group_idx])
 
-                    # Drain the accumulator tail.
+                    accum_tables_by_input: List[List[pa.Table]] = []
+                    start = 0
+                    for groups in groups_by_input:
+                        end = start + len(groups)
+                        accum_tables_by_input.append(
+                            _order_tables_by_source(groups, tables_by_group[start:end])
+                        )
+                        start = end
                     if any(accum_tables_by_input):
                         yield from _flush(accum_tables_by_input)
                     if output_buffer is not None:

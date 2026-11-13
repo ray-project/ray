@@ -5,7 +5,7 @@ import secrets
 import tempfile
 import typing
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
@@ -28,6 +28,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
     BlockTransformer,
     PartitionFn,
+    TaskScopedPartitioner,
     _disk_shuffle_map_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
@@ -36,7 +37,11 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
-from ray.data._internal.execution.util import merge_label_selector
+from ray.data._internal.execution.util import (
+    merge_label_selector,
+    merge_runtime_envs,
+    resource_override,
+)
 from ray.data.block import BlockExecStats, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -66,9 +71,10 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         data_context: DataContext,
         *,
         num_partitions: int,
-        partition_fn: PartitionFn,
+        partition_fn: Union[PartitionFn, TaskScopedPartitioner],
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
+        map_ray_remote_args: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "DiskHashShuffleMap",
     ):
@@ -79,12 +85,20 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         )
 
         self._num_partitions: int = num_partitions
-        self._partition_fn: PartitionFn = partition_fn
+        self._partition_fn: Union[PartitionFn, TaskScopedPartitioner] = partition_fn
         self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
-        self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
+        # User ray.remote options, resolved once so the task options and the
+        # resource estimates see the same ask.
+        self._map_ray_remote_args: Dict[str, Any] = dict(map_ray_remote_args or {})
+        self._shuffle_map_task_num_cpus: float = float(
+            resource_override(self._map_ray_remote_args, "num_cpus", map_cpus)
+        )
+        self._shuffle_map_task_num_gpus: float = float(
+            resource_override(self._map_ray_remote_args, "num_gpus", 0)
+        )
 
         # -- Pre-map merge ---------------------------------------------------
         # Buffered blocks are coalesced per node into a single map task once
@@ -141,7 +155,8 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # ``_completed_handle_refs``; at emit time we ``ray.put`` that list
         # once into ``_shared_handles_ref`` and every partition wrapper
         # points at that single ref (O(1) per-reducer arg serialization).
-        self._completed_handle_refs: List[ObjectRef] = []
+        # Keyed by map task index so reducers see shards in a fixed order.
+        self._completed_handle_refs: Dict[int, ObjectRef] = {}
         self._shared_handles_ref: Optional[ObjectRef] = None
         # First non-None schema seen; propagated onto every wrapper so
         # downstream ops (fusion, empty-partition fast path) don't see None.
@@ -212,17 +227,24 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         cur_task_idx = self._next_shuffle_map_task_idx
         self._next_shuffle_map_task_idx += 1
 
-        resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
-        if estimated_bytes > 0:
-            resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+        resources = self._map_task_resources(
+            int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+        )
+        # None means "unset" to ray.remote, so it must not override the defaults.
+        user_args = {
+            k: v for k, v in self._map_ray_remote_args.items() if v is not None
+        }
+        user_runtime_env = user_args.pop("runtime_env", None)
 
-        ray_options: Dict[str, Any] = {**resources, "name": self.name}
-        if target_node_id is not None:
+        ray_options: Dict[str, Any] = {**resources, **user_args, "name": self.name}
+        if target_node_id is not None and "scheduling_strategy" not in user_args:
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 target_node_id, soft=True
             )
-        if self._map_runtime_env is not None:
-            ray_options["runtime_env"] = self._map_runtime_env
+        if self._map_runtime_env is not None or user_runtime_env is not None:
+            ray_options["runtime_env"] = merge_runtime_envs(
+                self._map_runtime_env, user_runtime_env or {}
+            )
 
         ray_options = merge_label_selector(
             ray_options, self.data_context.execution_options.label_selector
@@ -325,7 +347,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             schema=None,
             owns_blocks=False,
         )
-        self._completed_handle_refs.append(handle_ref)
+        self._completed_handle_refs[task_idx] = handle_ref
 
         for bundle in input_bundles:
             bundle.destroy_if_owned()
@@ -372,7 +394,12 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         # One Ray object shared across all N wrappers.
         # pyrefly: ignore[bad-assignment]
-        self._shared_handles_ref = ray.put(self._completed_handle_refs)
+        self._shared_handles_ref = ray.put(
+            [
+                self._completed_handle_refs[i]
+                for i in sorted(self._completed_handle_refs)
+            ]
+        )
 
         partition_bytes = self.get_partition_bytes()
         for partition_id in range(self._num_partitions):
@@ -467,7 +494,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         seen: set = set()
         seen_nodes: set = set()
-        for ref in self._completed_handle_refs:
+        for ref in self._completed_handle_refs.values():
             try:
                 # pyrefly: ignore[no-matching-overload]
                 handle = ray.get(ref)
@@ -525,6 +552,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def current_logical_usage(self) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._map_resource_usage.cpu,
+            gpu=self._map_resource_usage.gpu,
             memory=self._map_resource_usage.memory,
         )
 
@@ -535,10 +563,17 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
         memory = int(avg_input * SHUFFLE_PEAK_MEMORY_MULTIPLIER) if avg_input else 0
-        return ExecutionResources(
-            cpu=self._shuffle_map_task_num_cpus,
-            memory=memory,
-        )
+        return ExecutionResources.from_resource_dict(self._map_task_resources(memory))
+
+    def _map_task_resources(self, memory_estimate: int) -> Dict[str, Any]:
+        """Per-task resources: operator defaults with the user's overrides applied."""
+        resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
+        if self._shuffle_map_task_num_gpus:
+            resources["num_gpus"] = self._shuffle_map_task_num_gpus
+        memory = resource_override(self._map_ray_remote_args, "memory", memory_estimate)
+        if memory > 0:
+            resources["memory"] = int(memory)
+        return resources
 
     def min_scheduling_resources(self) -> ExecutionResources:
         return self.incremental_resource_usage()

@@ -33,6 +33,23 @@ def merge_label_selector(
     return out
 
 
+def merge_runtime_envs(
+    base: Optional[Dict[str, Any]], user: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Overlay a user ``runtime_env`` on an operator default, merging ``env_vars``."""
+    base = base or {}
+    merged = {**base, **user}
+    if "env_vars" in base or "env_vars" in user:
+        merged["env_vars"] = {**base.get("env_vars", {}), **user.get("env_vars", {})}
+    return merged
+
+
+def resource_override(ray_remote_args: Dict[str, Any], key: str, default: Any) -> Any:
+    """User value for a resource option; ``None`` means "use the default", as in Ray."""
+    value = ray_remote_args.get(key)
+    return default if value is None else value
+
+
 def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
     """Create ref bundles from a list of block data.
 
