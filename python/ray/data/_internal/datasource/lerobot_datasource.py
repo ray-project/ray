@@ -801,20 +801,20 @@ class _DeltaSegment(NamedTuple):
     ``index - segment_start`` (valid because a segment is a contiguous run of
     whole episodes)."""
 
-    global_idx: List[int]
+    global_idx: np.ndarray
     """Per-row global frame index (the parquet ``index`` column), one entry per
     segment row, in row order."""
 
-    episode_index_col: List[int]
+    episode_index_col: np.ndarray
     """Per-row episode index (the ``episode_index`` column); maps a row to its
     episode when routing a video frame to its ``(file, timestamp)``."""
 
-    row_from: List[int]
+    row_from: np.ndarray
     """Per-row inclusive lower bound of the row's episode, as a global frame index.
     Windows are clamped to ``[row_from, row_to)`` so they never cross into a
     neighbouring episode."""
 
-    row_to: List[int]
+    row_to: np.ndarray
     """Per-row exclusive upper bound of the row's episode, as a global frame index
     (see ``row_from``)."""
 
@@ -868,14 +868,16 @@ def _read_lerobot_segment(
     n_rows = full.num_rows
     camera_keys = root.video_keys + root.image_keys
 
-    task_idx_pylist = full.column("task_index").to_pylist()
-    missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
+    task_idx_col = full.column("task_index")
+    unique_task_indices = pc.unique(task_idx_col).to_pylist()
+    missing_tasks = {ti for ti in unique_task_indices if ti not in root.tasks_dict}
     if missing_tasks:
         raise ValueError(
             f"task_index values {sorted(missing_tasks)} are absent from the "
             f"dataset's tasks metadata (meta/tasks.parquet); the data and "
             f"tasks metadata are inconsistent."
         )
+    task_idx_pylist = task_idx_col.to_pylist()
 
     if root.video_keys:
         video_meta = _video_episode_meta(ep_slice, root.video_keys)
@@ -952,28 +954,30 @@ def _prepare_delta_segment(
     position ``index - segment_start`` and guarantees every in-episode neighbour
     is loaded; a split episode would silently corrupt windows, so fail loudly.
     """
-    global_idx = full.column("index").to_pylist()
-    episode_index_col = full.column("episode_index").to_pylist()
-    from_by_episode = dict(
-        zip(
-            ep_slice.column("episode_index").to_pylist(),
-            ep_slice.column("_global_from_index").to_pylist(),
+    global_idx = full.column("index").to_numpy(zero_copy_only=False)
+    episode_index_arrow = full.column("episode_index")
+    episode_index_col = episode_index_arrow.to_numpy(zero_copy_only=False)
+    ep_slice_idx = ep_slice.column("episode_index")
+    if len(pc.unique(ep_slice_idx)) != len(ep_slice_idx):
+        raise ValueError(
+            "ep_slice contains duplicate episode_index values; "
+            "the dataset's episodes metadata (meta/episodes) is inconsistent."
         )
-    )
-    to_by_episode = dict(
-        zip(
-            ep_slice.column("episode_index").to_pylist(),
-            ep_slice.column("_global_to_index").to_pylist(),
-        )
-    )
-    row_from = [from_by_episode[episode] for episode in episode_index_col]
-    row_to = [to_by_episode[episode] for episode in episode_index_col]
+    ep_pos = pc.index_in(episode_index_arrow, value_set=ep_slice_idx)
+    if ep_pos.null_count > 0:
+        missing_mask = ep_pos.is_null().to_numpy(zero_copy_only=False)
+        raise KeyError(int(episode_index_col[missing_mask][0]))
+    ep_pos_np = ep_pos.to_numpy(zero_copy_only=False)
+    ep_from = ep_slice.column("_global_from_index").to_numpy(zero_copy_only=False)
+    ep_to = ep_slice.column("_global_to_index").to_numpy(zero_copy_only=False)
+    row_from = ep_from[ep_pos_np]
+    row_to = ep_to[ep_pos_np]
 
-    segment_start, segment_end = global_idx[0], global_idx[-1] + 1
+    segment_start, segment_end = int(global_idx[0]), int(global_idx[-1]) + 1
     if (
-        len(global_idx) != segment_end - segment_start
-        or min(row_from) < segment_start
-        or max(row_to) > segment_end
+        bool(np.any(np.diff(global_idx) != 1))
+        or int(row_from.min()) < segment_start
+        or int(row_to.max()) > segment_end
     ):
         raise RuntimeError(
             "delta_timestamps requires contiguous whole-episode read segments, "
@@ -1072,9 +1076,9 @@ def _build_delta_batch(
         if cached is None:
             batch_end = batch_start + batch.num_rows
             clamped, pad = _delta_targets(
-                np.asarray(delta_segment.global_idx[batch_start:batch_end]),
-                np.asarray(delta_segment.row_from[batch_start:batch_end]),
-                np.asarray(delta_segment.row_to[batch_start:batch_end]),
+                delta_segment.global_idx[batch_start:batch_end],
+                delta_segment.row_from[batch_start:batch_end],
+                delta_segment.row_to[batch_start:batch_end],
                 steps,
             )
             # (A, S) row positions + pad mask; a clamped global index is at row
@@ -1209,11 +1213,11 @@ def _decode_frames_by_file(
 
 def _decode_video_delta(
     root: _LeRobotRoot,
-    anchors: List[int],
-    global_idx: List[int],
-    row_from: List[int],
-    row_to: List[int],
-    episode_index_col: List[int],
+    anchors: Union[range, List[int], np.ndarray],
+    global_idx: Union[List[int], np.ndarray],
+    row_from: Union[List[int], np.ndarray],
+    row_to: Union[List[int], np.ndarray],
+    episode_index_col: Union[List[int], np.ndarray],
     video_meta: dict,
     vk: str,
     steps: List[int],
@@ -1227,19 +1231,30 @@ def _decode_video_delta(
     window per anchor. Returns ``([per-anchor (T, H, W, C) uint8], [per-anchor
     (T,) bool pad])``.
     """
+    n_anchors = len(anchors)
+    if n_anchors == 0:
+        return [], []
+
     fps = float(root.fps)
     ep_info = video_meta[vk]
     n_steps = len(steps)
 
-    pads: List[np.ndarray] = []
+    anchor_indices = np.asarray(anchors, dtype=np.intp)
+    anchor_global_idx = np.asarray(global_idx)[anchor_indices]
+    anchor_row_from = np.asarray(row_from)[anchor_indices]
+    anchor_row_to = np.asarray(row_to)[anchor_indices]
+    anchor_episodes = np.asarray(episode_index_col)[anchor_indices]
+    all_targets, all_pads = _delta_targets(
+        anchor_global_idx, anchor_row_from, anchor_row_to, steps
+    )
+    pads: List[np.ndarray] = list(np.asarray(all_pads, dtype=bool))
+
     # (chunk, fi) -> [((anchor, step), timestamp), ...]
     file_requests: Dict[tuple, list] = {}
-    for anchor_idx, position in enumerate(anchors):
-        episode_start = row_from[position]
-        chunk, fi, from_ts = ep_info[episode_index_col[position]]
-        targets, pad = _delta_targets(
-            global_idx[position], episode_start, row_to[position], steps
-        )
+    for anchor_idx in range(n_anchors):
+        episode_start = int(anchor_row_from[anchor_idx])
+        chunk, fi, from_ts = ep_info[int(anchor_episodes[anchor_idx])]
+        targets = all_targets[anchor_idx]
         for step_idx, target in enumerate(targets):
             # int(target) keeps the timestamp a Python float so lerobot's
             # torch.tensor(timestamps) is float32 and matches the decoder's
@@ -1250,14 +1265,13 @@ def _decode_video_delta(
                     from_ts + (int(target) - episode_start) / fps,
                 )
             )
-        pads.append(np.asarray(pad, dtype=bool))
 
     frames = _decode_frames_by_file(root, vk, file_requests, tolerance_s, cache)
     stacked = [
         np.stack(
             [frames[(anchor_idx, step_idx)] for step_idx in range(n_steps)], axis=0
         )
-        for anchor_idx in range(len(anchors))
+        for anchor_idx in range(n_anchors)
     ]
     return stacked, pads
 
