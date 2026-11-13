@@ -19,9 +19,9 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     _get_custom_resources,
     _get_num_tpus,
     _get_ray_resources_from_group_spec,
+    _get_required_node_labels,
     _round_up_k8s_quantity,
 )
-from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
 
@@ -702,93 +702,6 @@ def test_autoscaling_config_fetch_retries(exception, num_exceptions):
             assert out == {"ok-key": "ok-value"}
 
 
-TPU_TYPES_ARGS = ",".join(
-    [
-        "accelerator",
-        "topology",
-        "expected_tpu_type",
-    ]
-)
-TPU_TYPES_DATA = (
-    []
-    if platform.system() == "Windows"
-    else [
-        pytest.param(
-            "tpu-v4-podslice",
-            None,
-            None,
-            id="tpu-none-topology",
-        ),
-        pytest.param(
-            None,
-            "2x2x2",
-            None,
-            id="tpu-none-accelerator",
-        ),
-        pytest.param(
-            "tpu-v4-podslice",
-            "2x2x2",
-            "v4-16",
-            id="tpu-v4-test",
-        ),
-        pytest.param(
-            "tpu-v5-lite-device",
-            "2x2",
-            "v5litepod-4",
-            id="tpu-v5e-device-test",
-        ),
-        pytest.param(
-            "tpu-v5-lite-podslice",
-            "2x4",
-            "v5litepod-8",
-            id="tpu-v5e-podslice-test",
-        ),
-        pytest.param(
-            "tpu-v5p-slice",
-            "2x2x4",
-            "v5p-32",
-            id="tpu-v5p-test",
-        ),
-        pytest.param(
-            "tpu-v6e-slice",
-            "16x16",
-            "v6e-256",
-            id="tpu-v6e-test",
-        ),
-        pytest.param(
-            "tpu7x",
-            "2x2x2",
-            "v7x-16",
-            id="tpu-v7x-test",
-        ),
-        pytest.param(
-            "tpu-v6e-slice",
-            "4x",
-            None,
-            id="tpu-malformed-topology",
-        ),
-        pytest.param(
-            "tpu-v6e-slice",
-            "2x2x2",
-            None,
-            id="tpu-mismatched-generation-topology",
-        ),
-    ]
-)
-
-
-@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
-@pytest.mark.parametrize(TPU_TYPES_ARGS, TPU_TYPES_DATA)
-def test_tpu_node_selectors_to_type(
-    accelerator: str, topology: str, expected_tpu_type: str
-):
-    """Verify that tpu_node_selectors_to_type correctly returns TPU type from
-    TPU nodeSelectors.
-    """
-    tpu_type = tpu_node_selectors_to_type(topology, accelerator)
-    assert expected_tpu_type == tpu_type
-
-
 TPU_PARAM_ARGS = ",".join(
     [
         "ray_cr_in",
@@ -1100,6 +1013,9 @@ def test_dynamic_slicing_tpu_labels_and_resources():
             k.startswith("TPU-") and k.endswith("-head")
             for k in nt_cfgs[name].resources
         )
+        assert "ray.io/accelerator-type" not in nt_cfgs[name].labels
+        assert "ray.io/tpu-topology" not in nt_cfgs[name].labels
+        assert "ray.io/tpu-pod-type" not in nt_cfgs[name].labels
     assert nt_cfgs["gpu-group"].max_worker_nodes == 8
     for name in ("tpu-group", "tpu-ds-override"):
         assert nt_cfgs[name].max_worker_nodes == 6
@@ -1109,14 +1025,418 @@ def test_dynamic_slicing_tpu_labels_and_resources():
             "ray.io/tpu-pod-type": "v7x-16",
         }
         assert nt_cfgs[name].resources["TPU-v7x-16-head"] == 1
+    assert nt_cfgs["tpu-single"].max_worker_nodes == 3
+    assert nt_cfgs["tpu-zero-hosts"].max_worker_nodes == 0
     for name in ("tpu-single", "tpu-zero-hosts"):
-        assert nt_cfgs[name].max_worker_nodes == 3
         assert nt_cfgs[name].labels == {
             "ray.io/accelerator-type": "TPU-V7X",
             "ray.io/tpu-topology": "2x2x1",
             "ray.io/tpu-pod-type": "v7x-8",
         }
         assert nt_cfgs[name].resources["TPU-v7x-8-head"] == 1
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(
+    "pod_spec, expected",
+    [
+        pytest.param(
+            {
+                "nodeSelector": {
+                    "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                    "cloud.google.com/gke-tpu-topology": "2x2x2",
+                }
+            },
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            id="node-selector-only",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        },
+                                        {
+                                            "key": "topology.kubernetes.io/zone",
+                                            "operator": "In",
+                                            "values": ["us-east5-a"],
+                                        },
+                                    ]
+                                },
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        },
+                                        {
+                                            "key": "topology.kubernetes.io/zone",
+                                            "operator": "In",
+                                            "values": ["us-east5-b"],
+                                        },
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            id="multi-term-affinity-keeps-common-pin",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu-v6e-slice", "tpu7x"],
+                                        },
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-topology",
+                                            "operator": "In",
+                                            "values": ["2x2x1", "2x2x2"],
+                                        },
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-topology",
+                                            "operator": "In",
+                                            "values": ["2x2x2", "4x4x4"],
+                                        },
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            id="intersecting-in-expressions-pin-singleton",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": []
+                        }
+                    }
+                },
+            },
+            {},
+            id="empty-node-selector-terms-unsatisfiable",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [{}]
+                        }
+                    }
+                },
+            },
+            {},
+            id="only-empty-term-unsatisfiable",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchFields": [
+                                        {
+                                            "key": "metadata.name",
+                                            "operator": "In",
+                                            "values": ["node-0"],
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            id="match-fields-only-term-preserves-node-selector",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        }
+                                    ]
+                                },
+                                {
+                                    "matchFields": [
+                                        {
+                                            "key": "metadata.name",
+                                            "operator": "In",
+                                            "values": ["node-0"],
+                                        }
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+            {},
+            id="match-fields-only-second-term-breaks-uniqueness",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu-v6e-slice"],
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+            {},
+            id="conflicting-in-and-node-selector-unsatisfiable",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x", "tpu-v6e-slice"],
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            {},
+            id="multi-valued-in-not-pinned",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        }
+                                    ]
+                                },
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu-v6e-slice"],
+                                        }
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+            {},
+            id="disjoint-terms-not-pinned",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        },
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-topology",
+                                            "operator": "Exists",
+                                        },
+                                    ]
+                                },
+                                {},
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": [],
+                                        }
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            id="skips-empty-and-empty-in-terms",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {
+                    "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                    "cloud.google.com/gke-tpu-topology": "4x4",
+                },
+                "affinity": {
+                    "nodeAffinity": {
+                        "preferredDuringSchedulingIgnoredDuringExecution": [
+                            {
+                                "weight": 100,
+                                "preference": {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        }
+                                    ]
+                                },
+                            }
+                        ]
+                    }
+                },
+            },
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            id="preferred-affinity-ignored",
+        ),
+    ],
+)
+def test_get_required_node_labels(pod_spec, expected):
+    assert _get_required_node_labels(pod_spec) == expected
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_node_affinity_tpu_labels_and_resources():
+    """Verify required nodeAffinity derives TPU labels and head resources,
+    ignores Pod template labels, and preserves explicit overrides."""
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+
+    tpu_affinity = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    tpu_affinity["groupName"] = "tpu-affinity"
+    tpu_affinity["template"]["spec"].pop("nodeSelector", None)
+    tpu_affinity["template"]["spec"]["affinity"] = {
+        "nodeAffinity": {
+            "requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [
+                    {
+                        "matchExpressions": [
+                            {
+                                "key": "cloud.google.com/gke-tpu-accelerator",
+                                "operator": "In",
+                                "values": ["tpu-v6e-slice"],
+                            },
+                            {
+                                "key": "cloud.google.com/gke-tpu-topology",
+                                "operator": "In",
+                                "values": ["4x4"],
+                            },
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+    tpu_affinity["labels"] = {"ray.io/tpu-pod-type": "custom-override"}
+    tpu_affinity["resources"] = {"TPU": "4", "TPU-v6e-16-head": "2"}
+
+    # Pod metadata.labels and worker group labels must never be read as GKE TPU inputs.
+    tpu_pod_labels_only = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    tpu_pod_labels_only["groupName"] = "tpu-pod-labels-only"
+    tpu_pod_labels_only["template"]["spec"].pop("nodeSelector", None)
+    tpu_pod_labels_only["template"].setdefault("metadata", {})["labels"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x2",
+    }
+    tpu_pod_labels_only["labels"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x2",
+    }
+
+    cr["spec"]["workerGroupSpecs"].extend([tpu_affinity, tpu_pod_labels_only])
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    nt_cfgs = AutoscalingConfig(configs=derived).get_node_type_configs()
+
+    assert nt_cfgs["tpu-affinity"].labels == {
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "4x4",
+        "ray.io/tpu-pod-type": "custom-override",
+    }
+    assert nt_cfgs["tpu-affinity"].resources["TPU-v6e-16-head"] == 2
+
+    assert "ray.io/accelerator-type" not in nt_cfgs["tpu-pod-labels-only"].labels
+    assert "ray.io/tpu-topology" not in nt_cfgs["tpu-pod-labels-only"].labels
+    assert "ray.io/tpu-pod-type" not in nt_cfgs["tpu-pod-labels-only"].labels
+    assert not any(
+        k.startswith("TPU-") and k.endswith("-head")
+        for k in nt_cfgs["tpu-pod-labels-only"].resources
+    )
 
 
 if __name__ == "__main__":

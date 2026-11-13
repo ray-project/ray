@@ -161,14 +161,17 @@ class AcceleratorManager(ABC):
 
     @staticmethod
     def get_node_group_accelerator_labels(
+        resources: Dict[str, Any],
         node_selector: Dict[str, str],
         annotations: Optional[Dict[str, str]] = None,
     ) -> Optional[Dict[str, str]]:
         """Get accelerator-related Ray node labels for a node group from its
-        pod nodeSelector and optional pod annotations.
+        base resources, required pod node labels, and optional pod annotations.
 
         Args:
-            node_selector: The pod spec nodeSelector dictionary.
+            resources: Base Ray resources already parsed for the node group.
+            node_selector: Required pod node labels (for example from
+                `nodeSelector` and required `nodeAffinity`).
             annotations: Optional pod metadata annotations dictionary.
 
         Returns:
@@ -184,11 +187,12 @@ class AcceleratorManager(ABC):
         annotations: Optional[Dict[str, str]] = None,
     ) -> Optional[Dict[str, int]]:
         """Get any additional Ray resources derived for a node group from its
-        pod nodeSelector and optional pod annotations.
+        base resources, required pod node labels, and optional pod annotations.
 
         Args:
             resources: Base Ray resources already parsed for the node group.
-            node_selector: The pod spec nodeSelector dictionary.
+            node_selector: Required pod node labels (for example from
+                `nodeSelector` and required `nodeAffinity`).
             annotations: Optional pod metadata annotations dictionary.
 
         Returns:
