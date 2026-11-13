@@ -26,6 +26,26 @@ if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summ
     docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/test-summaries' || true
 fi
 
+# Post the annotations a job leaves in /artifact-mount/annotations/, one per
+# file named <context>.<style>.md; the image-scan report uses this. Jobs
+# can't post them themselves: postmerge doesn't mount the agent into job
+# containers. A failed post never fails the job. The files stay for the
+# artifact upload; pre-command and post-artifact clear /tmp/artifacts.
+if [ -d "/tmp/artifacts/annotations" ]; then
+  for annotation in /tmp/artifacts/annotations/*.md; do
+    [ -f "${annotation}" ] || continue
+    name="$(basename "${annotation}" .md)"
+    context="${name%.*}"
+    style="${name##*.}"
+    case "${style}" in
+      success|info|warning|error) ;;
+      *) style=info ;;
+    esac
+    buildkite-agent annotate --context "${context}" --style "${style}" \
+      < "${annotation}" || true
+  done
+fi
+
 # clean up bazel logs if any, this only has effect when the bazel test runs in the same
 # environment as the buildkite job commands, and has no effect when the tests run
 # inside another test container
