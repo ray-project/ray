@@ -16,7 +16,7 @@ from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
-from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.multiplex import _ModelMultiplexWrapper, _unpinned_model_lookups
 
 
 def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
@@ -498,6 +498,79 @@ class TestMultiplexPinning:
         await asyncio.wait_for(lookup_c, timeout=5)
         assert not model_a.unloaded
         assert list(multiplexer.models) == ["a", "c"]
+
+    async def test_draining_model_is_kept_for_the_miss_when_unpinned(
+        self, start_serve_with_context
+    ):
+        """The request that pins the draining model finishes, and a new request
+        looks that model up before the waiting miss runs again. The new lookup
+        is held back and the miss gets the slot."""
+        multiplexer = await _make_multiplexer(cap=1)
+        first_a, request_b, second_a = _FakeRequest(), _FakeRequest(), _FakeRequest()
+        model_a = await first_a.get(multiplexer, "a")
+        lookup_b = request_b.start_get(multiplexer, "b")
+        await asyncio.sleep(SETTLE_S)
+
+        # No await in between: the new lookup runs right after the unpin and
+        # before the woken miss.
+        first_a.finished.set_result(None)
+        lookup_a = second_a.start_get(multiplexer, "a")
+        await asyncio.wait_for(lookup_b, timeout=5)
+
+        assert model_a.unloaded
+        assert not lookup_a.done()
+
+        await request_b.finish()
+        await asyncio.wait_for(lookup_a, timeout=5)
+
+    async def test_waiting_miss_is_not_advertised(self, start_serve_with_context):
+        """A miss waits for the only slot. Neither its model nor the model it
+        drains is reported to the router until the miss starts loading."""
+        load_b_started, finish_load_b = asyncio.Event(), asyncio.Event()
+
+        async def load(model_id: str) -> _TrackedModel:
+            if model_id == "b":
+                load_b_started.set()
+                await finish_load_b.wait()
+            return _TrackedModel(model_id)
+
+        multiplexer = await _make_multiplexer(cap=1, load_func=load)
+        request_a, request_b = _FakeRequest(), _FakeRequest()
+        await request_a.get(multiplexer, "a")
+        multiplexer._push_multiplexed_replica_info = False
+        lookup_b = request_b.start_get(multiplexer, "b")
+        await asyncio.sleep(SETTLE_S)
+
+        assert multiplexer._get_loading_and_loaded_model_ids() == []
+        assert multiplexer._push_multiplexed_replica_info
+
+        await request_a.finish()
+        await asyncio.wait_for(load_b_started.wait(), timeout=5)
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["b"]
+
+        finish_load_b.set()
+        await asyncio.wait_for(lookup_b, timeout=5)
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["b"]
+
+    async def test_unpinned_lookup_inside_request(self, start_serve_with_context):
+        """A request looks its model up inside `_unpinned_model_lookups`. The
+        model is not pinned, so a miss unloads it while the request runs. A
+        lookup after the block is pinned again."""
+        multiplexer = await _make_multiplexer(cap=1)
+        request = _FakeRequest()
+
+        async def lookup_unpinned_then_pinned():
+            ray.serve.context._serve_work_finished.set(request.finished)
+            with _unpinned_model_lookups():
+                model_a = await multiplexer.load_model("a")
+            assert multiplexer._pinned_models == {}
+            model_b = await multiplexer.load_model("b")
+            return model_a, model_b
+
+        model_a, model_b = await asyncio.wait_for(lookup_unpinned_then_pinned(), 5)
+
+        assert model_a.unloaded
+        assert multiplexer._pinned_models == {request.finished: {"b"}}
 
     async def test_load_failure_leaves_cache_usable(self, start_serve_with_context):
         """A load raises. The failed lookup leaves no pin, waiter or loading

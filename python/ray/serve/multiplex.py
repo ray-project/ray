@@ -4,8 +4,9 @@ import inspect
 import logging
 import time
 from collections import OrderedDict
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Hashable, List, Optional, Set
+from typing import Any, Callable, Dict, Generator, Hashable, List, Optional, Set
 
 from ray.serve import metrics
 from ray.serve._private.common import ReplicaID, RequestRoutingInfo
@@ -23,6 +24,19 @@ from ray.serve.context import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@contextmanager
+def _unpinned_model_lookups() -> Generator[None, None, None]:
+    """Make the multiplexed lookups inside this block not pin their model.
+
+    For models whose unload releases nothing that a request uses.
+    """
+    token = _serve_work_finished.set(None)
+    try:
+        yield
+    finally:
+        _serve_work_finished.reset(token)
 
 
 class _ModelMultiplexWrapper:
@@ -148,6 +162,8 @@ class _ModelMultiplexWrapper:
         """
         models_list = set(self.models.keys())
         models_list.update(self._model_load_tasks)
+        # A draining model takes no new requests on this replica.
+        models_list -= {waiter.draining_model for waiter in self._room_waiters}
         return list(models_list)
 
     def _push_model_ids_info(self):
@@ -206,11 +222,6 @@ class _ModelMultiplexWrapper:
         owner = self._current_pin_owner()
 
         if self._can_use_cached(model_id, owner):
-            # Move the model to the end of the OrderedDict to mark it as
-            # most-recently-used. Using move_to_end() instead of pop()+reinsert
-            # avoids a race condition where concurrent coroutines could see the
-            # key as missing during the brief window between pop and reinsert.
-            self.models.move_to_end(model_id)
             return self._pin(model_id, owner)
 
         # Set the flag to push the multiplexed replica info to the controller
@@ -230,17 +241,22 @@ class _ModelMultiplexWrapper:
             async with self._model_cache_lock:
                 # Check if the model has been loaded by another request.
                 if self._can_use_cached(model_id, owner):
-                    self.models.move_to_end(model_id)
                     return self._pin(model_id, owner)
                 if model_id not in self.models and await self._make_room(owner):
+                    self._model_load_tasks.add(model_id)
                     await self._load_into_cache(model_id)
                     return self._pin(model_id, owner)
                 # Registered before the lock is released, so no wake-up is missed.
                 waiter = self._add_waiter(model_id, owner)
+            # Not advertised while the lookup waits, so that the router sends
+            # requests for the model to other replicas.
+            self._model_load_tasks.discard(model_id)
+            self._push_multiplexed_replica_info = True
             try:
                 await waiter.cache_changed
             finally:
                 self._room_waiters.remove(waiter)
+                self._push_multiplexed_replica_info = True
                 if waiter.cache_changed.cancelled():
                     # Lookups held back for this waiter can go ahead.
                     self._wake_waiters()
@@ -258,7 +274,9 @@ class _ModelMultiplexWrapper:
         """Return whether a lookup by `owner` may take the model from the cache.
 
         A model that a waiting miss drains takes no new pin owners, so that a
-        busy model cannot starve the miss.
+        busy model cannot starve the miss. The exception is a draining model
+        whose pins are all held by blocked requests: nothing else can release
+        them.
         """
         if model_id not in self.models:
             return False
@@ -267,7 +285,10 @@ class _ModelMultiplexWrapper:
             model_id not in draining
             or owner is None
             or model_id in self._pinned_models.get(owner, ())
-            or not self._other_owners_will_unpin(owner)
+            or (
+                self._pin_count(model_id) > 0
+                and not self._other_owners_will_unpin(owner)
+            )
         )
 
     async def _make_room(self, owner: Hashable) -> bool:
@@ -359,7 +380,11 @@ class _ModelMultiplexWrapper:
         return work_finished
 
     def _pin(self, model_id: str, owner: Hashable) -> Any:
-        """Pin the cached model for `owner` and return the model."""
+        """Mark the cached model most recently used, pin it for `owner` and
+        return it."""
+        # move_to_end() instead of pop()+reinsert: concurrent coroutines never
+        # see the key as missing.
+        self.models.move_to_end(model_id)
         if owner is not None:
             if owner not in self._pinned_models:
                 self._pinned_models[owner] = set()
