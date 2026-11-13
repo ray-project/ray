@@ -186,6 +186,89 @@ def test_launcher_joins_the_cgroup_and_restricts_cpus(tmp_path):
     assert (tmp_path / "cgroup.procs").read_text() == pid.strip()
 
 
+def test_whole_core_placement_keeps_sandboxes_off_each_others_cores(
+    manager, shared, monkeypatch
+):
+    """RAY_SANDBOX_CPU_PLACEMENT=core gives a sandbox whole physical cores,
+    the least used first, so no two sandboxes share a core's hardware threads
+    while the pool has a core that no sandbox uses."""
+    (shared / "cpuset.cpus.effective").write_text("0-7")
+    # Four cores of two threads, each core's threads numbered four apart.
+    monkeypatch.setattr(
+        cgroup, "_siblings", lambda c, online: frozenset({c % 4, c % 4 + 4})
+    )
+    assert manager.choose_cpus(2, []) == [0, 1]
+    monkeypatch.setenv("RAY_SANDBOX_CPU_PLACEMENT", "core")
+    used = []
+    for _ in range(4):
+        used.append(manager.choose_cpus(2, used))
+    assert used == [[0, 4], [1, 5], [2, 6], [3, 7]]
+    # Once every core is taken, the least used one is shared.
+    assert manager.choose_cpus(1, used) == [0, 4]
+    # Three threads' worth takes two whole cores.
+    assert manager.choose_cpus(3, []) == [0, 1, 4, 5]
+    # Seven takes all four, the whole pool, which restricts nothing: like a
+    # sandbox with a thread for every CPU, it gets no affinity.
+    assert manager.choose_cpus(7, []) == []
+    manager.check(1, 0)
+    monkeypatch.setenv("RAY_SANDBOX_CPU_PLACEMENT", "socket")
+    with pytest.raises(RuntimeError, match="RAY_SANDBOX_CPU_PLACEMENT"):
+        manager.check(1, 0)
+    # A sandbox with only a memory limit is never placed on CPUs.
+    manager.check(0, 1 << 20)
+
+
+def test_whole_core_placement_counts_use_for_each_thread_of_a_core(
+    manager, shared, monkeypatch
+):
+    """Cores can have different numbers of threads in the pool: the pool may
+    hold one thread of a core, and some CPUs have cores of one thread and of
+    two. A core's use is its sandboxes per thread, so a core of one thread
+    with a sandbox isn't taken again before a core of two with one."""
+    (shared / "cpuset.cpus.effective").write_text("0-4")
+    monkeypatch.setenv("RAY_SANDBOX_CPU_PLACEMENT", "core")
+    cores = {0: {0}, 1: {1, 2}, 2: {1, 2}, 3: {3, 4}, 4: {3, 4}}
+    monkeypatch.setattr(cgroup, "_siblings", lambda c, online: frozenset(cores[c]))
+    # With every core idle, one core of two threads is enough for two CPUs.
+    # The core of one thread, first by number, would need a second core.
+    assert manager.choose_cpus(2, []) == [1, 2]
+    # Two sandboxes on the core of one thread, and one on each core of two.
+    # By total use the three tie, and the core of one thread would get a third.
+    used = [[0], [0], [1, 2], [3, 4]]
+    assert manager.choose_cpus(2, used) == [1, 2]
+
+
+def test_a_cpu_whose_topology_cant_be_read_is_a_core_of_its_own(tmp_path, monkeypatch):
+    """A sibling list that's missing, empty or malformed makes the CPU a core
+    of its own, and a list always includes the CPU it describes."""
+    files = {0: "0,4", 1: "", 2: "x-y"}
+    real_read = cgroup._read
+
+    def read(path):
+        name = str(path)
+        for cpu, text in files.items():
+            if name.endswith(f"/cpu{cpu}/topology/thread_siblings_list"):
+                return text
+        if "/topology/" in name:
+            raise FileNotFoundError(name)
+        return real_read(path)
+
+    monkeypatch.setattr(cgroup, "_read", read)
+    cgroup._siblings.cache_clear()
+    try:
+        assert cgroup._siblings(0, "0-7") == {0, 4}
+        assert cgroup._siblings(1, "0-7") == {1}
+        assert cgroup._siblings(2, "0-7") == {2}
+        assert cgroup._siblings(3, "0-7") == {3}
+        # The kernel lists only the threads that are online. Once CPU 4 is
+        # off line and back, the cores are read again.
+        files[0] = "0"
+        assert cgroup._siblings(0, "0-7") == {0, 4}
+        assert cgroup._siblings(0, "0-3,5-7") == {0}
+    finally:
+        cgroup._siblings.cache_clear()
+
+
 @pytest.mark.parametrize("limited", [False, True])
 def test_launcher_sets_oom_priority_before_exec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limited: bool
