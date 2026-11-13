@@ -1698,8 +1698,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             self.assertIsInstance(policy[3], int)
             self.assertIn(policy[0], ["0tag", "2tag", "3tag", "4tag"])
             self.assertIn(policy[1], ["0tag", "2tag", "3tag", "4tag"])
-            self.assertIn(policy[2], [0, 2, 3, 4])
-            self.assertIn(policy[3], [0, 2, 3, 4])
+            # The iterations of the results PBT acted on, not the trials'
+            # current last_result.
+            self.assertEqual(policy[2], 20)
+            self.assertEqual(policy[3], 10)
             for i in [4, 5]:
                 self.assertIsInstance(policy[i], dict)
                 for key in ["const_factor", "int_factor", "float_factor", "id_factor"]:
@@ -1737,8 +1739,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             self.assertIsInstance(policy[3], int)
             self.assertIn(policy[0], ["0tag", "1tag"])
             self.assertIn(policy[1], ["3tag", "4tag"])
-            self.assertIn(policy[2], [0, 1])
-            self.assertIn(policy[3], [3, 4])
+            self.assertEqual(policy[2], 10)
+            self.assertEqual(policy[3], 10)
             for i in [4, 5]:
                 self.assertIsInstance(policy[i], dict)
                 for key in ["const_factor", "int_factor", "float_factor", "id_factor"]:
