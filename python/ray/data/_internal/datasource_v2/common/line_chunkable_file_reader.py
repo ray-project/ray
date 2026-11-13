@@ -9,11 +9,13 @@ How it works: ``FileReader`` scans pyarrow fragments, and pyarrow can't scan
 a byte range of a text file. For each chunk the reader:
 
 1. Creates one read unit while planning the task, without IO
-   (``_get_fragments_to_read``).
+   (``_get_chunk_fragments``; unsplit files take the base class's
+   ``_get_whole_file_fragment``).
 2. In the scan threads, fetches the chunk's whole lines with
    ``read_line_aligned`` and wraps those bytes as an in-memory pyarrow
    fragment (``_iter_unit_tables``).
-3. Scans that fragment through ``_iter_fragment_tables``.
+3. Scans that fragment through ``_iter_fragment_tables``, with the schema
+   ``_get_scan_schema`` picks.
 
 A whole-file row of an uncompressed file of at most ``chunk_size`` bytes is
 read with one request and scanned like a chunk. Larger and compressed files
@@ -63,7 +65,7 @@ Design decisions:
   override, so JSONL carries nothing for it.
 """
 
-from typing import Any, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -77,10 +79,7 @@ from ray.data._internal.datasource_v2.common.line_chunking import (
     line_chunk_byte_range,
     read_line_aligned,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    FileChunk,
-    FileManifest,
-)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
@@ -92,17 +91,16 @@ from ray.data._internal.util import NumBytes
 _MAX_BLOCK_SIZE = 2**31 - 1
 
 
-def one_block_size(lines: memoryview, block_size: int) -> int:
+def one_block_size(lines: memoryview) -> int:
     """Return a ``ReadOptions.block_size`` that parses ``lines`` as one block.
 
     Args:
         lines: The bytes to parse.
-        block_size: The caller's ``block_size``, kept when it is larger.
 
     Returns:
-        The block size to parse ``lines`` with.
+        ``len(lines)``, within pyarrow's bounds of 1 and 2**31 - 1.
     """
-    return min(max(block_size, len(lines)), _MAX_BLOCK_SIZE)
+    return max(1, min(len(lines), _MAX_BLOCK_SIZE))
 
 
 class LineChunkableFileReader(FileReader):
@@ -133,17 +131,19 @@ class LineChunkableFileReader(FileReader):
         self._chunk_size = chunk_size
 
     @override
-    def _get_fragments_to_read(
+    def _get_chunk_fragments(
         self,
-        dataset: pds.Dataset,
-        manifest: FileManifest,
+        fragment: pds.Fragment,
+        chunk_metadata: Dict[str, Any],
+        file_size: Optional[int],
     ) -> List[ReadUnitFragment]:
-        """Return one :class:`ReadUnitFragment` per chunk and per unchunked file.
+        """Return one :class:`ReadUnitFragment` per chunk of a split file.
 
         Reads no bytes: this runs once on the task's main thread, where IO
-        would be neither parallel nor retried. A chunk unit carries its
+        would be neither parallel nor retried. Each chunk unit carries its
         file's whole-file fragment; :meth:`_iter_unit_tables` replaces it
-        with the chunk's lines.
+        with the chunk's lines. An unsplit file takes the base class's
+        whole-file unit.
 
         ``unit_start_row`` is the chunk's first byte. The line number of the
         chunk's first row is unknown, but a chunk holds fewer rows than
@@ -151,32 +151,25 @@ class LineChunkableFileReader(FileReader):
         file for ``row_hash``.
 
         Args:
-            dataset: The ``pds.Dataset`` over the manifest's paths.
-            manifest: The read task's manifest.
+            fragment: The file's whole-file fragment.
+            chunk_metadata: The row's :class:`FileChunk` metadata.
+            file_size: Unused; the chunk's range is computed at read time.
 
         Returns:
-            The units to scan, in manifest order.
+            The file's chunk units, in order.
         """
-        path_to_fragment = {
-            fragment.path: fragment for fragment in dataset.get_fragments()
-        }
-        fragments: List[ReadUnitFragment] = []
-        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
-            fragment = path_to_fragment[path]
-            if chunk_metadata is None:
-                fragments.append(
-                    ReadUnitFragment(fragment, ReadUnit(id=path, source=path, count=1))
-                )
-                continue
-            for index in FileChunk.from_metadata(chunk_metadata).unit_ids:
-                fragments.append(
-                    ReadUnitFragment(
-                        fragment,
-                        ReadUnit(id=f"{path}#chunk{index}", source=path, index=index),
-                        unit_start_row=index * self._chunk_size,
-                    )
-                )
-        return fragments
+        return [
+            ReadUnitFragment(
+                fragment,
+                ReadUnit(
+                    id=f"{fragment.path}#chunk{index}",
+                    source=fragment.path,
+                    index=index,
+                ),
+                unit_start_row=index * self._chunk_size,
+            )
+            for index in FileChunk.from_metadata(chunk_metadata).unit_ids
+        ]
 
     @override
     def _iter_unit_tables(
@@ -248,11 +241,9 @@ class LineChunkableFileReader(FileReader):
         )
 
     @override
-    def _iter_fragment_tables(
-        self,
-        fragment: pds.Fragment,
-        scanner_kwargs: dict,
-    ) -> Iterator[pa.Table]:
+    def _get_scan_schema(
+        self, fragment: pds.Fragment, scanner_kwargs: dict
+    ) -> pa.Schema:
         """Scan ``fragment`` with the types pyarrow infers for it.
 
         The plan-time schema is only a sample, so its types aren't pinned.
@@ -269,11 +260,7 @@ class LineChunkableFileReader(FileReader):
             for name in columns
             if physical_schema.get_field_index(name) == -1
         ]
-        scanner = fragment.scanner(
-            **scanner_kwargs, schema=pa.schema(list(physical_schema) + missing_fields)
-        )
-        for tagged in scanner.scan_batches():
-            yield pa.Table.from_batches(batches=[tagged.record_batch])
+        return pa.schema(list(physical_schema) + missing_fields)
 
     @override
     def _on_batch_read(self, table: pa.Table) -> None:

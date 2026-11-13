@@ -2,6 +2,7 @@
 import collections
 import json
 import random
+from unittest import mock
 
 import fsspec
 import pyarrow as pa
@@ -91,9 +92,20 @@ def test_indexer_keeps_a_file_that_fits_in_one_chunk_whole():
     assert indexer._chunk_metadatas_of_file(FileInfo(path="a.csv", size=10)) == [None]
 
 
+@pytest.mark.parametrize(
+    "size, expected",
+    [(0, 1), (7, 7), (3 << 20, 3 << 20), (2**31 + 5, 2**31 - 1)],
+    ids=["empty_floors_at_1", "small", "above_default_block", "capped_at_int32"],
+)
+def test_one_block_size_is_the_buffer_length_within_pyarrow_bounds(size, expected):
+    lines = mock.MagicMock()
+    lines.__len__.return_value = size
+    assert one_block_size(lines) == expected
+
+
 class _JsonlReader(LineChunkableFileReader):
     def _make_chunk_fragment(self, lines, *, starts_at_file_start, path):
-        read_options = pajson.ReadOptions(block_size=one_block_size(lines, 1 << 20))
+        read_options = pajson.ReadOptions(block_size=one_block_size(lines))
         return pds.JsonFileFormat(read_options=read_options).make_fragment(
             pa.py_buffer(lines)
         )
