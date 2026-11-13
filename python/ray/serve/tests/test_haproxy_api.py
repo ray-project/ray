@@ -403,6 +403,8 @@ frontend http_frontend
     http-request set-var-fmt(txn.serve_route) "/api" if is_api_backend !{{ var(txn.serve_route) -m found }}
     http-request set-var-fmt(txn.serve_app) "web_backend" if is_web_backend !{{ var(txn.serve_app) -m found }}
     http-request set-var-fmt(txn.serve_route) "/web" if is_web_backend !{{ var(txn.serve_route) -m found }}
+    # Drop client-supplied router-owned headers before applying any routing decision.
+    http-request del-header x-serve-router- -m beg
     # Static routing based on path prefixes in decreasing length then alphabetical order
     use_backend api_backend if is_api_backend
     use_backend web_backend if is_web_backend
