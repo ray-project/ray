@@ -3101,8 +3101,8 @@ def test_get_nodes_with_resource_availabilities():
 
 def test_infeasible_shape_caching():
     """
-    Test that identical requests failing to schedule on a node are cached,
-    drastically reducing calls to _try_schedule_one to prevent O(N^2 * M) hangs.
+    Test that copies of a request that cannot fit on a node are not tried one by
+    one, drastically reducing calls to _try_schedule_one to prevent O(N^2 * M) hangs.
     """
     scheduler = ResourceDemandScheduler(event_logger)
 
@@ -3159,9 +3159,9 @@ def test_infeasible_shape_caching():
         assert len(reply.infeasible_resource_requests) == 999
 
         #   Call 1: Fits the first 2-CPU request (Node is now full).
-        #   Call 2: Evaluates the second 2-CPU request, fails, and adds to infeasible_shapes.
-        #   Calls 3-1000: Bypassed entirely by the cache.
-        assert mock_try_schedule.call_count == 2
+        #   The other 999 copies of the same request are checked together without
+        #   another call, and the failure is cached for the rest of the node try.
+        assert mock_try_schedule.call_count == 1
 
 
 def test_infeasible_shape_caching_with_label_mutation():
@@ -3283,11 +3283,11 @@ def test_identical_node_state_caching():
         max_num_nodes=100,
     )
 
-    # Track how many times try_schedule is actually called on a node
-    orig_try_schedule = SchedulingNode.try_schedule
+    # Track how many times a node is actually tried
+    orig_try_schedule = SchedulingNode._try_schedule_runs
     with patch.object(
         SchedulingNode,
-        "try_schedule",
+        "_try_schedule_runs",
         autospec=True,
         side_effect=orig_try_schedule,
     ) as mock_try_schedule:
@@ -4260,6 +4260,195 @@ class TestSchedulerPerformanceOptimizations:
         # Only the 3 CPU requests are infeasible. The implicit-resource request
         # must be placed on an existing node, not reported as unschedulable.
         assert len(reply.infeasible_resource_requests) == 3
+
+
+class TestScheduleIdenticalRequestsTogether:
+    """Copies of the same request are scheduled together, with the same result as
+    scheduling them one at a time."""
+
+    @staticmethod
+    def _make_node(resources: Dict[str, float], labels=None) -> SchedulingNode:
+        return SchedulingNode.from_node_config(
+            node_config=NodeTypeConfig(
+                name="type_1",
+                resources=resources,
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+                labels=labels or {},
+            ),
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+
+    @staticmethod
+    def _try_schedule_one_by_one(node, requests, source):
+        """The per-copy loop `try_schedule` ran before copies were grouped."""
+        unschedulable = []
+        unfittable_cache = UnschedulableRequestCache()
+        for r in requests:
+            sk = r.SerializeToString(deterministic=True)
+            if unfittable_cache.contains(sk):
+                unschedulable.append(r)
+                continue
+            num_labels_before = len(node.labels)
+            if not node._try_schedule_one(r, source):
+                unfittable_cache.add(sk)
+                unschedulable.append(r)
+            elif len(node.labels) > num_labels_before:
+                unfittable_cache.clear()
+        return unschedulable, node._compute_score(source)
+
+    def _assert_same_as_one_by_one(self, make_node, requests, source):
+        expected_node = make_node()
+        expected_remaining, expected_score = self._try_schedule_one_by_one(
+            expected_node, requests, source
+        )
+        node = make_node()
+        remaining, score = node.try_schedule(requests, source)
+
+        # Compare request objects by identity: copies of a request are the same
+        # object, and the scheduler must keep each copy's position.
+        assert [id(r) for r in remaining] == [id(r) for r in expected_remaining]
+        assert score == expected_score
+        assert node.get_available_resources(
+            source
+        ) == expected_node.get_available_resources(source)
+        assert [id(r) for r in node.get_sched_requests(source)] == [
+            id(r) for r in expected_node.get_sched_requests(source)
+        ]
+        assert node.labels == expected_node.labels
+        return remaining
+
+    def test_counted_requests(self):
+        cpu = ResourceRequestUtil.make({"CPU": 1})
+        gpu = ResourceRequestUtil.make({"CPU": 1, "GPU": 1})
+        # Interleave runs of different sizes, with a run that only partially fits.
+        requests = [gpu] * 3 + [cpu] * 10 + [gpu] * 2 + [cpu] * 5
+
+        remaining = self._assert_same_as_one_by_one(
+            lambda: self._make_node({"CPU": 8, "GPU": 2}),
+            requests,
+            ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT,
+        )
+        assert len(remaining) == len(requests) - 8
+
+    def test_zero_resource_requests(self):
+        empty = ResourceRequestUtil.make({})
+        zero_cpu = ResourceRequestUtil.make({"CPU": 0})
+        requests = [ResourceRequestUtil.make({"CPU": 2})] * 3 + [empty] * 100
+        requests += [zero_cpu] * 7
+
+        remaining = self._assert_same_as_one_by_one(
+            lambda: self._make_node({"CPU": 4}),
+            requests,
+            ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT,
+        )
+        # Zero-resource requests always fit, even on a full node.
+        assert remaining == requests[2:3]
+
+    def test_implicit_and_fractional_requests(self):
+        implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+        implicit = ResourceRequestUtil.make({implicit_resource: 1})
+        fractional = ResourceRequestUtil.make({"CPU": 0.1})
+        # An implicit resource fits once on a node that doesn't list it, and
+        # repeated fractional subtraction must leave the same remainder.
+        requests = [implicit] * 3 + [fractional] * 40
+
+        remaining = self._assert_same_as_one_by_one(
+            lambda: self._make_node({"CPU": 1}),
+            requests,
+            ResourceRequestSource.PENDING_DEMAND,
+        )
+        assert remaining[:2] == [implicit] * 2
+
+    def test_anti_affinity_requests(self):
+        anti_affinity = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+        request = ResourceRequestUtil.make({"CPU": 1}, [(anti_affinity, "pg", "pg")])
+        requests = [request] * 5
+
+        remaining = self._assert_same_as_one_by_one(
+            lambda: self._make_node({"CPU": 4}),
+            requests,
+            ResourceRequestSource.PENDING_DEMAND,
+        )
+        # Only one copy fits, the anti-affinity label rejects the rest.
+        assert len(remaining) == 4
+
+    def test_anti_affinity_failure_is_cached_after_label_change(self):
+        """A run that adds a label and then fails leaves its failure in the cache,
+        so an equal request that follows is not tried again."""
+        anti_affinity = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+        first = ResourceRequestUtil.make({"CPU": 1}, [(anti_affinity, "pg", "pg")])
+        # Equal by value but a different object, so it forms a separate run.
+        second = ResourceRequestUtil.make({"CPU": 1}, [(anti_affinity, "pg", "pg")])
+        requests = [first] * 3 + [second] * 3
+        source = ResourceRequestSource.PENDING_DEMAND
+
+        self._assert_same_as_one_by_one(
+            lambda: self._make_node({"CPU": 4}), requests, source
+        )
+
+        orig_try_schedule_one = SchedulingNode._try_schedule_one
+        with patch.object(
+            SchedulingNode,
+            "_try_schedule_one",
+            autospec=True,
+            side_effect=orig_try_schedule_one,
+        ) as mock_try_schedule:
+            self._make_node({"CPU": 4}).try_schedule(requests, source)
+
+        # The first copy fits and adds the label, the second fails and is cached.
+        # The rest, including the whole second run, hit the cache.
+        assert mock_try_schedule.call_count == 2
+
+    @pytest.mark.parametrize("node_zone", ["us-west-1a", "us-west-1b"])
+    def test_label_selector_requests(self, node_zone):
+        request = ResourceRequestUtil.make(
+            {"CPU": 1},
+            label_selectors=[
+                [("zone", LabelSelectorOperator.LABEL_OPERATOR_IN, ["us-west-1a"])]
+            ],
+        )
+
+        self._assert_same_as_one_by_one(
+            lambda: self._make_node({"CPU": 4}, labels={"zone": node_zone}),
+            [request] * 6,
+            ResourceRequestSource.PENDING_DEMAND,
+        )
+
+    def test_large_resource_constraint_skips_copies_that_cannot_fit(self):
+        """A large request_resources() constraint is not tried one copy at a time
+        on every candidate node."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 8},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+        # 40 copies need 5 new nodes, plus a large run of empty bundles.
+        constraints = [ResourceRequestUtil.make({"CPU": 1})] * 40
+        constraints += [ResourceRequestUtil.make({})] * 1000
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            cluster_resource_constraints=constraints,
+        )
+
+        orig_try_schedule_one = SchedulingNode._try_schedule_one
+        with patch.object(
+            SchedulingNode,
+            "_try_schedule_one",
+            autospec=True,
+            side_effect=orig_try_schedule_one,
+        ) as mock_try_schedule:
+            reply = ResourceDemandScheduler(event_logger).schedule(request)
+
+        to_launch, _ = _launch_and_terminate(reply)
+        assert to_launch == {"type_1": 5}
+        assert reply.infeasible_cluster_resource_constraints == []
+        # Each node try checks the first copy of each run, instead of every copy.
+        assert mock_try_schedule.call_count < 50
 
 
 class TestPrecomputeSerializeKeys:

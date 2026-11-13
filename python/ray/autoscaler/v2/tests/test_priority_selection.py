@@ -87,7 +87,7 @@ def test_scheduler_priority_tie_breaking():
     # Utilization and Availability are equal (all perfect)
     # Priority should break the tie
     best_node, infeasible, remaining_nodes = ResourceDemandScheduler._sched_best_node(
-        [request], [node_2, node_1], ResourceRequestSource.PENDING_DEMAND, {}, {}
+        [(request, 1)], [node_2, node_1], ResourceRequestSource.PENDING_DEMAND, {}, {}
     )
 
     assert best_node.node_type == node_type_1
@@ -169,7 +169,7 @@ def test_scheduler_availability_over_priority():
 
     # Recoverable Availability is higher for node_2, so it should be chosen despite lower priority
     best_node, infeasible, remaining_nodes = ResourceDemandScheduler._sched_best_node(
-        [request],
+        [(request, 1)],
         [node_1, node_2],
         ResourceRequestSource.PENDING_DEMAND,
         cloud_resource_availabilities={},
@@ -211,7 +211,7 @@ def test_scheduler_failure_recency_tie_breaking():
     request = PBResourceRequest(resources_bundle={"CPU": 1})
 
     best_node, infeasible, remaining_nodes = ResourceDemandScheduler._sched_best_node(
-        [request],
+        [(request, 1)],
         [node_1, node_2],
         ResourceRequestSource.PENDING_DEMAND,
         cloud_resource_availabilities={node_type_1: 0.9, node_type_2: 0.1},
@@ -264,7 +264,7 @@ def test_recovery_integration():
 
     # Pass scores from monitor to scheduler
     best_node, infeasible, remaining_nodes = ResourceDemandScheduler._sched_best_node(
-        [request],
+        [(request, 1)],
         [node_1, node_2],
         ResourceRequestSource.PENDING_DEMAND,
         cloud_resource_availabilities={},
@@ -311,7 +311,7 @@ def test_scheduler_utilization_over_priority():
     request = PBResourceRequest(resources_bundle={"CPU": 2})
 
     best_node, infeasible, remaining_nodes = ResourceDemandScheduler._sched_best_node(
-        [request],
+        [(request, 1)],
         [node_1, node_2],
         ResourceRequestSource.PENDING_DEMAND,
         cloud_resource_availabilities={},
