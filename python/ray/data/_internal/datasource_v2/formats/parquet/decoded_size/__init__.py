@@ -13,26 +13,16 @@ from ray.data._internal.datasource_v2.formats.parquet.decoded_size.added_columns
     added_bytes,
     estimate_added_columns,
 )
-from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout import (
-    detect_string_type,
-)
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size.estimate import (
     build_leaf_profiles,
-    detect_binary_or_list_type,
     estimate_ancestors,
-    estimate_fixed_width,
     estimate_leaf,
     estimate_row_group,
     estimate_string_bytes,
-    estimate_string_type,
 )
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size.footer_counts import (
     LeafChunk,
-    detect_delta_byte_array,
     leaf_chunks,
-)
-from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_pin import (
-    pinned_type,
 )
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_walk import (
     LeafProfile,
@@ -44,16 +34,10 @@ __all__ = [
     "Read",
     "added_bytes",
     "build_leaf_profiles",
-    "detect_binary_or_list_type",
-    "detect_delta_byte_array",
-    "detect_string_type",
     "estimate_added_columns",
     "estimate_ancestors",
-    "estimate_fixed_width",
     "estimate_leaf",
     "estimate_row_group",
     "estimate_string_bytes",
-    "estimate_string_type",
     "leaf_chunks",
-    "pinned_type",
 ]
