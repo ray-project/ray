@@ -3,7 +3,14 @@ from __future__ import annotations
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, Tuple
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Iterable,
+    Iterator,
+    NamedTuple,
+    Tuple,
+)
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -11,19 +18,30 @@ import pyarrow.fs as pafs
 from pyarrow.parquet import ColumnSchema, FileMetaData, ParquetSchema, RowGroupMetaData
 
 import ray
-from ray.data._internal.datasource_v2.common.file_reader import casts_to_schema
-from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
-    estimate_cast,
-    estimate_row_group_peak,
-    estimate_row_group_work,
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
+from ray.data._internal.datasource_v2.common.file_reader import casts_to_schema
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    _evaluate_path_predicate,
+    _PartitionValueParser,
+)
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    _split_predicate_by_columns,
+    combine_predicates,
+)
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
     LeafProfile,
     Read,
     added_bytes,
     build_leaf_profiles,
     estimate_added_columns,
     leaf_chunks,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
+    estimate_cast,
+    estimate_row_group_peak,
+    estimate_row_group_work,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
@@ -45,6 +63,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
 from ray.data.checkpoint.generated_id import GENERATED_ID_COLUMN_TYPE
+from ray.data.datasource.partitioning import Partitioning
 
 if TYPE_CHECKING:
     import pyarrow.compute as pc
@@ -176,6 +195,9 @@ class FooterReader:
         coalesce_bytes: int = 0,
         retried_io_errors: list[str] | None = None,
         excluded_read_unit_ids: AbstractSet[str] | None = None,
+        partitioning: Partitioning | None = None,
+        partition_pruner: PartitionPredicatePruner | None = None,
+        logical_schema: pa.Schema | None = None,
         format_kwargs: dict | None = None,
         read_schema: pa.Schema | None = None,
     ):
@@ -196,6 +218,24 @@ class FooterReader:
             excluded_read_unit_ids or frozenset()
         )
         self.filesystem = filesystem
+        self.partitioning = (
+            partition_pruner.partitioning
+            if partition_pruner is not None
+            else partitioning
+        )
+        self.logical_schema = (
+            partition_pruner.schema if partition_pruner is not None else logical_schema
+        )
+        self._predicate = combine_predicates(
+            filter_expr,
+            partition_pruner.predicate if partition_pruner is not None else None,
+        )
+        self._partition_value_parser = (
+            _PartitionValueParser(self.partitioning)
+            if self.partitioning is not None
+            else None
+        )
+        filter_expr = self._predicate
         self.pool = ThreadPoolExecutor(max_workers=io_concurrency)
         # Match Arrow's process-wide pools to the actor's IO concurrency so
         # nested S3/footer work isn't bottlenecked on the default 8 threads.
@@ -306,9 +346,6 @@ class FooterReader:
                 if cast_profiles is None:
                     # A cast the estimator doesn't model: charge every leaf as unmodelled.
                     profiles = None
-        added_row_bytes, added_row_group_bytes = self._added_bytes(
-            file_schema=file_schema, path=path
-        )
         return _FileSizing(
             size=size,
             columns=columns,
@@ -318,10 +355,7 @@ class FooterReader:
             cast_leaves=cast_leaves,
             cast_profiles=cast_profiles,
             file_schema=file_schema,
-            read=Read(
-                added_row_bytes=added_row_bytes,
-                added_row_group_bytes=added_row_group_bytes,
-            ),
+            read=self._added_bytes(file_schema=file_schema, path=path),
         )
 
     def _row_group_sizes(
@@ -389,7 +423,9 @@ class FooterReader:
         )
         return decoded, peak
 
-    def _locate_filter_columns(self, schema: ParquetSchema) -> _FilterLeaves:
+    def _locate_filter_columns(
+        self, schema: ParquetSchema, columns: Iterable[str] | None = None
+    ) -> _FilterLeaves:
         # Resolve the predicate's column names to Parquet leaf-column indices,
         # the same mapping ``_column_leaves`` does for the read columns.
         # Called once per file so the per-row-group null check below is an
@@ -398,9 +434,10 @@ class FooterReader:
         # Read off the schema rather than a row group because a leaf's logical
         # type lives there, whereas a row group only exposes it via statistics
         # -- which a file need not carry.
-        if not self.filter_columns:
+        columns = self.filter_columns if columns is None else columns
+        if not columns:
             return _FilterLeaves([], True)
-        wanted = set(self.filter_columns)
+        wanted = set(columns)
         indices: list[int] = []
         matched: set[str] = set()
         has_float_leaf = False
@@ -412,6 +449,60 @@ class FooterReader:
                 indices.append(j)
                 has_float_leaf = has_float_leaf or _is_float_leaf(column)
         return _FilterLeaves(indices, matched == wanted, has_float_leaf)
+
+    def _filter_for_file(
+        self, path: str, schema: ParquetSchema
+    ) -> tuple[pc.Expression | None, set[str], bool]:
+        """Select safe physical conditions and whether they cover the full filter."""
+        if self._predicate is None or (
+            self.partitioning is None and self.logical_schema is None
+        ):
+            return self.filter, set(self.filter_columns), True
+        values = (
+            self._partition_value_parser(path)
+            if self._partition_value_parser is not None
+            else {}
+        )
+        split = _split_predicate_by_columns(self._predicate, set(values))
+        complete = split.residual_predicate is None
+        if split.partition_predicate is not None:
+            # Without the logical schema, path types alone cannot prove the
+            # reader's output values. Keep the groups but do not count them.
+            complete = complete and self.logical_schema is not None
+            if complete:
+                complete = (
+                    _evaluate_path_predicate(
+                        split.partition_predicate,
+                        values,
+                        self.logical_schema,
+                        path=path,
+                    )
+                    is True
+                )
+        physical = split.data_predicate
+        logical_schema = self.logical_schema
+        if physical is not None and logical_schema is not None:
+            physical_schema = schema.to_arrow_schema()
+            unsafe = {
+                name
+                for name in get_column_references(physical)
+                if physical_schema.get_field_index(name) != -1
+                and (
+                    logical_schema.get_field_index(name) == -1
+                    or physical_schema.field(name).type
+                    != logical_schema.field(name).type
+                )
+            }
+            if unsafe:
+                safe = _split_predicate_by_columns(physical, unsafe)
+                physical = safe.data_predicate
+                complete = False
+        if physical is None:
+            return None, set(), complete
+        expression = (
+            self.filter if physical is self._predicate else physical.to_pyarrow()
+        )
+        return expression, set(get_column_references(physical)), complete
 
     def _has_filter_nulls(
         self, row_group: RowGroupMetaData, indices: list[int]
@@ -474,13 +565,11 @@ class FooterReader:
             )
             return None
 
-    def _added_bytes(
-        self, file_schema: pa.Schema | None, path: str
-    ) -> tuple[float, int]:
+    def _added_bytes(self, file_schema: pa.Schema | None, path: str) -> Read:
         """:func:`added_bytes` of the dataset schema's columns the file lacks or holds
         as nulls, less those the projection drops; it never drops the checkpoint ID."""
         if self.read_schema is None or file_schema is None:
-            return 0, 0
+            return Read()
         added = []
         for field in self.read_schema:
             idx = file_schema.get_field_index(field.name)
@@ -491,7 +580,12 @@ class FooterReader:
             projected = self.read_order is None or field.name in self.read_order
             if projected or field.type == GENERATED_ID_COLUMN_TYPE:
                 added.append(field)
-        return added_bytes(added=added, path=path)
+        partition_values = (
+            self._partition_value_parser(path)
+            if self._partition_value_parser is not None
+            else {}
+        )
+        return added_bytes(added=added, path=path, partition_values=partition_values)
 
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
         path = file.path
@@ -514,7 +608,10 @@ class FooterReader:
         # The predicate's leaves are schema-derived, and a Parquet file has a
         # single schema, so resolve them once rather than rescanning every leaf
         # for each group.
-        filter_leaves = self._locate_filter_columns(metadata.schema)
+        file_filter, filter_columns, complete_filter = self._filter_for_file(
+            path, metadata.schema
+        )
+        filter_leaves = self._locate_filter_columns(metadata.schema, filter_columns)
         unprocessed_rg_ids = [
             i
             for i in range(metadata.num_row_groups)
@@ -529,14 +626,14 @@ class FooterReader:
             # the listing stop early and the resumed job return too few rows.
             fragment = fragment.subset(row_group_ids=unprocessed_rg_ids)
 
-        if self.filter is not None and filter_leaves.all_filter_columns_found:
+        if file_filter is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
             # contradict the filter, so we never emit chunks the reader would
             # skip anyway. Each returned fragment views a single surviving group.
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
             surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, self.filter, path
+                fragment, file_filter, path
             )
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
@@ -547,7 +644,7 @@ class FooterReader:
             # out. For those, num_rows is an exact survivor count and can drive
             # the limit push-down. Any failure defaults to "not fully matched",
             # which is always safe (falls back to the post-filter stop).
-            not_fully_ids = self._try_split_by_row_group(fragment, ~self.filter, path)
+            not_fully_ids = self._try_split_by_row_group(fragment, ~file_filter, path)
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a
             # group that still holds a row the filter does not return, and then
@@ -557,11 +654,12 @@ class FooterReader:
             # -- which holds however clever the engine's statistics pruning gets.
             # PyArrow declines the null prune today but already makes the NaN one.
             fully_by_idx: dict[int, bool] = {
-                i: i not in not_fully
+                i: complete_filter
+                and i not in not_fully
                 and self._rg_can_fully_match(metadata.row_group(i), filter_leaves)
                 for i in rg_indices
             }
-        elif self.filter is not None:
+        elif file_filter is not None:
             # A predicate column is absent from this file's schema. PyArrow's
             # split_by_row_group raises ArrowInvalid ("No match for FieldRef.Name")
             # in that case, which would abort the whole read_footers batch.
@@ -571,9 +669,8 @@ class FooterReader:
             fully_by_idx = dict.fromkeys(rg_indices, False)
         else:
             rg_indices = unprocessed_rg_ids
-            # No predicate -> nothing to disqualify a group, so the lookup below
-            # falls through to its fully-matched default for every group.
-            fully_by_idx = {}
+            # No physical predicate does not prove a missing path condition.
+            fully_by_idx = dict.fromkeys(rg_indices, complete_filter)
 
         per_rg: list[FileChunk] = []
         if rg_indices:

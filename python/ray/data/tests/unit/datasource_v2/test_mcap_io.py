@@ -13,6 +13,7 @@ from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     buffered,
+    parse_summary_records,
     read_chunk,
     read_summary_from,
 )
@@ -141,6 +142,15 @@ def test_small_file_summary_takes_one_read_and_a_large_one_three(tmp_path):
         reads[path] = f.reads
 
     assert reads == {small: 1, large: 3}
+
+
+def test_no_records_parse_to_an_empty_summary():
+    """Empty records, as a read task gets for a file without a summary, parse to
+    a summary with nothing in it."""
+    summary = parse_summary_records(b"", "file.mcap")
+
+    for field in SUMMARY_FIELDS:
+        assert not getattr(summary, field), field
 
 
 def test_file_without_summary_section_has_no_summary(tmp_path):

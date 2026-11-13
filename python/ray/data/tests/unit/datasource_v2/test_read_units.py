@@ -237,7 +237,14 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
     )
 
     assert actor_kwargs == [
-        {"excluded_read_unit_ids": excluded, "format_kwargs": {}, "read_schema": None}
+        {
+            "excluded_read_unit_ids": excluded,
+            "partitioning": None,
+            "partition_pruner": None,
+            "logical_schema": None,
+            "format_kwargs": {},
+            "read_schema": None,
+        }
     ]
     assert footer_batches == [[FileInfo(path_b, size_b)]]
 

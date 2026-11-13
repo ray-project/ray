@@ -63,14 +63,24 @@ def _schema_names(op: LogicalOperator) -> "list[str]":
     return list(schema.names)
 
 
-def _mk_read_files(tmp_path: Path, table: Optional[pa.Table] = None) -> ReadFiles:
+def _mk_read_files(
+    tmp_path: Path,
+    table: Optional[pa.Table] = None,
+    *,
+    include_paths: bool = False,
+    include_row_hash: bool = False,
+) -> ReadFiles:
     """A ``ListFiles -> ReadFiles`` chain over one Parquet file."""
     f = tmp_path / "data.parquet"
     if table is None:
         table = pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]})
     pq.write_table(table, str(f))
 
-    datasource = ParquetDatasourceV2([str(f)])
+    datasource = ParquetDatasourceV2(
+        [str(f)],
+        include_paths=include_paths,
+        include_row_hash=include_row_hash,
+    )
     indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
     sample = sample_files(indexer, datasource.paths, datasource.filesystem)
     schema = datasource.infer_schema(sample)
@@ -219,13 +229,52 @@ def test_leaves_non_parquet_reads_alone(context):
     assert BindGeneratedIdColumn().apply(plan) is plan
 
 
-def test_raises_on_name_clash(tmp_path, context):
-    """The column never replaces a file column, unlike ``path`` or
-    ``row_hash``."""
+def test_raises_on_physical_column_name_clash(tmp_path, context):
+    """The generated ID column never replaces a physical Parquet column."""
     read_files = _mk_read_files(tmp_path, pa.table({"a": [1], ID_COLUMN: [2]}))
 
     with pytest.raises(InvalidCheckpointingConfig, match="already exists"):
         _apply(read_files, context)
+
+
+@pytest.mark.parametrize(
+    "generated_id_name,datasource_kwargs",
+    [
+        ("path", {"include_paths": True}),
+        ("row_hash", {"include_row_hash": True}),
+    ],
+    ids=["path", "row_hash"],
+)
+def test_raises_on_synthesized_column_name_clash(
+    tmp_path,
+    generated_id_name,
+    datasource_kwargs,
+):
+    context = DataContext.get_current().copy()
+    context.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"),
+        generated_id_column=generated_id_name,
+    )
+
+    read_files = _mk_read_files(tmp_path, **datasource_kwargs)
+
+    with pytest.raises(
+        InvalidCheckpointingConfig,
+        match="conflicts with an existing synthesized column",
+    ):
+        _apply(read_files, context)
+
+
+def test_allows_distinct_synthesized_column_names(tmp_path, context):
+    read_files = _mk_read_files(tmp_path, include_paths=True)
+
+    scanner = _scanner_of(_apply(read_files, context))
+
+    assert [column.name for column in scanner.synthesized_columns] == [
+        "path",
+        ID_COLUMN,
+    ]
+    assert scanner.read_schema().names == ["a", "b", "path", ID_COLUMN]
 
 
 def test_optimizer_binds_after_projection_pushdown(tmp_path, context):

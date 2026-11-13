@@ -402,7 +402,7 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/test-requirements.txt
-daft==0.7.15
+daft==0.7.26
     # via -r python/requirements/ml/data-requirements.txt
 dask==2026.3.0
     # via
@@ -555,7 +555,6 @@ fsspec==2023.12.1
     # via
     #   -r python/requirements.txt
     #   adlfs
-    #   daft
     #   dask
     #   datasets
     #   delta-sharing
@@ -1056,13 +1055,13 @@ ml-dtypes==0.5.4
     #   onnx
     #   onnx-ir
     #   onnxscript
-mlflow==3.16.1
+mlflow==3.18.0
     # via
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/test-requirements.txt
-mlflow-skinny==3.16.1
+mlflow-skinny==3.18.0
     # via mlflow
-mlflow-tracing==3.16.1
+mlflow-tracing==3.18.0
     # via mlflow
 mmh3==5.2.1
     # via
@@ -1583,7 +1582,7 @@ py-spy==0.4.2
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
-pyarrow==23.0.1
+pyarrow==25.0.1
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements.txt
@@ -1780,7 +1779,9 @@ python-json-logger==4.1.0
 python-lsp-jsonrpc==1.0.0
     # via semgrep
 python-multipart==0.0.26
-    # via gradio
+    # via
+    #   gradio
+    #   mlflow-skinny
 python-snappy==0.7.3
     # via -r python/requirements/ml/data-test-requirements.txt
 pytorch-lightning==2.6.1

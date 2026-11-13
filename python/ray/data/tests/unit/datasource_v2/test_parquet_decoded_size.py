@@ -5,7 +5,6 @@ Every leaf it sizes must come out exact; a leaf without exact counts falls back.
 
 import datetime
 import math
-import os
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -16,20 +15,27 @@ import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
 
-from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
+    Read,
+    added_bytes,
+    build_leaf_profiles,
+    estimate_row_group,
+    leaf_chunks,
+)
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout import (
     _BINARY,
     _FIXED_SIZE_LIST,
     _FIXED_WIDTH,
     _LIST,
     _STRUCT,
     _UNSUPPORTED,
-    Read,
     _leaf_layout,
+)
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_pin import (
+    _pinned_walk,
+)
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_walk import (
     _walk,
-    added_bytes,
-    build_leaf_profiles,
-    estimate_row_group,
-    leaf_chunks,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
     LeafSizeStats,
@@ -86,15 +92,23 @@ def _no_size_statistics(metadata):
     return None
 
 
-def _estimate(path, size_statistics=_read_size_statistics, added=(0, 0)):
+def _estimate(
+    path,
+    size_statistics=_read_size_statistics,
+    read=Read(),
+    pinned_schema=None,
+    format_kwargs=None,
+):
     """The estimate over ``path``'s modelled leaves, read as the footer reader does."""
     metadata = pq.read_metadata(str(path))
     profiles = build_leaf_profiles(
-        parquet_schema=metadata.schema, file_metadata=metadata
+        parquet_schema=metadata.schema,
+        pinned_schema=pinned_schema,
+        format_kwargs=format_kwargs,
+        file_metadata=metadata,
     )
     assert profiles is not None
     stats = size_statistics(metadata)
-    read = Read(added_row_bytes=added[0], added_row_group_bytes=added[1])
     total = 0
     for rg_idx in range(metadata.num_row_groups):
         row_group = metadata.row_group(rg_idx)
@@ -433,14 +447,14 @@ def test_walk_records_each_leaf_with_its_ancestors(arrow_type, expected):
     ],
 )
 def test_unmodeled_arrow_type_is_unsupported(arrow_type):
-    """A layout this module can't size, which leaves the leaf to the caller."""
+    """A layout the estimator can't size, which leaves the leaf to the caller."""
     assert _leaf_layout(arrow_type)[0] == _UNSUPPORTED
 
 
 @pytest.mark.parametrize(
     "table, format_kwargs, expected",
     [
-        (_STRINGS, {"dictionary_columns": ["a"]}, None),
+        (_STRINGS, {"dictionary_columns": ["a"]}, [None]),
         (_STRINGS, {"binary_type": pa.large_binary()}, None),
         (pa.table({"a": _STRINGS["a"].dictionary_encode()}), {}, [None]),
     ],
@@ -449,17 +463,88 @@ def test_unmodeled_arrow_type_is_unsupported(arrow_type):
 def test_dictionaries_and_type_options_fall_back(
     tmp_path, table, format_kwargs, expected
 ):
-    """Read options the reader drops on a cast leave the file unmodelled; a stored
-    dictionary leaves its leaf."""
+    """A dictionary, read or stored, leaves its leaf to the caller; an option that
+    retypes every binary or list column leaves the file."""
     path = _write(table, tmp_path / "f.parquet", store_schema=not format_kwargs)
     metadata = pq.read_metadata(str(path))
     profiles = build_leaf_profiles(
         parquet_schema=metadata.schema,
-        pinned_schema=None,
         format_kwargs=format_kwargs,
         file_metadata=metadata,
     )
     assert profiles == expected
+
+
+@requires_pyarrow_23
+def test_dictionary_columns_leave_only_their_leaves(tmp_path):
+    """``dictionary_columns`` leaves the BYTE_ARRAY leaves it names to the caller,
+    pinned or not; a name that isn't one of this file's changes nothing."""
+    table = pa.table({"s": _STRINGS["a"], "n": pa.array(range(N), pa.int64())})
+    path = _write(table, tmp_path / "f.parquet")
+    metadata = pq.read_metadata(str(path))
+    for pinned_schema in (None, table.schema):
+        profiles = build_leaf_profiles(
+            parquet_schema=metadata.schema,
+            pinned_schema=pinned_schema,
+            format_kwargs={"dictionary_columns": ["s"]},
+            file_metadata=metadata,
+        )
+        assert profiles is not None
+        s, n = profiles
+        assert s is None and n is not None
+    unused = {"dictionary_columns": ["missing", "n"]}
+    assert _estimate(path, format_kwargs=unused) == _allocated(path, **unused)
+
+
+_US = pa.timestamp("us")
+
+
+@pytest.mark.parametrize("nulls", [False, True], ids=["no-nulls", "nulls"])
+@pytest.mark.parametrize(
+    "stored, pinned",
+    [
+        # A cast that computes new values builds an array without a bitmap.
+        (pa.int32(), pa.int64()),
+        (pa.float32(), pa.float64()),
+        (pa.uint32(), pa.int64()),
+        (pa.int64(), pa.int32()),
+        # One that reinterprets them keeps the decoded array's.
+        (pa.int32(), pa.date32()),
+        (pa.int32(), pa.time32("s")),
+        (pa.int64(), pa.duration("us")),
+        (pa.int64(), _US),
+        (_US, pa.int64()),
+        (_US, pa.timestamp("us", tz="UTC")),
+        (_US, pa.timestamp("ns")),
+    ],
+    ids=str,
+)
+def test_pinned_cast_is_exact(tmp_path, stored, pinned, nulls):
+    """A column cast to the pinned type is sized at that type, with the validity
+    bitmap a null-free column has only after some casts."""
+    values = [None if nulls and i % 7 == 0 else i % 100 for i in range(N)]
+    path = _write(_table(values, stored), tmp_path / "f.parquet")
+    schema = pa.schema([pa.field("a", pinned)])
+    assert _estimate(path, pinned_schema=schema) == _allocated(path, schema=schema)
+
+
+def test_pinned_text_needs_stored_text(tmp_path):
+    """A decimal stored as BYTE_ARRAY and cast to a string gets new bytes, which
+    the footer doesn't count; a string cast to a large string keeps its own."""
+    path = _write(_STRINGS, tmp_path / "f.parquet")
+    parquet_schema = pq.read_metadata(str(path)).schema
+
+    def unmapped(stored, pinned):
+        arrow_schema = pa.schema([pa.field("a", stored)])
+        return _pinned_walk(
+            file_walk=_walk(arrow_schema),
+            arrow_schema=arrow_schema,
+            pinned_schema=pa.schema([pa.field("a", pinned)]),
+            parquet_schema=parquet_schema,
+        )[1]
+
+    assert unmapped(pa.decimal128(18, 2), pa.string()) == {0}
+    assert unmapped(pa.string(), pa.large_string()) == set()
 
 
 def test_pinned_struct_with_reordered_fields_is_unmodelled(tmp_path):
@@ -486,26 +571,52 @@ def test_pinned_struct_with_reordered_fields_is_unmodelled(tmp_path):
 
 
 def test_added_columns_are_bounded(tmp_path):
-    """The path, a Hive value cut from it, and a column the pin fills with nulls."""
-    path = str(tmp_path / "year=2024" / "f.parquet")
-    os.makedirs(os.path.dirname(path))
-    _write(_STRINGS, path)
-    fields = [pa.field(name, pa.string()) for name in ("path", "year", "notes")]
-    added = added_bytes(added=fields, path=path)
+    """The path, partition values (one a dictionary, one null), and a column the
+    pin fills with nulls."""
+    path = _write(_STRINGS, tmp_path / "f.parquet")
+    dictionary = pa.dictionary(pa.int32(), pa.string())
+    fields = [
+        pa.field("path", pa.string()),
+        pa.field("year", pa.string()),
+        pa.field("month", dictionary),
+        pa.field("day", pa.string()),
+        pa.field("notes", pa.string()),
+    ]
+    read = added_bytes(
+        added=fields,
+        path=str(path),
+        partition_values={"year": "2024", "month": 11, "day": None},
+    )
+
+    def nulls():
+        # Not ``pa.nulls``, whose buffers share one allocation.
+        return pa.array([None] * N, pa.string())
+
     held = pa.table(
         {
-            "path": pa.array([path] * N),
+            "path": pa.array([str(path)] * N),
             "year": pa.array(["2024"] * N),
-            "notes": pa.nulls(N, pa.string()),
+            "month": pa.array(["11"] * N).dictionary_encode(),
+            "day": nulls(),
+            "notes": nulls(),
         }
-    ).get_total_buffer_size()
+    )
 
-    estimate = _estimate(path, added=added) - _estimate(path)
-    assert estimate == math.ceil(N * added[0]) + added[1]
-    assert 1 <= estimate / held <= 1.1
+    estimate = _estimate(path, read=read) - _estimate(path)
+    assert estimate == math.ceil(N * read.added_row_bytes) + read.added_row_group_bytes
+    assert 1 <= estimate / held.get_total_buffer_size() <= 1.05
+    # The bound doesn't lean on a long path: it holds without the path column.
+    partitions = added_bytes(
+        added=fields[1:],
+        path=str(path),
+        partition_values={"year": "2024", "month": 11, "day": None},
+    )
+    held_partitions = held.drop_columns(["path"]).get_total_buffer_size()
+    charged = math.ceil(N * partitions.added_row_bytes)
+    assert 1 <= charged / held_partitions <= 1.05
     # A type with no bit width still counts.
     union = pa.field("u", pa.dense_union([pa.field("x", pa.int64())]))
-    assert added_bytes(added=[union], path=path)[0] > 0
+    assert added_bytes(added=[union], path="", partition_values={}).added_row_bytes > 0
 
 
 if __name__ == "__main__":
