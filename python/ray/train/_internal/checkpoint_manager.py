@@ -1,3 +1,4 @@
+import bisect
 import logging
 import numbers
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -29,20 +30,14 @@ def _insert_into_sorted_list(
         checkpoint_to_report_index: A dictionary mapping checkpoints to report indices.
             Used to break ties when scores are equal.
     """
-    checkpoint_to_report_index = checkpoint_to_report_index or {}
-    # TODO: optimize this with sortedlist, batching, etc
-    i = 0
-    while i < len(list):
-        # When scores are equal, later checkpoints are later in the list.
-        list_item_key, item_key = key(list[i]), key(item)
-        if list_item_key > item_key or (
-            list_item_key == item_key
-            and checkpoint_to_report_index.get(list[i].checkpoint, 0)
-            > checkpoint_to_report_index.get(item.checkpoint, 0)
-        ):
-            break
-        i += 1
-    list.insert(i, item)
+    if checkpoint_to_report_index:
+        bisect.insort(
+            list,
+            item,
+            key=lambda x: (key(x), checkpoint_to_report_index.get(x.checkpoint, 0)),
+        )
+    else:
+        bisect.insort(list, item, key=key)
 
 
 class _CheckpointManager:
