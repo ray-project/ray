@@ -19,8 +19,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
@@ -35,6 +37,10 @@
 #include "ray/observability/fake_metric.h"
 #include "ray/util/clock.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 
@@ -1129,6 +1135,86 @@ TEST_F(GcsLeaderElectionTest, TestPromotionRewritesActiveOnlyKeys) {
                    expected_v2_flag;
       },
       /*timeout_ms=*/30000));
+
+  passive->Stop();
+}
+
+namespace {
+// Runs one command against the test Redis on a connection of its own.
+std::string RedisCommandText(const std::vector<std::string> &args) {
+  redisContext *redis = redisConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
+  RAY_CHECK(redis != nullptr && redis->err == 0);
+  std::vector<const char *> argv;
+  std::vector<size_t> argvlen;
+  for (const auto &arg : args) {
+    argv.push_back(arg.data());
+    argvlen.push_back(arg.size());
+  }
+  auto *reply = static_cast<redisReply *>(
+      redisCommandArgv(redis, args.size(), argv.data(), argvlen.data()));
+  RAY_CHECK(reply != nullptr);
+  std::string text =
+      reply->type == REDIS_REPLY_STRING || reply->type == REDIS_REPLY_STATUS
+          ? std::string(reply->str, reply->len)
+      : reply->type == REDIS_REPLY_INTEGER ? std::to_string(reply->integer)
+                                           : "";
+  freeReplyObject(reply);
+  redisFree(redis);
+  return text;
+}
+
+// The incarnation that last wrote a client's watermark field, or "" if none.
+std::string WatermarkIncarnation(const std::string &field = "gcs_tables") {
+  const std::string value = RedisCommandText(
+      {"HGET",
+       absl::StrCat(
+           "RAY", RayConfig::instance().external_storage_namespace(), "@WriteWatermark"),
+       field});
+  return value.substr(0, value.find(':'));
+}
+}  // namespace
+
+// A passive GCS writes nothing to Redis, its write watermark included. It shares
+// the watermark's fields with the leader, so writing its own incarnation there would
+// make the leader's next reconnect check report lost writes.
+TEST_F(GcsLeaderElectionTest, TestPassiveLeavesTheWriteWatermarkAlone) {
+  const std::string leader_tables = WatermarkIncarnation("gcs_tables");
+  const std::string leader_kv = WatermarkIncarnation("gcs_internal_kv");
+  ASSERT_FALSE(leader_tables.empty());
+  ASSERT_FALSE(leader_kv.empty());
+
+  auto passive = StartPassiveServer();
+  // A marker the passive queued at startup would reach Redis within a round
+  // trip on its connection; give both clients time to send one.
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  EXPECT_EQ(WatermarkIncarnation("gcs_tables"), leader_tables);
+  EXPECT_EQ(WatermarkIncarnation("gcs_internal_kv"), leader_kv);
+
+  passive->Stop();
+}
+
+// A passive GCS can sit through Redis reconnects before it is promoted, and a
+// reconnect re-establishes only its async connection. Promotion must still take
+// the watermark over instead of failing on the connection that was not.
+TEST_F(GcsLeaderElectionTest, TestPromotionAfterARedisReconnectTakesOverTheWatermark) {
+  const std::string leader_incarnation = WatermarkIncarnation();
+  ASSERT_FALSE(leader_incarnation.empty());
+  auto passive = StartPassiveServer();
+
+  // The leader goes away first: a leader still running would read the promoted
+  // server's markers on its next reconnect and, rightly, exit.
+  leader_->Stop();
+  // Close the passive's connections, as a Redis restart would; the data stays.
+  ASSERT_NE(RedisCommandText({"CLIENT", "KILL", "TYPE", "normal"}), "0");
+
+  Promote(*passive);
+  ASSERT_TRUE(WaitForLeader(*passive, std::chrono::seconds(30)));
+  auto node = GenNodeInfo(1, "127.0.0.1", "node_after_promotion");
+  ASSERT_TRUE(RegisterNodeOn(passive->Client(), *node).ok());
+
+  const std::string incarnation = WatermarkIncarnation();
+  EXPECT_FALSE(incarnation.empty());
+  EXPECT_NE(incarnation, leader_incarnation);
 
   passive->Stop();
 }

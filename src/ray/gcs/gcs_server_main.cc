@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -94,6 +95,13 @@ int main(int argc, char *argv[]) {
                                          /*log_rotation_file_num=*/1);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
+#ifndef _WIN32
+  // A write to a Redis connection that the peer already closed must fail with
+  // EPIPE rather than kill the process: an in-place reconnect can land on a
+  // proxy that accepts and then closes while Redis is down, and the TLS
+  // handshake writes to that socket a second time.
+  signal(SIGPIPE, SIG_IGN);
+#endif
 
   RAY_LOG(INFO)
           .WithField("ray_version", kRayVersion)
