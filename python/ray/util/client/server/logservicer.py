@@ -11,7 +11,15 @@ import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray._private.ray_logging import global_worker_stdstream_dispatcher
+from ray._private.ray_constants import (
+    RAY_DEDUP_LOGS_AGG_WINDOW_S,
+    RAY_DEDUP_LOGS_ALLOW_REGEX,
+    RAY_DEDUP_LOGS_SKIP_REGEX,
+)
+from ray._private.ray_logging import (
+    LogDeduplicator,
+    global_worker_stdstream_dispatcher,
+)
 from ray._private.worker import print_worker_logs
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
 
@@ -36,21 +44,51 @@ class StdStreamHandler:
     def __init__(self, queue):
         self.queue = queue
         self.id = str(uuid.uuid4())
+        # Per-handler deduplicators: the dispatcher hands every batch to each
+        # handler (and to the server's own print_to_stdstream), so sharing the
+        # global ones would count each line once per handler and mix clients.
+        dedup_args = (
+            RAY_DEDUP_LOGS_AGG_WINDOW_S,
+            RAY_DEDUP_LOGS_ALLOW_REGEX,
+            RAY_DEDUP_LOGS_SKIP_REGEX,
+        )
+        self.stdout_deduplicator = LogDeduplicator(*dedup_args)
+        self.stderr_deduplicator = LogDeduplicator(*dedup_args)
 
     def handle(self, data):
-        logdata = ray_client_pb2.LogData()
-        logdata.level = -2 if data["is_err"] else -1
-        logdata.name = "stderr" if data["is_err"] else "stdout"
-        with io.StringIO() as file:
-            print_worker_logs(data, file)
-            logdata.msg = file.getvalue()
-        self.queue.put(logdata)
+        is_err = data["is_err"]
+        # Mirror ray._private.worker.print_to_stdstream so that Ray Client
+        # drivers get the same log deduplication as regular drivers.
+        if data.get("pid") in ["autoscaler"]:
+            batches = [data]
+        else:
+            deduplicator = (
+                self.stderr_deduplicator if is_err else self.stdout_deduplicator
+            )
+            batches = deduplicator.deduplicate(data)
+        self._enqueue(batches, is_err)
+
+    def _enqueue(self, batches, is_err: bool):
+        for batch in batches:
+            with io.StringIO() as file:
+                print_worker_logs(batch, file)
+                msg = file.getvalue()
+            if not msg:
+                continue
+            logdata = ray_client_pb2.LogData()
+            logdata.level = -2 if is_err else -1
+            logdata.name = "stderr" if is_err else "stdout"
+            logdata.msg = msg
+            self.queue.put(logdata)
 
     def register_global(self):
         global_worker_stdstream_dispatcher.add_handler(self.id, self.handle)
 
     def unregister_global(self):
         global_worker_stdstream_dispatcher.remove_handler(self.id)
+        # Forward any deduplicated lines still buffered in the aggregation window.
+        self._enqueue(self.stdout_deduplicator.flush(), is_err=False)
+        self._enqueue(self.stderr_deduplicator.flush(), is_err=True)
 
 
 def log_status_change_thread(log_queue, request_iterator):
