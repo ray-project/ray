@@ -85,9 +85,7 @@ def _metric_engine_cls():
                     # Native metadata preserves N without tokenizing its text.
                     event = json.loads(chunk.removeprefix("data: ").strip())
                     if os.environ["RAY_SERVE_ENABLE_LLM_STREAMING_METRICS"] == "1":
-                        event["choices"][0]["ray_token_count"] = [3, 4, 2, 1][
-                            chunk_index
-                        ]
+                        event["choices"][0]["num_tokens"] = [3, 4, 2, 1][chunk_index]
                     chunk_index += 1
                     # Compact, like vLLM's pydantic serializer that HAProxy scans.
                     chunk = "data: " + json.dumps(event, separators=(",", ":")) + "\n\n"

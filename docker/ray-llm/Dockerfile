@@ -50,7 +50,8 @@ COPY --from=mx-server-builder /home/ray/mx-wheel/ ./mx-wheel/
 
 COPY python/deplocks/llm/rayllm_*.lock ./
 COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch \
-    python/requirements/llm/patches/vllm-preserve-model-eos-tokens.patch ./
+    python/requirements/llm/patches/vllm-preserve-model-eos-tokens.patch \
+    python/requirements/llm/patches/vllm-stream-token-counts.patch ./
 COPY python/requirements/llm/nccl_overrides.txt ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
@@ -99,6 +100,7 @@ uv pip install --system --no-cache-dir --no-deps ./mx-wheel/modelexpress-*.whl
 # vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.33.0.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/vllm-device-aware-compile-cache.patch"
 VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH="$(pwd)/vllm-preserve-model-eos-tokens.patch"
+VLLM_STREAM_TOKEN_COUNTS_PATCH="$(pwd)/vllm-stream-token-counts.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -124,6 +126,8 @@ PY
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
     # TODO (jeffreywang): Remove this patch when https://github.com/vllm-project/vllm/pull/52153 is merged.
     git apply "${VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH}"
+    # Per-choice token counts for Ray Serve LLM streaming metrics; Ray-only.
+    git apply "${VLLM_STREAM_TOKEN_COUNTS_PATCH}"
 )
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake

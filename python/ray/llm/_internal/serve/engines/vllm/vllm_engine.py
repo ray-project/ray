@@ -442,6 +442,23 @@ class VLLMEngine(LLMEngine):
         args = argparse.Namespace(**(vars(vllm_frontend_args) | vars(vllm_engine_args)))
         self._vllm_args = args
 
+        from ray.serve._private.constants import RAY_SERVE_ENABLE_LLM_STREAMING_METRICS
+
+        if RAY_SERVE_ENABLE_LLM_STREAMING_METRICS:
+            from vllm.entrypoints.openai.completion.protocol import (
+                CompletionResponseStreamChoice,
+            )
+
+            # HAProxy times streamed chunks and reads each choice's
+            # `num_tokens`, which vLLM emits with vllm-stream-token-counts.patch.
+            if "num_tokens" not in CompletionResponseStreamChoice.model_fields:
+                raise RuntimeError(
+                    "RAY_SERVE_ENABLE_LLM_STREAMING_METRICS requires vLLM with "
+                    "python/requirements/llm/patches/"
+                    "vllm-stream-token-counts.patch applied, as in the ray-llm "
+                    "image."
+                )
+
         # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
         # Without this, vLLM falls back to 'generate' only.
         init_kwargs: dict[str, Any] = dict(
@@ -470,20 +487,6 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_tokenization = getattr(
             state, "openai_serving_tokenization", None
         )
-
-        from ray.serve._private.constants import RAY_SERVE_ENABLE_LLM_STREAMING_METRICS
-
-        if RAY_SERVE_ENABLE_LLM_STREAMING_METRICS:
-            from ray.llm._internal.serve.observability.metrics.llm_metrics import (
-                enable_stream_metrics_token_counts,
-            )
-
-            for serving, chat in (
-                (self._oai_serving_chat, True),
-                (self._oai_serving_completion, False),
-            ):
-                if serving is not None:
-                    enable_stream_metrics_token_counts(serving, chat=chat)
 
         self._validate_openai_serving_models()
         self._validate_engine_client()

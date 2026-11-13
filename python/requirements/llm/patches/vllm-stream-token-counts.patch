@@ -1,0 +1,97 @@
+diff --git a/vllm/entrypoints/openai/chat_completion/protocol.py b/vllm/entrypoints/openai/chat_completion/protocol.py
+index 1341ef2..0509dda 100644
+--- a/vllm/entrypoints/openai/chat_completion/protocol.py
++++ b/vllm/entrypoints/openai/chat_completion/protocol.py
+@@ -179,6 +179,10 @@ class ChatCompletionResponseStreamChoice(OpenAIBaseModel):
+     token_ids: list[int] | None = None
+     # Set on the final chunk only; covers the whole output.
+     weight_versions: list[WeightVersionSpan] | None = None
++    # Tokens generated for this choice since its previous chunk, including
++    # tokens a reasoning or tool parser withheld. One chunk can carry several
++    # tokens when the frontend falls behind the engine.
++    num_tokens: int | None = None
+ 
+ 
+ class ChatCompletionStreamResponse(OpenAIBaseModel):
+diff --git a/vllm/entrypoints/openai/chat_completion/serving.py b/vllm/entrypoints/openai/chat_completion/serving.py
+index 8adc9d1..068e3a5 100644
+--- a/vllm/entrypoints/openai/chat_completion/serving.py
++++ b/vllm/entrypoints/openai/chat_completion/serving.py
+@@ -534,6 +534,8 @@ class OpenAIServingChat(GenerateBaseServing):
+         num_cache_creation_tokens = None
+ 
+         previous_texts = [""] * num_choices
++        # Output tokens already reported per choice in `num_tokens`.
++        reported_tokens = [0] * num_choices
+ 
+         try:
+             if self.parser_cls is not None:
+@@ -603,6 +605,7 @@ class OpenAIServingChat(GenerateBaseServing):
+                             ),
+                             logprobs=None,
+                             finish_reason=None,
++                            num_tokens=0,
+                         )
+ 
+                         # return prompt_token_ids at the first chunk ever
+@@ -653,6 +656,7 @@ class OpenAIServingChat(GenerateBaseServing):
+                                     delta=DeltaMessage(content=last_msg_content),
+                                     logprobs=None,
+                                     finish_reason=None,
++                                    num_tokens=0,
+                                 )
+                                 chunk = ChatCompletionStreamResponse(
+                                     id=request_id,
+@@ -778,6 +782,10 @@ class OpenAIServingChat(GenerateBaseServing):
+                     include_token_ids = (
+                         request.return_token_ids and not hide_stream_metadata
+                     )
++                    # Tokens a parser withheld since the last emitted chunk
++                    # count toward this one.
++                    num_tokens = processor.num_output_tokens - reported_tokens[i]
++                    reported_tokens[i] = processor.num_output_tokens
+ 
+                     if output.finish_reason is None:
+                         # Send token-by-token response for each request.n
+@@ -789,6 +797,7 @@ class OpenAIServingChat(GenerateBaseServing):
+                             token_ids=(
+                                 as_list(output.token_ids) if include_token_ids else None
+                             ),
++                            num_tokens=num_tokens,
+                         )
+ 
+                     # if the model is finished generating
+@@ -808,6 +817,7 @@ class OpenAIServingChat(GenerateBaseServing):
+                                 if request.return_weight_versions
+                                 else None
+                             ),
++                            num_tokens=num_tokens,
+                         )
+ 
+                         finish_reason_sent[i] = True
+diff --git a/vllm/entrypoints/openai/completion/protocol.py b/vllm/entrypoints/openai/completion/protocol.py
+index c2f6bb5..0a5a777 100644
+--- a/vllm/entrypoints/openai/completion/protocol.py
++++ b/vllm/entrypoints/openai/completion/protocol.py
+@@ -741,6 +741,9 @@ class CompletionResponseStreamChoice(OpenAIBaseModel):
+     token_ids: list[int] | None = None
+     # Set on the final chunk only; covers the whole output.
+     weight_versions: list[WeightVersionSpan] | None = None
++    # Tokens generated for this choice since its previous chunk. One chunk can
++    # carry several tokens when the frontend falls behind the engine.
++    num_tokens: int | None = None
+ 
+ 
+ class CompletionStreamResponse(OpenAIBaseModel):
+diff --git a/vllm/entrypoints/openai/completion/serving.py b/vllm/entrypoints/openai/completion/serving.py
+index 04066b6..02490a4 100644
+--- a/vllm/entrypoints/openai/completion/serving.py
++++ b/vllm/entrypoints/openai/completion/serving.py
+@@ -458,6 +458,7 @@ class OpenAIServingCompletion(GenerateBaseServing):
+                                     if request.return_weight_versions
+                                     else None
+                                 ),
++                                num_tokens=len(output.token_ids),
+                             )
+                         ],
+                         kv_transfer_params=(

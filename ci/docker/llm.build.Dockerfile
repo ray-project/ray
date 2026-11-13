@@ -28,6 +28,8 @@ pip install --no-deps "ray-haproxy>=2.8.25.post1,<2.9.0"
 # reloads a torch.compile artifact built for a different physical GPU.
 # vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.33.0.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/python/requirements/llm/patches/vllm-device-aware-compile-cache.patch"
+# Per-choice token counts for Ray Serve LLM streaming metrics; Ray-only.
+VLLM_STREAM_TOKEN_COUNTS_PATCH="$(pwd)/python/requirements/llm/patches/vllm-stream-token-counts.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -51,6 +53,7 @@ PY
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
+    git apply "${VLLM_STREAM_TOKEN_COUNTS_PATCH}"
 )
 
 EOF

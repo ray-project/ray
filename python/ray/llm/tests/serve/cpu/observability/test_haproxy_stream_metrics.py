@@ -43,7 +43,7 @@ WIRES = [
     (
         "data: "
         + json.dumps(
-            {"choices": [{"index": 0, "text": "x", "ray_token_count": 1}]},
+            {"choices": [{"index": 0, "text": "x", "num_tokens": 1}]},
             separators=(",", ":"),
         )
         + "\r\n\r\n"
