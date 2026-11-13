@@ -1,6 +1,12 @@
 import asyncio
+import concurrent.futures
+import gc
 import os
-from typing import List
+import threading
+import warnings
+import weakref
+from dataclasses import dataclass
+from typing import Any, Callable, List
 
 import httpx
 import pytest
@@ -9,6 +15,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
+from ray.serve import multiplex
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
@@ -43,6 +50,51 @@ def start_serve_with_context():
         serve.shutdown()
         ray.serve.context._set_request_context()
         ray.shutdown()
+
+
+async def _single_model_multiplexer(
+    make_model: Callable[[str], Any]
+) -> _ModelMultiplexWrapper:
+    """Return a multiplexer that keeps one `make_model(model_id)` loaded at a time."""
+
+    async def model_load_func(model_id: str):
+        return make_model(model_id)
+
+    multiplexer = _ModelMultiplexWrapper(
+        model_load_func, None, max_num_models_per_replica=1
+    )
+    await multiplexer.metrics_pusher.graceful_shutdown()
+    return multiplexer
+
+
+async def _cancel_eviction_while_del_queued(
+    multiplexer: _ModelMultiplexWrapper, monkeypatch
+) -> None:
+    """Cancel `load_model("2")` while the evicted model "1"'s `__del__` is queued."""
+    # Run __del__ on a one-worker executor that is busy, so it stays queued.
+    loop = asyncio.get_running_loop()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    run_in_executor = loop.run_in_executor
+    monkeypatch.setattr(
+        loop,
+        "run_in_executor",
+        lambda _, func, *args: run_in_executor(executor, func, *args),
+    )
+    release = threading.Event()
+    executor.submit(release.wait)
+    try:
+        load_task = asyncio.create_task(multiplexer.load_model("2"))
+        for _ in range(100):
+            if "1" not in multiplexer.models:
+                break
+            await asyncio.sleep(0.01)
+        assert "1" not in multiplexer.models
+        load_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await load_task
+    finally:
+        release.set()
+        executor.shutdown(wait=True)
 
 
 @pytest.mark.asyncio
@@ -154,6 +206,211 @@ class TestMultiplexWrapper:
         assert multiplexer.models == {"1": MyModel("1")}
         with pytest.raises(Exception, match="1 is dead"):
             await multiplexer.load_model("2")
+
+    async def test_unload_model_calls_del_once(self, start_serve_with_context):
+        """__del__ is not called again when an evicted model is collected."""
+        calls = []
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                calls.append(self.model_id)
+
+        multiplexer = await _single_model_multiplexer(MyModel)
+        model_ref = weakref.ref(await multiplexer.load_model("1"))
+        await multiplexer.load_model("2")
+        gc.collect()
+        assert model_ref() is None
+        assert calls == ["1"]
+
+    async def test_unload_model_calls_raising_del_once(self, start_serve_with_context):
+        """A __del__ that raises during eviction is not called again either."""
+        calls = []
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                calls.append(self.model_id)
+                raise RuntimeError(f"{self.model_id} failed to clean up")
+
+        multiplexer = await _single_model_multiplexer(MyModel)
+        model = await multiplexer.load_model("1")
+        with pytest.raises(RuntimeError, match="1 failed to clean up"):
+            await multiplexer.load_model("2")
+        assert list(multiplexer.models) == []
+        assert calls == ["1"]
+
+        # `model` keeps the evicted model alive, so make the call that Python
+        # makes when it collects the model: it looks `__del__` up on the type.
+        type(model).__del__(model)
+        assert calls == ["1"]
+
+    async def test_unload_model_runs_queued_del_after_cancel(
+        self, start_serve_with_context, monkeypatch
+    ):
+        """Cancelling eviction before a sync __del__ starts still runs it once."""
+        calls = []
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                calls.append(self.model_id)
+
+        multiplexer = await _single_model_multiplexer(MyModel)
+        model = await multiplexer.load_model("1")
+        await _cancel_eviction_while_del_queued(multiplexer, monkeypatch)
+        assert calls == ["1"]
+
+        # Make the call that Python makes when it collects the model.
+        type(model).__del__(model)
+        assert calls == ["1"]
+
+    async def test_unload_model_logs_del_failure_after_cancel(
+        self, start_serve_with_context, monkeypatch
+    ):
+        """A sync __del__ that fails after its eviction was cancelled is logged."""
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                raise RuntimeError(f"cannot release {self.model_id}")
+
+        errors = []
+        monkeypatch.setattr(
+            multiplex.logger,
+            "error",
+            lambda msg, exc_info=None: errors.append((msg, exc_info)),
+        )
+        multiplexer = await _single_model_multiplexer(MyModel)
+        await multiplexer.load_model("1")
+        await _cancel_eviction_while_del_queued(multiplexer, monkeypatch)
+        # Let the loop run the done callback of the executor future.
+        for _ in range(100):
+            if errors:
+                break
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)
+
+        assert len(errors) == 1
+        msg, exc = errors[0]
+        assert "'1'" in msg
+        assert isinstance(exc, RuntimeError)
+        assert str(exc) == "cannot release 1"
+
+    async def test_unload_model_awaits_async_del_once(self, start_serve_with_context):
+        """An async __del__ is awaited once and not called again on collection."""
+        calls = []
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            async def __del__(self):
+                calls.append(self.model_id)
+
+        multiplexer = await _single_model_multiplexer(MyModel)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model_ref = weakref.ref(await multiplexer.load_model("1"))
+            await multiplexer.load_model("2")
+            gc.collect()
+        # Calling an async __del__ at collection creates a coroutine that is
+        # never awaited, which Python reports as a RuntimeWarning.
+        assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        assert calls == ["1"]
+        assert model_ref() is None
+
+    async def test_unload_model_releases_model_class(self, start_serve_with_context):
+        """Evicting a model does not keep its class alive."""
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                pass
+
+        class_ref = weakref.ref(MyModel)
+        multiplexer = await _single_model_multiplexer(MyModel)
+        await multiplexer.load_model("1")
+        await multiplexer.load_model("2")
+        del multiplexer, MyModel
+        # Classes are freed only by the cycle collector. The first pass frees
+        # the subclass made at eviction, which drops its cache entry, and the
+        # second pass frees the model class.
+        gc.collect()
+        gc.collect()
+        assert class_ref() is None
+
+    async def test_unload_model_with_slots(self, start_serve_with_context):
+        """A model class that defines __slots__ and __del__ can be evicted."""
+        calls = []
+
+        class MyModel:
+            __slots__ = ("model_id", "__weakref__")
+
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                calls.append(self.model_id)
+
+        multiplexer = await _single_model_multiplexer(MyModel)
+        model_ref = weakref.ref(await multiplexer.load_model("1"))
+        await multiplexer.load_model("2")
+        assert list(multiplexer.models) == ["2"]
+        gc.collect()
+        assert model_ref() is None
+        assert calls == ["1"]
+
+    async def test_unload_model_whose_class_cannot_be_swapped(
+        self, start_serve_with_context
+    ):
+        """A model whose class cannot be swapped is still evicted."""
+        calls = []
+
+        @dataclass(frozen=True)
+        class MyModel:
+            model_id: str
+
+            def __del__(self):
+                calls.append(self.model_id)
+
+        multiplexer = await _single_model_multiplexer(MyModel)
+        model = await multiplexer.load_model("1")
+        await multiplexer.load_model("2")
+        assert list(multiplexer.models) == ["2"]
+        assert calls == ["1"]
+        assert type(model) is MyModel
+
+    async def test_unload_same_model_under_two_ids(self, start_serve_with_context):
+        """A model returned for two model IDs is cleaned up once."""
+        calls = []
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                calls.append(self.model_id)
+
+        shared = MyModel("shared")
+        multiplexer = await _single_model_multiplexer(
+            lambda model_id: shared if model_id in ("1", "2") else MyModel(model_id)
+        )
+        await multiplexer.load_model("1")
+        await multiplexer.load_model("2")
+        await multiplexer.load_model("3")
+        assert list(multiplexer.models) == ["3"]
+        assert calls == ["shared"]
 
     async def test_push_model_ids_info_after_unload_model(self):
         """
