@@ -500,6 +500,130 @@ A sandbox doesn't outlive the Ray worker that creates it. When the worker exits 
 
 See [GPU access](#gpu-access) above for giving each sandbox in a pool like this its own GPU.
 
+### Keep sandboxes booted with a warm pool
+
+Creating a sandbox boots gVisor. A boot takes a fraction of a second, and longer when many sandboxes start at once. If you know the configurations your workload creates, pass them to `SandboxRuntime` as warm-pool profiles. The runtime boots each profile's sandboxes ahead of time, and a `create` call whose arguments match a profile takes one of them immediately:
+
+```python
+import ray
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+PROFILE = {"image": "python:3.12-slim", "cpu": 0.25, "workdir": "/workspace"}
+
+@ray.remote
+class SandboxWorker:
+    def __init__(self, pool_size: int = 16):
+        self.runtime = SandboxRuntime(warm_pool=[{**PROFILE, "size": pool_size}])
+
+    def ready(self, timeout_seconds: float = 300) -> bool:
+        return self.runtime.wait_for_warm_pool(timeout_seconds)
+
+    def run(self, command: str, env: dict) -> str:
+        # Matches the profile, so it takes a booted sandbox.
+        instance_id = self.runtime.create(**PROFILE, env=env)
+        try:
+            return self.runtime.exec(instance_id, command).stdout
+        finally:
+            self.runtime.delete(instance_id)
+
+    def close(self):
+        self.runtime.close()
+
+worker = SandboxWorker.remote()
+ray.get(worker.ready.remote())
+print(ray.get(worker.run.remote("echo $TASK", {"TASK": "warm"})))
+ray.get(worker.close.remote())
+```
+
+A profile is the keyword arguments of `create` plus a `size`, the number of sandboxes the profile keeps.
+
+A sandbox that a `create` call takes still counts toward the size until it's deleted, whether by `delete`, by its TTL, or by a checkpoint that stops it. Only then does the runtime boot a new one in its place. As a result, a pool never holds more sandboxes than its size. A `create` call that finds no booted sandbox boots one as usual, outside the pool.
+
+Everything fixed at boot must match the profile: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, GPUs, mounts, `oom_score_adj`, `readonly`, and `rootless`. So must a GPU sandbox's `NVIDIA_DRIVER_CAPABILITIES` in `env`, which sets the driver capabilities gVisor allows it when it boots. The call's other `env`, `ttl_seconds`, and `timeout_seconds` don't need to match. Every spelling of one image matches, such as `python:3.12-slim` and `docker.io/library/python:3.12-slim`. A sandbox taken from the pool runs every command with the call's `env` on top of the profile's, and its TTL starts at the `create` call. A matching `create` call that finds no booted sandbox boots one with that same `env`, so what a command sees doesn't depend on whether the pool had a sandbox ready. A `create` call that matches no profile boots a sandbox as usual.
+
+Call `close` to delete the sandboxes the pool still holds. It waits for the boots that are under way, so the pool holds nothing once it returns.
+
+#### Route `create` calls to an actor with a ready sandbox
+
+A warm pool belongs to the runtime that booted it, and only that runtime's `create` calls take its sandboxes. With pools on many actors, a caller needs to know which actor has a sandbox ready. Give the runtimes a `WarmPoolStore`, and each runtime publishes its pool to the store whenever the pool changes and every 10 seconds. The published records cover every sandbox in the pool, whether ready or in use. Callers ask the store for ready sandboxes and send each `create` call to the actor that holds one. `RayWarmPoolStore` keeps the records in a detached actor:
+
+```python
+import ray
+from ray.experimental.sandbox import RayWarmPoolStore
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+PROFILE = {"image": "python:3.12-slim", "cpu": 0.25}
+
+@ray.remote
+class SandboxHost:
+    def __init__(self, store):
+        self.runtime = SandboxRuntime(
+            warm_pool=[{**PROFILE, "name": "py", "size": 16}],
+            warm_pool_store=store,
+        )
+
+    def run(self, command: str, warm_sandbox=None) -> str:
+        # Takes the listed sandbox if it's still ready, else another one.
+        instance_id = self.runtime.create(**PROFILE, warm_sandbox=warm_sandbox)
+        try:
+            return self.runtime.exec(instance_id, command).stdout
+        finally:
+            self.runtime.delete(instance_id)
+
+store = RayWarmPoolStore()
+hosts = [SandboxHost.options(name=f"sandbox-host-{i}").remote(store) for i in range(4)]
+
+# One create per ready record, each sent to the record's host for its sandbox.
+commands = ["python -c 'print(1 + 1)'", "python -c 'print(2 + 2)'"]
+entries = store.ready("py")
+runs = [
+    ray.get_actor(entry.host).run.remote(command, entry.sandbox_id)
+    for entry, command in zip(entries, commands)
+]
+runs += [hosts[0].run.remote(command) for command in commands[len(entries) :]]
+print(ray.get(runs))
+```
+
+A runtime publishes under its actor's name, which is the name that `ray.get_actor` finds. A store keeps one set of records for each host name, so an actor without a name has to set `warm_pool_host`, and so do actors that share a name across namespaces. `ready` returns a profile's sandboxes in no particular order, so callers that each take the first one spread over the hosts. Each record holds a sandbox's profile `name`, slot, state, and node.
+
+Only the runtime hands out its sandboxes, and only the ones still ready on it, so the store can lag without harm. A `create` call sent on a stale record boots a sandbox cold, and no sandbox goes to two `create` calls. Pass the record's `sandbox_id` as `warm_sandbox`, and the call takes that sandbox while it's still ready. A caller that sends at most one `create` call per record then never sends a runtime more calls than it has sandboxes ready, even when the store lags by a publish.
+
+Records expire 30 seconds after their host's last publish, so an actor that dies drops out.
+
+To keep the records in your own database, subclass `WarmPoolStore` and implement two methods. `publish(host, entries)` replaces the records of `host`, and an empty list removes them. `ready(profile)` returns the profile's ready records that haven't expired. For example, with a table whose columns follow `WarmPoolEntry`'s fields:
+
+```python
+import dataclasses
+
+from ray.experimental.sandbox import WarmPoolEntry, WarmPoolStore
+
+class PostgresWarmPoolStore(WarmPoolStore):
+    def __init__(self, dsn: str):
+        self.dsn = dsn
+
+    def _connect(self):
+        import psycopg
+
+        return psycopg.connect(self.dsn)
+
+    def publish(self, host, entries):
+        with self._connect() as conn:  # One transaction.
+            conn.execute("DELETE FROM warm_sandboxes WHERE host = %s", (host,))
+            conn.cursor().executemany(
+                "INSERT INTO warm_sandboxes VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                [dataclasses.astuple(entry) for entry in entries],
+            )
+
+    def ready(self, profile):
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM warm_sandboxes WHERE profile = %s AND state = 'ready' "
+                "AND expires_at > extract(epoch FROM now())",
+                (profile,),
+            ).fetchall()
+        return [WarmPoolEntry(*row) for row in rows]
+```
+
 ### Checkpoint and restore sandboxes
 
 Ray Sandboxes support checkpointing and restoration, which enables two distinct use cases in agentic AI and reinforcement learning:
