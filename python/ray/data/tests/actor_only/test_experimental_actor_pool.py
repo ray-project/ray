@@ -1623,8 +1623,6 @@ def test_expired_pending_actor_is_released_and_killed(monkeypatch):
     assert killed == [actor]
     assert removed_committed == [("nodeA", usage)]
     assert pool._total_usage.cpu == 0
-    assert pool._pending_or_restarting_usage.cpu == 0
-    assert actor not in pool._actor_to_logical_id
     assert not pool.get_resource_requests()
     assert pool._pending_usage.cpu == 0
     assert actor not in pool._actor_to_id
@@ -1725,13 +1723,12 @@ def test_exact_resource_requests_lifecycle(pool_cls, removal, monkeypatch):
     pool.set_resource_bank(_RecordingResourceBank())
     if isinstance(pool, pool_mod._NodeAwareExperimentalActorPool):
         pool._get_draining_nodes = lambda: {}
-        pool._get_actor_locations = lambda ids: {}
     actor, ready_ref = mock.Mock(), mock.Mock()
     request = {"CPU": 1, "GPU": 0.5, "custom": 2}
     assert pool.get_resource_requests() == []
     # Mirrors the operator callback, which records before _add_pending_actor.
     pool.record_resource_request(actor, request)
-    pool._actor_to_logical_id[actor] = "actor1"
+    pool._actor_to_id[actor] = "actor1"
     pool._add_pending_actor(actor, ready_ref, ExecutionResources(cpu=1, gpu=0.5))
     assert pool.get_resource_requests() == [request]
     monkeypatch.setattr(ray, "kill", mock.Mock())
@@ -1758,6 +1755,8 @@ def test_exact_resource_requests_lifecycle(pool_cls, removal, monkeypatch):
         else:
             pool._release_running_actor(actor)
     assert pool.get_resource_requests() == []
+
+
 def test_output_backpressured_actors_counts_serving_actors_only():
     """``blocked`` and ``running`` cover the same actors: a draining or
     restarting actor with an exhausted budget is not a stuck serving actor,
