@@ -28,6 +28,9 @@ from botocore.exceptions import BotoCoreError, ClientError
 BUCKET = "ray-ci-artifact-branch-public"
 ROOT = "trivy-scans"
 REGION = "us-west-2"
+DB_FOLDER = "db"
+RESULTS_FOLDER = "results"
+REPORT_FOLDER = "report"
 
 
 class StoreError(Exception):

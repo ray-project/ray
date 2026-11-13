@@ -416,6 +416,18 @@ def test_stage_makes_the_data_tree_readable_by_the_scan_user(tmp_path: Path):
     assert mode(data / "ignore" / "ray.trivyignore.yaml") == "0o644"
 
 
+def invoke_main(results: Path, *images: str, s3: Optional[FakeS3] = None):
+    args = ["--architecture", "x86_64", "--platform", "cpu"]
+    for image in images:
+        args += ["--image", image]
+    args += ["--results-dir", str(results)]
+    args += ["--rayci-work-repo", WORK_REPO, "--rayci-build-id", "abc123"]
+    with mock.patch.object(
+        scan_images.scan_store.boto3, "client", return_value=s3 or FakeS3()
+    ):
+        return CliRunner().invoke(scan_images.main, args, env=BUILD_ENV)
+
+
 @pytest.mark.parametrize(("errors", "code"), [([], 0), (["boom"], 1)])
 def test_main_exits_nonzero_when_any_image_was_not_scanned(
     tmp_path: Path, errors: list, code: int
@@ -429,27 +441,90 @@ def test_main_exits_nonzero_when_any_image_was_not_scanned(
     with mock.patch.object(
         scan_images, "scan_group", fake_scan_group
     ), mock.patch.object(scan_images.registry, "login_if_ecr") as login:
-        result = CliRunner().invoke(
-            scan_images.main,
-            [
-                "--architecture",
-                "x86_64",
-                "--platform",
-                "cpu",
-                "--image",
-                "ray:3.12",
-                "--results-dir",
-                str(tmp_path / "r"),
-                "--rayci-work-repo",
-                WORK_REPO,
-                "--rayci-build-id",
-                "abc123",
-            ],
-            env=BUILD_ENV,
-        )
+        result = invoke_main(tmp_path / "r", "ray:3.12")
     assert result.exit_code == code, result.output
     # Only the images need a login; the DBs come from S3.
     assert [c.args[0] for c in login.call_args_list] == [WORK_REPO]
+
+
+RESULTS_PREFIX = "trivy-scans/postmerge/master/20897-80ceee083e49/results"
+
+
+def scan_writing_results(*scanned: str, then=None):
+    """A fake scan_group that writes what the real one would, so main has
+    something to upload: a result for each scanned image, and a status for
+    every image."""
+
+    def fake(group, architecture, store, results_dir, *rest):
+        for target in group:
+            if target.name in scanned:
+                (results_dir / f"{target.name}.json.gz").write_bytes(b"gz")
+                target.scanned = True
+            else:
+                target.error = "boom"
+            scan_images.write_status(results_dir, target)
+        if then:
+            then()
+
+    return fake
+
+
+def test_main_uploads_each_result_before_its_status(tmp_path: Path):
+    s3 = FakeS3()
+    uploaded = []
+    upload = s3.upload_file
+
+    def record(filename, bucket, key):
+        uploaded.append(key.rsplit("/", 1)[1])
+        upload(filename, bucket, key)
+
+    s3.upload_file = record
+    with mock.patch.object(
+        scan_images, "scan_group", scan_writing_results("ray-py3.12-cpu")
+    ):
+        result = invoke_main(tmp_path / "r", "ray:3.11", "ray:3.12", s3=s3)
+    assert result.exit_code == 1, result.output
+    assert uploaded == [
+        "ray-py3.11-cpu.status.json",
+        "ray-py3.12-cpu.json.gz",
+        "ray-py3.12-cpu.status.json",
+    ]
+    assert s3.get(BUCKET, f"{RESULTS_PREFIX}/ray-py3.12-cpu.json.gz") == b"gz"
+
+
+def test_a_failed_upload_fails_the_job_and_keeps_the_status_back(
+    tmp_path: Path, caplog
+):
+    """A status record in S3 must never point at a result that isn't there."""
+    s3 = FakeS3()
+    s3.denied.add(f"{RESULTS_PREFIX}/ray-py3.12-cpu.json.gz")
+    with mock.patch.object(
+        scan_images,
+        "scan_group",
+        scan_writing_results("ray-py3.11-cpu", "ray-py3.12-cpu"),
+    ):
+        result = invoke_main(tmp_path / "r", "ray:3.11", "ray:3.12", s3=s3)
+    assert result.exit_code == 1, result.output
+    assert "Upload failed: ray-py3.12-cpu: upload to s3://" in caplog.text
+    assert "AccessDenied" in caplog.text
+    keys = sorted(k for _, k in s3.objects)
+    assert keys == [
+        f"{RESULTS_PREFIX}/ray-py3.11-cpu.json.gz",
+        f"{RESULTS_PREFIX}/ray-py3.11-cpu.status.json",
+    ]
+
+
+def test_a_cancelled_job_still_uploads_its_statuses(tmp_path: Path):
+    s3 = FakeS3()
+    with mock.patch.object(
+        scan_images,
+        "scan_group",
+        scan_writing_results(then=lambda: scan_images._exit_on_sigterm(15, None)),
+    ):
+        result = invoke_main(tmp_path / "r", "ray:3.12", s3=s3)
+    assert result.exit_code == 143, result.output
+    record = json.loads(s3.get(BUCKET, f"{RESULTS_PREFIX}/ray-py3.12-cpu.status.json"))
+    assert record["status"] == "error"
 
 
 def statuses(results: Path) -> dict:
@@ -495,26 +570,7 @@ def test_a_login_failure_is_recorded_for_every_image(tmp_path: Path):
     with mock.patch.object(
         scan_images.registry, "login_if_ecr", side_effect=RuntimeError("ExpiredToken")
     ):
-        result = CliRunner().invoke(
-            scan_images.main,
-            [
-                "--architecture",
-                "x86_64",
-                "--platform",
-                "cpu",
-                "--image",
-                "ray:3.11",
-                "--image",
-                "ray:3.12",
-                "--results-dir",
-                str(results),
-                "--rayci-work-repo",
-                WORK_REPO,
-                "--rayci-build-id",
-                "abc123",
-            ],
-            env=BUILD_ENV,
-        )
+        result = invoke_main(results, "ray:3.11", "ray:3.12")
     assert result.exit_code == 1, result.output
     records = statuses(results)
     assert sorted(records) == ["ray-py3.11-cpu", "ray-py3.12-cpu"]

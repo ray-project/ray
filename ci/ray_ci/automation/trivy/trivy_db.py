@@ -29,14 +29,13 @@ import click
 import runfiles
 
 from ci.ray_ci.automation.trivy import registry, scan_store
-from ci.ray_ci.automation.trivy.scan_store import ScanStore
+from ci.ray_ci.automation.trivy.scan_store import DB_FOLDER, ScanStore
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 TRIVY_PIN_RUNFILE = "io_ray/ci/ray_ci/automation/trivy/trivy_pin.json"
 CREATED_ANNOTATION = "org.opencontainers.image.created"
-DB_FOLDER = "db"
 DB_METADATA = "metadata.json"
 
 
