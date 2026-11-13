@@ -278,9 +278,9 @@ def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
 def test_final_pushdown_is_left_alone(tmp_path):
     """``pushdown_is_final`` keeps constraints a rule set for a non-``ReadFiles``.
 
-    ``PushdownCountFiles`` replaces the ``ReadFiles`` with a ``MapBatches``
-    that applies the filter through the same reader, so clearing the listing's
-    predicate would list the whole table and count it unfiltered.
+    A rule that replaces ``ReadFiles`` with its own operator owns the listing
+    constraints too; clearing them here would drop the pruning that operator
+    relies on.
     """
     read_files = _mk_read_files(tmp_path)
     predicate = col("a") > 2
@@ -301,7 +301,7 @@ def test_final_pushdown_is_left_alone(tmp_path):
     assert derived.predicate is predicate
 
 
-def test_count_pushdown_marks_its_listing_final(tmp_path):
+def test_unfiltered_count_pushdown_marks_its_listing_final(tmp_path):
     """The real ``PushdownCountFiles`` sets ``pushdown_is_final`` on its listing.
 
     Parquet only counts from footers with no filter, so the pinned predicate

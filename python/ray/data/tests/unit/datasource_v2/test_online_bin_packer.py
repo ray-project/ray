@@ -149,19 +149,20 @@ def test_duplicated_file_keeps_one_row_per_copy() -> None:
     assert _rows(manifest) == [("a", [0, 1]), ("a", [0, 1])]
 
 
-def test_packed_runs_never_merge_across_fully_matched() -> None:
-    """A matched run and a partial run of one file stay separate manifest rows.
+def test_stubbed_runs_never_merge_with_partial_runs() -> None:
+    """A zero-size matched run and a partial run stay separate manifest rows.
 
-    The reader answers a matched run from its footer, so folding it into a
-    partial run would AND the flags, mark the row partial, and read data the
-    listing had already proven whole.
+    The reader answers a stub from its footer, so folding it into a partial
+    run would AND the flags, mark the row partial, and read data the listing
+    had already proven whole. Zero size is the indexer's signal that the run
+    will be stubbed, not merely that it matched.
     """
     manifest = _file(
         "a",
         20,
         [
             _run((0,), 10, rows=5, fully_matched=False),
-            _run((1,), 10, rows=7, fully_matched=True),
+            _run((1,), 0, rows=7, fully_matched=True),
         ],
     )
     packer = OnlineBinPacker(max_bin_bytes=1000)
@@ -179,6 +180,81 @@ def test_packed_runs_never_merge_across_fully_matched() -> None:
         ((1,), True),
     ]
     assert sorted(chunk.num_rows for chunk in chunks) == [5, 7]
+
+
+def test_read_matched_run_merges_with_partial_runs() -> None:
+    """A matched run with real bytes is read, so it keeps the file's run order.
+
+    Only a stub needs the match boundary. When the reader must open the run
+    (e.g. an ordered read), keeping it in a separate manifest row would move
+    its rows ahead of or behind its neighbours.
+    """
+    manifest = _file(
+        "a",
+        20,
+        [
+            _run((0,), 10, rows=5, fully_matched=False),
+            _run((1,), 10, rows=7, fully_matched=True),
+        ],
+    )
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(manifest)
+    packer.finalize()
+
+    chunks = [
+        FileChunk.from_metadata(metadata)
+        for metadata in packer.next_partition().file_chunk_metadatas
+    ]
+
+    assert len(chunks) == 1
+    assert chunks[0].unit_ids == (0, 1)
+    assert chunks[0].num_rows == 12
+    assert chunks[0].size_bytes == 20
+    assert chunks[0].fully_matched is False
+
+
+def test_zero_size_stubs_collapse_into_one_bin_without_merging_a_partial_run():
+    """Zero read bytes must buy one bin, without hiding the partial run.
+
+    This is the 1000-file filtered-count shape: every matched run costs no
+    read bytes, so it fits the first open bin, and the bin's real byte budget
+    stays available to the runs that are read. The partial run of the last
+    file must remain its own manifest row -- merging it into that file's stub
+    would AND ``fully_matched`` and read the matched bytes.
+    """
+    files = [
+        _file(f"f{i}", 1, [_run((0,), 0, rows=10, fully_matched=True)])
+        for i in range(1000)
+    ]
+    # Same path as f999, so this run lands in the same bin as that file's
+    # stub and exercises the merge boundary inside one bin.
+    files.append(_file("f999", 1, [_run((1,), 4096, rows=5, fully_matched=False)]))
+
+    packer = OnlineBinPacker(max_bin_bytes=64 * 1024)
+    for manifest in files:
+        packer.add_input(manifest)
+    packer.finalize()
+
+    assert packer.has_partition()
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+
+    rows = [
+        (str(path), FileChunk.from_metadata(metadata))
+        for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ]
+    matched = [chunk for _, chunk in rows if chunk.fully_matched]
+    partial = [chunk for _, chunk in rows if not chunk.fully_matched]
+
+    assert len(matched) == 1000
+    assert sum(chunk.size_bytes for chunk in matched) == 0
+    partial_rows = [
+        (chunk.unit_ids, chunk.num_rows, chunk.size_bytes) for chunk in partial
+    ]
+    assert partial_rows == [((1,), 5, 4096)]
+    # The partial run never joins the stub row for its file.
+    f999 = [chunk for path, chunk in rows if path == "f999"]
+    assert sorted(chunk.unit_ids for chunk in f999) == [(0,), (1,)]
 
 
 @pytest.mark.parametrize("split_coalesced", [False, True])

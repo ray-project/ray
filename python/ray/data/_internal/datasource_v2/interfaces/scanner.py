@@ -44,11 +44,11 @@ class Scanner(ABC, Generic[InputSplit]):
     def metadata_row_count_is_exact(self) -> bool:
         """Whether this scan's row count may come from file metadata.
 
-        Asked by ``pushdown_count_files`` before it answers ``count()`` without
-        reading data. It is about the rows this scan *returns*, so a source
-        whose metadata says per file whether a filter is fully satisfied may
-        answer ``True`` under that filter; for most sources it collapses to "no
-        row-reducing pushdown is set".
+        Asked by ``pushdown_count_files`` before it answers an unfiltered
+        ``count()`` without reading data. It is about the rows this scan
+        *returns*, so a source whose metadata says per file whether a filter is
+        fully satisfied may answer ``True`` under that filter; for most sources
+        it collapses to "no row-reducing pushdown is set".
 
         Default ``False``. Override this to return ``True`` when the reader
         mixes in ``SupportsMetadata`` and no pushdown on this scanner reduces

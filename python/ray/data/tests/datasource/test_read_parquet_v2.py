@@ -1014,8 +1014,8 @@ def _walk(op):
         yield from _walk(child)
 
 
-def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
-    """``count()`` must not run the footer indexer.
+def test_unfiltered_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
+    """An unfiltered ``count()`` must not run the footer indexer.
 
     ``FooterFileIndexer`` subclasses ``NonSamplingFileIndexer`` but overrides
     ``list_files``, so it footer-sweeps every file during listing -- the exact
@@ -1050,7 +1050,9 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
 @pytest.mark.parametrize(
     "read_kwargs", [{}, {"include_paths": True}], ids=["plain", "include_paths"]
 )
-def test_count_pushdown_preserves_list_files_fields(tmp_path, restore_ctx, read_kwargs):
+def test_unfiltered_count_pushdown_preserves_list_files_fields(
+    tmp_path, restore_ctx, read_kwargs
+):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -1103,7 +1105,7 @@ def test_count_uses_footer_matches_for_filter(tmp_path, restore_ctx, merge_schem
     assert sorted(row["a"] for row in rows) == [3, 4]
 
 
-def test_count_pushdown_preserves_read_remote_args(tmp_path, restore_ctx):
+def test_unfiltered_count_pushdown_preserves_read_remote_args(tmp_path, restore_ctx):
     """The metadata count pass keeps the read's resource config."""
     from ray.data._internal.logical.operators.map_operator import MapBatches
 
@@ -1188,10 +1190,10 @@ def test_count_with_include_paths(tmp_path, restore_ctx):
     [(1, 10, None), (3, 100, 10), (4, 1000, 250)],
     ids=["single_file", "multi_file_many_row_groups", "multi_file_large"],
 )
-def test_count_matches_rows(
+def test_unfiltered_count_matches_rows(
     tmp_path, restore_ctx, num_files, rows_per_file, row_group_size
 ):
-    """End-to-end count correctness, including multi-row-group files.
+    """End-to-end unfiltered count correctness, including multi-row-group files.
 
     Regression guard for over-counting: the footer indexer emits one manifest
     row per row-group run, so a multi-row-group file would otherwise be counted
@@ -1218,9 +1220,7 @@ def test_count_matches_rows(
         pytest.param(col("id") >= 1000, 0, id="empty"),
     ],
 )
-def test_count_pushdown_filtered_count_matches_rows(
-    tmp_path, restore_ctx, predicate, expected
-):
+def test_filtered_count_matches_rows(tmp_path, restore_ctx, predicate, expected):
     restore_ctx.use_datasource_v2 = True
     for i in range(4):
         pq.write_table(
@@ -1234,7 +1234,7 @@ def test_count_pushdown_filtered_count_matches_rows(
     assert len(ds.take_all()) == expected
 
 
-def test_count_pushdown_reads_only_partial_runs(tmp_path, restore_ctx, monkeypatch):
+def test_filtered_count_reads_only_partial_runs(tmp_path, restore_ctx, monkeypatch):
     """Fully matched runs come from footers; only unsettled runs are read."""
     from dataclasses import dataclass, fields
     from pathlib import Path
@@ -1301,8 +1301,37 @@ def test_count_pushdown_reads_only_partial_runs(tmp_path, restore_ctx, monkeypat
     ]
 
 
+def test_filtered_read_preserves_order_across_fully_matched_runs(
+    tmp_path, restore_ctx, monkeypatch
+):
+    """An ordered filtered read must not stub matched runs ahead of partial ones.
+
+    Listing splits this file at the match boundary (row groups 0 and 2 are
+    partial, row group 1 is fully matched). The reader used to emit every stub
+    before reading the rest, so the matched run's rows arrived ahead of the
+    earlier partial run. The packer keeping the same boundary for every
+    filtered read made the split unconditional, so gating only the reader
+    would still leave the file's runs in the wrong order.
+    """
+    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
+    pq.write_table(
+        pa.table({"x": list(range(300))}),
+        str(tmp_path / "data.parquet"),
+        row_group_size=100,
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    rows = (
+        ray.data.read_parquet(str(tmp_path))
+        .filter(expr=(col("x") >= 50) & (col("x") < 250))
+        .take_all()
+    )
+
+    assert [row["x"] for row in rows] == list(range(50, 250))
+
+
 @pytest.mark.parametrize("case", ["nulls", "floats", "no_stats"])
-def test_count_pushdown_filtered_count_fails_closed(tmp_path, restore_ctx, case):
+def test_filtered_count_fails_closed(tmp_path, restore_ctx, case):
     """Stats that cannot prove a full match must fall back to reading."""
     restore_ctx.use_datasource_v2 = True
 
@@ -1330,7 +1359,7 @@ def test_count_pushdown_filtered_count_fails_closed(tmp_path, restore_ctx, case)
     assert ds.count() == len(ds.take_all())
 
 
-def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):
+def test_unfiltered_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):
     """The rebuilt indexer must keep ``skip_paths``, or the skipped file's rows
     are counted even though reading the dataset excludes them."""
     a = tmp_path / "a.parquet"
@@ -1344,7 +1373,9 @@ def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):
     assert ds.count() == 2
 
 
-def test_count_pushdown_skip_paths_tolerates_missing_path(tmp_path, restore_ctx):
+def test_unfiltered_count_pushdown_skip_paths_tolerates_missing_path(
+    tmp_path, restore_ctx
+):
     """``skip_paths`` drops a named path before the existence check, so a
     skipped-but-missing path must not fail a pushed-down ``count()``."""
     a = tmp_path / "a.parquet"

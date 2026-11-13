@@ -67,6 +67,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -764,17 +765,23 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         """Whether this read needs only the number of surviving rows.
 
         ``_columns`` must be an *empty projection*; ``None`` means "all
-        columns" and does not qualify. The remaining two conditions make the
+        columns" and does not qualify. The remaining conditions make the
         listing's ``fully_matched`` flag trustworthy rather than merely
         present: a pushed predicate is what the flag was computed against, and
         ``ReadFiles`` refuses predicate push-down for a row-reducing
         ``block_udf``, so no post-read transform can change the count.
+
+        ``preserve_order`` also disqualifies the read. A stub is emitted before
+        any run that must be opened, and a file's matched and partial runs can
+        occupy separate manifest rows, so stubbing reorders that file's rows.
+        Count does not care, but a user asking for ordered output does.
         """
         return (
             self._predicate is not None
             and self._limit is None
             and self._columns is not None
             and len(self._columns) == 0
+            and not DataContext.get_current().execution_options.preserve_order
         )
 
     @override
@@ -787,8 +794,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         ``num_rows`` is exactly what a read would yield, so the file is never
         opened.
 
-        Every unproven case reads. ``fully_matched`` exactness is a property of
-        the Parquet pairing: this reader is constructed by
+        Every unproven case reads, including an ordered read: stubs are
+        yielded first, so answering part of a file from its footer would move
+        those rows ahead of the runs read below. ``fully_matched`` exactness is
+        a property of the Parquet pairing: this reader is constructed by
         ``ParquetDatasourceV2``, whose indexer is always ``FooterFileIndexer``,
         which computes the flag against the listing predicate. An indexer that
         leaves the flag at its default ``True`` must not feed this reader.

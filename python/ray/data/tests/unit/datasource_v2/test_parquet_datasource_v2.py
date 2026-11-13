@@ -863,13 +863,14 @@ def test_parquet_file_reader_answers_fully_matched_runs_from_metadata(tmp_path):
     assert sum(table.num_rows for table in tables) == 40
 
 
-def test_parquet_file_reader_exact_count_read_gate():
+def test_parquet_file_reader_exact_count_read_gate(monkeypatch):
     """Only an empty projection with a pushed predicate and no limit qualifies.
 
     Each condition removes a way the stored ``num_rows`` could differ from what
     a read would yield, so the gate is the whole trust contract of the
     footer-only shortcut.
     """
+    from ray.data.context import DataContext
     from ray.data.expressions import col
 
     predicate = col("id") >= 0
@@ -884,6 +885,14 @@ def test_parquet_file_reader_exact_count_read_gate():
     ]
     for reader, expected in cases:
         assert reader._is_exact_count_read() is expected
+
+    # Stubs are emitted before the runs that are read, so ordered execution
+    # must not take the shortcut even though the count itself would be right.
+    reader = ParquetFileReader(columns=[], predicate=predicate)
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
+    assert reader._is_exact_count_read() is False
 
 
 def test_parquet_file_reader_row_group_row_hashes_are_unique(tmp_path):

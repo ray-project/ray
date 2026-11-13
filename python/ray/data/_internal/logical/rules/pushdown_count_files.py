@@ -47,7 +47,7 @@ def _try_count_from_metadata(
     pushdown: ListFilesPushdown,
     read_files: ReadFiles,
 ) -> Optional[MapBatches]:
-    """Build a pass that counts each file from its footer, or decline.
+    """Build an unfiltered count pass that reads each file's footer, or decline.
 
     Precondition: ``scanner.metadata_row_count_is_exact()``. The listing is
     rebuilt with a whole-file indexer so each file appears exactly once and
@@ -117,7 +117,7 @@ def _try_count_from_metadata(
 
 
 class PushdownCountFiles(Rule):
-    """Answer ``Dataset.count()`` without reading data when metadata can prove it.
+    """Answer an *unfiltered* ``Dataset.count()`` from file metadata.
 
     Applies only when the scanner's row count is exact, i.e. no row-reducing
     predicate or limit was pushed. ``Dataset.count()`` projects the read to zero
@@ -125,12 +125,12 @@ class PushdownCountFiles(Rule):
     the rule looks through the ``Project`` and replaces the read with a parallel
     pass that sums ``SupportsMetadata`` row counts.
 
-    A *filtered* count is deliberately not rewritten here. It reaches
-    ``ReadFiles`` with an empty projection and a pushed predicate, and
-    ``ParquetFileReader`` answers the runs whose footer statistics proved
-    ``fully_matched`` without opening them. Keeping that in the read path means
-    one implementation of predicate push-down, input pruning, and task
-    resources, instead of a second one in the rule.
+    A *filtered* count is deliberately not rewritten here, so this rule is not
+    the path that handles it. It reaches ``ReadFiles`` with an empty projection
+    and a pushed predicate, and ``ParquetFileReader`` answers the runs whose
+    footer statistics proved ``fully_matched`` without opening them. Keeping
+    that in the read path means one implementation of predicate push-down,
+    input pruning, and task resources, instead of a second one in the rule.
 
     Fails open: over-claiming makes ``count()`` silently wrong, while declining
     just falls back to the read that would have happened.

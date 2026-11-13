@@ -290,6 +290,32 @@ class TestReadAndChunk:
         assert by_idx[2] is True
         assert by_idx[3] is True
 
+    def test_stub_fully_matched_zeroes_only_matched_runs(self, four_row_groups):
+        path, size = four_row_groups
+        predicate = col("id") >= 30
+
+        def runs(**kwargs):
+            chunks = _reader(filter_expr=predicate, **kwargs)._read_and_chunk(
+                FileInfo(path, size)
+            )
+            return {rg.unit_ids[0]: rg for rg in chunks.row_groups}
+
+        read = runs(stub_fully_matched=False)
+        stubbed = runs(stub_fully_matched=True)
+
+        # A run that will be read keeps the honest footer size, even when its
+        # rows are all survivors; only a zero-size run is a stub.
+        assert all(rg.size_bytes > 0 for rg in read.values())
+        # Row group 1 is partial, so it is never stubbed and keeps its bytes.
+        assert stubbed[1].size_bytes == read[1].size_bytes
+        assert stubbed[1].size_bytes > 0
+        assert stubbed[1].fully_matched is False
+        # The wholly surviving groups cost no read bytes, but keep their rows.
+        for rg_idx in (2, 3):
+            assert stubbed[rg_idx].size_bytes == 0
+            assert stubbed[rg_idx].num_rows == read[rg_idx].num_rows
+            assert stubbed[rg_idx].fully_matched is True
+
     def test_predicate_matching_nothing_yields_no_row_groups(self, four_row_groups):
         path, size = four_row_groups
 

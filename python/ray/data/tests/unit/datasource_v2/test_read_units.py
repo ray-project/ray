@@ -242,9 +242,91 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
             "partitioning": None,
             "partition_pruner": None,
             "logical_schema": None,
+            "stub_fully_matched": False,
         }
     ]
     assert footer_batches == [[FileInfo(path_b, size_b)]]
+
+
+@pytest.mark.parametrize(
+    "list_kwargs,expected",
+    [
+        pytest.param(
+            {"predicate": col("id") >= 0, "projected_columns": []},
+            True,
+            id="exact-count",
+        ),
+        pytest.param(
+            {
+                "predicate": col("id") >= 0,
+                "projected_columns": [],
+                "preserve_order": True,
+            },
+            False,
+            id="ordered",
+        ),
+        pytest.param(
+            {
+                "predicate": col("id") >= 0,
+                "projected_columns": [],
+                "limit": 1,
+            },
+            False,
+            id="limit",
+        ),
+        pytest.param(
+            {"predicate": col("id") >= 0, "projected_columns": None},
+            False,
+            id="all-columns",
+        ),
+        pytest.param(
+            {"predicate": None, "projected_columns": []},
+            False,
+            id="no-predicate",
+        ),
+    ],
+)
+def test_footer_indexer_stubs_fully_matched_only_for_exact_count(
+    tmp_path, monkeypatch, list_kwargs, expected
+):
+    """Only the reader's exact-count shape may charge matched runs zero bytes."""
+    import ray
+
+    _write_file(tmp_path / "data.parquet")
+    actor_kwargs = []
+
+    class _FakeActor:
+        def __init__(self):
+            self.read_footers = self
+
+        def remote(self, batch, **_kwargs):
+            return []
+
+    class _FakeActorClass:
+        @staticmethod
+        def options(**_kwargs):
+            class _Builder:
+                @staticmethod
+                def remote(*_args, **kwargs):
+                    actor_kwargs.append(kwargs)
+                    return _FakeActor()
+
+            return _Builder
+
+    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
+    monkeypatch.setattr(footer_file_indexer, "FooterReaderActor", _FakeActorClass)
+    monkeypatch.setattr(ray, "kill", lambda _actor: None)
+
+    indexer = FooterFileIndexer(ignore_missing_paths=False)
+    list(
+        indexer.list_files(
+            pa.array([str(tmp_path)]),
+            filesystem=LocalFileSystem(),
+            **list_kwargs,
+        )
+    )
+
+    assert actor_kwargs[0]["stub_fully_matched"] is expected
 
 
 @pytest.mark.parametrize(

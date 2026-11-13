@@ -16,6 +16,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
 )
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicates,
+)
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     ChunkedFile,
     FooterReaderActor,
@@ -317,6 +320,22 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         coalesce_bytes = self._coalesce_bytes
         if shuffle_row_groups:
             coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
+        # A run's ``size_bytes`` may be zeroed only when the reader is certain
+        # to answer it from footer metadata. Mirror the reader's gate exactly:
+        # a predicate the footer was matched against, no limit, an empty
+        # projection, and unordered execution. Zeroing any other listing would
+        # charge no bytes for data the read task still fetches.
+        read_predicate = combine_predicates(
+            predicate,
+            partition_pruner.predicate if partition_pruner is not None else None,
+        )
+        stub_fully_matched = (
+            read_predicate is not None
+            and limit is None
+            and projected_columns is not None
+            and len(projected_columns) == 0
+            and not preserve_order
+        )
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,
@@ -328,6 +347,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 partitioning=self._partitioning,
                 partition_pruner=partition_pruner,
                 logical_schema=self._logical_schema,
+                stub_fully_matched=stub_fully_matched,
             )
             for _ in range(self._num_actors)
         ]

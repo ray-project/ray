@@ -34,7 +34,10 @@ class FileChunk:
 
     unit_ids: Tuple[int, ...]
     num_rows: int  # summed over the run
-    size_bytes: int  # summed over the run; what a partitioner budgets on
+    # Summed over the run; what a partitioner budgets on. A Parquet footer
+    # indexer sets this to 0 for a fully matched run only when an exact-count
+    # read will answer it from metadata instead of reading it.
+    size_bytes: int
     # Whether every row in the run survives the pushed predicate, so
     # ``num_rows`` is an exact survivor count that limit push-down may use.
     fully_matched: bool = True
