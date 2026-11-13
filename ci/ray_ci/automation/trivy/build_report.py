@@ -282,13 +282,9 @@ def report_build(
             for name, error in sorted(failed.items())
             if name not in expected_names
         ]
+        build = trivy_report.build_info(os.environ)
         code = trivy_report.write_report(
-            output_dir,
-            scans,
-            scanner,
-            trivy_report.build_info(os.environ),
-            issues=issues,
-            files_note=note,
+            output_dir, scans, scanner, build, issues=issues, files_note=note
         )
         upload_error = publish_report(store, output_dir, workdir)
 
@@ -297,6 +293,10 @@ def report_build(
         issues = [*issues, f"the report could not be uploaded to S3: {upload_error}"]
         note = files_note(store, uploaded=False)
         style = "warning" if style == "success" else style
+        # So the artifacts say what the annotation says; the code stays.
+        trivy_report.write_report(
+            output_dir, scans, scanner, build, issues=issues, files_note=note
+        )
     body = trivy_report.render_annotation(
         scans, [], scanner, issues=issues, files_note=note
     )

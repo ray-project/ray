@@ -331,6 +331,12 @@ def test_a_failed_report_upload_fails_a_clean_build(tmp_path: Path, caplog):
     footer = body.rstrip().splitlines()[-1]
     assert f"{PREFIX}/report/" not in footer
     assert "only in this job's `trivy/report/` artifacts" in footer
+    # The artifacts say the same as the annotation.
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert "the report could not be uploaded to S3" in report
+    assert "only in this job's `trivy/report/` artifacts" in report
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert any("could not be uploaded" in issue for issue in summary["issues"])
 
 
 def test_a_failed_report_upload_keeps_the_findings_exit_code(tmp_path: Path):
