@@ -15,7 +15,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, Trainer, TrainingArgu
 import ray
 from ray.data.preprocessors import Concatenator
 from ray.tests.conftest import _ray_start_cluster
-from ray.train import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
@@ -38,7 +38,7 @@ from ray.train.lightning import (
 from ray.train.lightning._lightning_utils import import_lightning
 from ray.train.tests._huggingface_data import train_data, validation_data
 from ray.train.tests.lightning_test_utils import DummyDataModule, LinearModule
-from ray.train.tests.util import create_dict_checkpoint
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.execution.local_mode.torch import LocalTorchController
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
@@ -102,13 +102,37 @@ def test_local_mode_metrics_only_report_keeps_checkpoint():
     def train_fn():
         with create_dict_checkpoint({}) as checkpoint:
             ray.train.report(metrics={"epoch": 0}, checkpoint=checkpoint)
-            ray.train.report(metrics={"epoch": 1})
-            assert ray.train.get_checkpoint() == checkpoint
+        persisted = ray.train.get_checkpoint()
+        ray.train.report(metrics={"epoch": 1})
+        assert ray.train.get_checkpoint() == persisted
 
     trainer = DataParallelTrainer(train_fn, scaling_config=ScalingConfig(num_workers=0))
     result = trainer.fit()
     assert result.metrics == {"epoch": 1}
     assert result.checkpoint
+
+
+def test_local_mode_persists_checkpoints_to_storage_path(tmp_path):
+    def train_fn():
+        for loss in [3.0, 1.0, 2.0]:
+            with create_dict_checkpoint({"loss": loss}) as checkpoint:
+                ray.train.report(metrics={"loss": loss}, checkpoint=checkpoint)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=0),
+        run_config=RunConfig(storage_path=str(tmp_path), name="exp"),
+    )
+    result = trainer.fit()
+
+    assert result.path == (tmp_path / "exp").as_posix()
+    assert len(result.best_checkpoints) == 3
+    for checkpoint, metrics in result.best_checkpoints:
+        assert checkpoint.path.startswith(result.path)
+        assert load_dict_checkpoint(checkpoint) == metrics
+    best = result.get_best_checkpoint("loss", "min")
+    assert load_dict_checkpoint(best) == {"loss": 1.0}
+    assert load_dict_checkpoint(result.checkpoint) == {"loss": 2.0}
 
 
 def test_jax_trainer_local_mode(ray_tpu_single_host, monkeypatch):

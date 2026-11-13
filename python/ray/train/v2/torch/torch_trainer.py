@@ -203,4 +203,5 @@ class TorchTrainer(DataParallelTrainer):
         return LocalTorchController(
             experiment_name=self.run_config.name,
             datasets=self.datasets,
+            storage_context=self.run_config.storage_context,
         )

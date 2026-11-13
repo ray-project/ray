@@ -9,7 +9,6 @@ from ray.train import Result
 from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.train_fn_utils import (
     LocalTrainFnUtils,
-    get_train_fn_utils,
     set_train_fn_utils,
 )
 
@@ -73,21 +72,13 @@ class LocalTorchController(LocalController):
                 local_world_size=nproc_per_node,
                 node_rank=node_rank,
                 dataset_shards=self.datasets,
+                storage_context=self.storage_context,
             )
         )
 
     def run(self, train_func: Callable[[], Any]) -> Result:
         self._set_train_fn_utils()
-        train_result = train_func()
-        train_fn_utils = get_train_fn_utils()
-        assert isinstance(train_fn_utils, LocalTrainFnUtils)
-        result = Result(
-            metrics=train_fn_utils._get_last_metrics(),
-            checkpoint=train_fn_utils.get_checkpoint(),
-            path=None,
-            error=None,
-            return_value=train_result,
-        )
+        result = self._build_result(train_func())
         if dist.is_initialized():
             dist.destroy_process_group()
         return result
