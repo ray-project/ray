@@ -30,6 +30,7 @@ from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+    ORC_TARGET_BYTES,
     OrcStripeIndexer,
     OrcStripePartitioner,
 )
@@ -127,7 +128,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         if hints is None:
             return None
         if supports_stripe_reads():
-            return OrcStripePartitioner(128 * 1024 * 1024)
+            return OrcStripePartitioner(ORC_TARGET_BYTES)
         reader = OrcFileReader(format=FileFormat.ORC, filesystem=self._filesystem)
         return RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)
 

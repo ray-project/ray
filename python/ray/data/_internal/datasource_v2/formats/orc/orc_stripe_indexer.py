@@ -2,6 +2,7 @@
 
 import secrets
 from dataclasses import replace
+from typing import cast
 
 import pyarrow as pa
 
@@ -21,6 +22,8 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
+
+ORC_TARGET_BYTES = 128 * 1024 * 1024
 
 _ORC_CHUNK_TYPE = pa.struct(
     [
@@ -52,8 +55,9 @@ def _orc_manifest(paths, sizes, chunk_metadatas):
 class OrcStripeIndexer(NonSamplingFileIndexer):
     """Read each file's layout while listing and emit its stripe chunks."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, *, min_split_size=ORC_TARGET_BYTES, **kwargs):
         super().__init__(**kwargs)
+        self._min_split_size = min_split_size
         self._shuffle_seed = secrets.randbits(64)
 
     def _replayable_shuffle(self, config):
@@ -129,7 +133,27 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
             layout = read_orc_metadata(file.path, filesystem)
             chunks = []
             stripes = layout.stripes
-            if stripes is not None and len(stripes) > 1:
+            excluded_stripe = stripes is not None and any(
+                orc_read_unit_id(file.path, stripe.index) in excluded
+                for stripe in stripes
+            )
+            # Avoid changing bin order when earlier files have contributed rows.
+            # The per-task limit must also fit within the first nonempty stripe.
+            first_rows = next((s.num_rows for s in stripes or () if s.num_rows), 0)
+            limit_fits = (
+                predicate is None
+                and limit is not None
+                and matched == 0
+                and limit <= first_rows
+            )
+            if stripes is not None and (
+                excluded_stripe
+                or (
+                    len(stripes) > 1
+                    and cast(int, file.size) > self._min_split_size
+                    and not limit_fits
+                )
+            ):
                 for stripe in stripes:
                     if (
                         not stripe.num_rows

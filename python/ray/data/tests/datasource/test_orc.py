@@ -1601,9 +1601,15 @@ _ORC_STRIPE_RESOURCES = pytest.mark.parametrize(
 
 def _set_orc_group_target(monkeypatch, target):
     from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+        OrcStripeIndexer,
         OrcStripePartitioner,
     )
 
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2."
+        "OrcStripeIndexer",
+        lambda **kwargs: OrcStripeIndexer(min_split_size=0, **kwargs),
+    )
     monkeypatch.setattr(
         "ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2."
         "OrcStripePartitioner",
@@ -1708,6 +1714,10 @@ def test_orc_stripe_public_contract(
 def test_orc_stripe_remote_filesystem(
     ray_start_regular_shared, orc_pipeline, s3_fs, s3_path, monkeypatch
 ):
+    from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+        OrcStripeIndexer,
+    )
+
     prefix = s3_path.removeprefix("s3://")
     for path in orc_pipeline:
         with s3_fs.open_output_stream(f"{prefix}/{path.name}") as out:
@@ -1715,6 +1725,13 @@ def test_orc_stripe_remote_filesystem(
     rows = ray.data.read_orc(
         s3_path, filesystem=s3_fs, num_cpus=1, concurrency=4
     ).take_all()
+    assert sorted(r["id"] for r in rows) == list(range(16))
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2."
+        "OrcStripeIndexer",
+        OrcStripeIndexer,
+    )
+    rows = ray.data.read_orc(s3_path, filesystem=s3_fs).take_all()
     assert sorted(r["id"] for r in rows) == list(range(16))
 
 

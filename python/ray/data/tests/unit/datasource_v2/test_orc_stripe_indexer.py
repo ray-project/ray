@@ -22,6 +22,7 @@ from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+    ORC_TARGET_BYTES,
     OrcStripeIndexer,
     OrcStripePartitioner,
     _orc_manifest,
@@ -56,7 +57,7 @@ def case(tmp_path):
     return SimpleNamespace(
         path=path,
         layout=layout,
-        indexer=OrcStripeIndexer(ignore_missing_paths=True),
+        indexer=OrcStripeIndexer(ignore_missing_paths=True, min_split_size=0),
     )
 
 
@@ -77,6 +78,18 @@ def selected(case, ids=(0, 2)):
         sizes=[case.layout.size],
         chunk_metadatas=[run.to_metadata()],
     )
+
+
+def read_ids(case, manifests, **kwargs):
+    reader = OrcScanner(
+        schema=orc.ORCFile(str(case.path)).schema, batch_size=2, **kwargs
+    ).create_reader()
+    return [
+        row["id"]
+        for manifest in manifests
+        for table in reader.read(manifest)
+        for row in table.to_pylist()
+    ]
 
 
 class Input(io.BytesIO):
@@ -108,7 +121,7 @@ def test_optional_zero_footer_fields(no_index):
     else:
         assert native.nrows == 0 and not tail.footer.HasField("number_of_rows")
 
-    indexer = OrcStripeIndexer(ignore_missing_paths=False)
+    indexer = OrcStripeIndexer(ignore_missing_paths=False, min_split_size=0)
     manifests = list(
         indexer.list_files(pa.array([str(path)]), filesystem=LocalFileSystem())
     )
@@ -118,6 +131,156 @@ def test_optional_zero_footer_fields(no_index):
     if no_index:
         assert len(manifests[0]) == 3
         assert pa.concat_tables(batches).equals(expected)
+
+
+@pytest.mark.parametrize("mode", ["whole", "split", "excluded"])
+def test_small_file_uses_streaming_unless_stripes_are_excluded(case, monkeypatch, mode):
+    indexer = OrcStripeIndexer(
+        ignore_missing_paths=False,
+        min_split_size=case.layout.size - (mode == "split"),
+    )
+    excluded = (
+        {metadata.orc_read_unit_id(str(case.path), 1)} if mode == "excluded" else set()
+    )
+    manifest = next(
+        indexer.list_files(
+            pa.array([str(case.path)]),
+            filesystem=LocalFileSystem(),
+            excluded_read_unit_ids=excluded,
+        )
+    )
+    chunks = manifest.file_chunk_metadatas.tolist()
+    if mode == "whole":
+        assert chunks == [None]
+        monkeypatch.setattr(
+            orc.ORCFile, "read_stripe", Mock(side_effect=AssertionError)
+        )
+    else:
+        assert [tuple(chunk["unit_ids"]) for chunk in chunks] == (
+            [(0,), (1,), (2,)] if mode == "split" else [(0,), (2,)]
+        )
+    assert read_ids(case, [manifest]) == (
+        list(range(5)) + list(range(12, 16)) if excluded else list(range(16))
+    )
+    if mode == "whole":
+        for predicate, expected in [(None, [0, 1]), (col("id") >= 12, [12, 13])]:
+            limited = next(
+                indexer.list_files(
+                    pa.array([str(case.path)]),
+                    filesystem=LocalFileSystem(),
+                    predicate=predicate,
+                    limit=2,
+                )
+            )
+            assert read_ids(case, [limited], predicate=predicate, limit=2) == expected
+
+
+@pytest.mark.parametrize("exclude_stripe", [False, True])
+def test_packed_small_files_keep_duplicate_paths(case, monkeypatch, exclude_stripe):
+    other = case.path.with_name("other.orc")
+    other.write_bytes(case.path.read_bytes())
+    paths = [case.path, other, case.path]
+    excluded = (
+        {metadata.orc_read_unit_id(str(case.path), 1)} if exclude_stripe else set()
+    )
+    indexer = OrcStripeIndexer(ignore_missing_paths=False)
+    packer = OrcStripePartitioner(ORC_TARGET_BYTES)
+    for manifest in indexer.list_files_from_file_infos(
+        [FileInfo(str(path), case.layout.size) for path in paths],
+        filesystem=LocalFileSystem(),
+        excluded_read_unit_ids=excluded,
+    ):
+        packer.add_input(manifest)
+    packer.finalize()
+    result = packer.next_partition()
+    assert not packer.has_partition()
+    chunks = result.file_chunk_metadatas.tolist()
+    if exclude_stripe:
+        assert sum(chunk is None for chunk in chunks) == 1
+        assert [tuple(chunk["unit_ids"]) for chunk in chunks if chunk] == [(0, 2)] * 2
+    else:
+        assert chunks == [None] * 3
+        monkeypatch.setattr(
+            orc.ORCFile, "read_stripe", Mock(side_effect=AssertionError)
+        )
+    reader = OrcScanner(schema=orc.ORCFile(str(case.path)).schema).create_reader()
+    rows = [row for table in reader.read(result) for row in table.to_pylist()]
+    ids = (
+        list(range(16))
+        + (list(range(5)) + list(range(12, 16)) if excluded else list(range(16))) * 2
+    )
+    assert sorted(rows, key=lambda row: row["id"]) == [
+        {"id": value, "label": str(value)} for value in sorted(ids)
+    ]
+
+
+@pytest.mark.parametrize(
+    "mode", ["whole", "whole_equal", "predicate", "excluded", "crosses"]
+)
+def test_large_file_limit_uses_streaming_only_when_safe(case, monkeypatch, mode):
+    limit = {"whole_equal": 5, "crosses": 6}.get(mode, 1)
+    predicate = col("id") >= 12 if mode == "predicate" else None
+    excluded = (
+        {metadata.orc_read_unit_id(str(case.path), 1)} if mode == "excluded" else set()
+    )
+    manifest = next(
+        case.indexer.list_files(
+            pa.array([str(case.path)]),
+            filesystem=LocalFileSystem(),
+            predicate=predicate,
+            limit=limit,
+            excluded_read_unit_ids=excluded,
+        )
+    )
+    chunks = manifest.file_chunk_metadatas.tolist()
+    if mode in ("whole", "whole_equal"):
+        assert chunks == [None]
+        monkeypatch.setattr(
+            orc.ORCFile, "read_stripe", Mock(side_effect=AssertionError("decoded"))
+        )
+    else:
+        assert [tuple(chunk["unit_ids"]) for chunk in chunks] == {
+            "predicate": [(0,), (1,), (2,)],
+            "excluded": [(0,)],
+            "crosses": [(0,), (1,)],
+        }[mode]
+    assert read_ids(case, [manifest], predicate=predicate, limit=limit) == (
+        [12] if predicate is not None else list(range(limit))
+    )
+
+
+@pytest.mark.parametrize("limit", [3, 6])
+@pytest.mark.parametrize("prelisted", [False, True])
+def test_limit_fallback_keeps_prior_file_and_task_boundaries(case, limit, prelisted):
+    first = write_orc_stripes(
+        case.path.with_name("first.orc"),
+        pa.table({"id": [-2, -1], "label": ["-2", "-1"]}),
+        (2,),
+    )
+    infos = [FileInfo(str(p), p.stat().st_size) for p in (first, case.path)]
+    list_files = (
+        case.indexer.list_files_from_file_infos
+        if prelisted
+        else case.indexer.list_files
+    )
+    inputs = infos if prelisted else pa.array([info.path for info in infos])
+    manifests = list(list_files(inputs, filesystem=LocalFileSystem(), limit=limit))
+    chunks = [
+        chunk for manifest in manifests for chunk in manifest.file_chunk_metadatas
+    ]
+    assert chunks[0] is None and [tuple(chunk["unit_ids"]) for chunk in chunks[1:]] == [
+        (0,)
+    ]
+    target = case.layout.size - 1
+    assert first.stat().st_size + case.layout.stripes[0].size_bytes <= target
+    packer = OrcStripePartitioner(target)
+    for manifest in manifests:
+        packer.add_input(manifest)
+    packer.finalize()
+    partitions = []
+    while packer.has_partition():
+        partitions.append(packer.next_partition())
+    assert read_ids(case, partitions, limit=limit) == [-2, -1, 0, 1, 2, 3][:limit]
 
 
 def test_layout_is_exact_metadata_only(case, monkeypatch):
@@ -354,10 +517,10 @@ def test_listing_limit_stops_before_later_invalid_footer(case, prelisted, limit)
     kwargs = dict(filesystem=LocalFileSystem(), limit=limit)
     manifests = list_files(**kwargs)
     assert [
-        FileChunk.from_metadata(chunk).unit_ids
+        None if chunk is None else FileChunk.from_metadata(chunk).unit_ids
         for manifest in manifests
         for chunk in manifest.file_chunk_metadatas
-    ] == ([(0,)] if limit == 1 else [(0,), (1,)])
+    ] == ([None] if limit == 1 else [(0,), (1,)])
     with pytest.raises((pa.ArrowInvalid, OSError), match="invalid.orc"):
         list_files(**kwargs, predicate=col("id") > 0)
 
