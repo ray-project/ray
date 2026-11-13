@@ -1,6 +1,7 @@
 """An in-memory stand-in for the boto3 S3 client calls ScanStore makes."""
 
 from pathlib import Path
+from typing import Any
 
 from botocore.exceptions import ClientError
 
@@ -32,6 +33,18 @@ class FakeS3:
                 {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
             )
         Path(filename).write_bytes(self.objects[(bucket, key)])
+
+    def head_object(self, Bucket: str, Key: str) -> dict[str, Any]:
+        if Key in self.broken:
+            raise ClientError(
+                {"Error": {"Code": "InternalError", "Message": "try again"}},
+                "HeadObject",
+            )
+        if (Bucket, Key) not in self.objects:
+            raise ClientError(
+                {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
+            )
+        return {}
 
     def put(self, bucket: str, key: str, data: bytes) -> None:
         self.objects[(bucket, key)] = data
