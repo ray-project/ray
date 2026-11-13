@@ -3086,6 +3086,17 @@ py_test(
 )
 
 py_test(
+    name = "test_zero_padding",
+    size = "small",
+    srcs = ["utils/postprocessing/tests/test_zero_padding.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_tf_utils",
     size = "medium",
     srcs = ["utils/tests/test_tf_utils.py"],
