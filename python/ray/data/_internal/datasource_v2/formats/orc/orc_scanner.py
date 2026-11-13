@@ -37,7 +37,6 @@ class OrcScanner(ArrowFileScanner):
 
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
     target_block_size: Optional[int] = None
-    enable_metadata_count: bool = False
 
     @override
     def prune_partitions(self, predicate: Expr) -> "OrcScanner":
@@ -126,5 +125,4 @@ class OrcScanner(ArrowFileScanner):
             synthesized_columns=self.synthesized_columns,
             schema=self.schema,
             target_block_size=self.target_block_size,
-            enable_metadata_count=self.enable_metadata_count,
         )

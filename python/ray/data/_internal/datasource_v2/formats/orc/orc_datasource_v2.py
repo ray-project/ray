@@ -83,7 +83,6 @@ class OrcDatasourceV2(FileDataSourceV2):
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
-        enable_metadata_count: bool = False,
     ):
         super().__init__(name="OrcV2", category=DatasourceCategory.FILE_BASED)
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -100,7 +99,6 @@ class OrcDatasourceV2(FileDataSourceV2):
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
         self._synthesized_columns = (PathColumn(),) if include_paths else ()
-        self._enable_metadata_count = enable_metadata_count
 
     @property
     @override
@@ -228,5 +226,4 @@ class OrcDatasourceV2(FileDataSourceV2):
             partitioning=options.get("partitioning", self._partitioning),
             synthesized_columns=self._synthesized_columns,
             target_block_size=DataContext.get_current().target_max_block_size,
-            enable_metadata_count=self._enable_metadata_count,
         )

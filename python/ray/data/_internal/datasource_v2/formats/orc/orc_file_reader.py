@@ -1,11 +1,9 @@
 import math
-from concurrent.futures import ThreadPoolExecutor
-from typing import Iterator, List, Optional, Sequence, Set
+from typing import Iterator, List, Optional, Sequence
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-import pyarrow.orc as orc
-from pyarrow.fs import FileSystem, LocalFileSystem
+from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_reader import (
@@ -20,10 +18,6 @@ from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator impor
     estimate_batch_size,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
-    MetadataType,
-    SupportsMetadata,
-)
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
@@ -31,16 +25,13 @@ from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_co
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data._internal.util import call_with_retry
-from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class OrcFileReader(FileReader, SupportsMetadata):
+class OrcFileReader(FileReader):
     """Read ORC files in batches using PyArrow Dataset fragments.
 
     Each fragment covers a whole file. PyArrow applies row filters to the
@@ -62,7 +53,6 @@ class OrcFileReader(FileReader, SupportsMetadata):
         synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
         target_block_size: Optional[int] = None,
-        enable_metadata_count: bool = False,
     ):
         """Initialize the ORC reader.
 
@@ -79,7 +69,6 @@ class OrcFileReader(FileReader, SupportsMetadata):
             schema: Unified schema for file reads and partition values.
             target_block_size: Target output batch size in bytes when batch_size
                 is unset. Observed batches refine subsequent read() calls.
-            enable_metadata_count: Enable footer counts for full-schema reads.
         """
         super().__init__(
             format=format,
@@ -98,45 +87,6 @@ class OrcFileReader(FileReader, SupportsMetadata):
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
         self._sampled_batch_size: Optional[int] = None
-        self._enable_metadata_count = enable_metadata_count
-
-    @override
-    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
-        """Read exact file row counts from ORC footers."""
-        filesystem = self._filesystem or LocalFileSystem()
-        retried_io_errors = DataContext.get_current().retried_io_errors
-
-        def num_rows(path: str) -> int:
-            def read_footer() -> int:
-                try:
-                    with filesystem.open_input_file(path) as source:
-                        return orc.ORCFile(source).nrows
-                except (OSError, pa.ArrowInvalid) as error:
-                    raise type(error)(
-                        f"Failed to read ORC footer for {path!r}: {error}"
-                    ) from error
-
-            return call_with_retry(
-                read_footer,
-                description=f"read ORC footer for {path}",
-                match=retried_io_errors,
-            )
-
-        with ThreadPoolExecutor(max_workers=16) as executor:
-            for count in executor.map(num_rows, map(str, file_manifest.paths)):
-                yield BlockMetadata(
-                    num_rows=count, size_bytes=None, exec_stats=None, input_files=None
-                )
-
-    @override
-    def available_metadata(self) -> Set[MetadataType]:
-        if self._enable_metadata_count and self._predicate is None:
-            return {MetadataType.NUM_ROWS}
-        return set()
-
-    @override
-    def get_target_metadata_batch_size(self) -> Optional[int]:
-        return 16
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:

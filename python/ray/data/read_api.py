@@ -3116,7 +3116,6 @@ def read_orc(
             ignore_missing_paths=ignore_missing_paths,
             include_paths=include_paths,
             shuffle=shuffle,
-            enable_metadata_count=merge_schema,
         )
         return _read_datasource_v2(
             datasource,

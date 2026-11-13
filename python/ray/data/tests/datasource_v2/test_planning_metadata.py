@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -14,9 +14,9 @@ from ray.data._internal.datasource_v2.common import schema_inference as inferenc
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.map_operator import MapBatches
+from ray.data._internal.logical.operators.read_operator import ReadFiles
 from ray.data._internal.logical.rules.pushdown_count_files import PushdownCountFiles
 from ray.data.context import DataContext
-from ray.data.expressions import col
 from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -41,10 +41,9 @@ def _records(trace):
     return [json.loads(line) for line in trace.read_text().splitlines()]
 
 
-@pytest.mark.parametrize("name,write,read", _FORMATS)
 @pytest.mark.parametrize("mode", ["distributed", "pg", "none"])
 def test_metadata_count_preserves_storage_access(
-    monkeypatch, tmp_path, ray_start_cluster, name, write, read, mode
+    monkeypatch, tmp_path, ray_start_cluster, mode
 ):
     cluster = ray_start_cluster
     zero = cluster.add_node(
@@ -99,13 +98,13 @@ def test_metadata_count_preserves_storage_access(
         "label_selector",
         {"pool": "yes"} if mode == "distributed" else None,
     )
-    paths = [tmp_path / f"f{i}.{name}" for i in range(6)]
+    paths = [tmp_path / f"f{i}.parquet" for i in range(6)]
     for i, path in enumerate(paths):
-        write(pa.table({"id": [i]}), path)
+        pq.write_table(pa.table({"id": [i]}), path)
     trace = tmp_path / "reads.jsonl"
     try:
         monkeypatch.setenv("RAY_METADATA_ACCESS", "enabled")
-        dataset = read(
+        dataset = ray.data.read_parquet(
             list(map(str, paths)),
             merge_schema=True,
             filesystem=_filesystem(trace, require_env="RAY_METADATA_ACCESS"),
@@ -131,14 +130,13 @@ def test_metadata_count_preserves_storage_access(
         assert isinstance(count, MapBatches)
         assert count.ray_remote_args == {
             "num_cpus": 0.5,
-            **dataset._logical_plan.dag.ray_remote_args,
+            **cast(ReadFiles, dataset._logical_plan.dag).ray_remote_args,
         }
-        write(pa.table({"id": list(range(100, 104))}), paths[-1])
+        pq.write_table(pa.table({"id": list(range(100, 104))}), paths[-1])
         monkeypatch.delenv("RAY_METADATA_ACCESS")
         assert dataset.count() == 9
         misses = _records(trace)[len(before) :]
-        expected_paths = {str(paths[-1])} if name == "parquet" else set(map(str, paths))
-        assert misses and {r["path"] for r in misses} == expected_paths
+        assert misses and {r["path"] for r in misses} == {str(paths[-1])}
         assert all(r["pid"] != os.getpid() for r in misses)
         if mode != "pg":
             targets = (
@@ -175,30 +173,17 @@ def test_full_schema_candidates_survive_new_cluster(
         other.add_node(num_cpus=2, object_store_memory=100 * 1024 * 1024)
         ray.init(address=other.address)
         restored = ray.data.Dataset.deserialize_lineage(serialized)
-        assert restored.count() == 3
-        assert len(_records(trace)) == (3 if name == "parquet" else 6)
+        if name == "parquet":
+            assert restored.count() == 3
+            assert len(_records(trace)) == 3
+        else:
+            assert sorted(row["id"] for row in restored.take_all()) == [0, 1, 2]
+        assert {r["path"] for r in _records(trace)} == {
+            str(tmp_path / f"f{i}.{name}") for i in range(3)
+        }
     finally:
         ray.shutdown()
         other.shutdown()
-
-
-@pytest.mark.parametrize("duplicate", [False, True])
-def test_orc_footer_count_preserves_input_occurrences(
-    monkeypatch, tmp_path, ray_start_2_cpus, duplicate
-):
-    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
-    path, empty = tmp_path / "many.orc", tmp_path / "empty.orc"
-    table = pa.table({"id": list(range(4096)), "text": ["a" * 80] * 4096})
-    orc.write_table(table, path, stripe_size=1024, batch_size=1024)
-    orc.write_table(table.slice(0, 0), empty)
-    assert orc.ORCFile(path).nstripes > 1
-    paths = [str(path), str(empty)] + ([str(path)] if duplicate else [])
-    dataset = ray.data.read_orc(paths, merge_schema=True)
-    expected = 4096 * (2 if duplicate else 1)
-    assert dataset.count() == expected
-    assert len(dataset.take_all()) == expected
-    assert dataset.filter(expr=col("id") < 3).count() == 3 * (2 if duplicate else 1)
-    assert dataset.limit(7).count() == 7
 
 
 if __name__ == "__main__":

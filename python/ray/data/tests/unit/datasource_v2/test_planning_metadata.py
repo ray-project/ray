@@ -5,18 +5,15 @@ import pyarrow as pa
 import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
-from pyarrow import orc
 
 import ray
 from ray.data._internal.datasource_v2.common import schema_inference as inference
 from ray.data._internal.datasource_v2.common.file_metadata import (
     get_cached_file_metadata,
 )
-from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
 )
-from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import FooterReader
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
@@ -31,7 +28,6 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileManifest,
     FileMetadata,
 )
-from ray.data.context import DataContext
 from ray.data.expressions import col
 from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
 
@@ -387,39 +383,6 @@ def test_deduplicated_schemas_keep_metadata_in_file_order(
     ] == list(range(1, 7))
     if distributed:
         assert remote.remote.call_count == 3
-
-
-@pytest.mark.parametrize("permanent", [False, True])
-def test_orc_metadata_read_retries_matching_errors(monkeypatch, tmp_path, permanent):
-    path = tmp_path / "test.orc"
-    orc.write_table(pa.table({"id": [1, 2]}), path)
-    original = orc.ORCFile
-    reader = Mock(
-        side_effect=(
-            OSError("permanent")
-            if permanent
-            else [OSError("temporary"), original(str(path))]
-        )
-    )
-    monkeypatch.setattr(orc, "ORCFile", reader)
-    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
-    ctx = DataContext.get_current()
-    monkeypatch.setattr(ctx, "retried_io_errors", ["temporary"])
-    manifest = FileManifest.construct_manifest(
-        paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
-    )
-    file_reader = OrcFileReader(
-        format=FileFormat.ORC,
-        filesystem=pafs.LocalFileSystem(),
-        enable_metadata_count=True,
-    )
-    if permanent:
-        with pytest.raises(OSError, match="permanent"):
-            list(file_reader.read_metadata(manifest))
-        assert reader.call_count == 1
-    else:
-        assert [m.num_rows for m in file_reader.read_metadata(manifest)] == [2]
-        assert reader.call_count == 2
 
 
 def test_metadata_timeout_cancels_before_driver_read(monkeypatch):

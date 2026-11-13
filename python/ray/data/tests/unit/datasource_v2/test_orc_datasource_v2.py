@@ -21,7 +21,6 @@ from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
-from ray.data._internal.datasource_v2.interfaces.supports_metadata import MetadataType
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
@@ -199,8 +198,6 @@ def test_read_orc_routes_to_v2_and_forwards_read_options(
     assert captured["kwargs"]["concurrency"] == 4
     assert captured["kwargs"]["partition_filter"] is partition_filter
     assert captured["kwargs"]["sample_all_files_for_schema"] is merge_schema
-    reader = datasource.create_scanner(pa.schema([("id", pa.int64())])).create_reader()
-    assert (MetadataType.NUM_ROWS in reader.available_metadata()) is merge_schema
 
 
 def test_read_orc_rejects_full_schema_on_v1(monkeypatch, tmp_path):
