@@ -39,6 +39,7 @@ py_test_module_list(
         "test_actor_lifetime.py",
         "test_actor_pool.py",
         "test_actor_resources.py",
+        "test_actor_restart_on_exceptions.py",
         "test_advanced.py",
         "test_advanced_2.py",
         "test_advanced_3.py",

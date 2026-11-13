@@ -849,6 +849,12 @@ message ActorCreationTaskSpec {
   // backpressure remains purely per-task via
   // TaskSpec.generator_backpressure_num_objects.
   int64 actor_generator_backpressure_num_objects = 15;
+  // Exception patterns that, when matched against an exception raised by an actor
+  // method or the actor's __init__, cause the actor worker to exit with a system
+  // error so the actor is restarted (consuming max_actor_restarts). Matching is a
+  // case-insensitive substring check against the formatted exception text. An empty
+  // list disables the feature.
+  repeated string restart_on_exception_patterns = 16;
 }
 
 // Task spec of an actor task.
