@@ -1145,6 +1145,45 @@ def test_pull_modes_do_not_depend_on_the_umask(tmp_path):
     assert tree["tmp/.ray-sandbox-keep"].mode == 0o644
 
 
+@pytest.mark.parametrize("umask", [0o022, 0o077])
+def test_pull_keeps_archived_modes_whatever_the_umask(tmp_path, umask):
+    """Archived modes reach the image as shipped, including ones the worker
+    couldn't read back (0000 /etc/shadow, 4111 sudo) and 0000 directories,
+    and don't depend on the worker's umask."""
+    old_umask = os.umask(umask)
+    try:
+        tree = _pull_members(
+            tmp_path,
+            ("etc/shadow", b"root:*:1::::::\n", {"mode": 0o000}),
+            ("usr/bin/sudo", b"\x7fELF", {"mode": 0o4111}),
+            ("locked", b"", {"mode": 0o000, "typ": tarfile.DIRTYPE}),
+            ("app/run.sh", b"#!/bin/sh\n", {"mode": 0o755}),
+        )
+    finally:
+        os.umask(old_umask)
+    assert tree["etc/shadow"].mode == 0o000
+    assert tree["usr/bin/sudo"].mode == 0o4111
+    assert tree["locked"].mode == 0o000
+    assert tree["app/run.sh"].mode == 0o755
+
+
+def test_marker_reads_the_version_erofs_utils_1_7_prints(fake_mkfs_erofs):
+    """erofs-utils 1.7 prints its version, then rejects -V and exits 1."""
+    script = fake_mkfs_erofs / "mkfs.erofs"
+    script.write_text(
+        script.read_text().replace(
+            'echo "mkfs.erofs 1.8.5-fake"; exit 0',
+            "echo 'mkfs.erofs 1.7.1'; echo \"invalid option -- 'V'\"; exit 1",
+        )
+    )
+    image_utils._mkfs_erofs_version.cache_clear()
+    try:
+        marker = json.loads(expected_extract_marker())
+        assert marker["mkfs_erofs"] == "mkfs.erofs 1.7.1"
+    finally:
+        image_utils._mkfs_erofs_version.cache_clear()
+
+
 def test_marker_names_the_mkfs_erofs_version(tmp_path, fake_mkfs_erofs):
     """Cached images record the mkfs.erofs version, so a different version
     rebuilds them: erofs-utils releases lay out the same tree differently."""
@@ -1271,7 +1310,7 @@ def test_build_erofs_image_stops_mkfs_when_reading_the_tree_fails(
     tree.mkdir()
     (tree / "f").write_bytes(b"x")
 
-    def failing_filter(ownership, created=None):
+    def failing_filter(ownership, created=None, modes=None):
         def _filter(ti):
             raise OSError("read error")
 
