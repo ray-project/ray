@@ -31,6 +31,10 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
     This class implements the ppo loss under `self.compute_loss_for_module()`.
     """
 
+    @override(PPOLearner)
+    def _gae_value_function_context(self):
+        return torch.no_grad
+
     @override(TorchLearner)
     def compute_loss_for_module(
         self,

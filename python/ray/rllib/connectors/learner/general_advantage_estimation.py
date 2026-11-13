@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from contextlib import nullcontext
+from typing import Any, Callable, ContextManager, Dict, List, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -48,6 +49,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         *,
         gamma: float,
         lambda_: float,
+        value_function_context: Optional[Callable[[], ContextManager]] = None,
     ):
         """Initializes a GeneralAdvantageEstimation instance.
 
@@ -69,10 +71,13 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 but increasing bias), while a `lambda_` of 1.0 only incorporates vf
                 predictions at the truncation points of the given episodes or episode
                 chunks (reducing bias but increasing variance).
+            value_function_context: Context manager factory for the value forward
+                pass, for example to disable framework-specific gradient recording.
         """
         super().__init__(input_observation_space, input_action_space)
         self.gamma = gamma
         self.lambda_ = lambda_
+        self._value_function_context = value_function_context or nullcontext
 
         # Internal numpy-to-tensor connector to translate GAE results (advantages and
         # vf targets) into tensors.
@@ -99,14 +104,16 @@ class GeneralAdvantageEstimation(ConnectorV2):
         #  should even be updated or not (which we usually do after(!) the Learner
         #  pipeline). This is an open TODO to move this filter into a connector as well.
         #  For now, we'll just check, whether `mid` is in batch and skip if it isn't.
-        vf_preds = rl_module.foreach_module(
-            func=lambda mid, module: (
-                module.compute_values(batch[mid])
-                if mid in batch and isinstance(module, ValueFunctionAPI)
-                else None
-            ),
-            return_dict=True,
-        )
+        # The predictions are converted to numpy and are never differentiated.
+        with self._value_function_context():
+            vf_preds = rl_module.foreach_module(
+                func=lambda mid, module: (
+                    module.compute_values(batch[mid])
+                    if mid in batch and isinstance(module, ValueFunctionAPI)
+                    else None
+                ),
+                return_dict=True,
+            )
         # Loop through all modules and perform each one's GAE computation.
         for module_id, module_vf_preds in vf_preds.items():
             # Skip those outputs of RLModules that are not implementers of
