@@ -364,11 +364,9 @@ def _convert_to_pyarrow_native_array(
         ):
             return _combine_as_list_array(column_values)
 
-        # NOTE: We explicitly infer PyArrow `DataType` so that
-        #       we can perform upcasting to be able to accommodate
-        #       blocks that are larger than 2Gb in size (limited
-        #       by int32 offsets used by Arrow internally)
-        pa_type = _infer_pyarrow_type(column_values)
+        # Skip the per-value offset scan. Arrow raises if a value does not
+        # fit in a 32-bit string/binary offset, and we upcast only then.
+        pa_type = _infer_pyarrow_type(column_values, check_large_offsets=False)
 
         if pa_type and pa.types.is_timestamp(pa_type):
             # NOTE: Quirky Arrow behavior will coerce unsupported Numpy `datetime64`
@@ -393,7 +391,15 @@ def _convert_to_pyarrow_native_array(
         if len(column_values) > 0 and isinstance(column_values[0], pa.ListScalar):
             column_values = [v if v.is_valid else None for v in column_values]
 
-        return pa.array(column_values, type=pa_type)
+        # The offset check below only runs when Arrow rejects the 32-bit type.
+        # A value past the limit is rare; scanning every string is not.
+        try:
+            return pa.array(column_values, type=pa_type)
+        except (pa.ArrowCapacityError, pa.ArrowInvalid):
+            large_type = _large_offset_type(pa_type)
+            if large_type is not None and _value_exceeds_offset_limit(column_values):
+                return pa.array(column_values, type=large_type)
+            raise
     except Exception as e:
         raise ArrowConversionError(
             str(column_values), column_name=column_name, pa_type=pa_type
@@ -426,8 +432,45 @@ def _coerce_np_datetime_to_pa_timestamp_precision(
     return column_values
 
 
+def _large_offset_type(pa_type: Optional[pa.DataType]) -> Optional[pa.DataType]:
+    """Return the 64-bit offset type for a 32-bit string or binary type."""
+    if pa_type is None:
+        return None
+    if pa.types.is_binary(pa_type):
+        return pa.large_binary()
+    if pa.types.is_string(pa_type):
+        return pa.large_string()
+    return None
+
+
+def _value_exceeds_offset_limit(column_values) -> bool:
+    """Whether any string or bytes value is longer than a 32-bit offset allows.
+
+    Inference can report ``string``/``binary`` from the first element when later
+    values are not strings. Only ``str`` and ``bytes`` lengths count. A NumPy
+    Unicode or bytes array whose dtype width is within the limit is short.
+    """
+    limit = INT32_MAX
+    # Dtype width is an upper bound. Trailing padding is not part of len().
+    if isinstance(column_values, np.ndarray) and column_values.dtype.kind in (
+        "U",
+        "S",
+    ):
+        width = column_values.dtype.itemsize
+        if column_values.dtype.kind == "U":
+            width //= 4
+        if width <= limit:
+            return False
+    for value in column_values:
+        if isinstance(value, (str, bytes)) and len(value) > limit:
+            return True
+    return False
+
+
 def _infer_pyarrow_type(
     column_values: Union[List[Any], np.ndarray],
+    *,
+    check_large_offsets: bool = True,
 ) -> Optional[pa.DataType]:
     """Infers target Pyarrow `DataType` based on the provided
     columnar values.
@@ -445,6 +488,10 @@ def _infer_pyarrow_type(
 
     Args:
         column_values: List of columnar values
+        check_large_offsets: When False, skip the per-value scan that upcasts
+            a column containing a value longer than the 32-bit offset limit.
+            Array construction retries with ``large_string``/``large_binary``
+            if Arrow rejects the 32-bit type.
 
     Returns:
         Instance of PyArrow's `DataType` based on the provided
@@ -463,28 +510,12 @@ def _infer_pyarrow_type(
         return dtype_with_timestamp_type
 
     inferred_pa_dtype = pa.infer_type(column_values)
+    if not check_large_offsets:
+        return inferred_pa_dtype
 
-    def _len_gt_overflow_threshold(obj: Any) -> bool:
-        # NOTE: This utility could be seeing objects other than strings or bytes in
-        #       cases when column contains non-scalar non-homogeneous object types as
-        #       column values, therefore making Arrow unable to infer corresponding
-        #       column type appropriately, therefore falling back to assume the type
-        #       of the first element in the list.
-        #
-        #       Check out test cases for this method for an additional context.
-        if isinstance(obj, (str, bytes)):
-            return len(obj) > INT32_MAX
-
-        return False
-
-    if pa.types.is_binary(inferred_pa_dtype) and any(
-        [_len_gt_overflow_threshold(v) for v in column_values]
-    ):
-        return pa.large_binary()
-    elif pa.types.is_string(inferred_pa_dtype) and any(
-        [_len_gt_overflow_threshold(v) for v in column_values]
-    ):
-        return pa.large_string()
+    large_type = _large_offset_type(inferred_pa_dtype)
+    if large_type is not None and _value_exceeds_offset_limit(column_values):
+        return large_type
 
     return inferred_pa_dtype
 
