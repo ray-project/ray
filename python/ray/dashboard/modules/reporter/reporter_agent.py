@@ -25,7 +25,7 @@ import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import get_localhost_ip, is_localhost
+from ray._common.network_utils import get_all_interfaces_ip_for_node
 from ray._common.utils import (
     get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
@@ -625,12 +625,7 @@ class ReporterAgent(
                 prometheus_exporter.Options(
                     namespace="ray",
                     port=dashboard_agent.metrics_export_port,
-                    # NOTE: this still follows localhost resolution, so an
-                    # IPv6 node binds 0.0.0.0 here. coreyhu's patch replaces
-                    # this with node-IP-based selection (see
-                    # get_all_interfaces_ip_for_node) and adds the reporter
-                    # tests; left unchanged here to avoid guessing it.
-                    address=get_localhost_ip() if is_localhost(self._ip) else "",
+                    address=get_all_interfaces_ip_for_node(self._ip),
                 )
             )
             dashboard_agent.metrics_export_port = stats_exporter.port

@@ -24,9 +24,14 @@ def get_all_interfaces_ip_for_node(node_ip: str) -> str:
         node_ip: The IP address the node advertises.
 
     Returns:
-        The localhost address for a localhost node, ``"::"`` for an IPv6 node,
-        and ``"0.0.0.0"`` for an IPv4 node.
+        ``"::1"`` for an IPv6 loopback node, the localhost address for any
+        other localhost node, ``"::"`` for an IPv6 node, and ``"0.0.0.0"`` for
+        an IPv4 node.
     """
+    if node_ip == "::1":
+        # get_localhost_ip() resolves IPv4 first, so a node advertising IPv6
+        # loopback would otherwise bind IPv4 loopback.
+        return "::1"
     if is_localhost(node_ip):
         return get_localhost_ip()
     return "::" if is_ipv6(node_ip) else "0.0.0.0"

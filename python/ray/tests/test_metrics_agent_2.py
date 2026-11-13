@@ -1,9 +1,11 @@
+import asyncio
 import http.client
 import random
 import socket
 import sys
 import time
 from typing import List
+from unittest.mock import MagicMock
 
 import pytest
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
@@ -21,6 +23,7 @@ from prometheus_client.core import REGISTRY
 
 import ray._private.prometheus_exporter as prometheus_exporter
 from ray._common.network_utils import (
+    build_address,
     get_all_interfaces_ip_for_node,
     get_localhost_ip,
 )
@@ -652,7 +655,7 @@ def _http_get(host: str, port: int):
     "node_ip,expected",
     [
         ("127.0.0.1", get_localhost_ip()),
-        ("::1", get_localhost_ip()),
+        ("::1", "::1"),
         ("localhost", get_localhost_ip()),
         ("0.0.0.0", "0.0.0.0"),
         ("10.0.0.1", "0.0.0.0"),
@@ -662,6 +665,141 @@ def _http_get(host: str, port: int):
 )
 def test_get_all_interfaces_ip_for_node(node_ip, expected):
     assert get_all_interfaces_ip_for_node(node_ip) == expected
+
+
+# The node IPs every metrics call site must bind for. These are deliberately
+# not localhost, so a revert to {} or get_localhost_ip() fails the assertion.
+_NODE_ADDRESS_CASES = [
+    ("10.0.0.42", "0.0.0.0"),
+    ("2001:db8::42", "::"),
+]
+
+
+@pytest.mark.parametrize("node_ip,expected_addr", _NODE_ADDRESS_CASES)
+def test_dashboard_head_metrics_server_binds_node_family(
+    monkeypatch, node_ip, expected_addr
+):
+    """The dashboard metrics server binds the head node IP's family."""
+    from ray.dashboard import head as head_module
+
+    dashboard_head = object.__new__(head_module.DashboardHead)
+    dashboard_head.ip = node_ip
+
+    async def _put_address(*args, **kwargs):
+        return None
+
+    dashboard_head._put_address = _put_address
+    captured = {}
+
+    def fake_start_metrics_http_server(*, port, registry, addr=None):
+        captured["addr"] = addr
+
+    monkeypatch.setattr(
+        head_module, "start_metrics_http_server", fake_start_metrics_http_server
+    )
+    monkeypatch.setattr(
+        head_module.internal_kv, "_internal_kv_initialized", lambda: True
+    )
+
+    asyncio.run(dashboard_head._setup_metrics())
+
+    assert captured["addr"] == expected_addr
+
+
+@pytest.mark.parametrize("node_ip,expected_addr", _NODE_ADDRESS_CASES)
+def test_autoscaler_v1_metrics_server_binds_node_family(
+    monkeypatch, node_ip, expected_addr
+):
+    """The autoscaler v1 metrics server binds the head node IP's family."""
+    from ray.autoscaler._private import monitor as monitor_module
+
+    captured = {}
+
+    def fake_start_metrics_http_server(*, port, registry, addr=None):
+        captured["addr"] = addr
+
+    monkeypatch.setattr(monitor_module, "GcsClient", MagicMock())
+    monkeypatch.setattr(monitor_module, "_initialize_internal_kv", MagicMock())
+    monkeypatch.setattr(
+        monitor_module.Monitor, "_publish_metrics_address", lambda self: True
+    )
+    monkeypatch.setattr(
+        monitor_module.Monitor, "get_session_name", lambda self, gcs_client: "test"
+    )
+    monkeypatch.setattr(
+        monitor_module, "start_metrics_http_server", fake_start_metrics_http_server
+    )
+
+    monitor_module.Monitor(build_address(node_ip, 6379), {}, monitor_ip=node_ip)
+
+    assert captured["addr"] == expected_addr
+
+
+@pytest.mark.parametrize("node_ip,expected_addr", _NODE_ADDRESS_CASES)
+def test_autoscaler_v2_metrics_server_binds_node_family(
+    monkeypatch, node_ip, expected_addr
+):
+    """The autoscaler v2 metrics server binds the head node IP's family."""
+    from ray.autoscaler.v2 import monitor as monitor_module
+
+    captured = {}
+
+    def fake_start_metrics_http_server(*, port, registry, addr=None):
+        captured["addr"] = addr
+
+    monkeypatch.setattr(monitor_module, "GcsClient", MagicMock())
+    monkeypatch.setattr(monitor_module, "record_autoscaler_v2_usage", MagicMock())
+    monkeypatch.setattr(
+        monitor_module.AutoscalerMonitor, "_publish_metrics_address", lambda self: True
+    )
+    monkeypatch.setattr(
+        monitor_module.AutoscalerMonitor,
+        "_get_session_name",
+        lambda self, gcs_client: "test",
+    )
+    monkeypatch.setattr(monitor_module, "Autoscaler", MagicMock())
+    monkeypatch.setattr(
+        monitor_module, "start_metrics_http_server", fake_start_metrics_http_server
+    )
+
+    monitor_module.AutoscalerMonitor(
+        build_address(node_ip, 6379), MagicMock(), monitor_ip=node_ip
+    )
+
+    assert captured["addr"] == expected_addr
+
+
+@pytest.mark.parametrize("node_ip,expected_addr", _NODE_ADDRESS_CASES)
+def test_serve_haproxy_metrics_server_binds_node_family(
+    monkeypatch, node_ip, expected_addr
+):
+    """The Serve HAProxy exporter binds the node IP's family."""
+    from ray.serve._private import haproxy as haproxy_module
+
+    haproxy_manager_cls = haproxy_module.HAProxyManager.__ray_metadata__.modified_class
+    haproxy_manager = haproxy_manager_cls.__new__(haproxy_manager_cls)
+    haproxy_manager._node_ip_address = node_ip
+    haproxy_manager._haproxy = MagicMock()
+    haproxy_manager._haproxy.cfg.metrics_port = 9101
+    haproxy_manager._haproxy.cfg.enable_so_reuseport = True
+
+    captured = {}
+
+    def fake_start_metrics_wsgi_server(port, app, addr=None, reuse_port=False):
+        captured.update(port=port, addr=addr, reuse_port=reuse_port)
+
+    monkeypatch.setattr(
+        haproxy_module, "start_metrics_wsgi_server", fake_start_metrics_wsgi_server
+    )
+    monkeypatch.setattr(haproxy_module, "make_exporter_proxy_app", lambda cfg: object())
+
+    haproxy_manager._start_metrics_exporter_server()
+
+    assert captured == {
+        "port": 9101,
+        "addr": expected_addr,
+        "reuse_port": True,
+    }
 
 
 @pytest.mark.parametrize("addr", ["", "127.0.0.1", "0.0.0.0", "::", "::1"])
