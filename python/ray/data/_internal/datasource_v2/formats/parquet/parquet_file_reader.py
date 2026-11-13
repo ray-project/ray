@@ -44,11 +44,13 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_estimator imp
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
+    READER_CPU_COUNT,
     _get_safe_batch_size_for_nested_types,
     _needs_nested_type_fallback,
     _resolve_leaf_column_indices,
     _resolve_read_columns,
     _row_group_uncompressed_size,
+    read_format_kwargs,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import (
@@ -81,10 +83,8 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
 # Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
 # (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
 # Parquet scan issues against S3, especially for row-group-scoped fragments.
-# The CPU pool is capped at 1 because each read task holds one Ray CPU; a
-# larger pool oversubscribes the node when many read tasks run concurrently.
+# The CPU pool's size, ``READER_CPU_COUNT``, is in ``parquet_utils``.
 _READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 16)
-_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
 
 
 def _estimate_batch_size_from_metadata(
@@ -172,28 +172,22 @@ def _estimate_batch_size_from_metadata(
 
 
 def _estimate_batch_size_from_chunk_stats(
-    uncompressed_size: int,
+    size_bytes: int,
     num_rows: int,
     target_block_size: int,
 ) -> Optional[int]:
     """Estimate batch size from footer-derived chunk stats, without any I/O.
 
-    ``ListFiles`` already read each file's footer and recorded the
-    projection-scoped uncompressed byte size and row count of the row groups it
-    assigned to this chunk (the ``size_bytes`` and ``num_rows`` of its
-    :class:`FileChunk`). Sizing from
-    those avoids the extra footer read that
-    :func:`_estimate_batch_size_from_metadata` incurs. Mirrors that function's
-    math but over the whole chunk (its row-group average) rather than the first
-    row group; the estimate is refined from real data after the first batch.
+    ``ListFiles`` already read each file's footer and recorded the estimated
+    decoded size and the row count of the row groups it assigned to this chunk
+    (the ``size_bytes`` and ``num_rows`` of its :class:`FileChunk`). That avoids
+    the footer read :func:`_estimate_batch_size_from_metadata` incurs. Works over
+    the whole chunk (its row-group average); the estimate is refined after the
+    first batch.
     """
-    if num_rows <= 0 or uncompressed_size <= 0:
+    if num_rows <= 0 or size_bytes <= 0:
         return None
-    estimated_in_mem_row_size = (
-        uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT / num_rows
-    )
-    if estimated_in_mem_row_size == 0:
-        return None
+    estimated_in_mem_row_size = size_bytes / num_rows
     # Never request more rows than the chunk actually contains.
     return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
 
@@ -204,9 +198,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
     Extends :class:`FileReader` with:
 
-    - **Metadata-based batch size estimation**: Uses Parquet row group metadata
-      (uncompressed column sizes) to estimate an optimal batch size before
-      reading any data.
+    - **Metadata-based batch size estimation**: Uses the decoded size the listing
+      estimated from the footer, or a row group's uncompressed column sizes when
+      the manifest carries none, to estimate a batch size before reading any data.
     - **Adaptive refinement**: After reading each batch, refines the batch size
       estimate from actual in-memory sizes for subsequent reads.
 
@@ -293,12 +287,14 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         # of being capped at Arrow's small default.
         if _READER_IO_THREAD_COUNT > 0:
             pa.set_io_thread_count(_READER_IO_THREAD_COUNT)
-        if _READER_CPU_COUNT > 0:
-            pa.set_cpu_count(_READER_CPU_COUNT)
+        if READER_CPU_COUNT > 0:
+            pa.set_cpu_count(READER_CPU_COUNT)
 
     @override
     def _make_format(self) -> pds.ParquetFileFormat:
-        return pds.ParquetFileFormat(**self._parquet_format_kwargs)
+        casts = self._file_dataset_schema is not None
+        kwargs = read_format_kwargs(kwargs=self._parquet_format_kwargs, casts=casts)
+        return pds.ParquetFileFormat(**kwargs)
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:

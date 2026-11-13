@@ -9,10 +9,11 @@ from ``ray.data._internal.util``, so it can be imported from anywhere without
 creating import cycles.
 """
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pyarrow as pa
 
+from ray._common.utils import env_integer
 from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
@@ -25,6 +26,24 @@ PARQUET_FILE_EXTENSIONS: List[str] = ["parquet"]
 # Arrow's nested type chunking limit
 # See: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
 _ARROW_CHUNK_LIMIT = 2 * GiB
+
+# PyArrow's CPU pool in a read task, set by ``ParquetFileReader`` and used by the
+# footer reader to size the decode peak; 0 or less leaves PyArrow's default. Capped
+# at 1 because each read task holds one Ray CPU; a larger pool oversubscribes the
+# node when many read tasks run concurrently.
+READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
+
+
+# ``ParquetFileFormat`` options that only change the Arrow types of a read.
+_TYPE_OPTIONS = ("dictionary_columns", "binary_type", "list_type")
+
+
+def read_format_kwargs(kwargs: Dict[str, Any], casts: bool) -> Dict[str, Any]:
+    """The ``ParquetFileFormat`` kwargs a read task passes. A read that casts to the
+    schema drops the type options, which the cast undoes."""
+    if not casts:
+        return dict(kwargs)
+    return {k: v for k, v in kwargs.items() if k not in _TYPE_OPTIONS}
 
 
 def check_for_legacy_tensor_type(schema: pa.Schema) -> None:

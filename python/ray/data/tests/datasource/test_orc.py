@@ -1446,10 +1446,10 @@ def test_read_orc_merge_schema_reuses_candidates_across_actions_and_lineage(
             yield from super().list_file_infos(*args, **kwargs)
 
     monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
+    # Both of read_orc's indexers are this one, so relisting at execution trips it.
+    indexer = NoRelistingIndexer(ignore_missing_paths=False)
     monkeypatch.setattr(
-        OrcDatasourceV2,
-        "_get_file_indexer",
-        lambda _: NoRelistingIndexer(ignore_missing_paths=False),
+        OrcDatasourceV2, "_get_file_indexer", lambda _, schema=None: indexer
     )
     for i in range(4):
         _write_orc(str(tmp_path / f"f{i}.orc"), pa.table({"id": [i]}))

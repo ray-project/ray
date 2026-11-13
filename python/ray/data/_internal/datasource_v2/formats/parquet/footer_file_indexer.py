@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, AbstractSet, Deque, Iterable, Iterator, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Collection,
+    Deque,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+)
 
 import numpy as np
 import pyarrow as pa
@@ -68,8 +77,8 @@ _DEFAULT_MAX_INFLIGHT_BATCHES: Optional[int] = env_integer(
 def _chunked_file_to_manifest(chunked_file: ChunkedFile) -> FileManifest:
     """One listing row per row-group run of a file.
 
-    The row is the run's ``FileChunk`` with its exact footer stats (``size_bytes``
-    is the projection-scoped uncompressed size), so a downstream partitioner
+    The row is the run's ``FileChunk`` with its footer stats (``size_bytes`` is the
+    footer reader's estimate of the decoded size), so a downstream partitioner
     can group runs into read tasks -- and split them at row-group boundaries --
     without re-reading the footer. Grouping is deliberately *not* done here:
     listing discovers, the partitioner groups.
@@ -150,6 +159,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         max_paths_per_output: Optional[int] = None,
         coalesce_bytes: int = 0,
         small_shuffle_chunk_size: int = 0,
+        format_kwargs: Optional[dict] = None,
+        read_schema: Optional[pa.Schema] = None,
+        synthesized_columns: Collection[str] = (),
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
         result_batch_size: Optional[int] = None,
@@ -170,6 +182,11 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         # row-group shuffle, so the shuffle unit is a ~chunk-sized run rather
         # than a single, possibly tiny, row group.
         self._small_shuffle_chunk_size = small_shuffle_chunk_size
+        # For the footer readers' size estimate: the read tasks' ``ParquetFileFormat``
+        # kwargs, the dataset schema they cast to, and the columns they synthesize.
+        self._format_kwargs = dict(format_kwargs or {})
+        self._read_schema = read_schema
+        self._synthesized_columns = frozenset(synthesized_columns)
         # Every knob is re-read here rather than taken from the module-level
         # constant, so ``monkeypatch.setenv`` and release-test env overrides work
         # after this module has already been imported. An explicit ctor argument
@@ -328,6 +345,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 partitioning=self._partitioning,
                 partition_pruner=partition_pruner,
                 logical_schema=self._logical_schema,
+                format_kwargs=self._format_kwargs,
+                read_schema=self._read_schema,
+                synthesized_columns=self._synthesized_columns,
             )
             for _ in range(self._num_actors)
         ]

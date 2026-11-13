@@ -242,6 +242,9 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
             "partitioning": None,
             "partition_pruner": None,
             "logical_schema": None,
+            "format_kwargs": {},
+            "read_schema": None,
+            "synthesized_columns": frozenset(),
         }
     ]
     assert footer_batches == [[FileInfo(path_b, size_b)]]
@@ -298,9 +301,10 @@ def test_excluding_units_at_listing_time_packs_only_remaining_work(tmp_path):
             for block in partition_files(manifests, _task_context(), partitioner)
         ]
 
-    # A bin holds exactly one file's worth of row groups.
+    # A bin holds exactly one file's worth of row groups: four of its largest,
+    # since the first row group's estimate can be a few bytes smaller.
     one_file = _footer_reader()._read_and_chunk(FileInfo(*files[0]))
-    file_bytes = sum(rg.size_bytes for rg in one_file.row_groups)
+    file_bytes = 4 * max(rg.size_bytes for rg in one_file.row_groups)
     partitioner = OnlineBinPacker(max_bin_bytes=file_bytes)
     full = _partitions(None)
     assert len(full) == num_files

@@ -118,8 +118,10 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
     assert ds4._block_num_rows() == [1000]
 
 
-def test_split_read_parquet(ray_start_regular_shared, tmp_path):
+def test_split_read_parquet(ray_start_regular_shared, tmp_path, monkeypatch):
     ctx = ray.data.context.DataContext.get_current()
+    # One read task for the file, so this tests how its output splits into blocks.
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", str(1 << 30))
 
     def gen(name):
         path = os.path.join(tmp_path, name)
@@ -144,9 +146,11 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
     ctx.target_max_block_size = 3_000_000
     ds2 = gen("out2")
     nrow = ds2._block_num_rows()
-    assert 2 < len(nrow) < 5, nrow
+    # A batch is at most a row group, so a block runs up to one over the target
+    # and is sliced only at 1.5 times it.
+    assert 2 <= len(nrow) < 5, nrow
     for x in nrow[:-1]:
-        assert 50000 < x < 96000, (x, nrow)
+        assert 50000 < x < 125000, (x, nrow)
 
     # 1MiB
     ctx.target_max_block_size = 1_000_000
@@ -154,7 +158,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
     nrow = ds3._block_num_rows()
     assert 6 < len(nrow) < 12, nrow
     for x in nrow[:-1]:
-        assert 20000 < x < 35000, (x, nrow)
+        assert 20000 < x < 42000, (x, nrow)
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
