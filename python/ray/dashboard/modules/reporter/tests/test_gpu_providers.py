@@ -2,6 +2,7 @@
 
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from ray.dashboard.modules.reporter.gpu_providers import (
@@ -13,6 +14,7 @@ from ray.dashboard.modules.reporter.gpu_providers import (
     GpuProvider,
     GpuProviderType,
     GpuUtilizationInfo,
+    IluvatarGpuProvider,
     NvidiaGpuProvider,
     ProcessGPUInfo,
 )
@@ -755,7 +757,10 @@ class TestGpuMetricProvider(unittest.TestCase):
         """Test GpuMetricProvider initialization."""
         self.assertIsNone(self.provider._provider)
         self.assertTrue(self.provider._enable_metric_report)
-        self.assertEqual(len(self.provider._providers), 2)
+        self.assertEqual(
+            [type(provider) for provider in self.provider._providers],
+            [NvidiaGpuProvider, IluvatarGpuProvider, AmdGpuProvider],
+        )
         self.assertFalse(self.provider._initialized)
 
     @patch.object(GpuMetricProvider, "_detect_gpu_provider")
@@ -790,13 +795,17 @@ class TestGpuMetricProvider(unittest.TestCase):
         mock_nvidia_available.assert_called_once()
 
     @patch.object(NvidiaGpuProvider, "is_available", return_value=False)
+    @patch.object(IluvatarGpuProvider, "is_available", return_value=False)
     @patch.object(AmdGpuProvider, "is_available", return_value=True)
-    def test_detect_gpu_provider_amd(self, mock_amd_available, mock_nvidia_available):
+    def test_detect_gpu_provider_amd(
+        self, mock_amd_available, mock_iluvatar_available, mock_nvidia_available
+    ):
         """Test GPU provider detection when AMD is available."""
         provider = self.provider._detect_gpu_provider()
 
         self.assertIsInstance(provider, AmdGpuProvider)
         mock_nvidia_available.assert_called_once()
+        mock_iluvatar_available.assert_called_once()
         mock_amd_available.assert_called_once()
 
     @patch.object(NvidiaGpuProvider, "is_available", return_value=False)
@@ -916,6 +925,121 @@ class TestGpuMetricProvider(unittest.TestCase):
 
         self.provider._enable_metric_report = False
         self.assertFalse(self.provider.is_metric_report_enabled())
+
+
+class TestIluvatarGpuProvider(unittest.TestCase):
+    """Unit tests for the Iluvatar NVML-compatible provider."""
+
+    def setUp(self):
+        from ray.tests.accelerators import mock_iluvatar_nvml
+
+        self.mock_nvml = mock_iluvatar_nvml
+        self.provider = IluvatarGpuProvider()
+        self.provider.load_nvml = lambda: self.mock_nvml
+
+    def test_independent_provider(self):
+        self.assertEqual(IluvatarGpuProvider.__bases__, (GpuProvider,))
+        self.assertFalse(isinstance(self.provider, NvidiaGpuProvider))
+
+    def test_sampling_timestamp(self):
+        with patch(
+            "ray.dashboard.modules.reporter.gpu_providers.time.time", return_value=123
+        ), patch.object(
+            self.mock_nvml, "nvmlDeviceGetProcessUtilization", return_value=[]
+        ) as samples:
+            self.provider.get_gpu_utilization()
+            self.provider.get_gpu_utilization()
+        self.assertEqual(samples.call_args_list, [call(0, 0), call(0, 123_000_000)])
+
+    def test_failed_gpu_does_not_drop_other_metrics(self):
+        with patch.object(
+            self.mock_nvml, "nvmlDeviceGetCount", return_value=2
+        ), patch.object(
+            self.mock_nvml,
+            "nvmlDeviceGetHandleByIndex",
+            side_effect=[self.mock_nvml.NVMLError("device lost"), 0],
+        ), patch.object(
+            self.mock_nvml, "nvmlShutdown"
+        ) as shutdown:
+            infos = self.provider.get_gpu_utilization()
+        self.assertEqual([info["index"] for info in infos], [1])
+        shutdown.assert_called_once()
+        self.assertFalse(self.provider._initialized)
+
+    def test_provider_name(self):
+        self.assertEqual(self.provider.get_provider_name(), GpuProviderType.ILUVATAR)
+
+    def test_get_gpu_utilization(self):
+        gpu_infos = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(gpu_infos), 1)
+        gpu_info = gpu_infos[0]
+        self.assertEqual(gpu_info["name"], "Iluvatar BI-V150")
+        self.assertEqual(gpu_info["utilization_gpu"], 37)
+        self.assertEqual(gpu_info["memory_used"], 4096)
+        self.assertEqual(gpu_info["memory_total"], 16384)
+        self.assertEqual(gpu_info["processes_pids"][1234]["gpu_memory_usage"], 4096)
+        self.assertEqual(gpu_info["processes_pids"][1234]["gpu_utilization"], 42)
+
+    def test_process_utilization_fallback(self):
+        with patch.object(
+            self.mock_nvml,
+            "nvmlDeviceGetProcessUtilization",
+            side_effect=self.mock_nvml.NVMLError("unsupported"),
+        ):
+            gpu_info = self.provider.get_gpu_utilization()[0]
+
+        self.assertEqual(gpu_info["processes_pids"][1234]["gpu_memory_usage"], 4096)
+        self.assertIsNone(gpu_info["processes_pids"][1234]["gpu_utilization"])
+
+    def test_process_utilization_none_values(self):
+        with patch.object(
+            self.mock_nvml,
+            "nvmlDeviceGetProcessUtilization",
+            return_value=None,
+        ):
+            gpu_info = self.provider.get_gpu_utilization()[0]
+        self.assertEqual(gpu_info["processes_pids"][1234]["gpu_memory_usage"], 4096)
+        self.assertIsNone(gpu_info["processes_pids"][1234]["gpu_utilization"])
+
+        with patch.object(
+            self.mock_nvml,
+            "nvmlDeviceGetProcessUtilization",
+            return_value=[SimpleNamespace(pid=1234, smUtil=None)],
+        ):
+            gpu_info = self.provider.get_gpu_utilization()[0]
+        self.assertIsNone(gpu_info["processes_pids"][1234]["gpu_utilization"])
+
+    def test_missing_library(self):
+        provider = IluvatarGpuProvider()
+        provider.load_nvml = Mock(side_effect=OSError("libixml.so not found"))
+
+        self.assertFalse(provider.is_available())
+        self.assertEqual(provider.get_gpu_utilization(), [])
+
+    def test_unavailable_without_devices(self):
+        with patch.object(self.mock_nvml, "nvmlDeviceGetCount", return_value=0):
+            self.assertFalse(self.provider.is_available())
+        self.assertFalse(self.provider._initialized)
+
+    def test_process_api_version_mismatch_keeps_gpu_metrics(self):
+        missing = self.mock_nvml.NVMLLibraryMismatchError("missing _v3")
+        with patch.object(
+            self.mock_nvml,
+            "nvmlDeviceGetComputeRunningProcesses",
+            side_effect=missing,
+        ), patch.object(
+            self.mock_nvml,
+            "nvmlDeviceGetGraphicsRunningProcesses",
+            side_effect=missing,
+        ):
+            gpu_infos = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(gpu_infos), 1)
+        self.assertEqual(gpu_infos[0]["utilization_gpu"], 37)
+        self.assertEqual(gpu_infos[0]["memory_used"], 4096)
+        self.assertEqual(gpu_infos[0]["processes_pids"][1234]["gpu_memory_usage"], 0)
+        self.assertEqual(gpu_infos[0]["processes_pids"][1234]["gpu_utilization"], 42)
 
 
 if __name__ == "__main__":
