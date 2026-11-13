@@ -155,7 +155,7 @@ class MedianStoppingRule(FIFOScheduler):
             return TrialScheduler.CONTINUE
 
         time = result[self._time_attr]
-        self._results[trial].append(result)
+        self._record_result(trial, result)
 
         if time < self._grace_period:
             return TrialScheduler.CONTINUE
@@ -206,12 +206,25 @@ class MedianStoppingRule(FIFOScheduler):
     def on_trial_complete(
         self, tune_controller: "TuneController", trial: Trial, result: Dict
     ):
-        self._results[trial].append(result)
+        self._record_result(trial, result)
 
     def debug_string(self) -> str:
         return "Using MedianStoppingRule: num_stopped={}.".format(
             len(self._stopped_trials)
         )
+
+    def _record_result(self, trial: Trial, result: Dict):
+        # A trial that returned without reporting has neither key in its last result,
+        # and every reader of `_results` indexes both.
+        if self._time_attr not in result or self._metric not in result:
+            return
+        results = self._results[trial]
+        # `on_trial_complete` can repeat the last result `on_trial_result` already
+        # recorded. Keep one entry per time so it is not averaged in twice.
+        if results and results[-1][self._time_attr] == result[self._time_attr]:
+            results[-1] = result
+        else:
+            results.append(result)
 
     def _on_insufficient_samples(
         self, tune_controller: "TuneController", trial: Trial, time: float
