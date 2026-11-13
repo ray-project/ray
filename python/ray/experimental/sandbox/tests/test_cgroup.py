@@ -193,14 +193,11 @@ def test_a_node_pids_limit_caps_every_sandbox(manager, shared, monkeypatch):
     backend = GVisorSandboxBackend(image_manager=Mock())
     unlimited = SandboxConfig("busybox")
     assert backend._cgroup_manager_for(unlimited) is None
-    assert "--ignore-cgroups" not in backend._runsc_base_args(unlimited)
     monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "4096")
     with pytest.raises(SandboxCreationError, match="pids"):
         backend._cgroup_manager_for(unlimited)
     (shared / "cgroup.subtree_control").write_text("cpu memory pids")
     assert backend._cgroup_manager_for(unlimited) is not None
-    # runsc leaves the sandbox in the cgroup Ray puts it in.
-    assert "--ignore-cgroups" in backend._runsc_base_args(unlimited)
     sandbox = manager.allocate("ray-sandbox-000000000001", 0, 0, [])
     assert (sandbox.path / "pids.max").read_text() == "4096"
     (sandbox.path / "cgroup.procs").write_text("321\n")
@@ -208,8 +205,62 @@ def test_a_node_pids_limit_caps_every_sandbox(manager, shared, monkeypatch):
     monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "lots")
     with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_PIDS_MAX"):
         backend._cgroup_manager_for(unlimited)
-    # Commands for existing sandboxes still build their arguments.
+
+
+def test_a_sandbox_in_a_cgroup_keeps_runsc_off_cgroups_for_life(
+    manager, shared, bundles, monkeypatch
+):
+    """Every runsc call for a sandbox that Ray put in a cgroup passes
+    --ignore-cgroups, whatever RAY_SANDBOX_PIDS_MAX is by then. A sandbox
+    with no CPU limit isn't placed on CPUs, so its create takes no node-wide
+    lock and reads no other sandbox's owner file."""
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+    monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "4096")
+    (shared / "cgroup.subtree_control").write_text("cpu memory pids")
+    backend = GVisorSandboxBackend(image_manager=Mock())
+    monkeypatch.setattr(
+        backend, "_cpus_in_use", Mock(side_effect=AssertionError("not placed"))
+    )
+    unlimited = SandboxConfig("busybox")
+    started = []
+
+    def start(config, sandbox_id, root_dir, owner_file, sandbox_cgroup):
+        started.append(config)
+        owner_file.close()
+
+    backend._provision(unlimited, backend._cgroup_manager_for(unlimited), start)
+    monkeypatch.delenv("RAY_SANDBOX_PIDS_MAX")
+    assert "--ignore-cgroups" in backend._runsc_base_args(started[0])
+    # The caller's config is left alone, and without the cap gets no cgroup.
     assert "--ignore-cgroups" not in backend._runsc_base_args(unlimited)
+    assert backend._cgroup_manager_for(unlimited) is None
+
+
+def test_a_sandbox_that_starts_into_the_task_limit_says_so(
+    manager, shared, bundles, monkeypatch
+):
+    """runsc reports a boot that ran out of tasks as a failed clone. The
+    cgroup's pids.events tells why, and the error names the setting."""
+    monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "10")
+    (shared / "cgroup.subtree_control").write_text("cpu memory pids")
+    backend = GVisorSandboxBackend(image_manager=Mock())
+    config = SandboxConfig("busybox")
+    events = ["max 3\n"]
+
+    def start(config, sandbox_id, root_dir, owner_file, sandbox_cgroup):
+        (sandbox_cgroup.path / "pids.events").write_text(events[0])
+        owner_file.close()
+        raise SandboxCreationError("newosproc: resource temporarily unavailable")
+
+    with pytest.raises(SandboxCreationError) as err:
+        backend._provision(config, backend._cgroup_manager_for(config), start)
+    assert "limit of 10 host tasks, RAY_SANDBOX_PIDS_MAX" in str(err.value)
+    assert "newosproc: resource temporarily unavailable" in str(err.value)
+    # Another failure keeps its own error.
+    events[0] = "max 0\n"
+    with pytest.raises(SandboxCreationError) as err:
+        backend._provision(config, backend._cgroup_manager_for(config), start)
+    assert str(err.value) == "newosproc: resource temporarily unavailable"
 
 
 def test_resource_preflight_checks_a_node_pids_limit(shared, monkeypatch):

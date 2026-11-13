@@ -213,6 +213,15 @@ class SandboxCgroup:
                 return "Sandbox exceeded its enforced memory limit"
         return None
 
+    def task_limit_reached(self) -> bool:
+        """Whether the kernel refused the sandbox a task over its pids.max."""
+        try:
+            events = _read(self.path / "pids.events")
+            values = dict(line.split() for line in events.splitlines())
+            return int(values.get("max", "0")) > 0
+        except (OSError, ValueError):
+            return False
+
     def release(self) -> None:
         """Kill whatever still runs in the cgroup, and remove it."""
         _remove(self.path)

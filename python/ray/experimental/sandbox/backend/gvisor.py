@@ -1,4 +1,5 @@
 import collections
+import dataclasses
 import fcntl
 import functools
 import glob
@@ -235,18 +236,6 @@ class _RestoreImage(NamedTuple):
     background: bool = False
     # Read the image with O_DIRECT.
     direct: bool = False
-
-
-def _node_caps_tasks() -> bool:
-    """Whether RAY_SANDBOX_PIDS_MAX puts every sandbox in a cgroup.
-
-    A malformed value counts as no cap here: sandbox creation already refuses
-    it, and commands for existing sandboxes shouldn't fail over it.
-    """
-    try:
-        return pids_limit() > 0
-    except RuntimeError:
-        return False
 
 
 def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
@@ -696,21 +685,42 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             if cgroups is None:
                 owner_file = self._own_bundle(config, root_dir)
             else:
-                lock_path = os.path.join(_RAY_SANDBOX_DIR, _CPUS_LOCK_FILE)
-                with open(lock_path, "a", encoding="utf-8") as lock:
-                    fcntl.flock(lock, fcntl.LOCK_EX)
-                    cpus = cgroups.choose_cpus(config.cpu, self._cpus_in_use())
-                    owner_file = self._own_bundle(config, root_dir, cpus)
+                # The sandbox stays in Ray's cgroup for its whole life, so
+                # every runsc call for it must leave cgroups alone, whatever
+                # the node's settings are by then. On a copy, since the
+                # caller may use its config again.
+                config = dataclasses.replace(config, _ignore_cgroups=True)
+                cpus: List[int] = []
+                if config.cpu > 0:
+                    lock_path = os.path.join(_RAY_SANDBOX_DIR, _CPUS_LOCK_FILE)
+                    with open(lock_path, "a", encoding="utf-8") as lock:
+                        fcntl.flock(lock, fcntl.LOCK_EX)
+                        cpus = cgroups.choose_cpus(config.cpu, self._cpus_in_use())
+                        owner_file = self._own_bundle(config, root_dir, cpus)
+                else:
+                    # Only a sandbox with a CPU limit is placed on CPUs. No
+                    # other needs the node's lock, or a look at every sandbox.
+                    owner_file = self._own_bundle(config, root_dir)
                 # After the owner file, so that a reclaim removes the cgroup
                 # of an owner that dies before it starts the sandbox.
                 cgroup = cgroups.allocate(sandbox_id, config.cpu, memory, cpus)
             start(config, sandbox_id, root_dir, owner_file, cgroup)
         except Exception as err:
+            capped = cgroup is not None and cgroup.task_limit_reached()
             if _release_cgroup(sandbox_id, cgroup):
                 self._image_manager.release_image(config.image, sandbox_id)
                 shutil.rmtree(root_dir, ignore_errors=True)
             if owner_file is not None:
                 owner_file.close()
+            if capped:
+                # runsc only reports that a clone or a thread start failed.
+                raise SandboxCreationError(
+                    f"Failed to {action} sandbox: it ran into the node's limit "
+                    f"of {cgroup.limits['pids.max']} host tasks, "
+                    "RAY_SANDBOX_PIDS_MAX, while it started. A sandbox takes "
+                    "about 25 host tasks to start with a CPU limit, and more "
+                    f"without one. Cause: {err}"
+                ) from err
             if isinstance(err, SandboxError):
                 raise
             raise SandboxCreationError(f"Failed to {action} sandbox: {err}") from err
@@ -2215,13 +2225,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Build the runsc global flags shared by run/exec/kill/delete."""
         return _runsc_args(
             rootless=config.rootless,
-            # Ray puts a sandbox with limits, and every sandbox on a node that
-            # caps tasks, in a cgroup of its own, so runsc must leave cgroups
-            # alone.
+            # Ray puts a sandbox with limits in a cgroup of its own, so runsc
+            # must leave cgroups alone. _provision sets _ignore_cgroups on
+            # every sandbox it puts in one, which on a node that caps tasks
+            # is every sandbox.
             ignore_cgroups=(
                 config.cpu > 0
                 or (parse_memory_bytes(config.memory) or 0) > 0
-                or _node_caps_tasks()
                 or getattr(config, "_ignore_cgroups", False)
                 or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
             ),
