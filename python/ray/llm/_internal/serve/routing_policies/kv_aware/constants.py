@@ -45,8 +45,9 @@ DEFAULT_KV_TOKEN_PORT_BASE = 7557
 KV_INDEXER_THREADS_KEY = "KV_INDEXER_THREADS"
 DEFAULT_KV_INDEXER_THREADS = 4
 
-# Router-local workload snapshot keys. The KV token tracker produces these
-# signals; Serve's autoscaling metrics path transports them in a later layer.
+# Autoscaling snapshot key: estimated uncached prefill tokens of all in-flight
+# requests that are queued or in prefill.
+# KVTokenTracker publishes the snapshot via set_autoscaling_metrics_callback.
 OUTSTANDING_EFFECTIVE_PREFILL_TOKENS = "outstanding_effective_prefill_tokens"
 
 # The engine's KV-event replay (ROUTER) socket sits this many ports above its PUB
