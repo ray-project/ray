@@ -62,8 +62,13 @@ class LLMTokenAutoscalingPolicy:
         target_prefill_tokens_per_replica: int,
         upscale_lookback_s: float = 30,
     ):
-        if target_prefill_tokens_per_replica <= 0:
-            raise ValueError("target_prefill_tokens_per_replica must be positive")
+        if (
+            not math.isfinite(target_prefill_tokens_per_replica)
+            or target_prefill_tokens_per_replica <= 0
+        ):
+            raise ValueError(
+                "target_prefill_tokens_per_replica must be positive and finite"
+            )
         if not math.isfinite(upscale_lookback_s) or upscale_lookback_s <= 0:
             raise ValueError("upscale_lookback_s must be positive and finite")
 

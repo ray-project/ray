@@ -180,7 +180,9 @@ def test_lookback_longer_than_history_averages_available_samples():
 @pytest.mark.parametrize(
     "kwargs, match",
     [
-        ({"target_prefill_tokens_per_replica": 0}, "must be positive"),
+        ({"target_prefill_tokens_per_replica": 0}, "positive and finite"),
+        ({"target_prefill_tokens_per_replica": float("nan")}, "positive and finite"),
+        ({"target_prefill_tokens_per_replica": float("inf")}, "positive and finite"),
         (
             {
                 "target_prefill_tokens_per_replica": 100,
