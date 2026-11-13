@@ -961,23 +961,47 @@ def test_build_slots_follow_the_cpus_a_container_gets(tmp_path, monkeypatch):
     monkeypatch.setattr(
         os, "sched_getaffinity", lambda pid: set(range(192)), raising=False
     )
-    assert image_utils._usable_cpus(str(tmp_path)) == 192
-    (tmp_path / "cpu.max").write_text("max 100000\n")
-    assert image_utils._usable_cpus(str(tmp_path)) == 192
-    (tmp_path / "cpu.max").write_text("400000 100000\n")
-    assert image_utils._usable_cpus(str(tmp_path)) == 4
-    (tmp_path / "cpu.max").write_text("50000 100000\n")
-    assert image_utils._usable_cpus(str(tmp_path)) == 1
+    root = tmp_path / "cgroup"
+    root.mkdir()
+    proc = tmp_path / "proc-self-cgroup"
+
+    def usable():
+        return image_utils._usable_cpus(str(root), str(proc))
+
+    # With a cgroup namespace of its own, the container's cgroup is the top.
+    proc.write_text("0::/\n")
+    assert usable() == 192
+    (root / "cpu.max").write_text("max 100000\n")
+    assert usable() == 192
+    (root / "cpu.max").write_text("400000 100000\n")
+    assert usable() == 4
+    (root / "cpu.max").write_text("50000 100000\n")
+    assert usable() == 1
+    # Without one, as in a privileged Pod that sees the node's hierarchy, the
+    # quota is at the process's own cgroup or one above it.
+    (root / "cpu.max").write_text("max 100000\n")
+    pod = root / "kubepods" / "pod1"
+    (pod / "ctr").mkdir(parents=True)
+    proc.write_text("0::/kubepods/pod1/ctr\n")
+    assert usable() == 192
+    (pod / "cpu.max").write_text("800000 100000\n")
+    assert usable() == 8
+    (pod / "ctr" / "cpu.max").write_text("200000 100000\n")
+    assert usable() == 2
     # cgroup v1.
-    (tmp_path / "cpu.max").unlink()
-    (tmp_path / "cpu").mkdir()
-    (tmp_path / "cpu" / "cpu.cfs_period_us").write_text("100000\n")
-    (tmp_path / "cpu" / "cpu.cfs_quota_us").write_text("-1\n")
-    assert image_utils._usable_cpus(str(tmp_path)) == 192
-    (tmp_path / "cpu" / "cpu.cfs_quota_us").write_text("800000\n")
-    assert image_utils._usable_cpus(str(tmp_path)) == 8
+    proc.write_text("5:cpu,cpuacct:/kubepods/pod1\n1:name=systemd:/\n")
+    v1 = root / "cpu,cpuacct" / "kubepods" / "pod1"
+    v1.mkdir(parents=True)
+    (v1 / "cpu.cfs_period_us").write_text("100000\n")
+    (v1 / "cpu.cfs_quota_us").write_text("-1\n")
+    assert usable() == 192
+    (v1 / "cpu.cfs_quota_us").write_text("600000\n")
+    assert usable() == 6
     monkeypatch.setattr(os, "sched_getaffinity", lambda pid: {0, 1}, raising=False)
-    assert image_utils._usable_cpus(str(tmp_path)) == 2
+    assert usable() == 2
+    # A path that isn't under the hierarchy is ignored.
+    proc.write_text("0::/../../etc\n")
+    assert usable() == 2
 
 
 def test_a_child_reports_an_import_that_fails(tmp_path):

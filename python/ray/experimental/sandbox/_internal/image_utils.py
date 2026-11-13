@@ -1160,25 +1160,63 @@ _builds_lock = threading.Lock()
 _building_here = False
 
 
-def _cgroup_cpu_quota(cgroup_root: str = "/sys/fs/cgroup") -> Optional[float]:
-    """The CPUs that this process's cgroup allows it, or None without a quota."""
+def _cgroup_and_parents(root: str, path: str) -> Iterator[str]:
+    """The cgroup at ``path`` under ``root``, then each one above it."""
+    root = os.path.normpath(root)
+    directory = os.path.normpath(os.path.join(root, path.lstrip("/")))
+    while directory == root or directory.startswith(root + os.sep):
+        yield directory
+        if directory == root:
+            return
+        directory = os.path.dirname(directory)
+
+
+def _cgroup_cpu_quota(
+    cgroup_root: str = "/sys/fs/cgroup", proc_cgroup: str = "/proc/self/cgroup"
+) -> Optional[float]:
+    """The CPUs that this process's cgroups allow it, or None without a quota.
+
+    The smallest quota of the process's own cgroup and the ones above it. A
+    container without a cgroup namespace of its own, as a privileged Pod can
+    be, sees the node's whole hierarchy, where its quota isn't at the top.
+    """
+    v2_path, v1_path = "", ""
     try:
-        with open(os.path.join(cgroup_root, "cpu.max"), encoding="utf-8") as f:
-            quota, period = f.read().split()
-        return None if quota == "max" else int(quota) / int(period)
+        with open(proc_cgroup, encoding="utf-8") as f:
+            for line in f:
+                _, controllers, path = line.rstrip("\n").split(":", 2)
+                if not controllers:
+                    v2_path = path
+                elif "cpu" in controllers.split(","):
+                    v1_path = path
     except (OSError, ValueError):
         pass
-    try:  # cgroup v1
-        with open(os.path.join(cgroup_root, "cpu", "cpu.cfs_quota_us")) as f:
-            quota_us = int(f.read())
-        with open(os.path.join(cgroup_root, "cpu", "cpu.cfs_period_us")) as f:
-            period_us = int(f.read())
-        return quota_us / period_us if quota_us > 0 and period_us > 0 else None
-    except (OSError, ValueError):
-        return None
+    quotas = []
+    for directory in _cgroup_and_parents(cgroup_root, v2_path):
+        try:
+            with open(os.path.join(directory, "cpu.max"), encoding="utf-8") as f:
+                quota, period = f.read().split()
+            if quota != "max":
+                quotas.append(int(quota) / int(period))
+        except (OSError, ValueError):
+            pass
+    for mount in ("cpu", "cpu,cpuacct"):  # cgroup v1
+        for directory in _cgroup_and_parents(os.path.join(cgroup_root, mount), v1_path):
+            try:
+                with open(os.path.join(directory, "cpu.cfs_quota_us")) as f:
+                    quota_us = int(f.read())
+                with open(os.path.join(directory, "cpu.cfs_period_us")) as f:
+                    period_us = int(f.read())
+                if quota_us > 0 and period_us > 0:
+                    quotas.append(quota_us / period_us)
+            except (OSError, ValueError):
+                pass
+    return min(quotas) if quotas else None
 
 
-def _usable_cpus(cgroup_root: str = "/sys/fs/cgroup") -> int:
+def _usable_cpus(
+    cgroup_root: str = "/sys/fs/cgroup", proc_cgroup: str = "/proc/self/cgroup"
+) -> int:
     """The CPUs this process may use: its affinity, within its cgroup's quota.
 
     ``os.cpu_count()`` is the node's count. In a container with a CPU limit,
@@ -1188,7 +1226,7 @@ def _usable_cpus(cgroup_root: str = "/sys/fs/cgroup") -> int:
         count = len(os.sched_getaffinity(0))
     except AttributeError:  # Not Linux.
         count = os.cpu_count() or 1
-    quota = _cgroup_cpu_quota(cgroup_root)
+    quota = _cgroup_cpu_quota(cgroup_root, proc_cgroup)
     if quota is not None:
         count = min(count, int(quota))
     return max(1, count)
