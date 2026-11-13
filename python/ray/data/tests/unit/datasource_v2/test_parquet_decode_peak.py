@@ -8,13 +8,13 @@ import numpy as np
 import pytest
 from packaging.version import parse as parse_version
 
-from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
-    estimate_row_group_peak,
-    estimate_row_group_work,
-)
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
     build_leaf_profiles,
     leaf_chunks,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
+    estimate_row_group_peak,
+    estimate_row_group_work,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
     read_footer_stats,
