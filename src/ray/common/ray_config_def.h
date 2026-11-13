@@ -657,6 +657,14 @@ RAY_CONFIG(int64_t, ray_events_report_interval_ms, 1000)
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
+/// The total size of task state events tracked in GCS, measured as the serialized size
+/// of the stored events. Events are evicted once either this or
+/// `task_events_max_num_task_in_gcs` is exceeded, so a workload whose task specs are
+/// large (e.g. a sizeable runtime env) stays bounded in memory and not only in event
+/// count.
+/// Setting the value to -1 allows for unlimited task event bytes stored in GCS.
+RAY_CONFIG(int64_t, task_events_max_num_bytes_in_gcs, 1024 * 1024 * 1024)
+
 /// The number of task attempts being dropped per job tracked at GCS. When GCS is forced
 /// to stop tracking some task attempts that are lost, this will incur potential partial
 /// data loss for a single task attempt (e.g. some task events were dropped, but some were

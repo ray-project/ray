@@ -1,10 +1,10 @@
 """In-memory store for task events on the dashboard head.
 
 Events from the same task attempt (same task id + attempt number) are merged into a single
-``TaskEvents`` entry. The store is bounded by ``MAX_NUM_TASK_EVENTS``; when full, entries
-in lower-priority tiers are evicted first (see ``gc_policy``). Per-job bookkeeping tracks
-which task attempts have been dropped so that late events for a dropped attempt are not
-partially re-stored.
+``TaskEvents`` entry. The store is bounded both by ``MAX_NUM_TASK_EVENTS`` and by
+``MAX_NUM_TASK_EVENT_BYTES``; when either bound is exceeded, entries in lower-priority
+tiers are evicted first (see ``gc_policy``). Per-job bookkeeping tracks which task attempts
+have been dropped so that late events for a dropped attempt are not partially re-stored.
 """
 import collections
 import logging
@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 # Max number of task events kept before eviction kicks in.
 MAX_NUM_TASK_EVENTS = ray._config.task_events_max_num_task_in_gcs()
+# Max total serialized size of the task events kept before eviction kicks in. A second,
+# independent bound: a workload whose task specs are large (e.g. a sizeable runtime env)
+# reaches it long before the event-count bound.
+MAX_NUM_TASK_EVENT_BYTES = ray._config.task_events_max_num_bytes_in_gcs()
 # Max profile events kept per task attempt; older ones are dropped past this.
 MAX_NUM_PROFILE_EVENTS_PER_TASK = (
     ray._config.task_events_max_num_profile_events_per_task()
@@ -36,6 +40,7 @@ _CAPACITY_WARNING_INTERVAL_S = 10.0
 
 # Stat counter keys.
 STAT_NUM_STORED = "num_task_events_stored"
+STAT_NUM_BYTES_STORED = "num_task_event_bytes_stored"
 STAT_TOTAL_REPORTED = "total_num_task_events_reported"
 STAT_TOTAL_ATTEMPTS_DROPPED = "total_num_task_attempts_dropped"
 STAT_TOTAL_PROFILE_DROPPED = "total_num_profile_task_events_dropped"
@@ -142,14 +147,18 @@ class TaskEventStorage:
       ``_tiers[_primary_index[attempt]][attempt]``.
     - ``_task_index`` / ``_job_index`` / ``_worker_index``: id -> set of task attempts,
       for lookups by task / job / worker.
+    - ``_event_sizes``: task attempt -> the serialized size last accounted for it, so the
+      stored-byte total is adjusted exactly when an entry grows or is removed.
     """
 
     def __init__(
         self,
         max_num_task_events: int = MAX_NUM_TASK_EVENTS,
+        max_num_task_event_bytes: int = MAX_NUM_TASK_EVENT_BYTES,
         gc_policy: Optional[FinishedTaskActorTaskGcPolicy] = None,
     ):
         self._max_num_task_events = max_num_task_events
+        self._max_num_task_event_bytes = max_num_task_event_bytes
         self._gc_policy = gc_policy or FinishedTaskActorTaskGcPolicy()
         # One insertion-ordered map per priority tier; oldest key first.
         self._tiers: List[Dict[TaskAttempt, gcs_pb2.TaskEvents]] = [
@@ -161,6 +170,7 @@ class TaskEventStorage:
         self._task_index: Dict[bytes, Set[TaskAttempt]] = {}
         self._job_index: Dict[bytes, Set[TaskAttempt]] = {}
         self._worker_index: Dict[bytes, Set[TaskAttempt]] = {}
+        self._event_sizes: Dict[TaskAttempt, int] = {}
         self._job_task_summary: Dict[bytes, JobTaskSummary] = {}
         self._stats: collections.Counter = collections.Counter()
         self._last_capacity_warning_time = float("-inf")
@@ -193,12 +203,22 @@ class TaskEventStorage:
         else:
             self._add_new(attempt, task_event)
 
+        while self._is_over_capacity():
+            self._warn_capacity_reached()
+            if not self._evict_task_event():
+                return
+
+    def _is_over_capacity(self) -> bool:
+        """Whether either bound is exceeded. A non-positive bound disables that bound."""
         if (
             self._max_num_task_events > 0
             and self._stats[STAT_NUM_STORED] > self._max_num_task_events
         ):
-            self._warn_capacity_reached()
-            self._evict_task_event()
+            return True
+        return (
+            self._max_num_task_event_bytes > 0
+            and self._stats[STAT_NUM_BYTES_STORED] > self._max_num_task_event_bytes
+        )
 
     def _warn_capacity_reached(self) -> None:
         now = time.monotonic()
@@ -206,10 +226,13 @@ class TaskEventStorage:
             return
         self._last_capacity_warning_time = now
         logger.warning(
-            "Max number of task events (%d) reached; old task events will be "
-            "overwritten. Set RAY_task_events_max_num_task_in_gcs to a higher "
-            "value to store more.",
+            "Task event capacity reached (%d/%d task events, %d/%d bytes); old task "
+            "events will be overwritten. Set RAY_task_events_max_num_task_in_gcs or "
+            "RAY_task_events_max_num_bytes_in_gcs to a higher value to store more.",
+            self._stats[STAT_NUM_STORED],
             self._max_num_task_events,
+            self._stats[STAT_NUM_BYTES_STORED],
+            self._max_num_task_event_bytes,
         )
 
     def record_data_loss_from_worker(self, dropped_task_attempts) -> None:
@@ -297,6 +320,13 @@ class TaskEventStorage:
     def num_task_events_stored(self) -> int:
         return self._stats[STAT_NUM_STORED]
 
+    @property
+    def num_task_event_bytes_stored(self) -> int:
+        """Total serialized size of the stored task events, the quantity the byte bound
+        is enforced on. It tracks the payload the store holds, not the Python object
+        overhead around it."""
+        return self._stats[STAT_NUM_BYTES_STORED]
+
     def get_task_event(self, task_attempt: TaskAttempt) -> Optional[gcs_pb2.TaskEvents]:
         tier = self._primary_index.get(task_attempt)
         return None if tier is None else self._tiers[tier][task_attempt]
@@ -362,6 +392,7 @@ class TaskEventStorage:
         if task_event.HasField("task_info") and task_event.attempt_number == 0:
             self._increment_task_type(task_event.task_info.type)
         self._update_index(attempt, task_event)
+        self._account_bytes(attempt, task_event)
 
     def _update_existing(
         self, attempt: TaskAttempt, task_event: gcs_pb2.TaskEvents
@@ -387,6 +418,19 @@ class TaskEventStorage:
             self._primary_index[attempt] = new_tier
 
         self._update_index(attempt, existing)
+        self._account_bytes(attempt, existing)
+
+    def _account_bytes(
+        self, attempt: TaskAttempt, task_event: gcs_pb2.TaskEvents
+    ) -> None:
+        """Re-measure a stored event and fold the change into the stored-byte total.
+
+        Called after every mutation of a stored entry, so the total stays exact as entries
+        are merged into and trimmed.
+        """
+        size = task_event.ByteSize()
+        self._stats[STAT_NUM_BYTES_STORED] += size - self._event_sizes.get(attempt, 0)
+        self._event_sizes[attempt] = size
 
     def _increment_task_type(self, task_type) -> None:
         stat = _TASK_TYPE_STAT.get(task_type)
@@ -432,19 +476,22 @@ class TaskEventStorage:
         summary.record_profile_events_dropped(num_profile)
         summary.record_task_attempt_dropped(attempt)
         self._stats[STAT_NUM_STORED] -= 1
+        self._stats[STAT_NUM_BYTES_STORED] -= self._event_sizes.pop(attempt)
         self._stats[STAT_TOTAL_ATTEMPTS_DROPPED] += 1
         self._stats[STAT_TOTAL_PROFILE_DROPPED] += num_profile
 
         self._remove_from_index(attempt, task_event)
         del self._tiers[tier][attempt]
 
-    def _evict_task_event(self) -> None:
+    def _evict_task_event(self) -> bool:
+        """Evict the oldest entry of the lowest-priority non-empty tier, if any."""
         for tier in range(self._gc_policy.max_priority):
             if self._tiers[tier]:
                 # The first key is the oldest (least recently inserted) in this tier.
                 oldest = next(iter(self._tiers[tier]))
                 self._remove_task_attempt(oldest)
-                return
+                return True
+        return False
 
     @staticmethod
     def _is_task_terminated(task_event: gcs_pb2.TaskEvents) -> bool:
@@ -463,3 +510,4 @@ class TaskEventStorage:
             return
         task_event.state_updates.state_ts_ns[TaskStatus.FAILED] = failed_ts_ns
         task_event.state_updates.error_info.CopyFrom(error_info)
+        self._account_bytes(attempt, task_event)
