@@ -1122,12 +1122,10 @@ class TaskManagerLineageEvictionTest : public TaskManagerTest {
 // accumulator never advanced and the loop drained the whole queue.
 TEST_F(TaskManagerLineageEvictionTest, TestEvictLineageStopsAtTarget) {
   rpc::Address caller_address;
-  // Infinite retries, so that completed tasks stay reconstructable (ELIGIBLE).
-  const int max_retries = -1;
-
   auto add_and_complete_task = [this, &caller_address]() {
     auto spec = CreateTaskHelper(/*num_returns=*/1, /*dependencies=*/{});
-    manager_.AddPendingTask(caller_address, spec, "", max_retries);
+    // Infinite retries, so that completed tasks stay reconstructable (ELIGIBLE).
+    manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/-1);
     manager_.MarkDependenciesResolved(spec.TaskId());
     manager_.MarkTaskWaitingForExecution(
         spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
