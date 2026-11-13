@@ -456,6 +456,38 @@ def test_get_file_partitioner_returns_bin_packer(tmp_path):
     assert isinstance(datasource.get_file_partitioner(hints=hints), OnlineBinPacker)
 
 
+def test_get_file_partitioner_keeps_runs_whole_for_ordered_reads(tmp_path, monkeypatch):
+    """``split_coalesced`` must not scatter a run's units across ordered bins."""
+    from ray.data.context import DataContext
+
+    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", "1")
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "50")
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
+
+    partitioner = ParquetDatasourceV2([str(tmp_path)]).get_file_partitioner()
+    run = FileChunk(
+        unit_ids=(0, 1, 2),
+        num_rows=30,
+        size_bytes=90,
+        unit_sizes=(30, 30, 30),
+        unit_rows=(10, 10, 10),
+    )
+    partitioner.add_input(
+        FileManifest.construct_manifest(
+            paths=["a.parquet"], sizes=[90], chunk_metadatas=[run.to_metadata()]
+        )
+    )
+    partitioner.finalize()
+
+    manifests = []
+    while partitioner.has_partition():
+        manifests.append(partitioner.next_partition())
+    assert len(manifests) == 1
+    assert list(manifests[0].file_chunk_metadatas[0]["unit_ids"]) == [0, 1, 2]
+
+
 def test_paths_and_filesystem_resolved(tmp_path):
     file_path = tmp_path / "data.parquet"
     _write_parquet(str(file_path), pa.table({"a": [1]}))
@@ -893,6 +925,44 @@ def test_parquet_file_reader_exact_count_read_gate(monkeypatch):
         DataContext.get_current().execution_options, "preserve_order", True
     )
     assert reader._is_exact_count_read() is False
+
+
+def test_parquet_scanner_and_reader_agree_on_exact_count_gate(monkeypatch):
+    """Listing's stub permission and the reader's gate are one decision.
+
+    ``DeriveListFilesPushdown`` asks ``ParquetScanner.is_exact_count_read``;
+    the reader asks the shared helper. If these ever answer differently, the
+    listing can zero a run the read task still opens.
+    """
+    from ray.data.context import DataContext
+
+    schema = pa.schema([("id", pa.int64())])
+    predicate = col("id") >= 0
+    cases = [
+        (ParquetScanner(schema=schema, predicate=predicate, columns=()), True),
+        # No predicate: ``fully_matched`` is the field's default, not evidence.
+        (ParquetScanner(schema=schema, columns=()), False),
+        # A projection needs the column data, so the file must be opened.
+        (ParquetScanner(schema=schema, predicate=predicate), False),
+        # A limit makes the answer a prefix of the manifest, not a total.
+        (
+            ParquetScanner(schema=schema, predicate=predicate, columns=(), limit=1),
+            False,
+        ),
+    ]
+    for scanner, expected in cases:
+        reader = scanner.create_reader()
+        assert scanner.is_exact_count_read() is expected
+        assert reader._is_exact_count_read() is expected
+
+    # Stubs are emitted before the runs that are read, so ordered execution
+    # must not take the shortcut even though the count itself would be right.
+    scanner = ParquetScanner(schema=schema, predicate=predicate, columns=())
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
+    assert scanner.is_exact_count_read() is False
+    assert scanner.create_reader()._is_exact_count_read() is False
 
 
 def test_parquet_file_reader_row_group_row_hashes_are_unique(tmp_path):

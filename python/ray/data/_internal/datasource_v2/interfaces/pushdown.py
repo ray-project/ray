@@ -217,3 +217,7 @@ class ListFilesPushdown:
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None
     partition_pruner: Optional["FilePruner"] = None
+    # Whether the consuming reader will answer a fully matched run from listing
+    # metadata instead of opening it (see ``Scanner.is_exact_count_read``). Only
+    # then may listing charge that run zero read bytes and ``stubbed=True``.
+    exact_count: bool = False

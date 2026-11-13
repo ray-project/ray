@@ -61,6 +61,19 @@ class Scanner(ABC, Generic[InputSplit]):
         """
         return False
 
+    def is_exact_count_read(self) -> bool:
+        """Whether a read of this scan answers matched runs from metadata.
+
+        Listing may charge a fully matched run zero read bytes only when the
+        reader will not open it. This is that decision, shared with upstream
+        ``ListFiles`` (via ``ListFilesPushdown.exact_count``): a scanner that
+        answers ``True`` promises its reader will return a matched run's stored
+        ``num_rows`` without opening the file. Over-claiming under-sizes the
+        listing, so the default is ``False``; declining only costs honest
+        sizing. A scanner's implementation must match its reader's gate exactly.
+        """
+        return False
+
     def prune_input_split(self, input_split: InputSplit) -> InputSplit:
         """Drop the parts of ``input_split`` this scan is known not to read.
 

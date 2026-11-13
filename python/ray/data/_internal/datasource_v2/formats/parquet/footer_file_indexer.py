@@ -223,6 +223,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
@@ -246,6 +247,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            exact_count=exact_count,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
@@ -261,6 +263,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
@@ -287,6 +290,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            exact_count=exact_count,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
@@ -302,6 +306,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"],
         limit: Optional[int],
         projected_columns: Optional[List[str]],
+        exact_count: bool,
         shuffle_config: Optional["FileShuffleConfig"],
         execution_idx: int,
         excluded_read_unit_ids: Optional[AbstractSet[str]],
@@ -320,22 +325,18 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         coalesce_bytes = self._coalesce_bytes
         if shuffle_row_groups:
             coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
-        # A run's ``size_bytes`` may be zeroed only when the reader is certain
-        # to answer it from footer metadata. Mirror the reader's gate exactly:
-        # a predicate the footer was matched against, no limit, an empty
-        # projection, and unordered execution. Zeroing any other listing would
-        # charge no bytes for data the read task still fetches.
+        # ``exact_count`` is the reader's gate, decided by the scanner, not
+        # recomputed here from ``limit``: a row-group shuffle clears the
+        # listing limit while the scanner (and so the reader) keeps it. A zero
+        # size is only honest when the reader will answer the run from its
+        # footer, and the footer must have matched a predicate the reader
+        # applies; without one, ``fully_matched`` is the default rather than
+        # evidence.
         read_predicate = combine_predicates(
             predicate,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        stub_fully_matched = (
-            read_predicate is not None
-            and limit is None
-            and projected_columns is not None
-            and len(projected_columns) == 0
-            and not preserve_order
-        )
+        stub_fully_matched = exact_count and read_predicate is not None
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,

@@ -106,6 +106,7 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
         num_rows=sum(rows),
         size_bytes=sum(sizes),
         fully_matched=run.fully_matched,
+        stubbed=run.stubbed,
         unit_sizes=sizes if b - a > 1 else (),
         unit_rows=rows if b - a > 1 else (),
     )
@@ -305,13 +306,12 @@ def _is_stub(run: FileChunk) -> bool:
     """Whether the reader will answer ``run`` from listing metadata.
 
     ``fully_matched`` alone is not enough: a matched run is only stubbed by an
-    exact-count read, and the footer indexer signals that by charging the run
-    zero read bytes. A matched run with a real size is read like any other, so
-    it must be allowed to merge with the file's partial runs; keeping it
-    separate would split a file into manifest rows whose reader order no longer
-    follows the file.
+    exact-count read, and the indexer records that decision on the chunk. A
+    matched run with real bytes is read like any other, so it must be allowed
+    to merge with the file's partial runs; keeping it separate would split a
+    file into manifest rows whose reader order no longer follows the file.
     """
-    return run.fully_matched and run.size_bytes == 0
+    return run.stubbed
 
 
 def _group_disjoint_runs(runs: List[FileChunk]) -> List[List[FileChunk]]:
@@ -384,6 +384,7 @@ class OnlineBinPacker(FilePartitioner):
         split_coalesced: bool = False,
         isolate_heavy_files: bool = True,
         requires_global_input: bool = True,
+        preserve_order: bool = False,
     ):
         # ``max_bin_bytes`` doubles as the "file turns heavy" isolate threshold.
         self._cap = max_bin_bytes
@@ -395,7 +396,12 @@ class OnlineBinPacker(FilePartitioner):
         # Single units stay atomic, so with coalescing off (every run is one
         # unit) this is a no-op and the packer behaves exactly as when the flag
         # is False.
-        self._split_coalesced = split_coalesced
+        #
+        # A split scatters one run's units across bins, and bins are read in
+        # emission order. That contradicts ``preserve_order``, so ordered reads
+        # keep every run whole. The flag is ignored there rather than in every
+        # caller, which keeps the invariant next to the packing it constrains.
+        self._split_coalesced = split_coalesced and not preserve_order
         # When False, every item goes to the shared (mixed-file) pool. Used for
         # row-group shuffle: its input interleaves runs from many files, and the
         # heavy pool seals its bin on every file switch, which would shred that
@@ -531,6 +537,7 @@ class OnlineBinPacker(FilePartitioner):
                     num_rows=sum(run.num_rows for run in disjoint_runs),
                     size_bytes=sum(run.size_bytes for run in disjoint_runs),
                     fully_matched=all(run.fully_matched for run in disjoint_runs),
+                    stubbed=all(run.stubbed for run in disjoint_runs),
                 )
                 files.append(file)
                 chunk_metadatas.append(merged.to_metadata())

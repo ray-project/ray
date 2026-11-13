@@ -127,6 +127,7 @@ def plan_list_files_op(
                 predicate=op.predicate,
                 limit=op.limit,
                 projected_columns=op.projected_columns,
+                exact_count=op.exact_count,
                 shuffle_config=shuffle_config,
                 execution_idx=data_context._execution_idx,
             ),

@@ -12,9 +12,9 @@ __all__ = [
 def coalesce_row_groups(per_rg: List[FileChunk], target: int) -> Tuple[FileChunk, ...]:
     """Merge runs of consecutive row groups into ~``target``-byte runs.
 
-    A run breaks on: a change in ``fully_matched`` (never merge across the
-    match-class boundary, or limit push-down would miscount), a gap in the
-    row-group index sequence (e.g. filter-pruned groups), or once the
+    A run breaks on: a change in ``fully_matched`` or ``stubbed`` (never merge
+    across the match-class boundary, or limit push-down would miscount), a gap
+    in the row-group index sequence (e.g. filter-pruned groups), or once the
     accumulator reaches ``target``. A single row group larger than ``target``
     forms its own run. ``target == 0`` disables coalescing entirely (one run
     per physical row group). Runs of more than one group carry per-group
@@ -49,6 +49,7 @@ def coalesce_row_groups(per_rg: List[FileChunk], target: int) -> Tuple[FileChunk
         if (
             cur is not None
             and cur.fully_matched == rg.fully_matched
+            and cur.stubbed == rg.stubbed
             and cur.unit_ids[-1] + 1 == rg.unit_ids[0]  # contiguous
             and cur.size_bytes < target  # not full yet
         ):

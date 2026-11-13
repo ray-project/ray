@@ -24,6 +24,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+    ParquetFileReader,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
@@ -218,12 +221,70 @@ def test_limit_is_not_derived_onto_row_group_shuffle(
     assert scanner_limit == 5
 
 
+def test_exact_count_flag_tracks_the_reader_gate(tmp_path):
+    """Listing's stub permission comes from the scanner, not its own arguments.
+
+    ``DeriveListFilesPushdown`` asks the scanner whether its reader will answer
+    matched runs from metadata, so the flag is right even when it clears a
+    listing constraint the scanner still carries.
+    """
+    read_files = _mk_read_files(tmp_path)
+    scanner, _residual = _scanner_of(read_files).push_filters(col("a") > 2)
+    scanner = scanner.prune_columns([])
+    read_files = replace(read_files, scanner=scanner)
+
+    list_files = _list_files_of(_apply(read_files))
+
+    reader = scanner.create_reader()
+    assert isinstance(reader, ParquetFileReader)
+    assert scanner.is_exact_count_read() is True
+    assert reader._is_exact_count_read() is True
+    assert list_files.exact_count is True
+    assert list_files.limit is None
+
+
+def test_row_group_shuffle_limit_does_not_enable_stubbing(tmp_path):
+    """A cleared listing limit must not make the reader's limit disappear.
+
+    The row-group shuffle clears the listing limit (an early stop would shrink
+    the shuffle pool), but the scanner keeps its limit, so the reader still
+    reads a prefix rather than an exact total. Charging matched runs zero bytes
+    here would pack every one of them into the first task and read them all.
+    """
+    read_files = _mk_read_files(tmp_path)
+    scanner, _residual = _scanner_of(read_files).push_filters(col("a") > 2)
+    scanner = scanner.prune_columns([]).push_limit(2)
+    read_files = replace(
+        read_files,
+        scanner=scanner,
+        input_dependencies=[
+            replace(
+                _source_list_files(read_files),
+                shuffle_config_factory=lambda: FileShuffleConfig(
+                    seed=1, small_chunks_shuffle=True
+                ),
+            )
+        ],
+    )
+
+    list_files = _list_files_of(_apply(read_files))
+    reader = scanner.create_reader()
+    assert isinstance(reader, ParquetFileReader)
+
+    # The listing limit was cleared for the shuffle; the scanner kept it.
+    assert list_files.limit is None
+    assert scanner.pushed_limit() == 2
+    assert reader._is_exact_count_read() is False
+    assert list_files.exact_count is False
+
+
 def test_no_pushdown_leaves_list_files_unconstrained(tmp_path):
     list_files = _list_files_of(_apply(_mk_read_files(tmp_path)))
 
     assert list_files.predicate is None
     assert list_files.projected_columns is None
     assert list_files.limit is None
+    assert list_files.exact_count is False
 
 
 @pytest.mark.parametrize(
@@ -254,6 +315,7 @@ def test_state_the_scanner_does_not_carry_is_cleared(tmp_path, stale):
     assert list_files.predicate is None
     assert list_files.projected_columns is None
     assert list_files.limit is None
+    assert list_files.exact_count is False
 
 
 def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
@@ -273,6 +335,7 @@ def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
 
     assert derived.predicate is None
     assert derived.limit is None
+    assert derived.exact_count is False
 
 
 def test_final_pushdown_is_left_alone(tmp_path):

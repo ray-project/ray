@@ -32,6 +32,11 @@ def derive_list_files_pushdown(
     all-``None`` result: nothing downstream applies these constraints, so
     listing must not either.
     """
+    # The stub decision is the reader's gate, asked of the scanner that will
+    # build that reader. Deriving it from the listing arguments instead is how
+    # the two drifted: ``limit`` below may be cleared for a shuffle, while the
+    # scanner (and so the reader) keeps it.
+    exact_count = scanner.is_exact_count_read() if scanner is not None else False
     predicate = (
         scanner.pushed_predicate()
         if isinstance(scanner, SupportsFilterPushdown)
@@ -69,6 +74,7 @@ def derive_list_files_pushdown(
         projected_columns=projected_columns,
         limit=limit,
         partition_pruner=partition_pruner,
+        exact_count=exact_count,
     )
 
 

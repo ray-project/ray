@@ -203,6 +203,39 @@ def _estimate_batch_size_from_chunk_stats(
     return int(min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows))
 
 
+def is_exact_count_read(
+    *,
+    predicate: Optional[Expr],
+    limit: Optional[int],
+    columns: Optional[Sequence[str]],
+    preserve_order: bool,
+) -> bool:
+    """Whether a scan needs only the number of surviving rows.
+
+    ``columns`` must be an *empty projection*; ``None`` means "all columns" and
+    does not qualify. The remaining conditions make the listing's
+    ``fully_matched`` flag trustworthy rather than merely present: a pushed
+    predicate is what the flag was computed against, and ``ReadFiles`` refuses
+    predicate push-down for a row-reducing ``block_udf``, so no post-read
+    transform can change the count.
+
+    ``preserve_order`` also disqualifies the read. A stub is emitted before any
+    run that must be opened, and a file's matched and partial runs can occupy
+    separate manifest rows, so stubbing reorders that file's rows. Count does
+    not care, but a user asking for ordered output does.
+
+    Shared by :class:`ParquetFileReader` and :class:`ParquetScanner` so the
+    listing's stub decision and the reader's gate cannot drift.
+    """
+    return (
+        predicate is not None
+        and limit is None
+        and columns is not None
+        and len(columns) == 0
+        and not preserve_order
+    )
+
+
 @DeveloperAPI
 class ParquetFileReader(FileReader, SupportsMetadata):
     """Parquet-specific file reader with adaptive batch sizing.
@@ -764,24 +797,14 @@ class ParquetFileReader(FileReader, SupportsMetadata):
     def _is_exact_count_read(self) -> bool:
         """Whether this read needs only the number of surviving rows.
 
-        ``_columns`` must be an *empty projection*; ``None`` means "all
-        columns" and does not qualify. The remaining conditions make the
-        listing's ``fully_matched`` flag trustworthy rather than merely
-        present: a pushed predicate is what the flag was computed against, and
-        ``ReadFiles`` refuses predicate push-down for a row-reducing
-        ``block_udf``, so no post-read transform can change the count.
-
-        ``preserve_order`` also disqualifies the read. A stub is emitted before
-        any run that must be opened, and a file's matched and partial runs can
-        occupy separate manifest rows, so stubbing reorders that file's rows.
-        Count does not care, but a user asking for ordered output does.
+        Delegates to :func:`is_exact_count_read`; see there for why each
+        condition is part of the trust contract of the footer-only shortcut.
         """
-        return (
-            self._predicate is not None
-            and self._limit is None
-            and self._columns is not None
-            and len(self._columns) == 0
-            and not DataContext.get_current().execution_options.preserve_order
+        return is_exact_count_read(
+            predicate=self._predicate,
+            limit=self._limit,
+            columns=self._columns,
+            preserve_order=DataContext.get_current().execution_options.preserve_order,
         )
 
     @override

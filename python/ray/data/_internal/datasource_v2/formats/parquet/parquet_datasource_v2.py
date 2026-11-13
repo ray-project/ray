@@ -407,4 +407,7 @@ def make_row_group_bin_packer(
         max_shared_open_bins=max_shared_open_bins,
         split_coalesced=split_coalesced,
         isolate_heavy_files=isolate_heavy_files,
+        # Splitting a run scatters its units across bins; ordered reads see
+        # bins in emission order, so the packer keeps runs whole.
+        preserve_order=DataContext.get_current().execution_options.preserve_order,
     )

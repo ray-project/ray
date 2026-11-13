@@ -127,13 +127,14 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
-        # ``predicate``, ``limit`` and ``projected_columns`` are not used here:
-        # the scanner applies the limit per task, and the selection this indexer
-        # prunes on is fixed at construction.
+        # ``predicate``, ``limit``, ``projected_columns`` and ``exact_count`` are
+        # not used here: the scanner applies the limit per task, and the
+        # selection this indexer prunes on is fixed at construction.
         file_infos = self._iter_file_infos_for_list(
             paths,
             filesystem=filesystem,

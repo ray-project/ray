@@ -76,6 +76,7 @@ def list_files_for_each_block(
     predicate: Optional["Expr"] = None,
     limit: Optional[int] = None,
     projected_columns: Optional[List[str]] = None,
+    exact_count: bool = False,
     shuffle_config: Optional["FileShuffleConfig"] = None,
     execution_idx: int = 0,
     prelisted_file_infos: bool = False,
@@ -92,7 +93,9 @@ def list_files_for_each_block(
     Pushed-down ``predicate`` / ``limit`` / ``projected_columns`` are forwarded
     to the indexer; metadata-aware indexers (e.g. the footer-based Parquet
     indexer) use them to skip row groups, stop early, and size projected
-    columns, while the plain indexer ignores them.
+    columns, while the plain indexer ignores them. ``exact_count`` is the
+    consuming reader's gate: only then may a metadata-aware indexer charge a
+    matched run zero bytes, because only then is the run stubbed.
 
     ``shuffle_config`` is also forwarded: the indexer shuffles listed files
     after path discovery and before metadata fetch. Listing still runs as a
@@ -133,6 +136,7 @@ def list_files_for_each_block(
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            exact_count=exact_count,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
@@ -151,6 +155,7 @@ def list_files_for_each_block(
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            exact_count=exact_count,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,

@@ -527,6 +527,12 @@ class ListFiles(LogicalOperator, SourceOperator):
     # Drops whole files by path. Unlike ``predicate`` above (row-group stats,
     # blind to partition columns), this is what makes ``limit`` safe here.
     partition_pruner: Optional["FilePruner"] = None
+    # Whether the downstream reader answers fully matched runs from listing
+    # metadata (``Scanner.is_exact_count_read``). Derived from the scanner, not
+    # recomputed from these constraints: a row-group shuffle clears ``limit``
+    # here while the scanner keeps it, so only the scanner knows the reader's
+    # exact-count gate.
+    exact_count: bool = False
     # Set by a rule that has already fixed the constraints above and knows its
     # consumer applies them, even though that consumer is not a ``ReadFiles``.
     # ``DeriveListFilesPushdown`` then leaves this node alone instead of

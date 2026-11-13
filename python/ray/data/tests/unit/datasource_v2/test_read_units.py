@@ -252,44 +252,32 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
     "list_kwargs,expected",
     [
         pytest.param(
-            {"predicate": col("id") >= 0, "projected_columns": []},
+            {"predicate": col("id") >= 0, "exact_count": True},
             True,
-            id="exact-count",
+            id="reader-exact-count",
         ),
         pytest.param(
-            {
-                "predicate": col("id") >= 0,
-                "projected_columns": [],
-                "preserve_order": True,
-            },
+            {"predicate": col("id") >= 0, "exact_count": False},
             False,
-            id="ordered",
+            id="reader-will-read",
         ),
         pytest.param(
-            {
-                "predicate": col("id") >= 0,
-                "projected_columns": [],
-                "limit": 1,
-            },
+            {"predicate": None, "exact_count": True},
             False,
-            id="limit",
-        ),
-        pytest.param(
-            {"predicate": col("id") >= 0, "projected_columns": None},
-            False,
-            id="all-columns",
-        ),
-        pytest.param(
-            {"predicate": None, "projected_columns": []},
-            False,
-            id="no-predicate",
+            id="no-listing-predicate",
         ),
     ],
 )
-def test_footer_indexer_stubs_fully_matched_only_for_exact_count(
+def test_footer_indexer_stubs_only_when_the_reader_gate_allows(
     tmp_path, monkeypatch, list_kwargs, expected
 ):
-    """Only the reader's exact-count shape may charge matched runs zero bytes."""
+    """The listing must charge zero bytes only for runs the reader will stub.
+
+    ``exact_count`` is derived from the scanner's reader gate by
+    ``DeriveListFilesPushdown`` and forwarded through the listing task. The
+    indexer additionally needs a predicate the footer was matched against;
+    without one, ``fully_matched`` is the field's default rather than evidence.
+    """
     import ray
 
     _write_file(tmp_path / "data.parquet")
@@ -319,8 +307,10 @@ def test_footer_indexer_stubs_fully_matched_only_for_exact_count(
 
     indexer = FooterFileIndexer(ignore_missing_paths=False)
     list(
-        indexer.list_files(
-            pa.array([str(tmp_path)]),
+        list_files_for_each_block(
+            [pa.table({PATH_COLUMN_NAME: [str(tmp_path)]})],
+            _task_context(),
+            indexer=indexer,
             filesystem=LocalFileSystem(),
             **list_kwargs,
         )

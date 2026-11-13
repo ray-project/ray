@@ -56,6 +56,7 @@ class FileIndexer(ABC):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
@@ -81,6 +82,10 @@ class FileIndexer(ABC):
                 early. Others ignore it.
             projected_columns: Pushed-down column projection, for metadata-aware
                 sizing. Others ignore it.
+            exact_count: Whether the consuming reader answers fully matched
+                runs from listing metadata (``Scanner.is_exact_count_read``).
+                Only then may a metadata-aware indexer charge those runs zero
+                read bytes and mark them ``FileChunk.stubbed``.
             shuffle_config: When set, listed files are shuffled after path
                 discovery and before any metadata fetch (footer reads).
                 :meth:`list_file_infos` is never shuffled.
@@ -131,6 +136,7 @@ class FileIndexer(ABC):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        exact_count: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,

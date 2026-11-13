@@ -11,6 +11,7 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
+    is_exact_count_read,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     check_for_legacy_tensor_type,
@@ -19,6 +20,7 @@ from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
+from ray.data.context import DataContext
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
@@ -62,6 +64,22 @@ class ParquetScanner(ArrowFileScanner):
             self.partition_predicate,
             schema=self.schema,
             keep_unknown=True,
+        )
+
+    @override
+    def is_exact_count_read(self) -> bool:
+        """The reader's gate, computed from the scanner it will configure.
+
+        The predicate includes the partition predicate because ``create_reader``
+        combines the two; using only ``self.predicate`` here would under-report
+        the cases where the reader stubs, which is the safe direction, but would
+        also let the listing and reader disagree on a partition-only count.
+        """
+        return is_exact_count_read(
+            predicate=combine_predicates(self.predicate, self.partition_predicate),
+            limit=self.limit,
+            columns=self.columns,
+            preserve_order=DataContext.get_current().execution_options.preserve_order,
         )
 
     def read_schema(self) -> pa.Schema:

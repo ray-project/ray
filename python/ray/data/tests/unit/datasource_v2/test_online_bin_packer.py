@@ -15,6 +15,7 @@ def _run(
     size: int,
     rows: int = 10,
     fully_matched: bool = True,
+    stubbed: bool = False,
     unit_sizes: tuple[int, ...] = (),
     unit_rows: tuple[int, ...] = (),
 ) -> ChunkMetadata:
@@ -23,6 +24,7 @@ def _run(
         num_rows=rows,
         size_bytes=size,
         fully_matched=fully_matched,
+        stubbed=stubbed,
         unit_sizes=unit_sizes,
         unit_rows=unit_rows,
     ).to_metadata()
@@ -150,19 +152,19 @@ def test_duplicated_file_keeps_one_row_per_copy() -> None:
 
 
 def test_stubbed_runs_never_merge_with_partial_runs() -> None:
-    """A zero-size matched run and a partial run stay separate manifest rows.
+    """A zero-size stubbed run and a partial run stay separate manifest rows.
 
     The reader answers a stub from its footer, so folding it into a partial
     run would AND the flags, mark the row partial, and read data the listing
-    had already proven whole. Zero size is the indexer's signal that the run
-    will be stubbed, not merely that it matched.
+    had already proven whole. ``stubbed`` is the indexer's signal that the run
+    will be stubbed, not merely that it matched (or that it is zero-sized).
     """
     manifest = _file(
         "a",
         20,
         [
             _run((0,), 10, rows=5, fully_matched=False),
-            _run((1,), 0, rows=7, fully_matched=True),
+            _run((1,), 0, rows=7, fully_matched=True, stubbed=True),
         ],
     )
     packer = OnlineBinPacker(max_bin_bytes=1000)
@@ -179,6 +181,7 @@ def test_stubbed_runs_never_merge_with_partial_runs() -> None:
         ((0,), False),
         ((1,), True),
     ]
+    assert sorted(chunk.stubbed for chunk in chunks) == [False, True]
     assert sorted(chunk.num_rows for chunk in chunks) == [5, 7]
 
 
@@ -213,6 +216,36 @@ def test_read_matched_run_merges_with_partial_runs() -> None:
     assert chunks[0].fully_matched is False
 
 
+def test_zero_size_run_that_is_not_stubbed_merges_with_read_runs() -> None:
+    """Zero size alone is not a stub signal.
+
+    An empty row group, or a run another indexer sizes at zero, is still read.
+    Keying the boundary on ``size_bytes == 0`` would split it off as if the
+    reader could answer it from metadata, so the explicit ``stubbed`` flag is
+    what keeps the invariant enforceable.
+    """
+    manifest = _file(
+        "a",
+        20,
+        [
+            _run((0,), 10, rows=5, fully_matched=False),
+            _run((1,), 0, rows=0, fully_matched=True, stubbed=False),
+        ],
+    )
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(manifest)
+    packer.finalize()
+
+    chunks = [
+        FileChunk.from_metadata(metadata)
+        for metadata in packer.next_partition().file_chunk_metadatas
+    ]
+
+    assert len(chunks) == 1
+    assert chunks[0].unit_ids == (0, 1)
+    assert chunks[0].stubbed is False
+
+
 def test_zero_size_stubs_collapse_into_one_bin_without_merging_a_partial_run():
     """Zero read bytes must buy one bin, without hiding the partial run.
 
@@ -223,7 +256,11 @@ def test_zero_size_stubs_collapse_into_one_bin_without_merging_a_partial_run():
     would AND ``fully_matched`` and read the matched bytes.
     """
     files = [
-        _file(f"f{i}", 1, [_run((0,), 0, rows=10, fully_matched=True)])
+        _file(
+            f"f{i}",
+            1,
+            [_run((0,), 0, rows=10, fully_matched=True, stubbed=True)],
+        )
         for i in range(1000)
     ]
     # Same path as f999, so this run lands in the same bin as that file's
@@ -321,6 +358,27 @@ def test_split_coalesced_splits_oversize_run_at_boundaries() -> None:
     bins = _pack([_file("a", 90, [coalesced])], max_bin_bytes=50, split_coalesced=True)
     assert _pairs(bins) == [("a", 0), ("a", 1), ("a", 2)]
     assert len(bins) >= 2  # 90 bytes across 50-byte bins
+
+
+def test_preserve_order_disables_split_coalesced() -> None:
+    """An ordered read must not scatter one run's units across bins.
+
+    Splitting lets a later run backfill an earlier bin, so a bin can hold units
+    1 and 3 while unit 2 is in another -- exactly the order ``preserve_order``
+    forbids. Keeping the oversize run whole is the packed equivalent of the
+    single-bin case the end-to-end ordering test covers.
+    """
+    coalesced = _run(
+        (0, 1, 2), 90, rows=30, unit_sizes=(30, 30, 30), unit_rows=(10, 10, 10)
+    )
+    bins = _pack(
+        [_file("a", 90, [coalesced])],
+        max_bin_bytes=50,
+        split_coalesced=True,
+        preserve_order=True,
+    )
+
+    assert bins == [{"a": [0, 1, 2]}]
 
 
 def test_oversize_coalesced_run_fills_shared_bin() -> None:

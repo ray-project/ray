@@ -10,12 +10,14 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 def test_file_chunk_defaults():
     run = FileChunk(unit_ids=(3,), num_rows=5, size_bytes=10)
     assert run.fully_matched is True
+    assert run.stubbed is False
     assert run.unit_sizes == () and run.unit_rows == ()
     assert run.to_metadata() == {
         "unit_ids": (3,),
         "num_rows": 5,
         "size_bytes": 10,
         "fully_matched": True,
+        "stubbed": False,
         "unit_sizes": (),
         "unit_rows": (),
     }
