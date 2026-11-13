@@ -1396,6 +1396,23 @@ def test_min_max_declines_floats_with_nan(
         assert ds.max("f", ignore_nulls=False) == expected
 
 
+def test_min_max_declines_unsigned_columns(tmp_path, restore_ctx):
+    """Unsigned bounds may be signed-comparison values, so the read is kept."""
+    pq.write_table(
+        pa.table({"u": pa.array([0, 2**31, 5], pa.uint32())}),
+        str(tmp_path / "data.parquet"),
+        row_group_size=2,
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    dag = _optimized_min_max_plan(ds, [Min("u")]).dag
+    assert any(isinstance(op, ReadFiles) for op in _walk(dag))
+    assert ds.min("u") == 0
+    assert ds.max("u") == 2**31
+
+
 def test_min_max_reads_only_files_without_statistics(
     tmp_path, restore_ctx, monkeypatch
 ):

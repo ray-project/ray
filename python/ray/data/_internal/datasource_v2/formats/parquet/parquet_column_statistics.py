@@ -30,11 +30,18 @@ def is_exact_statistics_type(column_type: pa.DataType) -> bool:
     two from drifting, and it is why the planner can decline floats and
     strings without the reader decoding them first.
 
+    Unsigned integers are declined even though their physical type is
+    INT32/INT64. Parquet stores them signed, and some writers build the
+    bounds with a signed comparison, so a row group that crosses the sign
+    boundary can carry a value that is neither the true minimum nor the true
+    maximum. The legacy min/max fields are defined as signed-comparison
+    bounds, so no bound from an unsigned column can be trusted.
+
     A planning-time hint only: a file whose footer carries no statistics is
     still ``UNKNOWN`` per file.
     """
     return (
-        pa.types.is_integer(column_type)
+        pa.types.is_signed_integer(column_type)
         or pa.types.is_boolean(column_type)
         or pa.types.is_date(column_type)
         or pa.types.is_time(column_type)
@@ -67,6 +74,16 @@ def column_statistics(metadata: pq.FileMetaData, column: str) -> ColumnStatistic
 
     leaf = metadata.schema.column(leaf_idx)
     if leaf.physical_type not in _EXACT_PHYSICAL_TYPES:
+        return ColumnStatistics.unknown(num_rows)
+
+    # Defense in depth for callers that bypass the planner gate: an unsigned
+    # column is physically INT32/INT64, but its bounds may have been written
+    # with a signed comparison. Read the file instead of trusting them.
+    try:
+        arrow_type = metadata.schema.to_arrow_schema().field(column).type
+    except (KeyError, pa.ArrowException):
+        return ColumnStatistics.unknown(num_rows)
+    if pa.types.is_unsigned_integer(arrow_type):
         return ColumnStatistics.unknown(num_rows)
 
     total_rows = 0

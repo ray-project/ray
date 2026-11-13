@@ -110,6 +110,33 @@ def test_missing_statistics_and_nested_columns_are_unknown(tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    "column_type,values",
+    [
+        (pa.uint32(), [0, 2**31, 5]),
+        (pa.uint64(), [0, 2**63, 5]),
+    ],
+    ids=["uint32", "uint64"],
+)
+def test_unsigned_columns_are_unknown(tmp_path, column_type, values):
+    """Unsigned bounds can be signed-comparison values, so never trust them.
+
+    The physical type is INT32/INT64, which would otherwise pass the allowlist,
+    but a row group spanning the sign boundary can carry a bound that is
+    neither the true minimum nor the true maximum.
+    """
+    path = str(tmp_path / "unsigned.parquet")
+    pq.write_table(
+        pa.table({"u": pa.array(values, column_type)}),
+        path,
+        row_group_size=2,
+    )
+
+    statistics = column_statistics(_metadata(path), "u")
+
+    assert statistics.state is ColumnStatisticsState.UNKNOWN
+
+
 def test_exact_statistics_type_matches_the_physical_allowlist():
     """The planning hint accepts exactly the scalar types Parquet bounds exactly.
 
@@ -125,8 +152,6 @@ def test_exact_statistics_type_matches_the_physical_allowlist():
         pa.int8(),
         pa.int32(),
         pa.int64(),
-        pa.uint8(),
-        pa.uint64(),
         pa.bool_(),
         pa.date32(),
         pa.time32("s"),
@@ -135,6 +160,11 @@ def test_exact_statistics_type_matches_the_physical_allowlist():
         pa.timestamp("us", tz="UTC"),
     ]
     declined = [
+        # Unsigned physical types are signed on disk, and legacy min/max
+        # fields carry signed-comparison bounds.
+        pa.uint8(),
+        pa.uint32(),
+        pa.uint64(),
         pa.float32(),
         pa.float64(),
         pa.string(),
