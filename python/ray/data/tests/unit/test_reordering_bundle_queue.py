@@ -312,6 +312,31 @@ def test_ordered_queue_finalize_out_of_order():
     assert queue.get_next() is bundle2
 
 
+def test_ordered_queue_cleans_up_consumed_keys():
+    """Test that finalized and consumed keys are evicted from internal state."""
+    queue = ReorderingBundleQueue()
+
+    # Checking has_next / peek_next on an empty queue should not insert empty deques.
+    assert not queue.has_next()
+    assert queue.peek_next() is None
+    assert len(queue._inner) == 0
+
+    for k in range(5):
+        if k % 2 == 0:
+            queue.add(_create_bundle(f"data-{k}"), key=k)
+        queue.finalize(key=k)
+
+    consumed = []
+    while queue.has_next():
+        consumed.append(queue.get_next())
+
+    assert len(consumed) == 3
+    assert not queue.has_next()
+    assert queue._current_key == 5
+    assert len(queue._inner) == 0
+    assert len(queue._finalized_keys) == 0
+
+
 if __name__ == "__main__":
     import sys
 
