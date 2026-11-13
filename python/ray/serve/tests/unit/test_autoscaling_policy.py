@@ -1,6 +1,6 @@
 import math
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -1604,6 +1604,36 @@ def test_last_decision_total_num_requests_reuses_decision_value():
         policy_scope="deployment",
     )
     assert st.get_last_decision_total_num_requests() == 42.0
+
+
+def test_records_aggregated_router_metrics_per_handle():
+    st = DeploymentAutoscalingState(DeploymentID("D", "app"))
+    st.register(
+        DeploymentInfo(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(
+                    min_replicas=1, max_replicas=100, target_ongoing_requests=1
+                )
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        ),
+        curr_target_num_replicas=1,
+    )
+    st.autoscaling_router_metric_gauge = MagicMock()
+    st.record_autoscaling_metrics(
+        decision_num_replicas=3,
+        total_num_requests=0.0,
+        policy_execution_time_ms=1.0,
+        policy_scope="deployment",
+        aggregated_router_metrics={"tokens": {"h1": 300.0, "h2": 200.0}},
+    )
+    tags = {"deployment": "D", "application": "app", "metric": "tokens"}
+    assert st.autoscaling_router_metric_gauge.set.call_args_list == [
+        call(300.0, tags={**tags, "handle": "h1"}),
+        call(200.0, tags={**tags, "handle": "h2"}),
+    ]
 
 
 if __name__ == "__main__":

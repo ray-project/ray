@@ -357,6 +357,15 @@ class DeploymentAutoscalingState:
             tag_keys=("deployment", "application"),
         )
 
+        self.autoscaling_router_metric_gauge = metrics.Gauge(
+            "serve_autoscaling_router_metric",
+            description=(
+                "Router-owned autoscaling metric aggregated per handle over the "
+                "look-back window, as passed to the autoscaling policy."
+            ),
+            tag_keys=("deployment", "application", "handle", "metric"),
+        )
+
         self.autoscaling_policy_execution_time_gauge = metrics.Gauge(
             "serve_autoscaling_policy_execution_time_ms",
             description=(
@@ -661,6 +670,7 @@ class DeploymentAutoscalingState:
         total_num_requests: float,
         policy_execution_time_ms: float,
         policy_scope: str,
+        aggregated_router_metrics: Optional[Dict[str, Dict[str, float]]] = None,
     ):
         tags = {
             "deployment": self._deployment_id.name,
@@ -668,6 +678,11 @@ class DeploymentAutoscalingState:
         }
         self.autoscaling_decision_gauge.set(decision_num_replicas, tags=tags)
         self.autoscaling_total_requests_gauge.set(total_num_requests, tags=tags)
+        for metric_name, value_by_handle in (aggregated_router_metrics or {}).items():
+            for handle_id, value in value_by_handle.items():
+                self.autoscaling_router_metric_gauge.set(
+                    value, tags={**tags, "handle": handle_id, "metric": metric_name}
+                )
         # Stash the decision's value for the scale up/down log to reuse.
         self._last_decision_total_num_requests = total_num_requests
         self.autoscaling_policy_execution_time_gauge.set(
@@ -705,6 +720,7 @@ class DeploymentAutoscalingState:
             autoscaling_context.total_num_requests,
             policy_execution_time_ms,
             "deployment",
+            autoscaling_context.aggregated_router_metrics,
         )
 
         if _skip_bound_check:
@@ -1256,6 +1272,7 @@ class ApplicationAutoscalingState:
                     autoscaling_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
                     "application",
+                    autoscaling_contexts[deployment_id].aggregated_router_metrics,
                 )
                 results[deployment_id] = (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
