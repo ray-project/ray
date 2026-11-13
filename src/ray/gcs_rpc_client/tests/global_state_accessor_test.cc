@@ -82,6 +82,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
         /*task_events_reported_gauge=*/fake_task_events_reported_gauge_,
         /*task_events_dropped_gauge=*/fake_task_events_dropped_gauge_,
         /*task_events_stored_gauge=*/fake_task_events_stored_gauge_,
+        /*task_events_stored_bytes_gauge=*/fake_task_events_stored_bytes_gauge_,
         /*event_recorder_dropped_events_counter=*/fake_dropped_events_counter_,
         /*storage_operation_latency_in_ms_histogram=*/
         fake_storage_operation_latency_in_ms_histogram_,
@@ -167,6 +168,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_task_events_reported_gauge_;
   observability::FakeGauge fake_task_events_dropped_gauge_;
   observability::FakeGauge fake_task_events_stored_gauge_;
+  observability::FakeGauge fake_task_events_stored_bytes_gauge_;
   observability::FakeHistogram fake_storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter fake_storage_operation_count_counter_;
   observability::FakeCounter fake_redis_request_payload_bytes_sum_;

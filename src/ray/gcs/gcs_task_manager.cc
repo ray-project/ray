@@ -38,16 +38,19 @@ GcsTaskManager::GcsTaskManager(
     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     ray::observability::MetricInterface &task_events_reported_gauge,
     ray::observability::MetricInterface &task_events_dropped_gauge,
-    ray::observability::MetricInterface &task_events_stored_gauge)
+    ray::observability::MetricInterface &task_events_stored_gauge,
+    ray::observability::MetricInterface &task_events_stored_bytes_gauge)
     : io_service_(io_service),
       task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
           RayConfig::instance().task_events_max_num_task_in_gcs(),
+          RayConfig::instance().task_events_max_num_bytes_in_gcs(),
           stats_counter_,
           std::make_unique<FinishedTaskActorTaskGcPolicy>())),
       periodical_runner_(std::move(periodical_runner)),
       task_events_reported_gauge_(task_events_reported_gauge),
       task_events_dropped_gauge_(task_events_dropped_gauge),
-      task_events_stored_gauge_(task_events_stored_gauge) {
+      task_events_stored_gauge_(task_events_stored_gauge),
+      task_events_stored_bytes_gauge_(task_events_stored_bytes_gauge) {
   RAY_CHECK(periodical_runner_ != nullptr);
   periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
                                         5 * 1000,
@@ -143,6 +146,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   auto state_updates = task_events.mutable_state_updates();
   (*state_updates->mutable_state_ts_ns())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
   state_updates->mutable_error_info()->CopyFrom(error_info);
+
+  AccountTaskEventBytes(locator);
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
@@ -206,6 +211,8 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   // Update the index if needed. Adding to index is idempotent so it is safe to call it
   // multiple times.
   UpdateIndex(loc);
+
+  AccountTaskEventBytes(loc);
 }
 
 std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>
@@ -230,7 +237,28 @@ GcsTaskManager::GcsTaskManagerStorage::AddNewTaskEvent(rpc::TaskEvents &&task_ev
         kTaskTypeToCounterType.at(added_task_events.task_info().type()));
   }
 
+  AccountTaskEventBytes(loc);
+
   return loc;
+}
+
+void GcsTaskManager::GcsTaskManagerStorage::AccountTaskEventBytes(
+    const std::shared_ptr<TaskEventLocator> &loc) {
+  const size_t num_bytes = loc->GetTaskEventsMutable().ByteSizeLong();
+  stats_counter_.Increment(
+      kNumTaskEventBytesStored,
+      static_cast<int64_t>(num_bytes) - static_cast<int64_t>(loc->GetAccountedBytes()));
+  loc->SetAccountedBytes(num_bytes);
+}
+
+bool GcsTaskManager::GcsTaskManagerStorage::IsOverCapacity() const {
+  if (max_num_task_events_ > 0 && static_cast<size_t>(stats_counter_.Get(
+                                      kNumTaskEventsStored)) > max_num_task_events_) {
+    return true;
+  }
+  return max_num_task_event_bytes_ > 0 &&
+         static_cast<size_t>(stats_counter_.Get(kNumTaskEventBytesStored)) >
+             max_num_task_event_bytes_;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::UpdateIndex(
@@ -320,6 +348,7 @@ void GcsTaskManager::GcsTaskManagerStorage::RemoveTaskAttempt(
   job_task_summary_[job_id].RecordProfileEventsDropped(NumProfileEvents(to_remove));
   job_task_summary_[job_id].RecordTaskAttemptDropped(GetTaskAttempt(to_remove));
   stats_counter_.Decrement(kNumTaskEventsStored);
+  stats_counter_.Decrement(kNumTaskEventBytesStored, loc->GetAccountedBytes());
   stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
   stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
                            NumProfileEvents(to_remove));
@@ -378,13 +407,17 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   std::shared_ptr<TaskEventLocator> loc =
       UpdateOrInitTaskEventLocator(std::move(events_by_task));
 
-  // If limit enforced, replace one.
-  if (max_num_task_events_ > 0 && static_cast<size_t>(stats_counter_.Get(
-                                      kNumTaskEventsStored)) > max_num_task_events_) {
+  // If a limit is enforced, replace as many as it takes to get back inside both limits. A
+  // single large task event may need to displace several smaller ones.
+  while (stats_counter_.Get(kNumTaskEventsStored) > 0 && IsOverCapacity()) {
     RAY_LOG_EVERY_MS(WARNING, 10000)
-        << "Max number of tasks event (" << max_num_task_events_
-        << ") allowed is reached. Old task events will be overwritten. Set "
-           "`RAY_task_events_max_num_task_in_gcs` to a higher value to "
+        << "Task event capacity is reached (" << stats_counter_.Get(kNumTaskEventsStored)
+        << "/" << max_num_task_events_ << " task events, "
+        << stats_counter_.Get(kNumTaskEventBytesStored) << "/"
+        << max_num_task_event_bytes_
+        << " bytes). Old task events will be overwritten. Set "
+           "`RAY_task_events_max_num_task_in_gcs` or "
+           "`RAY_task_events_max_num_bytes_in_gcs` to a higher value to "
            "store more.";
     EvictTaskEvent();
   }
@@ -689,6 +722,8 @@ std::string GcsTaskManager::DebugString() {
      << counters[kTotalNumTaskAttemptsDropped] << "\n-Total num profile events dropped: "
      << counters[kTotalNumProfileTaskEventsDropped]
      << "\n-Current num of task events stored: " << counters[kNumTaskEventsStored]
+     << "\n-Current num of task event bytes stored: "
+     << counters[kNumTaskEventBytesStored]
      << "\n-Total num of actor creation tasks: " << counters[kTotalNumActorCreationTask]
      << "\n-Total num of actor tasks: " << counters[kTotalNumActorTask]
      << "\n-Total num of normal tasks: " << counters[kTotalNumNormalTask]
@@ -707,6 +742,7 @@ void GcsTaskManager::RecordMetrics() {
                                     {{"Type", "PROFILE_EVENT"}});
 
   task_events_stored_gauge_.Record(counters[kNumTaskEventsStored]);
+  task_events_stored_bytes_gauge_.Record(counters[kNumTaskEventBytesStored]);
 
   {
     absl::MutexLock lock(&mutex_);

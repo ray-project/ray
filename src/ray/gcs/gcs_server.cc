@@ -437,7 +437,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsWorkerManager(gcs_init_data);
   InitGcsTaskManager(metrics_.task_events_reported_gauge,
                      metrics_.task_events_dropped_gauge,
-                     metrics_.task_events_stored_gauge);
+                     metrics_.task_events_stored_gauge,
+                     metrics_.task_events_stored_bytes_gauge);
   InstallEventListeners();
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitGcsResourceLoadPuller();
@@ -1209,14 +1210,16 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
 void GcsServer::InitGcsTaskManager(
     ray::observability::MetricInterface &task_events_reported_gauge,
     ray::observability::MetricInterface &task_events_dropped_gauge,
-    ray::observability::MetricInterface &task_events_stored_gauge) {
+    ray::observability::MetricInterface &task_events_stored_gauge,
+    ray::observability::MetricInterface &task_events_stored_bytes_gauge) {
   auto &io_context = io_context_provider_.GetIOContext<GcsTaskManager>();
   gcs_task_manager_ =
       std::make_unique<GcsTaskManager>(io_context,
                                        PeriodicalRunner::Create(io_context),
                                        task_events_reported_gauge,
                                        task_events_dropped_gauge,
-                                       task_events_stored_gauge);
+                                       task_events_stored_gauge,
+                                       task_events_stored_bytes_gauge);
   // Service registration is centralized in RegisterRpcServices().
 }
 
