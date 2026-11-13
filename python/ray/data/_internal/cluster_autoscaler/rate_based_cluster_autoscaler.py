@@ -302,7 +302,10 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
             list(topology),
             execution_id=execution_id,
             max_cluster_limits=execution_options.resource_limits,
-            utility_calculator=RollingLogicalUtilizationGauge(resource_manager),
+            utility_calculator=RollingLogicalUtilizationGauge(
+                resource_manager,
+                execution_id=execution_id,
+            ),
             label_selector=execution_options.label_selector,
         )
 

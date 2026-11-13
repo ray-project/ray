@@ -187,6 +187,9 @@ def test_cluster_autoscaler_env_value_creates_correct_autoscaler(
     )
 
     assert isinstance(autoscaler, expected_autoscaler_type)
+    if isinstance(autoscaler, RateBasedClusterAutoscaler):
+        assert autoscaler._utility_calculator._execution_id == "test"
+        assert autoscaler._utility_calculator._cluster_cpu_utilization_gauge is not None
 
 
 @pytest.mark.parametrize("cpu_usage", [0.25, 0.9])
