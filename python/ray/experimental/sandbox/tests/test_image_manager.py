@@ -718,13 +718,13 @@ def test_prepare_oci_bundle_public_uses_the_node_default_resolvers(
 ):
     """RAY_SANDBOX_DEFAULT_DNS replaces the public resolvers on networks that
     block them; a sandbox's own dns still wins."""
-    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", " 103.247.36.36, 10.43.0.10 ")
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", " 103.247.36.36, 10.0.0.2 ")
     mgr = _SpecCapturingManager(tmp_path)
     source = _prepare(mgr, tmp_path, network="public")
     content = open(source, encoding="utf-8").read()
-    assert content == "nameserver 103.247.36.36\nnameserver 10.43.0.10\n"
-    source = _prepare(mgr, tmp_path, network="public", dns=["10.0.0.2"])
-    assert open(source, encoding="utf-8").read() == "nameserver 10.0.0.2\n"
+    assert content == "nameserver 103.247.36.36\nnameserver 10.0.0.2\n"
+    source = _prepare(mgr, tmp_path, network="public", dns=["10.0.0.9"])
+    assert open(source, encoding="utf-8").read() == "nameserver 10.0.0.9\n"
 
 
 def test_prepare_oci_bundle_dns_overrides_for_public_and_host(tmp_path):

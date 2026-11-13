@@ -2522,6 +2522,68 @@ def test_netns_unreachable_dns_resolver_fails_the_create(ensure_slirp4netns):
     assert _slirp4netns_pids() == before
 
 
+def test_the_node_default_resolvers_are_checked_until_a_sandbox_reaches_them(
+    monkeypatch,
+):
+    """RAY_SANDBOX_DEFAULT_DNS gets the check that a sandbox's own dns gets,
+    so a resolver that no sandbox can reach fails creates instead of every
+    lookup. It's the same for every sandbox, so one success is enough."""
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    probed, deleted = [], []
+    answer = [("10.0.0.2", "Operation not permitted")]
+    monkeypatch.setattr(
+        backend,
+        "_unreachable_resolver",
+        lambda sandbox_id, resolvers: probed.append(resolvers) or answer[0],
+    )
+    monkeypatch.setattr(backend, "delete_sandbox", deleted.append)
+    public = GVisorSandboxConfig(image="busybox:latest", network="public")
+
+    # The built-in resolvers aren't checked.
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
+    backend._check_dns_reachable(public, "sb-1")
+    assert probed == []
+
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.0.0.2")
+    with pytest.raises(
+        SandboxCreationError, match="RAY_SANDBOX_DEFAULT_DNS resolver 10.0.0.2 isn't"
+    ):
+        backend._check_dns_reachable(public, "sb-1")
+    assert deleted == ["sb-1"]
+    answer[0] = None
+    backend._check_dns_reachable(public, "sb-2")
+    backend._check_dns_reachable(public, "sb-3")  # Reached once: not again.
+    assert probed == [["10.0.0.2"]] * 2
+
+    # A sandbox's own dns is checked each time.
+    own = GVisorSandboxConfig(
+        image="busybox:latest", network="public", dns=["10.0.0.9"]
+    )
+    backend._check_dns_reachable(own, "sb-4")
+    backend._check_dns_reachable(own, "sb-5")
+    assert probed[2:] == [["10.0.0.9"]] * 2
+
+
+def test_a_bad_node_default_resolver_fails_the_create_before_the_image_pull(
+    monkeypatch,
+):
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "127.0.0.53")
+    monkeypatch.setattr(gvisor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    # The recording image manager fails a pull with another error.
+    with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_DEFAULT_DNS"):
+        backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", network="public")
+        )
+    # A sandbox with its own dns doesn't read the node's default.
+    with pytest.raises(Exception, match="pull failed"):
+        backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest", network="public", dns=["10.0.0.2"]
+            )
+        )
+
+
 def _nft_ruleset(*nsenter_target: str) -> tuple:
     """``nft list ruleset`` here, or in the namespaces nsenter's args name."""
     enter = ["nsenter", "--preserve-credentials", *nsenter_target, "--"]

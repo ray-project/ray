@@ -287,12 +287,14 @@ def test_default_public_dns_reads_the_node_override(monkeypatch):
     assert default_public_dns() == DEFAULT_PUBLIC_DNS
     monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "  ")
     assert default_public_dns() == DEFAULT_PUBLIC_DNS
-    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.43.0.10, 10.43.0.11")
-    assert default_public_dns() == ("10.43.0.10", "10.43.0.11")
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.0.0.2, 10.0.0.3")
+    assert default_public_dns() == ("10.0.0.2", "10.0.0.3")
     # A typo, or an IPv6 resolver that a public sandbox can't reach, fails
     # every public create rather than leaving DNS broken.
-    for entry in ("dns.internal", "fd00::53"):
-        monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", f"10.43.0.10,{entry}")
+    # So does the node's own resolver stub: a sandbox has no route to the
+    # node's loopback.
+    for entry in ("dns.internal", "fd00::53", "127.0.0.53", "0.0.0.0"):
+        monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", f"10.0.0.2,{entry}")
         with pytest.raises(ValueError, match=entry):
             default_public_dns()
 

@@ -33,7 +33,7 @@ def default_public_dns() -> Tuple[str, ...]:
 
     Raises:
         ValueError: If an entry of ``RAY_SANDBOX_DEFAULT_DNS`` isn't an IPv4
-            address.
+            address, or is one that no sandbox can reach.
     """
     value = os.environ.get(_DEFAULT_DNS_ENV, "")
     servers = tuple(s.strip() for s in value.split(",") if s.strip())
@@ -41,13 +41,21 @@ def default_public_dns() -> Tuple[str, ...]:
         return DEFAULT_PUBLIC_DNS
     for server in servers:
         try:
-            ipv4 = ipaddress.ip_address(server).version == 4
+            address = ipaddress.ip_address(server)
         except ValueError:
-            ipv4 = False
-        if not ipv4:
+            address = None
+        if address is None or address.version != 4:
             raise ValueError(
                 f"{_DEFAULT_DNS_ENV} entry {server!r} isn't an IPv4 address, "
                 'and network="public" sandboxes have no IPv6 route'
+            )
+        if address.is_loopback or address.is_unspecified:
+            # Such as 127.0.0.53, which systemd-resolved puts in the node's
+            # resolv.conf. A sandbox has no route to the node's loopback.
+            raise ValueError(
+                f"{_DEFAULT_DNS_ENV} entry {server!r} is a loopback or "
+                'unspecified address, which network="public" sandboxes '
+                "can't reach"
             )
     return servers
 

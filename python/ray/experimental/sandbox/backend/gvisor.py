@@ -56,6 +56,7 @@ from ray.experimental.sandbox.backend.checkpoint_utils import (
 )
 from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_ALLOWLIST,
+    DEFAULT_PUBLIC_DNS,
     INTERNET,
     INTERNET_EXCLUDED_IPV4,
     INTERNET_IPV6,
@@ -554,6 +555,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def __init__(self, image_manager: Optional[BaseImageManager] = None):
         super().__init__(image_manager=image_manager)
         self._sandbox_metadata: Dict[str, Dict] = {}
+        # The node's default resolvers (RAY_SANDBOX_DEFAULT_DNS) that a
+        # sandbox of this backend has reached.
+        self._reachable_node_dns: Set[Tuple[str, ...]] = set()
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
@@ -571,6 +575,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "Please install gVisor (runsc) on the node."
             )
         if config.network == "public":
+            if not config.dns:
+                # Before the image pull and the cgroup, not at the bundle.
+                try:
+                    default_public_dns()
+                except ValueError as err:
+                    raise SandboxCreationError(str(err)) from None
             missing = [
                 b
                 for b in ("slirp4netns", "nsenter", "setpriv", "nft")
@@ -669,25 +679,43 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return sandbox_id
 
     def _check_dns_reachable(self, config: SandboxConfig, sandbox_id: str) -> None:
-        """Delete a network="public" sandbox whose resolvers it can't reach."""
-        if config.network == "public" and config.dns:
-            # The filter drops a resolver it can't match, such as a
-            # Service IP that the cluster's network translates when a
-            # connection opens, and the sandbox has no IPv6 route. Either
-            # way every lookup would fail, so fail the create instead.
-            unreachable = self._unreachable_resolver(sandbox_id, config.dns)
-            if unreachable is not None:
-                self.delete_sandbox(sandbox_id)
-                server, reason = unreachable
-                raise SandboxCreationError(
-                    f"dns resolver {server} isn't reachable from a "
-                    f"network='public' sandbox: {reason}. The sandbox "
-                    "has no IPv6 route, and on Kubernetes clusters that "
-                    "translate Service IPs when a connection opens, such "
-                    "as Cilium clusters, its egress filter drops a "
-                    "Service IP such as the cluster DNS Service's. Use an "
-                    "IPv4 resolver that isn't a Service IP."
-                )
+        """Delete a network="public" sandbox whose resolvers it can't reach.
+
+        A sandbox's own ``dns`` is checked each time. The node's default is
+        the same for every sandbox, so it's checked until one reaches it.
+        The built-in public resolvers aren't checked.
+        """
+        if config.network != "public":
+            return
+        resolvers, source = config.dns, "dns"
+        if not resolvers:
+            node_default = default_public_dns()
+            if (
+                node_default == DEFAULT_PUBLIC_DNS
+                or node_default in self._reachable_node_dns
+            ):
+                return
+            resolvers, source = list(node_default), "RAY_SANDBOX_DEFAULT_DNS"
+        # The filter drops a resolver it can't match, such as a Service IP
+        # that the cluster's network translates when a connection opens, and
+        # the sandbox has no IPv6 route. Either way every lookup would fail,
+        # so fail the create instead.
+        unreachable = self._unreachable_resolver(sandbox_id, resolvers)
+        if unreachable is None:
+            if not config.dns:
+                self._reachable_node_dns.add(tuple(resolvers))
+            return
+        self.delete_sandbox(sandbox_id)
+        server, reason = unreachable
+        raise SandboxCreationError(
+            f"{source} resolver {server} isn't reachable from a "
+            f"network='public' sandbox: {reason}. The sandbox "
+            "has no IPv6 route, and on Kubernetes clusters that "
+            "translate Service IPs when a connection opens, such "
+            "as Cilium clusters, its egress filter drops a "
+            "Service IP such as the cluster DNS Service's. Use an "
+            "IPv4 resolver that isn't a Service IP."
+        )
 
     def _start_sandbox(
         self,
