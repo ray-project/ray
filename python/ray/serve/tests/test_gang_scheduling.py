@@ -1411,11 +1411,13 @@ class TestGangNodeFailure:
         ray.init(address=cluster.address)
         serve.start()
 
-        num_replicas = 4
+        # `num_replicas` counts gangs when gang scheduling is enabled.
+        num_gangs = 2
         gang_size = 2
+        num_replicas = num_gangs * gang_size
 
         @serve.deployment(
-            num_replicas=num_replicas,
+            num_replicas=num_gangs,
             ray_actor_options={"num_cpus": 0.5},
             gang_scheduling_config=GangSchedulingConfig(
                 gang_size=gang_size,
