@@ -539,9 +539,9 @@ A profile is the keyword arguments of `create` plus a `size`, the number of sand
 
 A sandbox that a `create` call takes still counts toward the size until it's deleted, whether by `delete`, by its TTL, or by a checkpoint that stops it. Only then does the runtime boot a new one in its place. As a result, a pool never holds more sandboxes than its size. A `create` call that finds no booted sandbox boots one as usual, outside the pool.
 
-Everything fixed at boot must match the profile: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, GPUs, mounts, `oom_score_adj`, `readonly`, and `rootless`. So must a GPU sandbox's `NVIDIA_DRIVER_CAPABILITIES` in `env`, which sets the driver capabilities gVisor allows it when it boots. The call's other `env`, `ttl_seconds`, and `timeout_seconds` don't need to match. A sandbox taken from the pool runs every command with the call's `env` on top of the profile's, and its TTL starts at the `create` call. A `create` call that matches no profile boots a sandbox as usual.
+Everything fixed at boot must match the profile: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, GPUs, mounts, `oom_score_adj`, `readonly`, and `rootless`. So must a GPU sandbox's `NVIDIA_DRIVER_CAPABILITIES` in `env`, which sets the driver capabilities gVisor allows it when it boots. The call's other `env`, `ttl_seconds`, and `timeout_seconds` don't need to match. Every spelling of one image matches, such as `python:3.12-slim` and `docker.io/library/python:3.12-slim`. A sandbox taken from the pool runs every command with the call's `env` on top of the profile's, and its TTL starts at the `create` call. A matching `create` call that finds no booted sandbox boots one with that same `env`, so what a command sees doesn't depend on whether the pool had a sandbox ready. A `create` call that matches no profile boots a sandbox as usual.
 
-Call `close` to delete the sandboxes the pool still holds.
+Call `close` to delete the sandboxes the pool still holds. It waits for the boots that are under way, so the pool holds nothing once it returns.
 
 #### Route `create` calls to an actor with a ready sandbox
 

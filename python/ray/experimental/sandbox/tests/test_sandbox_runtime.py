@@ -470,11 +470,12 @@ def test_warm_pool_hands_out_booted_sandboxes():
         timeout_seconds=5,
     )
     assert instance_id in booted
-    # The backend takes the create's config, env and TTL included, so every
-    # reader sees it; the runtime keeps no env of its own.
+    # The backend takes the create's config, TTL included and its env on top
+    # of the profile's, so every reader sees it; the runtime keeps no env of
+    # its own.
     ((assigned_id, config),) = runtime._backend.assigned
     assert assigned_id == instance_id
-    assert (config.env, config.ttl_seconds) == ({"A": "1"}, 60)
+    assert (config.env, config.ttl_seconds) == ({"B": "base", "A": "1"}, 60)
     runtime.exec(instance_id, ["true"], env={"C": "3"})
     assert runtime._backend.exec_envs == [(instance_id, {"C": "3"})]
     # Taking a sandbox boots nothing: its slot stays the create's until the
@@ -726,6 +727,107 @@ def test_warm_pool_boots_on_a_few_threads():
     runtime.close()
 
 
+def test_a_matching_create_gets_the_profiles_env_warm_or_cold():
+    """A pooled sandbox booted with its profile's env. A create that matches
+    the profile gets that env under its own whether it takes a booted
+    sandbox or, with none ready, boots cold: its env doesn't depend on load."""
+    runtime = _pooled_runtime(
+        [{"image": "img", "env": {"B": "base", "A": "profile"}, "size": 1}]
+    )
+    warm = runtime.create(image="img", env={"A": "1"}, timeout_seconds=5)
+    assert warm == "ray-sandbox-0001"
+    cold = runtime.create(image="img", env={"A": "2"}, timeout_seconds=5)
+    assert cold == "ray-sandbox-0002"
+    assert runtime._backend.assigned[0][1].env == {"B": "base", "A": "1"}
+    assert runtime._backend.configs[1].env == {"B": "base", "A": "2"}
+    # A create that matches no profile gets its own env only.
+    runtime.create(image="other", env={"A": "3"}, timeout_seconds=5)
+    assert runtime._backend.configs[2].env == {"A": "3"}
+    runtime.close()
+
+
+def test_every_spelling_of_an_image_matches_its_profile():
+    runtime = _pooled_runtime([{"image": "python:3.12-slim", "size": 2}])
+    for spelling in ("docker.io/library/python:3.12-slim", "library/python:3.12-slim"):
+        assert runtime.create(image=spelling, timeout_seconds=5) in (
+            "ray-sandbox-0001",
+            "ray-sandbox-0002",
+        )
+    assert len(runtime._backend.assigned) == 2
+    runtime.close()
+
+
+def test_a_failing_profile_pauses_longer_after_each_failure(monkeypatch):
+    """The first failed boot pauses a profile for a second, so that a passing
+    error costs little, and each one that follows for twice as long, up to
+    the longest pause. A boot that works starts over."""
+    from ray.experimental.sandbox.runtime import _WarmPool
+
+    runtime = _fake_runtime()
+    runtime._backend = _CountingBackend()
+    pool = _WarmPool(runtime, [{"image": "img", "size": 1}])
+    (key,) = pool._profiles
+    assert pool.wait_full(10)
+    delays = []
+    for failures in range(1, 9):
+        pool._failures[key] = failures
+        delays.append(pool._retry_delay(key))
+    assert delays == [1.0, 2.0, 4.0, 8.0, 16.0, 30.0, 30.0, 30.0]
+    # Boots that fail together cause one pause, not one each.
+    pool._failures.clear()
+    boots = []
+
+    def broken(config):
+        boots.append(config)
+        raise RuntimeError("image not found")
+
+    runtime._backend.create_sandbox = broken
+    (slot,) = pool._slots[key]
+    for _ in range(3):
+        slot.state = "booting"
+        pool._boot(slot)
+    assert len(boots) == 1 and pool._failures[key] == 1
+    pool.close()
+
+
+def test_dead_pooled_sandboxes_are_deleted_a_few_at_a_time():
+    """A pool whose sandboxes died together deletes them on a few threads,
+    not one thread each."""
+    from ray.experimental.sandbox.runtime import _WARM_BOOT_CONCURRENCY
+
+    class _SlowDeletes(_CountingBackend):
+        def __init__(self):
+            super().__init__()
+            self.deleting = 0
+            self.most_deleting = 0
+
+        def delete_sandbox(self, sandbox_id):
+            with self.ids_lock:
+                self.deleting += 1
+                self.most_deleting = max(self.most_deleting, self.deleting)
+            time.sleep(0.05)
+            with self.ids_lock:
+                self.deleting -= 1
+            super().delete_sandbox(sandbox_id)
+
+    backend = _SlowDeletes()
+    runtime = _pooled_runtime([{"image": "img", "size": 16}], backend=backend)
+    backend.get_status = lambda sandbox_id: SandboxStatus.TERMINATED
+    # Every booted sandbox is found dead, and the create boots cold.
+    runtime.create(image="img", timeout_seconds=5)
+    assert _wait_until(lambda: len(backend.deleted) == 16)
+    assert 1 <= backend.most_deleting <= _WARM_BOOT_CONCURRENCY
+    backend.get_status = lambda sandbox_id: SandboxStatus.RUNNING
+    runtime.close()
+
+
+def test_a_backend_without_assign_config_says_what_it_lacks():
+    from ray.experimental.sandbox.backend.base import BaseSandboxBackend
+
+    with pytest.raises(NotImplementedError, match="warm pools"):
+        BaseSandboxBackend.assign_config(_FakeBackend(), "sb-1", None)
+
+
 def test_a_pooled_sandbox_that_died_is_deleted_not_handed_out():
     runtime = _pooled_runtime([{"image": "img", "size": 2}])
     # The boots run in parallel, so the pool's order is the order they ended.
@@ -972,10 +1074,17 @@ def test_a_boot_that_ends_after_close_is_deleted(monkeypatch):
     runtime._backend = _SlowBackend()
     runtime._warm = _WarmPool(runtime, [{"image": "img", "size": 1}])
     assert booting.wait(5)
-    runtime.close()
+    # close waits for the boot, so that the pool holds nothing once it
+    # returns.
+    closing = threading.Thread(target=runtime.close)
+    closing.start()
+    closing.join(0.2)
+    assert closing.is_alive()
     release.set()
-    assert _wait_until(lambda: runtime._backend.deleted == ["ray-sandbox-0001"])
-    assert _wait_until(lambda: any("runsc delete failed" in w for w in warnings))
+    closing.join(10)
+    assert not closing.is_alive()
+    assert runtime._backend.deleted == ["ray-sandbox-0001"]
+    assert any("runsc delete failed" in w for w in warnings)
 
 
 def test_checkpoint_and_restore_forward_to_backend():
