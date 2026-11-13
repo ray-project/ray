@@ -1120,6 +1120,74 @@
     timeout: 7200
     script: python heterogeneous_memory_batch_inference_multitenancy.py --set-memory
 
+# Constraint-aware scheduling under the actor-only backend's operator sizer.
+# One synthetic pipeline whose middle stage is pinned via a per-operator
+# label_selector; each case exercises one selector shape under contention:
+#   pool                 one labeled pool of nodes
+#   node                 a single node (ray.io/node-id)
+#   multi_pool           in(pool_a,pool_b), fixed concurrency = both pools' capacity
+#   negation             !pool_a
+#   autoscale_contention an autoscaling labeled pool the sizer must reclaim
+#                        after an unconstrained stage backfilled its nodes
+- name: "dataset_constraint_label_scheduling_{{case}}"
+  python: "3.11"
+  frequency: nightly
+  group: data-base
+
+  matrix:
+    setup:
+      case: [pool, node, multi_pool, negation, autoscale_contention]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        RAY_DATA_ACTOR_ONLY_BACKEND: "1"
+        RAY_DATA_DEBUG_RESOURCE_MANAGER: "1"
+        # Synthetic sleep-based workload on fixed ON_DEMAND nodes: a worker
+        # OOM or dead node is always a genuine failure. Spilling stays
+        # tolerated -- ~25 GB streamed through backpressured queues may spill
+        # benignly.
+        RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
+        RAYTEST_FAIL_ON_DEAD_NODES: "1"
+        RAYTEST_FAIL_ON_SPILLING: "0"
+    cluster_compute: constraint_scheduling_labels_compute.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 9
+    script: python constraint_label_scheduling.py --case {{case}}
+
+# Placement-group scheduling under the operator sizer: a fake-GPU inference
+# operator with autoscaling concurrency (1, 8) schedules into a static
+# 6-bundle {GPU: 1, CPU: 1} placement group. Asserts the sizer caps the pool
+# at the PG's bundle capacity (6 actors despite 8 GPUs and concurrency
+# headroom) and that every inference actor ran inside the PG. The
+# per-actor-PG path (ray_remote_args_fn, the vLLM "ray" backend) is covered
+# by the llm_batch_vllm release test.
+- name: dataset_constraint_pg_scheduling
+  python: "3.11"
+  frequency: nightly
+  group: data-base
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        RAY_DATA_ACTOR_ONLY_BACKEND: "1"
+        RAY_DATA_DEBUG_RESOURCE_MANAGER: "1"
+        RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
+        RAYTEST_FAIL_ON_DEAD_NODES: "1"
+        RAYTEST_FAIL_ON_SPILLING: "0"
+    cluster_compute: constraint_scheduling_pg_compute.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 7
+    script: python constraint_pg_scheduling.py
+
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_fixed_size"
