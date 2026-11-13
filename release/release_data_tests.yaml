@@ -1091,6 +1091,25 @@
     script: >
       python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
 
+# A/B for the random_shuffle regression that started with the Nov 12 nightly:
+# same workload on the same image, but pyarrow pinned back to 23.0.1 (the
+# version before #68005). Run alongside random_shuffle on the same commit.
+- name: "random_shuffle_pyarrow23"
+  python: "3.11"
+  frequency: manual
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_pyarrow23.sh
+      runtime_env:
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
+
 
 #######################
 # Batch inference tests
