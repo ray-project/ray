@@ -1,10 +1,9 @@
-"""Read and judge the results of a build's Trivy image scans.
+"""Report the CRITICAL/HIGH findings of a build's Trivy image scans.
 
 Each scan job writes, per image, a ``<name>.status.json`` record and, when the
 scan succeeded, Trivy's JSON result as ``<name>.json.gz``. ``load_scans``
-reads them all; ``group_findings`` merges each CRITICAL/HIGH finding across
-the images it appears in; ``build_summary`` and ``write_csv`` produce
-``summary.json`` and ``vulns.csv``.
+reads them all; ``write_report`` writes ``report.md``, ``vulns.csv`` and
+``summary.json``; ``render_annotation`` renders the build's annotation.
 
 Only fixable CRITICAL/HIGH findings count against the build. ``exit_code``
 gives 0 clean, 10 fixable CRITICAL/HIGH findings, 11 incomplete coverage
@@ -16,7 +15,9 @@ import gzip
 import json
 import re
 import zlib
+from collections import Counter
 from dataclasses import dataclass, field
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
@@ -29,6 +30,10 @@ NO_FIX_STATUSES = frozenset({"affected", "will_not_fix", "fix_deferred", "end_of
 EXIT_CLEAN = 0
 EXIT_FINDINGS = 10
 EXIT_INCOMPLETE = 11
+
+ANNOTATION_CONTEXT = "trivy-scan"
+# Buildkite rejects annotation bodies over 1 MiB; keep some headroom.
+ANNOTATION_LIMIT_BYTES = 1024 * 1024 - 16 * 1024
 SUMMARY_SCHEMA_VERSION = 1
 
 CSV_COLUMNS = (
@@ -327,6 +332,23 @@ def _platform_key(platform: str) -> tuple[int, ...]:
     return (2, int(match.group(1)), int(match.group(2))) if match else (3,)
 
 
+def _platform_label(platform: str) -> str:
+    """cu12.8.1-cudnn -> cu12.8; cpu and tpu stay as they are."""
+    match = re.match(r"(cu\d+\.\d+)", platform)
+    return match.group(1) if match else platform
+
+
+def _platform_labels(platforms: Iterable[str]) -> dict[str, str]:
+    """Short labels, or full names where two platforms would share a label."""
+    short = {p: _platform_label(p) for p in platforms}
+    uses = Counter(short.values())
+    return {p: label if uses[label] == 1 else p for p, label in short.items()}
+
+
+def _platform_sort_key(platform: str) -> tuple:
+    return (_platform_key(platform), platform)
+
+
 def _image_sort_key(image: Image) -> tuple:
     return (
         image.image_type,
@@ -364,6 +386,79 @@ def group_findings(scans: Sequence[ImageScan], suppressed: bool = False) -> list
     )
 
 
+def _python_range(versions: Sequence[str]) -> str:
+    unique = sorted(set(versions), key=lambda v: (_python_key(v), v))
+    keys = [_python_key(v) for v in unique]
+    # Only plain versions form a range; "3.13t" is listed on its own.
+    contiguous = (
+        len(unique) > 1
+        and all(re.fullmatch(r"\d+(\.\d+)*", v) for v in unique)
+        and all(b[:-1] == a[:-1] and b[-1] == a[-1] + 1 for a, b in zip(keys, keys[1:]))
+    )
+    if contiguous:
+        return f"py{unique[0]}–{unique[-1]}"
+    return ", ".join(f"py{v}" for v in unique)
+
+
+def _variant_parts(images: Sequence[Image]) -> list[str]:
+    """Describe one image type's variants, as one cross product if possible."""
+    labels = _platform_labels({i.platform for i in images})
+
+    def cross_product(subset: Sequence[Image]) -> Optional[str]:
+        pythons = {i.python_version for i in subset}
+        platforms = sorted({i.platform for i in subset}, key=_platform_sort_key)
+        archs = sorted({i.architecture for i in subset})
+        combos = {(i.python_version, i.platform, i.architecture) for i in subset}
+        if len(combos) != len(pythons) * len(platforms) * len(archs):
+            return None
+        names = ", ".join(labels[p] for p in platforms)
+        return f"{_python_range(sorted(pythons))} · {names} · {', '.join(archs)}"
+
+    whole = cross_product(images)
+    if whole:
+        return [whole]
+    by_arch = {
+        arch: list(group)
+        for arch, group in groupby(
+            sorted(images, key=lambda i: i.architecture), key=lambda i: i.architecture
+        )
+    }
+    per_arch = [cross_product(group) for group in by_arch.values()]
+    if all(per_arch):
+        return per_arch
+    # Sort on the full platform name too, so groupby sees each variant as one run.
+    by_variant = sorted(
+        images, key=lambda i: (_platform_sort_key(i.platform), i.architecture)
+    )
+    return [
+        cross_product(list(group))
+        for _, group in groupby(by_variant, key=lambda i: (i.platform, i.architecture))
+    ]
+
+
+def describe_images(images: Sequence[Image], everything: Sequence[Image]) -> str:
+    """Compact description of the image variants a finding appears in.
+
+    For example "ray, ray-extra py3.11–3.14 · cu12.8 · x86_64", or
+    "all 184 images" when it appears in every scanned image.
+    """
+    if len(images) > 1 and set(images) == set(everything):
+        return f"all {len(images)} images"
+    by_type: dict[str, list[Image]] = {}
+    for image in images:
+        by_type.setdefault(image.image_type, []).append(image)
+    # Image types with identical variants share one description.
+    types_by_parts: dict[tuple[str, ...], list[str]] = {}
+    for image_type in sorted(by_type):
+        parts = tuple(_variant_parts(by_type[image_type]))
+        types_by_parts.setdefault(parts, []).append(image_type)
+    return "; ".join(
+        f"{', '.join(types)} {part}"
+        for parts, types in types_by_parts.items()
+        for part in parts
+    )
+
+
 def exit_code(scans: Sequence[ImageScan], issues: Sequence[str] = ()) -> int:
     if issues or not scans or any(not s.scanned for s in scans):
         return EXIT_INCOMPLETE
@@ -372,12 +467,218 @@ def exit_code(scans: Sequence[ImageScan], issues: Sequence[str] = ()) -> int:
     return EXIT_CLEAN
 
 
+def _cell(value: str) -> str:
+    return value.replace("|", "\\|").replace("\n", " ")
+
+
+def _cve(finding: Finding) -> str:
+    return f"[{finding.vuln_id}]({finding.url})" if finding.url else finding.vuln_id
+
+
+def _limited(rows: list[str], max_rows: Optional[int]) -> list[str]:
+    if max_rows is None or len(rows) <= max_rows:
+        return rows
+    hidden = len(rows) - max_rows
+    return rows[:max_rows] + [
+        "",
+        f"_{hidden} more rows not shown here (truncated); see `report.md` "
+        "in the build artifacts._",
+    ]
+
+
+def _where(group: Group) -> str:
+    return ", ".join(f"`{_cell(location)}`" for location in group.locations)
+
+
+def _fixable_table(
+    groups: list[Group], everything: list[Image], max_rows: Optional[int]
+) -> list[str]:
+    rows = [
+        f"| {_cve(g.finding)} | {g.finding.severity[0]} | `{_cell(g.finding.pkg_name)}` "
+        f"| {_cell(g.finding.installed)} → {_cell(g.finding.fixed)} "
+        f"| {_where(g)} | {describe_images(g.images, everything)} |"
+        for g in groups
+    ]
+    header = [
+        "| CVE | Sev | Package | Installed → Fixed | Where | Images |",
+        "|---|---|---|---|---|---|",
+    ]
+    return header + _limited(rows, max_rows)
+
+
+def _no_fix_table(
+    groups: list[Group], everything: list[Image], max_rows: Optional[int]
+) -> list[str]:
+    """One row per package: kernel headers alone carry ~500 CVEs per image."""
+    by_package: dict[tuple[str, str, str], list[Group]] = {}
+    for g in groups:
+        f = g.finding
+        by_package.setdefault((f.pkg_name, f.installed, _where(g)), []).append(g)
+    rows = []
+    for (pkg, installed, where), pkg_groups in sorted(
+        by_package.items(), key=lambda kv: -len(kv[1])
+    ):
+        critical = sum(g.finding.severity == "CRITICAL" for g in pkg_groups)
+        statuses = sorted({g.finding.status or "unknown" for g in pkg_groups})
+        images = {i for g in pkg_groups for i in g.images}
+        rows.append(
+            f"| `{_cell(pkg)}` | {_cell(installed)} | {where} "
+            f"| {len(pkg_groups)} ({critical}/{len(pkg_groups) - critical}) "
+            f"| {', '.join(statuses)} "
+            f"| {describe_images(sorted(images, key=_image_sort_key), everything)} |"
+        )
+    header = [
+        "| Package | Installed | Where | CVEs (C/H) | Status | Images |",
+        "|---|---|---|---|---|---|",
+    ]
+    return header + _limited(rows, max_rows)
+
+
+def _suppressed_table(
+    groups: list[Group], everything: list[Image], max_rows: Optional[int]
+) -> list[str]:
+    rows = [
+        f"| {_cve(g.finding)} | {g.finding.severity[0]} | `{_cell(g.finding.pkg_name)}` "
+        f"| {_cell(g.finding.statement)} | {describe_images(g.images, everything)} |"
+        for g in groups
+    ]
+    header = ["| CVE | Sev | Package | Statement | Images |", "|---|---|---|---|---|"]
+    return header + _limited(rows, max_rows)
+
+
+def _critical_high(findings: Sequence[Finding]) -> str:
+    critical = sum(f.severity == "CRITICAL" for f in findings)
+    return f"{critical} / {len(findings) - critical}"
+
+
 def _split_by_fixable(scan: ImageScan) -> tuple[list[Finding], list[Finding]]:
     """One representative finding per key, split by whether the key is fixable."""
     fixable, no_fix = [], []
     for findings in scan.gated().values():
         (fixable if _any_fixable(findings) else no_fix).append(findings[0])
     return fixable, no_fix
+
+
+def _per_image_table(scans: Sequence[ImageScan], max_rows: Optional[int]) -> list[str]:
+    rows = []
+    for scan in scans:
+        if not scan.scanned:
+            rows.append(f"| `{scan.image.name}` | | | not scanned | | |")
+            continue
+        fixable, no_fix = _split_by_fixable(scan)
+        suppressed = len(scan.gated(suppressed=True))
+        rows.append(
+            f"| `{scan.image.name}` | `{scan.image.digest[:19]}` | {scan.packages} "
+            f"| {_critical_high(fixable)} | {_critical_high(no_fix)} | {suppressed} |"
+        )
+    header = [
+        "| Image | Digest | Packages | Fixable C/H | No fix C/H | Suppressed |",
+        "|---|---|---|---|---|---|",
+    ]
+    return header + _limited(rows, max_rows)
+
+
+def _scanner_text(scanner: Mapping[str, Any]) -> str:
+    trivy = scanner.get("trivy") or {}
+    db = scanner.get("db") or {}
+    text = ""
+    if trivy.get("version"):
+        text += f" · Trivy {trivy['version']}"
+    # trivy_db records the DB artifact's creation time; older metadata has
+    # the DB's own UpdatedAt.
+    db_date = db.get("updated_at") or db.get("created")
+    if db_date:
+        text += f" · DB {db_date[:10]}"
+        if db.get("blob"):
+            text += f" (`{db['blob'][:19]}`)"
+    return text
+
+
+def render_markdown(
+    scans: Sequence[ImageScan],
+    scanner: Mapping[str, Any],
+    max_rows: Optional[int] = None,
+    per_image: bool = True,
+    issues: Sequence[str] = (),
+    *,
+    files_note: str,
+) -> str:
+    """Render the report. ``max_rows`` caps each table, for the annotation."""
+    everything = [s.image for s in scans if s.scanned]
+    groups = group_findings(scans)
+    fixable = [g for g in groups if g.fixable]
+    no_fix = [g for g in groups if not g.fixable]
+    suppressed = group_findings(scans, suppressed=True)
+
+    lines = [
+        "## Trivy image scan: CRITICAL/HIGH",
+        "",
+        f"**{len(fixable)} fixable CRITICAL/HIGH** · {len(no_fix)} with no fix yet · "
+        f"{len(suppressed)} suppressed · {len(everything)}/{len(scans)} images scanned"
+        + _scanner_text(scanner),
+        "",
+    ]
+
+    not_scanned = [s for s in scans if not s.scanned]
+    if not_scanned or issues or not scans:
+        lines += ["### Incomplete", ""]
+        if not scans:
+            lines.append("- no scan status records found in the results directory")
+        lines += [f"- `{s.image.name}`: {_cell(s.error)}" for s in not_scanned]
+        lines += [f"- {_cell(issue)}" for issue in issues]
+        lines.append("")
+
+    lines += [f"### Fixable ({len(fixable)})", ""]
+    lines += _fixable_table(fixable, everything, max_rows) if fixable else ["None."]
+    lines.append("")
+    if no_fix:
+        lines += [f"<details><summary>No fix yet ({len(no_fix)})</summary>", ""]
+        lines += _no_fix_table(no_fix, everything, max_rows) + ["", "</details>", ""]
+    if suppressed:
+        lines += [f"<details><summary>Suppressed ({len(suppressed)})</summary>", ""]
+        lines += _suppressed_table(suppressed, everything, max_rows) + [
+            "",
+            "</details>",
+            "",
+        ]
+    if per_image:
+        lines += [f"<details><summary>Per image ({len(scans)})</summary>", ""]
+        lines += _per_image_table(scans, max_rows) + ["", "</details>", ""]
+    else:
+        lines += ["_Per-image table omitted here (truncated); see `report.md`._", ""]
+    lines.append(files_note)
+    return "\n".join(lines) + "\n"
+
+
+def render_annotation(
+    scans: Sequence[ImageScan],
+    scanner: Mapping[str, Any],
+    limit: int = ANNOTATION_LIMIT_BYTES,
+    issues: Sequence[str] = (),
+    *,
+    files_note: str,
+) -> str:
+    """The longest rendering of the report that fits in ``limit`` bytes."""
+    for max_rows, per_image in (
+        (None, True),
+        (200, True),
+        (200, False),
+        (50, False),
+        (10, False),
+        (0, False),
+    ):
+        body = render_markdown(
+            scans, scanner, max_rows, per_image, issues, files_note=files_note
+        )
+        if len(body.encode()) <= limit:
+            return body
+    return body.encode()[:limit].decode(errors="ignore")
+
+
+def annotation_style(scans: Sequence[ImageScan], code: int) -> str:
+    if any(g.fixable for g in group_findings(scans)):
+        return "error"
+    return "warning" if code == EXIT_INCOMPLETE else "success"
 
 
 def build_info(env: Mapping[str, str]) -> dict[str, Any]:
@@ -487,3 +788,22 @@ def build_summary(
         },
         "images": images,
     }
+
+
+def write_report(
+    output_dir: Path,
+    scans: Sequence[ImageScan],
+    scanner: Mapping[str, Any],
+    build: Mapping[str, Any],
+    issues: Sequence[str] = (),
+    *,
+    files_note: str,
+) -> int:
+    """Write report.md, vulns.csv and summary.json; return the exit code."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report = render_markdown(scans, scanner, issues=issues, files_note=files_note)
+    (output_dir / "report.md").write_text(report)
+    write_csv(output_dir / "vulns.csv", scans, build)
+    summary = build_summary(scans, scanner, build, issues)
+    (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    return exit_code(scans, issues)

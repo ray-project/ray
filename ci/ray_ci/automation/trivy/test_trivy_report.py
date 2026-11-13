@@ -1,3 +1,4 @@
+import csv
 import gzip
 import json
 import sys
@@ -6,6 +7,7 @@ from typing import Optional
 
 import pytest
 
+from ci.ray_ci.automation.trivy import trivy_report
 from ci.ray_ci.automation.trivy.trivy_report import (
     EXIT_CLEAN,
     EXIT_FINDINGS,
@@ -13,10 +15,12 @@ from ci.ray_ci.automation.trivy.trivy_report import (
     Finding,
     Image,
     ImageScan,
+    describe_images,
     exit_code,
     group_findings,
     load_scans,
     parse_trivy_report,
+    render_annotation,
 )
 
 FIXTURES = Path(__file__).parent / "testdata"
@@ -47,6 +51,15 @@ LLM = (
     "x86_64",
     "ray-llm-py3.12-cu13.0.0-cudnn.json",
 )
+
+NOTE = "Files: in this test's folder."
+SCANNER = {
+    "trivy": {"version": "0.76.1", "tarball_sha256": "c7cbe313"},
+    "db": {
+        "blob": "sha256:f8fa030ece295d1e057521fa1dd9621ee06e547c6453f962014329ba7fb2fdee",
+        "updated_at": "2026-11-10T19:01:23Z",
+    },
+}
 
 
 def write_scan(
@@ -300,6 +313,17 @@ def test_load_scans_isolates_malformed_status_records(
     assert expected_error in scans["x"].error
 
 
+def test_load_scans_accepts_non_numeric_python_versions(tmp_path: Path):
+    write_scan(tmp_path, CPU)
+    write_scan(tmp_path, ("ray-py3.13t-cpu", "ray", "3.13t", "cpu", "x86_64", CPU[5]))
+    scans = load_scans(tmp_path)
+    assert [s.image.python_version for s in scans] == ["3.12", "3.13t"]
+    assert all(s.scanned for s in scans)
+    assert describe_images([s.image for s in scans], []) == (
+        "ray py3.12, py3.13t · cpu · x86_64"
+    )
+
+
 def test_group_findings_dedupes_across_images_and_skips_noise(tmp_path: Path):
     for spec in (CPU, CPU_ARM, CU128, LLM):
         write_scan(tmp_path, spec)
@@ -335,6 +359,17 @@ def test_group_findings_counts_an_image_once_but_keeps_every_location():
     (group,) = group_findings([scan])
     assert group.images == [scan.image]
     assert group.locations == ["a/site-packages", "b/site-packages"]
+
+
+def test_report_and_csv_list_every_install_location(tmp_path: Path):
+    scan = two_path_scan()
+    report = trivy_report.render_markdown([scan], SCANNER, files_note=NOTE)
+    assert "`a/site-packages`, `b/site-packages`" in report
+
+    trivy_report.write_csv(tmp_path / "v.csv", [scan], trivy_report.build_info({}))
+    with open(tmp_path / "v.csv") as f:
+        paths = [row["path"] for row in csv.DictReader(f)]
+    assert paths == ["a/site-packages/x", "b/site-packages/x"]
 
 
 def scan_of(image_type: str, vuln: dict) -> ImageScan:
@@ -375,6 +410,77 @@ def test_group_findings_suppressed_are_separate(tmp_path: Path):
     assert suppressed.finding.vuln_id == "CVE-2026-102268"
 
 
+ALL_PY = ["3.11", "3.12", "3.13", "3.14"]
+
+
+@pytest.mark.parametrize(
+    ("images", "everything", "expected"),
+    [
+        pytest.param(
+            [make_image(python_version=v) for v in ALL_PY],
+            [make_image(python_version=v) for v in ALL_PY],
+            "all 4 images",
+            id="every-scanned-image",
+        ),
+        pytest.param(
+            [make_image(python_version=v, platform="cu12.8.1-cudnn") for v in ALL_PY],
+            [],
+            "ray py3.11–3.14 · cu12.8 · x86_64",
+            id="python-range",
+        ),
+        pytest.param(
+            [
+                make_image(image_type=t, architecture=a)
+                for t in ("ray", "ray-extra")
+                for a in ("x86_64", "aarch64")
+            ],
+            [],
+            "ray, ray-extra py3.12 · cpu · aarch64, x86_64",
+            id="types-share-variants",
+        ),
+        pytest.param(
+            [make_image(python_version="3.11"), make_image(python_version="3.13")],
+            [],
+            "ray py3.11, py3.13 · cpu · x86_64",
+            id="python-gap",
+        ),
+        pytest.param(
+            [
+                make_image(python_version="3.11"),
+                make_image(python_version="3.12", platform="cu12.8.1-cudnn"),
+            ],
+            [],
+            "ray py3.11 · cpu · x86_64; ray py3.12 · cu12.8 · x86_64",
+            id="not-a-cross-product",
+        ),
+        pytest.param(
+            [make_image(platform="tpu")],
+            [make_image(platform="tpu")],
+            "ray py3.12 · tpu · x86_64",
+            id="single-image-is-named",
+        ),
+        pytest.param(
+            [
+                make_image(python_version="3.11", platform="cu12.8.1-cudnn"),
+                make_image(python_version="3.12", platform="cu12.8.1"),
+                make_image(python_version="3.13", platform="cu12.8.1-cudnn"),
+            ],
+            [],
+            "ray py3.12 · cu12.8.1 · x86_64; ray py3.11, py3.13 · cu12.8.1-cudnn · x86_64",
+            id="same-cuda-minor-stays-distinct",
+        ),
+        pytest.param(
+            [make_image(platform=p) for p in ("cu12.8.1-cudnn", "cu12.8.1")],
+            [],
+            "ray py3.12 · cu12.8.1, cu12.8.1-cudnn · x86_64",
+            id="colliding-labels-use-full-names",
+        ),
+    ],
+)
+def test_describe_images(images: list, everything: list, expected: str):
+    assert describe_images(images, everything) == expected
+
+
 def scan_with(*vulns: dict, error: str = "") -> ImageScan:
     findings = parse_trivy_report(make_report(*vulns)).findings
     return ImageScan(image=make_image(), findings=findings, packages=1, error=error)
@@ -396,6 +502,124 @@ def test_exit_code(scans: list, issues: list, expected: int):
     assert exit_code(scans, issues) == expected
 
 
+def test_annotation_stays_under_limit_and_says_so():
+    vulns = [
+        make_vuln(VulnerabilityID=f"CVE-2026-{i:05d}", PkgName=f"pkg{i}")
+        for i in range(3000)
+    ]
+    scans = [scan_with(*vulns)]
+    full = render_annotation(scans, SCANNER, files_note=NOTE, limit=10**9)
+    assert "truncated" not in full
+
+    limit = 20_000
+    body = render_annotation(scans, SCANNER, files_note=NOTE, limit=limit)
+    assert len(body.encode()) <= limit
+    assert "truncated" in body
+    assert "3000 fixable" in body
+
+
+def report_folder(tmp_path: Path, *specs: tuple, **kwargs) -> Path:
+    results = tmp_path / "results"
+    results.mkdir()
+    for spec in specs:
+        write_scan(results, spec, **kwargs)
+    return results
+
+
+def write_outputs(tmp_path: Path, results: Path, issues=(), env=None) -> int:
+    return trivy_report.write_report(
+        tmp_path / "out",
+        load_scans(results),
+        SCANNER,
+        trivy_report.build_info(env or {}),
+        issues=issues,
+        files_note=NOTE,
+    )
+
+
+def test_write_report_end_to_end(tmp_path: Path):
+    results = report_folder(tmp_path, CPU, CPU_ARM, CU128, LLM)
+    broken = ("ray-py3.12-tpu", "ray", "3.12", "tpu", "x86_64", "")
+    write_scan(results, broken, status="error", error="crane pull failed")
+    env = {
+        "BUILDKITE_PIPELINE_SLUG": "postmerge",
+        "BUILDKITE_BUILD_NUMBER": "123",
+        "BUILDKITE_COMMIT": "80ceee083e49b1ae709c149d3a15862fe12ce8cb",
+        "BUILDKITE_BRANCH": "master",
+    }
+
+    assert write_outputs(tmp_path, results, env=env) == EXIT_INCOMPLETE
+    out = tmp_path / "out"
+    report = (out / "report.md").read_text()
+    assert "4/5 images scanned" in report
+    assert "`ray-py3.12-tpu`: crane pull failed" in report
+    assert "CVE-2026-102268" in report and "| all 4 images |" in report
+    assert "`linux-libc-dev`" in report
+    assert "Trivy 0.76.1" in report and "DB 2026-11-10" in report
+    assert report.endswith(NOTE + "\n")
+
+    with open(out / "vulns.csv") as f:
+        rows = list(csv.DictReader(f))
+    assert rows and {r["severity"] for r in rows} <= {"CRITICAL", "HIGH"}
+    assert {r["build_number"] for r in rows} == {"123"}
+
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["schema_version"] == 1
+    assert summary["build"]["pipeline"] == "postmerge"
+    assert summary["scanner"] == SCANNER
+    assert "failed_steps" not in summary
+    by_name = {i["name"]: i for i in summary["images"]}
+    assert by_name["ray-py3.12-tpu"]["scanned"] is False
+    assert by_name["ray-py3.12-cpu"]["digest"] == "sha256:ray-py3.12-cpu"
+    assert "CVE-2026-102268|PyJWT|2.12.1" in by_name["ray-py3.12-cpu"]["findings"]
+    assert summary["totals"]["images"] == 5
+    assert summary["totals"]["scanned"] == 4
+
+
+def test_write_report_for_a_clean_build(tmp_path: Path):
+    results = report_folder(
+        tmp_path, CPU, report=make_report(make_vuln(Severity="LOW"))
+    )
+    assert write_outputs(tmp_path, results) == EXIT_CLEAN
+    assert "**0 fixable CRITICAL/HIGH**" in (tmp_path / "out" / "report.md").read_text()
+
+
+def test_write_report_shows_healthy_images_next_to_a_corrupt_one(tmp_path: Path):
+    results = report_folder(tmp_path, CPU)
+    (results / "x.status.json").write_text('{"name": "x", "image_')
+    assert write_outputs(tmp_path, results) == EXIT_INCOMPLETE
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert "CVE-2026-102268" in report
+    assert "`x`: malformed status record" in report
+
+
+def test_write_report_without_any_status_record(tmp_path: Path):
+    results = report_folder(tmp_path)
+    assert write_outputs(tmp_path, results) == EXIT_INCOMPLETE
+    assert "no scan status records" in (tmp_path / "out" / "report.md").read_text()
+
+
+def test_the_footer_is_the_given_files_note():
+    scans = [ImageScan(image=Image(*CPU[:5]), packages=1)]
+    body = render_annotation(scans, SCANNER, files_note="Files: `s3://b/p/`")
+    assert body.endswith("Files: `s3://b/p/`\n")
+    assert "artifacts" not in body
+
+
+def test_write_report_writes_the_three_files(tmp_path: Path):
+    scans = [ImageScan(image=Image(*CPU[:5]), packages=1)]
+    build = trivy_report.build_info({"BUILDKITE_BUILD_NUMBER": "7"})
+    code = trivy_report.write_report(
+        tmp_path / "out", scans, SCANNER, build, files_note=NOTE
+    )
+    assert code == EXIT_CLEAN
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
+        "report.md",
+        "summary.json",
+        "vulns.csv",
+    ]
+
+
 @pytest.mark.parametrize(
     "report",
     [
@@ -412,6 +636,44 @@ def test_a_wrongly_shaped_result_fails_only_its_image(tmp_path: Path, report):
     scans = {s.image.name: s for s in load_scans(tmp_path)}
     assert scans[CPU[0]].error.startswith("unparseable result: ")
     assert scans[CU128[0]].scanned
+
+
+def render_all(results: Path) -> str:
+    scans = load_scans(results)
+    return trivy_report.render_markdown(scans, SCANNER, files_note=NOTE)
+
+
+@pytest.mark.parametrize(
+    "field", ["PkgName", "InstalledVersion", "FixedVersion", "PkgPath", "Status"]
+)
+def test_a_null_text_field_reads_as_empty(tmp_path: Path, field: str):
+    """Trivy omits empty fields; a null must not crash rendering or sorting
+    later, which would cost every image's results."""
+    write_scan(tmp_path, CPU, report=make_report(make_vuln(**{field: None})))
+    write_scan(tmp_path, CU128, report=make_report(make_vuln(PkgName="other")))
+    report = render_all(tmp_path)
+    scans = {s.image.name: s for s in load_scans(tmp_path)}
+    assert scans[CPU[0]].scanned and scans[CU128[0]].scanned
+    assert "CVE-2026-0001" in report
+
+
+@pytest.mark.parametrize(
+    "vuln",
+    [
+        pytest.param(make_vuln(PkgName=7), id="number"),
+        pytest.param(make_vuln(VulnerabilityID=123), id="numeric-id"),
+        pytest.param(make_vuln(Severity=["HIGH"]), id="list"),
+        pytest.param(make_vuln(VulnerabilityID=None), id="null-id"),
+    ],
+)
+def test_a_non_text_field_fails_only_its_image(tmp_path: Path, vuln: dict):
+    write_scan(tmp_path, CPU, report=make_report(vuln))
+    write_scan(tmp_path, CU128, report=make_report(make_vuln(PkgName="other")))
+    report = render_all(tmp_path)
+    scans = {s.image.name: s for s in load_scans(tmp_path)}
+    assert scans[CPU[0]].error.startswith("unparseable result: ")
+    assert scans[CU128[0]].scanned
+    assert "CVE-2026-0001" in report
 
 
 # Exit codes rayci retries on its own (rayci raycicmd/command_step.go,
