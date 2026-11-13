@@ -4,12 +4,14 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterator,
     List,
     Optional,
     Sequence,
     Set,
+    TypeVar,
 )
 
 import pyarrow as pa
@@ -36,6 +38,10 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     combine_predicates,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import _leaf_matches
+from ray.data._internal.datasource_v2.formats.parquet.parquet_column_statistics import (
+    column_statistics,
+    is_exact_statistics_type,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
     _with_io_retry,
@@ -55,6 +61,10 @@ from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
 )
+from ray.data._internal.datasource_v2.interfaces.supports_column_statistics import (
+    ColumnStatistics,
+    SupportsColumnStatistics,
+)
 from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     MetadataType,
     SupportsMetadata,
@@ -70,6 +80,8 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 # Per-stream read-ahead buffer for ``use_buffered_stream=True``. PyArrow's
 # default (~8 KiB) produces many tiny range requests on S3; 8 MiB
@@ -199,7 +211,7 @@ def _estimate_batch_size_from_chunk_stats(
 
 
 @DeveloperAPI
-class ParquetFileReader(FileReader, SupportsMetadata):
+class ParquetFileReader(FileReader, SupportsMetadata, SupportsColumnStatistics):
     """Parquet-specific file reader with adaptive batch sizing.
 
     Extends :class:`FileReader` with:
@@ -756,6 +768,58 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         }
         return kwargs
 
+    @staticmethod
+    def _read_footer(
+        path: str,
+        file_size: Optional[int],
+        filesystem: FileSystem,
+        retried_io_errors: List[str],
+    ) -> pq.FileMetaData:
+        from ray.data._internal.util import call_with_retry
+
+        # A fragment, unlike ``pq.read_metadata``, takes the listing's size,
+        # which spares the open a request for it (a HEAD on S3).
+        fragment = pds.ParquetFileFormat().make_fragment(
+            path, filesystem=filesystem, file_size=file_size
+        )
+        # Getting the footer requires network calls, so it may fail with
+        # transient errors; retry them.
+        return call_with_retry(
+            lambda: fragment.metadata,
+            description=f"read Parquet footer for {path}",
+            match=retried_io_errors,
+        )
+
+    def _map_footers(
+        self,
+        file_manifest: FileManifest,
+        fn: Callable[[pq.FileMetaData], _T],
+    ) -> Iterator[_T]:
+        """Apply ``fn`` to each row's footer concurrently, in manifest order."""
+        from pyarrow.fs import LocalFileSystem
+
+        from ray.data._internal.util import filesystem_for_sized_opens
+        from ray.data.context import DataContext
+
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
+        retried_io_errors = DataContext.get_current().retried_io_errors
+
+        def _apply(path: str, file_size: Optional[int]) -> _T:
+            return fn(self._read_footer(path, file_size, filesystem, retried_io_errors))
+
+        paths = [str(path) for path in file_manifest.paths]
+        file_sizes = file_manifest.known_file_sizes
+        # The two manifest views are parallel arrays; a mismatch would
+        # silently truncate ``Executor.map`` to the shorter view.
+        if len(paths) != len(file_sizes):
+            raise ValueError(
+                f"manifest has {len(paths)} paths but {len(file_sizes)} sizes"
+            )
+        # The pool is torn down when this iterator is exhausted or closed;
+        # both call sites drain it.
+        with ThreadPoolExecutor() as executor:
+            yield from executor.map(_apply, paths, file_sizes)
+
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
         """Yield one ``BlockMetadata`` per file, with ``num_rows`` from the footer.
@@ -764,40 +828,40 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         columns -- so ``PushdownCountFiles`` can answer ``count()`` cheaply.
         Footers are fetched concurrently since each read is network-bound.
         """
-        from pyarrow.fs import LocalFileSystem
-
-        from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
-        from ray.data.context import DataContext
-
-        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
-        retried_io_errors = DataContext.get_current().retried_io_errors
-
-        def _num_rows(path: str, file_size: Optional[int]) -> int:
-            # A fragment, unlike ``pq.read_metadata``, takes the listing's
-            # size, which spares the open a request for it (a HEAD on S3).
-            fragment = pds.ParquetFileFormat().make_fragment(
-                path, filesystem=filesystem, file_size=file_size
+        for num_rows in self._map_footers(
+            file_manifest, lambda metadata: metadata.num_rows
+        ):
+            yield BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=None,
+                exec_stats=None,
+                input_files=None,
             )
-            # Getting the footer requires network calls, so it may fail with
-            # transient errors; retry them.
-            metadata = call_with_retry(
-                lambda: fragment.metadata,
-                description=f"read Parquet footer for {path}",
-                match=retried_io_errors,
-            )
-            return metadata.num_rows
 
-        paths = [str(p) for p in file_manifest.paths]
-        with ThreadPoolExecutor() as executor:
-            for num_rows in executor.map(
-                _num_rows, paths, file_manifest.known_file_sizes
-            ):
-                yield BlockMetadata(
-                    num_rows=num_rows,
-                    size_bytes=None,
-                    exec_stats=None,
-                    input_files=None,
-                )
+    @override
+    def supports_column_type(self, column_type: pa.DataType) -> bool:
+        """Decline types whose footer bounds are not exact, such as floats.
+
+        Delegated to the extractor so the Arrow allowlist and the Parquet
+        physical-type allowlist cannot drift apart.
+        """
+        return is_exact_statistics_type(column_type)
+
+    @override
+    def read_column_statistics(
+        self, file_manifest: FileManifest, columns: Sequence[str]
+    ) -> Iterator[Dict[str, ColumnStatistics]]:
+        """Yield exact footer min/max/null counts for ``columns`` per file.
+
+        One footer read serves every requested column; each mapping is in the
+        same order as ``file_manifest``.
+        """
+        yield from self._map_footers(
+            file_manifest,
+            lambda metadata: {
+                column: column_statistics(metadata, column) for column in columns
+            },
+        )
 
     @override
     def available_metadata(self) -> Set[MetadataType]:

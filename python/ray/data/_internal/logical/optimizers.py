@@ -28,6 +28,7 @@ from ray.data._internal.logical.rules import (
     PredicatePushdown,
     ProjectionPushdown,
     PushdownCountFiles,
+    PushdownMinMaxFiles,
     SetReadParallelismRule,
     TopNRewriteRule,
 )
@@ -44,6 +45,7 @@ _LOGICAL_RULESET = Ruleset(
         CombineShuffles,
         CombineDownloads,
         PushdownCountFiles,
+        PushdownMinMaxFiles,
         TopNRewriteRule,
     ]
 )
