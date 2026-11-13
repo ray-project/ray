@@ -4081,7 +4081,8 @@ def read_webdataset(
             input data size and available resources. You shouldn't manually set this
             value in most cases.
         expand_json: If ``True``, expand JSON objects into individual samples.
-            Defaults to ``False``.
+            Keys already present in the sample take precedence over keys in the
+            JSON object. Defaults to ``False``.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
