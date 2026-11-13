@@ -85,6 +85,10 @@ results = tuner.fit()
 
 Tune outputs the fields you provide automatically, on a best-effort basis. To customize the console output, you can use a {ref}`Reporter <tune-reporter-doc>` object.
 
+:::{note}
+In command-line runs, set `RAY_AIR_NEW_OUTPUT=0` in the driver environment before calling `Tuner.fit()` to enable custom progress reporters. Otherwise, Tune ignores `RunConfig.progress_reporter`. The following table shows the legacy output enabled by this setting.
+:::
+
 ```bash
 == Status ==
 Memory usage on this node: 11.4/16.0 GiB
