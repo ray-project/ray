@@ -1,0 +1,4 @@
+# Only the Trivy pin lives here. WORKSPACE loads it, so the ray-core,
+# ray-cpp-core and ray-java image builds copy this directory into their
+# build contexts. Keep everything else out: any change here invalidates those
+# builds' caches.
