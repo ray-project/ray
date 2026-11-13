@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, FrozenSet, List, Optional, Tuple
 
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     AutoscalingCoordinator,
@@ -25,7 +25,10 @@ from ray.data._internal.execution.interfaces.common import (
     PlacementGroupIdStr,
 )
 from ray.data._internal.execution.resource_bank import ResourceBankBase
-from ray.data._internal.utils.cached_ray_internals import get_alive_node_labels
+from ray.data._internal.utils.cached_ray_internals import (
+    get_alive_node_labels,
+    get_draining_nodes,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
@@ -35,12 +38,12 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class ClusterView:
+class DatasetAllocationView:
     """Snapshot of the cluster as visible to one dataset, taken once per sizing
     tick so every sizing phase plans against the same numbers."""
 
     # This dataset's coordinator allocation, per node.
-    alloc_by_node: Dict[NodeIdStr, ExecutionResources]
+    reserved_by_node: Dict[NodeIdStr, ExecutionResources]
     # Node labels (``ray.nodes()[...]["Labels"]``) per alive node; resolves
     # label_selector eligibility. Empty when constraint-aware placement is off.
     labels_by_node: Dict[NodeIdStr, Dict[str, str]] = field(default_factory=dict)
@@ -49,6 +52,9 @@ class ClusterView:
     pg_bundles: Dict[PlacementGroupIdStr, List[ExecutionResources]] = field(
         default_factory=dict
     )
+    # Nodes Ray core is draining. Their allocation is still reported, but
+    # nothing new should be placed there.
+    draining_nodes: FrozenSet[NodeIdStr] = frozenset()
 
 
 class ActorOnlyResourceReporter:
@@ -159,11 +165,20 @@ class ActorOnlyResourceReporter:
             ]
 
     def get_cluster_view(
-        self, *, include_labels: bool = False, include_pg_bundles: bool = False
-    ) -> ClusterView:
+        self,
+        *,
+        include_labels: bool = False,
+        include_pg_bundles: bool = False,
+        include_draining_nodes: bool = False,
+    ) -> DatasetAllocationView:
         """Snapshot of the cluster as visible to this dataset right now."""
-        return ClusterView(
-            alloc_by_node=self.get_reserved_resources_by_node(),
+        return DatasetAllocationView(
+            reserved_by_node=self.get_reserved_resources_by_node(),
             labels_by_node=get_alive_node_labels() if include_labels else {},
             pg_bundles=dict(self._pg_bundles_by_id) if include_pg_bundles else {},
+            draining_nodes=(
+                frozenset(get_draining_nodes())
+                if include_draining_nodes
+                else frozenset()
+            ),
         )

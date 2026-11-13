@@ -321,6 +321,21 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
             is actor
         )
 
+    def test_draining_usage_by_node_is_the_draining_part_of_committed(self):
+        """Draining actors keep their committed usage until they die; the sizer
+        nets this part out when it decides what is left to shed."""
+        pool = self._create_pool()
+        self._draining_nodes.clear()
+        self._add_ready_actor(pool, node_id="node1")
+        leaving = self._add_ready_actor(pool, node_id="node1")
+        assert pool.draining_usage_by_node() == {}
+
+        pool.begin_draining(leaving, reclaimable=True)
+
+        per_actor = pool._actor_resource_usage[leaving]
+        assert pool.draining_usage_by_node() == {"node1": per_actor}
+        assert pool.committed_usage_by_node["node1"] == per_actor.scale(2)
+
     def test_already_draining_actor_becomes_non_reclaimable(self):
         """An actor already draining from an ordinary downscale stays revivable
         -- until its node starts draining, which must retract that."""
