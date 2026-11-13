@@ -26,6 +26,7 @@ from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
+    native_tensor_array_to_numpy,
     pyarrow_table_from_pydict,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -663,7 +664,7 @@ def _iter_rows_from_batch_with_tensors(
     col_values = []
     for column in batch.columns:
         if _is_native_tensor_type(column.type):
-            col_values.append(column.to_numpy_ndarray())
+            col_values.append(native_tensor_array_to_numpy(column))
         else:
             col_values.append(column.to_pylist())
 

@@ -565,5 +565,73 @@ def test_arrow_row_unwraps_scalars_but_not_tensors():
     np.testing.assert_array_equal(row["emb"], np.array([1]))
 
 
+def test_batches_keep_tensor_column_with_missing_rows(
+    ray_start_regular_shared, tensor_format_context
+):
+    """A UDF that returns None for some rows of a tensor column keeps the column
+    a tensor column, in every fixed-shape tensor format. A batch without a
+    missing row is one stacked array, a batch with one is an ndarray per row
+    with None for the missing row, and pandas sees the missing rows as NA."""
+    from ray.data.extensions import get_arrow_extension_tensor_types
+
+    def decode(batch):
+        row = int(batch["id"][0])
+        return {"img": [None if row == 5 else np.full((2, 2), row, np.float32)]}
+
+    ds = ray.data.range(8).map_batches(decode, batch_size=1)
+    batches = list(ds.iter_batches(batch_size=4, batch_format="numpy"))
+
+    assert isinstance(
+        ds.schema().base_schema.field("img").type, get_arrow_extension_tensor_types()
+    )
+    stacked = [b["img"] for b in batches if b["img"].dtype != object]
+    with_none = [b["img"] for b in batches if b["img"].dtype == object]
+    assert [arr.shape for arr in stacked] == [(4, 2, 2)]
+    assert len(with_none) == 1 and sum(row is None for row in with_none[0]) == 1
+    assert list(ds.to_pandas()["img"].isna()) == [i == 5 for i in range(8)]
+
+
+@pytest.mark.parametrize(
+    "null_rows",
+    [{0}, {5}, {0, 1}, {2, 3}, {0, 2, 4}],
+    ids=["first", "last", "first_batch", "middle_batch", "every_batch_start"],
+)
+@pytest.mark.parametrize("ragged", [False, True], ids=["fixed", "ragged"])
+@pytest.mark.parametrize("num_blocks", [1, 2])
+def test_batches_keep_tensor_column_when_batch_starts_with_none(
+    ray_start_regular_shared, tensor_format_context, null_rows, ragged, num_blocks
+):
+    """A UDF batch whose first tensor row is None still builds a tensor column.
+    Six rows in batches of two, so a None can lead a batch, end a batch, or
+    fill one, and with two blocks a block of one tensor shape meets a block
+    of another. The rows read back as the tensors and None in order, as
+    numpy, pandas and a second pandas UDF."""
+
+    def tensor(i):
+        return np.full((i + 1, 2) if ragged else (2, 2), i, np.float32)
+
+    def decode(batch):
+        ids = batch["id"].tolist()
+        return {"id": ids, "x": [None if i in null_rows else tensor(i) for i in ids]}
+
+    ds = ray.data.range(6, override_num_blocks=num_blocks).map_batches(
+        decode, batch_size=2
+    )
+
+    def check(rows):
+        assert len(rows) == 6
+        for i, row in enumerate(rows):
+            if i in null_rows:
+                assert row is None
+            else:
+                np.testing.assert_array_equal(row, tensor(i))
+
+    check(list(next(iter(ds.iter_batches(batch_size=6, batch_format="numpy")))["x"]))
+    check(ds.to_pandas()["x"].tolist())
+    check(
+        [r["x"] for r in ds.map_batches(lambda b: b, batch_format="pandas").take_all()]
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
