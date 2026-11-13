@@ -1,12 +1,13 @@
 import io
 import logging
 import sys
+import threading
 import time
 
 import pytest
 
 from ray.tune.search.variant_generator import format_vars
-from ray.tune.utils.util import Tee, logger as util_logger, retry_fn
+from ray.tune.utils.util import Tee, logger as util_logger, retry_fn, warn_if_slow
 
 
 def test_format_vars():
@@ -89,6 +90,39 @@ def test_retry_fn_timeout(tmpdir):
 
     assert not success.exists()
     assert marker.exists()
+
+
+def test_retry_fn_stale_thread_does_not_poison_next_attempt():
+    attempt = 0
+    attempt2_started = threading.Event()
+    attempt1_thread = None
+
+    def _fn():
+        nonlocal attempt, attempt1_thread
+        attempt += 1
+        if attempt == 1:
+            attempt1_thread = threading.current_thread()
+            assert attempt2_started.wait(timeout=2.0)
+            raise RuntimeError("stale attempt failed after timeout")
+        attempt2_started.set()
+        assert attempt1_thread is not None
+        attempt1_thread.join(timeout=2.0)
+        assert not attempt1_thread.is_alive()
+
+    assert retry_fn(
+        fn=_fn,
+        exception_type=(RuntimeError, AssertionError),
+        num_retries=2,
+        sleep_time=0,
+        timeout=0.05,
+    )
+
+
+def test_warn_if_slow_zero_threshold():
+    ctx = warn_if_slow("fast_op", threshold=0.0)
+    assert ctx.threshold == 0.0
+    ctx_int = warn_if_slow("fast_op", threshold=0)
+    assert ctx_int.threshold == 0
 
 
 def test_tee_recursion():

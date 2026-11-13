@@ -126,19 +126,17 @@ def retry_fn(
     sleep_time: int = 1,
     timeout: Optional[Number] = None,
 ) -> bool:
-    errored = threading.Event()
-
-    def _try_fn():
+    def _try_fn(attempt_errored: threading.Event):
         try:
             fn()
         except exception_type as e:
             logger.warning(e)
-            errored.set()
+            attempt_errored.set()
 
     for i in range(num_retries):
-        errored.clear()
+        errored = threading.Event()
 
-        proc = threading.Thread(target=_try_fn)
+        proc = threading.Thread(target=_try_fn, args=(errored,))
         proc.daemon = True
         proc.start()
         proc.join(timeout=timeout)
@@ -151,10 +149,11 @@ def retry_fn(
         elif not errored.is_set():
             return True
 
-        # Timed out, sleep and try again
-        time.sleep(sleep_time)
+        # Timed out or errored, sleep and try again if retries remain
+        if i < num_retries - 1:
+            time.sleep(sleep_time)
 
-    # Timed out, so return False
+    # All retries failed, so return False
     return False
 
 
@@ -193,7 +192,7 @@ class warn_if_slow:
             disable: If True, suppress warnings entirely.
         """
         self.name = name
-        self.threshold = threshold or self.DEFAULT_THRESHOLD
+        self.threshold = threshold if threshold is not None else self.DEFAULT_THRESHOLD
         self.message = message or self.DEFAULT_MESSAGE
         self.too_slow = False
         self.disable = disable
