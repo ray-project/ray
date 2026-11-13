@@ -733,5 +733,43 @@ def test_a_wrongly_shaped_result_fails_only_its_image(tmp_path: Path, report):
     assert scans[CU128[0]].scanned
 
 
+def render_all(results: Path) -> str:
+    scans = load_scans(results)
+    return trivy_report.render_markdown(scans, [], SCANNER)
+
+
+@pytest.mark.parametrize(
+    "field", ["PkgName", "InstalledVersion", "FixedVersion", "PkgPath", "Status"]
+)
+def test_a_null_text_field_reads_as_empty(tmp_path: Path, field: str):
+    """Trivy omits empty fields; a null must not crash rendering or sorting
+    later, which would cost every image's results."""
+    write_scan(tmp_path, CPU, report=make_report(make_vuln(**{field: None})))
+    write_scan(tmp_path, CU128, report=make_report(make_vuln(PkgName="other")))
+    report = render_all(tmp_path)
+    scans = {s.image.name: s for s in load_scans(tmp_path)}
+    assert scans[CPU[0]].scanned and scans[CU128[0]].scanned
+    assert "CVE-2026-0001" in report
+
+
+@pytest.mark.parametrize(
+    "vuln",
+    [
+        pytest.param(make_vuln(PkgName=7), id="number"),
+        pytest.param(make_vuln(VulnerabilityID=123), id="numeric-id"),
+        pytest.param(make_vuln(Severity=["HIGH"]), id="list"),
+        pytest.param(make_vuln(VulnerabilityID=None), id="null-id"),
+    ],
+)
+def test_a_non_text_field_fails_only_its_image(tmp_path: Path, vuln: dict):
+    write_scan(tmp_path, CPU, report=make_report(vuln))
+    write_scan(tmp_path, CU128, report=make_report(make_vuln(PkgName="other")))
+    report = render_all(tmp_path)
+    scans = {s.image.name: s for s in load_scans(tmp_path)}
+    assert scans[CPU[0]].error.startswith("unparseable result: ")
+    assert scans[CU128[0]].scanned
+    assert "CVE-2026-0001" in report
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

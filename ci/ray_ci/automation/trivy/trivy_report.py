@@ -192,6 +192,19 @@ class Group:
         return sorted({f.location for f in self.findings})
 
 
+def _text(record: Mapping[str, Any], key: str, required: bool = False) -> str:
+    """A text field. Trivy omits empty ones, so missing or null reads as
+    empty; any other type raises, which fails only this image's result."""
+    value = record.get(key)
+    if value is None:
+        if required:
+            raise ValueError(f"{key} is missing")
+        return ""
+    if not isinstance(value, str):
+        raise TypeError(f"{key} is a {type(value).__name__}, not a string")
+    return value
+
+
 def _finding(
     vuln: Mapping[str, Any],
     result: Mapping[str, Any],
@@ -199,16 +212,16 @@ def _finding(
     statement: str = "",
 ) -> Finding:
     return Finding(
-        vuln_id=vuln["VulnerabilityID"],
-        severity=vuln.get("Severity", "UNKNOWN"),
-        pkg_name=vuln.get("PkgName", ""),
-        installed=vuln.get("InstalledVersion", ""),
-        fixed=vuln.get("FixedVersion", ""),
-        status=vuln.get("Status", ""),
-        pkg_class=result.get("Class", ""),
-        pkg_type=result.get("Type", ""),
-        path=vuln.get("PkgPath") or result.get("Target", ""),
-        url=vuln.get("PrimaryURL", ""),
+        vuln_id=_text(vuln, "VulnerabilityID", required=True),
+        severity=_text(vuln, "Severity") or "UNKNOWN",
+        pkg_name=_text(vuln, "PkgName"),
+        installed=_text(vuln, "InstalledVersion"),
+        fixed=_text(vuln, "FixedVersion"),
+        status=_text(vuln, "Status"),
+        pkg_class=_text(result, "Class"),
+        pkg_type=_text(result, "Type"),
+        path=_text(vuln, "PkgPath") or _text(result, "Target"),
+        url=_text(vuln, "PrimaryURL"),
         suppressed=suppressed,
         statement=statement,
     )
@@ -230,11 +243,11 @@ def parse_trivy_report(report: Mapping[str, Any]) -> ParsedReport:
                         modified["Finding"],
                         result,
                         suppressed=True,
-                        statement=modified.get("Statement", ""),
+                        statement=_text(modified, "Statement"),
                     )
                 )
     os_meta = (report.get("Metadata") or {}).get("OS") or {}
-    os_name = " ".join(filter(None, (os_meta.get("Family"), os_meta.get("Name"))))
+    os_name = " ".join(filter(None, (_text(os_meta, "Family"), _text(os_meta, "Name"))))
     return ParsedReport(findings=findings, packages=packages, os_name=os_name)
 
 
