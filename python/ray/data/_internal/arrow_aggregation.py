@@ -1,4 +1,4 @@
-from typing import Callable, List, NamedTuple, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -67,7 +67,9 @@ class ArrowAggSpec(NamedTuple):
     # group of one.  Lets a reducer turn raw rows (shipped when a map task
     # skipped partial aggregation) into partial state without a group_by, so
     # one ``merge_specs`` pass covers raw and partial shards alike.
-    raw_to_partial: Optional[Callable[..., List["pa.ChunkedArray"]]] = None
+    raw_to_partial: Optional[
+        Callable[..., List[Union["pa.Array", "pa.ChunkedArray"]]]
+    ] = None
 
 
 # --- reusable finalizers (multi-line; referenced from AggregateFn specs) ------
@@ -100,7 +102,7 @@ def _ones(block: "pa.Table") -> "pa.Array":
 
 def _count_state(
     block: "pa.Table", source_col: Optional[str], options: ArrowAggOptions
-) -> "pa.Array":
+) -> Union["pa.Array", "pa.ChunkedArray"]:
     """Per-row ``count`` state: 1 per row, or 0 for nulls when they're ignored."""
     if source_col is None or not options.ignore_nulls:
         return _ones(block)

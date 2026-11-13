@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 import ray
@@ -953,13 +954,18 @@ def test_partial_agg_forced_modes(mode, expect_partial):
     assert _is_partial(out) == expect_partial
 
 
-def _reduce_shards(shards):
+def _reduce_shards_table(shards) -> pa.Table:
     from ray.data._internal.execution.operators.hash_aggregate_v2 import (
         _make_aggregating_reduce_fn,
     )
 
     reduce_fn = _make_aggregating_reduce_fn(("k",), _partial_agg_test_aggs())
     (out,) = list(reduce_fn(0, [shards]))
+    return out
+
+
+def _reduce_shards(shards):
+    out = _reduce_shards_table(shards)
     return out.to_pandas().sort_values("k").reset_index(drop=True)
 
 
@@ -993,6 +999,36 @@ def test_partial_agg_reduce_merges_raw_and_partial_shards(layout):
     expected = _reduce_shards(shards_for(("always", "always", "always")))
     actual = _reduce_shards(shards_for(layout))
 
+    pd.testing.assert_frame_equal(actual, expected, check_exact=False)
+
+
+def test_partial_agg_reduce_mixed_shards_dictionary_keys():
+    """Raw and pre-aggregated shards with dictionary-encoded keys still
+    concatenate and group together in the reducer."""
+    import pandas as pd
+
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=900, num_keys=40)
+    keys = pc.cast(table["k"], pa.string()).combine_chunks().dictionary_encode()
+    table = table.set_column(0, "k", keys)
+    chunks = [table.slice(i * 300, 300) for i in range(3)]
+
+    def reduce_layout(modes):
+        shards = [
+            _make_partial_agg_transformer(PartialAggMode(mode))(chunk)
+            for mode, chunk in zip(modes, chunks)
+        ]
+        out = _reduce_shards_table(shards)
+        assert pa.types.is_dictionary(out.schema.field("k").type)
+        df = out.to_pandas()
+        df["k"] = df["k"].astype(str)
+        return df.sort_values("k").reset_index(drop=True)
+
+    expected = reduce_layout(("always", "always", "always"))
+    actual = reduce_layout(("always", "never", "never"))
     pd.testing.assert_frame_equal(actual, expected, check_exact=False)
 
 

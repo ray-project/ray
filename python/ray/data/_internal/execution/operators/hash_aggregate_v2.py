@@ -125,11 +125,17 @@ def _raw_rows_to_partials(
         partials, _ = _aggregate_raw_rows(table, keys, aggs, specs)
         return partials
 
-    # Cast each state column to the type the map-side group_by would produce
+    # Cast every column to the type the map-side group_by would produce
     # (e.g. int32 values -> int64 sums), so it concatenates with real partials.
+    # Keys normally keep their type through a group_by, which makes their cast
+    # a no-op; it's there in case a pyarrow version re-encodes them.
     target_schema = _aggregate_raw_rows(table.slice(0, 0), keys, aggs, specs)[0].schema
 
-    columns = {k: table[k] for k in keys}
+    def _as_target(name: str, column):
+        target_type = target_schema.field(name).type
+        return column if column.type == target_type else pc.cast(column, target_type)
+
+    columns = {k: _as_target(k, table[k]) for k in keys}
     for i, (agg, spec) in enumerate(zip(aggs, specs)):
         col = agg.get_target_column()
         opts = arrow_agg_options(agg._ignore_nulls)
@@ -140,7 +146,7 @@ def _raw_rows_to_partials(
         states = raw_to_partial(table, i, col, opts)
         for component, state in zip(spec.components, states):
             name = f"__agg{i}_{component}"
-            columns[name] = pc.cast(state, target_schema.field(name).type)
+            columns[name] = _as_target(name, state)
     return pa.table(columns)
 
 
