@@ -7,7 +7,14 @@ from typing import Optional
 import pytest
 
 from ci.ray_ci.automation.trivy.trivy_report import (
+    EXIT_CLEAN,
+    EXIT_FINDINGS,
+    EXIT_INCOMPLETE,
     Finding,
+    Image,
+    ImageScan,
+    exit_code,
+    group_findings,
     load_scans,
     parse_trivy_report,
 )
@@ -16,6 +23,14 @@ FIXTURES = Path(__file__).parent / "testdata"
 
 # (name, image_type, python_version, platform, architecture, fixture)
 CPU = ("ray-py3.12-cpu", "ray", "3.12", "cpu", "x86_64", "ray-py3.12-cpu.json")
+CPU_ARM = (
+    "ray-py3.12-cpu-aarch64",
+    "ray",
+    "3.12",
+    "cpu",
+    "aarch64",
+    "ray-py3.12-cpu-aarch64.json",
+)
 CU128 = (
     "ray-py3.12-cu12.8.1-cudnn",
     "ray",
@@ -23,6 +38,14 @@ CU128 = (
     "cu12.8.1-cudnn",
     "x86_64",
     "ray-py3.12-cu12.8.1-cudnn.json",
+)
+LLM = (
+    "ray-llm-py3.12-cu13.0.0-cudnn",
+    "ray-llm",
+    "3.12",
+    "cu13.0.0-cudnn",
+    "x86_64",
+    "ray-llm-py3.12-cu13.0.0-cudnn.json",
 )
 
 
@@ -87,6 +110,22 @@ def make_report(*vulns: dict, packages: int = 1) -> dict:
             }
         ],
     }
+
+
+def make_image(
+    image_type: str = "ray",
+    python_version: str = "3.12",
+    platform: str = "cpu",
+    architecture: str = "x86_64",
+) -> Image:
+    name = f"{image_type}-py{python_version}-{platform}-{architecture}"
+    return Image(
+        name=name,
+        image_type=image_type,
+        python_version=python_version,
+        platform=platform,
+        architecture=architecture,
+    )
 
 
 @pytest.mark.parametrize(
@@ -261,6 +300,102 @@ def test_load_scans_isolates_malformed_status_records(
     assert expected_error in scans["x"].error
 
 
+def test_group_findings_dedupes_across_images_and_skips_noise(tmp_path: Path):
+    for spec in (CPU, CPU_ARM, CU128, LLM):
+        write_scan(tmp_path, spec)
+    scans = load_scans(tmp_path)
+    groups = {g.finding.key: g for g in group_findings(scans)}
+
+    pyjwt = groups[("CVE-2026-102268", "PyJWT", "2.12.1")]
+    assert len(pyjwt.images) == 4
+    # MEDIUM/LOW findings (wget, rustls) never reach the report.
+    assert not any(key[1] in ("wget", "rustls") for key in groups)
+    # The kernel-header CVEs come only from the CUDA images, and have no fix.
+    libc = [g for key, g in groups.items() if key[1] == "linux-libc-dev"]
+    assert libc and all(not g.fixable for g in libc)
+    assert all(
+        {i.name for i in g.images}
+        == {"ray-py3.12-cu12.8.1-cudnn", "ray-llm-py3.12-cu13.0.0-cudnn"}
+        for g in libc
+    )
+
+
+def two_path_scan() -> ImageScan:
+    dup = make_report(
+        make_vuln(PkgPath="b/site-packages/x"),
+        make_vuln(PkgPath="a/site-packages/x"),
+        make_vuln(PkgPath="a/site-packages/x"),
+    )
+    parsed = parse_trivy_report(dup)
+    return ImageScan(image=make_image(), findings=parsed.findings, packages=1)
+
+
+def test_group_findings_counts_an_image_once_but_keeps_every_location():
+    scan = two_path_scan()
+    (group,) = group_findings([scan])
+    assert group.images == [scan.image]
+    assert group.locations == ["a/site-packages", "b/site-packages"]
+
+
+def scan_of(image_type: str, vuln: dict) -> ImageScan:
+    parsed = parse_trivy_report(make_report(vuln))
+    return ImageScan(
+        image=make_image(image_type=image_type), findings=parsed.findings, packages=1
+    )
+
+
+@pytest.mark.parametrize("fixed_first", [True, False])
+def test_fixability_is_decided_per_image_not_by_image_order(fixed_first: bool):
+    """Same CVE, package and version: fixed in one image, will_not_fix in another."""
+    fixed = make_vuln(FixedVersion="3.0.3", Status="fixed")
+    wont = make_vuln(FixedVersion="", Status="will_not_fix")
+    # Scans arrive in image sort order, so "ray" is always grouped first.
+    first, second = (fixed, wont) if fixed_first else (wont, fixed)
+    scans = [scan_of("ray", first), scan_of("zzz", second)]
+    fixed_type = "ray" if fixed_first else "zzz"
+    wont_type = "zzz" if fixed_first else "ray"
+
+    assert exit_code(scans) == EXIT_FINDINGS
+    groups = group_findings(scans)
+    fixable = [g for g in groups if g.fixable]
+    no_fix = [g for g in groups if not g.fixable]
+    assert [i.image_type for g in fixable for i in g.images] == [fixed_type]
+    assert [i.image_type for g in no_fix for i in g.images] == [wont_type]
+    assert fixable[0].finding.fixed == "3.0.3"
+
+
+def test_group_findings_suppressed_are_separate(tmp_path: Path):
+    spec = CPU[:5] + ("ray-py3.12-cpu-suppressed.json",)
+    write_scan(tmp_path, spec)
+    scans = load_scans(tmp_path)
+    assert not any(
+        g.finding.vuln_id == "CVE-2026-102268" for g in group_findings(scans)
+    )
+    (suppressed,) = group_findings(scans, suppressed=True)
+    assert suppressed.finding.vuln_id == "CVE-2026-102268"
+
+
+def scan_with(*vulns: dict, error: str = "") -> ImageScan:
+    findings = parse_trivy_report(make_report(*vulns)).findings
+    return ImageScan(image=make_image(), findings=findings, packages=1, error=error)
+
+
+@pytest.mark.parametrize(
+    ("scans", "issues", "expected"),
+    [
+        ([scan_with(make_vuln(FixedVersion="", Status="affected"))], [], EXIT_CLEAN),
+        ([scan_with(make_vuln(Severity="MEDIUM"))], [], EXIT_CLEAN),
+        ([scan_with(make_vuln())], [], EXIT_FINDINGS),
+        ([scan_with(error="crane pull failed")], [], EXIT_INCOMPLETE),
+        ([scan_with()], ["scanner metadata unreadable"], EXIT_INCOMPLETE),
+        ([scan_with(make_vuln()), scan_with(error="boom")], [], EXIT_INCOMPLETE),
+        ([], [], EXIT_INCOMPLETE),
+    ],
+)
+def test_exit_code(scans: list, issues: list, expected: int):
+    assert exit_code(scans, issues) == expected
+
+
 @pytest.mark.parametrize(
     "report",
     [
@@ -277,6 +412,25 @@ def test_a_wrongly_shaped_result_fails_only_its_image(tmp_path: Path, report):
     scans = {s.image.name: s for s in load_scans(tmp_path)}
     assert scans[CPU[0]].error.startswith("unparseable result: ")
     assert scans[CU128[0]].scanned
+
+
+# Exit codes rayci retries on its own (rayci raycicmd/command_step.go,
+# defaultRayRetry, v0.51.0): a result reported with one of them reruns the
+# report up to 3 more times.
+RAYCI_RETRIED = {-1, 1, 3, 53, 125, 126, 127, 255}
+# Bazel's own exit codes (bazel src/main/java/com/google/devtools/build/lib/
+# util/ExitCode.java). The report runs under `bazel run`, so a result code
+# among them could be read as Bazel's.
+BAZEL_EXIT_CODES = {0, 1, 2, 3, 4, 6, 7, 8, 9, 32, 33, 34, 36, 37, 38, 39, 45, 48}
+
+
+def test_result_exit_codes_are_not_retried_or_mistaken_for_bazels():
+    assert EXIT_CLEAN == 0
+    # The pipeline file and both module docstrings name these numbers.
+    assert (EXIT_FINDINGS, EXIT_INCOMPLETE) == (10, 11)
+    for code in (EXIT_FINDINGS, EXIT_INCOMPLETE):
+        assert code not in RAYCI_RETRIED
+        assert code not in BAZEL_EXIT_CODES
 
 
 if __name__ == "__main__":
