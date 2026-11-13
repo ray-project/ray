@@ -3383,8 +3383,9 @@ def test_exec_kill_and_reclaim_run_runsc_with_gomaxprocs(private_bundles, monkey
 
 
 @pytest.mark.parametrize("oom_score_adj", [None, 0])
+@pytest.mark.parametrize("choom", [None, "/usr/bin/choom"])
 def test_commands_in_a_limited_sandbox_skip_the_cgroup_join(
-    tmp_path, monkeypatch, oom_score_adj
+    tmp_path, monkeypatch, oom_score_adj, choom
 ):
     """exec, write_file and read_file never join the sandbox's cgroup: the
     command runs in the Sentry, which is in the sandbox's cgroup already, and
@@ -3395,9 +3396,7 @@ def test_commands_in_a_limited_sandbox_skip_the_cgroup_join(
         path = tmp_path / "ray-sandbox-000000000001"
         affinity = [0, 1]
 
-        def wrap(self, command):
-            raise AssertionError("commands must not join the sandbox cgroup")
-
+    monkeypatch.setattr(gvisor, "_choom", lambda: choom)
     backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
     backend._sandbox_metadata["sb-1"] = {
         "config": GVisorSandboxConfig(
@@ -3429,10 +3428,24 @@ def test_commands_in_a_limited_sandbox_skip_the_cgroup_join(
         assert "--cpus" not in args
         if oom_score_adj is None:
             assert args[0] == "runsc"
+        elif choom:
+            assert args[:5] == [choom, "-n", "0", "--", "runsc"]
         else:
             # The launcher, with no cgroup to join, only sets the OOM score.
             assert args[3] == ""
             assert args[4:7] == ["--oom-score-adj", "0", "runsc"]
+
+
+@pytest.mark.skipif(shutil.which("choom") is None, reason="Needs util-linux's choom")
+def test_choom_gives_a_command_the_sandboxs_oom_score():
+    """What exec and file I/O run through on a node that has choom."""
+    gvisor._choom.cache_clear()
+    meta = {"config": GVisorSandboxConfig(image="busybox:latest", oom_score_adj=1000)}
+    show = "print(open('/proc/self/oom_score_adj').read().strip())"
+    command = GVisorSandboxBackend._wrap_workload(meta, [sys.executable, "-c", show])
+    assert command[0] == shutil.which("choom")
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == "1000"
 
 
 if __name__ == "__main__":
