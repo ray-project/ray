@@ -145,9 +145,21 @@ def _shared_affinity(
     return sorted(sorted(load, key=lambda c: (load[c], c))[:count])
 
 
+def _online_cpus() -> str:
+    try:
+        return _read(Path("/sys/devices/system/cpu/online"))
+    except OSError:
+        return ""
+
+
 @lru_cache(maxsize=None)
-def _siblings(cpu: int) -> FrozenSet[int]:
-    """The CPUs that share ``cpu``'s physical core, ``cpu`` included."""
+def _siblings(cpu: int, online: str) -> FrozenSet[int]:
+    """The CPUs that share ``cpu``'s physical core, ``cpu`` included.
+
+    The kernel lists only a core's online threads, so the answer is cached
+    for the node's online CPUs, ``online``, and read again once a CPU goes
+    off line or comes back.
+    """
     path = Path(f"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list")
     try:
         return frozenset(_cpus(_read(path))) | {cpu}
@@ -156,23 +168,40 @@ def _siblings(cpu: int) -> FrozenSet[int]:
         return frozenset({cpu})
 
 
-def _whole_cores(count: int, pool: Set[int], load: Dict[int, int]) -> List[int]:
-    """At least ``count`` of the pool's CPUs, in whole physical cores, the
-    least used cores first. While the pool has a core that no sandbox uses,
-    no two sandboxes share a core's hardware threads, so a busy neighbor
-    can't slow a sandbox through them."""
-    cores, seen = [], set()
+def _cores(pool: Set[int]) -> List[List[int]]:
+    """The pool's CPUs grouped by physical core, in CPU order."""
+    online = _online_cpus()
+    cores: List[List[int]] = []
+    seen: Set[int] = set()
     for c in sorted(pool):
         if c not in seen:
-            core = sorted(_siblings(c) & pool)
+            core = sorted(_siblings(c, online) & pool)
             seen.update(core)
             cores.append(core)
-    cores.sort(key=lambda core: (sum(load[c] for c in core), core[0]))
+    return cores
+
+
+def _whole_cores(count: int, pool: Set[int], load: Dict[int, int]) -> List[int]:
+    """At least ``count`` of the pool's CPUs, in whole physical cores, the
+    least used cores first, or [] if that takes the whole pool. While the
+    pool has a core that no sandbox uses, no two sandboxes share a core's
+    hardware threads, so a busy neighbor can't slow a sandbox through them."""
+    cores = _cores(pool)
+    # By sandboxes per thread, then the cores with more threads first. Cores
+    # can differ in width: the pool may hold one thread of a core. By total
+    # use, a narrow core would look less used than a wide one with the same
+    # use, and a narrow idle core would be taken before a wide one that
+    # alone is enough.
+    cores.sort(
+        key=lambda core: (sum(load[c] for c in core) / len(core), -len(core), core[0])
+    )
     chosen: List[int] = []
     for core in cores:
         if len(chosen) >= count:
             break
         chosen.extend(core)
+    if len(chosen) >= len(pool):
+        return []  # Every CPU of the pool, which restricts nothing.
     return sorted(chosen)
 
 
@@ -281,7 +310,9 @@ class SandboxCgroupManager:
             )
         if _read(root / "cgroup.procs"):
             raise RuntimeError(f"Delegated sandbox parent {root} contains processes")
-        _cpu_placement()
+        if cpu > 0:
+            # Only a sandbox with a CPU limit is placed on CPUs.
+            _cpu_placement()
 
     def choose_cpus(self, cpu: float, used: Iterable[Iterable[int]]) -> List[int]:
         """Choose the CPUs that a sandbox with a CPU limit runs on.
