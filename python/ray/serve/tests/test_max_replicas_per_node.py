@@ -87,6 +87,9 @@ def test_basic(ray_autoscaling_cluster):
     """Test that max_replicas_per_node is honored."""
 
     ray.init()
+    # AutoscalingCluster runs logical nodes on one host, so per-node proxies
+    # would contend for the same listener ports.
+    serve.start(proxy_location="HeadOnly")
 
     @serve.deployment
     class D:
@@ -159,6 +162,9 @@ def test_update_max_replicas_per_node(ray_autoscaling_cluster):
     """Test re-deploying a deployment with different max_replicas_per_node."""
 
     ray.init()
+    # AutoscalingCluster runs logical nodes on one host, so per-node proxies
+    # would contend for the same listener ports.
+    serve.start(proxy_location="HeadOnly")
 
     @serve.deployment
     class D:

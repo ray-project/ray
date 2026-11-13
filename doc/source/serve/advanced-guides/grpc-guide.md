@@ -218,7 +218,7 @@ If Serve runs with the HAProxy-based proxy and more than one application is depl
 ## Check proxy health
 Similar to HTTP `/-/routes` and `/-/healthz` endpoints, Serve also provides gRPC service method to be used in health check.
 - `/ray.serve.RayServeAPIService/ListApplications` is used to list all applications deployed in Serve.
-- `/ray.serve.RayServeAPIService/Healthz` is used to check the health of the proxy. It returns `OK` status and "success" message if the proxy is healthy.
+- `/ray.serve.RayServeAPIService/Healthz` is used to check the health of the proxy. It returns an `OK` status if the proxy is healthy. The Python proxy also returns a `"success"` message; HAProxy returns a trailers-only response with no message body.
 
 The service method and protobuf are defined as below:
 ```proto
