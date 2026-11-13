@@ -4,10 +4,15 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from ray.train._internal import session
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import (
+    V1_REMOVAL_VERSION,
     V2_MIGRATION_GUIDE_MESSAGE,
     _v2_migration_warnings_enabled,
 )
-from ray.train.utils import _copy_doc, _log_deprecation_warning
+from ray.train.utils import (
+    _copy_doc,
+    _log_deprecation_warning,
+    _make_deprecated_module_getattr,
+)
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -15,7 +20,7 @@ if TYPE_CHECKING:
 
 
 # The context singleton on this process.
-_default_context: "Optional[TrainContext]" = None
+_default_context: "Optional[_TrainContext]" = None
 _context_lock = threading.Lock()
 
 
@@ -144,5 +149,36 @@ def get_context() -> TrainContext:
 
     with _context_lock:
         if _default_context is None:
-            _default_context = TrainContext()
+            _default_context = _TrainContext()
         return _default_context
+
+
+# `ray.train.context` is the Ray Train v1 context module. Ray code imports the
+# private names below, and users get a deprecation warning through `__getattr__`.
+# The classes keep their public `__name__`, so existing pickles still resolve.
+_TrainContext = TrainContext
+_get_context = get_context
+del TrainContext, get_context
+
+
+def _context_module_deprecation_message(name: str) -> str:
+    return (
+        f"`ray.train.context.{name}` is part of Ray Train v1, which is deprecated "
+        f"and will be removed in {V1_REMOVAL_VERSION}. Use `ray.train.{name}` "
+        f"instead. {V2_MIGRATION_GUIDE_MESSAGE}"
+    )
+
+
+__getattr__ = _make_deprecated_module_getattr(
+    __name__,
+    {
+        "TrainContext": (
+            _TrainContext,
+            _context_module_deprecation_message("TrainContext"),
+        ),
+        "get_context": (
+            _get_context,
+            _context_module_deprecation_message("get_context"),
+        ),
+    },
+)

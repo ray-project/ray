@@ -939,6 +939,22 @@ py_test(
 )
 
 py_test(
+    name = "test_v1_deprecation_warnings",
+    size = "small",
+    srcs = ["tests/test_v1_deprecation_warnings.py"],
+    # NOTE: This test checks the warnings for Ray Train V1, so it runs in V1 mode.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
+)
+
+py_test(
     name = "test_e2e_wandb_integration",
     # Two full ``TorchTrainer.fit()`` runs (2 workers, 3 epochs) plus a
     # ``ray.init`` per parameterization do not fit in small's 60s budget.

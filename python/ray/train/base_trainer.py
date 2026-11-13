@@ -27,13 +27,17 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
+from ray.train._internal.syncer import SyncConfig
 from ray.train.constants import (
     V2_MIGRATION_GUIDE_LINK_MESSAGE,
     V2_MIGRATION_GUIDE_MESSAGE,
     _v2_migration_warnings_enabled,
 )
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
-from ray.train.utils import _log_deprecation_warning
+from ray.train.utils import (
+    _log_deprecation_warning,
+    _log_v1_trainer_deprecation_warning,
+)
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -233,6 +237,8 @@ class BaseTrainer(abc.ABC):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        _log_v1_trainer_deprecation_warning(type(self))
+
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
         )
@@ -599,7 +605,7 @@ class BaseTrainer(abc.ABC):
         if self.run_config.progress_reporter is not None:
             _log_deprecation_warning(PROGRESS_REPORTER_DEPRECATION_MESSAGE)
 
-        if self.run_config.sync_config != ray.train.SyncConfig():
+        if self.run_config.sync_config != SyncConfig():
             _log_deprecation_warning(SYNC_CONFIG_DEPRECATION_MESSAGE)
 
     @classmethod

@@ -582,7 +582,7 @@ class RunConfig:
             prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
-        sync_config: Configuration object for syncing. See train.SyncConfig.
+        sync_config: Configuration object for syncing. See ray.tune.SyncConfig.
         verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose. Defaults to 1.
             If the ``RAY_AIR_NEW_OUTPUT=0`` environment variable is set,
@@ -617,7 +617,7 @@ class RunConfig:
     storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     failure_config: Optional[FailureConfig] = None
     checkpoint_config: Optional[CheckpointConfig] = None
-    sync_config: Optional["ray.train.SyncConfig"] = None
+    sync_config: Optional["ray.tune.SyncConfig"] = None
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     callbacks: Optional[List["Callback"]] = None
@@ -628,7 +628,7 @@ class RunConfig:
     local_dir: Optional[str] = None
 
     def __post_init__(self):
-        from ray.train import SyncConfig
+        from ray.train._internal.syncer import SyncConfig
         from ray.train.constants import DEFAULT_STORAGE_PATH
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
@@ -680,7 +680,7 @@ class RunConfig:
             self.storage_path = self.storage_path.as_posix()
 
     def __repr__(self):
-        from ray.train import SyncConfig
+        from ray.train._internal.syncer import SyncConfig
 
         return _repr_dataclass(
             self,

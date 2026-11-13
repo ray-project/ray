@@ -76,6 +76,27 @@ def _v2_migration_warnings_enabled() -> bool:
     return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, True)
 
 
+# Ray Train v1 is removed in this release.
+V1_REMOVAL_VERSION = "Ray 3.0"
+
+V1_MODE_DEPRECATION_MESSAGE = (
+    "Ray Train v1, selected by setting RAY_TRAIN_V2_ENABLED=0, is deprecated and "
+    f"will be removed in {V1_REMOVAL_VERSION}. Unset RAY_TRAIN_V2_ENABLED to use "
+    "Ray Train v2, which is the default. "
+    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+)
+
+TORCH_AMP_DEPRECATION_MESSAGE = (
+    "The `accelerate`, `backward`, and `prepare_optimizer` utility methods "
+    "in the `ray.train.torch` module are deprecated and will be removed in "
+    f"{V1_REMOVAL_VERSION}. "
+    "Please use the native PyTorch mixed precision API directly, or "
+    "a library such as Lightning or HuggingFace Transformers/Accelerate. "
+    "See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
+)
+
+
 # ==================================================
 #               Environment Variables
 # ==================================================
