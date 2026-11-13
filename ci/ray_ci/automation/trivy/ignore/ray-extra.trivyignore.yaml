@@ -1,0 +1,7 @@
+# Accepted CRITICAL/HIGH findings for the ray-extra images, applied with --ignorefile.
+#
+# Entries apply to every ray-extra image scanned, so scope each one with paths or
+# purls where possible. Every entry needs a statement saying why the risk is
+# accepted and an expired_at no more than a few weeks out, so it gets
+# re-checked. Format: https://trivy.dev/docs/latest/configuration/filtering/
+vulnerabilities: []
