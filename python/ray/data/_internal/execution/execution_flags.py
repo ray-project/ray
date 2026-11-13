@@ -136,6 +136,15 @@ SIZER_TRANSFER_THRASH_WINDOW_TICKS: int = env_integer(
     "RAY_DATA_SIZER_TRANSFER_THRASH_WINDOW_TICKS", 20
 )
 
+# Pipeline optimizer: the most of an operator's actors one capacity transfer
+# may take, as a fraction of its pool (at least one actor). A donor's surplus
+# is judged from a short window; when that window caught the op blocked, the
+# surplus reads far too high, so a single transfer is kept small and a real
+# surplus is moved over several.
+SIZER_TRANSFER_MAX_DONATION_FRACTION: float = env_float(
+    "RAY_DATA_SIZER_TRANSFER_MAX_DONATION_FRACTION", 0.25
+)
+
 # Length of the optimizer's per-operator signal windows, in samples. One
 # sample is taken per scheduling-loop step.
 SIZER_SIGNAL_WINDOW_SAMPLES: int = env_integer(

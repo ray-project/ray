@@ -24,6 +24,7 @@ from typing_extensions import override
 from ray.data._internal.execution.execution_flags import (
     SIZER_CADENCE_S,
     SIZER_CLUSTER_SETTLE_S,
+    SIZER_TRANSFER_MAX_DONATION_FRACTION,
     SIZER_TRANSFER_THRASH_WINDOW_TICKS,
     SIZER_TRANSFER_TIMEOUT_S,
 )
@@ -178,7 +179,8 @@ class DonorCapacity:
 
         work_floor = ceil(peak productive slots / max_actor_concurrency)
         protected  = max(min_size, work_floor)
-        removable  = serving_size - protected
+        cap        = max(1, floor(serving_size * max_donation_fraction))
+        removable  = min(serving_size - protected, cap)
 
     Productive slots are tasks actually running (in-flight capped at each
     actor's concurrency) on actors that are not output-blocked, taken at
@@ -186,6 +188,11 @@ class DonorCapacity:
     so they are not protected. Whether
     the op wants to grow is deliberately ignored -- a backpressured feeder's
     demand is phantom exactly when its consumer is the bottleneck.
+
+    The cap (``SIZER_TRANSFER_MAX_DONATION_FRACTION``) bounds one transfer:
+    an op whose window caught it output-blocked shows few productive slots,
+    yet needs its actors back once its consumer catches up. A real surplus
+    still moves, over several transfers.
     """
 
     op: "ExperimentalActorPoolMapOperator"
@@ -212,18 +219,22 @@ def assess_donor(
         protected = (
             max(pool.min_size(), math.ceil(peak / conc)) + pool.num_pending_actors()
         )
-    removable = cur - protected
+    surplus = cur - protected
+    cap = max(1, math.floor(cur * SIZER_TRANSFER_MAX_DONATION_FRACTION))
+    removable = min(surplus, cap)
     # The no_donor_surplus refusal counter says a transfer was blocked but not
     # why. ``protected`` is a MAX over the productive window, so one early
     # burst can hold a whole pool protected long after it stops producing;
     # without these inputs that is indistinguishable from a busy donor.
     logger.debug(
-        "PipelineOptimizer donor %s: cur=%d peak=%s protected=%d removable=%d "
-        "(conc=%d min_size=%d)",
+        "PipelineOptimizer donor %s: cur=%d peak=%s protected=%d surplus=%d "
+        "cap=%d removable=%d (conc=%d min_size=%d)",
         op.name,
         cur,
         "none" if peak is None else f"{peak:g}",
         protected,
+        surplus,
+        cap,
         removable,
         conc,
         pool.min_size(),
@@ -236,6 +247,19 @@ def assess_donor(
         per_actor=pool.per_actor_resource_usage(),
         removable=removable,
     )
+
+
+def _output_clear(
+    op: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
+) -> bool:
+    """Whether ``op``'s output read not backpressured at every sample of the
+    signal window. A sink has no downstream to be backpressured by, so it is
+    always clear. An unfilled window is not clear: nothing is decided on
+    partial history."""
+    if not op.output_dependencies:
+        return True
+    clear = ctx.not_backpressured_streak.get(op)
+    return clear is not None and clear.is_streak()
 
 
 # --- planning -----------------------------------------------------------------
@@ -829,7 +853,9 @@ class CapacityTransfer(OptimizationRule[TransferState]):
     def _pick_recipients(
         self, ctx: OptimizationContext
     ) -> List["ExperimentalActorPoolMapOperator"]:
-        """Non-PG ops whose ask has gone ungranted for a full streak. Real asks
+        """Non-PG ops whose ask has gone ungranted for a full streak, and
+        whose consumers are neither short nor output-backpressured: an op
+        feeding a blocked consumer is not what limits the pipeline. Real asks
         come before silent ones: an op that asked and was clamped is
         evidence; a silent want is an inference, so when donors are scarce
         the real asks get the budget."""
@@ -842,11 +868,18 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                 or not self._guard.can_scale(op)
             ):
                 continue
-            if any(c in ctx.shortfalls for c in ctx.next_ops.get(op, ())):
+            consumers = ctx.next_ops.get(op, ())
+            if any(c in ctx.shortfalls for c in consumers):
                 # The op's own consumer is short, so this op's demand is
                 # phantom: growing it would pile output onto a consumer that
                 # cannot keep up. Serve the consumer first -- this op is donor
                 # material, not a recipient.
+                continue
+            if not all(_output_clear(c, ctx) for c in consumers):
+                # A consumer's output read backpressured somewhere in the
+                # window: the bottleneck is at or past that consumer, which is
+                # not short of input. More of this op only piles blocks in front
+                # of it, so this op is donor material too.
                 continue
             if op.actor_pool.num_pending_actors() > 0:
                 # Sizing already in flight; judge again once it lands.

@@ -551,6 +551,40 @@ def test_feeder_with_short_consumer_donates_instead_of_competing():
     assert _donors(requests) == {feeder}
 
 
+@pytest.mark.parametrize(
+    "consumer_clear,receives",
+    [
+        pytest.param(True, True, id="consumer-keeping-up-receives"),
+        # The consumer's output read backpressured within the window: the
+        # bottleneck is at or past it, and more feeder actors would only pile
+        # blocks in front of it (a reader fed from a blocked preprocess).
+        pytest.param(False, False, id="consumer-backpressured-skipped"),
+        # No full window yet: nothing is decided on partial history.
+        pytest.param(None, False, id="consumer-window-unfilled-skipped"),
+    ],
+)
+def test_feeder_of_backpressured_consumer_is_not_a_recipient(consumer_clear, receives):
+    donor = _donor_op()
+    consumer = _op("consumer", output_dependencies=[_op("sink")])
+    feeder = _op("feeder", output_dependencies=[consumer])
+    rule = _transfer_rule()
+    ctx = _ctx(
+        non_pg_ops=[donor, feeder, consumer],
+        shortfall_streak={feeder: _bool_streak(True)},
+        shortfalls={feeder: _shortfall(1)},
+        productive_tasks_signal={donor: _signal(1)},
+        not_backpressured_streak=(
+            {} if consumer_clear is None else {consumer: _bool_streak(consumer_clear)}
+        ),
+    )
+
+    state = rule.new_state()
+    requests = rule.apply(ctx, state)
+
+    assert _owed(state) == ({feeder: 1} if receives else {})
+    assert _donors(requests) == ({donor} if receives else set())
+
+
 def test_donor_stays_blocked_after_a_transfer_closes():
     # A donor must not be regrown -- by another rule or normal sizing --
     # until its signals reflect the smaller pool: its window is cleared when
@@ -696,6 +730,26 @@ def test_donor_protects_starting_actors(pending, expected):
     op = _op("op", pool=_Pool(current=9, pending=pending))
     donor = assess_donor(op, _ctx(productive_tasks_signal={op: _signal(7)}))
     assert (donor.removable if donor else None) == expected
+
+
+@pytest.mark.parametrize(
+    "current,productive,expected",
+    [
+        # A blocked 31-actor op with 7 productive slots reads 24 surplus; one
+        # transfer takes at most a quarter of the pool.
+        pytest.param(31, 7, 7, id="blocked-pool-capped"),
+        pytest.param(8, 0, 2, id="idle-pool-capped"),
+        # The cap never goes below one actor, so small pools can still give.
+        pytest.param(3, 0, 1, id="small-pool-gives-one"),
+        # A surplus under the cap is untouched.
+        pytest.param(40, 35, 5, id="surplus-under-cap"),
+    ],
+)
+def test_donor_removable_is_capped_per_transfer(current, productive, expected):
+    op = _op("op", pool=_Pool(current=current))
+    donor = assess_donor(op, _ctx(productive_tasks_signal={op: _signal(productive)}))
+    assert donor is not None
+    assert donor.removable == expected
 
 
 def _idle_donor(name, node, actor_id, per_actor):
