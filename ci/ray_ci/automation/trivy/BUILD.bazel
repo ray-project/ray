@@ -121,6 +121,36 @@ py_test(
     ],
 )
 
+py_library(
+    name = "scan_images",
+    srcs = ["scan_images.py"],
+    deps = [
+        ":registry",
+        ":scan_store",
+        # RayImagePushContext, so refs and tags match the publish step's.
+        "//ci/ray_ci/automation",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_scan_images",
+    size = "small",
+    srcs = ["test_scan_images.py"],
+    data = glob(["testdata/*.json"]),
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":scan_images",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
 py_test(
     name = "test_workspace_contexts",
     size = "small",
