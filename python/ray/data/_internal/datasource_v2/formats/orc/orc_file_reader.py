@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import Iterator, List, Optional, Sequence
 
@@ -17,6 +18,14 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
 from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator import (
     estimate_batch_size,
 )
+from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+    MetadataUnavailable,
+    read_metadata,
+)
+from ray.data._internal.datasource_v2.formats.orc.orc_predicate import (
+    OrcPredicate,
+    safe_scan_types,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
@@ -29,13 +38,22 @@ from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
+logger = logging.getLogger(__name__)
+
+
+def validate_statistics_pruning(mode):
+    if mode not in ("off", "file"):
+        raise ValueError("orc_statistics_pruning must be 'off' or 'file'")
+    return mode
+
 
 @DeveloperAPI
 class OrcFileReader(FileReader):
     """Read ORC files in batches using PyArrow Dataset fragments.
 
     Each fragment covers a whole file. PyArrow applies row filters to the
-    scanned batches; this reader does not provide ORC-native stripe pruning.
+    scanned batches. Optional file statistics pruning skips files only when
+    trustworthy metadata proves that the filter cannot match.
     Path-derived partition values take precedence over same-named file columns
     and are synthesized before filtering and projection.
     """
@@ -53,6 +71,7 @@ class OrcFileReader(FileReader):
         synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
         target_block_size: Optional[int] = None,
+        statistics_pruning: str = "off",
     ):
         """Initialize the ORC reader.
 
@@ -69,6 +88,7 @@ class OrcFileReader(FileReader):
             schema: Unified schema for file reads and partition values.
             target_block_size: Target output batch size in bytes when batch_size
                 is unset. Observed batches refine subsequent read() calls.
+            statistics_pruning: File statistics pruning, or off.
         """
         super().__init__(
             format=format,
@@ -87,6 +107,7 @@ class OrcFileReader(FileReader):
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
         self._sampled_batch_size: Optional[int] = None
+        self._statistics_pruning = validate_statistics_pruning(statistics_pruning)
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
@@ -143,7 +164,12 @@ class OrcFileReader(FileReader):
         evaluated on the resulting table.
         """
         if self._partition_parser is None:
-            yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+            schema = self._file_dataset_schema
+            if schema is None:
+                schema = fragment.physical_schema
+            yield from self._scan_with_statistics(
+                fragment, scanner_kwargs, schema, self._predicate
+            )
             return
 
         partitions = self._get_partition_values(fragment.path)
@@ -227,18 +253,50 @@ class OrcFileReader(FileReader):
             [field for field in physical_schema if field.name in decoded_names]
         )
         raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
-        scanner = fragment.scanner(**scan_kwargs, schema=file_schema)
         residual_filter = (
             residual_predicate.to_pyarrow() if residual_predicate is not None else None
         )
-        for tagged in scanner.scan_batches():
-            table = pa.Table.from_batches([tagged.record_batch])
+        for table in self._scan_with_statistics(
+            fragment,
+            scan_kwargs,
+            file_schema,
+            data_predicate,
+        ):
             table = self._apply_partition_values(
                 table, partitions, required_columns=required_names
             )
             if residual_filter is not None:
                 table = table.filter(residual_filter)
             yield table
+
+    def _scan_with_statistics(self, fragment, scan_kwargs, schema, predicate):
+        # Bind the original Arrow scanner first: pruning must not suppress
+        # missing-field, invalid-expression, or schema binding errors.
+        scanner = fragment.scanner(**scan_kwargs, schema=schema)
+        if self._statistics_pruning == "off":
+            for tagged in scanner.scan_batches():
+                yield pa.Table.from_batches([tagged.record_batch])
+            return
+        physical = fragment.physical_schema
+        output = scan_kwargs.get("columns")
+        required = set(schema.names if output is None else output)
+        if predicate is not None:
+            required.update(get_column_references(predicate))
+        decoded = pa.schema([field for field in physical if field.name in required])
+        raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded))
+        bound = OrcPredicate(predicate, physical, schema)
+        if bound.eligible and safe_scan_types(physical, schema, required):
+            with fragment.filesystem.open_input_file(fragment.path) as source:
+                try:
+                    metadata = read_metadata(source)
+                    if not bound.can_match(metadata.statistics, metadata.rows):
+                        return
+                except MetadataUnavailable as exc:
+                    logger.debug(
+                        "ORC statistics unavailable for %s: %s", fragment.path, exc
+                    )
+        for tagged in scanner.scan_batches():
+            yield pa.Table.from_batches([tagged.record_batch])
 
     @override
     def _on_batch_read(self, table: pa.Table) -> None:

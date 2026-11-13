@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from dataclasses import fields
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +19,128 @@ from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.expressions import col
+
+
+@pytest.mark.parametrize("codec", ["uncompressed", "zlib", "snappy", "lz4", "zstd"])
+@pytest.mark.parametrize("mode", ["off", "file"])
+def test_orc_statistics_public_pipeline(
+    ray_start_regular_shared, tmp_path, monkeypatch, codec, mode
+):
+    from ray.data.context import DataContext
+
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "use_datasource_v2", True)
+    monkeypatch.setattr(context, "orc_statistics_pruning", mode)
+    rng = random.Random(66995)
+    table = pa.table(
+        {"id": range(4096), "payload": [rng.randbytes(128) for _ in range(4096)]}
+    )
+    path = tmp_path / "data.orc"
+    orc.write_table(
+        table, str(path), compression=codec, stripe_size=8192, batch_size=256
+    )
+    assert orc.ORCFile(str(path)).nstripes > 1
+    predicate = (col("id") >= 3500) & (col("id") < 3800)
+    rows = (
+        ray.data.read_orc(str(path), override_num_blocks=1)
+        .filter(expr=predicate)
+        .select_columns(["payload"])
+        .limit(73)
+        .take_all()
+    )
+    assert rows == table.slice(3500, 73).select(["payload"]).to_pylist()
+
+
+@pytest.mark.parametrize("mode", ["off", "file"])
+def test_orc_file_statistics_pruning_public_worker(
+    ray_start_regular_shared, tmp_path, monkeypatch, mode
+):
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+    from ray.data.context import DataContext
+
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "use_datasource_v2", True)
+    monkeypatch.setattr(context, "orc_statistics_pruning", mode)
+    trace_path = str(tmp_path / "statistics-execution.jsonl")
+    driver_pid = os.getpid()
+    original_create_scanner = OrcDatasourceV2.create_scanner
+
+    class TracingScanner(OrcScanner):
+        def create_reader(self):
+            reader = super().create_reader()
+            original = reader._scan_with_statistics
+
+            def trace(fragment, scan_kwargs, schema, predicate):
+                def record(kind):
+                    with open(trace_path, "a") as stream:
+                        stream.write(
+                            json.dumps(
+                                {
+                                    "kind": kind,
+                                    "path": fragment.path,
+                                    "pid": os.getpid(),
+                                    "mode": reader._statistics_pruning,
+                                }
+                            )
+                            + "\n"
+                        )
+
+                class Fragment:
+                    def __getattr__(self, name):
+                        return getattr(fragment, name)
+
+                    def scanner(self, **kwargs):
+                        native = fragment.scanner(**kwargs)
+
+                        class Scanner:
+                            def scan_batches(self):
+                                if predicate is not None:
+                                    record("scan")
+                                yield from native.scan_batches()
+
+                        return Scanner()
+
+                if predicate is not None:
+                    record("consider")
+                yield from original(Fragment(), scan_kwargs, schema, predicate)
+
+            reader._scan_with_statistics = trace
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return TracingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(OrcDatasourceV2, "create_scanner", create_scanner)
+    paths = [tmp_path / "excluded.orc", tmp_path / "candidate.orc"]
+    for path, values in zip(paths, ([-10, -1], [10, 11])):
+        _write_orc(
+            str(path), pa.table({"x": values, "payload": [str(x) for x in values]})
+        )
+    rows = (
+        ray.data.read_orc([str(path) for path in paths], override_num_blocks=1)
+        .filter(expr=col("x") > 0)
+        .select_columns(["payload"])
+        .take_all()
+    )
+    assert sorted(row["payload"] for row in rows) == ["10", "11"]
+    records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
+    records = [record for record in records if record["pid"] != driver_pid]
+    assert {
+        Path(record["path"]).name for record in records if record["kind"] == "consider"
+    } == {"excluded.orc", "candidate.orc"}
+    assert {record["mode"] for record in records} == {mode}
+    scanned = {
+        Path(record["path"]).name for record in records if record["kind"] == "scan"
+    }
+    assert scanned == (
+        {"excluded.orc", "candidate.orc"} if mode == "off" else {"candidate.orc"}
+    )
 
 
 @pytest.fixture(params=[False, True], ids=["v1", "v2"])

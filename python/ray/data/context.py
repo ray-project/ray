@@ -726,6 +726,10 @@ class DataContext:
             runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
             Contiguous row groups are coalesced up to this size; a single row group
             larger than it is shuffled on its own.
+        orc_statistics_pruning: ORC DataSourceV2 statistics pruning mode.
+            ``off`` (default) disables additional statistics reads. ``file`` skips
+            files proven not to match and streams surviving files. Missing or
+            untrustworthy statistics fall back to the existing streaming reader.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -1128,6 +1132,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    orc_statistics_pruning: str = "off"
     small_shuffle_chunk_size: int = DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
@@ -1276,6 +1281,8 @@ class DataContext:
         self._execution_idx = 0
 
     def __setattr__(self, name: str, value: Any) -> None:
+        if name == "orc_statistics_pruning" and value not in ("off", "file"):
+            raise ValueError("orc_statistics_pruning must be 'off' or 'file'")
         if name == "scheduling_strategy" and (
             name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY
         ):

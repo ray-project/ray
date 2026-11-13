@@ -48,24 +48,62 @@ def _file_tail_message_type() -> Type[Message]:
     )
     # https://github.com/apache/orc-format/blob/v1.0.0/src/main/proto/orc/proto/orc_proto.proto
     messages = {
-        "StringStatistics": [("sum", 3, field.TYPE_SINT64, False, "")],
+        "IntegerStatistics": [
+            ("minimum", 1, field.TYPE_SINT64, False, ""),
+            ("maximum", 2, field.TYPE_SINT64, False, ""),
+        ],
+        "StringStatistics": [
+            ("minimum", 1, field.TYPE_STRING, False, ""),
+            ("maximum", 2, field.TYPE_STRING, False, ""),
+            ("sum", 3, field.TYPE_SINT64, False, ""),
+            ("lower_bound", 4, field.TYPE_STRING, False, ""),
+            ("upper_bound", 5, field.TYPE_STRING, False, ""),
+        ],
+        "BucketStatistics": [("count", 1, field.TYPE_UINT64, True, "")],
         "BinaryStatistics": [("sum", 1, field.TYPE_SINT64, False, "")],
         "ColumnStatistics": [
             ("number_of_values", 1, field.TYPE_UINT64, False, ""),
+            ("int_statistics", 2, field.TYPE_MESSAGE, False, "IntegerStatistics"),
             ("string_statistics", 4, field.TYPE_MESSAGE, False, "StringStatistics"),
+            ("bucket_statistics", 5, field.TYPE_MESSAGE, False, "BucketStatistics"),
             ("binary_statistics", 8, field.TYPE_MESSAGE, False, "BinaryStatistics"),
             ("has_null", 10, field.TYPE_BOOL, False, ""),
         ],
         "Type": [
+            ("kind", 1, field.TYPE_UINT32, False, ""),
             ("subtypes", 2, field.TYPE_UINT32, True, ""),
             ("field_names", 3, field.TYPE_STRING, True, ""),
         ],
+        "StripeInformation": [
+            ("offset", 1, field.TYPE_UINT64, False, ""),
+            ("index_length", 2, field.TYPE_UINT64, False, ""),
+            ("data_length", 3, field.TYPE_UINT64, False, ""),
+            ("footer_length", 4, field.TYPE_UINT64, False, ""),
+            ("number_of_rows", 5, field.TYPE_UINT64, False, ""),
+        ],
         "Footer": [
+            ("stripes", 3, field.TYPE_MESSAGE, True, "StripeInformation"),
             ("types", 4, field.TYPE_MESSAGE, True, "Type"),
             ("number_of_rows", 6, field.TYPE_UINT64, False, ""),
             ("statistics", 7, field.TYPE_MESSAGE, True, "ColumnStatistics"),
+            ("writer", 9, field.TYPE_UINT32, False, ""),
+            ("encryption", 10, field.TYPE_BYTES, False, ""),
+            ("software_version", 12, field.TYPE_STRING, False, ""),
         ],
-        "FileTail": [("footer", 2, field.TYPE_MESSAGE, False, "Footer")],
+        "PostScript": [
+            ("footer_length", 1, field.TYPE_UINT64, False, ""),
+            ("metadata_length", 5, field.TYPE_UINT64, False, ""),
+            ("version", 4, field.TYPE_UINT32, True, ""),
+            ("writer_version", 6, field.TYPE_UINT32, False, ""),
+            ("stripe_statistics_length", 7, field.TYPE_UINT64, False, ""),
+            ("magic", 8000, field.TYPE_STRING, False, ""),
+        ],
+        "FileTail": [
+            ("postscript", 1, field.TYPE_MESSAGE, False, "PostScript"),
+            ("footer", 2, field.TYPE_MESSAGE, False, "Footer"),
+            ("file_length", 3, field.TYPE_UINT64, False, ""),
+            ("postscript_length", 4, field.TYPE_UINT64, False, ""),
+        ],
     }
     for name, fields in messages.items():
         message = definition.message_type.add(name=name)
