@@ -221,5 +221,26 @@ def test_a_failed_report_upload_keeps_the_findings_exit_code(tmp_path: Path):
     assert result.exit_code == EXIT_FINDINGS, result.output
 
 
+def test_a_failed_report_still_leaves_a_warning_annotation(tmp_path: Path):
+    """Without an annotation, a soft-failed report job goes unnoticed."""
+    s3 = FakeS3()
+    duplicated = {"steps": [PIPELINE["steps"][2], PIPELINE["steps"][2]]}
+    result = run(tmp_path, s3, duplicated)
+    assert result.exit_code == 1, result.output
+    (annotation,) = (tmp_path / "annotations").iterdir()
+    assert annotation.name == "trivy-scan.warning.md"
+    body = annotation.read_text()
+    assert "report failed" in body
+    assert "ValueError: more than one scan step scans ['ray-py3.11-tpu']" in body
+
+
+def test_the_failure_annotation_cannot_break_its_markdown():
+    error = RuntimeError("bad `code` | pipe\n" + "x" * 5000)
+    body = build_report.failure_annotation(error)
+    detail = body.split("\n")[2]
+    assert "`" not in detail.strip("`")
+    assert len(body) < 2000
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

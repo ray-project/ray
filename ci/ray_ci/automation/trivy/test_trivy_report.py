@@ -715,5 +715,23 @@ def test_write_report_writes_the_three_files(tmp_path: Path):
     ]
 
 
+@pytest.mark.parametrize(
+    "report",
+    [
+        pytest.param([], id="not-an-object"),
+        pytest.param({"Results": [{"Vulnerabilities": [{}]}]}, id="no-vuln-id"),
+        pytest.param({"Results": ["debian"]}, id="result-not-an-object"),
+    ],
+)
+def test_a_wrongly_shaped_result_fails_only_its_image(tmp_path: Path, report):
+    """Results come from a shared bucket; one bad file must not take the
+    whole report down."""
+    write_scan(tmp_path, CPU, report=report)
+    write_scan(tmp_path, CU128)
+    scans = {s.image.name: s for s in load_scans(tmp_path)}
+    assert scans[CPU[0]].error.startswith("unparseable result: ")
+    assert scans[CU128[0]].scanned
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

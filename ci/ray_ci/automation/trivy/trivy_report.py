@@ -260,7 +260,13 @@ def _load_scan(results_dir: Path, image: Image, record: Mapping[str, Any]) -> Im
         return ImageScan(image=image, error=f"unreadable result: {e!r}")
     if report is None:
         return ImageScan(image=image, error="no result file")
-    parsed = parse_trivy_report(report)
+    try:
+        parsed = parse_trivy_report(report)
+    except Exception as e:
+        # Valid JSON in the wrong shape.
+        return ImageScan(
+            image=image, error=f"unparseable result: {type(e).__name__}: {e}"
+        )
     # A scan that saw nothing must not look clean.
     error = "" if parsed.packages else "no packages detected"
     return ImageScan(

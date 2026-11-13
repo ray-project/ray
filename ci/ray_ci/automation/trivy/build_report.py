@@ -155,38 +155,25 @@ def write_annotation(annotation_dir: Path, body: str, style: str) -> Path:
     return path
 
 
-@click.command()
-@click.option(
-    "--output-dir",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-    help="Where to write report.md, vulns.csv and summary.json.",
-)
-@click.option(
-    "--annotation-dir",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-    help="Where to leave the annotation for the post-command hook.",
-)
-@click.option(
-    "--pipeline-file",
-    type=click.Path(dir_okay=False, path_type=Path),
-    help="The scan steps (default: the image-scan.rayci.yml built in).",
-)
-@click.option("--work-dir", type=click.Path(file_okay=False, path_type=Path))
-@scan_store.build_options
-def main(
+def failure_annotation(error: BaseException) -> str:
+    detail = re.sub(r"\s+", " ", f"{type(error).__name__}: {error}")
+    detail = detail.replace("`", "'")[:1000]
+    return (
+        "## Trivy image scan: report failed\n\n"
+        f"`{detail}`\n\n"
+        "The scans may have finished; this job's log has the traceback.\n"
+    )
+
+
+def report_build(
     output_dir: Path,
     annotation_dir: Path,
     pipeline_file: Optional[Path],
     work_dir: Optional[Path],
     store: ScanStore,
-) -> None:
-    output_dir = trivy_report.resolve_path(output_dir)
-    annotation_dir = trivy_report.resolve_path(annotation_dir)
-    if pipeline_file:
-        pipeline_file = trivy_report.resolve_path(pipeline_file)
-    else:
+) -> int:
+    """Write the report and the annotation; returns the exit code."""
+    if not pipeline_file:
         pipeline_file = Path(runfiles.Create().Rlocation(PIPELINE_RUNFILE))
     expected = expected_images(yaml.safe_load(pipeline_file.read_text()))
     note = files_note(store)
@@ -219,9 +206,49 @@ def main(
     logger.info(f"Wrote {output_dir} and {annotation}")
     if upload_error:
         logger.error(f"Could not upload the report: {upload_error}")
-        code = code or 1
-    else:
-        logger.info(f"Uploaded the report to {store.url(REPORT_FOLDER)}")
+        return code or 1
+    logger.info(f"Uploaded the report to {store.url(REPORT_FOLDER)}")
+    return code
+
+
+@click.command()
+@click.option(
+    "--output-dir",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Where to write report.md, vulns.csv and summary.json.",
+)
+@click.option(
+    "--annotation-dir",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Where to leave the annotation for the post-command hook.",
+)
+@click.option(
+    "--pipeline-file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="The scan steps (default: the image-scan.rayci.yml built in).",
+)
+@click.option("--work-dir", type=click.Path(file_okay=False, path_type=Path))
+@scan_store.build_options
+def main(
+    output_dir: Path,
+    annotation_dir: Path,
+    pipeline_file: Optional[Path],
+    work_dir: Optional[Path],
+    store: ScanStore,
+) -> None:
+    output_dir = trivy_report.resolve_path(output_dir)
+    annotation_dir = trivy_report.resolve_path(annotation_dir)
+    if pipeline_file:
+        pipeline_file = trivy_report.resolve_path(pipeline_file)
+    try:
+        code = report_build(output_dir, annotation_dir, pipeline_file, work_dir, store)
+    except Exception as e:
+        # Without an annotation, a soft-failed report job goes unnoticed.
+        logger.exception("The Trivy report failed")
+        write_annotation(annotation_dir, failure_annotation(e), "warning")
+        code = 1
     sys.exit(code)
 
 
