@@ -2,10 +2,10 @@ import warnings
 from typing import Dict, List, Optional, Union
 
 import ray
+from ray._common.label_utils import validate_label_selector
 from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME, hex_to_binary
 from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
-from ray._private.label_utils import validate_label_selector
 from ray._private.utils import get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
