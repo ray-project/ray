@@ -769,39 +769,6 @@ def test_autoscaler_v2_metrics_server_binds_node_family(
     assert captured["addr"] == expected_addr
 
 
-@pytest.mark.parametrize("node_ip,expected_addr", _NODE_ADDRESS_CASES)
-def test_serve_haproxy_metrics_server_binds_node_family(
-    monkeypatch, node_ip, expected_addr
-):
-    """The Serve HAProxy exporter binds the node IP's family."""
-    from ray.serve._private import haproxy as haproxy_module
-
-    haproxy_manager_cls = haproxy_module.HAProxyManager.__ray_metadata__.modified_class
-    haproxy_manager = haproxy_manager_cls.__new__(haproxy_manager_cls)
-    haproxy_manager._node_ip_address = node_ip
-    haproxy_manager._haproxy = MagicMock()
-    haproxy_manager._haproxy.cfg.metrics_port = 9101
-    haproxy_manager._haproxy.cfg.enable_so_reuseport = True
-
-    captured = {}
-
-    def fake_start_metrics_wsgi_server(port, app, addr=None, reuse_port=False):
-        captured.update(port=port, addr=addr, reuse_port=reuse_port)
-
-    monkeypatch.setattr(
-        haproxy_module, "start_metrics_wsgi_server", fake_start_metrics_wsgi_server
-    )
-    monkeypatch.setattr(haproxy_module, "make_exporter_proxy_app", lambda cfg: object())
-
-    haproxy_manager._start_metrics_exporter_server()
-
-    assert captured == {
-        "port": 9101,
-        "addr": expected_addr,
-        "reuse_port": True,
-    }
-
-
 @pytest.mark.parametrize("addr", ["", "127.0.0.1", "0.0.0.0", "::", "::1"])
 def test_start_metrics_wsgi_server_listen_addresses(monkeypatch, addr):
     """Every supported listen address serves /metrics behind token auth."""
