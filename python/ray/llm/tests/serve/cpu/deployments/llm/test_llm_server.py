@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import platform
 import sys
 import time
@@ -14,6 +15,7 @@ from vllm.entrypoints.common.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.v1.engine.exceptions import EngineDeadError
 
+import ray
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
@@ -32,6 +34,14 @@ from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     MockVLLMEngine,
 )
 from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.config import DeploymentConfig
+from ray.serve.context import (
+    _RequestContext,
+    _serve_request_context,
+    _serve_work_finished,
+    _set_internal_replica_context,
+)
 
 
 @pytest.fixture
@@ -70,6 +80,47 @@ def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms=0):
     handle = handle.options(stream=True, multiplexed_model_id="test_model_id")
     yield handle
     serve.shutdown()
+
+
+@pytest.fixture
+def serve_replica_context():
+    """Serve running, with the test process standing in for a replica.
+
+    serve.start() -> replica context set -> test -> context cleared, shutdown
+    """
+    serve.start()
+    _set_internal_replica_context(
+        replica_id=ReplicaID(
+            "fake_replica_id",
+            deployment_id=DeploymentID(name="fake_deployment", app_name="fake_app"),
+        ),
+        servable_object=None,
+        _deployment_config=DeploymentConfig(),
+        rank=0,
+        world_size=1,
+    )
+    try:
+        yield
+    finally:
+        ray.serve.context._INTERNAL_REPLICA_CONTEXT = None
+        serve.shutdown()
+        ray.shutdown()
+
+
+async def resolve_lora_in_request(
+    server: LLMServer, adapter_id: str, request_finished: concurrent.futures.Future
+) -> None:
+    """Resolve an adapter as a replica request would, in a task of its own.
+
+    Lookups made here are tied to the request that `request_finished` ends.
+    """
+
+    async def resolve():
+        _serve_request_context.set(_RequestContext(multiplexed_model_id=adapter_id))
+        _serve_work_finished.set(request_finished)
+        await server._maybe_resolve_lora_from_multiplex()
+
+    await asyncio.get_running_loop().create_task(resolve())
 
 
 async def count_tpot_ms_from_stream(stream: AsyncGenerator) -> list[float]:
@@ -507,6 +558,31 @@ class TestLLMServer:
             LLMResponseValidator.validate_non_streaming_response(
                 chunks[0], api_type, max_tokens, lora_model_id=request.model
             )
+
+    @pytest.mark.asyncio
+    async def test_lora_lookup_is_not_pinned_to_request(
+        self, mock_llm_config, serve_replica_context
+    ):
+        """With one adapter slot, a request resolves adapter A and keeps running.
+        A second request still resolves adapter B without waiting for it."""
+        mock_llm_config.lora_config = LoraConfig(
+            dynamic_lora_loading_path=None, max_num_adapters_per_replica=1
+        )
+        server = LLMServer.sync_init(
+            mock_llm_config,
+            engine_cls=MockVLLMEngine,
+            model_downloader=FakeLoraModelLoader,
+        )
+        await server.start()
+        first_request_finished = concurrent.futures.Future()
+
+        await resolve_lora_in_request(server, "adapter_a", first_request_finished)
+        # The first request never finishes, so a pin on adapter A would make
+        # this lookup wait until the timeout.
+        await asyncio.wait_for(
+            resolve_lora_in_request(server, "adapter_b", concurrent.futures.Future()),
+            timeout=5,
+        )
 
     @pytest.mark.asyncio
     async def test_push_telemetry(self, mock_llm_config):

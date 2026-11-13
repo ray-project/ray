@@ -162,8 +162,6 @@ class _ModelMultiplexWrapper:
         """
         models_list = set(self.models.keys())
         models_list.update(self._model_load_tasks)
-        # A draining model takes no new requests on this replica.
-        models_list -= {waiter.draining_model for waiter in self._room_waiters}
         return list(models_list)
 
     def _push_model_ids_info(self):
@@ -245,6 +243,7 @@ class _ModelMultiplexWrapper:
                 if model_id not in self.models and await self._make_room(owner):
                     # Advertised again if an earlier wait removed it.
                     self._model_load_tasks.add(model_id)
+                    self._push_multiplexed_replica_info = True
                     await self._load_into_cache(model_id)
                     return self._pin(model_id, owner)
                 # Registered before the lock is released, so no wake-up is missed.
@@ -262,7 +261,6 @@ class _ModelMultiplexWrapper:
                 raise
             finally:
                 self._room_waiters.remove(waiter)
-                self._push_multiplexed_replica_info = True
 
     def _add_waiter(self, model_id: str, owner: Hashable) -> "_RoomWaiter":
         """Register a lookup that waits for pins to be dropped."""

@@ -524,8 +524,8 @@ class TestMultiplexPinning:
         await asyncio.wait_for(lookup_a, timeout=5)
 
     async def test_waiting_miss_is_not_advertised(self, start_serve_with_context):
-        """A miss waits for the only slot. Neither its model nor the model it
-        drains is reported to the router until the miss starts loading."""
+        """A miss waits for the only slot. Its model is reported to the router
+        only once it starts loading, while the model it drains stays reported."""
         load_b_started, finish_load_b = asyncio.Event(), asyncio.Event()
 
         async def load(model_id: str) -> _TrackedModel:
@@ -541,7 +541,9 @@ class TestMultiplexPinning:
         lookup_b = request_b.start_get(multiplexer, "b")
         await asyncio.sleep(SETTLE_S)
 
-        assert multiplexer._get_loading_and_loaded_model_ids() == []
+        # Hiding "a" too would make this replica look emptier than the others,
+        # and the router sends unknown models to the replica with the fewest.
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["a"]
         assert multiplexer._push_multiplexed_replica_info
 
         await request_a.finish()
