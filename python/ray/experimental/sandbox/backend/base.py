@@ -185,6 +185,7 @@ class BaseSandboxBackend(ABC):
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
         timeout_seconds: float = 30.0,
+        remote: bool = False,
         **kwargs,
     ) -> Dict[str, Any]:
         """Save the sandbox state to a checkpoint bundle directory.
@@ -198,6 +199,8 @@ class BaseSandboxBackend(ABC):
             exclude_committed_zero_pages: If True, exclude committed zero-filled pages.
             direct: If True, use O_DIRECT for writing checkpoint pages.
             timeout_seconds: Timeout in seconds for the checkpoint operation.
+            remote: If True, checkpoint path is on a remote or shared mount accessible
+                across different VM nodes, allowing restoration on any node in the cluster.
             **kwargs: Backend-specific arguments.
 
         Returns:
@@ -214,6 +217,7 @@ class BaseSandboxBackend(ABC):
         background: Optional[bool] = None,
         direct: bool = False,
         timeout_seconds: float = 30.0,
+        remote: Optional[bool] = None,
         **kwargs,
     ) -> str:
         """Restore a new sandbox instance from a checkpoint bundle.
@@ -227,6 +231,9 @@ class BaseSandboxBackend(ABC):
                 uses it whenever the checkpoint is uncompressed.
             direct: If True, use O_DIRECT for reading checkpoint pages.
             timeout_seconds: Timeout in seconds for restore to reach 'running' state.
+            remote: If True, treat the checkpoint as remote/shared, allowing restoration
+                on a different VM node than where the checkpoint was captured. If None,
+                defaults to the value recorded in the checkpoint manifest.
             **kwargs: Backend-specific arguments.
 
         Returns:

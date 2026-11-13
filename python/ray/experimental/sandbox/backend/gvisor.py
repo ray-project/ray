@@ -1712,6 +1712,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
         timeout_seconds: float = 30.0,
+        remote: bool = False,
         **kwargs,
     ) -> Dict[str, Any]:
         """Save the sandbox state to a checkpoint bundle directory.
@@ -1747,6 +1748,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"{', '.join(repr(c) for c in _CHECKPOINT_COMPRESSIONS)}."
             )
 
+        if remote and not checkpoint_path:
+            # The default location is node-local, so a restore scheduled on
+            # another node wouldn't find it.
+            raise SandboxError(
+                "remote=True needs a checkpoint_path on storage that every node "
+                "mounts at the same path; the default location "
+                f"'{os.path.join(_RAY_SANDBOX_DIR, 'checkpoints')}' is node-local."
+            )
         if not checkpoint_path:
             chk_uuid = uuid.uuid4().hex[:8]
             checkpoint_path = os.path.join(
@@ -1863,6 +1872,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         cwd=meta["cwd"],
                         workdir=meta.get("workdir"),
                         leave_running=leave_running,
+                        remote=remote,
                         node_id=node_id,
                         compression=compression,
                         # set_egress_allowlist may have changed it since.
@@ -1908,6 +1918,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         ckpt_path_obj = CheckpointPath(
             checkpoint_path,
             node_id=node_id,
+            remote=remote,
             cpu=config.cpu,
             memory=config.memory,
         )
@@ -1918,6 +1929,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "duration_seconds": duration,
             "leave_running": leave_running,
             "image": config.image,
+            "remote": remote,
             "node_id": node_id,
         }
 
@@ -2010,6 +2022,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         background: Optional[bool] = None,
         direct: bool = False,
         timeout_seconds: float = 30.0,
+        remote: Optional[bool] = None,
         **kwargs,
     ) -> str:
         """Restore a new sandbox instance from a checkpoint bundle.
@@ -2032,21 +2045,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             **kwargs,
         )
 
-        # A checkpoint is node-local: its memory image and filesystem copy
-        # are only on the node that took it.
-        checkpoint_node_id = manifest.get("node_id")
-        current_node_id = get_current_node_id()
-        if (
-            checkpoint_node_id
-            and current_node_id
-            and checkpoint_node_id != current_node_id
-        ):
-            raise SandboxError(
-                f"Checkpoint at '{checkpoint_path}' was taken on node "
-                f"'{checkpoint_node_id}', but restore is running on node "
-                f"'{current_node_id}'. Checkpoints are node-local: restore on the "
-                "node that took it (sandbox.restore() schedules there)."
-            )
+        is_remote = (
+            remote if remote is not None else bool(manifest.get("remote", False))
+        )
+        if not is_remote:
+            checkpoint_node_id = manifest.get("node_id")
+            current_node_id = get_current_node_id()
+            if (
+                checkpoint_node_id
+                and current_node_id
+                and checkpoint_node_id != current_node_id
+            ):
+                raise SandboxError(
+                    f"Checkpoint at '{checkpoint_path}' was created as a node-local "
+                    f"checkpoint on node '{checkpoint_node_id}', but restore is running "
+                    f"on a different node '{current_node_id}'. To restore checkpoints "
+                    f"across different VM nodes, create or restore the checkpoint with "
+                    f"remote=True on a shared mount path."
+                )
 
         if config.rootless:
             raise SandboxError(

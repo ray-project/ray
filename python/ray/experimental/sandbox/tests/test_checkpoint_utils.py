@@ -200,6 +200,18 @@ class TestCheckpointUtils(unittest.TestCase):
         for rel in ("", "sub", os.path.join("sub", "f.txt")):
             assert chowned[os.path.normpath(os.path.join(dst, rel))] == (1234, 1234)
 
+    def test_copy_fs_tree_explains_root_squashed_storage(self):
+        src = os.path.join(self.temp_dir, "squash_src")
+        os.makedirs(src)
+        with open(os.path.join(src, "f.txt"), "w") as f:
+            f.write("x")
+        with (
+            patch("os.geteuid", return_value=0),
+            patch("os.lchown", side_effect=PermissionError(13, "Permission denied")),
+        ):
+            with pytest.raises(SandboxError, match="no_root_squash"):
+                copy_fs_tree(src, os.path.join(self.temp_dir, "squash_dst"))
+
     def test_staged_checkpoint_atomic_swap_and_rollback(self):
         target_dir = os.path.join(self.temp_dir, "bundle")
         os.makedirs(target_dir, exist_ok=True)
@@ -279,12 +291,14 @@ class TestCheckpointUtils(unittest.TestCase):
         cp = CheckpointPath(
             raw_path,
             node_id="node_abc_123",
+            remote=True,
             cpu=2.5,
             memory="4Gi",
         )
         assert isinstance(cp, str)
         assert cp == raw_path
         assert cp.node_id == "node_abc_123"
+        assert cp.remote is True
         assert cp.cpu == 2.5
         assert cp.memory == "4Gi"
         assert os.path.join(cp, "manifest.json") == f"{raw_path}/manifest.json"
@@ -295,21 +309,35 @@ class TestCheckpointUtils(unittest.TestCase):
         assert isinstance(restored, CheckpointPath)
         assert restored == raw_path
         assert restored.node_id == "node_abc_123"
+        assert restored.remote is True
         assert restored.cpu == 2.5
         assert restored.memory == "4Gi"
 
-    def test_create_manifest_records_node_id(self):
+    def test_create_manifest_with_remote_and_node_id(self):
         config = SandboxConfig(image="busybox:latest", cpu=1.0, memory="512Mi")
-        manifest = create_manifest(
+        manifest_local = create_manifest(
             sandbox_id="sb-local",
             config=config,
             cwd="/",
             workdir="/workspace",
             leave_running=True,
+            remote=False,
             node_id="node_1",
         )
-        assert manifest["node_id"] == "node_1"
-        assert "remote" not in manifest
+        assert manifest_local["remote"] is False
+        assert manifest_local["node_id"] == "node_1"
+
+        manifest_remote = create_manifest(
+            sandbox_id="sb-remote",
+            config=config,
+            cwd="/",
+            workdir="/workspace",
+            leave_running=True,
+            remote=True,
+            node_id="node_2",
+        )
+        assert manifest_remote["remote"] is True
+        assert manifest_remote["node_id"] == "node_2"
 
 
 if __name__ == "__main__":

@@ -156,6 +156,7 @@ def restore(
     memory: Optional[Union[str, int, float]] = None,
     ttl_seconds: Optional[int] = None,
     timeout_seconds: float = 30.0,
+    remote: Optional[bool] = None,
     resources: Optional[Dict[str, float]] = None,
     **kwargs,
 ) -> ActorHandle:
@@ -166,19 +167,23 @@ def restore(
     sandbox. Cgroup resource allocations (cpu, memory) and lifecycle limits
     (ttl_seconds, timeout_seconds) can optionally be overridden.
 
-    A checkpoint lives on the node that took it, so the restored actor is
-    scheduled there, with the checkpointed sandbox's CPU and memory unless
-    overridden.
-
     Args:
         checkpoint_path: Path to the checkpoint bundle directory, or a
             :class:`~ray.experimental.sandbox.backend.checkpoint_utils.CheckpointPath`
             instance returned by ``Sandbox.checkpoint()`` or
             ``SandboxRuntime.checkpoint()``.
-        cpu: Optional CPU allocation override.
-        memory: Optional memory allocation override.
+        cpu: Optional CPU override, for both the actor's Ray reservation and
+            the restored sandbox's limit. Defaults to the checkpoint's.
+        memory: Optional memory override, for both the actor's Ray reservation
+            and the restored sandbox's limit. Defaults to the checkpoint's.
         ttl_seconds: Optional time-to-live in seconds.
         timeout_seconds: Timeout in seconds for restore.
+        remote: If True, allow restore to be scheduled on any VM node in the cluster
+            (for shared/remote mounts). If False, pin restore to the VM node where
+            the checkpoint was created. If None (default), inherits from the
+            checkpoint manifest or CheckpointPath metadata. A plain path that
+            this process can't read needs ``remote=True`` with ``cpu`` and
+            ``memory``, or the CheckpointPath that ``checkpoint()`` returned.
         resources: Custom logical resource requirements for the Ray actor.
         **kwargs: Additional options.
 
@@ -187,19 +192,52 @@ def restore(
     """
     recorded_cpu = None
     recorded_memory = None
+    manifest_remote = False
     target_node_id = None
 
     if isinstance(checkpoint_path, CheckpointPath):
         recorded_cpu = checkpoint_path.cpu
         recorded_memory = checkpoint_path.memory
+        manifest_remote = checkpoint_path.remote
         target_node_id = checkpoint_path.node_id
-    else:
-        # A plain path must be readable here to find the node and resources.
+
+    # When this process can read the manifest, it's authoritative: a later
+    # checkpoint at the same path may have replaced the one that a
+    # CheckpointPath describes. A manifest this process can't read (missing,
+    # or owned by another user on shared storage) leaves the CheckpointPath's
+    # metadata in force.
+    try:
         manifest, _ = load_checkpoint_manifest(str(checkpoint_path))
+        unreadable = None
+    except (SandboxError, OSError) as err:
+        manifest, unreadable = None, err
+    if manifest is not None:
         recorded_config = manifest.get("config", {})
-        recorded_cpu = recorded_config.get("cpu")
-        recorded_memory = recorded_config.get("memory")
-        target_node_id = manifest.get("node_id")
+        recorded_cpu = recorded_config.get("cpu", recorded_cpu)
+        recorded_memory = recorded_config.get("memory", recorded_memory)
+        manifest_remote = bool(manifest.get("remote", manifest_remote))
+        target_node_id = manifest.get("node_id", target_node_id)
+    elif not isinstance(checkpoint_path, CheckpointPath):
+        if remote is not True:
+            raise SandboxError(
+                f"Can't read the checkpoint at '{checkpoint_path}' from this "
+                f"process ({unreadable}). If it's on storage that this process "
+                "doesn't mount, pass the CheckpointPath that checkpoint() "
+                "returned, or remote=True with cpu and memory."
+            ) from unreadable
+        elif cpu is None or memory is None:
+            # Without the manifest, the actor would get Ray's default
+            # reservation while the restored sandbox keeps its recorded
+            # cgroup limits, oversubscribing the node.
+            raise SandboxError(
+                f"Can't read the checkpoint at '{checkpoint_path}' from this "
+                "process to find the CPU and memory to reserve for the restored "
+                "sandbox. Pass the CheckpointPath that checkpoint() returned, or "
+                "cpu and memory explicitly; they also become the restored "
+                "sandbox's limits."
+            )
+
+    is_remote = remote if remote is not None else manifest_remote
 
     effective_cpu = cpu if cpu is not None else recorded_cpu
     effective_memory = memory if memory is not None else recorded_memory
@@ -220,22 +258,25 @@ def restore(
     if resources:
         actor_opts["resources"] = resources
 
-    if target_node_id and "scheduling_strategy" not in actor_opts:
+    if not is_remote and target_node_id and "scheduling_strategy" not in actor_opts:
         try:
             actor_opts["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 node_id=target_node_id,
                 soft=False,
             )
         except (ValueError, TypeError):
-            # A checkpoint taken outside Ray records a hostname, which can't
-            # pin the actor; the backend still rejects a restore elsewhere.
             pass
 
+    # Pass on only what the caller asked for: the worker reads the manifest,
+    # whose "remote" wins over a CheckpointPath that a later checkpoint at
+    # the same path may have made stale. The inferred value above only
+    # decides scheduling, when this process can't read the manifest.
     return Sandbox.options(**actor_opts).remote(
         restore_from=checkpoint_path,
         cpu=cpu,
         memory=memory,
         ttl_seconds=ttl_seconds,
+        remote=remote,
         timeout_seconds=timeout_seconds,
         **kwargs,
     )
