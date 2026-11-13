@@ -72,6 +72,21 @@ class MockAutoscalingActorPool(AutoscalingActorPool):
     def num_pending_actors(self):
         return self._num_pending_actors
 
+    def num_draining_actors(self) -> int:
+        return 0
+
+    def get_logical_ids(self):
+        return [str(i) for i in range(self._current_size)]
+
+    def get_actor_logical_id(self, actor):
+        return str(id(actor))
+
+    def current_logical_usage(self):
+        return self._per_actor_resource_usage.scale(self._current_size)
+
+    def pending_logical_usage(self):
+        return self._per_actor_resource_usage.scale(self._num_pending_actors)
+
     def max_tasks_in_flight_per_actor(self):
         return self._max_tasks_in_flight_per_actor
 
@@ -102,10 +117,10 @@ class MockAutoscalingActorPool(AutoscalingActorPool):
     def refresh_actor_state(self) -> None:
         pass
 
-    def on_task_submitted(self, actor) -> None:
+    def on_task_submitted(self, actor, input_bundle) -> None:
         pass
 
-    def on_task_completed(self, actor) -> None:
+    def on_task_completed(self, actor, input_bundle) -> None:
         pass
 
     def select_actors(

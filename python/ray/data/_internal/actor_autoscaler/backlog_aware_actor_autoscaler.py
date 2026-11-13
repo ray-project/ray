@@ -28,15 +28,15 @@ class BacklogAwareActorAutoscaler(DefaultActorAutoscaler):
         )
         max_concurrency = actor_pool.max_actor_concurrency()
         threshold = self._actor_pool_scaling_up_threshold
-        current_size = actor_pool.current_size()
+        serving_size = actor_pool.serving_size()
 
         # Pick delta such that after scale-up completes, pool utilization
         # drops to or below the upscaling threshold (assuming no new bundles):
-        #   total_tasks / (max_concurrency * (current_size + delta)) <= threshold
-        #   current_size + delta >= total_tasks / (max_concurrency * threshold)
+        #   total_tasks / (max_concurrency * (serving_size + delta)) <= threshold
+        #   serving_size + delta >= total_tasks / (max_concurrency * threshold)
         min_required_size = math.ceil(total_tasks / (max_concurrency * threshold))
 
-        return min_required_size - current_size
+        return min_required_size - serving_size
 
     def _should_retain_pending_actors(
         self, actor_pool: AutoscalingActorPool, op_state: "OpState"
