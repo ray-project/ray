@@ -1065,8 +1065,10 @@ class DeploymentAutoscalingState:
         for handle_id, columnar_report in self._handle_store.columnar.items():
             for metric_name, samples in columnar_report.router_metrics.items():
                 raw_metrics[metric_name][handle_id] = [
-                    TimeStampedValue(float(timestamp), float(value))
-                    for timestamp, value in zip(samples.timestamps, samples.values)
+                    TimeStampedValue(timestamp, value)
+                    for timestamp, value in zip(
+                        samples.timestamps.tolist(), samples.values.tolist()
+                    )
                 ]
 
         return dict(raw_metrics)
