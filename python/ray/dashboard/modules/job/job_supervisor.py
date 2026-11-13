@@ -98,6 +98,7 @@ class JobSupervisor:
 
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
+        self._watcher_process = None
 
         # Logger object to persist JobSupervisor logs in separate file.
         self._logger = logging.getLogger(f"{__name__}.supervisor-{job_id}")
@@ -213,20 +214,34 @@ class JobSupervisor:
                     # Process died before we could get its pgid.
                     return child_process
 
-                # Open a new subprocess to kill the child process when the parent
-                # process dies kill -s 0 parent_pid will succeed if the parent is
-                # alive. If it fails, SIGKILL the child process group and exit
-                #
+                # Kill the driver process group if the supervisor process dies.
                 # start_new_session=True detaches this watcher into its own
                 # session/process group. Otherwise it would inherit the supervisor
                 # actor's process group and the raylet's per-worker process-group
                 # cleanup (killpg on worker exit) would kill this watcher before it
-                # can reap the driver, potentially leaking the driver subprocess.
-                subprocess.Popen(
-                    f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
-                    shell=True,
+                # can kill the driver, potentially leaking the driver subprocess.
+                # Run the watcher in a single process. A shell loop would also
+                # leave its sleep child orphaned when the supervisor exits.
+                watcher_code = (
+                    "import os, signal, sys, time\n"
+                    "parent_pid, child_pgid = map(int, sys.argv[1:])\n"
+                    "while os.getppid() == parent_pid:\n"
+                    "    time.sleep(1)\n"
+                    "try:\n"
+                    "    os.killpg(child_pgid, signal.SIGKILL)\n"
+                    "except ProcessLookupError:\n"
+                    "    pass\n"
+                )
+                self._watcher_process = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-c",
+                        watcher_code,
+                        str(parent_pid),
+                        str(child_pgid),
+                    ],
                     start_new_session=True,
-                    # Suppress output
+                    stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -256,6 +271,19 @@ class JobSupervisor:
                 win32job.AssignProcessToJobObject(self._win32_job_object, child_handle)
 
             return child_process
+
+    def _stop_watcher(self):
+        watcher = self._watcher_process
+        if watcher is None:
+            return
+        self._watcher_process = None
+        if watcher.poll() is None:
+            watcher.terminate()
+        try:
+            watcher.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            watcher.kill()
+            watcher.wait()
 
     def _get_driver_env_vars(self, resources_specified: bool) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
@@ -485,6 +513,7 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
+            self._stop_watcher()
             # Flush any remaining events before the actor exits.
             if submission_job_events_enabled():
                 try:

@@ -92,19 +92,14 @@ class JobManager:
         run_background_task(self._recover_running_jobs())
 
     def _get_job_driver_logger(self, job_id: str) -> logging.Logger:
-        """Return job driver logger to log messages to the job driver log file.
-
-        If this function is called for the first time, configure the logger.
-        """
-        job_driver_logger = logging.getLogger(f"{__name__}.driver-{job_id}")
-
-        # Configure the logger if it's not already configured.
-        if not job_driver_logger.handlers:
-            job_driver_log_path = self._log_client.get_log_file_path(job_id)
-            job_driver_handler = logging.FileHandler(job_driver_log_path)
-            job_driver_formatter = logging.Formatter(ray_constants.LOGGER_FORMAT)
-            job_driver_handler.setFormatter(job_driver_formatter)
-            job_driver_logger.addHandler(job_driver_handler)
+        """Create a job driver logger without retaining it in the global registry."""
+        job_driver_logger = logging.Logger(f"{__name__}.driver-{job_id}")
+        job_driver_logger.parent = logger
+        job_driver_log_path = self._log_client.get_log_file_path(job_id)
+        job_driver_handler = logging.FileHandler(job_driver_log_path)
+        job_driver_formatter = logging.Formatter(ray_constants.LOGGER_FORMAT)
+        job_driver_handler.setFormatter(job_driver_formatter)
+        job_driver_logger.addHandler(job_driver_handler)
 
         return job_driver_logger
 
