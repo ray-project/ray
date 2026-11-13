@@ -1629,6 +1629,44 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ) or "Sandbox runtime stopped unexpectedly"
         return None
 
+    def get_config(self, sandbox_id: str) -> SandboxConfig:
+        """Return the configuration of a tracked sandbox."""
+        return self._get_metadata_or_raise(sandbox_id)["config"]
+
+    def sandbox_dir(self, sandbox_id: str) -> str:
+        """Return the host bundle directory, which is removed with the sandbox."""
+        return self._get_metadata_or_raise(sandbox_id)["root_dir"]
+
+    def export_rootfs_changes(
+        self, sandbox_id: str, path: str, timeout: float = 1800.0
+    ) -> None:
+        """Export gVisor's rootfs upper layer, preserving the sandbox's pause state.
+
+        Deletions are 0/0 character devices. Opaque directories carry
+        ``trusted.overlay.opaque``. Bind mounts and host-side changes aren't
+        included.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        # One export at a time per sandbox: overlapping ones would both try
+        # to pause it, or one would resume it under the other's export.
+        with meta.setdefault("export_lock", threading.Lock()):
+            paused = meta.get("status") == SandboxStatus.PAUSED
+            if not paused:
+                self.pause_sandbox(sandbox_id, timeout_seconds=60)
+            try:
+                self._run_runsc_command(
+                    meta["config"],
+                    "tar",
+                    sandbox_id,
+                    "rootfs-upper",
+                    "--file",
+                    path,
+                    timeout_seconds=timeout,
+                )
+            finally:
+                if not paused:
+                    self.resume_sandbox(sandbox_id, timeout_seconds=60)
+
     def _run_runsc_command(
         self,
         config: SandboxConfig,

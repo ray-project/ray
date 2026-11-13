@@ -1,8 +1,10 @@
 import asyncio
 import os
+import tempfile
 import threading
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal import image_push
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroupManager,
     cpu_window_size,
@@ -13,7 +15,7 @@ from ray.experimental.sandbox.backend.base import (
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
-from ray.experimental.sandbox.exceptions import SandboxCreationError
+from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
 
@@ -358,6 +360,56 @@ class SandboxRuntime:
             cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
         """
         self._backend.set_egress_allowlist(instance_id, cidrs)
+
+    def commit(
+        self,
+        instance_id: str,
+        image: str,
+        env: Optional[Dict[str, str]] = None,
+        timeout_seconds: float = 1800.0,
+    ) -> str:
+        """Push the sandbox's base image and root filesystem changes to a registry.
+
+        The sandbox must have been created with ``readonly=False``.
+        Mounts aren't included. Commit leaves the sandbox in the state it was
+        in: a running sandbox is paused only while its changes are exported,
+        and a paused sandbox stays paused. Registry credentials come from
+        ``$DOCKER_CONFIG`` and must allow push.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            image: Target reference with a tag, such as ``registry/repo:tag``.
+            env: Variables to replace or extend the base image config's Env.
+            timeout_seconds: Timeout for export and each registry request.
+
+        Returns:
+            The immutable ``registry/repo@sha256:...`` reference.
+        """
+        cfg = self._backend.get_config(instance_id)
+        # Fail before the export, which pauses a running sandbox.
+        if cfg.readonly:
+            raise SandboxError(
+                f"Cannot commit sandbox '{instance_id}': its root filesystem is "
+                "read-only, so it has no changes to export. Create the sandbox "
+                "with readonly=False to commit it."
+            )
+        image_push.validate_commit(cfg.image, image, self._image_manager.images_dir)
+        with tempfile.TemporaryDirectory(
+            prefix="commit-", dir=self._backend.sandbox_dir(instance_id)
+        ) as directory:
+            rootfs_tar = os.path.join(directory, "rootfs.tar")
+            self._backend.export_rootfs_changes(
+                instance_id, rootfs_tar, timeout=timeout_seconds
+            )
+            layers = image_push.build_layers(rootfs_tar, directory)
+            return image_push.push_image(
+                cfg.image,
+                image,
+                layers,
+                env,
+                self._image_manager.images_dir,
+                timeout_seconds,
+            )
 
     def checkpoint(
         self,
