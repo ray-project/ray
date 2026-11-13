@@ -335,13 +335,13 @@ class ParquetDatasink(_FileDatasink):
         # Check if filename is already templatized
         if "{i}" in filename:
             # Filename is already templatized, but may need file extension
-            if FILE_FORMAT not in filename:
+            if not filename.endswith(f".{FILE_FORMAT}"):
                 # Add file extension to templatized filename
                 basename_template = f"{filename}.{FILE_FORMAT}"
             else:
                 # Already has extension, use as-is
                 basename_template = filename
-        elif FILE_FORMAT not in filename:
+        elif not filename.endswith(f".{FILE_FORMAT}"):
             # No extension and not templatized, add extension and template
             basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
         else:
