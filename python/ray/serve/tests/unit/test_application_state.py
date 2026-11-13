@@ -2253,9 +2253,7 @@ class TestOverrideDeploymentInfo:
             version="123",
             deployment_config=DeploymentConfig(
                 num_replicas=None,
-                autoscaling_config=AutoscalingConfig(
-                    min_replicas=3, max_replicas=9
-                ),
+                autoscaling_config=AutoscalingConfig(min_replicas=3, max_replicas=9),
             ),
             replica_config=ReplicaConfig.create(lambda x: x),
             start_time_ms=0,
