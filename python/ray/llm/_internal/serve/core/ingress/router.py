@@ -1,9 +1,9 @@
 import asyncio
-import json
 import uuid
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+import msgspec
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
@@ -47,7 +47,7 @@ def _parse_request_body(body: bytes) -> Optional[Dict[str, Any]]:
     if not body:
         return None
     try:
-        data = json.loads(body)
+        data = msgspec.json.decode(body)
     except (ValueError, TypeError):
         return None
     return data if isinstance(data, dict) else None

@@ -1,3 +1,4 @@
+import array
 import asyncio
 import contextlib
 import dataclasses
@@ -25,12 +26,11 @@ logger = get_logger(__name__)
 def encode_prompt_token_ids(token_ids: List[int]) -> bytes:
     """Encode token IDs as compact raw little-endian uint32 bytes."""
     try:
-        arr = np.asarray(token_ids, dtype="<u4")
-    except OverflowError as e:
-        raise ValueError("prompt token ids must fit in uint32") from e
-    if arr.ndim != 1:
-        raise ValueError("prompt token ids must be a one-dimensional sequence")
-    return arr.tobytes()
+        return array.array("I", token_ids).tobytes()
+    except (OverflowError, TypeError) as e:
+        raise ValueError(
+            "prompt token ids must be a one-dimensional sequence of uint32 integers"
+        ) from e
 
 
 def decode_prompt_token_ids(payload: bytes) -> List[int]:
