@@ -112,12 +112,13 @@ message HealthCheckReply {}
 // inventory implementation (UNSUPPORTED).
 enum AcceleratorInventoryStatus {
   ACCELERATOR_INVENTORY_STATUS_UNSPECIFIED = 0;
-  // Discovery succeeded. `devices` holds the full inventory, which may be empty.
+  // Discovery succeeded for the supported providers. `devices` may be empty.
   ACCELERATOR_INVENTORY_STATUS_OK = 1;
-  // No discovery extension produced an inventory for this node's accelerators.
+  // No discovery extension produced an inventory for this node's accelerators,
+  // or the discovery library is not installed.
   ACCELERATOR_INVENTORY_STATUS_UNSUPPORTED = 2;
-  // The accelerator driver/library is absent or could not initialize (e.g. NVML
-  // init failed), so no inventory could be produced.
+  // The accelerator driver/library is present but could not initialize (e.g.
+  // NVML init failed), so no inventory could be produced.
   ACCELERATOR_INVENTORY_STATUS_UNAVAILABLE = 3;
   // An unexpected error occurred during discovery.
   ACCELERATOR_INVENTORY_STATUS_ERROR = 4;

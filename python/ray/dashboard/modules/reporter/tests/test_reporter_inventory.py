@@ -68,6 +68,19 @@ def test_discover_unsupported_when_no_implementation():
     assert result.status is AcceleratorInventoryStatus.UNSUPPORTED
 
 
+def test_discover_unsupported_preserves_specific_message():
+    """A provider's specific "unsupported" reason (e.g. NVML library not
+    installed) must not be replaced by a generic aggregation message."""
+    unsupported = AcceleratorInventory(
+        status=AcceleratorInventoryStatus.UNSUPPORTED,
+        status_message="NVIDIA NVML library is not installed.",
+    )
+    with _patch_managers([_FakeManager(None), _FakeManager(unsupported)]):
+        result = _discover_accelerator_inventory()
+    assert result.status is AcceleratorInventoryStatus.UNSUPPORTED
+    assert result.status_message == "NVIDIA NVML library is not installed."
+
+
 def test_discover_merges_ok_devices():
     d1 = AcceleratorDevice("nvidia", "GPU", "A100", "GPU-1", 10)
     d2 = AcceleratorDevice("nvidia", "GPU", "V100", "GPU-2", 20)

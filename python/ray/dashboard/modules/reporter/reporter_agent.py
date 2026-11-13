@@ -159,6 +159,14 @@ def _discover_accelerator_inventory() -> AcceleratorInventory:
         if result.status is AcceleratorInventoryStatus.UNAVAILABLE:
             return result
 
+    # Preserve the most specific "unsupported" status/message (e.g. "NVIDIA
+    # NVML library is not installed") rather than replacing it with a generic
+    # message; every remaining result here is UNSUPPORTED.
+    for result in results:
+        if result.status is AcceleratorInventoryStatus.UNSUPPORTED:
+            return result
+
+    # Defensive fallback; unreachable given the guards above.
     return AcceleratorInventory(
         status=AcceleratorInventoryStatus.UNSUPPORTED,
         status_message=(

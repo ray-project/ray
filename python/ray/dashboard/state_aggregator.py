@@ -348,6 +348,18 @@ class StateAPIManager:
                     entry["accelerator_inventory"] = _accelerator_inventory_unavailable(
                         str(e)
                     )
+                except Exception as e:
+                    # An unexpected per-node failure (a buggy agent, a corrupt
+                    # agent address in the KV, or a gRPC error outside the
+                    # handled set) must not fail the whole listing. Preserve the
+                    # row with an explicit unavailable status, mirroring the
+                    # reporter side's "a broken node still answers" contract.
+                    logger.exception(
+                        "Failed to query accelerator inventory for node %s", node_id
+                    )
+                    entry["accelerator_inventory"] = _accelerator_inventory_unavailable(
+                        f"{type(e).__name__}: {e}"
+                    )
 
         await asyncio.gather(*(fetch(entry) for entry in alive))
 

@@ -625,10 +625,14 @@ class NodeState(StateSchema):
     #:
     #: ``status`` is one of "ok", "unsupported", "unavailable", or "error". A
     #: successful empty inventory ("ok" with no devices) is distinct from
-    #: "unavailable" (driver/library absent) and "unsupported" (no discovery
-    #: implementation). Each device has ``vendor``, ``resource_family``,
+    #: "unsupported" (no discovery implementation for this family, or the
+    #: discovery library is not installed) and "unavailable" (the driver/library
+    #: is present but failed to initialize). "ok" covers only the accelerator
+    #: families that implement discovery, so a mixed-vendor node reports only the
+    #: discovered families. Each device has ``vendor``, ``resource_family``,
     #: ``model``, ``uuid``, ``memory_total_bytes`` (bytes), ``pci_bus_id``,
     #: ``numa_node`` (nullable), ``kind`` ("gpu"/"mig"), and ``parent_uuid``.
+    #: The NVIDIA implementation reports physical GPUs only, not MIG instances.
     #: This is node-agent-visible physical hardware, not a free-resource count
     #: or a scheduling guarantee.
     accelerator_inventory: Optional[dict] = state_column(detail=True, filterable=False)

@@ -297,6 +297,23 @@ async def test_list_nodes_timeout_preserved():
     assert result.result[0]["accelerator_inventory"]["status"] == "unavailable"
 
 
+async def test_list_nodes_unexpected_error_preserved():
+    """A single node's unexpected failure (outside the handled gRPC/timeout
+    set) must not fail the whole ``list_nodes(detail=True)`` call; the row is
+    preserved with an explicit unavailable status."""
+    client = AsyncMock(StateDataSourceClient)
+    node = generate_node_data(b"1234")
+    client.get_all_node_info.return_value = ({node.node_id: node}, 0)
+    client.get_accelerator_inventory.side_effect = RuntimeError("agent bug")
+
+    result = await _manager(client).list_nodes(option=create_api_options(detail=True))
+
+    assert len(result.result) == 1
+    inventory = result.result[0]["accelerator_inventory"]
+    assert inventory["status"] == "unavailable"
+    assert "agent bug" in inventory["status_message"]
+
+
 async def test_list_nodes_filter_before_inventory_fanout():
     client = AsyncMock(StateDataSourceClient)
     node1 = generate_node_data(b"1234")

@@ -382,11 +382,9 @@ The `accelerator_inventory` value is a dictionary with these fields:
 
 - `status`: one of `ok`, `unsupported`, `unavailable`, or `error`.
 - `status_message`: a human-readable description for non-`ok` statuses.
-- `devices`: a list of devices, present only when `status` is `ok`.
+- `devices`: a list of discovered devices, empty when `status` isn't `ok`.
 
-A successful empty inventory (`ok` with no devices) is different from `unsupported` (the node's
-accelerator family has no inventory implementation, or NVIDIA isn't installed) and `unavailable`
-(the accelerator driver is present but couldn't initialize).
+A successful empty inventory (`ok` with no devices) is different from `unsupported` (the node's accelerator family has no inventory implementation, or the discovery library isn't installed) and `unavailable` (the accelerator driver is present but couldn't initialize). A status of `ok` covers only the accelerator families that implement discovery. On a node with GPUs from multiple vendors, `devices` lists the discovered families and omits any vendor without an inventory implementation.
 
 Each device has these fields:
 

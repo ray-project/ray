@@ -19,8 +19,9 @@ class AcceleratorInventoryStatus(str, Enum):
     """The status of an accelerator inventory discovery.
 
     A successful *empty* inventory (``OK`` with zero devices) is intentionally
-    distinct from ``UNAVAILABLE`` (driver/library absent or uninitializable) and
-    ``UNSUPPORTED`` (no discovery extension for this family). Callers must not
+    distinct from ``UNSUPPORTED`` (no discovery extension for this family, or
+    the discovery library is not installed) and ``UNAVAILABLE`` (the
+    driver/library is present but could not initialize). Callers must not
     collapse these into "no accelerators found".
     """
 
