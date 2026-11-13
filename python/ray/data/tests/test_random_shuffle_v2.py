@@ -101,6 +101,15 @@ def test_random_shuffle_reduce_permutes_and_is_seeded_per_partition():
 
     assert list(reduce_fn(0, [[]])) == []
 
+    # Shards with promotable schemas must keep their order before permuting;
+    # concat would otherwise group the two int64 shards ahead of the null one.
+    null_shard = pa.table({"id": pa.array([None, None], pa.null())})
+    mixed_shards = [shards[0], null_shard, shards[1]]
+    ordered = pa.concat_tables([s.cast(shards[0].schema) for s in mixed_shards])
+    (mixed,) = reduce_fn(0, [mixed_shards])
+    (expected,) = reduce_fn(0, [[ordered]])
+    assert mixed.equals(expected)
+
 
 def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
     ray_start_regular_shared_2_cpus, disk_shuffle_v2

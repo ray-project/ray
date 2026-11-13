@@ -70,7 +70,13 @@ def make_random_shuffle_reduce_fn(seed: Optional[int]) -> ReduceFn:
         tables = tables_by_input[0]
         if not tables:
             return
-        table = concat(tables, promote_types=True) if len(tables) > 1 else tables[0]
+        # preserve_order keeps mixed-schema shards in map task order, so the
+        # seeded permutation below starts from the same rows on every run.
+        table = (
+            concat(tables, promote_types=True, preserve_order=True)
+            if len(tables) > 1
+            else tables[0]
+        )
         partition_seed = None if seed is None else _derive_seed(seed, partition_id)
         yield shuffle(table, partition_seed)
 
