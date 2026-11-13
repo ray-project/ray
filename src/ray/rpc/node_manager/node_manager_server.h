@@ -45,6 +45,7 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)            \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorkerLease)              \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedActorWorkers)      \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelStaleActorLeases)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)              \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)                   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)                   \
@@ -115,6 +116,10 @@ class NodeManagerServiceHandler {
   virtual void HandleReleaseUnusedActorWorkers(ReleaseUnusedActorWorkersRequest request,
                                                ReleaseUnusedActorWorkersReply *reply,
                                                SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelStaleActorLeases(CancelStaleActorLeasesRequest request,
+                                            CancelStaleActorLeasesReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleShutdownRaylet(ShutdownRayletRequest request,
                                     ShutdownRayletReply *reply,
