@@ -1,11 +1,10 @@
 """The MCAP ``Scanner``: the read's options plus the optimizer's pushdowns."""
 
-from dataclasses import dataclass, replace
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
-from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
@@ -27,8 +26,9 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
 
     Holds the message selection from ``read_mcap`` and the pushdowns the
     optimizer applies: column pruning and a per-task row limit. A pruned read
-    neither builds nor JSON-decodes the columns it drops. Partition pruning
-    comes from :class:`FileScanner`. Other filters are not pushed down.
+    neither builds nor JSON-decodes the columns it drops. Column pruning and
+    the limit come from the ``Supports*`` mixins, partition pruning from
+    :class:`FileScanner`. Other filters are not pushed down.
 
     The planned ``schema`` fixes what ``data`` holds in every block: decoded
     JSON values when every selected channel of the sampled files is
@@ -41,8 +41,6 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     include_row_id: bool = False
     log_time_order: bool = True
     filesystem: Optional[FileSystem] = None
-    columns: Optional[Tuple[str, ...]] = None
-    limit: Optional[int] = None
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
     target_block_size: Optional[int] = None
 
@@ -60,29 +58,6 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
             assert idx >= 0, f"Column {name} not found in schema"
             fields.append(self.schema.field(idx))
         return pa.schema(fields)
-
-    @override
-    def prune_columns(self, columns: List[str]) -> "MCAPScanner":
-        # An empty projection, as for ``count()``, stays empty.
-        if self.columns is not None:
-            existing = set(self.columns)
-            columns = [c for c in columns if c in existing]
-        return replace(self, columns=tuple(columns))
-
-    @override
-    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
-        return self.columns
-
-    @override
-    def push_limit(self, limit: int) -> "MCAPScanner":
-        current = self.limit
-        return replace(
-            self, limit=min(current, limit) if current is not None else limit
-        )
-
-    @override
-    def pushed_limit(self) -> Optional[int]:
-        return self.limit
 
     @property
     def decodes_json(self) -> bool:

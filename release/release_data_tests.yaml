@@ -831,7 +831,7 @@
             RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "0"
 
 - name: "shuffle_batches.fastpath_{{take_enabled}}"
-  python: "3.10"
+  python: "3.11"
   frequency: manual
   cluster:
     anyscale_sdk_2026: true
@@ -1138,6 +1138,9 @@
         # The dataset uses the legacy pickled tensor type. byod.Dockerfile sets
         # this for the old base images, but ray-torch images don't go through it.
         RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
+        # The pinned pyarrow 19.0 is below Ray Data's supported minimum; skip
+        # the import-time floor check for this intentionally-old environment.
+        RAY_DISABLE_PYARROW_VERSION_CHECK: "1"
     cluster_compute: fixed_size_gpu_compute.yaml
 
   run:
@@ -1167,6 +1170,9 @@
         # The dataset uses the legacy pickled tensor type. byod.Dockerfile sets
         # this for the old base images, but ray-torch images don't go through it.
         RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
+        # The pinned pyarrow 19.0 is below Ray Data's supported minimum; skip
+        # the import-time floor check for this intentionally-old environment.
+        RAY_DISABLE_PYARROW_VERSION_CHECK: "1"
     cluster_compute: fixed_size_gpu_compute.yaml
 
   run:
@@ -1206,6 +1212,35 @@
   run:
     timeout: 3600
     script: python image_embedding_from_uris/main.py {{args}}
+
+# Ray Data lineage reconstruction under chaos, with optional output correctness check.
+- name: image_embedding_from_uris_fake_gpu_lineage_reconstruction_chaos
+  python: "3.11"
+  frequency: manual
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: image_embedding_from_uris/fake_gpu_small_cluster_compute.yaml
+    byod:
+      python_depset: torch_cu128_data_image_embedding_py3.11.lock
+      runtime_env:
+        # Merged over the DEFAULTS. Chaos kills nodes on purpose, so dead nodes
+        # and the workers that die with them are expected.
+        RAYTEST_FAIL_ON_DEAD_NODES: "0"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "0"
+        # Lost objects and their re-produced copies coexist during lineage
+        # reconstruction, so the object store utilization bound doesn't apply.
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+
+  run:
+    # About 20 minutes without chaos. Churn and re-executed work add to that.
+    timeout: 5400
+    script: >
+      python image_embedding_from_uris/main.py
+      --inference-concurrency 20 20 --fake-gpu --chaos --lineage-reconstruction
+      --chaos-kill-interval-s 60 --chaos-kill-batch-size 2
+      --chaos-min-alive-workers 12 --verify-output
 
 
 - name: image_embedding_from_jsonl_{{case}}

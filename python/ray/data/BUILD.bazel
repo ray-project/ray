@@ -2002,6 +2002,20 @@ py_test(
 )
 
 py_test(
+    name = "test_shuffle_phase_metrics",
+    size = "small",
+    srcs = ["tests/test_shuffle_phase_metrics.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_push_split_coordinator",
     size = "large",
     srcs = ["tests/test_push_split_coordinator.py"],
@@ -2762,8 +2776,22 @@ py_test(
 )
 
 py_test(
+    name = "test_shuffle_elimination",
+    size = "large",
+    srcs = ["tests/test_shuffle_elimination.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_checkpoint",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_checkpoint.py"],
     tags = [
         "exclusive",
@@ -2809,6 +2837,35 @@ py_test(
     srcs = ["tests/test_catalog.py"],
     tags = [
         "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_gravitino_catalog",
+    size = "small",
+    srcs = ["tests/test_gravitino_catalog.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_gravitino_catalog_integration",
+    size = "large",
+    srcs = ["tests/datasource/test_gravitino_catalog_integration.py"],
+    tags = [
+        "exclusive",
+        "manual",
         "team:data",
     ],
     deps = [
