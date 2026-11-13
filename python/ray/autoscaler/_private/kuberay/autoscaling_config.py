@@ -3,7 +3,7 @@ import json
 import logging
 import time
 from itertools import chain
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 import requests
 
@@ -202,13 +202,11 @@ def _node_type_from_group_spec(
     else:
         # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
         # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
-        raw_num_hosts = group_spec.get("numOfHosts")
-        num_of_hosts = 1 if raw_num_hosts is None else max(1, int(raw_num_hosts))
-        min_workers = group_spec["minReplicas"] * num_of_hosts
-        max_workers = group_spec["maxReplicas"] * num_of_hosts
+        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
+        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
-    labels = _get_labels_from_group_spec(group_spec, group_name)
+    labels = _get_labels_from_group_spec(group_spec, group_name, resources)
 
     node_type = {
         "min_workers": min_workers,
@@ -231,12 +229,92 @@ def _node_type_from_group_spec(
     return node_type
 
 
-def _get_pod_selector_and_annotations(
+def _get_required_node_labels(pod_spec: Dict[str, Any]) -> Dict[str, str]:
+    """Return node labels guaranteed by pod `nodeSelector` and required `nodeAffinity`.
+
+    A label key is guaranteed when set in `nodeSelector` or when every
+    non-empty `nodeSelectorTerm` pins it to the same value via `In`
+    expressions (Kubernetes ANDs expressions within a term and ORs terms).
+    """
+    raw_selector = pod_spec.get("nodeSelector")
+    node_selector = (
+        {
+            k: v
+            for k, v in raw_selector.items()
+            if isinstance(k, str) and isinstance(v, str)
+        }
+        if isinstance(raw_selector, dict)
+        else {}
+    )
+    affinity = pod_spec.get("affinity")
+    node_affinity = affinity.get("nodeAffinity") if isinstance(affinity, dict) else None
+    if not isinstance(node_affinity, dict):
+        return node_selector
+    required = node_affinity.get("requiredDuringSchedulingIgnoredDuringExecution")
+    if not isinstance(required, dict):
+        return node_selector
+    terms = required.get("nodeSelectorTerms")
+    if not isinstance(terms, list) or not terms:
+        return {}
+
+    common_pins: Optional[Dict[str, str]] = None
+    for term in terms:
+        if not isinstance(term, dict):
+            continue
+        raw_me = term.get("matchExpressions")
+        raw_mf = term.get("matchFields")
+        match_expressions = [] if raw_me is None else raw_me
+        match_fields = [] if raw_mf is None else raw_mf
+        if (
+            not isinstance(match_expressions, list)
+            or not isinstance(match_fields, list)
+            or (not match_expressions and not match_fields)
+        ):
+            continue
+
+        allowed: Dict[str, Set[str]] = {k: {v} for k, v in node_selector.items()}
+        term_contradiction = False
+        for expr in match_expressions:
+            if not isinstance(expr, dict) or expr.get("operator") != "In":
+                continue
+            key = expr.get("key")
+            vals = expr.get("values")
+            if (
+                not isinstance(key, str)
+                or not key
+                or not isinstance(vals, list)
+                or not all(isinstance(v, str) for v in vals)
+            ):
+                term_contradiction = True
+                break
+            val_set = set(vals)
+            allowed[key] = val_set if key not in allowed else (allowed[key] & val_set)
+            if not allowed[key]:
+                term_contradiction = True
+                break
+        if term_contradiction:
+            continue
+
+        term_pins = {
+            key: next(iter(vals)) for key, vals in allowed.items() if len(vals) == 1
+        }
+        if common_pins is None:
+            common_pins = term_pins
+        else:
+            common_pins = {
+                k: v for k, v in common_pins.items() if term_pins.get(k) == v
+            }
+
+    return {} if common_pins is None else common_pins
+
+
+def _get_pod_scheduling_metadata(
     group_spec: Dict[str, Any],
 ) -> Tuple[Dict[str, str], Dict[str, str]]:
-    """Returns pod template `nodeSelector` and `annotations` dictionaries."""
+    """Returns required pod node labels and pod annotations."""
     template = group_spec.get("template") or {}
-    node_selector = (template.get("spec") or {}).get("nodeSelector") or {}
+    pod_spec = template.get("spec") or {}
+    node_selector = _get_required_node_labels(pod_spec)
     annotations = (template.get("metadata") or {}).get("annotations") or {}
     return node_selector, annotations
 
@@ -288,7 +366,7 @@ def _get_ray_resources_from_group_spec(
 
     resources.update(custom_resource_dict)
 
-    node_selector, annotations = _get_pod_selector_and_annotations(group_spec)
+    node_selector, annotations = _get_pod_scheduling_metadata(group_spec)
     for accelerator_manager in get_all_accelerator_managers():
         additional = accelerator_manager.get_node_group_additional_resources(
             resources, node_selector, annotations
@@ -301,17 +379,21 @@ def _get_ray_resources_from_group_spec(
 
 
 def _get_labels_from_group_spec(
-    group_spec: Dict[str, Any], group_name: str = ""
+    group_spec: Dict[str, Any],
+    group_name: str = "",
+    resources: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
     """Parses Ray node labels for the autoscaling config based on the following
     priority:
     1. Top-level `labels` field in the group spec.
-    2. Accelerator labels derived from the Pod `nodeSelector` and `annotations`.
+    2. Accelerator labels derived from the Pod `nodeSelector`, `annotations`,
+       and required `nodeAffinity` terms.
     3. `labels` field in `rayStartParams` (ignored with a warning).
 
     Args:
         group_spec: The group specification dictionary.
         group_name: The name of the group (used in warning messages).
+        resources: Base Ray resources already parsed for the group.
 
     Returns:
         A dictionary of labels for the node type.
@@ -341,15 +423,17 @@ def _get_labels_from_group_spec(
             )
 
     # Check for top-level structured Labels field.
-    if "labels" in group_spec and isinstance(group_spec.get("labels"), dict):
-        labels_dict = group_spec.get("labels")
+    raw_labels = group_spec.get("labels")
+    if isinstance(raw_labels, dict):
+        labels_dict = raw_labels
         # Validate node labels follow expected Kubernetes label syntax.
         validate_node_label_syntax(labels_dict)
 
-    node_selector, annotations = _get_pod_selector_and_annotations(group_spec)
+    node_selector, annotations = _get_pod_scheduling_metadata(group_spec)
+    resolved_resources = resources or {}
     for accelerator_manager in get_all_accelerator_managers():
         accel_labels = accelerator_manager.get_node_group_accelerator_labels(
-            node_selector, annotations
+            resolved_resources, node_selector, annotations
         )
         if accel_labels:
             # Explicit group labels take precedence over derived ones.
