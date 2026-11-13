@@ -567,9 +567,17 @@ def _add_partitions_to_dataframe(
         column = pd.Series(data=[value] * len(df), name=field)
 
         if field in df:
-            column = column.astype(df[field].dtype)
-            mask = df[field].notna()
-            if not df[field][mask].equals(column[mask]):
+            if value is None:
+                # Don't cast None to the file's dtype: `astype(bool)` turns it
+                # into False and hides a conflict. A null partition value only
+                # matches a column that is all null.
+                conflict = df[field].notna().any()
+                column = df[field]
+            else:
+                column = column.astype(df[field].dtype)
+                mask = df[field].notna()
+                conflict = not df[field][mask].equals(column[mask])
+            if conflict:
                 raise ValueError(
                     f"Partition column {field} exists in table data, but partition "
                     f"value '{value}' is different from in-data values: "
