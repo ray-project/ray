@@ -194,18 +194,20 @@ def estimate_cast(
     pinned_schema: pa.Schema,
     read: Read,
 ) -> int:
-    """What a pin's cast allocates for one row group, times 1.5: a crude bound.
-    ``column_leaves`` holds each column read as its leaves by index, profiled as
-    pinned."""
-    size = estimate_added_columns(row_group=row_group, read=read)
+    """What a pin's cast allocates for one row group, times 1.5 as a crude bound,
+    and the columns Ray adds. ``column_leaves`` holds each column read as its leaves
+    by index, profiled as pinned."""
+    cast = 0
     for name, leaves in column_leaves.items():
         before, after = file_schema.field(name).type, pinned_schema.field(name).type
         if before == after:
             continue
-        size += estimate_row_group(
+        cast += estimate_row_group(
             row_group=row_group, leaves=leaves.values(), read=Read()
         )
-    return int(_CAST_FACTOR * size)
+    return int(_CAST_FACTOR * cast) + estimate_added_columns(
+        row_group=row_group, read=read
+    )
 
 
 def _dictionary_bytes(leaf: LeafChunk) -> int:
@@ -224,6 +226,7 @@ def _dictionary_bytes(leaf: LeafChunk) -> int:
 
 
 def _list_offset_width(leaf: LeafChunk) -> int:
-    """Bytes per offset of the widest list above ``leaf``, 4 if none."""
+    """Bytes per offset of the widest list above ``leaf``: 4 under only a
+    fixed_size_list, which PyArrow reads as a list before dropping the offsets."""
     widths = [node.width for node in leaf.profile.nodes[:-1] if node.kind == _LIST]
     return max(widths, default=4)
