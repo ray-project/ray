@@ -979,7 +979,7 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
     def paths(self) -> List[str]:
         return ["hive://direct"]
 
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
         return _HiveFileIndexer(self._source, self._retained)
 
     def get_file_partitioner(self, **kwargs):
