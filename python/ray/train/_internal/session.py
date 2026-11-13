@@ -33,7 +33,7 @@ from ray.train.constants import (
     WORKER_PID,
     _v2_migration_warnings_enabled,
 )
-from ray.train.error import SessionMisuseError
+from ray.train.error import _SessionMisuseError
 from ray.train.utils import _log_deprecation_warning
 from ray.util import queue as ray_queue
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -650,7 +650,7 @@ def shutdown_session():
 
 def _raise_accelerator_session_misuse():
     """Raises a SessionMisuseError because a utility function was used improperly."""
-    raise SessionMisuseError(
+    raise _SessionMisuseError(
         "prepare/accelerate utility functions should be called inside a training "
         "function executed by `Trainer.run`"
     )

@@ -27,6 +27,7 @@ from ray.air._internal.device_manager import (
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.session import get_accelerator, set_accelerator
+from ray.train.constants import TORCH_AMP_DEPRECATION_MESSAGE
 from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -240,13 +241,10 @@ def prepare_data_loader(
 
 
 def _log_amp_deprecation_warning():
-    # Keep V2 imports out of top-level V1 imports.
-    from ray.train.v2.torch.train_loop_utils import _TORCH_AMP_DEPRECATION_MESSAGE
-
-    _log_deprecation_warning(_TORCH_AMP_DEPRECATION_MESSAGE)
+    _log_deprecation_warning(TORCH_AMP_DEPRECATION_MESSAGE)
 
 
-@Deprecated
+@Deprecated(message=TORCH_AMP_DEPRECATION_MESSAGE)
 def accelerate(amp: bool = False) -> None:
     """[Deprecated] Enables training optimizations.
 
@@ -268,7 +266,7 @@ def accelerate(amp: bool = False) -> None:
         )
 
 
-@Deprecated
+@Deprecated(message=TORCH_AMP_DEPRECATION_MESSAGE)
 def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
     """[Deprecated] Wraps optimizer to support automatic mixed precision.
 
@@ -282,7 +280,7 @@ def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer
     return get_accelerator(_TorchAccelerator).prepare_optimizer(optimizer)
 
 
-@Deprecated
+@Deprecated(message=TORCH_AMP_DEPRECATION_MESSAGE)
 def backward(tensor: torch.Tensor) -> None:
     """[Deprecated] Computes the gradient of the specified tensor w.r.t. graph leaves.
 

@@ -20,11 +20,19 @@ from ray.air.result import Result
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
-from ray.train._internal.syncer import SyncConfig
+from ray.train._internal.syncer import SyncConfig as _SyncConfig
 from ray.train.backend import BackendConfig
 from ray.train.base_trainer import TrainingFailedError
-from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.context import TrainContext, get_context
+from ray.train.constants import (
+    TRAIN_DATASET_KEY,
+    V1_REMOVAL_VERSION,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
+from ray.train.context import _get_context as get_context, _TrainContext as TrainContext
+from ray.train.utils import (
+    _log_v1_mode_deprecation_warning,
+    _make_deprecated_module_getattr,
+)
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if is_v2_enabled():
@@ -93,7 +101,6 @@ __all__ = [
     "Result",
     "RunConfig",
     "ScalingConfig",
-    "SyncConfig",
     "TrainContext",
     "TrainingFailedError",
     "TRAIN_DATASET_KEY",
@@ -111,7 +118,8 @@ FailureConfig.__module__ = "ray.train"
 Result.__module__ = "ray.train"
 RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
-SyncConfig.__module__ = "ray.train"
+# Keep the pickle path of existing `RunConfig(sync_config)` objects.
+_SyncConfig.__module__ = "ray.train"
 TrainContext.__module__ = "ray.train"
 TrainingFailedError.__module__ = "ray.train"
 
@@ -158,6 +166,24 @@ if is_v2_enabled():
     ValidationTaskConfig.__module__ = "ray.train"
     get_all_reported_checkpoints.__module__ = "ray.train"
     get_preemption_info.__module__ = "ray.train"
+else:
+    _log_v1_mode_deprecation_warning()
+
+
+# `ray.train.SyncConfig` is only used by Ray Train v1 and by Ray Tune, which has
+# its own `ray.tune.SyncConfig`.
+__getattr__ = _make_deprecated_module_getattr(
+    __name__,
+    {
+        "SyncConfig": (
+            _SyncConfig,
+            "`ray.train.SyncConfig` is deprecated and will be removed in "
+            f"{V1_REMOVAL_VERSION}. Ray Train v2 doesn't sync to storage with "
+            "`SyncConfig`. Use `ray.tune.SyncConfig` with Ray Tune instead. "
+            f"{V2_MIGRATION_GUIDE_MESSAGE}",
+        ),
+    },
+)
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.
