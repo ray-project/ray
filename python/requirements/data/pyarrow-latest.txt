@@ -2,7 +2,7 @@
 # Python >= 3.11 the image build then force-installs the real latest pyarrow
 # on top (see the pyarrow-latest branch in ci/docker/data.build.Dockerfile);
 # pyarrow 26 dropped Python 3.10, so the 3.10 image stays on this pin.
-pyarrow==25.0.1
+pyarrow==23.0.1
 hudi>=0.5.0
 pylance
 modin==0.37.1
