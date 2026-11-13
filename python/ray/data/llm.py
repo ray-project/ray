@@ -146,13 +146,13 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig, ProcessorConfig):
             optional ``strategy``
             (``PACK``/``STRICT_PACK``/``SPREAD``/``STRICT_SPREAD``).
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
-            Defaults to True. Use nested config for per-stage control over batch_size,
+            Defaults to True, except for the ``score`` task, which doesn't support it. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
-            Defaults to True. Use nested config for per-stage control over batch_size,
+            Defaults to True, except for the ``score`` task, which doesn't support it. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         prepare_multimodal_stage: Multimodal preprocessing stage config
             (bool | dict | PrepareMultimodalStageConfig). Defaults to False.
@@ -229,8 +229,15 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
             the throughput and fault-tolerance based on your use case.
         engine_kwargs: The kwargs to pass to the SGLang engine. Default engine kwargs are
             tp_size: 1, dp_size: 1, skip_tokenizer_init: True.
-        task_type: The task type to use. If not specified, will use 'generate' by default.
-        task_kwargs: Options for the task type. The 'generate' task takes none.
+        task_type: The task type to use: 'generate' (default) or 'score'. See
+            :ref:`sglang_score` for the score task.
+        task_kwargs: Options for the task type. The ``generate`` task takes none.
+            The ``score`` task accepts the ``Engine.score`` options
+            ``label_token_ids``, ``apply_softmax``, ``item_first``,
+            ``embed_override_token_id``, and ``score_extraction_token_id``.
+            Generative models require ``label_token_ids``. See the
+            `SGLang score API <https://docs.sglang.io/basic_usage/native_api.html>`_
+            for details.
         runtime_env: The runtime environment to use for the SGLang engine. See
             :ref:`this doc <handling_dependencies>` for more details.
         max_pending_requests: The maximum number of pending requests. If not specified,
