@@ -6,8 +6,8 @@ This tool reads them all and writes ``report.md``, ``vulns.csv`` and
 ``summary.json``, and can post the report as a Buildkite annotation.
 
 Only fixable CRITICAL/HIGH findings count against the build. Exit codes:
-0 clean, 3 fixable CRITICAL/HIGH findings, 4 incomplete coverage (takes
-precedence over 3).
+0 clean, 10 fixable CRITICAL/HIGH findings, 11 incomplete coverage (takes
+precedence over 10).
 
 Example:
     bazel run //ci/ray_ci/automation/trivy:trivy_report -- \\
@@ -34,9 +34,11 @@ GATED_SEVERITIES = ("CRITICAL", "HIGH")
 # Trivy statuses meaning no usable fix exists, even if FixedVersion is set.
 NO_FIX_STATUSES = frozenset({"affected", "will_not_fix", "fix_deferred", "end_of_life"})
 
+# Results, not failures, so neither may be a code rayci retries on its own
+# (it reruns 3, for example, up to 3 times) or one Bazel uses under `bazel run`.
 EXIT_CLEAN = 0
-EXIT_FINDINGS = 3
-EXIT_INCOMPLETE = 4
+EXIT_FINDINGS = 10
+EXIT_INCOMPLETE = 11
 
 ANNOTATION_CONTEXT = "trivy-scan"
 FILES_NOTE = (

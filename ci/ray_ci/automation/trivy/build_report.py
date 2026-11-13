@@ -12,7 +12,9 @@ It writes:
   ``.buildkite/hooks/post-command`` posts: postmerge job containers have no
   buildkite-agent.
 
-Exit codes are trivy_report's; a failed report upload turns a clean 0 into 1.
+Exit codes are trivy_report's: 0 clean, 10 fixable CRITICAL/HIGH findings,
+11 incomplete coverage. A failed report upload turns a clean 0 into 1, which
+rayci retries once.
 
 Example:
     bazel run //ci/ray_ci/automation/trivy:build_report -- \\

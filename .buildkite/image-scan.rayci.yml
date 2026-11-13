@@ -167,7 +167,8 @@ steps:
       - forge
 
   # Runs whatever the scans did, so a failed or skipped scan job still shows
-  # up, as its images missing from the report.
+  # up, as its images missing from the report. Exits 10 for fixable
+  # CRITICAL/HIGH findings and 11 for incomplete coverage; both soft-fail.
   - label: ":shield: trivy: report"
     # post-command posts the trivy-scan annotation only from this key.
     key: trivy_report

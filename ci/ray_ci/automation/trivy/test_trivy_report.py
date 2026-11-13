@@ -771,5 +771,24 @@ def test_a_non_text_field_fails_only_its_image(tmp_path: Path, vuln: dict):
     assert "CVE-2026-0001" in report
 
 
+# Exit codes rayci retries on its own (rayci raycicmd/command_step.go,
+# defaultRayRetry, v0.51.0): a result reported with one of them reruns the
+# report up to 3 more times.
+RAYCI_RETRIED = {-1, 1, 3, 53, 125, 126, 127, 255}
+# Bazel's own exit codes (bazel src/main/java/com/google/devtools/build/lib/
+# util/ExitCode.java). The report runs under `bazel run`, so a result code
+# among them could be read as Bazel's.
+BAZEL_EXIT_CODES = {0, 1, 2, 3, 4, 6, 7, 8, 9, 32, 33, 34, 36, 37, 38, 39, 45, 48}
+
+
+def test_result_exit_codes_are_not_retried_or_mistaken_for_bazels():
+    assert EXIT_CLEAN == 0
+    # The pipeline file and both module docstrings name these numbers.
+    assert (EXIT_FINDINGS, EXIT_INCOMPLETE) == (10, 11)
+    for code in (EXIT_FINDINGS, EXIT_INCOMPLETE):
+        assert code not in RAYCI_RETRIED
+        assert code not in BAZEL_EXIT_CODES
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
