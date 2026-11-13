@@ -1,38 +1,69 @@
-"""Name and check the Ray images one Trivy scan job scans, and run Trivy.
+"""Scan one (architecture, platform) group of Ray images with Trivy.
 
-For one (architecture, platform) group, ``build_targets`` names each image
-the build pushed to its wanda cache, with the tags the publish step gives it.
-``check_target`` resolves each ref to a digest and checks, on the digest
-itself since a tag can be re-pushed meanwhile, that it is a single-platform
-image for the expected architecture.
+For each image the build pushed to its wanda cache, this:
+1. checks the ref is a single-platform image for the expected architecture;
+2. pulls every image of the group into one shared OCI layout with crane, so
+   layers shared across Python versions and image types are stored once;
+3. downloads this build's vulnerability DBs from its S3 folder (staged by
+   ``trivy_db``), and checks each against the sha256 pinned in metadata.json
+   and each pin against the upstream manifest it names;
+4. runs the pinned Trivy on each image, by digest, in a throwaway container
+   with no network, no credentials, no inherited environment, a non-root
+   user, a read-only root and no capabilities;
+5. writes ``<name>.status.json`` and ``<name>.json.gz``, the input contract
+   of ``trivy_report``, and uploads each image's pair to the build's S3
+   ``results/`` folder as soon as it is final, for the report job.
 
-``ContainedTrivy`` runs the pinned Trivy on an OCI layout in a throwaway
-container with no network, no credentials, no inherited environment, a
-non-root user, a read-only root and no capabilities. The job talks to the
-host's docker daemon, so bind mounts would resolve host paths. Files reach
-the Trivy containers through docker volumes filled with ``docker cp``
-instead.
+The job talks to the host's docker daemon, so bind mounts would resolve host
+paths. Files reach the Trivy containers through docker volumes filled with
+``docker cp`` instead.
+
+A finding never fails this tool; an image that couldn't be scanned does
+(exit 1), after every other image in the group has been scanned.
+
+Example:
+    bazel run //ci/ray_ci/automation/trivy:scan_images -- \\
+        --architecture x86_64 --platform cu12.8.1-cudnn \\
+        --image ray:3.11 --image ray:3.12 --image ray-extra:3.12
 """
 
+import gzip
+import json
 import logging
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import tarfile
+import tempfile
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import click
 import runfiles
 
 from ci.ray_ci.automation.push_ray_image import RayImagePushContext
-from ci.ray_ci.automation.trivy import registry
-from ci.ray_ci.automation.trivy.scan_store import StoreError
+from ci.ray_ci.automation.trivy import registry, scan_store
+from ci.ray_ci.automation.trivy.scan_store import (
+    DB_FOLDER,
+    RESULTS_FOLDER,
+    ScanStore,
+    StoreError,
+)
+from ci.ray_ci.automation.trivy.trivy_db import (
+    DB_METADATA,
+    DB_SOURCES,
+    DbSource,
+    db_layer,
+    manifest_created,
+)
 from ci.ray_ci.docker_container import RayType
 from ci.ray_ci.ray_image import RayImageError
+from ci.ray_ci.utils import ecr_docker_login
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
@@ -63,6 +94,11 @@ OCI_ARCH = {"x86_64": "amd64", "aarch64": "arm64"}
 # can't know for sure: it may run after midnight. The digest identifies the
 # image; these tags are left out of status records.
 DATED_TAG = re.compile(r"^nightly\.\d{6}\.")
+DB_FILES = {
+    "db": {"trivy.db", "metadata.json"},
+    "java_db": {"trivy-java.db", "metadata.json"},
+}
+SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class ScanError(Exception):
@@ -185,6 +221,78 @@ def check_target(target: Target, architecture: str) -> None:
         target.digest = digest
     except Exception as e:
         target.error = _describe(e)
+
+
+def check_layout(layout: Path, digests: set[str]) -> None:
+    index = json.loads((layout / "index.json").read_text())
+    found = [m.get("digest") for m in index.get("manifests") or []]
+    missing = digests - set(found)
+    if missing or len(found) != len(set(found)):
+        raise ScanError(f"layout has manifests {found}, expected {sorted(digests)}")
+
+
+def _safe_extract(tarball: Path, dest: Path, allowed: set[str]) -> None:
+    """Extract only the expected top-level DB files, in one streaming pass:
+    listing the members first would re-inflate the gzip stream."""
+    dest.mkdir(parents=True)
+    with tarfile.open(tarball, "r|gz") as tar:
+        for member in tar:
+            if not member.isfile() or member.name not in allowed:
+                raise ScanError(f"unexpected entry {member.name!r} in {tarball.name}")
+            with tar.extractfile(member) as src, open(dest / member.name, "wb") as out:
+                shutil.copyfileobj(src, out)
+    missing = allowed - {p.name for p in dest.iterdir()}
+    if missing:
+        raise ScanError(f"{tarball.name} lacks {sorted(missing)}")
+
+
+def load_db_pins(store: ScanStore, workdir: Path) -> dict[str, Any]:
+    """The DB pins trivy_db recorded for this build."""
+    path = store.download(DB_FOLDER, DB_METADATA, workdir / DB_METADATA)
+    try:
+        pins = json.loads(path.read_text())
+    except ValueError as e:
+        raise ScanError(f"{store.url(DB_FOLDER)}{DB_METADATA} is not JSON: {e}")
+    if not isinstance(pins, dict):
+        raise ScanError(f"{store.url(DB_FOLDER)}{DB_METADATA} is not a JSON object")
+    return pins
+
+
+def fetch_db(
+    source: DbSource, store: ScanStore, pins: dict[str, Any], workdir: Path
+) -> tuple[Path, dict[str, Any]]:
+    """Download this build's copy of a DB and verify it against its pin, and
+    the pin against the upstream manifest it names: anyone who can write the
+    bucket could replace both the tarball and the pin."""
+    pin = pins.get(source.name)
+    pin = pin if isinstance(pin, dict) else {}
+    blob, manifest_digest = pin.get("blob"), pin.get("manifest")
+    if not all(
+        isinstance(d, str) and SHA256_DIGEST.match(d) for d in (blob, manifest_digest)
+    ):
+        raise ScanError(f"{DB_METADATA} has no valid {source.name} pin: {pin!r}")
+    # crane refuses a manifest whose digest differs from the one requested.
+    pinned = f"{source.upstream_repo}@{manifest_digest}"
+    manifest = registry.manifest(pinned)
+    upstream = db_layer(manifest, source.media_type)["digest"]
+    if upstream != blob:
+        raise ScanError(
+            f"{DB_METADATA} pins {source.name} blob {blob}, but {pinned} has {upstream}"
+        )
+    tarball = store.download(DB_FOLDER, source.file_name, workdir / source.file_name)
+    actual = registry.sha256_file(tarball)
+    if actual != blob:
+        raise ScanError(f"{source.file_name} has digest {actual}, pinned {blob}")
+    dest = workdir / source.name
+    _safe_extract(tarball, dest, DB_FILES[source.name])
+    tarball.unlink()
+    # Recorded from what was verified, never from the pin.
+    return dest, {
+        "source": source.upstream,
+        "manifest": manifest_digest,
+        "blob": blob,
+        "created": manifest_created(manifest),
+    }
 
 
 def _run(args: Sequence[str], check: bool = True) -> str:
@@ -374,6 +482,12 @@ def _prune_stale(now: Optional[datetime] = None) -> None:
                 _run([*remove, name], check=False)
 
 
+def _exit_on_sigterm(signum: int, frame: object) -> None:
+    """Cancelled and timed-out jobs get SIGTERM. Exiting normally lets the
+    cleanup and status writing run, which the default handler would skip."""
+    sys.exit(128 + signum)
+
+
 def _make_world_readable(root: Path) -> None:
     for path in [root, *root.rglob("*")]:
         if path.is_symlink():
@@ -419,3 +533,191 @@ def stage(
     (work / "cache" / "db").symlink_to("/data/db")
     (work / "cache" / "java-db").symlink_to("/data/java-db")
     return staging
+
+
+def write_status(results_dir: Path, target: Target) -> None:
+    path = results_dir / f"{target.name}.status.json"
+    path.write_text(json.dumps(target.status_record(), indent=2) + "\n")
+
+
+def _finish(
+    results_dir: Path, target: Target, report: Callable[[Target], None]
+) -> None:
+    write_status(results_dir, target)
+    report(target)
+    target.reported = True
+
+
+def scan_group(
+    targets: Sequence[Target],
+    architecture: str,
+    store: ScanStore,
+    results_dir: Path,
+    workdir: Path,
+    base_image: str,
+    login: Callable[[], None] = lambda: None,
+    report: Callable[[Target], None] = lambda target: None,
+) -> None:
+    """Scan every target. Each one ends with a status record either way, and
+    any failure, expected or not, becomes the affected images' error.
+
+    ``report`` gets each target as soon as its status is final, so a job
+    killed midway has already handed over the images it finished."""
+    try:
+        login()
+        for target in targets:
+            check_target(target, architecture)
+            if target.error:
+                _finish(results_dir, target, report)
+        ready = [t for t in targets if not t.error]
+        if ready:
+            _scan_ready(
+                ready, architecture, store, results_dir, workdir, base_image, report
+            )
+    except Exception as e:
+        for target in targets:
+            if not target.error and not target.scanned:
+                target.error = f"group failed before scanning: {_describe(e)}"
+    finally:
+        for target in targets:
+            if target.reported:
+                continue
+            if not target.error and not target.scanned:
+                target.error = "scan did not complete"
+            try:
+                _finish(results_dir, target, report)
+            except Exception as e:
+                # The others' statuses still matter.
+                target.error = target.error or "status not recorded"
+                logger.error(f"Could not record {target.name}: {_describe(e)}")
+
+
+def _scan_ready(
+    ready: Sequence[Target],
+    architecture: str,
+    store: ScanStore,
+    results_dir: Path,
+    workdir: Path,
+    base_image: str,
+    report: Callable[[Target], None],
+) -> None:
+    dbs: dict[str, Path] = {}
+    pins: dict[str, Any] = {}
+    db_pins = load_db_pins(store, workdir)
+    for source in DB_SOURCES:
+        dbs[source.name], pins[source.name] = fetch_db(source, store, db_pins, workdir)
+    layout = workdir / "layout"
+    platform = f"linux/{OCI_ARCH[architecture]}"
+    registry.pull(sorted({t.pinned_ref for t in ready}), layout, platform)
+    check_layout(layout, {t.digest for t in ready})
+    staging = stage(workdir, layout, dbs, {t.image_type for t in ready})
+    with ContainedTrivy(base_image) as trivy:
+        trivy.load(staging)
+        shutil.rmtree(staging)
+        for target in ready:
+            target.db = pins
+            raw = workdir / f"{target.name}.json"
+            try:
+                trivy.scan(target, raw)
+                with open(raw, "rb") as src, gzip.open(
+                    results_dir / f"{target.name}.json.gz", "wb"
+                ) as out:
+                    shutil.copyfileobj(src, out)
+                raw.unlink()
+                target.scanned = True
+            except Exception as e:
+                target.error = _describe(e)
+            _finish(results_dir, target, report)
+
+
+def upload_result(store: ScanStore, results_dir: Path, target: Target) -> str:
+    """Upload the image's result, then its status record, so a status found
+    in S3 always has its result beside it. Returns the failure, if any."""
+    for name in (f"{target.name}.json.gz", f"{target.name}.status.json"):
+        path = results_dir / name
+        if not path.is_file():
+            continue
+        try:
+            store.upload(path, RESULTS_FOLDER)
+        except Exception as e:
+            return f"{target.name}: {_describe(e)}"
+    return ""
+
+
+@click.command()
+@click.option("--architecture", required=True, type=click.Choice(sorted(OCI_ARCH)))
+@click.option("--platform", required=True, help="e.g. cpu, tpu, cu12.8.1-cudnn")
+@click.option(
+    "--image",
+    "images",
+    required=True,
+    multiple=True,
+    help="TYPE:PYTHON to scan, e.g. ray:3.12. Repeatable.",
+)
+@click.option(
+    "--results-dir",
+    default="/artifact-mount/trivy/results",
+    type=click.Path(file_okay=False, path_type=Path),
+)
+@click.option("--rayci-work-repo", required=True, envvar="RAYCI_WORK_REPO")
+@click.option("--rayci-build-id", required=True, envvar="RAYCI_BUILD_ID")
+@click.option("--rayci-schedule", default="", envvar="RAYCI_SCHEDULE")
+@click.option("--pull-request", default="false", envvar="BUILDKITE_PULL_REQUEST")
+@scan_store.build_options
+def main(
+    architecture: str,
+    platform: str,
+    images: tuple[str, ...],
+    results_dir: Path,
+    rayci_work_repo: str,
+    rayci_build_id: str,
+    rayci_schedule: str,
+    pull_request: str,
+    store: ScanStore,
+) -> None:
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    targets = build_targets(
+        [parse_image(spec) for spec in images],
+        platform,
+        architecture,
+        rayci_work_repo,
+        rayci_build_id,
+        store.branch,
+        store.commit,
+        rayci_schedule,
+        pull_request,
+    )
+
+    upload_failures: list[str] = []
+
+    def report(target: Target) -> None:
+        failure = upload_result(store, results_dir, target)
+        if failure:
+            upload_failures.append(failure)
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        scan_group(
+            targets,
+            architecture,
+            store,
+            results_dir,
+            Path(tmp),
+            BASE_IMAGE,
+            login=lambda: registry.login_if_ecr(rayci_work_repo, ecr_docker_login),
+            report=report,
+        )
+    failed = [t for t in targets if t.error]
+    for target in failed:
+        logger.error(f"{target.name}: {target.error}")
+    for failure in upload_failures:
+        logger.error(f"Upload failed: {failure}")
+    logger.info(
+        f"Scanned {len(targets) - len(failed)}/{len(targets)} images; "
+        f"results in {store.url(RESULTS_FOLDER)}"
+    )
+    sys.exit(1 if failed or upload_failures else 0)
+
+
+if __name__ == "__main__":
+    main()
