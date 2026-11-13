@@ -2546,7 +2546,7 @@ class TestRouterMetricsManager:
                 metrics_manager.inc_num_running_requests_for_replica(r)
             custom_router_metrics = {
                 "outstanding_effective_prefill_tokens": 123.0,
-                "active_decode_requests": 7.0,
+                "custom_router_load": 7.0,
             }
             metrics_manager.set_custom_router_metrics(custom_router_metrics)
             metrics_manager._add_autoscaling_metrics_point()

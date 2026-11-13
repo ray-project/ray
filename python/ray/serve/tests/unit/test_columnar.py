@@ -119,7 +119,7 @@ def _rich_handle_report():
                 TimeStampedValue(10.0, 1200.0),
                 TimeStampedValue(11.0, 800.0),
             ],
-            "active_decode_requests": [
+            "custom_router_load": [
                 TimeStampedValue(10.0, 14.0),
                 TimeStampedValue(11.0, 17.0),
             ],
@@ -261,7 +261,9 @@ def test_encode_decode_round_trip_preserves_every_series():
 
 
 @pytest.mark.parametrize("columnar", [False, True])
-def test_context_exposes_raw_router_metrics_by_handle(columnar):
+def test_context_aggregates_router_metrics_per_handle(columnar, monkeypatch):
+    # Each series holds its first value for 1s and its last until now (12.0).
+    monkeypatch.setattr(A.time, "time", lambda: 12.0)
     report = _rich_handle_report()
     state = _state()
     if columnar:
@@ -271,19 +273,13 @@ def test_context_exposes_raw_router_metrics_by_handle(columnar):
     else:
         state.record_request_metrics_for_handle(report)
 
-    raw = state.get_autoscaling_context(1).raw_router_metrics
-    assert raw is not None
-    for metric_name in (
-        "outstanding_effective_prefill_tokens",
-        "active_decode_requests",
-    ):
-        assert [
-            (point.timestamp, point.value)
-            for point in raw[metric_name][report.handle_id]
-        ] == [
-            (point.timestamp, point.value)
-            for point in report.router_metrics[metric_name]
-        ]
+    aggregated = state.get_autoscaling_context(1).aggregated_router_metrics
+    assert aggregated == {
+        "outstanding_effective_prefill_tokens": {
+            report.handle_id: pytest.approx((1200.0 + 800.0) / 2)
+        },
+        "custom_router_load": {report.handle_id: pytest.approx((14.0 + 17.0) / 2)},
+    }
 
 
 def test_decode_validates_every_frame_whatever_the_header_says():
