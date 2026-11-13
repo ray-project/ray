@@ -6,6 +6,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    PartialAggMode,
+    PartialAggPolicy,
     _make_aggregating_reduce_fn,
     _make_aggregating_transformer,
 )
@@ -265,6 +267,22 @@ def _plan_sort_v2(
     )
 
 
+def _choose_partial_agg_policy(data_context: DataContext) -> PartialAggPolicy:
+    """Picks how the map side of a SHUFFLE_V2 aggregation pre-aggregates."""
+    if not data_context.enable_adaptive_partial_aggregation:
+        return PartialAggPolicy(mode=PartialAggMode.ALWAYS)
+    mode = PartialAggMode(data_context.partial_aggregation_mode or "probe")
+    if mode != PartialAggMode.PROBE:
+        return PartialAggPolicy(mode=mode)
+    return PartialAggPolicy(
+        mode=PartialAggMode.PROBE,
+        probe_rows=data_context.adaptive_partial_aggregation_probe_rows,
+        unique_ratio_threshold=(
+            data_context.adaptive_partial_aggregation_unique_ratio_threshold
+        ),
+    )
+
+
 def _plan_hash_shuffle_aggregate_v2(
     data_context: DataContext,
     logical_op: Aggregate,
@@ -286,7 +304,9 @@ def _plan_hash_shuffle_aggregate_v2(
         num_partitions = 1
 
     partition_fn = _make_hash_partition_fn(key_list, num_partitions)
-    block_transformer = _make_aggregating_transformer(key_columns, aggs)
+    block_transformer = _make_aggregating_transformer(
+        key_columns, aggs, policy=_choose_partial_agg_policy(data_context)
+    )
     reduce_fn = _make_aggregating_reduce_fn(key_columns, aggs)
 
     map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
