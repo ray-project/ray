@@ -202,6 +202,25 @@ def test_build_app_scales_replicas(monkeypatch) -> None:
     assert app._bound_deployment.num_replicas == 3
 
 
+def test_build_app_accepts_multiplexed_actor_settings(monkeypatch) -> None:
+    pytest.importorskip("ray.serve")
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
+    app = grpc_app.build_app(
+        {
+            "num_replicas": 2,
+            "num_sandbox_actors": 4,
+            "sandbox_actor_num_cpus": 1.5,
+            "sandbox_actor_memory_mb": 256,
+        }
+    )
+    settings = app._bound_deployment.init_args[0]
+    assert settings.num_sandbox_actors == 4
+    assert settings.sandbox_actor_num_cpus == 1.5
+    assert settings.sandbox_actor_memory_mb == 256.0
+    with pytest.raises(ValueError, match="num_sandbox_actors"):
+        grpc_app.build_app({"sandbox_actor_num_cpus": 2.0})
+
+
 def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -220,12 +239,12 @@ def serve_facade() -> Iterator[Tuple[str, int]]:
     import ray
     from ray.serve.config import gRPCOptions
 
-    grpc_port, http_port = _free_port(), _free_port()
     previous_token = os.environ.get("RAY_SANDBOX_API_TOKEN")
     # Set before Ray starts, so the Serve replica inherits it.
     os.environ["RAY_SANDBOX_API_TOKEN"] = _TOKEN
     ray.init()
     try:
+        grpc_port, http_port = _free_port(), _free_port()
         serve.start(
             grpc_options=gRPCOptions(
                 port=grpc_port,
@@ -305,6 +324,47 @@ def test_http_requests_get_not_found(serve_facade) -> None:
     with pytest.raises(urllib.error.HTTPError) as info:
         urllib.request.urlopen(f"http://127.0.0.1:{http_port}/", timeout=30)
     assert info.value.code == 404
+
+
+def test_ray_actor_handle_resolver_multiplexes_real_actors(serve_facade) -> None:
+    """RayActorHandleResolver creates a fixed pool of MultiSandboxHost actors
+    in Ray and multiplexes sandboxes across them without per-sandbox actors."""
+    import ray
+    from ray.experimental.sandbox.http.resolver import (
+        SANDBOX_POOL_ACTOR_PREFIX,
+        SANDBOX_POOL_COORDINATOR_PREFIX,
+        RayActorHandleResolver,
+    )
+    from ray.util import list_named_actors
+
+    namespace = "ray_sandbox_pool_test"
+    settings = SandboxAPISettings(
+        namespace=namespace,
+        num_sandbox_actors=2,
+        sandbox_actor_num_cpus=0.1,
+        sandbox_actor_memory_mb=64,
+        sandbox_actor_max_concurrency=128,
+    )
+    resolver = RayActorHandleResolver(settings)
+
+    async def scenario() -> List[str]:
+        handles = await resolver.ensure_pool_async()
+        assert len(handles) == 2
+        named = [
+            e["name"]
+            for e in list_named_actors(all_namespaces=True)
+            if e.get("namespace") == namespace
+            and e.get("name", "").startswith(SANDBOX_POOL_ACTOR_PREFIX)
+            and not e.get("name", "").startswith(SANDBOX_POOL_COORDINATOR_PREFIX)
+        ]
+        return sorted(named)
+
+    actor_names = asyncio.run(scenario())
+    assert len(actor_names) == 2
+    assert resolver.list_names() == []
+    for e in list_named_actors(all_namespaces=True):
+        if e.get("namespace") == namespace:
+            ray.kill(ray.get_actor(e["name"], namespace=namespace))
 
 
 if __name__ == "__main__":

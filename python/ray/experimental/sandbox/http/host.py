@@ -32,13 +32,17 @@ fragile. Unexpected exceptions still propagate and map to HTTP 500.
 """
 
 import asyncio
+import concurrent.futures
+import contextlib
 import logging
+import os
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
     Dict,
     List,
@@ -212,6 +216,12 @@ class SandboxHost:
         spec: Sandbox creation spec (validated request data).
         settings: Server limits (``max_output_bytes``, ``max_exec_history``).
         runtime_factory: Test seam; defaults to ``SandboxRuntime``.
+        on_self_destruct: Optional callback invoked instead of exiting the
+            actor process when multiplexed inside ``MultiSandboxHost``.
+        boot_semaphore: Optional semaphore bounding concurrent container
+            starts when multiplexed inside ``MultiSandboxHost``.
+        async_pull_image: Optional async image-pull hook used by
+            ``MultiSandboxHost`` to coalesce concurrent pulls.
     """
 
     def __init__(
@@ -220,6 +230,10 @@ class SandboxHost:
         spec: SandboxSpec,
         settings: HostSettings,
         runtime_factory: Optional[Callable[[], "SandboxRuntime"]] = None,
+        *,
+        on_self_destruct: Optional[Callable[[], None]] = None,
+        boot_semaphore: Optional[asyncio.Semaphore] = None,
+        async_pull_image: Optional[Callable[[str, float], Awaitable[str]]] = None,
     ) -> None:
         self._sandbox_id = sandbox_id
         self._spec = spec
@@ -227,12 +241,16 @@ class SandboxHost:
         self._max_exec_history = int(settings.get("max_exec_history", 256))
         self._max_file_bytes = int(settings.get("max_file_bytes", 256 * 1024**2))
         self._runtime_factory = runtime_factory
+        self._on_self_destruct = on_self_destruct
+        self._boot_semaphore = boot_semaphore
+        self._async_pull_image = async_pull_image
         self._runtime: Optional["SandboxRuntime"] = None
         self._instance_id: Optional[str] = None
         self._status = "pending"
         self._error: Optional[str] = None
         self._created_at = datetime.now(timezone.utc)
         self._status_changed = asyncio.Event()
+        self._boot_settled = asyncio.Event()
         self._execs: "OrderedDict[str, _ExecJob]" = OrderedDict()
         # A client's own exec id -> the exec id here: a start retried with the
         # same key (by any API replica) joins the first one.
@@ -296,13 +314,15 @@ class SandboxHost:
             )
 
             self._set_status("pulling")
-            await asyncio.to_thread(
-                self._runtime.pull_image,
-                self._spec["image"],
-                timeout_seconds=float(
-                    self._spec.get("image_pull_timeout_seconds", 600.0)
-                ),
-            )
+            pull_timeout = float(self._spec.get("image_pull_timeout_seconds", 600.0))
+            if self._async_pull_image is not None:
+                await self._async_pull_image(self._spec["image"], pull_timeout)
+            else:
+                await asyncio.to_thread(
+                    self._runtime.pull_image,
+                    self._spec["image"],
+                    timeout_seconds=pull_timeout,
+                )
             if self._terminating:
                 # terminate() arrived during the pull. No container exists
                 # yet, so there is nothing to clean up.
@@ -326,41 +346,51 @@ class SandboxHost:
             # and only cpu_limit / memory_limit_mb become cgroup caps —
             # unlike the upstream Sandbox actor, which infers a cpu quota
             # from its assigned resources.
-            self._creating = True
-            try:
-                self._instance_id = await asyncio.to_thread(
-                    self._runtime.create,
-                    self._spec["image"],
-                    # 0 means "no cgroup limit": without cpu_limit the sandbox
-                    # may use idle CPU on its node (a request only sizes the
-                    # hosting actor's reservation).
-                    cpu=float(cpu_limit) if cpu_limit is not None else 0.0,
-                    memory=f"{memory_limit_mb}Mi" if memory_limit_mb is not None else 0,
-                    disk=f"{disk_limit_mb}Mi" if disk_limit_mb is not None else 0,
-                    env=dict(self._spec.get("env") or {}),
-                    workdir=self._spec.get("workdir"),
-                    # Writability is the runtime's explicit contract: a scratch
-                    # dir exists only for an explicitly passed workdir on a
-                    # readonly rootfs; readonly=False sandboxes are fully
-                    # writable with image WORKDIR content visible.
-                    # The API owns the TTL (see _ttl_watchdog); the upstream
-                    # runtime stores but never enforces this, and the upstream
-                    # actor's timer would reclaim only the sandbox, not the actor.
-                    ttl_seconds=None,
-                    timeout_seconds=float(
-                        self._spec.get("start_timeout_seconds", 60.0)
-                    ),
-                    rootless=bool(self._spec.get("rootless", True)),
-                    network=self._spec.get("network", "none"),
-                    dns=self._spec.get("dns"),
-                    cidr_allowlist=self._spec.get("cidr_allowlist"),
-                    capabilities=capabilities,
-                    readonly=bool(self._spec.get("readonly", True)),
-                    **create_kwargs,
-                )
-            finally:
-                self._creating = False
-                self._create_settled.set()
+            sem_cm = (
+                self._boot_semaphore
+                if self._boot_semaphore is not None
+                else contextlib.nullcontext()
+            )
+            async with sem_cm:
+                if self._terminating:
+                    return
+                self._creating = True
+                try:
+                    self._instance_id = await asyncio.to_thread(
+                        self._runtime.create,
+                        self._spec["image"],
+                        # 0 means "no cgroup limit": without cpu_limit the sandbox
+                        # may use idle CPU on its node (a request only sizes the
+                        # hosting actor's reservation).
+                        cpu=float(cpu_limit) if cpu_limit is not None else 0.0,
+                        memory=(
+                            f"{memory_limit_mb}Mi" if memory_limit_mb is not None else 0
+                        ),
+                        disk=f"{disk_limit_mb}Mi" if disk_limit_mb is not None else 0,
+                        env=dict(self._spec.get("env") or {}),
+                        workdir=self._spec.get("workdir"),
+                        # Writability is the runtime's explicit contract: a scratch
+                        # dir exists only for an explicitly passed workdir on a
+                        # readonly rootfs; readonly=False sandboxes are fully
+                        # writable with image WORKDIR content visible.
+                        # The API owns the TTL (see _ttl_watchdog); the upstream
+                        # runtime stores but never enforces this, and the upstream
+                        # actor's timer would reclaim only the sandbox, not the actor.
+                        ttl_seconds=None,
+                        timeout_seconds=float(
+                            self._spec.get("start_timeout_seconds", 60.0)
+                        ),
+                        rootless=bool(self._spec.get("rootless", True)),
+                        network=self._spec.get("network", "none"),
+                        dns=self._spec.get("dns"),
+                        cidr_allowlist=self._spec.get("cidr_allowlist"),
+                        capabilities=capabilities,
+                        readonly=bool(self._spec.get("readonly", True)),
+                        **create_kwargs,
+                    )
+                finally:
+                    self._creating = False
+                    self._create_settled.set()
             if self._terminating:
                 # terminate() arrived while the container was starting; it
                 # waited on _create_settled and deletes the new instance.
@@ -401,8 +431,13 @@ class SandboxHost:
         ``ray.kill`` on the self-handle (rather than ``exit_actor``) because
         the watchdog runs as a self-spawned asyncio task, outside any Ray
         method invocation, where ``exit_actor``'s control-flow exception has
-        nothing to catch it. No-op outside an actor (unit tests).
+        nothing to catch it. No-op outside an actor (unit tests). When hosted
+        inside ``MultiSandboxHost``, ``_on_self_destruct`` evicts only this
+        sandbox without killing the shared actor.
         """
+        if self._on_self_destruct is not None:
+            self._on_self_destruct()
+            return
         try:
             import ray
 
@@ -495,6 +530,8 @@ class SandboxHost:
         # block on a fresh event.
         event, self._status_changed = self._status_changed, asyncio.Event()
         event.set()
+        if status not in _BOOTING_STATUSES:
+            self._boot_settled.set()
 
     def _info(self) -> Dict[str, Any]:
         ttl_seconds = self._spec.get("ttl_seconds")
@@ -516,8 +553,15 @@ class SandboxHost:
             "error": self._error,
         }
 
-    async def describe(self, wait_seconds: float = 0.0) -> Dict[str, Any]:
-        """Report sandbox state, optionally long-polling while it boots."""
+    async def describe(
+        self, wait_seconds: float = 0.0, wait_until_booted: bool = False
+    ) -> Dict[str, Any]:
+        """Report sandbox state, optionally long-polling while it boots.
+
+        When ``wait_until_booted`` is True, long-polling waits until the
+        sandbox leaves the booting states (``pending``, ``pulling``,
+        ``starting``) rather than waking on intermediate transitions.
+        """
         if self._status == "running" and not self._terminating:
             reason = await asyncio.to_thread(
                 self._runtime.get_termination_reason, self._instance_id
@@ -526,7 +570,7 @@ class SandboxHost:
                 self._error = reason
                 self._set_status("error")
         if wait_seconds > 0 and self._status in _BOOTING_STATUSES:
-            event = self._status_changed
+            event = self._boot_settled if wait_until_booted else self._status_changed
             try:
                 await asyncio.wait_for(event.wait(), timeout=wait_seconds)
             except asyncio.TimeoutError:
@@ -901,3 +945,294 @@ class SandboxHost:
                 return {"error_code": "internal", "message": str(exc)}
             self._spec["cidr_allowlist"] = cidrs
             return self._info()
+
+
+def _raise_open_file_limit() -> None:
+    """Raise soft RLIMIT_NOFILE so one actor can hold many sandbox bundles."""
+    try:
+        import resource
+
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        target = min(hard, 4_194_304) if hard > 0 else 4_194_304
+        if soft < target:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+    except Exception:
+        pass
+
+
+def _sandbox_not_found_dict(sandbox_id: str) -> Dict[str, Any]:
+    return {
+        "error_code": "sandbox_not_found",
+        "message": f"sandbox {sandbox_id!r} not found",
+    }
+
+
+@DeveloperAPI
+class MultiSandboxHost:
+    """Hosts multiple gVisor sandboxes in a single multiplexed Ray actor.
+
+    Used when ``SandboxAPISettings.num_sandbox_actors`` is configured: a fixed
+    pool of ``MultiSandboxHost`` actors multiplexes sandbox creation and
+    lifecycle calls across a shared ``SandboxRuntime`` per actor, avoiding
+    per-sandbox Ray actor creation and worker startup overhead.
+    """
+
+    def __init__(
+        self,
+        settings: Optional[HostSettings] = None,
+        runtime_factory: Optional[Callable[[], "SandboxRuntime"]] = None,
+    ) -> None:
+        _raise_open_file_limit()
+        self._default_settings: HostSettings = dict(settings or {})  # type: ignore[assignment]
+        self._runtime_factory = runtime_factory
+        self._shared_runtime: Optional["SandboxRuntime"] = None
+        self._sandboxes: Dict[str, SandboxHost] = {}
+        self._boot_tasks: "set[asyncio.Task[Any]]" = set()
+        self._inflight_pulls: Dict[str, "asyncio.Task[str]"] = {}
+        self._loop_configured = False
+        self._executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+        self._boot_semaphore: Optional[asyncio.Semaphore] = None
+
+    def _ensure_loop_configured(self) -> None:
+        if self._loop_configured:
+            return
+        self._loop_configured = True
+        cpus = os.cpu_count() or 8
+        boot_conc_raw = os.environ.get("RAY_SANDBOX_HOST_BOOT_CONCURRENCY")
+        try:
+            boot_conc = (
+                max(1, int(boot_conc_raw)) if boot_conc_raw else max(32, cpus * 2)
+            )
+        except ValueError:
+            boot_conc = max(32, cpus * 2)
+        self._boot_semaphore = asyncio.Semaphore(boot_conc)
+        # Only widen the loop's default executor inside a real actor (when no
+        # test runtime_factory is injected), so unit tests that spin up and
+        # tear down hundreds of event loops do not spawn 128-thread pools.
+        if self._runtime_factory is None:
+            loop = asyncio.get_running_loop()
+            workers = max(128, boot_conc * 2)
+            self._executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="ray-sandbox-host"
+            )
+            loop.set_default_executor(self._executor)
+
+    def _get_shared_runtime(self) -> "SandboxRuntime":
+        if self._shared_runtime is None:
+            from ray.experimental.sandbox.runtime import SandboxRuntime
+
+            self._shared_runtime = SandboxRuntime()
+        return self._shared_runtime
+
+    async def _pull_image_coalesced(self, image: str, timeout_seconds: float) -> str:
+        task = self._inflight_pulls.get(image)
+        if task is None:
+            runtime = self._get_shared_runtime()
+            task = asyncio.create_task(
+                asyncio.to_thread(
+                    runtime.pull_image, image, timeout_seconds=timeout_seconds
+                )
+            )
+            self._inflight_pulls[image] = task
+            task.add_done_callback(
+                lambda done, img=image: (
+                    self._inflight_pulls.pop(img, None)
+                    if self._inflight_pulls.get(img) is done
+                    else None
+                )
+            )
+        return await asyncio.shield(task)
+
+    def _schedule_boot(self, host: SandboxHost) -> None:
+        task = asyncio.create_task(host.boot())
+        self._boot_tasks.add(task)
+        task.add_done_callback(self._boot_tasks.discard)
+
+    async def warmup(self) -> bool:
+        """Initialize the actor's runtime and thread pool ahead of traffic."""
+        self._ensure_loop_configured()
+        if self._runtime_factory is None:
+            self._get_shared_runtime()
+        return True
+
+    async def create_sandbox(
+        self,
+        sandbox_id: str,
+        spec: SandboxSpec,
+        settings: Optional[HostSettings] = None,
+        get_if_exists: bool = False,
+    ) -> Dict[str, Any]:
+        """Register and start booting a sandbox on this actor."""
+        self._ensure_loop_configured()
+        existing = self._sandboxes.get(sandbox_id)
+        if existing is not None:
+            if not get_if_exists:
+                raise ValueError(f"The name {sandbox_id} is already taken.")
+            self._schedule_boot(existing)
+            return await existing.describe()
+
+        merged_settings: HostSettings = dict(self._default_settings)  # type: ignore[assignment]
+        if settings:
+            merged_settings.update(settings)
+
+        holder: List[SandboxHost] = []
+
+        def _evict() -> None:
+            if holder and self._sandboxes.get(sandbox_id) is holder[0]:
+                del self._sandboxes[sandbox_id]
+
+        factory = (
+            self._runtime_factory
+            if self._runtime_factory is not None
+            else self._get_shared_runtime
+        )
+        async_pull = (
+            self._pull_image_coalesced if self._runtime_factory is None else None
+        )
+        host = SandboxHost(
+            sandbox_id=sandbox_id,
+            spec=spec,
+            settings=merged_settings,
+            runtime_factory=factory,
+            on_self_destruct=_evict,
+            boot_semaphore=self._boot_semaphore,
+            async_pull_image=async_pull,
+        )
+        holder.append(host)
+        self._sandboxes[sandbox_id] = host
+        self._schedule_boot(host)
+        return host._info()
+
+    async def boot(self, sandbox_id: str) -> Dict[str, Any]:
+        self._ensure_loop_configured()
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        self._schedule_boot(host)
+        return {"ok": True}
+
+    async def list_sandbox_ids(self) -> List[str]:
+        return list(self._sandboxes.keys())
+
+    async def describe_all(self) -> List[Dict[str, Any]]:
+        hosts = list(self._sandboxes.values())
+        return list(await asyncio.gather(*(h.describe() for h in hosts)))
+
+    async def describe(
+        self,
+        sandbox_id: str,
+        wait_seconds: float = 0.0,
+        wait_until_booted: bool = False,
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.describe(
+            wait_seconds=wait_seconds, wait_until_booted=wait_until_booted
+        )
+
+    async def terminate(self, sandbox_id: str) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return {"ok": True}
+        await host._shutdown()
+        if self._sandboxes.get(sandbox_id) is host:
+            del self._sandboxes[sandbox_id]
+        return {"ok": True}
+
+    async def start_exec(
+        self,
+        sandbox_id: str,
+        command: Union[str, List[str]],
+        cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        timeout_seconds: Optional[float] = None,
+        shell: Optional[str] = None,
+        user: Optional[str] = None,
+        exec_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.start_exec(
+            command=command,
+            cwd=cwd,
+            env=env,
+            timeout_seconds=timeout_seconds,
+            shell=shell,
+            user=user,
+            exec_key=exec_key,
+        )
+
+    async def get_exec(
+        self, sandbox_id: str, exec_id: str, wait_seconds: float = 0.0
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.get_exec(exec_id, wait_seconds=wait_seconds)
+
+    async def get_exec_by_key(
+        self, sandbox_id: str, exec_key: str, wait_seconds: float = 0.0
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.get_exec_by_key(exec_key, wait_seconds=wait_seconds)
+
+    async def fs_read(
+        self, sandbox_id: str, exec_key: str, path: str
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.fs_read(exec_key, path)
+
+    async def fs_write_open(
+        self, sandbox_id: str, exec_key: str, path: str
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.fs_write_open(exec_key, path)
+
+    async def stdin_write(
+        self,
+        sandbox_id: str,
+        exec_key: str,
+        data: bytes,
+        offset: int,
+        eof: bool = False,
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.stdin_write(exec_key, data, offset, eof)
+
+    async def stdin_status(self, sandbox_id: str, exec_key: str) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.stdin_status(exec_key)
+
+    async def write_file(
+        self, sandbox_id: str, path: str, content: bytes, append: bool = False
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.write_file(path, content, append=append)
+
+    async def read_file(self, sandbox_id: str, path: str) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.read_file(path)
+
+    async def set_network_access(
+        self, sandbox_id: str, cidr_allowlist: List[str]
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _sandbox_not_found_dict(sandbox_id)
+        return await host.set_network_access(cidr_allowlist)

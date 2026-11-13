@@ -43,7 +43,7 @@ from ray.experimental.sandbox.http.tests.conftest import (
 
 # Each test gets its own port so a leftover HTTP/2 connection from a prior test
 # can never bleed into the next one.
-_next_port = iter(range(50917, 50947))
+_next_port = iter(range(50917, 50977))
 
 _TOKEN = "facade-test-token"
 # The token as the client SDK presents it on the control plane (its token
@@ -1576,6 +1576,178 @@ def test_main_allow_unauthenticated_serves_a_network_address(
     assert host == "0.0.0.0"
     assert facade._state.token is None
     assert "without authentication" in facade_log.text
+
+
+def test_main_accepts_multiplexed_actor_flags(monkeypatch) -> None:
+    calls = _record_serve(monkeypatch)
+    grpc_facade.main(
+        [
+            "--num-sandbox-actors",
+            "4",
+            "--sandbox-actor-num-cpus",
+            "2.5",
+            "--sandbox-actor-memory-mb",
+            "512",
+        ]
+    )
+    ((_, _, facade),) = calls
+    settings = facade._state.settings
+    assert settings.num_sandbox_actors == 4
+    assert settings.sandbox_actor_num_cpus == 2.5
+    assert settings.sandbox_actor_memory_mb == 512.0
+
+
+def test_multiplexed_facade_across_replicas() -> None:
+    """Multiple sandboxes multiplex across a fixed pool of MultiSandboxHost
+    instances and route deterministically across stateless facade replicas."""
+    from ray.experimental.sandbox.http.host import MultiSandboxHost
+    from ray.experimental.sandbox.http.resolver import (
+        _MultiplexedSandboxHandle,
+        _new_sharded_sandbox_id,
+        _shard_for_sandbox_id,
+    )
+    from ray.experimental.sandbox.http.schemas import SandboxAPISettings
+    from ray.experimental.sandbox.http.tests.conftest import LoopbackRuntime
+
+    port_a, port_b = next(_next_port), next(_next_port)
+    num_actors = 2
+
+    class _FakeActorHandle:
+        def __init__(self, host: MultiSandboxHost) -> None:
+            self.host = host
+
+        def __getattr__(self, name: str) -> Any:
+            fn = getattr(self.host, name)
+
+            class _Remote:
+                def remote(self, *args: Any, **kwargs: Any) -> Any:
+                    return asyncio.get_running_loop().create_task(fn(*args, **kwargs))
+
+            return _Remote()
+
+    pool_hosts = [
+        MultiSandboxHost(
+            settings={"max_output_bytes": 1024 * 1024, "max_exec_history": 32},
+            runtime_factory=LoopbackRuntime,
+        )
+        for _ in range(num_actors)
+    ]
+    pool_handles = [_FakeActorHandle(h) for h in pool_hosts]
+
+    class _PooledResolver:
+        is_multiplexed = True
+
+        def __init__(self) -> None:
+            self._cursor = 0
+            self.kills = 0
+
+        def next_sandbox_id(self) -> str:
+            idx = self._cursor % num_actors
+            self._cursor += 1
+            return _new_sharded_sandbox_id(idx, num_actors)
+
+        async def ensure_pool_async(self) -> List[Any]:
+            return pool_handles
+
+        async def create_async(
+            self,
+            name: str,
+            actor_options: Dict[str, Any],
+            ctor_kwargs: Dict[str, Any],
+            get_if_exists: bool = True,
+        ) -> Any:
+            idx = _shard_for_sandbox_id(name, num_actors)
+            await pool_handles[idx].create_sandbox.remote(
+                name,
+                ctor_kwargs["spec"],
+                ctor_kwargs.get("settings"),
+                get_if_exists=get_if_exists,
+            )
+            return _MultiplexedSandboxHandle(
+                pool_handles[idx], name, idx, boot_started=True
+            )
+
+        def cached(self, name: str) -> Any:
+            idx = _shard_for_sandbox_id(name, num_actors)
+            return _MultiplexedSandboxHandle(pool_handles[idx], name, idx)
+
+        def get(self, name: str) -> Any:
+            return self.cached(name)
+
+        def forget(self, name: str) -> None:
+            pass
+
+        def kill(self, handle: Any) -> None:
+            self.kills += 1
+
+    async def scenario() -> dict:
+        settings = SandboxAPISettings(
+            num_sandbox_actors=num_actors,
+            sandbox_actor_num_cpus=2.0,
+            sandbox_actor_memory_mb=256,
+        )
+        res_a, res_b = _PooledResolver(), _PooledResolver()
+        async with _Facade(res_a, port_a, settings), _Facade(res_b, port_b, settings):
+            ch_a, ctrl_a, rtr_a = _channel(port_a)
+            ch_b, ctrl_b, rtr_b = _channel(port_b)
+            try:
+                # Create 6 unnamed sandboxes on replica A -> 3 per pool host.
+                sids = []
+                for _ in range(6):
+                    sid = await _make_sandbox(ctrl_a, name="")
+                    await _wait_running(ctrl_b, sid)
+                    sids.append(sid)
+
+                # Named create is idempotent across replicas A and B.
+                named_a = await _make_sandbox(ctrl_a, name="shared-sb")
+                named_b = await _make_sandbox(ctrl_b, name="shared-sb")
+
+                # Exec through replica B, read stdout through replica A.
+                await rtr_b.TaskExecStart(
+                    sr_pb2.TaskExecStartRequest(
+                        task_id=sids[0],
+                        exec_id="ex-1",
+                        command_args=["echo", "pooled"],
+                    )
+                )
+                out = await _read_stdout(rtr_a, sids[0], "ex-1")
+
+                # Terminate sids[0] on replica B; sids[1..5] stay alive, and
+                # Wait(timeout=0) on sids[0] reports TERMINATED.
+                await ctrl_b.SandboxTerminate(
+                    api_pb2.SandboxTerminateRequest(sandbox_id=sids[0])
+                )
+                wait_terminated = await ctrl_a.SandboxWait(
+                    api_pb2.SandboxWaitRequest(sandbox_id=sids[0], timeout=0)
+                )
+                wait_alive = await ctrl_a.SandboxWait(
+                    api_pb2.SandboxWaitRequest(sandbox_id=sids[1], timeout=0)
+                )
+
+                counts = [len(h._sandboxes) for h in pool_hosts]
+                return {
+                    "named_equal": named_a == named_b,
+                    "out": out,
+                    "terminated_status": wait_terminated.result.status,
+                    "alive_status": wait_alive.result.status,
+                    "counts": counts,
+                    "kills": res_a.kills + res_b.kills,
+                }
+            finally:
+                await ch_a.close()
+                await ch_b.close()
+
+    result = asyncio.run(scenario())
+    assert result["named_equal"] is True
+    assert result["out"] == b"pooled\n"
+    assert (
+        result["terminated_status"] == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+    )
+    assert result["alive_status"] == api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED
+    # 6 unnamed + 1 named - 1 terminated = 6 live sandboxes across 2 hosts.
+    assert sum(result["counts"]) == 6
+    assert all(c >= 2 for c in result["counts"])
+    assert result["kills"] == 0
 
 
 if __name__ == "__main__":
