@@ -126,6 +126,20 @@ class ScanStore:
         )
         return dest
 
+    def exists(self, folder: str, name: str) -> bool:
+        """Whether the file is there. Only a 404 means it isn't: any other
+        error raises, rather than pass for "absent"."""
+        key = self.key(folder, name)
+        try:
+            self._s3().head_object(Bucket=self.bucket, Key=key)
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey"):
+                return False
+            raise StoreError(f"check of s3://{self.bucket}/{key} failed: {e}") from e
+        except (Boto3Error, BotoCoreError) as e:
+            raise StoreError(f"check of s3://{self.bucket}/{key} failed: {e}") from e
+        return True
+
     def names(self, folder: str) -> list[str]:
         """The files directly in ``folder``."""
         prefix = f"{self.prefix}/{folder}/"

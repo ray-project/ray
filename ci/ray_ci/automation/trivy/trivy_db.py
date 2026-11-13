@@ -8,7 +8,8 @@ sees one pull per build instead of one per scan job.
 
 ``metadata.json`` records the Trivy pin and the DB pins. It goes up last,
 so a scan job that finds it can count on both DBs being in place; it is also
-written to ``--output`` for ``trivy_report --metadata``.
+written to ``--output`` for ``trivy_report --metadata``. A retried job finds
+it and keeps that snapshot, so one build never mixes two DBs.
 
 Example:
     bazel run //ci/ray_ci/automation/trivy:trivy_db -- \\
@@ -171,6 +172,12 @@ def main(
 ) -> None:
     if not output.is_absolute():
         output = Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")) / output
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if store.exists(DB_FOLDER, DB_METADATA):
+        # A retry: scan jobs may already have used this snapshot.
+        store.download(DB_FOLDER, DB_METADATA, output)
+        logger.info(f"Reusing the DB snapshot in {store.url(DB_FOLDER)}")
+        return
     metadata = {"trivy": load_trivy_pin()}
     with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
         for source in DB_SOURCES:
@@ -179,7 +186,6 @@ def main(
         staged.write_text(json.dumps(metadata, indent=2) + "\n")
         # Last: scan jobs take metadata.json to mean every DB is in place.
         store.upload(staged, DB_FOLDER)
-        output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(staged, output)
     logger.info(f"Wrote {output} and {store.url(DB_FOLDER)}{DB_METADATA}")
 

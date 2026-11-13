@@ -131,6 +131,18 @@ def test_build_options_read_buildkite_variables():
     assert "build number" in result.output
 
 
+def test_exists_tells_missing_from_unknown():
+    s3 = FakeS3()
+    s = store(s3)
+    s3.put(BUCKET, f"{s.prefix}/db/metadata.json", b"{}")
+    assert s.exists("db", "metadata.json")
+    assert not s.exists("db", "other.json")
+    # Only a 404 means missing; any other error must not read as "absent".
+    s3.broken.add(f"{s.prefix}/db/metadata.json")
+    with pytest.raises(StoreError, match="InternalError"):
+        s.exists("db", "metadata.json")
+
+
 def test_the_client_has_a_connection_for_every_download_thread():
     """build_report downloads with DOWNLOAD_THREADS threads on one client;
     a smaller pool logs "Connection pool is full" and reconnects."""

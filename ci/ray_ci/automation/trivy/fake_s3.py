@@ -34,6 +34,18 @@ class FakeS3:
             )
         Path(filename).write_bytes(self.objects[(bucket, key)])
 
+    def head_object(self, Bucket: str, Key: str) -> dict[str, Any]:
+        if Key in self.broken:
+            raise ClientError(
+                {"Error": {"Code": "InternalError", "Message": "try again"}},
+                "HeadObject",
+            )
+        if (Bucket, Key) not in self.objects:
+            raise ClientError(
+                {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
+            )
+        return {}
+
     def get_paginator(self, operation: str) -> "FakeS3":
         assert operation == "list_objects_v2"
         return self

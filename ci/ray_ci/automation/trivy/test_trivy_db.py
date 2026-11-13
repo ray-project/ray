@@ -176,5 +176,21 @@ def test_main_uploads_no_metadata_when_a_db_fails(tmp_path: Path):
     assert (BUCKET, f"{PREFIX}/db/metadata.json") not in s3.objects
 
 
+def test_a_retried_job_keeps_the_builds_db_snapshot(tmp_path: Path):
+    """Scan jobs may already have used the first snapshot; a retry must not
+    give the rest of the build a newer DB."""
+    s3 = FakeS3()
+    first = b'{"db": {"blob": "first"}}\n'
+    s3.put(BUCKET, f"{PREFIX}/db/metadata.json", first)
+
+    def stage(source, *_):
+        raise AssertionError("re-staged the DB")
+
+    result, out, _, uploads = run_main(tmp_path, s3, stage)
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes() == first
+    assert uploads == []
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
