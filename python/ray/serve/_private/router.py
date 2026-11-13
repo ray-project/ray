@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import math
 import sys
 import threading
 import time
@@ -192,6 +193,8 @@ class RouterMetricsManager:
         # Regularly aggregate and push autoscaling metrics to controller
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
+        self._router_metrics_store = InMemoryMetricsStore()
+        self._latest_custom_router_metrics: Dict[str, float] = {}
         # The config for the deployment this router sends requests to will be broadcast
         # by the controller. That means it is not available until we get the first
         # update. This includes an optional autoscaling config.
@@ -332,8 +335,8 @@ class RouterMetricsManager:
                 self._add_autoscaling_metrics_point()
                 self.push_autoscaling_metrics_to_controller()
 
-            # Record number of queued + ongoing requests at regular
-            # intervals into the in-memory metrics store
+            # Record autoscaling metrics owned or collected by this handle at
+            # regular intervals.
             record_interval_s = (
                 autoscaling_config.look_back_period_s
                 * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR
@@ -388,6 +391,22 @@ class RouterMetricsManager:
         else:
             self.num_router_requests.inc(tags={"route": route})
 
+    def set_custom_router_metrics(
+        self, metrics_dict: Dict[str, Union[int, float]]
+    ) -> None:
+        """Atomically replace the latest router-owned autoscaling snapshot."""
+        validated: Dict[str, float] = {}
+        for name, value in metrics_dict.items():
+            if not isinstance(name, str):
+                raise TypeError("Router autoscaling metric names must be strings.")
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise TypeError(
+                    f"Router autoscaling metric '{name}' must be a finite number."
+                )
+            validated[name] = float(value)
+
+        self._latest_custom_router_metrics = validated
+
     def inc_num_queued_requests(self):
         self.num_queued_requests += 1
         if not self._cached_metrics_enabled:
@@ -430,7 +449,7 @@ class RouterMetricsManager:
         )
 
     def push_autoscaling_metrics_to_controller(self):
-        """Pushes queued and running request metrics to the controller.
+        """Push autoscaling metrics owned or collected by this handle.
 
         These metrics are used by the controller for autoscaling.
         If a previous push is already in flight, skips this push (will try again next interval).
@@ -456,9 +475,9 @@ class RouterMetricsManager:
             )
 
     def _add_autoscaling_metrics_point(self):
-        """Adds metrics point for queued and running requests at replicas.
+        """Sample autoscaling metrics owned or collected by this handle.
 
-        Also prunes keys in the in memory metrics store with outdated datapoints.
+        Also prunes outdated datapoints from the in-memory metrics stores.
 
         ┌─────────────────────────────────────────────────────────────────┐
         │  Handle-based metrics collection                                │
@@ -483,7 +502,8 @@ class RouterMetricsManager:
         :::{note}
         The long-term plan is to deprecate handle-based metrics collection in favor of
         replica-based collection. Replica-based collection will become the default in a
-        future release. Queued requests will be continues to be tracked at the handle.
+        future release. Queued requests and router-owned metrics will continue to be
+        tracked at the handle.
         :::
         """
 
@@ -491,6 +511,10 @@ class RouterMetricsManager:
         self.metrics_store.add_metrics_point(
             {QUEUED_REQUESTS_KEY: self.num_queued_requests}, timestamp
         )
+        if self._latest_custom_router_metrics:
+            self._router_metrics_store.add_metrics_point(
+                cast(Dict[Any, float], self._latest_custom_router_metrics), timestamp
+            )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             self.metrics_store.add_metrics_point(
                 cast(Dict[Any, float], self.num_requests_sent_to_replicas), timestamp
@@ -501,6 +525,7 @@ class RouterMetricsManager:
         assert autoscaling_config is not None
         start_timestamp = time.time() - autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
+        self._router_metrics_store.prune_keys_and_compact_data(start_timestamp)
 
     def _get_metrics_report(self) -> HandleMetricReport:
         timestamp = time.time()
@@ -509,6 +534,9 @@ class RouterMetricsManager:
         assert autoscaling_config is not None
         look_back_period = autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+        self._router_metrics_store.prune_keys_and_compact_data(
+            time.time() - look_back_period
+        )
         queued_requests = self.metrics_store.data.get(
             QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
         )
@@ -529,6 +557,12 @@ class RouterMetricsManager:
                 RUNNING_REQUESTS_KEY: running_requests,
             },
             timestamp=timestamp,
+            router_metrics={
+                metric_name: self._router_metrics_store.data.get(
+                    metric_name, [TimeStampedValue(timestamp, value)]
+                )
+                for metric_name, value in self._latest_custom_router_metrics.items()
+            },
         )
 
         return handle_metric_report
@@ -557,6 +591,13 @@ class Router(ABC):
 
     @abstractmethod
     def running_replicas_populated(self) -> bool:
+        pass
+
+    @abstractmethod
+    def set_router_autoscaling_metrics(
+        self, metrics_dict: Dict[str, Union[int, float]]
+    ) -> None:
+        """Replace router-owned autoscaling metrics for this handle."""
         pass
 
     @abstractmethod
@@ -820,6 +861,11 @@ class AsyncioRouter:
 
     def running_replicas_populated(self) -> bool:
         return self._running_replicas_populated
+
+    def set_router_autoscaling_metrics(
+        self, metrics_dict: Dict[str, Union[int, float]]
+    ) -> None:
+        self._metrics_manager.set_custom_router_metrics(metrics_dict)
 
     def update_deployment_targets(self, deployment_target_info: DeploymentTargetInfo):
         self._deployment_available = deployment_target_info.is_available
@@ -1756,6 +1802,11 @@ class SingletonThreadRouter(Router):
     def running_replicas_populated(self) -> bool:
         return self._asyncio_router.running_replicas_populated()
 
+    def set_router_autoscaling_metrics(
+        self, metrics_dict: Dict[str, Union[int, float]]
+    ) -> None:
+        self._asyncio_router.set_router_autoscaling_metrics(metrics_dict)
+
     def assign_request(
         self,
         request_meta: RequestMetadata,
@@ -2079,6 +2130,11 @@ class CurrentLoopRouter(Router):
 
     def running_replicas_populated(self) -> bool:
         return self._asyncio_router.running_replicas_populated()
+
+    def set_router_autoscaling_metrics(
+        self, metrics_dict: Dict[str, Union[int, float]]
+    ) -> None:
+        self._asyncio_router.set_router_autoscaling_metrics(metrics_dict)
 
     def assign_request(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,

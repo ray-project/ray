@@ -1036,7 +1036,7 @@ TimeSeries = List[TimeStampedValue]
 
 @dataclass
 class HandleMetricReport:
-    """Report from a deployment handle on queued and ongoing requests.
+    """Autoscaling metrics owned or collected by a deployment handle.
 
     Args:
         deployment_id: The deployment ID of the deployment handle.
@@ -1053,6 +1053,8 @@ class HandleMetricReport:
             over the past look_back_period_s seconds. Replica keys use to_full_id_str().
             This is a list because we take multiple measurements over time.
         timestamp: The time at which this report was created.
+        router_metrics: Metrics owned by this handle's router. Unlike ``metrics``,
+            these are not indexed by backend replica.
     """
 
     deployment_id: DeploymentID
@@ -1064,6 +1066,7 @@ class HandleMetricReport:
         str, Dict[str, TimeSeries]
     ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
+    router_metrics: Dict[str, TimeSeries] = field(default_factory=dict)
 
     @property
     def total_requests(self) -> float:

@@ -114,6 +114,16 @@ def _rich_handle_report():
         queued_requests=[TimeStampedValue(9.0 + i, float(i)) for i in range(4)],
         metrics=metrics,
         timestamp=123.5,
+        router_metrics={
+            "outstanding_effective_prefill_tokens": [
+                TimeStampedValue(10.0, 1200.0),
+                TimeStampedValue(11.0, 800.0),
+            ],
+            "custom_router_load": [
+                TimeStampedValue(10.0, 14.0),
+                TimeStampedValue(11.0, 17.0),
+            ],
+        },
     )
 
 
@@ -235,6 +245,40 @@ def test_encode_decode_round_trip_preserves_every_series():
         (metric, key): [(p.timestamp, p.value) for p in series]
         for metric, per_replica in rep.metrics.items()
         for key, series in per_replica.items()
+    }
+    got_router = {}
+    for metric_idx, off, n in flat["router_entries"].tolist():
+        got_router[flat["router_metric_names"][metric_idx]] = list(
+            zip(
+                flat["router_ts"][off : off + n].tolist(),
+                flat["router_val"][off : off + n].tolist(),
+            )
+        )
+    assert got_router == {
+        metric: [(p.timestamp, p.value) for p in series]
+        for metric, series in rep.router_metrics.items()
+    }
+
+
+@pytest.mark.parametrize("columnar", [False, True])
+def test_context_aggregates_router_metrics_per_handle(columnar, monkeypatch):
+    # Each series holds its first value for 1s and its last until now (12.0).
+    monkeypatch.setattr(A.time, "time", lambda: 12.0)
+    report = _rich_handle_report()
+    state = _state()
+    if columnar:
+        state.record_columnar_metrics_for_handle(
+            codec.decode_handle_flat(codec.encode(report))
+        )
+    else:
+        state.record_request_metrics_for_handle(report)
+
+    aggregated = state.get_autoscaling_context(1).aggregated_router_metrics
+    assert aggregated == {
+        "outstanding_effective_prefill_tokens": {
+            report.handle_id: pytest.approx((1200.0 + 800.0) / 2)
+        },
+        "custom_router_load": {report.handle_id: pytest.approx((14.0 + 17.0) / 2)},
     }
 
 

@@ -58,7 +58,8 @@ class AutoscalingContext:
     The context includes deployment metadata, current replica state, built-in and
     custom metrics, capacity bounds, policy state, and timing information.
 
-    Note: The aggregated_metrics and raw_metrics fields support lazy evaluation.
+    Note: The aggregated_metrics, raw_metrics, and aggregated_router_metrics fields
+    support lazy evaluation.
     You can pass callables that will be evaluated only when accessed, with results
     cached for subsequent accesses.
 
@@ -97,6 +98,9 @@ class AutoscalingContext:
             or None if the deployment hasn't scaled down.
         current_time: Unix timestamp, in seconds, when Serve built this context.
         config: The deployment's autoscaling configuration.
+        aggregated_router_metrics: Router-owned metrics aggregated per handle over
+            the look-back window, keyed by metric name and then handle ID, or a
+            callable that returns them on first access.
     """
 
     def __init__(
@@ -128,6 +132,12 @@ class AutoscalingContext:
         last_scale_down_time: Optional[float],
         current_time: Optional[float],
         config: Optional[Any],
+        aggregated_router_metrics: Optional[
+            Union[
+                Dict[str, Dict[str, float]],
+                Callable[[], Dict[str, Dict[str, float]]],
+            ]
+        ] = None,
     ):
         # Deployment information
         self.deployment_id = deployment_id  #: Unique identifier for the deployment.
@@ -156,6 +166,7 @@ class AutoscalingContext:
         # Custom metrics - store potentially lazy callables privately
         self._aggregated_metrics_value = aggregated_metrics
         self._raw_metrics_value = raw_metrics
+        self._aggregated_router_metrics_value = aggregated_router_metrics
 
         # Capacity and bounds
         self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas  #: Minimum replicas adjusted for cluster capacity.
@@ -199,6 +210,17 @@ class AutoscalingContext:
         if callable(self._raw_metrics_value):
             return self._raw_metrics_value()
         return self._raw_metrics_value
+
+    @cached_property
+    def aggregated_router_metrics(self) -> Optional[Dict[str, Dict[str, float]]]:
+        """Router-owned metrics aggregated per handle over the look-back window.
+
+        Keyed by metric name, then by handle ID. Evaluated on first access and
+        cached.
+        """
+        if callable(self._aggregated_router_metrics_value):
+            return self._aggregated_router_metrics_value()
+        return self._aggregated_router_metrics_value
 
     @cached_property
     def total_num_requests(self) -> float:

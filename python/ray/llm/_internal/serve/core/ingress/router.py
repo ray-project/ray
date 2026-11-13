@@ -165,6 +165,10 @@ class LLMRouter:
 
             self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
         self._handle._init()
+        if self._kv_token_tracker is not None:
+            self._kv_token_tracker.set_autoscaling_metrics_callback(
+                self._handle._set_router_autoscaling_metrics
+            )
 
     def _start_kv_token_tracking(
         self, llm_config: "LLMConfig", server: DeploymentHandle
