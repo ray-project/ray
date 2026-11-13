@@ -8,17 +8,10 @@ import sys
 
 import numpy as np
 import pytest
-from packaging.version import parse as parse_version
 
 pa = pytest.importorskip("pyarrow")
 pds = pytest.importorskip("pyarrow.dataset")
 pq = pytest.importorskip("pyarrow.parquet")
-
-# Modelled on PyArrow 24's reader; 17 writes no SizeStatistics (18 to 22 unchecked).
-requires_pyarrow_23 = pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("23.0.0"),
-    reason="Modelled on PyArrow 24",
-)
 
 N = 200_000
 
@@ -137,7 +130,6 @@ _CASES = {
 }
 
 
-@requires_pyarrow_23
 @pytest.mark.parametrize("label", list(_CASES))
 def test_estimate_bounds_measured_peak(tmp_path, monkeypatch, label):
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
@@ -167,7 +159,7 @@ def _mixed():
 
 
 @pytest.mark.parametrize(
-    "unmodelled", ["file", "strings-without-size-statistics", "delta-byte-array-leaf"]
+    "unmodelled", ["file", "strings-without-statistics", "delta-byte-array-leaf"]
 )
 def test_small_unmodelled_row_groups_pay_the_floor(tmp_path, monkeypatch, unmodelled):
     """A file, or a leaf without exact counts, costs each small row group the floor, once."""
@@ -177,8 +169,10 @@ def test_small_unmodelled_row_groups_pay_the_floor(tmp_path, monkeypatch, unmode
     write_kwargs = {}
     if unmodelled == "file":
         monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
-    elif unmodelled == "strings-without-size-statistics":
+    elif unmodelled == "strings-without-statistics":
+        # Neither SizeStatistics nor a min and max to size the dictionary's strings.
         monkeypatch.setattr(reader, "read_footer_stats", lambda metadata: None)
+        write_kwargs = {"write_statistics": ["i"]}
     else:
         write_kwargs = {
             "use_dictionary": False,
@@ -191,9 +185,13 @@ def test_small_unmodelled_row_groups_pay_the_floor(tmp_path, monkeypatch, unmode
     assert all(charge < size < charge + (1 << 20) for size in sizes), sizes
 
 
-def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(tmp_path, monkeypatch):
+@pytest.mark.parametrize("retyped", [False, True])
+def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(
+    tmp_path, monkeypatch, retyped
+):
     """Past the floor, the charge is a multiple of the unsized leaves' uncompressed
-    bytes; the sized ``int64`` column isn't in it."""
+    bytes, once even when the read retypes them; the sized ``int64`` column isn't
+    in it."""
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
 
     monkeypatch.setattr(reader, "read_footer_stats", lambda metadata: None)
@@ -204,13 +202,16 @@ def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(tmp_path, monke
             "s": pa.array([f"distinct-value-{i:024d}" for i in range(N)]),
         }
     )
-    # The dictionary outgrows its page and falls back to PLAIN; its page still
-    # leaves the strings unsized.
-    pq.write_table(table, path, row_group_size=N)
+    # The dictionary outgrows its page and falls back to PLAIN; without a min and
+    # max its page still leaves the strings unsized.
+    pq.write_table(table, path, row_group_size=N, write_statistics=["i"])
     strings = pq.read_metadata(path).row_group(0).column(1).total_uncompressed_size
     charge = reader._UNMODELLED_RATIO * strings
     assert charge > reader._UNMODELLED_MIN_BYTES
-    (size,) = _peaks(path)
+    read_schema = None
+    if retyped:
+        read_schema = pa.schema([("i", pa.int64()), ("s", pa.large_string())])
+    (size,) = _peaks(path, read_schema=read_schema)
     assert charge < size < charge + (8 << 20), (size, charge)
 
 
@@ -379,7 +380,6 @@ def test_bins_stay_under_the_budget(tmp_path):
     assert sorted(totals) == sorted(estimates)
 
 
-@requires_pyarrow_23
 def test_size_is_the_decoded_size_under_the_peak(tmp_path):
     """``size_bytes`` estimates the decoded row group, which the decode peak exceeds."""
     path = tmp_path / "f.parquet"

@@ -145,7 +145,9 @@ _UNMODELLED_RATIO = 4
 _UNMODELLED_MIN_BYTES = 12 << 20
 
 
-def _unmodelled_bytes(row_group: RowGroupMetaData, leaf_indices: list[int]) -> int:
+def _unmodelled_bytes(
+    row_group: RowGroupMetaData, leaf_indices: Collection[int]
+) -> int:
     """The charge for ``leaf_indices``, the leaves of ``row_group`` left unsized."""
     uncompressed = sum(
         row_group.column(leaf_idx).total_uncompressed_size for leaf_idx in leaf_indices
@@ -416,7 +418,7 @@ class FooterReader:
         if sizing.profiles is None:
             # A file the estimator doesn't model; the columns Ray appends still count.
             decoded = estimate_added_columns(row_group=row_group, read=sizing.read)
-            unmodelled = list(sizing.leaf_indices)
+            unmodelled = set(sizing.leaf_indices)
         else:
             leaves = leaf_chunks(
                 row_group=row_group,
@@ -432,23 +434,22 @@ class FooterReader:
                 counted=set(),
                 decode_threads=READER_CPU_COUNT,
             )
-            unmodelled = [j for j in sizing.leaf_indices if j not in leaves]
+            unmodelled = {j for j in sizing.leaf_indices if j not in leaves}
             if sizing.pinned_schema is None:
                 decoded += estimate_added_columns(row_group=row_group, read=sizing.read)
             else:
                 assert sizing.file_schema is not None
                 # Here ``cast_leaves`` is empty unless ``cast_profiles`` was built.
-                cast_leaves = {
-                    name: leaf_chunks(
+                cast_leaves = {}
+                for name, indices in sizing.cast_leaves.items():
+                    cast_leaves[name] = leaf_chunks(
                         row_group=row_group,
                         leaf_profiles=sizing.cast_profiles or [],
                         leaf_indices=indices,
                         size_stats=size_stats,
                     )
-                    for name, indices in sizing.cast_leaves.items()
-                }
-                for name, indices in sizing.cast_leaves.items():
-                    unmodelled += [j for j in indices if j not in cast_leaves[name]]
+                    # A leaf unsized both as stored and as cast is charged once.
+                    unmodelled.update(j for j in indices if j not in cast_leaves[name])
                 decoded += estimate_cast(
                     row_group=row_group,
                     column_leaves=cast_leaves,
@@ -458,7 +459,8 @@ class FooterReader:
                 )
         if unmodelled:
             # A leaf or cast the estimator doesn't model, such as a dictionary-encoded
-            # string without SizeStatistics, a view or a struct gaining a field.
+            # string with neither SizeStatistics nor a min and max, a view or a struct
+            # gaining a field.
             decoded += _unmodelled_bytes(row_group=row_group, leaf_indices=unmodelled)
         peak = estimate_row_group_peak(
             row_group=row_group,

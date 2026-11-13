@@ -13,7 +13,6 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
     Read,
@@ -40,14 +39,6 @@ from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_walk i
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
     LeafSizeStats,
     read_footer_stats,
-)
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
-# PyArrow 17 writes no SizeStatistics; 23 does (18 to 22 unchecked).
-pyarrow_version = get_pyarrow_version()
-requires_pyarrow_23 = pytest.mark.skipif(
-    pyarrow_version is None or pyarrow_version < parse_version("23.0.0"),
-    reason="PyArrow 17 writes no SizeStatistics",
 )
 
 N = 5000
@@ -88,7 +79,7 @@ def _read_size_statistics(metadata):
 
 
 def _no_size_statistics(metadata):
-    """``_read_size_statistics`` for a writer that records none, as PyArrow 17."""
+    """``_read_size_statistics`` for a writer that records none."""
     return None
 
 
@@ -127,7 +118,7 @@ def _estimate(
 def _case(label, table, stats=True, write=None):
     """A ``_CASES`` row, whose estimate must equal what PyArrow allocates."""
     case = SimpleNamespace(table=table, stats=stats, write=write or {})
-    return pytest.param(case, id=label, marks=[requires_pyarrow_23] if stats else [])
+    return pytest.param(case, id=label)
 
 
 # Fixed-width types, each two values repeated.
@@ -272,7 +263,8 @@ def test_estimate_against_pyarrow(tmp_path, case):
 
 
 def test_inexact_leaves_without_size_statistics_fall_back(tmp_path):
-    """Without SizeStatistics, string and list leaves fall back; the int64 stays exact."""
+    """Without SizeStatistics, a list leaf and a string leaf with no min and max fall
+    back; the int64 stays exact."""
     table = pa.table(
         {
             "i": pa.array(np.arange(N, dtype="int64")),
@@ -280,7 +272,7 @@ def test_inexact_leaves_without_size_statistics_fall_back(tmp_path):
             "l": pa.array([[i] * (i % 3) for i in range(N)]),
         }
     )
-    path = _write(table, tmp_path / "f.parquet")
+    path = _write(table, tmp_path / "f.parquet", write_statistics=["i"])
 
     assert _estimate(path, size_statistics=_no_size_statistics) == _allocated(
         path, columns=["i"]
@@ -307,6 +299,34 @@ def test_strings_without_a_dictionary_are_bounded_by_the_footer(
     assert _allocated(path) <= estimate <= slack * _allocated(path)
 
 
+@pytest.mark.parametrize(
+    "values, slack",
+    [
+        # A few values of similar lengths: each is charged the longest's bytes.
+        (
+            [
+                None if i % 7 == 0 else ("GET", "DELETE", "OPTIONS")[i % 3]
+                for i in range(N)
+            ],
+            1.3,
+        ),
+        # Every value distinct: the dictionary page holds them all.
+        ([f"value-{i}" for i in range(N)], 1.5),
+        ([None] * N, 1.01),
+    ],
+    ids=["few values", "all distinct", "all null"],
+)
+def test_strings_with_a_dictionary_are_guessed_from_min_and_max(
+    tmp_path, values, slack
+):
+    """Without SizeStatistics, a string chunk with a dictionary page is sized from
+    the footer's min and max."""
+    path = _write(_table(values, pa.string()), tmp_path / "f.parquet")
+
+    estimate = _estimate(path, size_statistics=_no_size_statistics)
+    assert _allocated(path) <= estimate <= slack * _allocated(path)
+
+
 def _with(stats_for_leaf_0):
     """``_read_size_statistics`` replaced by ``stats_for_leaf_0(stats)``."""
 
@@ -319,7 +339,6 @@ def _with(stats_for_leaf_0):
     return size_statistics
 
 
-@requires_pyarrow_23
 def test_partial_size_statistics(tmp_path):
     """Histograms alone size a leaf; ones that disagree with the footer are dropped."""
     ints = _write(_table(np.arange(N, dtype="int64")), tmp_path / "ints.parquet")
@@ -475,7 +494,6 @@ def test_dictionaries_and_type_options_fall_back(
     assert profiles == expected
 
 
-@requires_pyarrow_23
 def test_dictionary_columns_leave_only_their_leaves(tmp_path):
     """``dictionary_columns`` leaves the BYTE_ARRAY leaves it names to the caller,
     pinned or not; a name that isn't one of this file's changes nothing."""

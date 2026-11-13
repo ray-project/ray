@@ -203,9 +203,7 @@ def estimate_cast(
         if before == after:
             continue
         size += estimate_row_group(
-            row_group=row_group,
-            leaves=leaves.values(),
-            read=read._replace(added_row_bytes=0, added_row_group_bytes=0),
+            row_group=row_group, leaves=leaves.values(), read=Read()
         )
     return int(_CAST_FACTOR * size)
 

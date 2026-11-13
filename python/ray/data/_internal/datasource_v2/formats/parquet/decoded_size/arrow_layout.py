@@ -7,29 +7,14 @@ import pyarrow as pa
 # Array kinds. ``_LIST`` has one offsets buffer: a list, large_list or map. A
 # fixed_size_list has none; its children hold ``list_size`` elements per element.
 _STRUCT = "struct"
-
-
 _LIST = "list"
-
-
 _FIXED_SIZE_LIST = "fixed_size_list"
-
-
 _FIXED_WIDTH = "fixed_width"
-
-
 _BOOLEAN = "boolean"
-
-
 _NULL = "null"  # Arrow's null type allocates no buffers.
-
-
 _UNSUPPORTED = "unsupported"  # A view, a dictionary, a union: not modelled.
-
-
 # String and binary leaves, which only BYTE_ARRAY values decode to.
 _BINARY = "binary"
-
 
 # PyArrow 24 hands these to Arrow zero-copy, keeping an optional leaf's all-valid
 # bitmap; other types drop it. INT96 timestamps are converted, not zero-copied.
