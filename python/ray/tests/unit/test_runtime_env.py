@@ -152,6 +152,75 @@ def test_container_option_serialize(runtime_env_class):
 
 
 class TestURICache:
+    @pytest.mark.parametrize("deleted_size", [0, 1, 20])
+    def test_eviction_uses_recorded_size(self, deleted_size):
+        # Files may disappear, shrink, or grow while the URI is in use.
+        delete_fn = mock.Mock(return_value=deleted_size)
+        cache = URICache(delete_fn, max_total_size_bytes=1, debug_mode=True)
+        cache.add("retained", 1)
+
+        # Each eviction must preserve the accounting for the retained URI,
+        # and must not prevent subsequent URIs from being evicted.
+        for uri in ["a", "b", "a"]:
+            cache.add(uri, 2)
+            assert cache.get_total_size_bytes() == 3
+            cache.mark_unused(uri)
+            assert uri not in cache
+            assert "retained" in cache
+            assert cache.get_total_size_bytes() == 1
+
+        assert [call.args[0] for call in delete_fn.call_args_list] == ["a", "b", "a"]
+
+    def test_delete_error_keeps_accounting_consistent(self):
+        delete_fn = mock.Mock(side_effect=[OSError("deletion failed"), 20])
+        cache = URICache(delete_fn, max_total_size_bytes=1, debug_mode=True)
+        cache.add("retained", 1)
+        cache.add("a", 2)
+
+        with pytest.raises(OSError, match="deletion failed"):
+            cache.mark_unused("a")
+
+        # Eviction removes the URI even if its deletion callback fails.
+        # Its recorded size must be removed along with its membership.
+        assert "a" not in cache
+        assert "retained" in cache
+        assert cache.get_total_size_bytes() == 1
+        cache._check_valid()
+
+        # Stale accounting must not cause another URI to be evicted.
+        cache.mark_unused("retained")
+        assert "retained" in cache
+        assert delete_fn.call_count == 1
+
+        # Re-adding the failed URI and evicting it later must still work.
+        cache.mark_used("retained")
+        cache.add("a", 2)
+        assert cache.get_total_size_bytes() == 3
+        cache.mark_unused("a")
+        assert "a" not in cache
+        assert "retained" in cache
+        assert cache.get_total_size_bytes() == 1
+        assert [call.args[0] for call in delete_fn.call_args_list] == ["a", "a"]
+
+    @pytest.mark.parametrize("unused", [False, True])
+    @pytest.mark.parametrize("size_bytes", [2, 4, 6])
+    def test_add_updates_recorded_size(self, unused, size_bytes):
+        cache = URICache(max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 4)
+        if unused:
+            cache.mark_unused("a")
+        cache.add("a", size_bytes)
+        assert cache.get_total_size_bytes() == size_bytes
+
+        # Adding a URI marks it used, so it is protected from eviction.
+        cache.add("big", 20)
+        assert "a" in cache
+        cache.mark_unused("a")
+        assert "a" not in cache
+        assert cache.get_total_size_bytes() == 20
+        cache.mark_unused("big")
+        assert cache.get_total_size_bytes() == 0
+
     def test_zero_cache_size(self):
         uris_to_sizes = {"5": 5, "3": 3}
 
