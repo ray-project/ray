@@ -683,3 +683,9 @@ def test_statistics_handle_lifetime(tmp_path, monkeypatch, operation):
     else:
         list(iterator)
     assert opened and all(source.closed for source in opened)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

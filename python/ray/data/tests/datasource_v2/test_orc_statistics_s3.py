@@ -67,3 +67,9 @@ def test_orc_file_statistics_s3(s3_fs, s3_path, monkeypatch, mode, predicate):
     expected = pa.concat_tables(tables).filter(predicate.to_pyarrow()).to_pylist()
     assert actual == expected
     assert sorted(streamed) == sorted(paths if mode == "off" else paths[1:])
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
