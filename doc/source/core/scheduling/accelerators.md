@@ -76,7 +76,7 @@ You can set the `ROCR_VISIBLE_DEVICES` environment variable before starting a Ra
 ::::{tab-item} Intel GPU
 :sync: Intel GPU
 :::{tip}
-You can set the `ZE_AFFINITY_MASK` environment variable before starting a Ray node to limit the Intel GPUs that are visible to Ray. For example, `ZE_AFFINITY_MASK=1,3 ray start --head --num-gpus=2` lets Ray only see devices 1 and 3. `ONEAPI_DEVICE_SELECTOR` is still read as a fallback for backward compatibility.
+You can set the `ZE_AFFINITY_MASK` environment variable before starting a Ray node to limit the Intel GPUs that are visible to Ray. For example, `ZE_AFFINITY_MASK=1,3 ray start --head --num-gpus=2` lets Ray only see devices 1 and 3. `ONEAPI_DEVICE_SELECTOR` is still read as a fallback for backward compatibility. Ray detects Intel GPUs through the Level Zero loader (`libze_loader`), which is installed with the Intel GPU driver, so `dpctl` isn't required.
 :::
 ::::
 

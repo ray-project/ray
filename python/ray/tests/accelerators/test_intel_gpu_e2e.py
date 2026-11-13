@@ -2,7 +2,7 @@
 Manual Intel GPU validation tests, not executed in automated runs.
 
 These tests are basic acceptance tests to validate Intel GPU support in Ray. They
-require a suitable Intel GPU environment with dpctl installed. They are intended to
+require a suitable Intel GPU environment with the Level Zero runtime installed. They are intended to
 serve as an approved method to verify Intel GPU-based Ray deployments.
 """
 
@@ -13,12 +13,12 @@ from typing import Any, Dict, List
 import pytest
 
 import ray
+from ray._private.accelerators.intel_gpu import _get_level_zero_gpu_names
 
-try:
-    import dpctl
-except ImportError:
+if not _get_level_zero_gpu_names():
     pytest.skip(
-        "dpctl is not installed, skipping Intel GPU tests.", allow_module_level=True
+        "No Level Zero GPU detected, skipping Intel GPU tests.",
+        allow_module_level=True,
     )
 
 DEFAULT_SCALE_OUT_NODES = 2
@@ -61,11 +61,11 @@ def _is_cluster_configured(address: str = "auto") -> bool:
 
 
 def _detect_available_gpu_count() -> int:
-    """Return the number of GPU devices detected via dpctl."""
+    """Return the number of GPU devices detected via Level Zero."""
     try:
-        return dpctl.SyclContext("level_zero:gpu").device_count
+        return len(_get_level_zero_gpu_names())
     except Exception:
-        # If dpctl cannot enumerate devices, assume no additional GPUs.
+        # If Level Zero cannot enumerate devices, assume no additional GPUs.
         return 0
 
 
@@ -73,7 +73,7 @@ def _require_min_gpus(required: int, context: str) -> None:
     available = _detect_available_gpu_count()
     if available < required:
         pytest.skip(
-            f"Skipping {context}: requires {required} GPUs, detected {available} via dpctl."
+            f"Skipping {context}: requires {required} GPUs, detected {available} via Level Zero."
         )
 
 
