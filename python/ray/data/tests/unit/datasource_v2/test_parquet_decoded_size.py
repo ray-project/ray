@@ -15,21 +15,27 @@ import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
 
-from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
+    Read,
+    added_bytes,
+    build_leaf_profiles,
+    estimate_row_group,
+    leaf_chunks,
+)
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout import (
     _BINARY,
     _FIXED_SIZE_LIST,
     _FIXED_WIDTH,
     _LIST,
     _STRUCT,
     _UNSUPPORTED,
-    Read,
     _leaf_layout,
+)
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_pin import (
     _pinned_walk,
+)
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.schema_walk import (
     _walk,
-    added_bytes,
-    build_leaf_profiles,
-    estimate_row_group,
-    leaf_chunks,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
     LeafSizeStats,
@@ -441,7 +447,7 @@ def test_walk_records_each_leaf_with_its_ancestors(arrow_type, expected):
     ],
 )
 def test_unmodeled_arrow_type_is_unsupported(arrow_type):
-    """A layout this module can't size, which leaves the leaf to the caller."""
+    """A layout the estimator can't size, which leaves the leaf to the caller."""
     assert _leaf_layout(arrow_type)[0] == _UNSUPPORTED
 
 
