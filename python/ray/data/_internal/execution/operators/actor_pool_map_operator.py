@@ -150,6 +150,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         target_max_block_size_override: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
+        is_read_op: bool = False,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -184,6 +185,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             default_logical_memory_enabled: If ``True``, the operator launches actors
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
+            is_read_op: Whether this op reads from a datasource.
         """
         ray_remote_args = dict(ray_remote_args or {})
         actor_task_remote_args = _pop_actor_task_remote_args(ray_remote_args)
@@ -230,6 +232,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         # class per operator with a unique name.
         self._map_worker_cls = type(map_worker_cls_name, (_MapWorker,), {})
 
+        self.is_read_op = is_read_op
         self._actor_pool = self._create_actor_pool(compute_strategy)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
