@@ -328,15 +328,16 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         # The listing carries the same predicate, projection and limit the
         # scanner pushed, so it can make that call here; the footer must also
         # have matched a predicate the reader applies, or ``fully_matched`` is
-        # the default rather than evidence. If the two ever disagree (a
-        # row-group shuffle clears the listing limit while the scanner keeps
-        # it), only task sizes change -- a run is opened that the packer
-        # thought was free -- never a count.
+        # the default rather than evidence.
         read_predicate = combine_predicates(
             predicate,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        stub_fully_matched = is_exact_count_read(
+        # A row-group shuffle clears the listing limit while the scanner keeps
+        # it, so the listing cannot prove the reader will stub. Charging real
+        # bytes there only costs extra tasks; charging zero would let every
+        # matched run fold into one oversized task that the reader still opens.
+        stub_fully_matched = not shuffle_row_groups and is_exact_count_read(
             predicate=read_predicate,
             limit=limit,
             columns=projected_columns,

@@ -49,6 +49,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.expressions import col
 
 ROW_GROUP_SIZE = 25
@@ -279,6 +280,15 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
             },
             False,
             id="ordered",
+        ),
+        pytest.param(
+            {
+                "predicate": col("id") >= 0,
+                "projected_columns": [],
+                "shuffle_config": FileShuffleConfig(seed=1, small_chunks_shuffle=True),
+            },
+            False,
+            id="row-group-shuffle",
         ),
     ],
 )
