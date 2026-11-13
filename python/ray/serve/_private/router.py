@@ -1810,10 +1810,7 @@ class SingletonThreadRouter(Router):
     def set_router_autoscaling_metrics(
         self, metrics_dict: Dict[str, Union[int, float]]
     ) -> None:
-        cast(asyncio.AbstractEventLoop, self._asyncio_loop).call_soon_threadsafe(
-            self._asyncio_router.set_router_autoscaling_metrics,
-            dict(metrics_dict),
-        )
+        self._asyncio_router.set_router_autoscaling_metrics(metrics_dict)
 
     def assign_request(
         self,
