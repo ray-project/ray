@@ -1,5 +1,6 @@
 import collections
 import os
+import time
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
@@ -854,6 +855,18 @@ def test_max_len():
         )
         == "...r_string/19_chara\ncter_string/too_long"
     )
+
+
+def test_setup_start_time():
+    """`setup` should keep a passed `start_time`, and default to now if omitted."""
+    reporter = CLIReporter()
+    reporter.setup(start_time=123.0)
+    assert reporter._start_time == 123.0
+
+    before = time.time()
+    reporter.setup()
+    assert reporter._start_time is not None
+    assert before <= reporter._start_time <= time.time()
 
 
 if __name__ == "__main__":
