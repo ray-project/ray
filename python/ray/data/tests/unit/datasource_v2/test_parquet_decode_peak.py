@@ -12,7 +12,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import
     estimate_row_group_peak,
     estimate_row_group_work,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
     build_leaf_profiles,
     leaf_chunks,
 )

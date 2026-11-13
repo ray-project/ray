@@ -12,9 +12,7 @@ from typing import Mapping, Sequence, Set, Tuple
 import pyarrow as pa
 from pyarrow.parquet import ColumnSchema, RowGroupMetaData
 
-from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
-    _BINARY,
-    _LIST,
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
     LeafChunk,
     Read,
     estimate_added_columns,
@@ -22,6 +20,10 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
     estimate_leaf,
     estimate_row_group,
     estimate_string_bytes,
+)
+from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout import (
+    _BINARY,
+    _LIST,
 )
 
 # PyArrow reads a file's last 64 KiB for its footer, and pre_buffer coalesces
