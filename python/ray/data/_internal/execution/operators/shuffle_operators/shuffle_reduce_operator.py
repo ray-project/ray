@@ -18,6 +18,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     TaskContext,
+    task_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -237,6 +238,10 @@ class ShuffleReduceOp(PhysicalOperator):
                 self._emit_empty_partition(partition_id, refs, schema)
             else:
                 refs.destroy_if_owned()
+                # The key must still be finalized or the ordered queue would
+                # never advance past this partition.
+                if self._preserve_partition_order:
+                    self._output_queue.finalize(key=partition_id)
             return
 
         pending = self._pending_inputs.setdefault(partition_id, {})
@@ -327,6 +332,7 @@ class ShuffleReduceOp(PhysicalOperator):
                 self._handle_reduce_done, partition_id, bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(reduce_options),
+            task_resource_request=task_resource_dict(reduce_options),
             operator_name=self.name,
         )
 
