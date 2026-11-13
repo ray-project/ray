@@ -236,6 +236,16 @@ class _RestoreImage(NamedTuple):
     direct: bool = False
 
 
+# Extra global runsc flags for every sandbox on this node, such as
+# "--platform=kvm" on bare-metal hosts with /dev/kvm, where gVisor's KVM
+# platform makes system calls several times cheaper than the default
+# systrap platform.
+_RUNSC_FLAGS_ENV = "RAY_SANDBOX_RUNSC_FLAGS"
+# Flags that Ray sets itself and relies on: where runsc keeps sandbox state,
+# and whether runsc or Ray puts the sandbox in a cgroup.
+_RUNSC_RESERVED_FLAGS = ("root", "rootless", "ignore-cgroups")
+
+
 def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
     """runsc and the global flags that its run/exec/kill/delete share."""
     args = ["runsc"]
@@ -243,8 +253,45 @@ def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
         args.append("--rootless")
     if ignore_cgroups:
         args.append("--ignore-cgroups")
+    try:
+        args.extend(_runsc_extra_flags())
+    except ValueError:
+        # Creates and restores reject a bad value before they call runsc. A
+        # process that has one must still be able to delete a sandbox and to
+        # reclaim a dead owner's, so those calls go without the extra flags.
+        pass
     args.extend(["--root", _RUNSC_ROOT])
     return args
+
+
+def _runsc_extra_flags() -> List[str]:
+    """Parse the global flags that RAY_SANDBOX_RUNSC_FLAGS adds to runsc calls.
+
+    Returns:
+        The flags, in the order given.
+
+    Raises:
+        ValueError: If the value can't be split like a shell command line,
+            has a token that isn't a flag, or sets a flag that Ray sets.
+    """
+    value = os.environ.get(_RUNSC_FLAGS_ENV, "")
+    try:
+        flags = shlex.split(value)
+    except ValueError as err:
+        raise ValueError(
+            f"{_RUNSC_FLAGS_ENV}={value!r} isn't a valid shell command line: {err}"
+        ) from None
+    for flag in flags:
+        name = flag.lstrip("-").partition("=")[0]
+        if not flag.startswith("-") or not name:
+            # runsc would read it as the subcommand.
+            raise ValueError(
+                f"{_RUNSC_FLAGS_ENV}={value!r}: {flag!r} isn't a flag. Write a "
+                "flag's value as --flag=value."
+            )
+        if name in _RUNSC_RESERVED_FLAGS:
+            raise ValueError(f"{_RUNSC_FLAGS_ENV}={value!r}: Ray sets --{name} itself.")
+    return flags
 
 
 # The egress allowlist ruleset lives in the sandbox's root_dir and is loaded
@@ -590,12 +637,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return sandbox_id
 
     def _check_host_requirements(self, config: SandboxConfig) -> None:
-        """Fail early when the node lacks a binary that the sandbox needs."""
+        """Fail early when the node lacks a binary that the sandbox needs, or
+        sets runsc flags that Ray can't pass on."""
         if not shutil.which("runsc"):
             raise SandboxCreationError(
                 "gVisor executable 'runsc' not found in PATH. "
                 "Please install gVisor (runsc) on the node."
             )
+        try:
+            _runsc_extra_flags()
+        except ValueError as err:
+            raise SandboxCreationError(str(err)) from None
         if config.network == "public":
             missing = [
                 b

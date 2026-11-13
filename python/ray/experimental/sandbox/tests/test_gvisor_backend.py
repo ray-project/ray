@@ -3382,5 +3382,65 @@ def test_exec_kill_and_reclaim_run_runsc_with_gomaxprocs(private_bundles, monkey
     ]
 
 
+def test_runsc_flags_from_the_node_reach_every_runsc_call(monkeypatch):
+    """RAY_SANDBOX_RUNSC_FLAGS adds global flags (such as a platform) to the
+    runsc invocations that start, exec into and stop sandboxes."""
+    monkeypatch.setenv("RAY_SANDBOX_RUNSC_FLAGS", "--platform=kvm  --debug-log=/tmp/x/")
+    assert gvisor._runsc_args(rootless=True, ignore_cgroups=True) == [
+        "runsc",
+        "--rootless",
+        "--ignore-cgroups",
+        "--platform=kvm",
+        "--debug-log=/tmp/x/",
+        "--root",
+        "/tmp/runsc",
+    ]
+    monkeypatch.delenv("RAY_SANDBOX_RUNSC_FLAGS")
+    assert gvisor._runsc_args(rootless=False, ignore_cgroups=False) == [
+        "runsc",
+        "--root",
+        "/tmp/runsc",
+    ]
+
+
+@pytest.mark.parametrize(
+    "value, reason",
+    [
+        ("--platform='kvm", "valid shell command line"),
+        # runsc would read a token that isn't a flag as the subcommand.
+        ("--platform kvm", "'kvm' isn't a flag"),
+        ("kvm", "'kvm' isn't a flag"),
+        ("--", "'--' isn't a flag"),
+        # Ray relies on the values that it gives these.
+        ("--ignore-cgroups=false", "Ray sets --ignore-cgroups itself"),
+        ("-rootless", "Ray sets --rootless itself"),
+        ("--platform=kvm --root=/elsewhere", "Ray sets --root itself"),
+    ],
+)
+def test_runsc_flags_that_ray_cant_pass_on_fail_creates(monkeypatch, value, reason):
+    """A bad RAY_SANDBOX_RUNSC_FLAGS fails creates with an error that names
+    the variable, rather than running sandboxes without the node's flags or
+    with flags that undo Ray's."""
+    monkeypatch.setenv("RAY_SANDBOX_RUNSC_FLAGS", value)
+    monkeypatch.setattr(gvisor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_RUNSC_FLAGS") as err:
+        backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+    assert reason in str(err.value)
+
+
+def test_a_bad_runsc_flags_value_doesnt_stop_teardown(monkeypatch):
+    """Deleting a sandbox and reclaiming a dead owner's build their runsc
+    calls in a process whose RAY_SANDBOX_RUNSC_FLAGS may be bad. They go
+    without the extra flags rather than fail before anything is cleaned up."""
+    monkeypatch.setenv("RAY_SANDBOX_RUNSC_FLAGS", "--platform='kvm")
+    assert gvisor._runsc_args(rootless=False, ignore_cgroups=True) == [
+        "runsc",
+        "--ignore-cgroups",
+        "--root",
+        "/tmp/runsc",
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
