@@ -11,7 +11,6 @@ from typing_extensions import override
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorConfig,
 )
@@ -28,6 +27,8 @@ from ray.data._internal.experimental.execution.operators.actor_pool import (
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     _ACTOR_STATE_RESTARTING,
+    DrainReason,
+    ScaleUpRequest,
 )
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
@@ -184,7 +185,7 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         self, pool: _NodeAwareExperimentalActorPool, node_id: str = "node1"
     ) -> ActorHandle:
         self._actor_node_id = node_id
-        assert pool.scale(ActorPoolScalingRequest(delta=1, reason="test")) == 1
+        assert pool.scale(ScaleUpRequest.untargeted(1, reason="test")) == 1
         assert self._last_created_actor_and_ready_ref is not None
         actor, ready_ref = self._last_created_actor_and_ready_ref
         self._last_created_actor_and_ready_ref = None
@@ -205,7 +206,7 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         """Actors on a draining node start draining; actors elsewhere don't.
 
         The actor on the draining node must be non-reclaimable: its node is
-        going away, so a later upscale must never revive it there.
+        going away, so a later upscale must never reclaim it there.
         """
         metrics = _RecordingDrainMetrics()
         pool = self._create_pool()
@@ -234,9 +235,9 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         # The actor on the draining node no longer counts as capacity the sizer
         # can use, so it gets replaced on a node we keep.
         assert pool.num_running_actors() == 1
-        # Never revived: reclaim finds no eligible victim.
+        # Never reclaimed: reclaim finds no eligible victim.
         assert pool.num_reclaimable_draining_actors() == 0
-        assert pool.reclaim_draining_actors(1) == 0
+        assert pool.reclaim_draining_actors(limit=1) == 0
         # Only the actor on the healthy node still serves work.
         assert pool.select_actors() is actor2
 
@@ -330,14 +331,14 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         leaving = self._add_ready_actor(pool, node_id="node1")
         assert pool.draining_usage_by_node() == {}
 
-        pool.begin_draining(leaving, reclaimable=True)
+        pool.begin_draining(leaving, reason=DrainReason.RESIZE)
 
         per_actor = pool._actor_resource_usage[leaving]
         assert pool.draining_usage_by_node() == {"node1": per_actor}
         assert pool.committed_usage_by_node["node1"] == per_actor.scale(2)
 
     def test_already_draining_actor_becomes_non_reclaimable(self):
-        """An actor already draining from an ordinary downscale stays revivable
+        """An actor already draining from an ordinary downscale stays reclaimable
         -- until its node starts draining, which must retract that."""
         pool = self._create_pool()
         actor = self._add_ready_actor(pool, node_id="node1")
@@ -345,7 +346,7 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         self._draining_nodes.clear()
         pool.refresh_actor_state()
 
-        pool.begin_draining(actor, reclaimable=True)
+        pool.begin_draining(actor, reason=DrainReason.RESIZE)
         assert pool.num_reclaimable_draining_actors() == 1
 
         self._draining_nodes["node1"] = 1
@@ -353,7 +354,7 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
 
         assert pool.num_draining_actors() == 1
         assert pool.num_reclaimable_draining_actors() == 0
-        assert pool.reclaim_draining_actors(1) == 0
+        assert pool.reclaim_draining_actors(limit=1) == 0
 
     def test_restarting_actor_on_draining_node_is_not_drained(self):
         """A RESTARTING actor's recorded location is stale (Ray core may bring
