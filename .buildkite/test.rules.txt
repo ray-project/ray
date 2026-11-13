@@ -694,6 +694,7 @@ ci/docker/forge.aarch64.wanda.yaml
 .buildkite/hooks/post-command
 .buildkite/release/
 .buildkite/release-automation/
+.buildkite/image-scan.rayci.yml
 build-wheel.sh
 build-image.sh
 @ tools
