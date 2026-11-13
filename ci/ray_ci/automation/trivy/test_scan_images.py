@@ -525,7 +525,11 @@ def test_a_failed_upload_fails_the_job_and_keeps_the_status_back(
 
 
 def scan_and_report(
-    tmp_path: Path, group: list, s3: FakeS3, cancel_at: Optional[str] = None
+    tmp_path: Path,
+    group: list,
+    s3: FakeS3,
+    cancel_at: Optional[str] = None,
+    manifests: Optional[dict] = None,
 ) -> list:
     """Run the real scan_group, uploading to ``s3`` as main does. Returns
     the order of scans and uploads."""
@@ -543,7 +547,7 @@ def scan_and_report(
         assert not scan_images.upload_result(store(s3), tmp_path / "results", target)
 
     with mock.patch.object(scan_images.ContainedTrivy, "scan", scan):
-        run_group(tmp_path, group, FakeDocker(), {}, report)
+        run_group(tmp_path, group, FakeDocker(), manifests or {}, report)
     return events
 
 
@@ -557,6 +561,42 @@ def test_each_image_is_uploaded_as_soon_as_it_is_scanned(tmp_path: Path):
         ("scan", "ray-py3.12-cpu"),
         ("report", "ray-py3.12-cpu"),
     ]
+
+
+def test_an_image_that_fails_its_check_is_reported_before_any_scan(tmp_path: Path):
+    """Its status is final at once; it mustn't wait behind the group's
+    scans, where a hard kill would lose it."""
+    group = targets(("ray", "3.12"), ("ray-extra", "3.12"))
+    events = scan_and_report(
+        tmp_path, group, FakeS3(), manifests={group[1].ref: OCI_INDEX}
+    )
+    assert events == [
+        ("report", "ray-extra-py3.12-cpu"),
+        ("scan", "ray-py3.12-cpu"),
+        ("report", "ray-py3.12-cpu"),
+    ]
+
+
+def test_one_status_that_fails_to_record_does_not_stop_the_others(
+    tmp_path: Path, caplog
+):
+    reported = []
+
+    def report(target):
+        if target.name == "ray-py3.11-cpu":
+            raise OSError("No space left on device")
+        reported.append(target.name)
+
+    def cancelled(self, target, dest):
+        scan_images._exit_on_sigterm(15, None)
+
+    group = targets(("ray", "3.11"), ("ray", "3.12"))
+    with mock.patch.object(scan_images.ContainedTrivy, "scan", cancelled):
+        with pytest.raises(SystemExit):
+            run_group(tmp_path, group, FakeDocker(), {}, report)
+    assert reported == ["ray-py3.12-cpu"]
+    assert "ray-py3.11-cpu" in caplog.text
+    assert "No space left on device" in caplog.text
 
 
 def test_a_cancelled_job_keeps_what_it_scanned_and_reports_the_rest(tmp_path: Path):

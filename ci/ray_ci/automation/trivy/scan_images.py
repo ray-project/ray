@@ -560,6 +560,8 @@ def scan_group(
         login()
         for target in targets:
             check_target(target, architecture)
+            if target.error:
+                _finish(results_dir, target, report)
         ready = [t for t in targets if not t.error]
         if ready:
             _scan_ready(
@@ -575,7 +577,12 @@ def scan_group(
                 continue
             if not target.error and not target.scanned:
                 target.error = "scan did not complete"
-            _finish(results_dir, target, report)
+            try:
+                _finish(results_dir, target, report)
+            except Exception as e:
+                # The others' statuses still matter.
+                target.error = target.error or "status not recorded"
+                logger.error(f"Could not record {target.name}: {_describe(e)}")
 
 
 def _scan_ready(
