@@ -159,6 +159,8 @@ def test_profiles_that_boot_the_same_image_need_names():
     profiles = [{"image": "img", "size": 1}, {"image": "img", "cpu": 1.0, "size": 1}]
     with pytest.raises(ValueError, match="'name' each"):
         _pooled_runtime(profiles, store)
+    # Names only go to a store. A pool that publishes nowhere needs none.
+    _pooled_runtime(profiles, None).close()
     runtime = _pooled_runtime(
         [{**profiles[0], "name": "small"}, {**profiles[1], "name": "big"}],
         store,
@@ -222,6 +224,87 @@ def test_each_publishing_pool_in_a_process_needs_its_own_host():
     _pooled_runtime([{"image": "img", "size": 1}], store, host="shared").close()
 
 
+def test_pools_that_publish_to_different_stores_may_share_a_host_name():
+    first, second = _MemoryStore(), _MemoryStore()
+    one = _pooled_runtime([{"image": "img", "size": 1}], first, host="shared")
+    two = _pooled_runtime([{"image": "img", "size": 1}], second, host="shared")
+    assert _wait_until(lambda: first.ready("img") and second.ready("img"))
+    one.close()
+    two.close()
+    # Two RayWarmPoolStores with one name and namespace are one store.
+    assert RayWarmPoolStore("a", "ns") == RayWarmPoolStore("a", "ns")
+    assert hash(RayWarmPoolStore("a", "ns")) == hash(RayWarmPoolStore("a", "ns"))
+    assert RayWarmPoolStore("a", "ns") != RayWarmPoolStore("b", "ns")
+
+
+def test_a_pool_that_fails_to_start_frees_its_host(monkeypatch):
+    """A pool whose constructor fails is never closed by anyone. Its
+    publisher must not keep it, and its host name, for the life of the
+    process."""
+    from ray.experimental.sandbox import runtime as runtime_module
+
+    store = _MemoryStore()
+
+    def broken(self):
+        raise RuntimeError("no executor")
+
+    with monkeypatch.context() as failing:
+        failing.setattr(_WarmPool, "refill_all", broken)
+        with pytest.raises(RuntimeError, match="no executor"):
+            _pooled_runtime([{"image": "img", "size": 1}], store, host="shared")
+    assert _wait_until(
+        lambda: (store, "shared") not in runtime_module._PUBLISHING_HOSTS
+    )
+    _pooled_runtime([{"image": "img", "size": 1}], store, host="shared").close()
+
+
+def test_an_actor_without_a_name_needs_a_host_to_publish(monkeypatch):
+    """Callers reach a host by the name it publishes, and Ray finds only
+    named actors, so an unnamed actor has no default to publish under."""
+
+    class _Context:
+        def __init__(self, name):
+            self.name = name
+
+        def get_actor_name(self):
+            return self.name
+
+        def get_actor_id(self):
+            return "ab" * 16
+
+    monkeypatch.setattr(ray, "is_initialized", lambda: True)
+    monkeypatch.setattr(ray, "get_runtime_context", lambda: _Context(None))
+    with pytest.raises(ValueError, match="warm_pool_host"):
+        _default_host(published=True)
+    # A pool that publishes nowhere still gets a name of its own.
+    assert _default_host() == "ab" * 16
+    monkeypatch.setattr(ray, "get_runtime_context", lambda: _Context("host-actor"))
+    assert _default_host(published=True) == "host-actor"
+
+
+def test_a_ray_store_that_cant_answer_lists_nothing(monkeypatch):
+    """While the store's actor restarts, or its node hangs, a caller gets no
+    ready sandboxes and boots cold, rather than an error from its create. A
+    publish still fails, and the pool publishes again at its next heartbeat."""
+    store = RayWarmPoolStore(name="unreachable")
+
+    def unanswered(method, *args):
+        raise ray.exceptions.GetTimeoutError("the directory didn't answer")
+
+    monkeypatch.setattr(store, "_call", unanswered)
+    assert store.ready("img") == []
+    assert store.entries() == []
+    monkeypatch.setattr(store, "_call", RayWarmPoolStore._call.__get__(store))
+    monkeypatch.setattr(
+        store,
+        "_directory",
+        lambda: (_ for _ in ()).throw(ray.exceptions.RayActorError()),
+    )
+    assert store.ready("img") == []
+    with pytest.raises(ray.exceptions.RayActorError):
+        store.publish("a", [_entry("a", 0)])
+
+
 def test_a_closed_pool_keeps_its_host_until_its_last_publish_is_done(monkeypatch):
     """A closed pool whose store is slow to take its last publish keeps its
     host until that publish is done, so that the late publish can't remove
@@ -247,7 +330,9 @@ def test_a_closed_pool_keeps_its_host_until_its_last_publish_is_done(monkeypatch
         _pooled_runtime([{"image": "img", "size": 1}], store, host="shared")
     store.slow = False
     release.set()
-    assert _wait_until(lambda: "shared" not in runtime_module._PUBLISHING_HOSTS)
+    assert _wait_until(
+        lambda: (store, "shared") not in runtime_module._PUBLISHING_HOSTS
+    )
     new = _pooled_runtime([{"image": "img", "size": 1}], store, host="shared")
     assert _wait_until(lambda: len(store.ready("img")) == 1)
     (entry,) = store.ready("img")
@@ -393,6 +478,17 @@ def test_ray_warm_pool_store_keeps_every_hosts_entries(ray_cluster):
         return sorted({e.host for e in s.ready("img")})
 
     assert ray.get(ready_hosts.remote(copy)) == ["b"]
+
+
+def test_ray_warm_pool_store_spreads_callers_over_hosts(ray_cluster):
+    """Callers between two publishes get the same entries. In a shuffled
+    order, those that each take the first entry don't all pick one host."""
+    store = RayWarmPoolStore(name=f"pool-{uuid.uuid4().hex[:8]}")
+    for host in ("a", "b", "c", "d"):
+        store.publish(host, [_entry(host, 0), _entry(host, 1)])
+    firsts = {store.ready("img")[0].host for _ in range(40)}
+    assert len(firsts) > 1
+    assert len(store.ready("img")) == 8
 
 
 def test_ray_warm_pool_store_replaces_an_actor_killed_for_good(ray_cluster):

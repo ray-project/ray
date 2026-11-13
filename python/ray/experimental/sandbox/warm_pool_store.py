@@ -8,11 +8,18 @@ send its create there.
 
 import abc
 import dataclasses
+import logging
+import random
 import time
 from typing import Dict, List, Optional
 
 import ray
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
+
+# How long a RayWarmPoolStore waits for its actor to answer.
+_CALL_TIMEOUT_SECONDS = 10.0
 
 # States a published sandbox can be in.
 READY = "ready"
@@ -84,7 +91,9 @@ class WarmPoolStore(abc.ABC):
             profile: The profile name.
 
         Returns:
-            The profile's ready entries that haven't expired.
+            The profile's ready entries that haven't expired, in no
+            particular order. Callers that all take the first entry should
+            get different ones, so that they don't all go to one host.
         """
 
 
@@ -115,11 +124,15 @@ class _WarmPoolDirectory:
 
     def ready(self, profile: str) -> List[WarmPoolEntry]:
         self._drop_expired()
-        return [
+        entries = [
             entry
             for entries in self._ready.get(profile, {}).values()
             for entry in entries
         ]
+        # Callers between two publishes get the same entries. Shuffled, they
+        # don't all send their create to the first one's host.
+        random.shuffle(entries)
+        return entries
 
     def entries(self) -> List[WarmPoolEntry]:
         self._drop_expired()
@@ -166,6 +179,15 @@ class RayWarmPoolStore(WarmPoolStore):
     def __reduce__(self):
         return (RayWarmPoolStore, (self._name, self._namespace))
 
+    # Stores with one name and namespace are one store.
+    def __eq__(self, other):
+        return isinstance(other, RayWarmPoolStore) and (
+            (self._name, self._namespace) == (other._name, other._namespace)
+        )
+
+    def __hash__(self):
+        return hash((self._name, self._namespace))
+
     def _directory(self):
         if self._actor is None:
             self._actor = _WarmPoolDirectory.options(
@@ -178,13 +200,36 @@ class RayWarmPoolStore(WarmPoolStore):
         return self._actor
 
     def _call(self, method: str, *args):
+        def call():
+            return ray.get(
+                getattr(self._directory(), method).remote(*args),
+                timeout=_CALL_TIMEOUT_SECONDS,
+            )
+
         try:
-            return ray.get(getattr(self._directory(), method).remote(*args))
-        except ray.exceptions.RayActorError:
+            return call()
+        except ray.exceptions.ActorDiedError:
             # The actor is gone for good, say killed without a restart: start
             # a new one, which the hosts' next publishes fill.
             self._actor = None
-            return ray.get(getattr(self._directory(), method).remote(*args))
+            return call()
+
+    def _read(self, method: str, *args) -> List[WarmPoolEntry]:
+        """Read from the actor, or nothing while it can't answer.
+
+        The records are a hint: a caller that finds none boots its sandbox
+        cold, which beats failing its create because the actor is restarting
+        or its node hangs.
+        """
+        try:
+            return self._call(method, *args)
+        except (ray.exceptions.RayActorError, ray.exceptions.GetTimeoutError) as err:
+            logger.warning(
+                "The warm pool store %r can't answer, so it lists nothing: %s",
+                self._name,
+                err,
+            )
+            return []
 
     def publish(self, host: str, entries: List[WarmPoolEntry]) -> None:
         """Replace everything recorded for ``host`` with ``entries``.
@@ -203,14 +248,16 @@ class RayWarmPoolStore(WarmPoolStore):
             profile: The profile name.
 
         Returns:
-            The profile's ready entries that haven't expired.
+            The profile's ready entries that haven't expired, in no
+            particular order, or none while the store's actor can't answer.
         """
-        return self._call("ready", profile)
+        return self._read("ready", profile)
 
     def entries(self) -> List[WarmPoolEntry]:
         """Return every sandbox recorded, ready or claimed, on every host.
 
         Returns:
-            The latest entries of each host that hasn't expired.
+            The latest entries of each host that hasn't expired, or none
+            while the store's actor can't answer.
         """
-        return self._call("entries")
+        return self._read("entries")

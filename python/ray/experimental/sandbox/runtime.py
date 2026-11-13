@@ -46,8 +46,9 @@ _PUBLISH_HEARTBEAT_SECONDS = 10.0
 # After a publish, the pool waits this long before the next, so a burst of
 # creates publishes a few times rather than once per create.
 _PUBLISH_COALESCE_SECONDS = 0.05
-# Hosts that publish a warm pool from this process: each needs its own name,
-# since a publish replaces everything recorded for its host.
+# The (store, host) pairs that warm pools of this process publish as. Each
+# pool that publishes to a store needs a host name of its own there, since a
+# publish replaces everything the store holds for its host.
 _PUBLISHING_HOSTS = set()
 _PUBLISHING_HOSTS_LOCK = threading.Lock()
 
@@ -94,8 +95,21 @@ _CLAIMED = CLAIMED
 _DELETING = "deleting"
 
 
-def _default_host() -> str:
-    """The current actor's name, else its ID, else this host and process."""
+def _default_host(published: bool = False) -> str:
+    """The current actor's name, else its ID, else this host and process.
+
+    Args:
+        published: Whether the name goes to a store. Callers reach a host by
+            the name it publishes, and Ray finds only named actors, so an
+            actor without a name has no default to publish.
+
+    Returns:
+        The name.
+
+    Raises:
+        ValueError: If ``published`` and the current actor has no name.
+    """
+    actor_id = None
     try:
         import ray
 
@@ -105,11 +119,16 @@ def _default_host() -> str:
             if name:
                 return name
             actor_id = context.get_actor_id()
-            if actor_id:
-                return actor_id
     except Exception:
         pass
-    return f"{socket.gethostname()}:{os.getpid()}"
+    if actor_id and published:
+        raise ValueError(
+            "A warm pool in an actor without a name needs a warm_pool_host to "
+            "publish to a store: callers reach a host by the name it "
+            "publishes, and Ray finds only named actors. Name the actor, or "
+            "pass a warm_pool_host that callers can resolve."
+        )
+    return actor_id or f"{socket.gethostname()}:{os.getpid()}"
 
 
 def _node_id() -> Optional[str]:
@@ -206,7 +225,9 @@ class _WarmPool:
                     "timeout_seconds differ)."
                 )
             name = name or cfg.image
-            if name in self._names.values():
+            # A store keeps sandboxes by profile name. Without a store the
+            # names go nowhere, and profiles of one image may share one.
+            if store is not None and name in self._names.values():
                 raise ValueError(
                     f"Invalid warm_pool profile {profile!r}: an earlier profile "
                     f"is named {name!r}. Give profiles that boot the same image "
@@ -217,19 +238,21 @@ class _WarmPool:
             self._slots[key] = [_Slot(key, index) for index in range(size)]
             self._ready[key] = collections.deque()
         self._store = store
-        self._host = host or _default_host()
+        self._host = host or _default_host(published=store is not None)
         self._node_id = _node_id()
         self._publisher = None
         if store is not None:
             with _PUBLISHING_HOSTS_LOCK:
-                if self._host in _PUBLISHING_HOSTS:
+                if (store, self._host) in _PUBLISHING_HOSTS:
                     raise ValueError(
-                        f"Another warm pool in this process publishes as host "
-                        f"{self._host!r}, or a closed one is still sending its "
-                        "last publish; give each pool a warm_pool_host of its "
-                        "own."
+                        f"Another warm pool in this process publishes to this "
+                        f"store as host {self._host!r}, or a closed one is "
+                        "still sending its last publish; give each pool a "
+                        "warm_pool_host of its own."
                     )
-                _PUBLISHING_HOSTS.add(self._host)
+                _PUBLISHING_HOSTS.add((store, self._host))
+            # From here on the publisher frees the host, with its last
+            # publish, once the pool is closed.
             self._publisher = threading.Thread(
                 target=self._publish_loop, name="sandbox-warm-pool-publish", daemon=True
             )
@@ -245,7 +268,13 @@ class _WarmPool:
             max_workers=_WARM_BOOT_CONCURRENCY,
             thread_name_prefix="sandbox-warm-pool-discard",
         )
-        self.refill_all()
+        try:
+            self.refill_all()
+        except BaseException:
+            # Nobody gets this pool to close it, and its publisher would keep
+            # it, and its host name, for the life of the process.
+            self.close()
+            raise
 
     def with_profile_env(self, cfg: SandboxConfig) -> SandboxConfig:
         """Give a create that matches a profile the profile's env, under its own.
@@ -500,7 +529,7 @@ class _WarmPool:
             self._publish_until_closed()
         finally:
             with _PUBLISHING_HOSTS_LOCK:
-                _PUBLISHING_HOSTS.discard(self._host)
+                _PUBLISHING_HOSTS.discard((self._store, self._host))
 
     def _publish_until_closed(self) -> None:
         last_warned = None
@@ -530,7 +559,12 @@ class _WarmPool:
                     last_warned = time.monotonic()
             if closed:
                 return
-            time.sleep(_PUBLISH_COALESCE_SECONDS)
+            # Let changes gather before the next publish, unless the pool
+            # closes meanwhile.
+            with self._lock:
+                self._publish_wanted.wait_for(
+                    lambda: self._closed, timeout=_PUBLISH_COALESCE_SECONDS
+                )
 
 
 @PublicAPI(stability="alpha")
@@ -560,8 +594,10 @@ class SandboxRuntime:
             publishes nothing.
         warm_pool_host: The name that callers use to reach this runtime,
             recorded with each of its sandboxes in ``warm_pool_store``.
-            Defaults to the current actor's name, or its ID for an unnamed
-            actor, or the host name and process ID outside an actor.
+            Defaults to the current actor's name, or the host name and
+            process ID outside an actor. An actor without a name must pass
+            one, and so must actors that share a name across namespaces:
+            a store keeps one set of records for each host name.
     """
 
     def __init__(

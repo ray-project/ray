@@ -584,7 +584,7 @@ runs += [hosts[0].run.remote(command) for command in commands[len(entries) :]]
 print(ray.get(runs))
 ```
 
-A runtime publishes under its actor's name, or under the actor's ID if the actor has no name. Set `warm_pool_host` to publish under a different name. Each record holds a sandbox's profile `name`, slot, state, and node.
+A runtime publishes under its actor's name, which is the name that `ray.get_actor` finds. A store keeps one set of records for each host name, so an actor without a name has to set `warm_pool_host`, and so do actors that share a name across namespaces. `ready` returns a profile's sandboxes in no particular order, so callers that each take the first one spread over the hosts. Each record holds a sandbox's profile `name`, slot, state, and node.
 
 Only the runtime hands out its sandboxes, and only the ones still ready on it, so the store can lag without harm. A `create` call sent on a stale record boots a sandbox cold, and no sandbox goes to two `create` calls. Pass the record's `sandbox_id` as `warm_sandbox`, and the call takes that sandbox while it's still ready. A caller that sends at most one `create` call per record then never sends a runtime more calls than it has sandboxes ready, even when the store lags by a publish.
 
