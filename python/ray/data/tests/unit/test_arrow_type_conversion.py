@@ -17,6 +17,7 @@ from ray.data._internal.tensor_extensions.arrow import (
 from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.util import MiB
 from ray.tests.conftest import *  # noqa
+from ray.util.common import INT32_MAX
 
 import psutil
 
@@ -238,6 +239,57 @@ def test_convert_to_pyarrow_array_object_ext_type_fallback():
     pa_array = convert_to_pyarrow_array(column_values, column_name)
 
     assert pa_array.to_pylist() == column_values.tolist()
+
+
+def _oracle_native_array(column_values):
+    """Pre-change conversion: scan every value, then build the array once."""
+    pa_type = _infer_pyarrow_type(column_values, check_large_offsets=True)
+    return pa.array(column_values, type=pa_type)
+
+
+def test_convert_string_and_binary_columns_match_previous_rule():
+    columns = [
+        ["", "a", None, "üñîcode", "a" * 64],
+        np.array(["id-0", None, "id-2", ""], dtype=object),
+        [b"", b"abc", None, b"\x00\xff"],
+        ["only"],
+        [],
+    ]
+    for column in columns:
+        if len(column) == 0:
+            converted = _convert_to_pyarrow_native_array(column, "c")
+            assert converted.equals(pa.array(column))
+            continue
+        expected = _oracle_native_array(column)
+        converted = _convert_to_pyarrow_native_array(column, "c")
+        assert converted.type == expected.type
+        assert converted.equals(expected)
+
+
+def test_value_past_offset_limit_uses_large_type():
+    # One value of 2 GiB. Skip when the machine cannot hold the input plus Arrow's copy.
+    if psutil.virtual_memory().available < 6 * 1024**3:
+        pytest.skip("needs 6 GiB free to check the 32-bit offset boundary")
+
+    # len == INT32_MAX is rejected by Arrow but was not upcast. One byte more is.
+    at_limit = bytes(INT32_MAX)
+    assert _infer_pyarrow_type([at_limit]) == pa.binary()
+    with pytest.raises(ArrowConversionError):
+        _convert_to_pyarrow_native_array([at_limit], "payload")
+    del at_limit
+
+    past_limit = bytes(INT32_MAX + 1)
+    assert _infer_pyarrow_type([past_limit]) == pa.large_binary()
+    converted = _convert_to_pyarrow_native_array([past_limit], "payload")
+    assert converted.type == pa.large_binary()
+    assert converted[0].as_py() == past_limit
+    del past_limit, converted
+
+    past_limit = "x" * (INT32_MAX + 1)
+    assert _infer_pyarrow_type([past_limit]) == pa.large_string()
+    converted = _convert_to_pyarrow_native_array([past_limit], "payload")
+    assert converted.type == pa.large_string()
+    assert converted[0].as_py() == past_limit
 
 
 if __name__ == "__main__":
