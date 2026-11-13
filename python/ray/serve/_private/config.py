@@ -686,13 +686,8 @@ def validate_gang_scheduling_bounds(
 ) -> None:
     """Validate that explicitly set autoscaling bounds are multiples of gang_size.
 
-    Bounds left at their defaults are not checked: gang scheduling rounds the
-    autoscaler's decisions up to whole gangs, so the defaults are safe.
-
-    Set ``ignore_default_bounds`` when validating a config read back from a
-    deployment. ``handle_num_replicas_auto`` merges ``AutoscalingConfig.default()``
-    into that config, which marks the default bounds as explicitly set even
-    when the user left them unset.
+    Set ``ignore_default_bounds`` for configs read back from a deployment, where
+    ``handle_num_replicas_auto`` marks merged defaults as explicitly set.
     """
     if autoscaling_config is None:
         return
@@ -751,12 +746,8 @@ def validate_gang_scheduling_options(
     """Validate an options update against the deployment's resulting config.
 
     Options left at ``DEFAULT.VALUE`` fall back to the deployment's current
-    configuration, so adding or changing either gang scheduling or autoscaling
-    is validated against the other.
-
-    This lives at module scope so ``Deployment.options()`` does not create
-    helper locals before it captures user-configured option names from
-    ``locals()``.
+    config. Kept at module scope so ``Deployment.options()`` does not add
+    helper locals to ``locals()``.
     """
     if gang_scheduling_config is DEFAULT.VALUE:
         gang_scheduling_config = current_gang_scheduling_config

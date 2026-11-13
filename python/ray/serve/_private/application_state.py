@@ -27,7 +27,10 @@ from ray.serve._private.common import (
     EndpointInfo,
     TargetCapacityDirection,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    validate_gang_scheduling_autoscaling_config,
+)
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
@@ -1924,6 +1927,28 @@ def override_deployment_info(
         info = deployment_infos[deployment_name]
         original_options = info.deployment_config.model_dump()
         original_options["user_configured_option_names"].update(set(options))
+
+        # Validate bounds from the YAML/app config against the gang config before
+        # the `num_replicas="auto"` block below merges in autoscaling defaults.
+        gang_config_override = options.get("gang_scheduling_config", DEFAULT.VALUE)
+        autoscaling_config_override = options.get("autoscaling_config", DEFAULT.VALUE)
+        gang_scheduling_config = (
+            gang_config_override
+            if gang_config_override is not DEFAULT.VALUE
+            else info.deployment_config.gang_scheduling_config
+        )
+        autoscaling_config = (
+            autoscaling_config_override
+            if autoscaling_config_override is not DEFAULT.VALUE
+            else info.deployment_config.autoscaling_config
+        )
+        if gang_scheduling_config is not None and autoscaling_config is not None:
+            validate_gang_scheduling_autoscaling_config(
+                gang_scheduling_config,
+                autoscaling_config,
+                # The deployment's stored config has merged defaults marked as set.
+                ignore_default_bounds=autoscaling_config_override is DEFAULT.VALUE,
+            )
 
         # Override `max_ongoing_requests` and `autoscaling_config` if
         # `num_replicas="auto"`

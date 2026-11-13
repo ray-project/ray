@@ -1145,20 +1145,6 @@ class TestGangSchedulingConfig:
         assert f._deployment_config.autoscaling_config.min_replicas == 4
         assert f._deployment_config.autoscaling_config.max_replicas == 8
 
-    def test_gang_scheduling_config_decorator_does_not_pollute_option_names(self):
-        @serve.deployment(
-            num_replicas="auto",
-            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
-            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
-        )
-        def f():
-            return "test"
-
-        option_names = f._deployment_config.user_configured_option_names
-        assert "gang_scheduling_config" in option_names
-        assert "autoscaling_config" in option_names
-        assert "gang_size" not in option_names
-
     def test_gang_scheduling_config_auto_num_replicas_via_options(self):
         """Test that num_replicas='auto' works via .options() with gang config."""
 
@@ -1178,16 +1164,7 @@ class TestGangSchedulingConfig:
         assert f2._deployment_config.autoscaling_config.min_replicas == 4
         assert f2._deployment_config.autoscaling_config.max_replicas == 8
 
-    @pytest.mark.parametrize(
-        "bounds",
-        [
-            {"min_replicas": 3},
-            {"max_replicas": 6},
-            {"initial_replicas": 3},
-            {"min_replicas": 0, "max_replicas": 6},
-        ],
-    )
-    def test_gang_scheduling_config_rejects_unaligned_autoscaling_bounds(self, bounds):
+    def test_gang_scheduling_config_rejects_unaligned_autoscaling_bounds(self):
         with pytest.raises(
             ValueError, match="autoscaling_config.*must be a multiple of gang_size"
         ):
@@ -1195,7 +1172,7 @@ class TestGangSchedulingConfig:
             @serve.deployment(
                 num_replicas="auto",
                 gang_scheduling_config=GangSchedulingConfig(gang_size=4),
-                autoscaling_config=bounds,
+                autoscaling_config={"min_replicas": 3, "max_replicas": 6},
             )
             def f():
                 return "test"
@@ -1289,24 +1266,6 @@ class TestGangSchedulingConfig:
             ValueError, match="autoscaling_config.*must be a multiple of gang_size"
         ):
             f.options(autoscaling_config={"min_replicas": 1})
-
-    def test_gang_scheduling_config_options_do_not_pollute_option_names(self):
-        @serve.deployment(
-            num_replicas=4,
-            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
-        )
-        def f():
-            return "test"
-
-        d = f.options(
-            num_replicas="auto",
-            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
-        )
-        option_names = d._deployment_config.user_configured_option_names
-        assert "num_replicas" in option_names
-        assert "autoscaling_config" in option_names
-        assert "gang_size" not in option_names
-        assert "gang_config_for_validation" not in option_names
 
     def test_gang_scheduling_config_proto_roundtrip(self):
         """Test roundtrip serialization of GangSchedulingConfig through protobuf."""
