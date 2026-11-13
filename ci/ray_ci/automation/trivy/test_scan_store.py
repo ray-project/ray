@@ -1,13 +1,16 @@
 import sys
 from pathlib import Path
+from unittest import mock
 
 import click
 import pytest
 from click.testing import CliRunner
 
+from ci.ray_ci.automation.trivy import scan_store
 from ci.ray_ci.automation.trivy.fake_s3 import FakeS3
 from ci.ray_ci.automation.trivy.scan_store import (
     BUCKET,
+    MAX_POOL_CONNECTIONS,
     ScanStore,
     StoreError,
     build_options,
@@ -126,6 +129,17 @@ def test_build_options_read_buildkite_variables():
     result = CliRunner().invoke(show, [], env={**env, "BUILDKITE_BUILD_NUMBER": "x"})
     assert result.exit_code == 2
     assert "build number" in result.output
+
+
+def test_the_client_has_a_connection_for_every_download_thread():
+    """build_report downloads with DOWNLOAD_THREADS threads on one client;
+    a smaller pool logs "Connection pool is full" and reconnects."""
+    with mock.patch.object(scan_store.boto3, "client") as client:
+        ScanStore.for_build("postmerge", "master", "1", COMMIT)._s3()
+    (call,) = client.call_args_list
+    assert call.args == ("s3",)
+    assert call.kwargs["region_name"] == "us-west-2"
+    assert call.kwargs["config"].max_pool_connections == MAX_POOL_CONNECTIONS
 
 
 if __name__ == "__main__":

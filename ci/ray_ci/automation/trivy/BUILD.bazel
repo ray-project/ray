@@ -67,6 +67,7 @@ py_library(
     srcs = ["scan_store.py"],
     deps = [
         ci_require("boto3"),
+        ci_require("botocore"),
         ci_require("click"),
     ],
 )

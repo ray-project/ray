@@ -13,7 +13,7 @@ from click.testing import CliRunner
 from ci.ray_ci.automation.trivy import build_report
 from ci.ray_ci.automation.trivy.build_report import expected_images
 from ci.ray_ci.automation.trivy.fake_s3 import FakeS3
-from ci.ray_ci.automation.trivy.scan_store import BUCKET
+from ci.ray_ci.automation.trivy.scan_store import BUCKET, MAX_POOL_CONNECTIONS
 from ci.ray_ci.automation.trivy.trivy_report import (
     EXIT_FINDINGS,
     EXIT_INCOMPLETE,
@@ -274,6 +274,10 @@ def test_a_failed_download_is_named_on_its_image(tmp_path: Path):
     assert "InternalError" in report
     # Images with nothing in S3 keep the usual reason.
     assert f"`ray-py3.11-tpu`: {MISSING_STATUS}" in report
+
+
+def test_the_download_threads_fit_the_connection_pool():
+    assert build_report.DOWNLOAD_THREADS <= MAX_POOL_CONNECTIONS
 
 
 if __name__ == "__main__":

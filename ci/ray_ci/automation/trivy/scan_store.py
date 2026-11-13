@@ -23,6 +23,7 @@ from typing import Any, Callable
 import boto3
 import click
 from boto3.exceptions import Boto3Error
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 BUCKET = "ray-ci-artifact-branch-public"
@@ -31,6 +32,8 @@ REGION = "us-west-2"
 DB_FOLDER = "db"
 RESULTS_FOLDER = "results"
 REPORT_FOLDER = "report"
+# Room for build_report's download threads, which share one client.
+MAX_POOL_CONNECTIONS = 32
 
 
 class StoreError(Exception):
@@ -92,7 +95,11 @@ class ScanStore:
 
     def _s3(self) -> Any:
         if self.client is None:
-            self.client = boto3.client("s3", region_name=REGION)
+            self.client = boto3.client(
+                "s3",
+                region_name=REGION,
+                config=Config(max_pool_connections=MAX_POOL_CONNECTIONS),
+            )
         return self.client
 
     def _call(self, what: str, key: str, call: Callable[[], Any]) -> Any:
