@@ -15,7 +15,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import runfiles
 
@@ -94,6 +94,14 @@ def config(ref: str) -> dict[str, Any]:
     return _crane_json(["config", ref])
 
 
+def pull(refs: Sequence[str], layout: Path, platform: str) -> None:
+    """Pull every ref into one OCI layout, storing shared layers once."""
+    _crane(
+        ["pull", "--format", "oci", "--platform", platform, *refs, str(layout)],
+        transfer=True,
+    )
+
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -118,3 +126,10 @@ def fetch_blob(repo: str, blob_digest: str, dest: Path) -> None:
     except Exception:
         dest.unlink(missing_ok=True)
         raise
+
+
+def login_if_ecr(repo: str, ecr_login: Callable[[str], None]) -> None:
+    """Log in to the repo's registry when it is ECR; others need no login."""
+    host = repo.split("/")[0]
+    if ".dkr.ecr." in host:
+        ecr_login(host)
