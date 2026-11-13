@@ -35,6 +35,9 @@ EXIT_INCOMPLETE = 11
 
 ANNOTATION_CONTEXT = "trivy-scan"
 MISSING_STATUS = "no status record: its scan job did not run or did not upload"
+# A package with more no-fix CVEs than this in one image shows a count: kernel
+# headers alone carry ~500 per CUDA image, too many to list for every image.
+NO_FIX_LIST_LIMIT = 10
 # Buildkite rejects annotation bodies over 1 MiB; keep some headroom.
 ANNOTATION_LIMIT_BYTES = 1024 * 1024 - 16 * 1024
 SUMMARY_SCHEMA_VERSION = 1
@@ -579,6 +582,73 @@ def _split_by_fixable(scan: ImageScan) -> tuple[list[Finding], list[Finding]]:
     return fixable, no_fix
 
 
+def _image_cves(findings: Sequence[Finding], list_limit: Optional[int]) -> str:
+    """One image's CVEs by package, CRITICAL first and in bold; a package with
+    more than ``list_limit`` CVEs shows a count instead."""
+    by_package: dict[tuple[str, str], list[Finding]] = {}
+    for f in findings:
+        by_package.setdefault((f.pkg_name, f.installed), []).append(f)
+
+    def impact(item: tuple[tuple[str, str], list[Finding]]) -> tuple:
+        (pkg, installed), found = item
+        critical = sum(f.severity == "CRITICAL" for f in found)
+        return (-critical, -len(found), pkg, installed)
+
+    parts = []
+    for (pkg, installed), found in sorted(by_package.items(), key=impact):
+        found = sorted(found, key=lambda f: (_severity_rank(f.severity), f.vuln_id))
+        if list_limit is not None and len(found) > list_limit:
+            critical = sum(f.severity == "CRITICAL" for f in found)
+            cves = f"{len(found)} CVEs ({critical} C / {len(found) - critical} H)"
+        else:
+            cves = ", ".join(
+                f"**{f.vuln_id}**" if f.severity == "CRITICAL" else f.vuln_id
+                for f in found
+            )
+        parts.append(f"`{_cell(pkg)}` {_cell(installed)}: {cves}")
+    return "; ".join(parts)
+
+
+def _image_cve_table(
+    scans: Sequence[ImageScan],
+    fixable: bool,
+    max_rows: Optional[int],
+    list_limit: Optional[int],
+) -> list[str]:
+    """One row per image with such findings, most affected first."""
+    ranked = []
+    for scan in scans:
+        if not scan.scanned:
+            continue
+        found = _split_by_fixable(scan)[0 if fixable else 1]
+        if not found:
+            continue
+        critical = sum(f.severity == "CRITICAL" for f in found)
+        row = (
+            f"| `{scan.image.name}` | `{scan.image.digest[:19]}` "
+            f"| {_critical_high(found)} | {_image_cves(found, list_limit)} |"
+        )
+        ranked.append(((-critical, -len(found), _image_sort_key(scan.image)), row))
+    label = "Fixable C/H" if fixable else "No fix C/H"
+    header = [
+        f"| Image | Digest | {label} | CVEs by package |",
+        "|---|---|---|---|",
+    ]
+    return header + _limited([row for _, row in sorted(ranked)], max_rows)
+
+
+def _collapsed(title: str, count: int, table: list[str], note: str = "") -> list[str]:
+    """A heading over a table that stays folded until opened, so the
+    annotation stays short on the build page."""
+    lines = [f"### {title} ({count})", ""]
+    if not count:
+        return lines + ["None.", ""]
+    lines += ["<details><summary>Show the table</summary>", "", *table, ""]
+    if note:
+        lines += [note, ""]
+    return lines + ["</details>", ""]
+
+
 def _per_image_table(scans: Sequence[ImageScan], max_rows: Optional[int]) -> list[str]:
     rows = []
     for scan in scans:
@@ -622,13 +692,19 @@ def render_markdown(
     issues: Sequence[str] = (),
     *,
     files_note: str,
+    cve_list_limit: Optional[int] = None,
 ) -> str:
-    """Render the report. ``max_rows`` caps each table, for the annotation."""
+    """Render the report. ``max_rows`` caps each table and ``cve_list_limit``
+    each package's CVE list in the per-image tables, for the annotation."""
     everything = [s.image for s in scans if s.scanned]
     groups = group_findings(scans)
     fixable = [g for g in groups if g.fixable]
     no_fix = [g for g in groups if not g.fixable]
     suppressed = group_findings(scans, suppressed=True)
+    scanned = [s for s in scans if s.scanned]
+    fixable_images = sum(1 for s in scanned if _split_by_fixable(s)[0])
+    no_fix_images = sum(1 for s in scanned if _split_by_fixable(s)[1])
+    no_fix_limit = min(NO_FIX_LIST_LIMIT, cve_list_limit or NO_FIX_LIST_LIMIT)
 
     lines = [
         "## Trivy image scan: CRITICAL/HIGH",
@@ -648,24 +724,46 @@ def render_markdown(
         lines += [f"- {_cell(issue)}" for issue in issues]
         lines.append("")
 
-    lines += [f"### Fixable ({len(fixable)})", ""]
-    lines += _fixable_table(fixable, everything, max_rows) if fixable else ["None."]
-    lines.append("")
-    if no_fix:
-        lines += [f"<details><summary>No fix yet ({len(no_fix)})</summary>", ""]
-        lines += _no_fix_table(no_fix, everything, max_rows) + ["", "</details>", ""]
+    capped = (
+        f"_A package with more than {cve_list_limit} CVEs in an image shows a "
+        "count here; `report.md` lists every CVE._"
+        if cve_list_limit is not None
+        else ""
+    )
+    lines += _collapsed(
+        "Fixable CVEs", len(fixable), _fixable_table(fixable, everything, max_rows)
+    )
+    lines += _collapsed(
+        "Fixable Images",
+        fixable_images,
+        _image_cve_table(scans, True, max_rows, cve_list_limit),
+        capped,
+    )
+    lines += _collapsed(
+        "No Fix Yet", len(no_fix), _no_fix_table(no_fix, everything, max_rows)
+    )
+    lines += _collapsed(
+        "No Fix Yet Per Image",
+        no_fix_images,
+        _image_cve_table(scans, False, max_rows, no_fix_limit),
+        f"_A package with more than {no_fix_limit} CVEs in an image shows a count; "
+        "`vulns.csv` lists every CVE._",
+    )
     if suppressed:
-        lines += [f"<details><summary>Suppressed ({len(suppressed)})</summary>", ""]
-        lines += _suppressed_table(suppressed, everything, max_rows) + [
+        lines += _collapsed(
+            "Suppressed",
+            len(suppressed),
+            _suppressed_table(suppressed, everything, max_rows),
+        )
+    if per_image:
+        lines += _collapsed("Per Image", len(scans), _per_image_table(scans, max_rows))
+    else:
+        lines += [
+            f"### Per Image ({len(scans)})",
             "",
-            "</details>",
+            "_Omitted here (truncated); see `report.md`._",
             "",
         ]
-    if per_image:
-        lines += [f"<details><summary>Per image ({len(scans)})</summary>", ""]
-        lines += _per_image_table(scans, max_rows) + ["", "</details>", ""]
-    else:
-        lines += ["_Per-image table omitted here (truncated); see `report.md`._", ""]
     lines.append(files_note)
     return "\n".join(lines) + "\n"
 
@@ -678,17 +776,26 @@ def render_annotation(
     *,
     files_note: str,
 ) -> str:
-    """The longest rendering of the report that fits in ``limit`` bytes."""
-    for max_rows, per_image in (
-        (None, True),
-        (200, True),
-        (200, False),
-        (50, False),
-        (10, False),
-        (0, False),
+    """The longest rendering of the report that fits in ``limit`` bytes:
+    shorter CVE lists first, then fewer rows."""
+    for max_rows, per_image, cve_list_limit in (
+        (None, True, None),
+        (None, True, 20),
+        (None, True, 5),
+        (200, True, 5),
+        (200, False, 5),
+        (50, False, 3),
+        (10, False, 1),
+        (0, False, 0),
     ):
         body = render_markdown(
-            scans, scanner, max_rows, per_image, issues, files_note=files_note
+            scans,
+            scanner,
+            max_rows,
+            per_image,
+            issues,
+            files_note=files_note,
+            cve_list_limit=cve_list_limit,
         )
         if len(body.encode()) <= limit:
             return body

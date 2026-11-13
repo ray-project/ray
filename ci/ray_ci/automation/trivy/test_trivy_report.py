@@ -1,6 +1,7 @@
 import csv
 import gzip
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -725,6 +726,139 @@ def test_result_exit_codes_are_not_retried_or_mistaken_for_bazels():
     for code in (EXIT_FINDINGS, EXIT_INCOMPLETE):
         assert code not in RAYCI_RETRIED
         assert code not in BAZEL_EXIT_CODES
+
+
+def image_scan(name: str, *vulns: dict, digest: str = "") -> ImageScan:
+    image_type, rest = name.split("-py", 1)
+    python_version, platform = rest.split("-", 1)
+    image = Image(name, image_type, python_version, platform, "x86_64", digest=digest)
+    findings = parse_trivy_report(make_report(*vulns)).findings
+    return ImageScan(image=image, findings=findings, packages=1)
+
+
+def section(report: str, heading: str) -> str:
+    """The text under one ``### heading``, up to the next heading."""
+    return report.split(f"### {heading}", 1)[1].split("\n### ", 1)[0]
+
+
+def table_rows(text: str) -> list:
+    return [line for line in text.splitlines() if line.startswith("| `")]
+
+
+NO_FIX = {"FixedVersion": "", "Status": "affected"}
+
+
+def test_every_table_sits_collapsed_under_its_heading():
+    """Collapsed tables keep the annotation short on the build page, so other
+    annotations stay visible."""
+    scans = [
+        image_scan(
+            "ray-py3.12-cpu",
+            make_vuln(),
+            make_vuln(VulnerabilityID="CVE-2026-0002", **NO_FIX),
+            digest="sha256:" + "a" * 64,
+        )
+    ]
+    report = trivy_report.render_markdown(scans, SCANNER, files_note=NOTE)
+    headings = re.findall(r"^### .*", report, re.M)
+    assert headings == [
+        "### Fixable CVEs (1)",
+        "### Fixable Images (1)",
+        "### No Fix Yet (1)",
+        "### No Fix Yet Per Image (1)",
+        "### Per Image (1)",
+    ]
+    for heading in headings:
+        assert section(report, heading[4:]).lstrip("\n").startswith("<details>")
+    assert report.count("<details>") == report.count("</details>") == 5
+
+
+def test_an_empty_section_says_so_without_a_table():
+    scans = [image_scan("ray-py3.12-cpu", make_vuln(Severity="LOW"))]
+    report = trivy_report.render_markdown(scans, SCANNER, files_note=NOTE)
+    for heading in ("Fixable CVEs (0)", "Fixable Images (0)", "No Fix Yet (0)"):
+        assert section(report, heading).strip() == "None."
+
+
+def test_fixable_images_ranks_images_by_impact_and_lists_their_cves():
+    one_critical = image_scan(
+        "ray-py3.11-cpu",
+        make_vuln(VulnerabilityID="CVE-2026-0009", Severity="CRITICAL"),
+        digest="sha256:" + "1" * 64,
+    )
+    three_high = image_scan(
+        "ray-py3.12-cpu",
+        make_vuln(VulnerabilityID="CVE-2026-0001"),
+        make_vuln(VulnerabilityID="CVE-2026-0002"),
+        make_vuln(VulnerabilityID="CVE-2026-0003", PkgName="other"),
+        digest="sha256:" + "2" * 64,
+    )
+    one_high = image_scan(
+        "ray-py3.13-cpu",
+        make_vuln(VulnerabilityID="CVE-2026-0004"),
+        digest="sha256:" + "3" * 64,
+    )
+    report = trivy_report.render_markdown(
+        [one_high, three_high, one_critical], SCANNER, files_note=NOTE
+    )
+    rows = table_rows(section(report, "Fixable Images"))
+    # Most affected first: CRITICAL findings, then the most findings.
+    assert [r.split("|")[1].strip() for r in rows] == [
+        "`ray-py3.11-cpu`",
+        "`ray-py3.12-cpu`",
+        "`ray-py3.13-cpu`",
+    ]
+    assert rows[0] == (
+        f"| `ray-py3.11-cpu` | `sha256:{'1' * 12}` | 1 / 0 "
+        "| `pkg` 1.0: **CVE-2026-0009** |"
+    )
+    assert rows[1] == (
+        f"| `ray-py3.12-cpu` | `sha256:{'2' * 12}` | 0 / 3 "
+        "| `pkg` 1.0: CVE-2026-0001, CVE-2026-0002; `other` 1.0: CVE-2026-0003 |"
+    )
+
+
+def test_no_fix_per_image_counts_a_package_with_many_cves():
+    """Kernel headers alone carry ~500 CVEs per CUDA image; listing them all
+    would push the annotation past Buildkite's 1 MiB limit."""
+    headers = [
+        make_vuln(
+            VulnerabilityID=f"CVE-2026-1{i:03d}",
+            PkgName="linux-libc-dev",
+            Severity="CRITICAL" if i == 0 else "HIGH",
+            **NO_FIX,
+        )
+        for i in range(12)
+    ]
+    scan = image_scan(
+        "ray-py3.12-cu12.8.1-cudnn",
+        *headers,
+        make_vuln(VulnerabilityID="CVE-2026-0005", PkgName="zlib", **NO_FIX),
+        digest="sha256:" + "4" * 64,
+    )
+    report = trivy_report.render_markdown([scan], SCANNER, files_note=NOTE)
+    (row,) = table_rows(section(report, "No Fix Yet Per Image"))
+    assert row.endswith(
+        "| 1 / 12 | `linux-libc-dev` 1.0: 12 CVEs (1 C / 11 H); "
+        "`zlib` 1.0: CVE-2026-0005 |"
+    )
+    assert "`vulns.csv` lists every CVE" in section(report, "No Fix Yet Per Image")
+
+
+def test_annotation_shortens_cve_lists_before_dropping_rows():
+    vulns = [
+        make_vuln(VulnerabilityID=f"CVE-2026-{i:05d}", PkgName="pkg")
+        for i in range(400)
+    ]
+    scans = [image_scan(f"ray-py3.12-{p}", *vulns) for p in ("cpu", "tpu")]
+    full = render_annotation(scans, SCANNER, files_note=NOTE, limit=10**9)
+    limit = len(full.encode()) - 5_000
+    body = render_annotation(scans, SCANNER, files_note=NOTE, limit=limit)
+    assert len(body.encode()) <= limit
+    rows = table_rows(section(body, "Fixable Images"))
+    assert len(rows) == 2
+    assert "`pkg` 1.0: 400 CVEs (0 C / 400 H)" in rows[0]
+    assert "`report.md` lists every CVE" in section(body, "Fixable Images")
 
 
 if __name__ == "__main__":
