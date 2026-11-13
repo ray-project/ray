@@ -334,6 +334,45 @@ Writes past the cap fail inside the sandbox with `ENOSPC` ("No space left on dev
 
 A `readonly=True` sandbox keeps its root filesystem read-only, so `disk` caps its `workdir` instead. The `workdir`'s writes then go to a file on the node's disk that the cap bounds, rather than straight to the `workdir`'s directory on the node. A read-only sandbox without a `workdir` has nothing writable to cap, so `disk` requires `readonly=False` or a `workdir`.
 
+### Commit a sandbox to an image
+
+Call `commit()` on a sandbox actor to push the sandbox's base image and root filesystem changes to a registry.
+Commit requires a writable root filesystem, so create the sandbox with `readonly=False`.
+A sandbox with the default `readonly=True` has no root filesystem changes to export, because its only writable path is a `workdir` mount, and `commit()` raises a `SandboxError` for it.
+Commit leaves the sandbox in the state it was in: a running sandbox is paused only while its changes are exported, and a paused sandbox stays paused.
+The image doesn't include bind mounts or changes made from the host.
+Registry credentials come from `$DOCKER_CONFIG/config.json` on the node that runs the sandbox, and must allow push.
+
+```python
+import ray
+from ray.experimental import sandbox
+
+sb = sandbox.create(image="python:3.12-slim", readonly=False)
+ray.get(sb.exec.remote("pip install httpx"))
+image = ray.get(sb.commit.remote("myregistry.azurecr.io/tools/python:with-httpx"))
+sandbox.create(image=image, readonly=False)
+```
+
+The method returns an immutable image reference such as `myregistry.azurecr.io/tools/python@sha256:...`.
+Commit requires a registry base image with a cached manifest and config.
+For an image cached without this metadata, pull it into a fresh cache and recreate the sandbox before committing.
+
+:::{note}
+A sandbox actor runs one call at a time, so calls such as `exec()` wait until a commit finishes pushing.
+:::
+
+`SandboxRuntime.commit()` does the same for a sandbox that you manage without an actor:
+
+```python
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+runtime = SandboxRuntime()
+instance = runtime.create("python:3.12-slim", readonly=False)
+runtime.exec(instance, ["pip", "install", "httpx"])
+image = runtime.commit(instance, "myregistry.azurecr.io/tools/python:with-httpx")
+runtime.create(image, readonly=False)
+```
+
 ### Schedule a Sandbox actor with custom resources
 
 Because `Sandbox` is a standard Ray actor, you can instantiate it directly with Ray actor scheduling options such as `num_cpus`, `memory`, and custom accelerator or placement constraints.
@@ -723,7 +762,7 @@ ray.get(sb.delete.remote())
 
 ## Container images
 
-Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API, with no Docker daemon, flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. A `readonly=True` sandbox whose mounts need mount points the image might lack, such as an explicit `workdir`, boots from an overlayfs root filesystem instead, because runsc can't create mount points in a read-only image. On a worker that can't mount one, the sandbox gets a writable root filesystem, and Ray discards its writes with the sandbox. For details, see [Overlayfs root filesystems](#overlayfs-root-filesystems). A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API, with no Docker daemon, keeps its layers in a node-wide layer cache, flattens them, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. A `readonly=True` sandbox whose mounts need mount points the image might lack, such as an explicit `workdir`, boots from an overlayfs root filesystem instead, because runsc can't create mount points in a read-only image. On a worker that can't mount one, the sandbox gets a writable root filesystem, and Ray discards its writes with the sandbox. For details, see [Overlayfs root filesystems](#overlayfs-root-filesystems). A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
 
 ### Pull from private registries
 
@@ -768,7 +807,11 @@ The role needs `ecr:GetAuthorizationToken`, `ecr:BatchGetImage`, and `ecr:GetDow
 
 ### Bound the image cache
 
-The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap and the filesystem that holds the cache has a minimum of free space, so the cache gives way when sandboxes' writable overlays, logs, or spilled objects fill the disk. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem and the free-space floor to a tenth of it, the level at which the kubelet starts evicting Pods. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` and `RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES` on worker nodes to choose either in bytes, or set both to `0` to disable eviction.
+The cache bounds both EROFS images and downloaded layers so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently used layers, then the least recently extracted images until the combined cache fits under the cap and the filesystem that holds the cache has a minimum of free space. The cache gives way when sandboxes' writable overlays, logs, or spilled objects fill the disk. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem and the free-space floor to a tenth of it, the level at which the kubelet starts evicting Pods. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` and `RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES` on worker nodes to choose either in bytes, or set both to `0` to disable eviction.
+
+### Layer cache
+
+Ray verifies downloaded image layers against their digests and stores them in `/tmp/ray/sandbox/images/.blobs/sha256/<digest>`. Images and tags that share layers reuse these files. Rebuilding an evicted image downloads only layers the node no longer has. Concurrent pulls of the same layer, from any process on the node, download it once. A cached image's EROFS file doesn't depend on its layers, so evicting layers doesn't affect a running sandbox.
 
 ### Route Docker Hub pulls through a mirror
 

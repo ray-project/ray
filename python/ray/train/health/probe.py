@@ -81,7 +81,7 @@ class NodeProbe(Probe):
 
 @PublicAPI(stability="alpha")
 class ControllerProbe(Probe):
-    """A probe that runs in the controller process."""
+    """A probe that runs on the controller's node monitor."""
 
     @abc.abstractmethod
     def poll(self) -> Dict[Any, ProbeResult]:
