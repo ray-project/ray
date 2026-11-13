@@ -5,7 +5,7 @@ head_node:
 
 worker_nodes:
     # 4-GPU L4 nodes (g6.12xlarge/24xlarge) are often out of capacity in every zone.
-    - instance_type: g5.12xlarge
+    - instance_type: g5.24xlarge
       min_nodes: 1
       max_nodes: 1
       market_type: ON_DEMAND
