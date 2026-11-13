@@ -931,7 +931,11 @@ def _owner_filter(
     return _filter
 
 
-def _seed_tmp(rootfs_dir: str, created: Optional[Set[str]] = None) -> None:
+def _seed_tmp(
+    rootfs_dir: str,
+    created: Optional[Set[str]] = None,
+    modes: Optional[Dict[str, int]] = None,
+) -> None:
     """Docker parity for /tmp: world-writable, sticky, and non-empty.
 
     runsc mounts a private tmpfs over an *empty* /tmp, which breaks
@@ -939,13 +943,19 @@ def _seed_tmp(rootfs_dir: str, created: Optional[Set[str]] = None) -> None:
     A ``tmp`` symlink is followed inside the tree (``_resolve_in_root``):
     the directory it names in the image is what gets the mode and the file.
     The canonical paths of the entries it creates go into ``created``, and
-    the directories it adds them to keep their mtimes.
+    the directories it adds them to keep their mtimes. The directory's
+    archived mode leaves ``modes``, so the image gets 1777.
     """
     mtimes: Dict[str, int] = {}
     try:
         tmp_dir, tmp_rel = _resolve_in_root(rootfs_dir, "tmp")
         _makedirs_recorded(rootfs_dir, tmp_dir, created, mtimes)
         os.chmod(tmp_dir, 0o1777)
+        # The keep file stops runsc from mounting a tmpfs over /tmp, so /tmp
+        # must be world-writable and sticky in the image too, whatever mode
+        # the image shipped it with: the build takes this one from disk.
+        if modes is not None:
+            modes.pop(os.path.normpath(tmp_rel), None)
         _snapshot_mtime(mtimes, tmp_dir)
         if _create_nofollow(os.path.join(tmp_dir, ".ray-sandbox-keep")):
             if created is not None:
@@ -1526,7 +1536,7 @@ def pull_and_extract_container_image(
                     created,
                     modes,
                 )
-                _seed_tmp(tmp_rootfs_dir, created)
+                _seed_tmp(tmp_rootfs_dir, created, modes)
                 _seed_mountpoints(tmp_rootfs_dir, created)
                 build_erofs_image(
                     tmp_rootfs_dir,

@@ -1167,6 +1167,27 @@ def test_pull_keeps_archived_modes_whatever_the_umask(tmp_path, umask):
     assert tree["app/run.sh"].mode == 0o755
 
 
+def test_pull_keeps_a_shipped_tmp_world_writable(tmp_path):
+    """The keep file stops runsc from mounting a tmpfs over /tmp, so a /tmp
+    the image ships without 1777 still gets it, as a symlinked one does."""
+    tree = _pull_members(
+        tmp_path,
+        ("tmp", b"", {"mode": 0o755, "typ": tarfile.DIRTYPE}),
+        ("var/tmp", b"", {"mode": 0o700, "typ": tarfile.DIRTYPE}),
+    )
+    assert tree["tmp"].mode == 0o1777
+    assert tree["var/tmp"].mode == 0o700
+
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    tree = _pull_members(
+        linked,
+        ("var/tmp", b"", {"mode": 0o755, "typ": tarfile.DIRTYPE}),
+        ("tmp", b"", {"typ": tarfile.SYMTYPE, "linkname": "var/tmp"}),
+    )
+    assert tree["var/tmp"].mode == 0o1777
+
+
 def test_marker_reads_the_version_erofs_utils_1_7_prints(fake_mkfs_erofs):
     """erofs-utils 1.7 prints its version, then rejects -V and exits 1."""
     script = fake_mkfs_erofs / "mkfs.erofs"
