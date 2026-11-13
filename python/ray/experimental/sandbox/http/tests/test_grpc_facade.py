@@ -7,11 +7,13 @@ same fake resolver and runtime seams the REST app tests use.
 from __future__ import annotations
 
 import asyncio
+import collections
 import inspect
 import json
 import logging
 import os
 import sys
+import threading
 import types
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,7 +22,7 @@ import pytest
 from google.protobuf import empty_pb2
 from grpc import StatusCode
 
-from ray.experimental.sandbox.http import grpc_facade
+from ray.experimental.sandbox.http import grpc_facade, node_host
 from ray.experimental.sandbox.http._proto import (
     sandbox_control_pb2 as api_pb2,
     sandbox_exec_pb2 as sr_pb2,
@@ -35,6 +37,7 @@ from ray.experimental.sandbox.http.grpc_facade import (
     _FS_TOOLS_PATH,
     RaySandboxFacade,
 )
+from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 from ray.experimental.sandbox.http.tests.conftest import (
     FakeExecResult,
     FakeResolver,
@@ -43,7 +46,7 @@ from ray.experimental.sandbox.http.tests.conftest import (
 
 # Each test gets its own port so a leftover HTTP/2 connection from a prior test
 # can never bleed into the next one.
-_next_port = iter(range(50917, 50947))
+_next_port = iter(range(50917, 50957))
 
 _TOKEN = "facade-test-token"
 # The token as the client SDK presents it on the control plane (its token
@@ -374,6 +377,155 @@ class _DeadHandle:
                 return asyncio.get_running_loop().create_task(_raise())
 
         return _Method()
+
+
+class _VacantNodeHostHandle:
+    """A hosted sandbox's handle whose node host doesn't have the sandbox."""
+
+    def __init__(self, sandbox_id: str) -> None:
+        self._sandbox_id = sandbox_id
+        self._host = object.__new__(node_host.SandboxNodeHost)
+        self._host._sandboxes = {}
+        self._host._exec_starts = collections.deque()
+
+    def __getattr__(self, name: str) -> Any:
+        method = getattr(self._host, name)
+        sandbox_id = self._sandbox_id
+
+        class _Method:
+            def remote(self, *args: Any, **kwargs: Any) -> "asyncio.Future":
+                return asyncio.ensure_future(method(sandbox_id, *args, **kwargs))
+
+        return _Method()
+
+
+def test_get_task_id_holds_until_the_sandbox_runs() -> None:
+    """The SDK sleeps half a second after each empty answer, so the call is
+    held while the sandbox boots and answers once it runs, rather than on
+    each step of the boot."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[bool, str, str]:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        runtime.create_gate = threading.Event()
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                call = asyncio.ensure_future(
+                    control.SandboxGetTaskId(
+                        api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id)
+                    )
+                )
+                # Pulled, and now starting: the earlier facade answered here
+                # with an empty task id.
+                while not runtime.create_calls:
+                    await asyncio.sleep(0.01)
+                await asyncio.sleep(0.2)
+                held = not call.done()
+                runtime.create_gate.set()
+                reply = await asyncio.wait_for(call, timeout=5.0)
+                return held, reply.task_id, sandbox_id
+            finally:
+                await channel.close()
+
+    held, task_id, sandbox_id = asyncio.run(scenario())
+    assert held
+    assert task_id == sandbox_id
+
+
+def test_get_task_id_answers_empty_when_the_boot_outlasts_the_hold(monkeypatch) -> None:
+    monkeypatch.setattr(grpc_facade, "_TASK_ID_HOLD_SECONDS", 0.1)
+    port = next(_next_port)
+
+    async def scenario() -> str:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        runtime.create_gate = threading.Event()
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                reply = await control.SandboxGetTaskId(
+                    api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id)
+                )
+                runtime.create_gate.set()
+                return reply.task_id
+            finally:
+                await channel.close()
+
+    assert asyncio.run(scenario()) == ""
+
+
+def test_a_create_that_finds_no_room_answers_unavailable() -> None:
+    """A create that waited for a node with room and found none answers
+    UNAVAILABLE, which the client SDK retries, so a cluster that is adding
+    nodes keeps seeing the demand."""
+    port = next(_next_port)
+
+    class _FullResolver(FakeResolver):
+        async def acreate(self, *args: Any, **kwargs: Any) -> Any:
+            raise asyncio.TimeoutError()
+
+    async def scenario() -> Any:
+        async with _Facade(_FullResolver(), port):
+            channel, control, _ = _channel(port)
+            try:
+                with pytest.raises(grpc.aio.AioRpcError) as failed:
+                    await _make_sandbox(control)
+                return failed.value.code()
+            finally:
+                await channel.close()
+
+    assert asyncio.run(scenario()) == StatusCode.UNAVAILABLE
+
+
+def test_a_sandbox_its_node_host_lacks_is_not_found() -> None:
+    """A hosted id resolves while its node's host lives, even when that host
+    never had the sandbox or has released it. GetTaskId, an exec start and a
+    network-access update then answer NOT_FOUND, as for a sandbox actor that
+    no longer exists, and a wait reports the sandbox terminated."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[List[Any], int]:
+        resolver = FakeResolver()
+        resolver.handles["sb-vacant"] = _VacantNodeHostHandle("sb-vacant")
+        async with _Facade(resolver, port):
+            channel, control, router = _channel(port)
+            try:
+                codes = []
+                for call in (
+                    lambda: control.SandboxGetTaskId(
+                        api_pb2.SandboxGetTaskIdRequest(sandbox_id="sb-vacant")
+                    ),
+                    lambda: router.TaskExecStart(
+                        sr_pb2.TaskExecStartRequest(
+                            task_id="sb-vacant", exec_id="ex", command_args=["true"]
+                        )
+                    ),
+                    lambda: router.TaskSetNetworkAccess(
+                        sr_pb2.TaskSetNetworkAccessRequest(
+                            task_id="sb-vacant",
+                            network_access=_allowlist("10.0.0.0/8"),
+                        )
+                    ),
+                ):
+                    with pytest.raises(grpc.aio.AioRpcError) as failed:
+                        await call()
+                    codes.append(failed.value.code())
+                wait = await control.SandboxWait(
+                    api_pb2.SandboxWaitRequest(sandbox_id="sb-vacant", timeout=0)
+                )
+                return codes, wait.result.status
+            finally:
+                await channel.close()
+
+    codes, wait_status = asyncio.run(scenario())
+    assert codes == [StatusCode.NOT_FOUND] * 3
+    assert wait_status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
 
 
 def test_named_create_replaces_dead_actor() -> None:
@@ -997,7 +1149,6 @@ def test_facade_imports_without_fastapi() -> None:
 
 def test_write_file_stdin_is_capped() -> None:
     """A WriteFile larger than max_file_bytes is refused, not buffered."""
-    from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 
     port = next(_next_port)
 

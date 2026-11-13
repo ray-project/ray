@@ -1197,6 +1197,46 @@ spec:
 
 ingress-nginx defaults to 1 MiB per request and 60 seconds without data from the backend, which cap file writes at about 7.5 MiB and output reads on a running command at about 11 minutes, once the SDK's retries run out. The annotations `nginx.ingress.kubernetes.io/proxy-body-size: "0"`, `nginx.ingress.kubernetes.io/proxy-read-timeout`, and `nginx.ingress.kubernetes.io/proxy-send-timeout` on the facade's Ingress raise those limits, but no ingress-nginx setting lets it serve the client SDK's command-router connection.
 
+#### How the facade hosts sandboxes
+
+The facade hosts sandboxes on one actor per node. A create is a call to the actor on the node it picks, so it starts no Ray worker process and registers no actor with Ray. Each node's actor reserves CPUs for its sandboxes in placement groups that many sandboxes share, and it reserves each group in the background, so a create doesn't wait for Ray to place one.
+
+You don't size these actors. Each node has one, whatever the node's size, and it reserves no CPUs for itself. Density, the number of sandboxes for each CPU, is one divided by the CPUs that a sandbox requests, which is the client's `cpu`, or `default_actor_num_cpus` when the client names none. Sandboxes that request 1 CPU pack one to a CPU, and sandboxes that request 0.125 pack eight, so a node with 32 CPUs hosts 32 or 256 of them.
+
+These arguments change how the actors host sandboxes:
+
+* `reservation_slab_cpus`: the smallest placement group a node's actor reserves, 4 CPUs by default. Each group is at least as large as what the node already holds, so a node that fills up takes a handful of groups. Set it to 0 to give each sandbox a placement group of its own.
+* `warm_pool`: each node keeps sandboxes booted for the listed profiles, for example `[{"image": "python:3.12-slim", "network": "none", "size": 100, "cpu": 0.25}]`. A create with a profile's image and network, no workdir, and no resource limits takes one of them at once. With `cpu`, the node also reserves `size` times `cpu` CPUs for the pool.
+* `host_channel`: the facade calls each node's actor over a direct connection instead of Ray actor calls, which a busy actor starts one at a time. Set it to `false` to use Ray calls only.
+* `host_mode="actor"`: each sandbox gets a Ray actor of its own, as with the REST API and with named sandboxes. Each actor is a Ray worker process of about 130 MiB that takes about a CPU-second to start, and creates go only as fast as Ray starts actors.
+
+Only sandboxes that request nothing but CPUs share placement groups. A sandbox that also requests memory reserves a group of its own, and so does a sandbox that finds every node full, which shows the autoscaler what it needs. That create waits up to `scheduling_grace_seconds`, 60 seconds by default, for a node with room. Then it answers `UNAVAILABLE`, which the client SDK retries, and each retry reserves the resources again.
+
+A sandbox pulls its image when its node doesn't have it yet, so the first sandbox of an image on a node waits for that pull. To have an image on every node before a burst, list it in `warm_pool`.
+
+#### Size the facade for many sandboxes
+
+Creating a sandbox takes a boot on its node and a few calls to the facade. To create many at once:
+
+* Add nodes or CPUs for the boots. A cold boot takes about a third of a CPU-second, so a node boots a few sandboxes per second for each CPU. Boots get slower as a node hosts more sandboxes, so many nodes with a few hundred sandboxes each boot a burst faster than a few nodes with thousands each.
+* Add replicas for the calls. Set `num_replicas` to about one replica for every 300 creates per second. Replicas keep no state, so any number works.
+* Keep sandboxes booted with `warm_pool` for bursts that must not wait for boots.
+* Run clients on enough CPUs. A client process creates a few hundred sandboxes per second.
+
+Serve's HAProxy and any proxy in front of the facade also cap what one deployment carries, and their defaults are low for this API:
+
+* The client SDK keeps one command-router connection open for each sandbox it runs commands in, and Serve's HAProxy accepts 4,096 connections by default. Past that, new connections wait. Set `RAY_SERVE_HAPROXY_MAXCONN` on every node to more than the sandboxes you expect, and raise `RAY_SERVE_HAPROXY_NBTHREAD` from its default of 4 for bursts.
+* Serve's HAProxy and Envoy Gateway each allow 100 calls in flight on a client connection by default. A client process that waits on more sandboxes than that, such as with `Sandbox.wait`, holds every slot, and its other calls then wait for seconds. Raise `RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS` and `RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS`, and with Envoy Gateway set `http2.maxConcurrentStreams` in a `ClientTrafficPolicy` on the Gateway.
+* Envoy stops sending a backend more than 1,024 requests at once by default, and fails the others with `reset reason: overflow`. A burst of creates passes that. With Envoy Gateway, raise the limits in the `BackendTrafficPolicy` that turns the route timeout off:
+
+```yaml
+spec:
+  circuitBreaker:
+    maxConnections: 1000000
+    maxPendingRequests: 1000000
+    maxParallelRequests: 1000000
+```
+
 ## API reference
 
 For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref`.
