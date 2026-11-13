@@ -5,7 +5,8 @@ For each image the build pushed to its wanda cache, this:
 2. pulls every image of the group into one shared OCI layout with crane, so
    layers shared across Python versions and image types are stored once;
 3. downloads this build's vulnerability DBs from its S3 folder (staged by
-   ``trivy_db``) and checks each against the sha256 pinned in metadata.json;
+   ``trivy_db``), and checks each against the sha256 pinned in metadata.json
+   and each pin against the upstream manifest it names;
 4. runs the pinned Trivy on each image, by digest, in a throwaway container
    with no network, no credentials, no inherited environment, a non-root
    user, a read-only root and no capabilities;
@@ -53,7 +54,12 @@ from ci.ray_ci.automation.trivy.scan_store import (
     ScanStore,
     StoreError,
 )
-from ci.ray_ci.automation.trivy.trivy_db import DB_METADATA, DB_SOURCES, DbSource
+from ci.ray_ci.automation.trivy.trivy_db import (
+    DB_METADATA,
+    DB_SOURCES,
+    DbSource,
+    db_layer,
+)
 from ci.ray_ci.docker_container import RayType
 from ci.ray_ci.ray_image import RayImageError
 from ci.ray_ci.utils import ecr_docker_login
@@ -252,11 +258,23 @@ def load_db_pins(store: ScanStore, workdir: Path) -> dict[str, Any]:
 def fetch_db(
     source: DbSource, store: ScanStore, pins: dict[str, Any], workdir: Path
 ) -> tuple[Path, dict[str, Any]]:
-    """Download this build's copy of a DB and verify it against its pin."""
+    """Download this build's copy of a DB and verify it against its pin, and
+    the pin against the upstream manifest it names: anyone who can write the
+    bucket could replace both the tarball and the pin."""
     pin = pins.get(source.name)
-    blob = pin.get("blob") if isinstance(pin, dict) else None
-    if not isinstance(blob, str) or not SHA256_DIGEST.match(blob):
+    pin = pin if isinstance(pin, dict) else {}
+    blob, manifest_digest = pin.get("blob"), pin.get("manifest")
+    if not all(
+        isinstance(d, str) and SHA256_DIGEST.match(d) for d in (blob, manifest_digest)
+    ):
         raise ScanError(f"{DB_METADATA} has no valid {source.name} pin: {pin!r}")
+    # crane refuses a manifest whose digest differs from the one requested.
+    pinned = f"{source.upstream_repo}@{manifest_digest}"
+    upstream = db_layer(registry.manifest(pinned), source.media_type)["digest"]
+    if upstream != blob:
+        raise ScanError(
+            f"{DB_METADATA} pins {source.name} blob {blob}, but {pinned} has {upstream}"
+        )
     tarball = store.download(DB_FOLDER, source.file_name, workdir / source.file_name)
     actual = registry.sha256_file(tarball)
     if actual != blob:

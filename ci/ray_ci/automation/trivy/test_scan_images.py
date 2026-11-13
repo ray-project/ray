@@ -750,43 +750,90 @@ DB, JAVA_DB = DB_SOURCES
 DB_TARBALL_MEMBERS = {"trivy.db": b"x", "metadata.json": b"{}"}
 
 
-def put_db(s3: FakeS3, tmp_path: Path, pinned_blob: Optional[str] = None) -> dict:
+MANIFEST = "sha256:" + "a" * 64
+
+
+def put_db(s3: FakeS3, tmp_path: Path) -> dict:
     """Upload a DB tarball as trivy_db would; returns the pins."""
     tarball = tmp_path / "upload.tar.gz"
     make_tar(tarball, DB_TARBALL_MEMBERS)
     data = tarball.read_bytes()
     s3.put(BUCKET, f"{store().prefix}/db/{DB.file_name}", data)
-    blob = pinned_blob or "sha256:" + hashlib.sha256(data).hexdigest()
-    return {"db": {"source": DB.upstream, "manifest": "sha256:m", "blob": blob}}
+    blob = "sha256:" + hashlib.sha256(data).hexdigest()
+    return {"db": {"source": DB.upstream, "manifest": MANIFEST, "blob": blob}}
+
+
+def upstream(layer_digest: str):
+    """public.ecr.aws's manifest for MANIFEST, with this DB layer."""
+    manifest = {"layers": [{"mediaType": DB.media_type, "digest": layer_digest}]}
+    return mock.patch.object(
+        scan_images.registry, "manifest", mock.Mock(return_value=manifest)
+    )
 
 
 def test_fetch_db_extracts_the_pinned_tarball(tmp_path: Path):
     s3 = FakeS3()
     pins = put_db(s3, tmp_path)
-    dest, pin = scan_images.fetch_db(DB, store(s3), pins, tmp_path)
+    # The pin's own "source" is never trusted for where to check it.
+    pins["db"]["source"] = "registry.example/not-trivy:1"
+    with upstream(pins["db"]["blob"]) as manifest:
+        dest, pin = scan_images.fetch_db(DB, store(s3), pins, tmp_path)
+    manifest.assert_called_once_with(f"{DB.upstream_repo}@{MANIFEST}")
     assert sorted(p.name for p in dest.iterdir()) == ["metadata.json", "trivy.db"]
     assert pin == {**pins["db"], "created": ""}
     assert not (tmp_path / DB.file_name).exists()
 
 
 @pytest.mark.parametrize(
-    ("pins", "error"),
+    ("pins", "upstream_layer", "error"),
     [
-        pytest.param({}, "no valid db pin", id="no-pin"),
-        pytest.param({"db": {"blob": "sha256:short"}}, "no valid db pin", id="bad-pin"),
+        pytest.param({}, None, "no valid db pin", id="no-pin"),
         pytest.param(
-            {"db": {"blob": "sha256:" + "0" * 64}}, "has digest", id="wrong-digest"
+            {"db": {"blob": "sha256:short", "manifest": MANIFEST}},
+            None,
+            "no valid db pin",
+            id="bad-blob",
+        ),
+        pytest.param(
+            {"db": {"blob": "sha256:" + "0" * 64, "manifest": "latest"}},
+            None,
+            "no valid db pin",
+            id="bad-manifest",
+        ),
+        pytest.param(
+            {"db": {"blob": "sha256:" + "0" * 64, "manifest": MANIFEST}},
+            "sha256:" + "0" * 64,
+            "has digest",
+            id="tarball-differs",
+        ),
+        pytest.param(
+            {"db": {"blob": "sha256:" + "0" * 64, "manifest": MANIFEST}},
+            "sha256:" + "1" * 64,
+            "but public.ecr.aws/aquasecurity/trivy-db@",
+            id="pin-is-not-upstream",
         ),
     ],
 )
-def test_fetch_db_refuses_a_tarball_its_pin_does_not_match(
-    tmp_path: Path, pins: dict, error: str
+def test_fetch_db_refuses_a_db_its_pin_does_not_vouch_for(
+    tmp_path: Path, pins: dict, upstream_layer: Optional[str], error: str
 ):
     s3 = FakeS3()
     put_db(s3, tmp_path)
-    with pytest.raises(ScanError, match=error):
-        scan_images.fetch_db(DB, store(s3), pins, tmp_path)
+    with upstream(upstream_layer or "sha256:" + "f" * 64):
+        with pytest.raises(ScanError, match=error):
+            scan_images.fetch_db(DB, store(s3), pins, tmp_path)
     assert not (tmp_path / "db").exists()
+
+
+def test_a_forged_pin_is_refused_before_the_download(tmp_path: Path):
+    """Anyone who can write the bucket could replace both the tarball and
+    its pin; only the upstream manifest vouches for the pin."""
+    s3 = FakeS3()
+    pins = put_db(s3, tmp_path)
+    with upstream("sha256:" + "1" * 64):
+        with pytest.raises(ScanError, match="but public.ecr.aws"):
+            scan_images.fetch_db(DB, store(s3), pins, tmp_path)
+    assert not (tmp_path / DB.file_name).exists()
 
 
 def test_a_build_without_staged_dbs_records_why(tmp_path: Path):
