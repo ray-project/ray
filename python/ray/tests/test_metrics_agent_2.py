@@ -830,7 +830,13 @@ def test_start_metrics_wsgi_server_binds_ipv6_wildcard_by_default(monkeypatch, a
 def test_start_metrics_wsgi_server_ipv6_wildcard_accepts_ipv4_loopback(
     monkeypatch, reuse_port
 ):
-    """Clearing IPV6_V6ONLY keeps IPv4 loopback scrapes working."""
+    """Clearing IPV6_V6ONLY keeps IPv4 loopback scrapes working.
+
+    The listener is the ``::`` wildcard, so the IPv4 assertion is the point of
+    the test. A host can bind that wildcard while ``::1`` is not assigned to
+    any interface; asserting the IPv6 loopback there fails with
+    ``EADDRNOTAVAIL``, so check it only where the address exists.
+    """
     if not _ipv6_dualstack_available():
         pytest.skip("The kernel cannot bind a dual-stack IPv6 wildcard")
     if reuse_port and not hasattr(socket, "SO_REUSEPORT"):
@@ -840,7 +846,8 @@ def test_start_metrics_wsgi_server_ipv6_wildcard_accepts_ipv4_loopback(
     httpd = start_metrics_wsgi_server(0, _ok_app, addr="::", reuse_port=reuse_port)
     try:
         assert httpd.server_address[0] == "::"
-        assert _http_get("::1", httpd.server_address[1]) == (200, b"ok")
+        if _ipv6_loopback_available():
+            assert _http_get("::1", httpd.server_address[1]) == (200, b"ok")
         assert _http_get("127.0.0.1", httpd.server_address[1]) == (200, b"ok")
     finally:
         httpd.shutdown()
