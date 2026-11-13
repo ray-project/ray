@@ -2713,7 +2713,7 @@
 # RLlib - Weekly memory tests (multi-node)
 # --------------------------------------------------------------------------
 - name: rllib_footsies_appo_memory_multi_node
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2723,8 +2723,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      # The ray-torch cu133 image already has everything Footsies needs.
+      type: torch-cu133
     cluster_compute: multi_node_2x1gpu_2x16cpus.yaml
 
   run:
