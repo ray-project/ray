@@ -61,13 +61,15 @@ class SignalObserver:
         for op in ops:
             in_flight = op.actor_pool.num_tasks_in_flight()
             backpressured, _blocked_actors, _running = self._is_output_backpressured(op)
-            # The backpressured flag is actor-denominated, but the productive
-            # signal must stay in TASK units to match in_flight -- hence the
-            # task-denominated helper for blocked work.
-            blocked_tasks, _active = op.output_backpressured_fraction()
             self._window(self._busy_tasks_signal, op).record(in_flight)
+            # Running tasks, not tasks in flight: a busy actor can also hold its
+            # next task, queued on the actor behind the running one. That task
+            # is not work yet, and counting it would protect up to
+            # max_tasks_in_flight times the actors doing work. The op's input
+            # backlog is not in this signal; a backlog keeps actors running,
+            # which protects them.
             self._window(self._productive_tasks_signal, op).record(
-                max(0, in_flight - blocked_tasks)
+                op.productive_task_slots()
             )
             self._streak(
                 self._backpressured_streak, op, SIZER_SIGNAL_WINDOW_SAMPLES

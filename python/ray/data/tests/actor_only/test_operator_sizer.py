@@ -388,6 +388,9 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
     def output_backpressured_fraction(self):
         return self.out_backpressure
 
+    def productive_task_slots(self):
+        return max(0, self._pool.num_tasks_in_flight() - self.out_backpressure[0])
+
     def output_backpressured_actors(self):
         # Mirror the real contract: a pool with no running actors or with
         # pending (mid-resize) actors reports (0, 0).
