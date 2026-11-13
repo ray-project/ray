@@ -124,12 +124,14 @@ py_test(
 py_library(
     name = "scan_images",
     srcs = ["scan_images.py"],
+    data = glob(["ignore/*.trivyignore.yaml"]) + ["@trivy_linux_x86_64//:trivy"],
     deps = [
         ":registry",
         ":scan_store",
         # RayImagePushContext, so refs and tags match the publish step's.
         "//ci/ray_ci/automation",
         "//ci/ray_ci:ray_ci_lib",
+        ci_require("bazel-runfiles"),
         ci_require("click"),
     ],
 )
