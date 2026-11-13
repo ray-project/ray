@@ -1,6 +1,7 @@
 import contextlib
 import ctypes
 import errno
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -2903,6 +2904,75 @@ def test_an_owner_is_alive_while_its_process_runs(private_bundles):
     # No lock: let go of by its owner, or an earlier Ray's owner file.
     assert not gvisor._owner_alive({"owner_lock": None})
     assert not gvisor._owner_alive({"image": "busybox:latest"})
+
+
+def test_an_owner_that_dies_during_the_lock_sweep_keeps_its_lock(
+    private_bundles, monkeypatch
+):
+    """The bundles' owner files are read after the locks are found free. An
+    owner can write an owner file and die between the two, and read the other
+    way round, its lock would go while its bundle still names it."""
+    locks = Path(gvisor._owner_locks_dir())
+    locks.mkdir(parents=True)
+    name = "1-0123456789ab.lock"
+    (locks / name).touch()
+    bundle = Path(gvisor._RAY_SANDBOX_DIR, "ray-sandbox-00000000000a")
+    named = gvisor._owner_locks_named
+
+    def owner_writes_its_file_and_dies():
+        # Runs once the lock was found free, as the scan of the bundles starts.
+        bundle.mkdir()
+        (bundle / ".owner").write_text(json.dumps({"owner_lock": name}))
+        return named()
+
+    monkeypatch.setattr(gvisor, "_owner_locks_named", owner_writes_its_file_and_dies)
+    gvisor._remove_dead_owner_locks()
+    assert os.listdir(locks) == [name]
+    # The lock goes once the bundle does.
+    monkeypatch.setattr(gvisor, "_owner_locks_named", named)
+    shutil.rmtree(bundle)
+    gvisor._remove_dead_owner_locks()
+    assert os.listdir(locks) == []
+
+
+def test_a_forked_child_doesnt_hold_its_parents_owner_lock(tmp_path):
+    """A child forked from an owner shares the owner's open lock file, which
+    would keep the lock held, and the owner's sandboxes unreclaimed, for as
+    long as the child outlived it. The child closes its copy at the fork."""
+    script = (
+        "import os, sys, time\n"
+        "from ray.experimental.sandbox.backend import gvisor\n"
+        "gvisor._RAY_SANDBOX_DIR = sys.argv[1]\n"
+        "name = gvisor._process_owner_lock()\n"
+        "child = os.fork()\n"
+        "if child == 0:\n"
+        "    held = len(gvisor._owner_locks)\n"
+        "    print(name, held, os.getpid(), flush=True)\n"
+        "    time.sleep(60)\n"
+        "    os._exit(0)\n"
+        "os._exit(0)\n"  # The owner dies, and its child lives on.
+    )
+    owner = subprocess.Popen(
+        [sys.executable, "-c", script, str(tmp_path)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    name, held, child = owner.stdout.readline().split()
+    owner.wait()
+    try:
+        assert held == "0"
+        lock = tmp_path / ".owners" / name
+        deadline = time.time() + 10
+        while True:
+            with open(lock) as probe:
+                try:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break  # Free: the owner is seen as gone.
+                except OSError:
+                    assert time.time() < deadline, "the child holds the lock"
+            time.sleep(0.05)
+    finally:
+        os.kill(int(child), signal.SIGKILL)
 
 
 def test_a_dead_owners_lock_stays_while_a_bundle_names_it(

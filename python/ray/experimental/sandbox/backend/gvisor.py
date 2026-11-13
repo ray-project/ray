@@ -20,7 +20,6 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Iterable,
     List,
     NamedTuple,
     Optional,
@@ -587,6 +586,28 @@ def _process_owner_lock() -> str:
         return _owner_locks[key][0]
 
 
+def _forget_inherited_owner_locks() -> None:
+    """Let go, in a forked child, of the owner locks that its parent holds.
+
+    The child shares the parent's open lock files, and a lock is held while
+    any copy of its file is open. So a child that outlived the parent would
+    keep the parent's sandboxes looking owned. Closing the child's copies
+    leaves the locks with the parent alone. The mutex is made again because
+    another thread of the parent may have held it at the fork.
+    """
+    global _owner_locks_mutex
+    _owner_locks_mutex = threading.Lock()
+    for _, lock_file in _owner_locks.values():
+        try:
+            lock_file.close()
+        except OSError:
+            pass
+    _owner_locks.clear()
+
+
+os.register_at_fork(after_in_child=_forget_inherited_owner_locks)
+
+
 def _owner_alive(owner: Any, seen: Optional[Dict[str, bool]] = None) -> bool:
     """Whether the owner that a bundle's owner file names is alive.
 
@@ -645,36 +666,52 @@ def _pid_running(pid: int) -> bool:
     return True
 
 
-def _remove_dead_owner_locks(keep: Iterable[str] = ()) -> None:
+def _remove_dead_owner_locks() -> None:
     """Delete the owner locks of the processes that are gone.
 
-    Args:
-        keep: Locks to leave, because bundles still name them. A bundle
-            that a reclaim pass couldn't delete keeps its owner's lock, so
-            the next pass still finds the owner gone. Without the lock, it
-            would go by the PID in the lock's name, which another process
-            may have by then.
+    A lock that a bundle still names stays: a bundle that a reclaim pass
+    couldn't delete keeps its owner's lock, so the next pass still finds the
+    owner gone. Without the lock, it would go by the PID in the lock's name,
+    which another process may have by then.
     """
     locks_dir = _owner_locks_dir()
     try:
         names = os.listdir(locks_dir)
     except OSError:
         return
-    keep = set(keep)
-    for name in names:
-        if not _OWNER_LOCK_NAME.fullmatch(name) or name in keep:
-            continue
-        path = os.path.join(locks_dir, name)
-        try:
-            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-        except OSError:
-            continue
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            os.unlink(path)
-        except OSError:
-            pass  # Its owner is alive, or it's another user's.
-        finally:
+    dead: Dict[str, int] = {}
+    try:
+        for name in names:
+            if not _OWNER_LOCK_NAME.fullmatch(name):
+                continue
+            try:
+                fd = os.open(
+                    os.path.join(locks_dir, name),
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                )
+            except OSError:
+                continue
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                os.close(fd)  # Its owner is alive, or it's another user's.
+            else:
+                dead[name] = fd
+        if not dead:
+            return
+        # Read only now. An owner writes its bundles' owner files while it
+        # lives, so every bundle that names one of these locks has its owner
+        # file by now. Read before the locks were found free, the list could
+        # miss the bundle of an owner that died in between.
+        named = _owner_locks_named()
+        for name in dead:
+            if name not in named:
+                try:
+                    os.unlink(os.path.join(locks_dir, name))
+                except OSError:
+                    pass
+    finally:
+        for fd in dead.values():
             os.close(fd)
 
 
@@ -2622,7 +2659,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     reclaimed.append(sandbox_id)
             except Exception:
                 logger.exception("Failed to reclaim sandbox %s", sandbox_id)
-        _remove_dead_owner_locks(keep=_owner_locks_named())
+        _remove_dead_owner_locks()
         if reclaimed:
             logger.info("Reclaimed sandboxes whose owner is gone: %s", reclaimed)
         return reclaimed
