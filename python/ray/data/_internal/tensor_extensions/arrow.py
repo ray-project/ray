@@ -447,9 +447,20 @@ def _value_exceeds_offset_limit(column_values) -> bool:
     """Whether any string or bytes value is longer than a 32-bit offset allows.
 
     Inference can report ``string``/``binary`` from the first element when later
-    values are not strings. Only ``str`` and ``bytes`` lengths count.
+    values are not strings. Only ``str`` and ``bytes`` lengths count. A NumPy
+    Unicode or bytes array whose dtype width is within the limit is short.
     """
     limit = INT32_MAX
+    # Dtype width is an upper bound. Trailing padding is not part of len().
+    if isinstance(column_values, np.ndarray) and column_values.dtype.kind in (
+        "U",
+        "S",
+    ):
+        width = column_values.dtype.itemsize
+        if column_values.dtype.kind == "U":
+            width //= 4
+        if width <= limit:
+            return False
     for value in column_values:
         if isinstance(value, (str, bytes)) and len(value) > limit:
             return True

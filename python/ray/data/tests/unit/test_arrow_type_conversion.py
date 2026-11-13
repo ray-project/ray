@@ -12,6 +12,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorArray,
     _convert_to_pyarrow_native_array,
     _infer_pyarrow_type,
+    _value_exceeds_offset_limit,
     convert_to_pyarrow_array,
 )
 from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
@@ -266,6 +267,19 @@ def test_convert_string_and_binary_columns_match_previous_rule():
         assert converted.equals(expected)
 
 
+def test_fixed_width_numpy_strings_stay_within_dtype():
+    # itemsize is the slot width, not len(): U10 "hi" has length 2.
+    unicode_values = np.array(["hi", "hello"], dtype="U10")
+    byte_values = np.array([b"hi", b"hello"], dtype="S10")
+    assert not _value_exceeds_offset_limit(unicode_values)
+    assert not _value_exceeds_offset_limit(byte_values)
+    assert _infer_pyarrow_type(unicode_values) == pa.string()
+    assert _infer_pyarrow_type(byte_values) == pa.binary()
+    converted = _convert_to_pyarrow_native_array(unicode_values, "payload")
+    assert converted.type == pa.string()
+    assert converted.to_pylist() == ["hi", "hello"]
+
+
 def test_value_past_offset_limit_uses_large_type():
     # One value of 2 GiB. Skip when the machine cannot hold the input plus Arrow's copy.
     if psutil.virtual_memory().available < 6 * 1024**3:
@@ -277,6 +291,8 @@ def test_value_past_offset_limit_uses_large_type():
     with pytest.raises(ArrowConversionError):
         _convert_to_pyarrow_native_array([at_limit], "payload")
     del at_limit
+    gc.collect()
+    pa.default_memory_pool().release_unused()
 
     past_limit = bytes(INT32_MAX + 1)
     assert _infer_pyarrow_type([past_limit]) == pa.large_binary()
@@ -284,12 +300,17 @@ def test_value_past_offset_limit_uses_large_type():
     assert converted.type == pa.large_binary()
     assert converted[0].as_py() == past_limit
     del past_limit, converted
+    gc.collect()
+    pa.default_memory_pool().release_unused()
 
     past_limit = "x" * (INT32_MAX + 1)
     assert _infer_pyarrow_type([past_limit]) == pa.large_string()
     converted = _convert_to_pyarrow_native_array([past_limit], "payload")
     assert converted.type == pa.large_string()
     assert converted[0].as_py() == past_limit
+    del past_limit, converted
+    gc.collect()
+    pa.default_memory_pool().release_unused()
 
 
 if __name__ == "__main__":
