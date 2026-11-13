@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import io
 import logging
 import time
@@ -593,6 +594,8 @@ class _BatchQueue:
         # except block, so the futures' exceptions can be set if an exception
         # occurs. Otherwise, the futures' requests may hang indefinitely.
         batch_execution_start_time = time.time()
+        batch_finished: concurrent.futures.Future = concurrent.futures.Future()
+        serve.context._serve_work_finished.set(batch_finished)
         try:
             self_arg = batch[0].self_arg
             args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
@@ -629,6 +632,9 @@ class _BatchQueue:
             for future in futures:
                 _set_exception_if_not_done(future, e)
         finally:
+            # Releases what was held for the batch, such as pins on
+            # multiplexed models.
+            batch_finished.set_result(None)
             # Record batch execution time.
             batch_execution_time_ms = (time.time() - batch_execution_start_time) * 1000
             self._batch_execution_time_histogram.observe(

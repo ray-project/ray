@@ -3,6 +3,7 @@ can use this state to access metadata or the Serve controller.
 """
 
 import asyncio
+import concurrent.futures
 import contextvars
 import logging
 import os
@@ -345,6 +346,12 @@ _serve_request_context = contextvars.ContextVar(
 _serve_batch_request_context = contextvars.ContextVar(
     "Serve internal batching request context variable", default=None
 )
+
+# Future that Serve resolves when the request or batch running in this context
+# has finished. It can resolve on another thread. None outside a request.
+_serve_work_finished: contextvars.ContextVar[
+    Optional[concurrent.futures.Future]
+] = contextvars.ContextVar("Serve internal work finished variable", default=None)
 
 
 def _get_serve_request_context() -> "_RequestContext":

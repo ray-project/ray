@@ -42,6 +42,14 @@ The `serve.multiplexed` API also has a `max_num_models_per_replica` parameter. U
 This code example uses the PyTorch Model object. You can also define your own model class and use it here. To release resources when the model is evicted, implement the `__del__` method. Ray Serve internally calls the `__del__` method to release resources when the model is evicted.
 :::
 
+:::{note}
+Serve doesn't evict a model while a request that loaded it is still running. The model stays loaded until every request that called the `serve.multiplexed` function for it finishes, including streaming requests. If all `max_num_models_per_replica` models are in use, a request for another model waits on that replica until one of them is free. A model is only protected inside the request that looked it up, so don't keep using it in a background task after the request returns.
+
+While a request waits, Serve stops giving the model it's going to replace to new requests. Those requests wait too, and Serve may reload the model for them afterwards.
+
+Serve still evicts a model that's in use in one case: the requests that are running need more models at the same time than `max_num_models_per_replica` allows. For example, one request calls the `serve.multiplexed` function for two models on a replica that holds one. Serve logs a warning when this happens. Set `max_num_models_per_replica` to at least the number of models that one request uses.
+:::
+
 
 `serve.get_multiplexed_model_id` retrieves the model ID from the request header. This ID is then passed to the `get_model` function. If the model is not already cached in the replica, Serve loads it from the S3 bucket. Otherwise, the cached model is returned.
 

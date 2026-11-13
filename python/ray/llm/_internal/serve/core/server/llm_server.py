@@ -51,6 +51,7 @@ from ray.llm._internal.serve.utils.server_utils import (
     get_response_for_error,
     get_serve_request_id,
 )
+from ray.serve.multiplex import _unpinned_model_lookups
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -361,7 +362,10 @@ class LLMServer(LLMServerProtocol):
         if multiplexed_model_id:
             if self._llm_config.lora_config is None:
                 raise ValueError("Must setup lora config for multiplexed requests.")
-            disk_lora_model = await self._load_model(multiplexed_model_id)
+            # Unloading drops only the record of where the adapter is on disk,
+            # so the request does not need to keep it loaded.
+            with _unpinned_model_lookups():
+                disk_lora_model = await self._load_model(multiplexed_model_id)
             await self.engine.resolve_lora(disk_lora_model)
 
     def _batch_output_stream(
