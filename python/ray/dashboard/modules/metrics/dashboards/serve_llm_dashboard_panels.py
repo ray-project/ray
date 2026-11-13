@@ -1038,13 +1038,13 @@ _ALL_ROWS = [
     Row(title="Request Length", id=504, panels=_request_length_panels),
     Row(title="Scheduler", id=505, panels=_scheduler_panels),
     Row(title="NIXL", id=506, panels=_nixl_panels),
-    Row(title="KV Router", id=509, panels=_kv_router_panels, collapsed=True),
     Row(
         title="KV Cache Offload / Reload",
         id=508,
         panels=_kv_offload_panels,
         collapsed=True,
     ),
+    Row(title="KV Router", id=509, panels=_kv_router_panels, collapsed=True),
     Row(
         title="Token Distribution",
         id=507,
