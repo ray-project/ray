@@ -368,7 +368,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
         if self._emit_whole_partitions:
-            # Hold it until the task ends; on_output_queued below still counts it.
+            # Hold it until the task ends, but count it as queued for memory.
             self._held_partition_outputs[partition_id].append(bundle)
             self._metrics.on_output_queued(bundle)
         else:
