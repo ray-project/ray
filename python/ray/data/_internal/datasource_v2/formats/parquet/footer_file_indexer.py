@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, AbstractSet, Deque, Iterable, Iterator, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Collection,
+    Deque,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+)
 
 import numpy as np
 import pyarrow as pa
@@ -152,6 +161,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         small_shuffle_chunk_size: int = 0,
         format_kwargs: Optional[dict] = None,
         read_schema: Optional[pa.Schema] = None,
+        synthesized_columns: Collection[str] = (),
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
         result_batch_size: Optional[int] = None,
@@ -176,6 +186,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         # kwargs and the dataset schema they cast to.
         self._format_kwargs = dict(format_kwargs or {})
         self._read_schema = read_schema
+        self._synthesized_columns = frozenset(synthesized_columns)
         # Every knob is re-read here rather than taken from the module-level
         # constant, so ``monkeypatch.setenv`` and release-test env overrides work
         # after this module has already been imported. An explicit ctor argument
@@ -336,6 +347,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 logical_schema=self._logical_schema,
                 format_kwargs=self._format_kwargs,
                 read_schema=self._read_schema,
+                synthesized_columns=self._synthesized_columns,
             )
             for _ in range(self._num_actors)
         ]

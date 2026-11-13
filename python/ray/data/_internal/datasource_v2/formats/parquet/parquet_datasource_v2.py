@@ -18,7 +18,6 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
-from ray.data._internal.datasource_v2.common.file_reader import casts_to_schema
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     resolve_partitioning,
 )
@@ -214,9 +213,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
         from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
             FooterFileIndexer,
         )
-        from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
-            read_format_kwargs,
-        )
 
         return FooterFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
@@ -227,10 +223,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
             ),
             partitioning=self._partitioning,
             logical_schema=self._user_schema,
-            format_kwargs=read_format_kwargs(
-                kwargs=self._parquet_format_kwargs, casts=casts_to_schema(schema)
-            ),
+            format_kwargs=self._parquet_format_kwargs,
             read_schema=schema,
+            synthesized_columns=[c.name for c in self._synthesized_columns],
         )
 
     def get_file_partitioner(self, **kwargs):

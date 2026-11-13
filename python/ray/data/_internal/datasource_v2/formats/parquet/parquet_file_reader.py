@@ -50,6 +50,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     _resolve_leaf_column_indices,
     _resolve_read_columns,
     _row_group_uncompressed_size,
+    read_format_kwargs,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import (
@@ -84,17 +85,6 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
 # Parquet scan issues against S3, especially for row-group-scoped fragments.
 # The CPU pool's size, ``READER_CPU_COUNT``, is in ``parquet_utils``.
 _READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 16)
-
-# ``ParquetFileFormat`` options that only change the Arrow types of a read.
-_TYPE_OPTIONS = ("dictionary_columns", "binary_type", "list_type")
-
-
-def read_format_kwargs(kwargs: Dict[str, Any], casts: bool) -> Dict[str, Any]:
-    """The ``ParquetFileFormat`` kwargs a read task passes. A read that casts to the
-    schema drops the type options, which the cast undoes."""
-    if not casts:
-        return dict(kwargs)
-    return {k: v for k, v in kwargs.items() if k not in _TYPE_OPTIONS}
 
 
 def _estimate_batch_size_from_metadata(

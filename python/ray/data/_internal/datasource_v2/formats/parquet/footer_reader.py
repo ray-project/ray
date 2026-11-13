@@ -6,8 +6,11 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     AbstractSet,
+    Any,
+    Collection,
     Iterable,
     Iterator,
+    Mapping,
     NamedTuple,
     Tuple,
 )
@@ -21,7 +24,7 @@ import ray
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
-from ray.data._internal.datasource_v2.common.file_reader import casts_to_schema
+from ray.data._internal.datasource_v2.common.file_reader import file_dataset_schema
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
     _PartitionValueParser,
@@ -55,6 +58,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     READER_CPU_COUNT,
+    read_format_kwargs,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
@@ -124,6 +128,8 @@ class _FileSizing(NamedTuple):
     column_leaves: list[list[int]]  # each column read, in PyArrow's order, as leaves
     # As PyArrow decodes them, ``None`` for a leaf or a file the estimator doesn't model.
     profiles: list[LeafProfile | None] | None
+    # The schema a read task casts the file's batches to, ``None`` if to none.
+    pinned_schema: pa.Schema | None
     # The columns the pin retypes, as their leaves, and the leaves as the pin
     # casts them; empty and ``None`` when it retypes none.
     cast_leaves: dict[str, list[int]]
@@ -200,6 +206,7 @@ class FooterReader:
         logical_schema: pa.Schema | None = None,
         format_kwargs: dict | None = None,
         read_schema: pa.Schema | None = None,
+        synthesized_columns: Collection[str] = (),
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
 
@@ -266,13 +273,44 @@ class FooterReader:
         # Reused across files; make_fragment is what lets us apply
         # split_by_row_group.
         self.file_format = pds.ParquetFileFormat()
-        # The ``ParquetFileFormat`` kwargs the read tasks pass; the estimator
-        # doesn't model some of their options.
+        # The read's ``ParquetFileFormat`` kwargs; the estimator doesn't model
+        # some of their options.
         self.format_kwargs = dict(format_kwargs or {})
-        # The dataset schema: the read tasks cast every batch to it, when
-        # ``casts_to_schema`` says they do, and append its columns a file lacks.
+        # The dataset schema, and the names in it of the columns the read tasks
+        # synthesize. They append its columns a file lacks.
         self.read_schema = read_schema
-        self.pinned_schema = read_schema if casts_to_schema(read_schema) else None
+        self.synthesized_columns = frozenset(synthesized_columns)
+        # ``_pin`` by partition keys, which a hive layout names per path.
+        self._pins: dict[frozenset[str], tuple[pa.Schema | None, dict]] = {}
+
+    def _partition_values(self, path: str) -> dict[str, Any]:
+        """``path``'s partition values, as the read tasks parse them."""
+        if self._partition_value_parser is None:
+            return {}
+        return self._partition_value_parser(path)
+
+    def _pin(
+        self, partition_values: Mapping[str, Any]
+    ) -> tuple[pa.Schema | None, dict]:
+        """The schema a read task casts a file's batches to, ``None`` if to none, and
+        the ``ParquetFileFormat`` kwargs it passes, for a file with these values."""
+        partition_keys: frozenset[str] = frozenset()
+        if self.partitioning is not None:
+            partition_keys = frozenset(
+                self.partitioning.field_names or partition_values
+            )
+        pin = self._pins.get(partition_keys)
+        if pin is None:
+            schema = file_dataset_schema(
+                schema=self.read_schema,
+                partition_keys=partition_keys,
+                synthesized_columns=self.synthesized_columns,
+            )
+            kwargs = read_format_kwargs(
+                kwargs=self.format_kwargs, casts=schema is not None
+            )
+            pin = self._pins[partition_keys] = schema, kwargs
+        return pin
 
     def _file_sizing(
         self, file: FileInfo, fragment: pds.ParquetFileFragment, metadata: FileMetaData
@@ -316,6 +354,8 @@ class FooterReader:
         if not leaf_indices:
             leaf_indices = list(range(len(columns)))
 
+        partition_values = self._partition_values(path)
+        pinned, format_kwargs = self._pin(partition_values)
         profiles = cast_profiles = None
         cast_leaves: dict[str, list[int]] = {}
         if file_schema is not None:
@@ -323,12 +363,11 @@ class FooterReader:
             # these are the file's own types, which the cast below retypes.
             profiles = build_leaf_profiles(
                 parquet_schema=schema,
-                format_kwargs=self.format_kwargs,
+                format_kwargs=format_kwargs,
                 file_metadata=metadata,
             )
-        if profiles is not None and self.pinned_schema is not None:
+        if profiles is not None and pinned is not None:
             assert file_schema is not None
-            pinned = self.pinned_schema
             cast_leaves = {
                 name: indices
                 for name, indices in leaves.items()
@@ -340,7 +379,7 @@ class FooterReader:
                 cast_profiles = build_leaf_profiles(
                     parquet_schema=schema,
                     pinned_schema=pinned,
-                    format_kwargs=self.format_kwargs,
+                    format_kwargs=format_kwargs,
                     file_metadata=metadata,
                 )
                 if cast_profiles is None:
@@ -352,10 +391,13 @@ class FooterReader:
             leaf_indices=leaf_indices,
             column_leaves=column_leaves,
             profiles=profiles,
+            pinned_schema=pinned,
             cast_leaves=cast_leaves,
             cast_profiles=cast_profiles,
             file_schema=file_schema,
-            read=self._added_bytes(file_schema=file_schema, path=path),
+            read=self._added_bytes(
+                file_schema=file_schema, path=path, partition_values=partition_values
+            ),
         )
 
     def _row_group_sizes(
@@ -388,7 +430,7 @@ class FooterReader:
                 decode_threads=READER_CPU_COUNT,
             )
             unmodelled = [j for j in sizing.leaf_indices if j not in leaves]
-            if self.pinned_schema is None:
+            if sizing.pinned_schema is None:
                 decoded += estimate_added_columns(row_group=row_group, read=sizing.read)
             else:
                 assert sizing.file_schema is not None
@@ -408,7 +450,7 @@ class FooterReader:
                     row_group=row_group,
                     column_leaves=cast_leaves,
                     file_schema=sizing.file_schema,
-                    pinned_schema=self.pinned_schema,
+                    pinned_schema=sizing.pinned_schema,
                     read=sizing.read,
                 )
         if unmodelled:
@@ -565,7 +607,12 @@ class FooterReader:
             )
             return None
 
-    def _added_bytes(self, file_schema: pa.Schema | None, path: str) -> Read:
+    def _added_bytes(
+        self,
+        file_schema: pa.Schema | None,
+        path: str,
+        partition_values: Mapping[str, Any],
+    ) -> Read:
         """:func:`added_bytes` of the dataset schema's columns the file lacks or holds
         as nulls, less those the projection drops; it never drops the checkpoint ID."""
         if self.read_schema is None or file_schema is None:
@@ -580,11 +627,6 @@ class FooterReader:
             projected = self.read_order is None or field.name in self.read_order
             if projected or field.type == GENERATED_ID_COLUMN_TYPE:
                 added.append(field)
-        partition_values = (
-            self._partition_value_parser(path)
-            if self._partition_value_parser is not None
-            else {}
-        )
         return added_bytes(added=added, path=path, partition_values=partition_values)
 
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:

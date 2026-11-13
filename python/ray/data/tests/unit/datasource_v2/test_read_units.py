@@ -244,6 +244,7 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
             "logical_schema": None,
             "format_kwargs": {},
             "read_schema": None,
+            "synthesized_columns": frozenset(),
         }
     ]
     assert footer_batches == [[FileInfo(path_b, size_b)]]
