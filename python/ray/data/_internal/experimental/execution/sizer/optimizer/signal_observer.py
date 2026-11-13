@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, AbstractSet, Callable, Dict, Sequence, Tuple
 
 from ray.data._internal.execution.execution_flags import (
     SIZER_SHORTFALL_TICKS,
     SIZER_SIGNAL_WINDOW_SAMPLES,
-    SIZER_SILENT_BOTTLENECK_BUSY_FRACTION,
 )
 from ray.data._internal.experimental.execution.sizer.models import OpShortfall
 from ray.data._internal.experimental.execution.sizer.signals import (
@@ -49,6 +47,9 @@ class SignalObserver:
         self._not_backpressured_streak: Dict[
             "ExperimentalActorPoolMapOperator", BoolStreak
         ] = {}
+        self._work_waiting_streak: Dict[
+            "ExperimentalActorPoolMapOperator", BoolStreak
+        ] = {}
         self._shortfall_streak: Dict[
             "ExperimentalActorPoolMapOperator", BoolStreak
         ] = {}
@@ -79,6 +80,9 @@ class SignalObserver:
             self._streak(
                 self._not_backpressured_streak, op, SIZER_SIGNAL_WINDOW_SAMPLES
             ).record(not backpressured)
+            self._streak(
+                self._work_waiting_streak, op, SIZER_SIGNAL_WINDOW_SAMPLES
+            ).record(op.has_waiting_work())
 
     def record_sizing_results(
         self,
@@ -117,20 +121,19 @@ class SignalObserver:
         op: "ExperimentalActorPoolMapOperator",
         producers: Sequence["ExperimentalActorPoolMapOperator"],
     ) -> bool:
-        """Whether ``op`` held up a producer for the whole signal window: most
-        of its actors stayed busy (``SIZER_SILENT_BOTTLENECK_BUSY_FRACTION``,
-        as the silent-bottleneck rule judges it) while some producer's output
+        """Whether ``op`` held up a producer for the whole signal window: work
+        stayed waiting on ``op``'s actors (none idle, tasks queued behind
+        running ones; see ``has_waiting_work``) while some producer's output
         stayed backpressured.
 
-        The busy check is what makes ``op`` the cause: a producer blocked by
-        its own per-actor output limits while ``op`` sits idle is the
-        silent-bottleneck rule's case, and growing ``op`` would not help.
+        The waiting-work check is what makes ``op`` the cause. A producer's
+        output also reads as backpressured when ``op`` keeps up but blocks in
+        transit fill the producer's per-actor output budget (large blocks,
+        small budget); then ``op`` has idle actors or nothing queued, and
+        growing it would not help.
         """
-        busy = self._busy_tasks_signal.get(op)
-        fewest_tasks = busy.minimum() if busy is not None else None
-        if fewest_tasks is None or fewest_tasks < math.ceil(
-            SIZER_SILENT_BOTTLENECK_BUSY_FRACTION * op.actor_pool.serving_size()
-        ):
+        waiting = self._work_waiting_streak.get(op)
+        if waiting is None or not waiting.is_streak():
             return False
         return any(
             (streak := self._backpressured_streak.get(producer)) is not None
@@ -146,6 +149,7 @@ class SignalObserver:
             self._productive_tasks_signal,
             self._backpressured_streak,
             self._not_backpressured_streak,
+            self._work_waiting_streak,
         ):
             signals.pop(op, None)
 

@@ -1705,6 +1705,26 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 slots += min(state.num_tasks_in_flight, conc)
         return slots
 
+    def has_waiting_work(self) -> bool:
+        """Whether work is waiting on this op's actors: no serving actor is
+        idle, and some ACTIVE actor holds a task queued behind the ones it is
+        running.
+
+        Queued tasks mean work reaches the op faster than it finishes, so the
+        op cannot keep up. An idle actor means it can: tasks queued on another
+        actor are a dispatch artifact (e.g. locality), not a shortage.
+        DRAINING / RESTARTING actors are not serving and do not count.
+        """
+        conc = max(1, self.actor_pool.max_actor_concurrency())
+        queued = 0
+        for states in self.actor_pool.alive_actor_states_by_node().values():
+            for state in states.values():
+                if state.status == ActorStatus.IDLE:
+                    return False
+                if state.status == ActorStatus.ACTIVE:
+                    queued += max(0, state.num_tasks_in_flight - conc)
+        return queued > 0
+
     def output_backpressured_actors(self) -> Tuple[int, int]:
         """(blocked, running) ACTOR counts for output backpressure.
 

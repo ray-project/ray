@@ -17,6 +17,7 @@ from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
     SIZER_CADENCE_S,
     SIZER_DOWNSCALE_HYSTERESIS,
+    SIZER_SIGNAL_WINDOW_SAMPLES,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import ActorStatus
@@ -390,6 +391,14 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
 
     def productive_task_slots(self):
         return max(0, self._pool.num_tasks_in_flight() - self.out_backpressure[0])
+
+    def has_waiting_work(self):
+        # Tasks spread evenly over running actors: none idle and some queued
+        # exactly when in-flight exceeds what the actors can run at once.
+        return (
+            self._pool.num_tasks_in_flight()
+            > self._pool.num_running_actors() * self._pool.max_actor_concurrency()
+        )
 
     def output_backpressured_actors(self):
         # Mirror the real contract: a pool with no running actors or with
@@ -1443,6 +1452,56 @@ def test_warm_grow_hold_arms(pool_kwargs, enqueued, out_backpressure, expected_d
         assert op not in result.request
     else:
         assert result.request[op].delta == expected_delta
+
+
+@pytest.mark.parametrize(
+    "consumer_in_flight,unblocked_sample,num_samples,expected_delta",
+    [
+        # Sink with work waiting (30 tasks on 20 actors: 10 queued -> demand
+        # ceil(30/1.75)=18 <= 20, so the demand formula holds it) whose
+        # producer stayed blocked for the whole window: grows one +50% step
+        # past its size.
+        pytest.param(30, None, None, 10, id="work-waiting-and-upstream-blocked-grows"),
+        # One sample with the producer unblocked breaks its streak.
+        pytest.param(30, 0, None, None, id="one-unblocked-sample-holds"),
+        # Windows not yet full: nothing is decided on partial history.
+        pytest.param(30, None, 1, None, id="partial-window-holds"),
+        # Every actor running one task, nothing queued: the consumer keeps up,
+        # so the producer's blocked output is not its doing (e.g. large blocks
+        # in transit filling a small output budget). Must not grow.
+        pytest.param(20, None, None, None, id="busy-but-keeping-up-holds"),
+        # Consumer mostly idle: likewise.
+        pytest.param(5, None, None, None, id="idle-consumer-holds"),
+    ],
+)
+def test_warm_upstream_blocked_grows_consumer(
+    consumer_in_flight, unblocked_sample, num_samples, expected_delta
+):
+    """A consumer whose backlog sits in its producer's blocked outputs (not
+    its own input queue) grows past its demand once work stayed waiting on its
+    actors, with the producer's output backpressured, for the optimizer's
+    whole signal window."""
+    producer = _FakeOp(
+        "P", _FakePool(min_size=1, max_size=8, gpu=1, running=8, in_flight=16)
+    )
+    consumer = _FakeOp(
+        "W",
+        _FakePool(
+            min_size=1, max_size=500, cpu=1, running=20, in_flight=consumer_in_flight
+        ),
+        inputs=(producer,),
+    )
+    sizer, topo = _bootstrapped(
+        producer, consumer, enqueued=0, warm=True, cpu=1000.0, gpu=8.0
+    )
+    for i in range(num_samples or SIZER_SIGNAL_WINDOW_SAMPLES):
+        producer.out_backpressure_actors = (0, 8) if i == unblocked_sample else (8, 8)
+        sizer._observe()
+    req = _tick(sizer, topo).request.get(consumer)
+    if expected_delta is None:
+        assert req is None
+    else:
+        assert req is not None and req.delta == expected_delta
 
 
 def test_warm_demand_target_formula():

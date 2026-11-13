@@ -2342,6 +2342,65 @@ def test_output_backpressured_actors_counts_serving_actors_only():
         assert op.output_backpressured_actors() == (1, 2)
 
 
+@pytest.mark.parametrize(
+    "actors,expected",
+    [
+        # Every actor running, one with a task queued behind: waiting.
+        pytest.param(
+            [(ActorStatus.ACTIVE, 2), (ActorStatus.ACTIVE, 1)], True, id="queued"
+        ),
+        # Every actor running one task, nothing queued: keeping up.
+        pytest.param(
+            [(ActorStatus.ACTIVE, 1), (ActorStatus.ACTIVE, 1)],
+            False,
+            id="nothing-queued",
+        ),
+        # A task queued on one actor while another sits idle is a dispatch
+        # artifact, not a shortage.
+        pytest.param(
+            [(ActorStatus.ACTIVE, 2), (ActorStatus.IDLE, 0)],
+            False,
+            id="queued-but-idle-actor",
+        ),
+        # Draining / restarting actors are not serving: neither their queued
+        # tasks nor their emptiness count.
+        pytest.param(
+            [
+                (ActorStatus.ACTIVE, 1),
+                (ActorStatus.DRAINING, 2),
+                (ActorStatus.RESTARTING, 0),
+            ],
+            False,
+            id="non-serving-ignored",
+        ),
+        pytest.param(
+            [(ActorStatus.ACTIVE, 2), (ActorStatus.DRAINING, 0)],
+            True,
+            id="queued-with-draining-actor",
+        ),
+    ],
+)
+def test_has_waiting_work(actors, expected):
+    """Work waits on an op's actors only when none is idle and some ACTIVE
+    actor holds a task queued behind its running one."""
+    from types import SimpleNamespace
+
+    states = {
+        f"a{i}": SimpleNamespace(status=status, num_tasks_in_flight=in_flight)
+        for i, (status, in_flight) in enumerate(actors)
+    }
+    op = cast(Any, object.__new__(ExperimentalActorPoolMapOperator))
+    pool = SimpleNamespace(
+        alive_actor_states_by_node=lambda: {"n1": states},
+        max_actor_concurrency=lambda: 1,
+    )
+
+    with mock.patch.object(
+        ExperimentalActorPoolMapOperator, "actor_pool", property(lambda self: pool)
+    ):
+        assert op.has_waiting_work() is expected
+
+
 if __name__ == "__main__":
     import sys
 

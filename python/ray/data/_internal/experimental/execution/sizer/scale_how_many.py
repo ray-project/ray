@@ -275,7 +275,8 @@ class OpSizingPolicy:
         growth would fill the cluster before any backpressure appeared.
 
         "Upstream blocked" (``blocks_upstream``, from the optimizer's signal
-        windows): the op stayed busy while an upstream actor-pool op's output
+        windows): work stayed waiting on the op's actors (none idle, tasks
+        queued behind running ones) while an upstream actor-pool op's output
         stayed backpressured. Then the op's backlog sits in the producer's
         blocked outputs rather than its own input queue, so the demand above
         reads too low; the op grows one step past its current size instead.
