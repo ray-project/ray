@@ -85,6 +85,7 @@ A prose-only change also skips most of the lint group. The following lint steps 
 * `doc_no_new_rst`, which rejects newly added `.rst` files, because new pages must be MyST Markdown.
 * `ray_repo_links`, which checks that links to files on Ray's master branch resolve. Renaming or deleting a page breaks links to it.
 * `doc_prose_doctest_targets`, which checks that every page with a runnable example has its own doctest target.
+* `doc_assets`, which rejects a new notebook or a `doc_code` script that no page shows. See [the doc asset check](#the-doc-asset-check).
 * The API parameter coverage check, which runs on every PR and doesn't block.
 
 The Vale documentation style check is temporarily off. The PyPI README check runs only when `README.rst` or `python/setup.py` changes.
@@ -94,6 +95,16 @@ The code-oriented lint steps don't run, because a Markdown change can't fail the
 Skipping `pre_commit` costs prose nothing, which is worth knowing if you're wondering where whitespace linting went. `.pre-commit-config.yaml` excludes `doc/source/` globally, so its trailing-whitespace and end-of-file hooks never inspected your prose in the first place, on any PR.
 
 The split lives in `.buildkite/always.rules.txt`, which emits the `lint` tag for every file except prose and images. One non-prose file anywhere in your diff brings the whole lint group back, so a mixed PR loses no coverage. Rayci evaluates these rules only on pull requests, and the scheduled post-merge builds run the whole lint group.
+
+### The doc asset check
+
+The `lint: doc_assets` step runs `doc/test_doc_assets.py` on every PR. It fails in the following cases:
+
+* **A new notebook.** Any `.ipynb` file under `doc/source/` that isn't on the allowlist fails the check. Write the page as MyST Markdown (`.md`) instead. Show code as `literalinclude` from a tested script, or as `testcode` blocks.
+* **A `doc_code` script that no page shows.** Every `.py` file under a `doc_code/` directory must be pulled into a page with `literalinclude` or `include`. It also passes if a script that a page shows imports it, or if it's a test wrapper that imports or names a file a page includes, such as a script that deploys an included YAML config. If no page needs the script, delete it. If it's a test worth keeping, move it to the library's own test suite. Removing a page's last `literalinclude` of a script fails the check the same way adding an unshown script does.
+* **A stale allowlist entry.** The allowlists in `doc/asset_allowlists/` list the notebooks and unshown scripts that predate the check. When you convert a listed notebook, delete it, or show a listed script on a page, delete its line from the allowlist in the same PR. The check fails until you do, so the lists only shrink.
+
+Don't add lines to either allowlist to get a new file past the check. To run the check locally, use `python doc/test_doc_assets.py`.
 
 ### Running the tests for your doc changes
 
@@ -134,12 +145,23 @@ With the label, a PR runs the following:
 
 The `docstringbuild` image leaves out heavy libraries such as torch and TensorFlow. The step reports a docstring that fails only because one of those libraries is missing as skipped, names the library, and repeats the skipped examples at the end of its log. The label also skips each library's doctest target with the rest of its suites, so those examples run only in the scheduled post-merge builds. See [What doesn't run on your PR](#what-doesnt-run-on-your-pr) for which post-merge builds those are.
 
-The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
+The guard compares each changed file before and after with its docstrings removed, and fails on any other difference. Comments aren't part of the comparison, so comment edits pass. The guard reads the following file types:
+
+* Python files, `.py` and `.pyi`, which it parses with Python's `ast` module.
+* Cython files, `.pyx`, `.pxi`, and `.pxd`, which Python can't parse, so the guard compares their tokens instead.
+
+Two things in a Cython file look like a comment or a docstring but count as code. A `# cython:` or `# distutils:` comment sets compiler options. A string in a `cdef extern from` block is C or C++ source that Cython compiles. The token comparison is also stricter than the `ast` one, so replacing a Cython body that holds only a docstring with `pass` fails the guard.
+
+The guard fails on every other file type, such as C++ under `src/`, and on any added, deleted, or renamed file. It accepts Cython docstring edits, but `doc: docstring examples` runs only Python modules, and no CI step runs the `>>>` examples in a Cython docstring.
+
+To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
 ```bash
-python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
+python ci/ray_ci/doc/check_docstring_only.py --base upstream/master
 python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
 ```
+
+Both scripts diff from the merge base of `--base` and your branch, so commits that land on master after you branch don't count as your changes.
 
 Every other test step is skipped under the label, in every library, including `ml: data integration tests`. The rule that does this lives in `.buildkite/docs.labels.yaml`, and the pipeline upload log names it, next to the selected tags. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
 
