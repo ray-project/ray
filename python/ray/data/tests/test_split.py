@@ -850,14 +850,15 @@ def test_train_test_split_stratified_imbalanced(ray_start_regular_shared_2_cpus)
     train_label_counts = {label: train_labels.count(label) for label in ["A", "B", "C"]}
     test_label_counts = {label: test_labels.count(label) for label in ["A", "B", "C"]}
 
-    # Check proportions are maintained as closely as possible
-    # Class A: 6 samples -> test_count = int(6 * 0.3) = 1 -> train: 5, test: 1
-    # Class B: 2 samples -> test_count = int(2 * 0.3) = 0 -> train: 2, test: 0
-    # Class C: 1 sample -> test_count = int(1 * 0.3) = 0 -> train: 1, test: 0
-    assert train_label_counts["A"] == 5
-    assert test_label_counts["A"] == 1
-    assert train_label_counts["B"] == 2
-    assert test_label_counts["B"] == 0
+    # Check proportions are maintained as closely as possible via largest remainder:
+    # Target test rows: ceil(9 * 0.3) = 3
+    # Class A: 6 samples -> base: int(6 * 0.3) = 1, rem: 0.8 -> extra +1 -> test: 2, train: 4
+    # Class B: 2 samples -> base: int(2 * 0.3) = 0, rem: 0.6 -> extra +1 -> test: 1, train: 1
+    # Class C: 1 sample  -> base: int(1 * 0.3) = 0, rem: 0.3 -> extra +0 -> test: 0, train: 1
+    assert train_label_counts["A"] == 4
+    assert test_label_counts["A"] == 2
+    assert train_label_counts["B"] == 1
+    assert test_label_counts["B"] == 1
     assert train_label_counts["C"] == 1
     assert test_label_counts["C"] == 0
 
@@ -1054,3 +1055,68 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_train_test_split_float_precision_and_edge_cases(
+    ray_start_regular_shared_2_cpus,
+):
+    # Verify precision fix for float test_size truncation (issue #66472)
+    ds10 = ray.data.range(10)
+    train, test = ds10.train_test_split(test_size=0.8)
+    assert train.count() == 2
+    assert test.count() == 8
+
+    # 100 items with 0.29 proportion
+    ds100 = ray.data.range(100)
+    splits = ds100.split_proportionately([0.29])
+    assert splits[0].count() == 29
+    assert splits[1].count() == 71
+
+
+def test_train_test_split_stratified_largest_remainder(ray_start_regular_shared_2_cpus):
+    # 25 classes x 4 rows = 100 rows, test_size=0.2 -> must yield exactly 20 test rows
+    items = [{"id": i, "label": i % 25} for i in range(100)]
+    ds = ray.data.from_items(items)
+
+    train, test = ds.train_test_split(test_size=0.2, stratify="label")
+    assert train.count() == 80
+    assert test.count() == 20
+
+    # int test_size=20
+    train_int, test_int = ds.train_test_split(test_size=20, stratify="label")
+    assert train_int.count() == 80
+    assert test_int.count() == 20
+
+
+def test_train_test_split_stratified_nan_keys(ray_start_regular_shared_2_cpus):
+    # NaN stratification keys must still hit the precomputed allocation even
+    # though ``nan != nan`` (see #66472 review).
+    items = [
+        {"id": 0, "label": 0.0},
+        {"id": 1, "label": 0.0},
+        {"id": 2, "label": 0.0},
+        {"id": 3, "label": np.nan},
+        {"id": 4, "label": np.nan},
+    ]
+    ds = ray.data.from_items(items)
+
+    train, test = ds.train_test_split(test_size=0.4, stratify="label")
+    assert train.count() == 3
+    assert test.count() == 2
+
+    test_labels = test.to_pandas()["label"]
+    assert int(test_labels.isna().sum()) == 1
+    assert int((test_labels == 0.0).sum()) == 1
+
+    # ``None`` remains a distinct group from ``NaN``.
+    mixed = [
+        {"id": 0, "label": None},
+        {"id": 1, "label": None},
+        {"id": 2, "label": np.nan},
+        {"id": 3, "label": np.nan},
+    ]
+    mixed_train, mixed_test = ray.data.from_items(mixed).train_test_split(
+        test_size=0.5, stratify="label"
+    )
+    assert mixed_train.count() == 2
+    assert mixed_test.count() == 2
