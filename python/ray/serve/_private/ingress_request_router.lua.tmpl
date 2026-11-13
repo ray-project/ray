@@ -4,6 +4,7 @@ local FORWARD_BODY = ${FORWARD_BODY}
 local MODEL_ID_HEADER = "serve_multiplexed_model_id"
 local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
+local ROUTER_SOCKET = ${ROUTER_SOCKET}
 local _rr_cursor = {}
 
 -- Headers named by Connection are added dynamically.
@@ -84,16 +85,22 @@ local function route(txn, app, pool, replica_map)
         txn:set_var("txn.ingress_request_router_failed", "router_unavailable")
         return
     end
-    local start = _rr_cursor[app] or 0
-    _rr_cursor[app] = start + 1
-    local response = nil
-    for i = 0, n - 1 do
-        response = call_router(
-            pool[(start + i) % n + 1],
-            {headers = headers, body = body}
-        )
-        if response then
-            break
+    local response
+    local session_id = session_id_from(hdrs)
+    if session_id and session_id ~= "" then
+        -- The private listener delegates affinity and failover to HAProxy.
+        response = call_router({host = ROUTER_SOCKET, host_header = app}, {
+            path = "/" .. app,
+            headers = headers .. header_line("x-serve-router-session-id", session_id),
+            body = body,
+        })
+    else
+        local start = _rr_cursor[app] or 0
+        _rr_cursor[app] = start + 1
+        for offset = 0, n - 1 do
+            response = call_router(pool[(start + offset) % n + 1],
+                {headers = headers, body = body})
+            if response then break end
         end
     end
     if not response then

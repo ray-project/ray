@@ -295,6 +295,36 @@ frontend http_frontend
     default_backend default_backend
 backend default_backend
     http-request return status 404 content-type text/plain lf-string "Path \'%[path]\' not found. Ping http://.../-/routes for available routes."
+{%- if ingress_router_server_ids %}
+frontend ingress_request_routers
+    bind unix@{{ config.ingress_router_socket_path }} mode 600
+    no log
+    {%- for backend in backends if backend.name in ingress_router_server_ids %}
+    use_backend {{ backend.name }}-ingress-request-routers if { path /{{ backend.name }} }
+    {%- endfor %}
+    default_backend default_backend
+{%- for item in backends_with_health_config if item.backend.name in ingress_router_server_ids %}
+{%- set backend = item.backend %}
+{%- set hc = item.health_config %}
+backend {{ backend.name }}-ingress-request-routers
+    no log
+    balance hdr(x-serve-router-session-id)
+    hash-type consistent sdbm avalanche
+    hash-balance-factor 0
+    http-request set-path /internal/route
+    http-reuse always
+    timeout server {{ ingress_request_router_timeout_s }}s
+    # Draining routers fail /-/healthz and leave the ring.
+    {%- if hc.health_path %}
+    option httpchk GET {{ hc.health_path }}
+    http-check expect status 200
+    {%- endif %}
+    {{ hc.default_server_directive }} weight {{ ingress_router_weight }}
+    {%- for server in backend.ingress_request_router_servers %}
+    server {{ server.name }} {{ server.host }}:{{ server.port }} id {{ ingress_router_server_ids[backend.name][server.name] }} check
+    {%- endfor %}
+{%- endfor %}
+{%- endif %}
 {%- for item in backends_with_health_config %}
 {%- set backend = item.backend %}
 {%- set hc = item.health_config %}
