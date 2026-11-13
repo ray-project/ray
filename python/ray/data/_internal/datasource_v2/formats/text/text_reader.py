@@ -39,6 +39,15 @@ from ray.util.annotations import DeveloperAPI
 TEXT_COLUMN_NAME = "text"
 
 
+def _raise_on_text_partition_field(partition_names) -> None:
+    """Reject a partition key that would replace the lines column."""
+    if TEXT_COLUMN_NAME in partition_names:
+        raise ValueError(
+            f"Partition field {TEXT_COLUMN_NAME!r} clashes with the column "
+            "`read_text` produces. Rename the partition directory."
+        )
+
+
 @DeveloperAPI
 class TextReader(Reader[FileManifest]):
     """Reads the text files a manifest assigns to one task, one table per file."""
@@ -209,7 +218,9 @@ class TextReader(Reader[FileManifest]):
         if self._partition_parser is None:
             return table
         num_rows = table.num_rows
-        for name, value in self._partition_parser(path).items():
+        partitions = self._partition_parser(path)
+        _raise_on_text_partition_field(partitions)
+        for name, value in partitions.items():
             if wanted is not None and name not in wanted:
                 continue
             if name in table.column_names:

@@ -20,7 +20,10 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
-from ray.data._internal.datasource_v2.formats.text.text_reader import TEXT_COLUMN_NAME
+from ray.data._internal.datasource_v2.formats.text.text_reader import (
+    TEXT_COLUMN_NAME,
+    _raise_on_text_partition_field,
+)
 from ray.data._internal.datasource_v2.formats.text.text_scanner import TextScanner
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
@@ -214,11 +217,7 @@ class TextDatasourceV2(FileDataSourceV2):
                     name for path in sample_paths for name in parser(path).keys()
                 )
             )
-            if TEXT_COLUMN_NAME in partition_names:
-                raise ValueError(
-                    f"Partition field {TEXT_COLUMN_NAME!r} clashes with the column "
-                    "`read_text` produces. Rename the partition directory."
-                )
+            _raise_on_text_partition_field(partition_names)
             if partition_names:
                 partition_schema = _partition_field_types_to_pa_schema(
                     field_names=partition_names,

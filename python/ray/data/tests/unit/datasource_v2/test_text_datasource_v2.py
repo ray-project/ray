@@ -219,6 +219,17 @@ def test_reader_null_fills_partition_columns_of_root_files(tmp_path):
     ]
 
 
+def test_reader_rejects_partition_field_named_text(tmp_path):
+    path = _write(tmp_path / "text=a" / "data.txt", "line\n")
+    reader = TextReader(
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        schema=TEXT_SCHEMA,
+    )
+
+    with pytest.raises(ValueError, match="Partition field 'text'"):
+        list(reader.read(_manifest(path)))
+
+
 def test_reader_rejects_root_file_when_partition_type_is_declared(tmp_path):
     root = _write(tmp_path / "root.txt", "r\n")
     reader = TextReader(
