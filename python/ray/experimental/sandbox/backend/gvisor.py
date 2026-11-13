@@ -78,8 +78,10 @@ logger = logging.getLogger(__name__)
 # Directory where runsc keeps container state. Every runsc invocation for a
 # sandbox must agree on this, otherwise the container cannot be looked up.
 _RUNSC_ROOT = "/tmp/runsc"
-# A lock file in _RUNSC_ROOT without a state file and older than this belongs
-# to no container: a create writes its state file within seconds of locking.
+# The sweep for orphaned lock files in _RUNSC_ROOT leaves younger ones alone.
+# A create holds its lock until the state file exists, and the sweep doesn't
+# remove a held lock, so the age only covers the instant between a create
+# opening the file and locking it.
 _ORPHANED_LOCK_SECONDS = 600.0
 
 
@@ -99,15 +101,40 @@ def _remove_leftover_runsc_lock(sandbox_id: str) -> None:
     every lock file left there makes every later runsc call on the node
     slower. Call this once nothing runs runsc for the sandbox anymore.
     """
-    base = _runsc_state_base(sandbox_id)
-    if os.path.exists(base + ".state"):
-        return  # Still a container, whose lock this is.
+    _remove_runsc_lock_without_state(_runsc_state_base(sandbox_id))
+
+
+def _remove_runsc_lock_without_state(base: str) -> bool:
+    """Remove a lock file that no container and no runsc command has a use for.
+
+    A runsc command holds the lock while it works on a container, and a
+    create takes it before the container's state file exists. So the file
+    goes only if nothing holds the lock and, with the lock held here, there's
+    still no state file.
+
+    Args:
+        base: The path of the container's runsc files, without extension.
+
+    Returns:
+        Whether it removed the file.
+    """
+    path = base + ".lock"
     try:
-        os.unlink(base + ".lock")
-    except FileNotFoundError:
-        pass
-    except OSError as err:
-        logger.debug("Failed to remove runsc's lock file for %s: %s", sandbox_id, err)
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if os.path.exists(base + ".state"):
+            return False  # Still a container, whose lock this is.
+        if os.stat(path).st_ino != os.fstat(fd).st_ino:
+            return False  # runsc made the file again since it was opened.
+        os.unlink(path)
+        return True
+    except OSError:
+        return False  # A runsc command holds the lock, or the file is gone.
+    finally:
+        os.close(fd)
 
 
 def _remove_orphaned_runsc_locks() -> List[str]:
@@ -127,12 +154,12 @@ def _remove_orphaned_runsc_locks() -> List[str]:
         if sandbox_id != container_id or not _BUNDLE_NAME.fullmatch(sandbox_id):
             continue  # Not a Ray sandbox's.
         try:
-            if os.path.exists(base + ".state") or os.stat(path).st_mtime > cutoff:
-                continue  # A container's, or maybe one being created.
-            os.unlink(path)
-            removed.append(sandbox_id)
+            if os.stat(path).st_mtime > cutoff:
+                continue  # Maybe a container that's being created.
         except OSError:
-            pass
+            continue
+        if _remove_runsc_lock_without_state(base):
+            removed.append(sandbox_id)
     return removed
 
 

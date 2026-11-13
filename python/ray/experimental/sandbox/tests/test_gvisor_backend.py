@@ -1,6 +1,7 @@
 import contextlib
 import ctypes
 import errno
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -2877,6 +2878,25 @@ def test_a_deleted_sandboxs_leftover_runsc_lock_is_removed(tmp_path, monkeypatch
     gvisor._remove_leftover_runsc_lock(sandbox_id)
     assert not lock.exists()
     gvisor._remove_leftover_runsc_lock(sandbox_id)  # Nothing left: no error.
+
+
+def test_a_runsc_lock_that_a_command_holds_is_never_removed(tmp_path, monkeypatch):
+    """runsc holds a container's lock from before its state file exists, for
+    as long as a slow create takes. Neither teardown nor the sweep for old
+    lock files removes a lock that's held, whatever its age."""
+    monkeypatch.setattr(gvisor, "_RUNSC_ROOT", str(tmp_path))
+    sandbox_id = "ray-sandbox-00000000000a"
+    lock = tmp_path / f"{sandbox_id}_sandbox:{sandbox_id}.lock"
+    lock.touch()
+    old = time.time() - 2 * gvisor._ORPHANED_LOCK_SECONDS
+    os.utime(lock, (old, old))
+    with open(lock) as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        gvisor._remove_leftover_runsc_lock(sandbox_id)
+        assert gvisor._remove_orphaned_runsc_locks() == []
+        assert lock.exists()
+    assert gvisor._remove_orphaned_runsc_locks() == [sandbox_id]
+    assert not lock.exists()
 
 
 def test_reclaim_removes_old_orphaned_runsc_locks(tmp_path, monkeypatch):
