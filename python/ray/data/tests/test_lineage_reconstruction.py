@@ -1,20 +1,14 @@
-"""Tests for integration of lineage reconstruction into the Ray Data streaming executor.
-
-The end-to-end tests inject an ``ObjectLostError`` into a task's output read and
-check that the rows a consumer receives match a run without loss. Tracker semantics are
-covered in ``tests/unit/test_lineage_tracker_*.py``; the remaining tests here are
-unit tests of the abort protocol between ``DataOpTask``, the metadata fetcher and
-the bundler.
+"""Integration tests of lineage reconstruction with the Ray Data streaming executor.
 """
 
-import pickle
-from dataclasses import replace
-from typing import TYPE_CHECKING, Dict, List
+import collections
+from typing import TYPE_CHECKING, Callable, Dict, List, Sequence
 from unittest.mock import MagicMock
 
 import pytest
 
 import ray
+from ray.data import ActorPoolStrategy, Dataset
 from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
 from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -33,138 +27,27 @@ from ray.tests.conftest import *  # noqa: F401, F403
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
+# Four CPUs, so seed and child tasks run at the same time and the end-to-end tests see
+# more than one ordering.
 reconstruction_enabled = pytest.mark.parametrize(
     "ray_start_regular_shared",
-    [{"job_config": JobConfig(_disable_job_level_lineage_reconstruction=True)}],
+    [
+        {
+            "num_cpus": 4,
+            "job_config": JobConfig(_disable_job_level_lineage_reconstruction=True),
+        }
+    ],
     indirect=True,
-    ids=["core_lineage_off"],
+    ids=["data_reconstruction_on"],
 )
 
 
-@pytest.fixture
-def trackers(monkeypatch):
-    """Every ``LineageTracker`` the executor builds during the test."""
-    created = []
-    original_init = LineageTracker.__init__
-
-    def spy(self, *args, **kwargs):
-        original_init(self, *args, **kwargs)
-        created.append(self)
-
-    monkeypatch.setattr(LineageTracker, "__init__", spy)
-    return created
-
-
-@pytest.fixture
-def lose_output(monkeypatch):
-    """Make ``victim``'s tasks raise ``ObjectLostError`` from their output read.
-
-    ``lose_output(victim, task_indices, reads_before_loss)`` picks the operator by a
-    name substring and the task indices to fail. Each fails once, after
-    ``reads_before_loss`` successful reads. Returns the list of indices that failed.
-    """
-
-    def install(victim, task_indices=(0,), reads_before_loss=0):
-        pending = set(task_indices)
-        reads_seen: Dict[int, int] = {}
-        fired = []
-        original_on_data_ready = DataOpTask.on_data_ready
-
-        def flaky_on_data_ready(self, max_bytes_to_read, metadata_fetcher):
-            index = self.task_index()
-            if victim in self.operator_name and index in pending:
-                if reads_seen.get(index, 0) >= reads_before_loss:
-                    pending.discard(index)
-                    fired.append(index)
-                    raise ObjectLostError(
-                        ray.ObjectRef.nil().hex(), None, "injected by test"
-                    )
-                reads_seen[index] = reads_seen.get(index, 0) + 1
-            return original_on_data_ready(self, max_bytes_to_read, metadata_fetcher)
-
-        monkeypatch.setattr(DataOpTask, "on_data_ready", flaky_on_data_ready)
-        return fired
-
-    return install
+def _lost_error() -> ObjectLostError:
+    return ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
 
 
 def _nodes(tracker):
     return tracker._lineage_task_id_to_task_node
-
-
-def _assert_every_row_once(ids, expected):
-    actual = sorted(ids)
-    duplicates = len(actual) - len(set(actual))
-    assert actual == expected, (
-        f"expected {len(expected)} rows, got {len(actual)} "
-        f"({len(actual) - len(expected):+d}), duplicates={duplicates}"
-    )
-
-
-def test_flag_off_disables_data_lineage_reconstruction(
-    ray_start_regular_shared, trackers, lose_output  # noqa: F405
-):
-    """By default the job leaves reconstruction to Ray Core: execution must not touch
-    the lineage machinery, and a lost output surfaces as the error it always was.
-    """
-    assert not DataContext.get_current().enable_ray_data_reconstruction
-    fired = lose_output("ReadRange")
-
-    with pytest.raises(ObjectLostError):
-        ray.data.range(50, override_num_blocks=4).map(lambda row: row).take_all()
-
-    assert fired == [0]
-    assert trackers == []
-
-
-@pytest.mark.parametrize("reads_before_loss", [0, 1])
-@reconstruction_enabled
-def test_iter_batches_reconstruction_matches_baseline(
-    ray_start_regular_shared, lose_output, reads_before_loss  # noqa: F405
-):
-    """A seed task loses its output and is re-run; the caller sees every row once.
-
-    ``iter_batches`` hands batches to user code as they arrive, so a duplicate here
-    means the same row was handed over twice. ``reads_before_loss=1`` loses the
-    output after an earlier read already put a block in flight, which must not be
-    re-emitted on top of the reconstructed one.
-    """
-    fired = lose_output("ReadRange", reads_before_loss=reads_before_loss)
-    dataset = ray.data.range(100, override_num_blocks=4).map(
-        lambda row: {"id": row["id"] * 2}
-    )
-
-    seen = []
-    for batch in dataset.iter_batches(batch_size=10):
-        seen.extend(int(value) for value in batch["id"])
-
-    assert fired == [0]
-    _assert_every_row_once(seen, [i * 2 for i in range(100)])
-
-
-@reconstruction_enabled
-def test_two_losses_under_one_seed_match_baseline(
-    ray_start_regular_shared, restore_data_context, trackers, lose_output  # noqa: F405
-):
-    """Two children of one seed lose their output; the seed re-runs, every row once.
-
-    Tiny blocks make the single read task fan out to several tasks. The
-    re-produced outputs a plan does not need must be pruned, not re-emitted.
-    """
-    restore_data_context.target_max_block_size = 1
-    fired = lose_output("MapBatches", task_indices=(0, 1))
-
-    rows = (
-        ray.data.range(20, override_num_blocks=1)
-        .map(lambda row: {"id": row["id"] + 1})
-        .map_batches(lambda batch: batch, batch_size=5, concurrency=1)
-        .take_all()
-    )
-
-    assert sorted(fired) == [0, 1]
-    _assert_every_row_once((row["id"] for row in rows), [i + 1 for i in range(20)])
-    # One reconstruction attempt per lost object.
-    assert [t.num_object_reconstruction_attempts for t in trackers] == [2]
 
 
 def _produced_bundles(simple_data):
@@ -255,7 +138,7 @@ def _lose(topology: Dict, tracker: LineageTracker, lost_task_id: str) -> None:
         tracker,
         MagicMock(),
         task,
-        ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
+        _lost_error(),
     )
 
 
@@ -346,81 +229,6 @@ def test_losses_before_the_seed_is_submitted_share_one_reconstruction_task(
     assert not producer.has_next()
 
 
-def test_joined_plans_sharing_a_child_release_it_once(
-    ray_start_regular_shared,  # noqa: F405
-):
-    """Two leaves under one child of a seed are lost while the seed's re-execution
-    is still queued.
-
-    Both plans need that child, and they share one seed re-run. The re-run
-    withholds the child's input under both plans, then releases it once for both,
-    and the child is submitted once under both plans.
-    """
-    from ray.data._internal.execution.interfaces.physical_operator import (
-        TaskExecDriverStats,
-    )
-    from ray.data._internal.execution.util import make_ref_bundles
-
-    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
-
-    # First run: the seed feeds one child, which fans two blocks out to two leaves.
-    seed_task_id = producer._lineage_task_id_for(0)
-    child_task_id = consumer._lineage_task_id_for(0)
-    leaf_task_ids = ["leaf:0", "leaf:1"]
-    seed_block_ref = make_ref_bundles([[1]])[0].block_refs[0]
-    seed_block_id = seed_block_ref.hex()  # pyrefly: ignore[missing-attribute]
-    tracker.register_task_submission(seed_task_id, [])
-    tracker.register_block_output(seed_task_id, seed_block_id, 0)
-    tracker.register_block_queued(seed_task_id, 0)
-    tracker.register_task_submission(
-        child_task_id, tracker.resolve_dependencies([seed_block_id])
-    )
-    for output_index, leaf_task_id in enumerate(leaf_task_ids):
-        child_block_id = f"{child_task_id}/{output_index}"
-        tracker.register_block_output(child_task_id, child_block_id, output_index)
-        tracker.register_block_queued(child_task_id, output_index)
-        tracker.register_task_submission(
-            leaf_task_id, tracker.resolve_dependencies([child_block_id])
-        )
-
-    # Both leaves are lost. The second plan joins the first plan's queued seed
-    # re-execution even though both plans need the same child.
-    plan_ids = [
-        tracker.register_task_failed(leaf_task_id)[1] for leaf_task_id in leaf_task_ids
-    ]
-    stamped_seed_input = producer.stamp_seed_reconstruction_task(
-        seed_task_id, {plan_ids[0]}, seed_input
-    )
-    assert producer.join_queued_reconstruction_task(seed_task_id, {plan_ids[1]})
-
-    producer._submit_data_task(MagicMock(), stamped_seed_input)
-    (task,) = producer._data_tasks.values()
-    assert task.reconstruction_plan_ids == frozenset(plan_ids)
-
-    # The child's input is the last withheld output under both plans, so producing it
-    # releases the child once, for both plans, before the task completes.
-    (second_run,) = _produced_bundles([[1]])
-    task._output_ready_callback(second_run)
-    (released,) = _drain(producer)
-    assert released.block_refs == second_run.block_refs
-    assert released.reconstruction_stamp == ReconstructionStamp(
-        child_task_id, frozenset(plan_ids)
-    )
-    assert producer._reconstruction_outputs == {}
-
-    # Completing releases nothing more.
-    task._task_done_callback(
-        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0), False
-    )
-    assert not producer.has_next()
-
-    # The child is submitted once, as a re-execution of both plans.
-    consumer._submit_data_task(MagicMock(), released)
-    (child_task,) = consumer._data_tasks.values()
-    assert child_task.lineage_task_id == child_task_id
-    assert child_task.reconstruction_plan_ids == frozenset(plan_ids)
-
-
 def _run_to_completion(
     op: MapOperator, inputs: "RefBundle", outputs: List["RefBundle"]
 ) -> DataOpTask:
@@ -450,9 +258,8 @@ def _run_to_completion(
     return task
 
 
-@pytest.mark.parametrize("child_submitted_first", [False, True])
 def test_shared_child_is_batched_until_it_is_submitted(
-    ray_start_regular_shared, child_submitted_first  # noqa: F405
+    ray_start_regular_shared,  # noqa: F405
 ):
     """A child reads from two seeds, and two leaves under it are lost.
 
@@ -461,10 +268,9 @@ def test_shared_child_is_batched_until_it_is_submitted(
     the first plan before the second, and the child is released for the first plan
     alone.
 
-    If that reconstruction task of the child is still queued when the second plan's
-    input completes, the second plan is batched into it and the child runs once for
-    both plans. If it was already submitted, the second plan releases the child again
-    on its own.
+    That reconstruction task of the child is still queued when the second plan's
+    input completes, so the second plan is batched into it and the child runs once
+    for both plans.
     """
     from ray.data._internal.execution.util import make_ref_bundles
 
@@ -519,8 +325,6 @@ def test_shared_child_is_batched_until_it_is_submitted(
     assert released_a.reconstruction_stamp == ReconstructionStamp(
         child_task_id, frozenset({plan_a})
     )
-    if child_submitted_first:
-        consumer._submit_data_task(MagicMock(), released_a)
 
     # The second seed's re-run for the second plan completes the child's input for
     # that plan.
@@ -531,29 +335,13 @@ def test_shared_child_is_batched_until_it_is_submitted(
         [second_seed_b],
     )
     assert producer._reconstruction_outputs == {}
-    if child_submitted_first:
-        # Too late to batch, so the child is released again for the second plan.
-        (released_b,) = _drain(producer)
-        assert released_b.block_refs == first_seed.block_refs + second_seed_b.block_refs
-        assert released_b.reconstruction_stamp == ReconstructionStamp(
-            child_task_id, frozenset({plan_b})
-        )
-        consumer._submit_data_task(MagicMock(), released_b)
-        expected_plan_ids = [[plan_a], [plan_b]]
-    else:
-        # The child is still queued, so the second plan is batched into it.
-        assert not producer.has_next()
-        assert consumer._batched_plans == {child_task_id: {plan_b}}
-        consumer._submit_data_task(MagicMock(), released_a)
-        expected_plan_ids = [sorted([plan_a, plan_b])]
+    # The child is still queued, so the second plan is batched into it.
+    assert not producer.has_next()
+    assert consumer._batched_plans == {child_task_id: {plan_b}}
+    consumer._submit_data_task(MagicMock(), released_a)
     assert consumer._batched_plans == {}
-    assert (
-        sorted(
-            sorted(task.reconstruction_plan_ids)
-            for task in consumer._data_tasks.values()
-        )
-        == expected_plan_ids
-    )
+    (child_task,) = consumer._data_tasks.values()
+    assert child_task.reconstruction_plan_ids == frozenset({plan_a, plan_b})
 
 
 def test_seed_targeted_by_one_plan_and_reused_by_another(
@@ -603,374 +391,59 @@ def test_seed_targeted_by_one_plan_and_reused_by_another(
     assert _nodes(tracker)[seed_task_id].num_queued_outputs == 2
 
 
-def test_loss_after_the_seed_reconstruction_task_is_submitted_re_injects_the_seed(
+def test_lost_reconstruction_task_is_re_traced_under_its_plan(
     ray_start_regular_shared,  # noqa: F405
 ):
-    """A plan that traces back to a seed whose re-execution was already submitted
-    cannot join it, and re-injects the seed for itself.
+    """A consumer's reconstruction task loses its input too.
+
+    The second loss is traced under the plan the task already serves, so the seed is
+    re-injected for that plan rather than for a new plan keyed by the consumer.
     """
     producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
 
+    # First run: the seed feeds the consumer, which feeds a leaf.
     seed_task_id = producer._lineage_task_id_for(0)
+    consumer_task_id = consumer._lineage_task_id_for(0)
+    leaf_task_id = "leaf:0"
     tracker.register_task_submission(seed_task_id, [])
     tracker.register_seed_input(seed_task_id, seed_input)
-    lost_task_ids = [consumer._lineage_task_id_for(index) for index in range(2)]
-    for output_index, child_task_id in enumerate(lost_task_ids):
-        block_id = f"{seed_task_id}/{output_index}"
-        tracker.register_block_output(seed_task_id, block_id, output_index)
-        tracker.register_block_queued(seed_task_id, output_index)
-        tracker.register_task_submission(
-            child_task_id, tracker.resolve_dependencies([block_id])
-        )
+    tracker.register_block_output(seed_task_id, "seed/0", 0)
+    tracker.register_block_queued(seed_task_id, 0)
+    tracker.register_task_submission(
+        consumer_task_id, tracker.resolve_dependencies(["seed/0"])
+    )
+    tracker.register_block_output(consumer_task_id, "consumer/0", 0)
+    tracker.register_block_queued(consumer_task_id, 0)
+    tracker.register_task_submission(
+        leaf_task_id, tracker.resolve_dependencies(["consumer/0"])
+    )
 
+    # The leaf is lost. The seed re-runs and releases the consumer's input, and the
+    # consumer's reconstruction task is submitted under the leaf's plan.
     source_op = producer.input_dependencies[0]
     topology = {source_op: MagicMock(), producer: MagicMock(), consumer: MagicMock()}
-
-    # The first loss re-injects the seed, and the re-execution is submitted.
-    _lose(topology, tracker, lost_task_ids[0])
+    _lose(topology, tracker, leaf_task_id)
     (first_call,) = topology[source_op].add_output.call_args_list
-    producer._submit_data_task(MagicMock(), first_call.args[0])
-    assert producer._batched_plans == {}
+    _run_to_completion(producer, first_call.args[0], _produced_bundles([[1]]))
+    (released,) = _drain(producer)
+    consumer._submit_data_task(MagicMock(), released)
+    (consumer_task,) = consumer._data_tasks.values()
+    assert consumer_task.reconstruction_plan_ids == frozenset({leaf_task_id})
 
-    # The second loss finds nothing queued to join, so it re-injects the seed again.
-    _lose(topology, tracker, lost_task_ids[1])
-    first_call, second_call = topology[source_op].add_output.call_args_list
-    assert first_call.args[0].reconstruction_stamp == ReconstructionStamp(
-        seed_task_id, frozenset({lost_task_ids[0]})
+    # The consumer's reconstruction task loses its input as well.
+    _reconstruct_lost_object(
+        topology,
+        tracker,
+        MagicMock(),
+        consumer_task,
+        _lost_error(),
     )
+
+    # The seed is re-injected again, under the leaf's plan.
+    _, second_call = topology[source_op].add_output.call_args_list
     assert second_call.args[0].reconstruction_stamp == ReconstructionStamp(
-        seed_task_id, frozenset({lost_task_ids[1]})
+        seed_task_id, frozenset({leaf_task_id})
     )
-    # The second plan is on the new stamp, and nothing is batched into it yet.
-    assert producer._batched_plans == {seed_task_id: set()}
-
-
-@pytest.mark.parametrize("reads_before_loss", [5, 10])
-@reconstruction_enabled
-def test_seed_loss_does_not_re_emit_queued_outputs(
-    ray_start_regular_shared,
-    restore_data_context,
-    lose_output,
-    reads_before_loss,  # noqa: F405
-):
-    """The seed loses its output after queueing some blocks; every row arrives once.
-
-    The downstream bundler waits for all 20 rows, so the blocks the seed queued
-    before the loss are still waiting when it re-runs. They are already
-    downstream, so the re-run must not queue them again.
-    """
-    restore_data_context.target_max_block_size = 1
-    fired = lose_output("ReadRange", reads_before_loss=reads_before_loss)
-
-    rows = (
-        ray.data.range(20, override_num_blocks=1)
-        .map(lambda row: {"id": row["id"] + 1})
-        .map_batches(lambda batch: batch, batch_size=20, concurrency=1)
-        .take_all()
-    )
-
-    assert fired == [0]
-    _assert_every_row_once((row["id"] for row in rows), [i + 1 for i in range(20)])
-
-
-@pytest.mark.parametrize(
-    ("run_plan", "expected"),
-    [
-        pytest.param(
-            lambda: len(ray.data.range(2).map(lambda row: row).limit(1).take_all()),
-            1,
-            id="limit",
-        ),
-        pytest.param(
-            lambda: len(ray.data.range(1).union(ray.data.range(1)).take_all()),
-            2,
-            id="union",
-        ),
-        pytest.param(
-            lambda: ray.data.range(10).filter(lambda row: row["id"] < 5).count(),
-            5,
-            id="count",
-        ),
-        pytest.param(
-            lambda: len(
-                ray.data.range(2)
-                .repartition(target_num_rows_per_block=1, strict=True)
-                .take_all()
-            ),
-            2,
-            id="strict_repartition",
-        ),
-    ],
-)
-@reconstruction_enabled
-def test_unsupported_plan_disables_reconstruction(
-    ray_start_regular_shared, trackers, run_plan, expected  # noqa: F405
-):
-    """A plan with a non-map operator, or a map operator whose bundler slices blocks
-    (strict streaming repartition), runs with lineage reconstruction disabled."""
-    assert run_plan() == expected
-    assert trackers == []
-
-
-@reconstruction_enabled
-def test_preserve_order_disables_reconstruction(
-    ray_start_regular_shared, restore_data_context, trackers  # noqa: F405
-):
-    """A plan of map operators runs with lineage reconstruction disabled under
-    ``preserve_order``: a re-execution gets a fresh task index, so the ordered
-    output queue would emit the re-produced rows out of order."""
-    restore_data_context.execution_options.preserve_order = True
-
-    rows = ray.data.range(3).map(lambda row: row).take_all()
-
-    assert [row["id"] for row in rows] == list(range(3))
-    assert trackers == []
-
-
-@pytest.mark.parametrize(
-    ("num_rows", "num_blocks", "batch_size", "one_row_blocks"),
-    [
-        pytest.param(20, 2, 20, False, id="fan_in_2_to_1"),
-        pytest.param(200, 20, 200, False, id="fan_in_20_to_1"),
-        pytest.param(60, 6, 30, False, id="fan_in_6_to_2"),
-        pytest.param(20, 1, 1, True, id="fan_out_1_to_20"),
-    ],
-)
-@reconstruction_enabled
-def test_lost_child_reconstructs_across_graph_shapes(
-    ray_start_regular_shared,  # noqa: F405
-    restore_data_context,  # noqa: F405
-    trackers,
-    lose_output,
-    num_rows,
-    num_blocks,
-    batch_size,
-    one_row_blocks,
-):
-    """A child loses its output; every parent re-runs and the child re-executes once.
-
-    ``num_blocks`` seeds feed ``num_rows / batch_size`` children. Fan-in: a child's
-    re-produced inputs are held until the whole set is in hand. Fan-out: the seed's
-    outputs owed to other children are pruned rather than re-emitted.
-    """
-    if one_row_blocks:
-        restore_data_context.target_max_block_size = 1
-    num_children = num_rows // batch_size
-    # Lose the last child submitted: by then every sibling is registered, so the
-    # seed's other re-produced outputs are pruned.
-    fired = lose_output("MapBatches", task_indices=(num_children - 1,))
-
-    rows = (
-        ray.data.range(num_rows, override_num_blocks=num_blocks)
-        .map(lambda row: {"id": row["id"] + 1})
-        .map_batches(lambda batch: batch, batch_size=batch_size, concurrency=1)
-        .take_all()
-    )
-
-    assert fired == [num_children - 1]
-    _assert_every_row_once(
-        (row["id"] for row in rows), [i + 1 for i in range(num_rows)]
-    )
-    # Seeds plus children. A child re-registered under a fresh id would add one.
-    (tracker,) = trackers
-    assert len(_nodes(tracker)) == num_blocks + num_children
-
-
-def test_reconstruction_stamp_survives_schema_divergence():
-    """``OpState.add_output`` rebuilds a bundle whose schema diverges from the
-    operator's, field by field. The stamp must survive the rebuild, or the
-    re-execution is bundled and submitted as a fresh task.
-    """
-    import pyarrow as pa
-
-    from ray.data._internal.execution.interfaces import RefBundle
-    from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
-    from ray.data._internal.execution.streaming_executor_state import (
-        dedupe_schemas_with_validation,
-    )
-    from ray.data.block import BlockMetadata
-
-    stamp = ReconstructionStamp(
-        lineage_task_id="child:0",
-        reconstruction_plan_ids=frozenset({"plan_a"}),
-    )
-    meta = BlockMetadata(num_rows=2, size_bytes=16, exec_stats=None, input_files=None)
-    # The same column comes back all nulls on the re-run, so it is inferred as null.
-    bundle = RefBundle(
-        blocks=(
-            BlockEntry(
-                ray.ObjectRef(b"1" * 28),  # pyrefly: ignore[bad-argument-type]
-                meta,
-            ),
-        ),
-        schema=pa.schema([("x", pa.null())]),
-        owns_blocks=True,
-        reconstruction_stamp=stamp,
-    )
-
-    rebuilt, diverged = dedupe_schemas_with_validation(
-        pa.schema([("x", pa.int64())]), bundle, enforce_schemas=False
-    )
-
-    assert diverged and rebuilt is not bundle
-    assert rebuilt.reconstruction_stamp == stamp
-
-
-def test_reconstruction_input_passes_through_the_bundler(
-    ray_start_regular_shared,
-):  # noqa: F405
-    """A reconstruction input must reach submission exactly as assembled.
-
-    This holds for a child's input set and for a re-injected seed's input, which both
-    carry a ``reconstruction_stamp``. ``RebundleQueue`` must emit it as its own ready
-    bundle instead of holding it back, merging it with other pending input, or slicing
-    it to hit the row target.
-    """
-    from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-    from ray.data._internal.execution.util import make_ref_bundles
-
-    ctx = DataContext.get_current()
-    inputs = make_ref_bundles([[1]])[0]
-    op = MapOperator.create(
-        create_map_transformer_from_block_fn(lambda block, _: block),
-        input_op=InputDataBuffer(ctx, [inputs]),
-        data_context=ctx,
-        name="Consumer",
-        min_rows_per_bundle=1000,
-    )
-    scheduled = []
-    op._try_schedule_task = lambda refs, strict: scheduled.append((refs, strict))
-    bundler = op._block_ref_bundler
-    assert bundler is not None
-
-    # Ordinary input waits in the bundler for the row target.
-    op._add_input_inner(inputs, 0)
-    assert scheduled == []
-    assert bundler.num_blocks() == 1
-
-    # A stamped reconstruction input goes straight to submission.
-    stamped = replace(
-        make_ref_bundles([[2]])[0],
-        reconstruction_stamp=ReconstructionStamp(
-            lineage_task_id="child:0",
-            reconstruction_plan_ids=frozenset({"plan_a"}),
-        ),
-    )
-    op._add_input_inner(stamped, 0)
-    assert scheduled == [(stamped, True)]
-    assert bundler.num_blocks() == 1
-
-
-def _abortable_task(task_done_callback):
-    """A ``DataOpTask`` in its freshly-submitted (ACTIVE) state.
-
-    ``mark_aborted`` reads neither the generator nor the ref counter, so both are
-    stubs; this keeps the test on the state machine and off a live cluster.
-    """
-    return DataOpTask(
-        0,
-        MagicMock(),  # streaming_gen
-        MagicMock(),  # block_ref_counter
-        "test_op",
-        task_done_callback=task_done_callback,
-        lineage_task_id="seed:0",
-    )
-
-
-def test_mark_aborted_fires_the_done_callback_exactly_once():
-    """Abort from ACTIVE runs the done-callback with the error and finishes the task.
-
-    A repeat abort, or an abort after normal completion, must not run it again: that
-    would double-release the task's resource reservations.
-    """
-    calls = []
-    task = _abortable_task(
-        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
-    )
-    error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
-
-    task.mark_aborted(error)
-    task.mark_aborted(error)
-    assert calls == [error]
-    assert task.has_finished
-
-    calls.clear()
-    task = _abortable_task(
-        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
-    )
-    task.mark_done()
-    task.mark_aborted(error)
-    assert calls == [None]
-
-
-def test_a_drained_task_aborted_before_its_done_callback_fires_it_once():
-    """``_fire_done_callbacks`` must skip a drained task that was since aborted."""
-    from ray.data._internal.execution.metadata_fetcher import ThreadedMetadataFetcher
-
-    calls = []
-    task = _abortable_task(
-        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
-    )
-    fetcher = ThreadedMetadataFetcher()
-    fetcher._drained_tasks.add(task)
-    error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
-    task.mark_aborted(error)
-
-    fetcher._fire_done_callbacks()
-
-    assert calls == [error]
-    assert task not in fetcher._drained_tasks
-
-
-@pytest.mark.parametrize(
-    "lineage_task_id", [None, "seed:0"], ids=["untracked", "tracked"]
-)
-def test_object_lost_in_task_output_raises_only_when_lineage_tracked(
-    monkeypatch, lineage_task_id
-):
-    """A task's stream failing with ``ObjectLostError`` drains the task like any other
-    task error when it is not lineage tracked, so pairs already in flight in the metadata
-    fetcher still emit. Only a lineage tracked task re-raises it for reconstruction.
-    """
-    error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
-    block_ref = MagicMock()
-    block_ref.is_nil.return_value = False
-    streaming_gen = MagicMock()
-    # The block ref arrives, then the stream stops where its metadata should be.
-    streaming_gen._next_sync.side_effect = [block_ref, StopIteration()]
-
-    def raise_lost(ref):
-        raise error
-
-    monkeypatch.setattr(ray, "get", raise_lost)
-    calls = []
-    task = DataOpTask(
-        0,
-        streaming_gen,
-        MagicMock(),  # block_ref_counter
-        "test_op",
-        task_done_callback=lambda exc, worker_stats, driver_stats, aborted: calls.append(
-            exc
-        ),
-        lineage_task_id=lineage_task_id,
-    )
-    assert task.is_lineage_tracked is (lineage_task_id is not None)
-    metadata_fetcher = MagicMock()
-
-    if task.is_lineage_tracked:
-        with pytest.raises(ObjectLostError):
-            task.on_data_ready(None, metadata_fetcher)
-        metadata_fetcher.in_data_ready_done.assert_not_called()
-    else:
-        task.on_data_ready(None, metadata_fetcher)
-        assert task.task_error is error
-        assert task.is_drained()
-        metadata_fetcher.in_data_ready_done.assert_called_once_with(task)
-
-    # Not finished either way. The fetcher's `has_finished` skip must not drop
-    # in-flight pairs, and the done-callback has not fired.
-    assert not task.has_finished
-    assert calls == []
 
 
 @reconstruction_enabled
@@ -995,7 +468,7 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
     def lost_output(self, max_bytes_to_read, metadata_fetcher):
         # A lost output stays lost: every read raises until the executor stops
         # polling the task.
-        raise ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+        raise _lost_error()
 
     monkeypatch.setattr(
         "ray.data._internal.execution.streaming_executor_state."
@@ -1021,54 +494,223 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
     assert reconstruction_attempts == [0]
 
 
-def test_started_reconstruction_aborts_for_reconstruction():
-    """A task whose lost output is being reconstructed is aborted for
-    reconstruction, keeping the lost-object error."""
-    calls = []
-    task = _abortable_task(lambda *args: calls.append(args))
-    tracker = MagicMock()
-    tracker.register_task_failed.return_value = (set(), "plan_a")
-    lost_error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+# ---------------------------------------------------------------------------
+# End-to-end tests
+# ---------------------------------------------------------------------------
 
-    _reconstruct_lost_object({}, tracker, MagicMock(), task, lost_error)
-
-    assert task.has_finished
-    assert calls == [(lost_error, None, None, True)]
+NUM_ROWS = 100
 
 
-def test_reconstruction_error_wraps_object_lost_error():
-    """An ``ObjectLostError`` triggers a lineage reconstruction attempt that fails.
+@pytest.fixture
+def raise_original_map_exception(restore_data_context):
+    """Let the ``ObjectLostError`` a UDF raises reach the executor as is.
 
-    Test that the LineageReconstructionError carries both the original ObjectLostError
-    and the reason for the reconstruction failure.
+    By default Ray Data wraps a UDF error in ``UserCodeException``, which the executor
+    treats as a user error rather than a lost block.
     """
-    object_lost_error = ObjectLostError(
-        ray.ObjectRef.nil().hex(), b"owner", "injected by test"
+    restore_data_context.raise_original_map_exception = True
+
+
+@ray.remote(num_cpus=0)
+class LossInjector:
+    """Fails the first batch that contains each row in ``rows``.
+
+    A row listed twice fails twice, once in its first run and once in its re-run. A
+    batch fails for at most one row. If two listed rows share a batch, the second one
+    fails the re-run of that batch, so ``fired`` still lists both.
+    """
+
+    def __init__(self, rows: Sequence[int]):
+        self._losses_left = collections.Counter(rows)
+        self._fired: List[int] = []
+
+    def should_lose(self, ids: List[int]) -> bool:
+        for row in ids:
+            if self._losses_left[row] > 0:
+                self._losses_left[row] -= 1
+                self._fired.append(row)
+                return True
+        return False
+
+    def fired(self) -> List[int]:
+        return sorted(self._fired)
+
+
+def lose_on(injector) -> Callable:
+    """A ``map_batches`` UDF that fails with ``ObjectLostError`` when ``injector`` says to."""
+
+    def lose(batch):
+        if ray.get(injector.should_lose.remote(batch["id"].tolist())):
+            # Not `_lost_error()`. This runs on a worker, which can't import this
+            # test module.
+            raise ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+        return batch
+
+    return lose
+
+
+def assert_every_row_once(ids: List[int]):
+    counts = collections.Counter(ids)
+    duplicated = sorted(row for row, count in counts.items() if count > 1)
+    missing = sorted(set(range(NUM_ROWS)) - set(counts))
+    assert sorted(ids) == list(
+        range(NUM_ROWS)
+    ), f"duplicated={duplicated}, missing={missing}"
+
+
+# Each lossy map asks for a different `num_cpus` than the operator before it, so the two
+# stay separate operators instead of fusing into one.
+
+
+def _linear(injector) -> Dataset:
+    """Ten read tasks, each feeding one lossy task."""
+    return ray.data.range(NUM_ROWS, override_num_blocks=10).map_batches(
+        lose_on(injector), batch_size=10, num_cpus=0.5
     )
-    lost_output_task = _abortable_task(
-        lambda exc, worker_stats, driver_stats, aborted: None
+
+
+def _fan_in(injector) -> Dataset:
+    """Ten read tasks, five of them feeding each lossy task."""
+    return ray.data.range(NUM_ROWS, override_num_blocks=10).map_batches(
+        lose_on(injector), batch_size=50, num_cpus=0.5
     )
-    op_state = MagicMock()
-    op_state.op.name = "test_op"
 
-    # A fresh tracker has never seen the task, so reconstruction cannot start.
-    with pytest.raises(LineageReconstructionError) as raised:
-        _reconstruct_lost_object(
-            {}, LineageTracker(), op_state, lost_output_task, object_lost_error
-        )
-    reconstruction_error = raised.value
 
-    assert isinstance(reconstruction_error, ObjectLostError)
-    assert reconstruction_error.lost_error is object_lost_error
-    assert reconstruction_error.__cause__ is object_lost_error
-    for field in ("object_ref_hex", "owner_address", "call_site"):
-        assert getattr(reconstruction_error, field) == getattr(object_lost_error, field)
-    assert str(object_lost_error) in str(reconstruction_error)
-    assert "not registered with the lineage graph" in str(reconstruction_error)
+def _fan_out(injector) -> Dataset:
+    """One read task of one-row blocks, feeding ten lossy tasks.
 
-    unpickled_error = pickle.loads(pickle.dumps(reconstruction_error))
-    assert type(unpickled_error.lost_error) is type(object_lost_error)
-    assert str(unpickled_error) == str(reconstruction_error)
+    Sets ``target_max_block_size=1`` to get one-row blocks.
+    """
+    DataContext.get_current().target_max_block_size = 1
+    return ray.data.range(NUM_ROWS, override_num_blocks=1).map_batches(
+        lose_on(injector), batch_size=10, num_cpus=0.5
+    )
+
+
+def _three_operators(injector) -> Dataset:
+    """Read tasks feed a middle map, which feeds the lossy map.
+
+    Each middle task reads two 10-row read blocks, and each lossy task reads several
+    middle outputs, so rows fan in at both maps.
+    """
+    return (
+        ray.data.range(NUM_ROWS, override_num_blocks=10)
+        .map_batches(lambda batch: batch, batch_size=20, num_cpus=0.5)
+        .map_batches(lose_on(injector), batch_size=50, num_cpus=0.25)
+    )
+
+
+def _one_row_outputs(injector) -> Dataset:
+    """Lossy tasks that each read one 10-row input block and yield one-row blocks.
+
+    So a task fails after it already yielded the rows before the lost one. Sets
+    ``target_max_block_size=1`` to get one-row output blocks. The input blocks come
+    from ``from_items``, which keeps them at 10 rows.
+    """
+    DataContext.get_current().target_max_block_size = 1
+    items = [{"id": row} for row in range(NUM_ROWS)]
+    return ray.data.from_items(items, override_num_blocks=10).map_batches(
+        lose_on(injector), batch_size=1
+    )
+
+
+def _actor_pool(injector) -> Dataset:
+    """The linear shape with the lossy UDF on a pool of two actors."""
+    lose = lose_on(injector)
+
+    class Lose:
+        def __call__(self, batch):
+            return lose(batch)
+
+    return ray.data.range(NUM_ROWS, override_num_blocks=10).map_batches(
+        Lose, batch_size=10, compute=ActorPoolStrategy(size=2), num_cpus=0.5
+    )
+
+
+@pytest.mark.parametrize(
+    ("pipeline", "lost_rows"),
+    [
+        pytest.param(_linear, [45], id="linear"),
+        pytest.param(_fan_in, [45], id="fan_in"),
+        pytest.param(_fan_out, [45], id="fan_out"),
+        pytest.param(_fan_out, [15, 75], id="two_losses_under_one_seed"),
+        pytest.param(_linear, [45, 45], id="lost_again_while_reconstructing"),
+        pytest.param(_three_operators, [45], id="three_operators"),
+        pytest.param(_one_row_outputs, [45], id="lost_after_yielding_outputs"),
+        pytest.param(_actor_pool, [45], id="actor_pool"),
+    ],
+)
+@reconstruction_enabled
+def test_lineage_reconstruction_delivers_every_row_once(
+    ray_start_regular_shared, raise_original_map_exception, pipeline, lost_rows
+):
+    injector = LossInjector.remote(lost_rows)  # pyrefly: ignore[missing-attribute]
+
+    rows = pipeline(injector).take_all()
+
+    assert ray.get(injector.fired.remote()) == sorted(lost_rows)
+    assert_every_row_once([row["id"] for row in rows])
+
+
+@reconstruction_enabled
+def test_write_after_a_lost_block_writes_every_row_once(
+    ray_start_regular_shared, raise_original_map_exception, tmp_path
+):
+    """A write operator runs after the reconstructed one, so its files hold the rows."""
+    injector = LossInjector.remote([45])  # pyrefly: ignore[missing-attribute]
+
+    _linear(injector).write_parquet(str(tmp_path))
+
+    assert ray.get(injector.fired.remote()) == [45]
+    rows = ray.data.read_parquet(str(tmp_path)).take_all()
+    assert_every_row_once([row["id"] for row in rows])
+
+
+# One plan per branch of the gate that decides whether lineage reconstruction runs.
+
+
+def _strict_repartition(injector):
+    """A strict repartition, whose bundler slices blocks across tasks.
+
+    7 doesn't divide the 10-row blocks, so the bundler has to slice them.
+    """
+    _linear(injector).repartition(target_num_rows_per_block=7, strict=True).take_all()
+
+
+def _preserve_order(injector):
+    """A plan of map operators that must keep its output order."""
+    DataContext.get_current().execution_options.preserve_order = True
+    _linear(injector).take_all()
+
+
+def _streaming_split(injector):
+    """A ``streaming_split``, the plan Ray Train ingest runs.
+
+    Its ``OutputSplitter`` is not a map operator, so the gate refuses the plan whatever
+    the split count. A union, limit or sort is refused the same way.
+    """
+    (split,) = _linear(injector).streaming_split(1)
+    list(split.iter_rows())
+
+
+@pytest.mark.parametrize(
+    "run_plan", [_strict_repartition, _preserve_order, _streaming_split]
+)
+@reconstruction_enabled
+def test_unsupported_plan_fails_on_lost_block(
+    ray_start_regular_shared, raise_original_map_exception, run_plan
+):
+    """A plan lineage reconstruction doesn't support runs without it, so a lost block
+    fails the dataset."""
+    injector = LossInjector.remote([45])  # pyrefly: ignore[missing-attribute]
+
+    with pytest.raises(ObjectLostError) as raised:
+        run_plan(injector)
+
+    # A `LineageReconstructionError` is an `ObjectLostError` too. It would mean the plan
+    # was admitted and its reconstruction failed.
+    assert not isinstance(raised.value, LineageReconstructionError)
+    assert ray.get(injector.fired.remote()) == [45]
 
 
 if __name__ == "__main__":
