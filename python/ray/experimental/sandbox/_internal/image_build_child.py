@@ -8,9 +8,15 @@ library load, from the directories the parent loaded them from.
 """
 
 import json
+import os
+import signal
 import sys
 import types
 from typing import Dict, List
+
+# The line a build's error goes back to the parent on, among whatever else
+# this process prints.
+CHILD_ERROR = "ray-sandbox-image-build-error: "
 
 
 def _load_image_utils(packages: Dict[str, List[str]]) -> types.ModuleType:
@@ -25,15 +31,35 @@ def _load_image_utils(packages: Dict[str, List[str]]) -> types.ModuleType:
     return image_utils
 
 
+def _die_with_parent(parent: int) -> None:
+    """Have the kernel kill this process when the process that started it dies.
+
+    A build would otherwise go on downloading and writing to the image cache
+    for a pull that nobody waits for anymore. Linux only: elsewhere the build
+    finishes.
+    """
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        import ctypes
+
+        ctypes.CDLL(None).prctl(1, signal.SIGKILL)  # PR_SET_PDEATHSIG
+    except Exception:
+        return
+    if os.getppid() != parent:
+        sys.exit(1)  # The parent died before the request took effect.
+
+
 def main() -> None:
     packages, args = json.loads(sys.argv[1]), json.loads(sys.argv[2])
-    image_utils = _load_image_utils(packages)
+    _die_with_parent(int(sys.argv[3]))
     try:
-        image_utils._build_rootfs_image(*args)
+        # Inside, so that a failed import comes back as an error too.
+        _load_image_utils(packages)._build_rootfs_image(*args)
     except BaseException as err:
         # MemoryError and KeyboardInterrupt, among others, have no message.
         message = str(err) or type(err).__name__
-        print(image_utils._CHILD_ERROR + json.dumps(message), flush=True)
+        print(CHILD_ERROR + json.dumps(message), flush=True)
         sys.exit(1)
 
 

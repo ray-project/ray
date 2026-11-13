@@ -25,7 +25,11 @@ from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
-from ray.experimental.sandbox._internal import docker_config, layer_cache
+from ray.experimental.sandbox._internal import (
+    docker_config,
+    image_build_child,
+    layer_cache,
+)
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -1154,17 +1158,51 @@ def reserve_image_cache_space(image_dir: str, needed_bytes: int) -> None:
 # next ones run in child interpreters.
 _builds_lock = threading.Lock()
 _building_here = False
+
+
+def _cgroup_cpu_quota(cgroup_root: str = "/sys/fs/cgroup") -> Optional[float]:
+    """The CPUs that this process's cgroup allows it, or None without a quota."""
+    try:
+        with open(os.path.join(cgroup_root, "cpu.max"), encoding="utf-8") as f:
+            quota, period = f.read().split()
+        return None if quota == "max" else int(quota) / int(period)
+    except (OSError, ValueError):
+        pass
+    try:  # cgroup v1
+        with open(os.path.join(cgroup_root, "cpu", "cpu.cfs_quota_us")) as f:
+            quota_us = int(f.read())
+        with open(os.path.join(cgroup_root, "cpu", "cpu.cfs_period_us")) as f:
+            period_us = int(f.read())
+        return quota_us / period_us if quota_us > 0 and period_us > 0 else None
+    except (OSError, ValueError):
+        return None
+
+
+def _usable_cpus(cgroup_root: str = "/sys/fs/cgroup") -> int:
+    """The CPUs this process may use: its affinity, within its cgroup's quota.
+
+    ``os.cpu_count()`` is the node's count. In a container with a CPU limit,
+    such as a Kubernetes Pod, that can be many times what the process gets.
+    """
+    try:
+        count = len(os.sched_getaffinity(0))
+    except AttributeError:  # Not Linux.
+        count = os.cpu_count() or 1
+    quota = _cgroup_cpu_quota(cgroup_root)
+    if quota is not None:
+        count = min(count, int(quota))
+    return max(1, count)
+
+
 # Builds run at most one per two CPUs in children, plus one in this process.
 # A build takes one of these slots before it looks at this process, so builds
 # that waited for a slot use this process as soon as its build ends.
-_builds = threading.BoundedSemaphore(1 + max(1, (os.cpu_count() or 2) // 2))
+_builds = threading.BoundedSemaphore(1 + max(1, _usable_cpus() // 2))
 # The line a child build's error comes back on, among whatever else the
 # child prints.
-_CHILD_ERROR = "ray-sandbox-image-build-error: "
+_CHILD_ERROR = image_build_child.CHILD_ERROR
 # What a child runs: this module and the few it imports, without Ray.
-_CHILD_ENTRYPOINT = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "image_build_child.py"
-)
+_CHILD_ENTRYPOINT = os.path.abspath(image_build_child.__file__)
 # The packages a child stands in for, so that it imports their modules.
 _CHILD_PACKAGES = (
     "ray",
@@ -1223,6 +1261,8 @@ def _build_rootfs_image_in_a_child(*args) -> None:
             _CHILD_ENTRYPOINT,
             json.dumps(_child_packages()),
             json.dumps(args),
+            # The child stops if this process dies.
+            str(os.getpid()),
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
@@ -1326,7 +1366,9 @@ def pull_and_extract_container_image(
                 _build_rootfs_image_here_or_in_a_child(
                     image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
                 )
-            except Exception:
+            except BaseException:
+                # An interrupt or an exiting actor too: nothing else ever
+                # removes this directory.
                 shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                 raise
             # The image replaces the tree; nothing reads the tree once the
