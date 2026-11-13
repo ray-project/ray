@@ -2530,10 +2530,11 @@ def test_the_node_default_resolvers_are_checked_until_a_sandbox_reaches_them(
     lookup. It's the same for every sandbox, so one success is enough."""
     backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
     probed, deleted = [], []
-    answer = [("10.0.0.2", "Operation not permitted")]
+    # Whether the probe ran, and what it couldn't reach.
+    answer = [(True, ("10.0.0.2", "Operation not permitted"))]
     monkeypatch.setattr(
         backend,
-        "_unreachable_resolver",
+        "_probe_resolvers",
         lambda sandbox_id, resolvers: probed.append(resolvers) or answer[0],
     )
     monkeypatch.setattr(backend, "delete_sandbox", deleted.append)
@@ -2550,18 +2551,21 @@ def test_the_node_default_resolvers_are_checked_until_a_sandbox_reaches_them(
     ):
         backend._check_dns_reachable(public, "sb-1")
     assert deleted == ["sb-1"]
-    answer[0] = None
+    # A probe that couldn't run proves nothing: the next sandbox checks again.
+    answer[0] = (False, None)
     backend._check_dns_reachable(public, "sb-2")
-    backend._check_dns_reachable(public, "sb-3")  # Reached once: not again.
-    assert probed == [["10.0.0.2"]] * 2
+    answer[0] = (True, None)
+    backend._check_dns_reachable(public, "sb-3")
+    backend._check_dns_reachable(public, "sb-4")  # Reached once: not again.
+    assert probed == [["10.0.0.2"]] * 3
 
     # A sandbox's own dns is checked each time.
     own = GVisorSandboxConfig(
         image="busybox:latest", network="public", dns=["10.0.0.9"]
     )
-    backend._check_dns_reachable(own, "sb-4")
     backend._check_dns_reachable(own, "sb-5")
-    assert probed[2:] == [["10.0.0.9"]] * 2
+    backend._check_dns_reachable(own, "sb-6")
+    assert probed[3:] == [["10.0.0.9"]] * 2
 
 
 def test_a_bad_node_default_resolver_fails_the_create_before_the_image_pull(

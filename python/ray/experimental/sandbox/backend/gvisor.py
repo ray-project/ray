@@ -700,10 +700,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # that the cluster's network translates when a connection opens, and
         # the sandbox has no IPv6 route. Either way every lookup would fail,
         # so fail the create instead.
-        unreachable = self._unreachable_resolver(sandbox_id, resolvers)
-        if unreachable is None:
-            if not config.dns:
+        if config.dns:
+            unreachable = self._unreachable_resolver(sandbox_id, resolvers)
+        else:
+            # Only a probe that ran shows that sandboxes reach the node's
+            # resolvers. One that couldn't run proves nothing, so the next
+            # sandbox checks again.
+            ran, unreachable = self._probe_resolvers(sandbox_id, resolvers)
+            if ran and unreachable is None:
                 self._reachable_node_dns.add(tuple(resolvers))
+        if unreachable is None:
             return
         self.delete_sandbox(sandbox_id)
         server, reason = unreachable
@@ -1222,9 +1228,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     ) -> Optional[Tuple[str, str]]:
         """The first of ``resolvers`` that a public sandbox can't reach.
 
-        Runs ``_RESOLVER_PROBE`` in the sandbox's network namespace, opened
-        the way ``set_egress_allowlist`` opens it. A probe that can't run
-        proves nothing, so it counts as reachable.
+        A probe that can't run proves nothing, so it counts as reachable.
 
         Args:
             sandbox_id: Unique string identifier of the sandbox.
@@ -1233,10 +1237,28 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         Returns:
             The resolver and the reason the sandbox can't reach it, or None.
         """
+        return self._probe_resolvers(sandbox_id, resolvers)[1]
+
+    def _probe_resolvers(
+        self, sandbox_id: str, resolvers: List[str]
+    ) -> Tuple[bool, Optional[Tuple[str, str]]]:
+        """Check that a public sandbox can reach each of ``resolvers``.
+
+        Runs ``_RESOLVER_PROBE`` in the sandbox's network namespace, opened
+        the way ``set_egress_allowlist`` opens it.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            resolvers: Resolver addresses.
+
+        Returns:
+            Whether the probe ran, and the first resolver that the sandbox
+            can't reach with the reason, or None.
+        """
         meta = self._sandbox_metadata[sandbox_id]
         ns_fds = _open_holder_namespaces(meta["root_dir"], meta.get("netns_ids"))
         if ns_fds is None:
-            return None
+            return False, None
         user_fd, net_fd = ns_fds
         # The sandbox's user namespace maps only this process's uid. Root
         # doesn't need it to enter the network namespace, and inside it would
@@ -1268,20 +1290,21 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             logger.warning(
                 "Couldn't check the dns resolvers of sandbox %s: %s", sandbox_id, err
             )
-            return None
+            return False, None
         finally:
             for fd in ns_fds:
                 os.close(fd)
         if proc.returncode == _RESOLVER_UNREACHABLE:
             server, _, reason = proc.stdout.strip().partition("\t")
-            return server, reason
+            return True, (server, reason)
         if proc.returncode != 0:
             logger.warning(
                 "Couldn't check the dns resolvers of sandbox %s: %s",
                 sandbox_id,
                 proc.stderr.strip(),
             )
-        return None
+            return False, None
+        return True, None
 
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
         """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
