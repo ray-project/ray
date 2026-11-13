@@ -318,6 +318,9 @@ release/release_tests.yaml: tools
 
 ci/lint/lint.sh: tools
 ci/ray_ci/tester.py: tools
+# Image scans are skip-on-premerge; premerge only needs their tooling tests.
+.buildkite/image-scan.rayci.yml: tools
+ci/ray_ci/automation/trivy/scan_images.py: tools
 ci/ray_ci/data/run_hive_integration.sh: data tools
 ci/ray_ci/data/test_run_hive_integration.py: data tools
 ci/ci.sh: tools

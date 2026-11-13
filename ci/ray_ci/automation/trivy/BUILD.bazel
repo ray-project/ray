@@ -1,0 +1,219 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("//ci/ray_ci/automation/trivy/pin:trivy_versions.bzl", "TRIVY_SHA256", "TRIVY_SIGNER_IDENTITY", "TRIVY_VERSION")
+
+# The pin as data, so the scan tools record exactly what they ran.
+write_file(
+    name = "trivy_pin",
+    out = "trivy_pin.json",
+    content = [json.encode({
+        "signer": TRIVY_SIGNER_IDENTITY,
+        "tarball_sha256": TRIVY_SHA256,
+        "version": TRIVY_VERSION,
+    })],
+)
+
+py_library(
+    name = "trivy_report",
+    srcs = ["trivy_report.py"],
+)
+
+py_test(
+    name = "test_trivy_report",
+    size = "small",
+    srcs = ["test_trivy_report.py"],
+    data = glob(["testdata/*.json"]),
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":trivy_report",
+        ci_require("pytest"),
+    ],
+)
+
+py_library(
+    name = "registry",
+    srcs = ["registry.py"],
+    data = ["@crane_linux_x86_64//:file"],
+    deps = [ci_require("bazel-runfiles")],
+)
+
+py_test(
+    name = "test_registry",
+    size = "small",
+    srcs = ["test_registry.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":registry",
+        ci_require("pytest"),
+    ],
+)
+
+py_library(
+    name = "scan_store",
+    srcs = ["scan_store.py"],
+    deps = [
+        ci_require("boto3"),
+        ci_require("botocore"),
+        ci_require("click"),
+    ],
+)
+
+py_library(
+    name = "fake_s3",
+    testonly = True,
+    srcs = ["fake_s3.py"],
+    deps = [ci_require("botocore")],
+)
+
+py_test(
+    name = "test_scan_store",
+    size = "small",
+    srcs = ["test_scan_store.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":fake_s3",
+        ":scan_store",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
+py_binary(
+    name = "trivy_db",
+    srcs = ["trivy_db.py"],
+    data = [":trivy_pin"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":registry",
+        ":scan_store",
+        ci_require("bazel-runfiles"),
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_trivy_db",
+    size = "small",
+    srcs = ["test_trivy_db.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":fake_s3",
+        ":trivy_db",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
+py_binary(
+    name = "scan_images",
+    srcs = ["scan_images.py"],
+    data = glob(["ignore/*.trivyignore.yaml"]) + ["@trivy_linux_x86_64//:trivy"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":registry",
+        ":scan_store",
+        ":trivy_db",
+        # RayImagePushContext, so refs and tags match the publish step's.
+        "//ci/ray_ci/automation",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("bazel-runfiles"),
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_scan_images",
+    size = "small",
+    srcs = ["test_scan_images.py"],
+    data = glob(["testdata/*.json"]),
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":fake_s3",
+        ":scan_images",
+        ":trivy_report",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_workspace_contexts",
+    size = "small",
+    srcs = ["test_workspace_contexts.py"],
+    data = [
+        "//:WORKSPACE",
+        "//:ci/docker/ray-core.wanda.yaml",
+        "//:ci/docker/ray-cpp-core.wanda.yaml",
+        "//:ci/docker/ray-java.wanda.yaml",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("bazel-runfiles"),
+        ci_require("pytest"),
+        ci_require("pyyaml"),
+    ],
+)
+
+py_binary(
+    name = "build_report",
+    srcs = ["build_report.py"],
+    # The scan steps, to know which images the build should have scanned.
+    data = ["//.buildkite:image-scan.rayci.yml"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":scan_images",
+        ":scan_store",
+        ":trivy_db",
+        ":trivy_report",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("bazel-runfiles"),
+        ci_require("click"),
+        ci_require("pyyaml"),
+    ],
+)
+
+py_test(
+    name = "test_build_report",
+    size = "small",
+    srcs = ["test_build_report.py"],
+    data = glob(["testdata/*.json"]),
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":build_report",
+        ":fake_s3",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("bazel-runfiles"),
+        ci_require("click"),
+        ci_require("pytest"),
+        ci_require("pyyaml"),
+    ],
+)
