@@ -5,6 +5,7 @@ These tests require Ray and test end-to-end list namespace expression evaluation
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 import ray
@@ -169,6 +170,44 @@ class TestListNamespace:
             names=["flattened"],
         )
         assert result_table.select(["flattened"]).combine_chunks().equals(expected)
+
+    def test_list_sort_null_row_spanning_values(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """sort() should handle a null row whose slot still spans child values."""
+        if dataset_format != "arrow":
+            pytest.skip("Null slots spanning child values only exist in Arrow.")
+
+        # Arrow allows a null list slot to cover child values; extracting a list
+        # field from a null struct row produces one.
+        items = pa.ListArray.from_arrays(
+            pa.array([0, 2, 4, 5], type=pa.int32()),
+            pa.array([3, 1, 9, 8, 7]),
+            mask=pa.array([False, True, False]),
+        )
+        assert len(pc.list_parent_indices(items)) == 5
+        table = pa.table({"items": items})
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        result = ds.with_column("sorted", col("items").list.sort())
+        rows = result.select_columns(["sorted"]).take_all()
+        assert [row["sorted"] for row in rows] == [[1, 3], None, [7]]
+
+    def test_list_flatten_null_row_spanning_values(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """flatten() should not shift values when a null row spans child values."""
+        if dataset_format != "arrow":
+            pytest.skip("Null slots spanning child values only exist in Arrow.")
+
+        nested = pa.array([[[1, 2]], [[0]], [[4, 5, 6]]])
+        struct = pa.StructArray.from_arrays(
+            [nested], ["nested"], mask=pa.array([False, True, False])
+        )
+        table = pa.table({"s": struct})
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        result = ds.with_column("flattened", col("s").struct["nested"].list.flatten())
+        rows = result.select_columns(["flattened"]).take_all()
+        assert [row["flattened"] for row in rows] == [[1, 2], None, [4, 5, 6]]
 
 
 if __name__ == "__main__":
