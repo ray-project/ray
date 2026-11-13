@@ -236,6 +236,12 @@ class _RestoreImage(NamedTuple):
     direct: bool = False
 
 
+@functools.lru_cache(maxsize=None)
+def _choom() -> Optional[str]:
+    """Return the path of util-linux's ``choom``, or None without it."""
+    return shutil.which("choom")
+
+
 def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
     """runsc and the global flags that its run/exec/kill/delete share."""
     args = ["runsc"]
@@ -2205,7 +2211,23 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     @staticmethod
     def _wrap_workload(meta, args):
-        return wrap_command(args, meta.get("cgroup"), meta["config"].oom_score_adj)
+        """Give a `runsc exec` the sandbox's OOM score, without its cgroup.
+
+        The command runs in the sandbox's Sentry, which is already in the
+        sandbox's cgroup, and `runsc exec` only relays it. Joining the cgroup
+        per call meant a cgroup migration, which takes a global lock and waits
+        for an RCU grace period: on a 352-thread host, exec went from 3 ms to
+        49 ms and every sandbox's execs queued on it.
+
+        That leaves only the OOM score to set. ``choom`` sets it and execs in
+        well under a millisecond. The Python launcher takes a few, so it's
+        the fallback for a node without util-linux's ``choom``.
+        """
+        score = meta["config"].oom_score_adj
+        choom = _choom() if score is not None else None
+        if choom:
+            return [choom, "-n", str(score), "--", *args]
+        return wrap_command(args, oom_score_adj=score)
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.
