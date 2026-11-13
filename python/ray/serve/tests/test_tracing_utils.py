@@ -36,6 +36,7 @@ from ray.serve._private.tracing_utils import (
     _load_span_processors,
     _validate_tracing_exporter,
     _validate_tracing_exporter_processors,
+    check_tracing_exporter_import_path,
     set_trace_status,
     setup_tracing,
 )
@@ -110,6 +111,58 @@ def test_validate_tracing_exporter_with_string():
     for invalid_exporter in invalid_exporters:
         with pytest.raises(TypeError, match=expected_exception):
             _validate_tracing_exporter(invalid_exporter)
+
+
+def _exporter_with_args(span_file):
+    return []
+
+
+def _exporter_that_raises():
+    raise RuntimeError("Validation must not call the exporter.")
+
+
+_THIS_MODULE = "ray.serve.tests.test_tracing_utils"
+
+
+@pytest.mark.parametrize(
+    "exporter_import_path",
+    [
+        DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
+        # A valid custom exporter; it raises if called, so passing also shows
+        # validation doesn't invoke it.
+        f"{_THIS_MODULE}:_exporter_that_raises",
+    ],
+)
+def test_check_tracing_exporter_import_path_accepts(exporter_import_path):
+    """The built-in exporter (which takes a file name) and zero-arg custom
+    exporters pass."""
+    check_tracing_exporter_import_path(
+        TracingConfig(enabled=True, exporter_import_path=exporter_import_path)
+    )
+
+
+@pytest.mark.parametrize(
+    "exporter_import_path,error,match",
+    [
+        ("no.such.module:nope", ImportError, None),
+        ("ray.serve._private.tracing_utils:does_not_exist", AttributeError, None),
+        (f"{_THIS_MODULE}:_exporter_with_args", TypeError, "cannot take any"),
+        (f"{_THIS_MODULE}:CUSTOM_EXPORTER_OUTPUT_FILENAME", TypeError, "a function"),
+    ],
+)
+def test_check_tracing_exporter_import_path_rejects(exporter_import_path, error, match):
+    """Unimportable exporters and custom ones with an invalid signature fail."""
+    with pytest.raises(error, match=match):
+        check_tracing_exporter_import_path(
+            TracingConfig(enabled=True, exporter_import_path=exporter_import_path)
+        )
+
+
+def test_check_tracing_exporter_import_path_skips_disabled():
+    """Disabled tracing never resolves the path, even a bogus one."""
+    check_tracing_exporter_import_path(
+        TracingConfig(enabled=False, exporter_import_path="no.such.module:nope")
+    )
 
 
 def test_validate_tracing_exporter_with_args():

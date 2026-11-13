@@ -14,7 +14,7 @@ from ray.exceptions import ActorUnschedulableError, RayTaskError
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.proxy_state import ActorProxyWrapper, wrap_as_future
 from ray.serve.config import HTTPOptions, gRPCOptions
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import LoggingConfig, TracingConfig
 
 
 def _create_object_ref_mock():
@@ -28,6 +28,7 @@ def _create_object_ref_mock():
 def _create_mocked_actor_proxy_wrapper(actor_handle_mock):
     return ActorProxyWrapper(
         logging_config=LoggingConfig(),
+        tracing_config=TracingConfig(),
         actor_handle=actor_handle_mock,
         node_id="some_node_id",
     )
@@ -289,6 +290,7 @@ def _make_unschedulable_wrapper(name: str) -> ActorProxyWrapper:
     nonexistent_node_id = "f" * 56
     return ActorProxyWrapper(
         logging_config=LoggingConfig(),
+        tracing_config=TracingConfig(),
         http_options=HTTPOptions(),
         grpc_options=gRPCOptions(),
         name=name,
@@ -397,6 +399,7 @@ def test_kill_error_logging_and_force_kill(
     actor_handle = FakeShutdownProxy.remote(**actor_kwargs)
     wrapper = ActorProxyWrapper(
         logging_config=LoggingConfig(),
+        tracing_config=TracingConfig(),
         actor_handle=actor_handle,
         node_id="test_node_id",
     )
@@ -424,6 +427,7 @@ def test_kill_success_path(ray_shutdown):
     actor_handle = FakeShutdownProxy.remote()
     wrapper = ActorProxyWrapper(
         logging_config=LoggingConfig(),
+        tracing_config=TracingConfig(),
         actor_handle=actor_handle,
         node_id="test_node_id",
     )

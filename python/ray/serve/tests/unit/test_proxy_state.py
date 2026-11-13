@@ -23,7 +23,7 @@ from ray.serve._private.proxy_state import (
 )
 from ray.serve._private.test_utils import MockTimer
 from ray.serve.config import HTTPOptions, ProxyLocation
-from ray.serve.schema import LoggingConfig, ProxyStatus
+from ray.serve.schema import LoggingConfig, ProxyStatus, TracingConfig
 
 HEAD_NODE_ID = "node_id-index-head"
 
@@ -108,6 +108,7 @@ def _create_proxy_state_manager(
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
             logging_config=LoggingConfig(),
+            tracing_config=TracingConfig(),
             actor_proxy_wrapper_class=actor_proxy_wrapper_class,
             timer=timer,
             running_native_proxies=running_native_proxies,
@@ -1044,7 +1045,9 @@ class TestActorProxyWrapperIsShutdown:
 
     def _make_wrapper(self) -> ActorProxyWrapper:
         return ActorProxyWrapper(
-            logging_config=LoggingConfig(), actor_handle=mock.MagicMock()
+            logging_config=LoggingConfig(),
+            tracing_config=TracingConfig(),
+            actor_handle=mock.MagicMock(),
         )
 
     def test_returns_true_when_actor_unschedulable(self):

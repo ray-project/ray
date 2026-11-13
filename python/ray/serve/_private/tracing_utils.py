@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 from ray._common.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
-    RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
-    RAY_SERVE_TRACING_SAMPLING_RATIO,
 )
 
 if TYPE_CHECKING:
@@ -236,11 +234,37 @@ def tracing_decorator_factory(
     return tracing_decorator
 
 
+class InvalidTracingConfigError(ValueError):
+    """The tracing config is invalid, e.g. its exporter can't be imported or
+    has an invalid signature."""
+
+
+class TracingSetupError(RuntimeError):
+    """A proxy failed to set tracing up, e.g. its exporter raised when called."""
+
+
+def check_tracing_exporter_import_path(
+    tracing_config: "TracingConfig",
+) -> None:
+    """Check that the configured tracing exporter imports and has a valid signature.
+
+    The exporter isn't called, so a factory that raises when invoked is only
+    caught when a proxy or replica sets tracing up.
+    """
+    if not tracing_config.enabled:
+        return
+    exporter = import_attr(tracing_config.exporter_import_path)
+    # The built-in exporter takes the span file name; custom ones take nothing.
+    if tracing_config.exporter_import_path != DEFAULT_TRACING_EXPORTER_IMPORT_PATH:
+        _validate_tracing_exporter(exporter)
+
+
 def setup_tracing(
     component_name: str,
     component_id: str,
-    component_type: Optional["ServeComponentType"] = None,  # noqa: F821
-    tracing_config: Optional["TracingConfig"] = None,  # noqa: F821
+    component_type: Optional["ServeComponentType"] = None,
+    *,
+    tracing_config: "TracingConfig",
 ) -> bool:
     """Set up tracing for a specific Serve component.
 
@@ -248,33 +272,20 @@ def setup_tracing(
         component_name: The name of the component.
         component_id: The unique identifier of the component.
         component_type: The type of the component.
-        tracing_config: Optional TracingConfig instance. When provided, the
-            exporter and sampling ratio are read from it. When None, tracing
-            falls back to the RAY_SERVE_TRACING_* environment variables.
+        tracing_config: The TracingConfig to set up tracing with, as resolved
+            by the controller.
 
     Returns:
         bool: True if tracing setup is successful, False otherwise.
     """
     global _tracing_enabled
 
-    if tracing_config is not None:
-        # Use TracingConfig-based configuration
-        if not tracing_config.enabled:
-            _tracing_enabled = False
-            return False
-        tracing_exporter_import_path = tracing_config.exporter_import_path
-        # Fill default exporter if enabled but path is empty
-        if not tracing_exporter_import_path:
-            tracing_exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
-        tracing_sampling_ratio = tracing_config.sampling_ratio
-    else:
-        # No TracingConfig provided: fall back to env-var configuration.
-        tracing_exporter_import_path = RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH
-        tracing_sampling_ratio = RAY_SERVE_TRACING_SAMPLING_RATIO
-
-    if tracing_exporter_import_path == "":
+    if not tracing_config.enabled:
         _tracing_enabled = False
         return False
+
+    tracing_exporter_import_path = tracing_config.exporter_import_path
+    tracing_sampling_ratio = tracing_config.sampling_ratio
 
     # Check dependencies
     if not trace:

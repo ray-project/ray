@@ -44,6 +44,8 @@ class ServeControllerAvatar:
                 proxy_location=ProxyLocation.HeadOnly,
                 global_logging_config=LoggingConfig(),
             )
+            # Wait for construction so a failed start fails this avatar.
+            ray.get(self._controller.check_alive.remote())
 
     def check_alive(self) -> None:
         """No-op to check if this actor is alive."""

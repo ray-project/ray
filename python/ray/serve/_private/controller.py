@@ -87,6 +87,10 @@ from ray.serve._private.routing_config import (
     RoutingConfigVersion,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
+from ray.serve._private.tracing_utils import (
+    InvalidTracingConfigError,
+    check_tracing_exporter_import_path,
+)
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -168,19 +172,35 @@ class ServeController:
         *,
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
-        global_tracing_config: Optional[TracingConfig] = None,
+        tracing_config_fields: Optional[Dict[str, Any]] = None,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_location: Optional[ProxyLocation] = None,
     ):
         if RAY_SERVE_THROUGHPUT_OPTIMIZED:
             self._log_throughput_opt_message()
 
-        self.global_tracing_config = global_tracing_config
-
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
+
+        # Tracing is set once, here, from the fields the user set explicitly;
+        # omitted fields default from this process's env vars. It survives
+        # recovery via the replayed constructor arg. Validate before writing any
+        # state: if __init__ raises, Ray doesn't restart the actor and releases
+        # its name. On a restart, log instead so recovery isn't blocked.
+        self.global_tracing_config = TracingConfig(**(tracing_config_fields or {}))
+        try:
+            check_tracing_exporter_import_path(self.global_tracing_config)
+        except Exception as e:
+            error = InvalidTracingConfigError(
+                "Invalid tracing config: exporter "
+                f"{self.global_tracing_config.exporter_import_path!r} "
+                f"is unusable ({type(e).__name__}: {e})."
+            )
+            if not ray.get_runtime_context().was_current_actor_reconstructed:
+                raise error from e
+            logger.error(f"{error} Continuing controller recovery.")
 
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
@@ -204,6 +224,8 @@ class ServeController:
         if log_config_checkpoint is not None:
             global_logging_config = pickle.loads(log_config_checkpoint)
         self.reconfigure_global_logging_config(global_logging_config)
+
+        logger.info(f"Global tracing config: {self.global_tracing_config}.")
 
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
@@ -257,6 +279,7 @@ class ServeController:
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=cast(LoggingConfig, self.global_logging_config),
+            tracing_config=self.global_tracing_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
             proxy_location=proxy_location,
             proxy_actor_class=cast(
@@ -360,9 +383,24 @@ class ServeController:
         msg += f"  • Request path log buffer size: {RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE}\n"
         logger.info(msg)
 
-    def get_tracing_config(self) -> Optional[TracingConfig]:
+    def get_tracing_config(self) -> TracingConfig:
         """Return the global tracing config."""
         return self.global_tracing_config
+
+    def check_tracing_config(self, tracing_config_fields: Dict[str, Any]):
+        """Reject a tracing config that differs from the one Serve started with.
+
+        Takes the caller's explicitly set fields and resolves omitted ones from
+        this process's env vars, as at startup, so equal requests compare
+        equal. OpenTelemetry sets the tracer provider once per process, so
+        running components can't adopt a new config.
+        """
+        if TracingConfig(**tracing_config_fields) != self.global_tracing_config:
+            raise ValueError(
+                "Tracing config cannot be changed after Serve has started; it "
+                "is an initialization-time setting. To change it, shut down and "
+                "restart Serve with the new tracing config."
+            )
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -1312,6 +1350,13 @@ class ServeController:
             )
             return
 
+        # Check before mutating any state: rejects a tracing config change. The
+        # incoming config was built elsewhere, so compare its explicit fields.
+        if config.tracing_config is not None:
+            self.check_tracing_config(
+                config.tracing_config.model_dump(exclude_unset=True)
+            )
+
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
             deployment_time = time.time()
@@ -1332,12 +1377,6 @@ class ServeController:
         )
         self._target_capacity = config.target_capacity
         self._applied_config_id = config.config_id
-
-        # If a global tracing config is provided in the declarative config,
-        # store it so replicas and proxies started for this config pick it up
-        # when they fetch the tracing config from the controller.
-        if config.tracing_config is not None:
-            self.global_tracing_config = config.tracing_config
 
         for app_config in config.applications:
             # If the application logging config is not set, use the global logging
