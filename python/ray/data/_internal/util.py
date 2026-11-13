@@ -649,12 +649,20 @@ def get_compute_strategy(
         elif not is_callable_class and (
             compute == "actors" or isinstance(compute, ActorPoolStrategy)
         ):
-            raise ValueError(
-                f"You specified the function {fn} as your UDF with the compute "
-                f"{compute}, but Ray Data can't schedule regular functions with the actor "
-                f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
-                f"None to use the default compute strategy."
+            from ray.data._internal.execution.execution_flags import (
+                actor_only_backend_enabled,
             )
+
+            # Under the actor-only backend, all map ops run on actors regardless of
+            # UDF type, so an explicit ActorPoolStrategy must be passable downstream
+            # (e.g. to control pool size or prevent operator fusion).
+            if not actor_only_backend_enabled():
+                raise ValueError(
+                    f"You specified the function {fn} as your UDF with the compute "
+                    f"{compute}, but Ray Data can't schedule regular functions with the actor "
+                    f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
+                    f"None to use the default compute strategy."
+                )
         return compute
     elif concurrency is not None:
         # Legacy code path to support `concurrency` argument.
@@ -734,7 +742,10 @@ def get_compute_strategy_for_read_api(
     Returns:
         The `ComputeStrategy` for reading.
     """
-    from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+    from ray.data._internal.compute import (
+        ComputeStrategy,
+        TaskPoolStrategy,
+    )
 
     # ``concurrency`` parameter takes precedence over the ``compute`` parameter.
     if concurrency is not None:

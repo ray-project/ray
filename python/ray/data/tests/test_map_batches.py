@@ -12,9 +12,6 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
-)
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
@@ -23,7 +20,6 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
@@ -823,10 +819,6 @@ def test_map_batches_async_generator_fast_yield(
     assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
-)
 def test_map_batches_struct_field_type_divergence(shutdown_only):
     """Test map_batches with struct fields that have diverging primitive types."""
 

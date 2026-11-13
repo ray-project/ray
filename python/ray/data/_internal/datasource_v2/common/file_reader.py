@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import cached_property, partial
-from typing import Any, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -155,9 +155,10 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        if self._schema is None:
+        schema = self._schema
+        if schema is None:
             return None
-        if any(isinstance(f.type, pa.ExtensionType) for f in self._schema):
+        if any(isinstance(f.type, pa.ExtensionType) for f in schema):
             return None
         partition_keys = (
             set(self._partition_parser._scheme.field_names or [])
@@ -167,7 +168,7 @@ class FileReader(Reader[FileManifest]):
         synthesized = {c.name for c in self._synthesized_columns}
         fields = [
             f
-            for f in self._schema
+            for f in schema
             if f.name not in partition_keys and f.name not in synthesized
         ]
         return pa.schema(fields) if fields else None
@@ -184,6 +185,42 @@ class FileReader(Reader[FileManifest]):
         {"year": int})`` still promotes them correctly.
         """
         return _broadcast_partition_value(name, value, num_rows, self._schema)
+
+    def _get_partition_values(self, path: str) -> Dict[str, Any]:
+        """Return partition values for one file or fragment path."""
+        return (
+            self._partition_parser(path) if self._partition_parser is not None else {}
+        )
+
+    def _apply_partition_values(
+        self,
+        table: pa.Table,
+        values: Mapping[str, Any],
+        *,
+        required_columns: Optional[Set[str]] = None,
+    ) -> pa.Table:
+        """Replace requested columns with typed path-derived partition values.
+
+        Format readers call this before residual filtering. The base read loop
+        keeps its post-read placement for formats using the default path.
+
+        Args:
+            table: Batch receiving the path-derived values.
+            values: Partition values for the current file or fragment.
+            required_columns: Keys to synthesize, or None for all parsed keys.
+
+        Returns:
+            Table with requested path values replacing same-named columns.
+        """
+        for name, value in values.items():
+            if required_columns is not None and name not in required_columns:
+                continue
+            if name in table.column_names:
+                table = table.drop([name])
+            table = table.append_column(
+                name, self._broadcast_partition_value(name, value, table.num_rows)
+            )
+        return table
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
@@ -267,29 +304,11 @@ class FileReader(Reader[FileManifest]):
                 if len(table) > self._limit - rows_read:
                     table = table.slice(0, self._limit - rows_read)
 
-            # Build the list of (name, value) pairs to synthesize from
-            # the fragment path: hive partitions.
-            derived_items: List[Tuple[str, Any]] = []
             if self._partition_parser is not None:
-                derived_items.extend(
-                    self._partition_parser(position.unit.source).items()
-                )
-
-            for name, value in derived_items:
-                if (
-                    columns_to_synthesize is not None
-                    and name not in columns_to_synthesize
-                ):
-                    continue
-                if name in table.column_names:
-                    # When the caller schema names a partition key, pyarrow
-                    # expects it in every file and fills it with nulls when
-                    # absent (the hive-typical case). Drop that placeholder
-                    # so the path-derived value below replaces it.
-                    table = table.drop([name])
-                table = table.append_column(
-                    name,
-                    self._broadcast_partition_value(name, value, table.num_rows),
+                table = self._apply_partition_values(
+                    table,
+                    self._get_partition_values(position.unit.source),
+                    required_columns=columns_to_synthesize,
                 )
 
             # Skip a synthesized column when projection pushdown has narrowed

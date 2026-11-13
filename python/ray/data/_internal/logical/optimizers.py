@@ -19,6 +19,9 @@ from ray.data._internal.logical.rules import (
     CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
     DeriveListFilesPushdown,
+    EliminateAggregateShuffle,
+    EnsureLocalAggregateReadsWholePartitions,
+    ExtractEquiJoinKeys,
     FuseOperators,
     InheritTargetMaxBlockSizeRule,
     LimitPushdownRule,
@@ -26,17 +29,22 @@ from ray.data._internal.logical.rules import (
     ProjectionPushdown,
     PushdownCountFiles,
     SetReadParallelismRule,
+    TopNRewriteRule,
 )
 from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
     [
+        # Idempotent and independent of the rules below: it only moves
+        # equalities from ``Join.condition`` into the join's condition keys.
+        ExtractEquiJoinKeys,
         LimitPushdownRule,
         ProjectionPushdown,
         PredicatePushdown,
         CombineShuffles,
         CombineDownloads,
         PushdownCountFiles,
+        TopNRewriteRule,
     ]
 )
 
@@ -44,7 +52,9 @@ _PHYSICAL_RULESET = Ruleset(
     [
         InheritTargetMaxBlockSizeRule,
         SetReadParallelismRule,
+        EliminateAggregateShuffle,
         FuseOperators,
+        EnsureLocalAggregateReadsWholePartitions,
         ConfigureMapTaskMemoryUsingOutputSize,
     ]
 )
