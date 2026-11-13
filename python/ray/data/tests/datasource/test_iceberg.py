@@ -3024,10 +3024,6 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     assert len(result.data_files) > 0, "Expected data files in result"
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestIcebergDatasourceV2:
     """Tests for the V2-only machinery, which has no V1 counterpart."""
 
@@ -3191,10 +3187,6 @@ class TestIcebergDatasourceV2:
         data_file.spec_id = spec_id
         return FileScanTask(data_file)
 
-    @pytest.mark.skipif(
-        get_pyarrow_version() < parse_version("18.0.0"),
-        reason="PyIceberg maps a UUID column to pa.uuid(), added in pyarrow 18",
-    )
     def test_partition_column_is_typed_and_lossless(self):
         """Partition values survive as Iceberg's own internal representations.
 
@@ -3339,13 +3331,6 @@ class TestIcebergDatasourceV2:
         table and plans it, and the rebuilt tasks must carry the same partition
         values and read the same rows.
         """
-        if isinstance(field_type, pyi_types.UUIDType) and (
-            get_pyarrow_version() < parse_version("18.0.0")
-        ):
-            pytest.skip(
-                "PyIceberg maps a UUID column to pa.uuid(), added in pyarrow 18"
-            )
-
         from pyiceberg.io.pyarrow import ArrowScan
 
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
