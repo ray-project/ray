@@ -7,7 +7,11 @@ import pyarrow as pa
 from pyarrow.fs import FileSystem
 
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
-from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    DEFAULT_MAX_LEAD_IN_NS,
+    MCAPSelection,
+    VideoOptions,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import MCAPReader
 from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
     DEFAULT_MAX_ROW_BYTES,
@@ -38,6 +42,8 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     JSON values when every selected channel of the sampled files is
     JSON-encoded, and the payload bytes otherwise. A sample read carries each
     topic's steps in ``topic_plans``, and its runs' budget in ``max_run_bytes``.
+    With ``video``, ``decoded_topics`` names the topics the planned schema gives
+    frame columns.
     """
 
     schema: pa.Schema
@@ -51,6 +57,9 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     max_row_bytes: int = DEFAULT_MAX_ROW_BYTES
     topic_plans: Tuple[TopicPlan, ...] = ()
     max_run_bytes: Optional[int] = None
+    video: Optional[VideoOptions] = None
+    decoded_topics: Tuple[str, ...] = ()
+    max_lead_in_ns: int = DEFAULT_MAX_LEAD_IN_NS
 
     def read_schema(self) -> pa.Schema:
         """Return the dataset schema after column pruning.
@@ -90,4 +99,7 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
             max_row_bytes=self.max_row_bytes,
             topic_plans=self.topic_plans,
             max_run_bytes=self.max_run_bytes,
+            video=self.video,
+            decoded_topics=self.decoded_topics,
+            max_lead_in_ns=self.max_lead_in_ns,
         )
