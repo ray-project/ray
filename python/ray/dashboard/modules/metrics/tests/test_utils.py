@@ -9,6 +9,55 @@ from ray.dashboard.modules.metrics.metrics_head import (
 )
 
 
+def test_router_prefill_panel_keeps_each_handle_separate():
+    from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+        generate_serve_deployment_grafana_dashboard,
+        generate_serve_llm_grafana_dashboard,
+    )
+
+    dashboard, _ = generate_serve_deployment_grafana_dashboard()
+    assert all(p["title"] != "KV Router" for p in json.loads(dashboard)["panels"])
+    dashboard, _ = generate_serve_llm_grafana_dashboard()
+    panels = json.loads(dashboard)["panels"]
+    row = next(p for p in panels if p["title"] == "KV Router")
+    assert row["type"] == "row"
+    assert row["collapsed"] is True
+    assert all(p["title"] != "Uncached prefill tokens per router" for p in panels)
+    panel = next(
+        p for p in row["panels"] if p["title"] == "Uncached prefill tokens per router"
+    )
+    assert panel["stack"] is False
+    assert panel["description"] == (
+        "Current estimated global uncached prefill tokens reported by each router handle."
+    )
+    target = panel["targets"][0]
+    assert target["expr"].startswith("ray_serve_router_uncached_prefill_tokens{")
+    assert 'deployment=~"$deployment"' in target["expr"]
+    assert "$workerid" not in target["expr"]
+    assert "$vllm_model_name" not in target["expr"]
+    assert "or vector(0)" not in target["expr"]
+    assert "{{handle}}" in target["legendFormat"]
+    assert "{{actor_id}}" in target["legendFormat"]
+
+
+def test_autoscaling_prefill_panel_maxes_across_handles():
+    from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+        generate_serve_llm_grafana_dashboard,
+    )
+
+    dashboard, _ = generate_serve_llm_grafana_dashboard()
+    row = next(p for p in json.loads(dashboard)["panels"] if p["title"] == "KV Router")
+    panel = next(
+        p for p in row["panels"] if p["title"] == "Autoscaling uncached prefill tokens"
+    )
+    expr = panel["targets"][0]["expr"]
+    assert expr.startswith(
+        "max by (application, deployment) (ray_serve_autoscaling_router_metric{"
+    )
+    assert 'metric="outstanding_effective_prefill_tokens"' in expr
+    assert 'deployment=~"$deployment"' in expr
+
+
 @pytest.mark.parametrize(
     "headers, raises_error",
     [

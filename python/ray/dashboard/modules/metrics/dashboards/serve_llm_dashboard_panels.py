@@ -1011,6 +1011,37 @@ _token_distribution_panels = [
     ),
 ]
 
+_kv_router_panels = [
+    Panel(
+        id=61,
+        title="Uncached prefill tokens per router",
+        description="Current estimated global uncached prefill tokens reported by each router handle.",
+        unit="tokens",
+        targets=[
+            Target(
+                expr='ray_serve_router_uncached_prefill_tokens{{deployment=~"$deployment", {global_filters}}}',
+                legend="{{application}}#{{deployment}}#{{handle}}#{{actor_id}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=62,
+        title="Autoscaling uncached prefill tokens",
+        description="Uncached prefill tokens the token autoscaling policy scales on: each router's mean over the look-back window, maxed across routers.",
+        unit="tokens",
+        targets=[
+            Target(
+                expr='max by (application, deployment) (ray_serve_autoscaling_router_metric{{metric="outstanding_effective_prefill_tokens", deployment=~"$deployment", {global_filters}}})',
+                legend="{{application}}#{{deployment}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+]
+
 # ===================================================================
 # Assemble rows and config
 # ===================================================================
@@ -1027,6 +1058,7 @@ _ALL_ROWS = [
         panels=_kv_offload_panels,
         collapsed=True,
     ),
+    Row(title="KV Router", id=509, panels=_kv_router_panels, collapsed=True),
     Row(
         title="Token Distribution",
         id=507,

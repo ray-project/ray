@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
+from ray.util import metrics
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -203,6 +204,9 @@ class KVTokenTracker:
         indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
         serve_deployment_id: Optional[Any] = None,
         session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
+        *,
+        router_handle_id: str = "",
+        router_actor_id: str = "",
     ):
         # The tracked LLMServer deployment id, passed in by the LLMRouter
         # that builds the tracker.
@@ -229,6 +233,24 @@ class KVTokenTracker:
         self._requests: "OrderedDict[str, RequestLifecycle]" = OrderedDict()
         # Current workload snapshot, used by the autoscaler.
         self._outstanding_effective_prefill_tokens = 0
+        self._uncached_prefill_tokens_gauge = metrics.Gauge(
+            "serve_router_uncached_prefill_tokens",
+            description=(
+                "Current outstanding uncached prefill tokens reported by this KV router."
+            ),
+            tag_keys=("deployment", "application", "handle", "actor_id"),
+        )
+        self._uncached_prefill_tokens_gauge.set_default_tags(
+            {
+                "deployment": serve_deployment_id.name if serve_deployment_id else "",
+                "application": serve_deployment_id.app_name
+                if serve_deployment_id
+                else "",
+                "handle": router_handle_id,
+                "actor_id": router_actor_id,
+            }
+        )
+        self._uncached_prefill_tokens_gauge.set(0)
         self._autoscaling_metrics_callback: Optional[
             Callable[[Dict[str, int]], None]
         ] = None
@@ -364,6 +386,9 @@ class KVTokenTracker:
         }
 
     def _publish_autoscaling_snapshot(self) -> None:
+        self._uncached_prefill_tokens_gauge.set(
+            self._outstanding_effective_prefill_tokens
+        )
         if self._autoscaling_metrics_callback is None:
             return
         # Callers publish after updating local state but before syncing the
@@ -851,7 +876,11 @@ def get_llm_router_handle():
 
 
 def build_kv_token_tracker(
-    llm_config: "LLMConfig", serve_deployment_id: Any
+    llm_config: "LLMConfig",
+    serve_deployment_id: Any,
+    *,
+    router_handle_id: str = "",
+    router_actor_id: str = "",
 ) -> "KVTokenTracker":
     """Build the ``KVTokenTracker`` and register it in this process's global
     so the same-process ``KVAwareRouter`` can reach it. Must be called from the
@@ -871,6 +900,8 @@ def build_kv_token_tracker(
             KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
         ),
         serve_deployment_id=serve_deployment_id,
+        router_handle_id=router_handle_id,
+        router_actor_id=router_actor_id,
     )
     set_kv_token_tracker(tracker)
     return tracker
