@@ -64,27 +64,45 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
+        OnlineBinPacker,
+    )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 logger = logging.getLogger(__name__)
 
 
-def _read_parquet_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[int]):
     import pyarrow.dataset as pds
     import pyarrow.parquet as pq
 
     if filesystem is None:
-        return pq.read_schema(path)
+        return pq.read_metadata(path)
     filesystem = filesystem_for_sized_opens(filesystem)
     fragment = pds.ParquetFileFormat().make_fragment(
         path, filesystem=filesystem, file_size=size
     )
-    metadata = call_with_retry(
+    return call_with_retry(
         lambda: fragment.metadata,
         description=f"read Parquet footer for {path}",
         match=DataContext.get_current().retried_io_errors,
     )
-    return metadata.schema.to_arrow_schema()
+
+
+def _read_parquet_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+    if filesystem is None:
+        import pyarrow.parquet as pq
+
+        return pq.read_schema(path)
+    return _read_parquet_metadata(path, filesystem, size).schema.to_arrow_schema()
+
+
+def _read_parquet_schema_metadata(
+    path: str, filesystem: "FileSystem", size: Optional[int]
+) -> bytes:
+    output = pa.BufferOutputStream()
+    _read_parquet_metadata(path, filesystem, size).write_metadata_file(output)
+    return output.getvalue().to_pybytes()
 
 
 @DeveloperAPI
@@ -242,41 +260,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
     def get_file_partitioner(self, **kwargs):
         # Listing rows carry per-row-group stats, so bin-pack them into read
         # units instead of size-estimating whole files.
-        from ray.data._internal.datasource_v2.common.online_bin_packer import (
-            OnlineBinPacker,
-        )
-        from ray.data._internal.util import MiB
-
-        max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
-        max_shared_open_bins = env_integer(
-            "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
-        )
-        split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
-        # A row-group shuffle feeds runs from many files interleaved; per-file
-        # heavy bins would split them back apart, so pack everything shared.
-        isolate_heavy_files = not self._is_row_group_shuffle()
-        logger.debug(
-            "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
-            "split_coalesced=%s, isolate_heavy_files=%s)",
-            max_bin_bytes,
-            max_shared_open_bins,
-            split_coalesced,
-            isolate_heavy_files,
-        )
-        return OnlineBinPacker(
-            max_bin_bytes=max_bin_bytes,
-            max_shared_open_bins=max_shared_open_bins,
-            split_coalesced=split_coalesced,
-            isolate_heavy_files=isolate_heavy_files,
-        )
-
-    def _is_row_group_shuffle(self) -> bool:
-        from ray.data.datasource.file_based_datasource import FileShuffleConfig
-
-        return (
-            isinstance(self._shuffle, FileShuffleConfig)
-            and self._shuffle.small_chunks_shuffle
-        )
+        return make_row_group_bin_packer(self._shuffle)
 
     @override
     def resolve_partitioning(
@@ -359,7 +343,11 @@ class ParquetDatasourceV2(FileDataSourceV2):
     def infer_full_schema(
         self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
     ) -> pa.Schema:
-        if self._user_schema is not None or not len(sample):
+        if (
+            type(self).infer_schema is not ParquetDatasourceV2.infer_schema
+            or self._user_schema is not None
+            or not len(sample)
+        ):
             return self.infer_schema(sample)
         schema = infer_full_schema_from_files(
             sample,
@@ -368,6 +356,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
             read_schema=_read_parquet_schema,
             ray_remote_args=ray_remote_args,
             supports_distributed_reads=self.supports_distributed_reads,
+            read_schema_metadata=_read_parquet_schema_metadata,
         )
         if schema is None:
             return self.infer_schema(sample)
@@ -450,3 +439,49 @@ class ParquetDatasourceV2(FileDataSourceV2):
             target_block_size=DataContext.get_current().target_max_block_size,
             parquet_format_kwargs=dict(self._parquet_format_kwargs),
         )
+
+
+def make_row_group_bin_packer(
+    shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]],
+) -> "OnlineBinPacker":
+    """Bin packer for the per-row-group listing rows ``FooterFileIndexer`` emits.
+
+    Shared by every source whose listing goes through ``FooterFileIndexer``.
+
+    Args:
+        shuffle: The read's shuffle setting.
+
+    Returns:
+        The ``OnlineBinPacker``, configured from the environment.
+    """
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
+        OnlineBinPacker,
+    )
+    from ray.data._internal.util import MiB
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
+    max_shared_open_bins = env_integer(
+        "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
+    )
+    split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
+    # A row-group shuffle feeds runs from many files interleaved; per-file
+    # heavy bins would split them back apart, so pack everything shared.
+    row_group_shuffle = (
+        isinstance(shuffle, FileShuffleConfig) and shuffle.small_chunks_shuffle
+    )
+    isolate_heavy_files = not row_group_shuffle
+    logger.debug(
+        "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
+        "split_coalesced=%s, isolate_heavy_files=%s)",
+        max_bin_bytes,
+        max_shared_open_bins,
+        split_coalesced,
+        isolate_heavy_files,
+    )
+    return OnlineBinPacker(
+        max_bin_bytes=max_bin_bytes,
+        max_shared_open_bins=max_shared_open_bins,
+        split_coalesced=split_coalesced,
+        isolate_heavy_files=isolate_heavy_files,
+    )

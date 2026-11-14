@@ -13,7 +13,7 @@ from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
-from packaging.version import parse as parse_version
+from pyarrow import FixedShapeTensorArray, FixedShapeTensorType
 
 import ray.cloudpickle as cloudpickle
 from ray._common.utils import env_integer
@@ -29,10 +29,7 @@ from ray.data._internal.tensor_extensions.utils import (
     _should_convert_to_tensor,
     create_ragged_ndarray,
 )
-from ray.data._internal.utils.arrow_utils import (
-    _check_pyarrow_version,
-    get_pyarrow_version,
-)
+from ray.data._internal.utils.arrow_utils import _check_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -40,17 +37,6 @@ from ray.util.common import INT32_MAX
 
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
-
-PYARROW_VERSION = get_pyarrow_version()
-
-# Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
-MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
-# Minimum version supporting Arrow's native FixedShapeTensorArray and FixedShapeTensorType
-MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY = parse_version("12.0.0")
-# Minimum version supporting Arrow's native FixedShapeTensorScalar
-MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR = parse_version("16.0.0")
-# Min version supporting ``ExtensionArray``s in ``pyarrow.concat``
-MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
@@ -72,20 +58,6 @@ _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = (
     os.environ.get("RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA", "0") == "1"
 )
 
-# Conditional imports for PyArrow features that are only available in newer versions
-# FixedShapeTensorArray was introduced in PyArrow 12.0.0, but we want min version for
-# 16.0.0, because 12.0.0 contains bugs in slicing arrays, and has no support for to_numpy()
-# for scalars.
-if (
-    PYARROW_VERSION is None
-    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR
-):
-    from pyarrow import FixedShapeTensorArray, FixedShapeTensorType
-else:
-    FixedShapeTensorArray = None
-    FixedShapeTensorType = None
-
-
 # 100,000 entries, about 10MB in memory.
 # Most users tables should have less than 100K columns.
 ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE = env_integer(
@@ -102,7 +74,7 @@ class FixedShapeTensorFormat(Enum):
     V1 = "v1"
     # ArrowTensorTypeV2 (supports >2GB tensors)
     V2 = "v2"
-    # PyArrow's native FixedShapeTensorType (requires PyArrow 12+)
+    # PyArrow's native FixedShapeTensorType
     ARROW_NATIVE = "native"
 
     def to_type(self) -> pa.DataType:
@@ -110,7 +82,6 @@ class FixedShapeTensorFormat(Enum):
             return ArrowTensorType
         if self == FixedShapeTensorFormat.V2:
             return ArrowTensorTypeV2
-        assert FixedShapeTensorType is not None
         return FixedShapeTensorType
 
 
@@ -122,10 +93,6 @@ def _native_tensor_value_type_can_convert_to_numpy(t: "pa.DataType") -> bool:
     In the future, we may want to support more datatypes.
     """
     return pa.types.is_floating(t) or pa.types.is_integer(t)
-
-
-def _extension_array_concat_supported() -> bool:
-    return get_pyarrow_version() >= MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED
 
 
 def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
@@ -769,9 +736,6 @@ def create_arrow_fixed_shape_tensor_type(
 
     Returns:
         An Arrow ExtensionType for the tensor.
-
-    Raises:
-        ValueError: If NATIVE format is requested but PyArrow < 16.0.0.
     """
     from ray.data.context import DataContext
 
@@ -779,19 +743,9 @@ def create_arrow_fixed_shape_tensor_type(
     assert is_valid_dim
     tensor_format = DataContext.get_current().arrow_fixed_shape_tensor_format
 
-    # Native tensor format requires PyArrow 16+
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         fallback = FixedShapeTensorFormat.V2
-        if FixedShapeTensorType is None:
-            if log_once("native_fixed_shape_tensors_not_supported"):
-                warnings.warn(
-                    f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR} "
-                    f"to enable native tensor arrays. Falling back to {fallback}.",
-                    UserWarning,
-                    stacklevel=3,
-                )
-            tensor_format = fallback
-        elif not _native_tensor_value_type_can_convert_to_numpy(dtype):
+        if not _native_tensor_value_type_can_convert_to_numpy(dtype):
             if log_once("native_fixed_shape_tensors_unsupported_type"):
                 warnings.warn(
                     f"Native fixed-shape tensor arrays do not support dtype {dtype}. "

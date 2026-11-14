@@ -11,6 +11,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Tuple,
     Union,
 )
@@ -26,11 +27,14 @@ from ray.data._internal.logical.operators.one_to_one_operator import AbstractOne
 from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
+    AliasExpr,
+    ColumnExpr,
     Expr,
     StarExpr,
     expand_projection_exprs,
     expand_star_exprs,
     exprlist_to_fields,
+    is_rename_expr,
 )
 from ray.data.preprocessor import Preprocessor
 
@@ -538,6 +542,32 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
+
+    def preserves_columns(self, columns: Sequence[str]) -> bool:
+        """Whether each of ``columns`` passes through unchanged, same name."""
+
+        has_star = any(isinstance(e, StarExpr) for e in self.exprs)
+        # The last expression for a name wins, as in eval_projection.
+        final_exprs: Dict[str, "Expr"] = {}
+        for e in self.exprs:
+            if not isinstance(e, StarExpr):
+                final_exprs[e.name] = e
+        # star() doesn't pass along a column that another expression renames.
+        rename_sources = {e.expr.name for e in self.exprs if is_rename_expr(e)}
+
+        for column in columns:
+            expr = final_exprs.get(column)
+            if expr is None:
+                # Only star() can pass it along.
+                if not has_star or column in rename_sources:
+                    return False
+                continue
+            # Must be the same column, maybe aliased to its own name.
+            while isinstance(expr, AliasExpr):
+                expr = expr.expr
+            if not (isinstance(expr, ColumnExpr) and expr.name == column):
+                return False
+        return True
 
     def infer_schema(self) -> Optional["Schema"]:
         import pyarrow as pa

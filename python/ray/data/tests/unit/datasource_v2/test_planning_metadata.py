@@ -1,4 +1,5 @@
 from dataclasses import replace
+from pathlib import Path
 from unittest.mock import Mock
 
 import pyarrow as pa
@@ -110,6 +111,48 @@ def test_metadata_hook_preserves_infer_schema_driver_fallback(
     result = source.infer_full_schema_with_metadata(sample, ray_remote_args={})
     hook.assert_called_once_with(sample)
     assert result.schema is hook.return_value and result.metadata is None
+
+
+@pytest.mark.parametrize("budget", [0, 32, 4096])
+def test_driver_parquet_empty_struct_schema_with_metadata_budget(
+    monkeypatch, tmp_path, budget
+):
+    fixture = (
+        Path(__file__).parents[2]
+        / "datasource_v2"
+        / "data"
+        / "map_empty_struct.parquet"
+    )
+    path = tmp_path / "data.parquet"
+    path.write_bytes(fixture.read_bytes())
+    expected = pq.read_schema(path)
+    assert not expected.equals(
+        pa.ipc.read_schema(pa.BufferReader(expected.serialize())), check_metadata=True
+    )
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", budget
+    )
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 4096
+    )
+    raw = RecordingLocalFileSystem(skip_instance_cache=True)
+    fs = pafs.PyFileSystem(pafs.FSSpecHandler(raw))
+    sample = FileManifest.construct_manifest(
+        paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
+    )
+    result = ParquetDatasourceV2(
+        [str(path)], filesystem=fs
+    ).infer_full_schema_with_metadata(sample, ray_remote_args={"num_cpus": 0})
+    assert result.schema.equals(expected, check_metadata=True)
+    assert len(raw.opens) == 1
+    metadata = result.metadata
+    if budget == 0:
+        assert metadata is None
+    else:
+        assert metadata is not None
+        file_metadata = FileMetadata.from_metadata(metadata[0].as_py())
+        assert file_metadata.num_rows == pq.read_metadata(path).num_rows
+        assert (file_metadata.parquet_footer is not None) == (budget == 4096)
 
 
 @pytest.mark.parametrize("case", ["Parquet", "nan", "null", "no_statistics"])

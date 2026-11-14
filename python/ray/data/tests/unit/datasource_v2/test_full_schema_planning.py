@@ -105,6 +105,51 @@ def test_schema_task_admission(case_args, allowed):
 
 
 @pytest.mark.parametrize(
+    "module,source_type",
+    [
+        (parquet_datasource_v2, parquet_datasource_v2.ParquetDatasourceV2),
+        (orc_datasource_v2, orc_datasource_v2.OrcDatasourceV2),
+    ],
+)
+def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_type):
+    for suffix, value in dict(
+        min_files=0, max_tasks=2, num_cpus=0.5, batch_size=2, io_concurrency=4
+    ).items():
+        monkeypatch.setattr(
+            inference, f"_FULL_SCHEMA_INFERENCE_{suffix.upper()}", value
+        )
+    monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 4})
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "label_selector", None
+    )
+    remote = Mock()
+    remote.options.return_value = remote
+    remote.remote.side_effect = RuntimeError("distributed path selected")
+    monkeypatch.setattr(inference, "cached_remote_fn", Mock(return_value=remote))
+    distributed = Mock(wraps=module.infer_full_schema_from_files)
+    monkeypatch.setattr(module, "infer_full_schema_from_files", distributed)
+    sample = FileManifest.construct_manifest(
+        paths=["unused"], sizes=[1], chunk_metadatas=[None]
+    )
+    custom_schema = pa.schema([("custom", pa.int64())])
+    hook = Mock(return_value=custom_schema)
+    custom_type = type("CustomSource", (source_type,), {"infer_schema": hook})
+    source = custom_type(["unused"], filesystem=pafs.LocalFileSystem())
+
+    assert source.infer_full_schema(sample, ray_remote_args={}) is custom_schema
+    hook.assert_called_once_with(sample)
+    distributed.assert_not_called()
+    remote.remote.assert_not_called()
+
+    inherited_type = type("InheritedSource", (source_type,), {})
+    inherited = inherited_type(["unused"], filesystem=pafs.LocalFileSystem())
+    with pytest.raises(RuntimeError, match="distributed path selected"):
+        inherited.infer_full_schema(sample, ray_remote_args={})
+    distributed.assert_called_once()
+    remote.remote.assert_called_once()
+
+
+@pytest.mark.parametrize(
     "read_args,cpus,io_concurrency,threshold,window,schema_case",
     [
         ({}, 4, 4, 0, 0, "unique"),
@@ -170,7 +215,17 @@ def test_ordered_reads_and_task_options(
     remote.options.return_value = remote
     payloads, submitted, widths, timeouts = {}, [], [], []
 
-    def submit(batch, batch_sizes, filesystem, reader, format_name, ctx, concurrency):
+    def submit(
+        batch,
+        batch_sizes,
+        filesystem,
+        reader,
+        format_name,
+        ctx,
+        concurrency,
+        metadata_reader,
+    ):
+        assert metadata_reader is None
         assert batch_sizes == [int(path.removeprefix("field_")) + 1 for path in batch]
         assert concurrency == io_concurrency
         ref = Mock(index=len(submitted))
@@ -379,6 +434,7 @@ def test_worker_returns_first_position_for_exact_payload():
         assert size == int(path) + 1
         return ordered[int(path)]
 
+    read_metadata = Mock()
     result = inference._read_schema_batch(
         paths,
         [i + 1 for i in range(len(paths))],
@@ -387,12 +443,82 @@ def test_worker_returns_first_position_for_exact_payload():
         "Parquet",
         context,
         4,
+        read_metadata,
     )
     assert [index for index, _, _ in result] == [0, 1, 3]
     assert [payload for _, payload, _ in result] == [
         values[i].serialize().to_pybytes() for i in range(3)
     ]
     assert all(not parquet_encoded for _, _, parquet_encoded in result)
+    read_metadata.assert_not_called()
+
+
+@pytest.mark.parametrize("encoding_failure", ["unsupported", "lossy"])
+def test_worker_uses_original_metadata_only_for_encoding_failure(
+    monkeypatch, encoding_failure
+):
+    schema = Mock()
+    schema.serialize.return_value = pa.schema([("a", pa.int64())]).serialize()
+    schema.equals.side_effect = (
+        [False, True] if encoding_failure == "unsupported" else [False, False, True]
+    )
+    write_metadata = Mock(
+        side_effect=(
+            pa.ArrowNotImplementedError("encoding")
+            if encoding_failure == "unsupported"
+            else None
+        )
+    )
+    monkeypatch.setattr(pq, "write_metadata", write_metadata)
+    monkeypatch.setattr(pq, "read_schema", Mock(return_value=pa.schema([])))
+    read_metadata = Mock(return_value=b"original metadata")
+    filesystem = pafs.LocalFileSystem()
+    result = inference._read_schema_batch(
+        ["test.parquet"],
+        [123],
+        filesystem,
+        lambda *args: schema,
+        "Parquet",
+        DataContext.get_current(),
+        1,
+        read_metadata,
+    )
+    assert result == [(0, b"original metadata", True)]
+    read_metadata.assert_called_once_with("test.parquet", filesystem, 123)
+
+
+@pytest.mark.parametrize(
+    "failure,error,message",
+    [
+        pytest.param("read", OSError, "footer read failed", id="read_error"),
+        pytest.param(
+            "changed", pa.ArrowInvalid, "original Parquet metadata", id="changed_schema"
+        ),
+    ],
+)
+def test_worker_preserves_metadata_failures(monkeypatch, failure, error, message):
+    schema = Mock()
+    schema.serialize.return_value = pa.schema([("a", pa.int64())]).serialize()
+    schema.equals.return_value = False
+    monkeypatch.setattr(
+        pq, "write_metadata", Mock(side_effect=pa.ArrowNotImplementedError("encoding"))
+    )
+    if failure == "read":
+        read_metadata = Mock(side_effect=OSError("footer read failed"))
+    else:
+        monkeypatch.setattr(pq, "read_schema", Mock(return_value=pa.schema([])))
+        read_metadata = Mock(return_value=b"different metadata")
+    with pytest.raises(error, match=message):
+        inference._read_schema_batch(
+            ["test.parquet"],
+            [123],
+            pafs.LocalFileSystem(),
+            lambda *args: schema,
+            "Parquet",
+            DataContext.get_current(),
+            1,
+            read_metadata,
+        )
 
 
 @pytest.mark.parametrize("size", [None, 123])

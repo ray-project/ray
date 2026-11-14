@@ -99,13 +99,9 @@ survives pickling -- so it stays honest if the delivery mechanism changes again.
 Parquet takes the other channel
 -------------------------------
 ``read_parquet`` is filesystem-only: it ignores ``storage_options`` entirely, so
-the SAS has to reach it through a ``pyarrow.fs.AzureFileSystem``. ``resolve()``
-builds one, which needs pyarrow >= 20.0.0 -- that is when ``sas_token`` was
-added (apache/arrow#45705). Below it the credential cannot arrive by any route
-and ``resolve()`` raises ``ImportError`` rather than letting pyarrow fall
-through to ``DefaultAzureCredential``.
-``test_resolve_conveys_parquet_credentials_to_reader`` asserts whichever of
-those two outcomes matches the installed pyarrow.
+the SAS has to reach it through a ``pyarrow.fs.AzureFileSystem`` (its
+``sas_token`` parameter, apache/arrow#45705), which ``resolve()`` builds.
+``test_resolve_conveys_parquet_credentials_to_reader`` asserts that it does.
 
 Two details in that filesystem are easy to get wrong and both fail as an
 unauthenticated 404 rather than anything descriptive:
@@ -142,7 +138,6 @@ from typing import Optional
 from unittest import mock
 
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data.tests.conftest import *  # noqa: F401,F403
@@ -845,45 +840,26 @@ def test_vended_credentials_reach_read_tasks(ray_start_10_cpus_shared, azure_bac
 
 
 # ---------------------------------------------------------------------------
-# Parquet: a pyarrow version floor, and a path that is still incomplete
+# Parquet: the filesystem credential channel
 # ---------------------------------------------------------------------------
 
 
 def test_resolve_conveys_parquet_credentials_to_reader(
     azure_backend, suppress_ray_init
 ):
-    """Resolving an Azure Parquet table either vends a usable credential or
-    refuses outright -- never silently returns one the reader cannot use.
+    """Resolving an Azure Parquet table vends a credential the reader can use.
 
-    ``read_parquet`` is filesystem-only, and ``pyarrow.fs.AzureFileSystem``
-    gained its ``sas_token`` parameter in pyarrow 20.0.0 (apache/arrow#45705).
-    So which outcome is correct depends on the installed pyarrow, and both are
-    asserted here against the version actually present:
-
-    - below 20, an up-front ``ImportError``. Silently proceeding is much worse
-      than failing: pyarrow reports a missing Azure credential by falling
-      through to ``DefaultAzureCredential``, which stalls on the
-      instance-metadata endpoint or, over a plain-HTTP endpoint, calls
-      ``abort()`` in C++ and kills the process with SIGABRT -- uncatchable from
-      Python, and it would take the rest of this file down with it.
-    - at 20 or above, resolution proceeds and the SAS is present in the
-      resolved source.
-
-    Asserted at the ``resolve()`` boundary rather than by attempting a read, for
-    the SIGABRT reason above.
+    ``read_parquet`` is filesystem-only, so the SAS must arrive inside a
+    ``pyarrow.fs.AzureFileSystem`` (its ``sas_token`` parameter,
+    apache/arrow#45705). Asserted at the ``resolve()`` boundary rather than by
+    attempting a read: pyarrow reports a missing Azure credential by falling
+    through to ``DefaultAzureCredential``, which stalls on the
+    instance-metadata endpoint or, over a plain-HTTP endpoint, calls
+    ``abort()`` in C++ and kills the process with SIGABRT -- uncatchable from
+    Python, and it would take the rest of this file down with it.
     """
-    from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
     catalog = azure_backend.catalog()
     table = azure_backend.parquet_table_identifier()
-    pyarrow_version = get_pyarrow_version()
-
-    if pyarrow_version is not None and pyarrow_version < parse_version("20.0.0"):
-        with pytest.raises(ImportError, match="requires pyarrow >= 20.0.0"):
-            catalog.resolve(
-                table, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.READ
-            )
-        return
 
     with azure_backend.azure_filesystem_patch():
         resolved = catalog.resolve(
@@ -928,16 +904,6 @@ def test_parquet_count_min_max_via_catalog(ray_start_10_cpus_shared, azure_backe
     ``storage_options``. The data spans several files, so the scan fans out and
     the filesystem has to arrive intact in each read task.
     """
-    from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is not None and pyarrow_version < parse_version("20.0.0"):
-        pytest.skip(
-            "pyarrow.fs.AzureFileSystem gained sas_token in 20.0.0, so the SAS "
-            "cannot reach read_parquet below it -- resolve() refuses instead, "
-            "which test_resolve_conveys_parquet_credentials_to_reader asserts."
-        )
-
     catalog = azure_backend.catalog()
 
     # The filesystem is built during `read_parquet`, on the driver; it pickles

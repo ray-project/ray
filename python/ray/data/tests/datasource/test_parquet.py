@@ -16,7 +16,6 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as parse_version
 from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
@@ -36,7 +35,6 @@ from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import explain_plan, rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -1948,14 +1946,7 @@ def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
         )
     )
 
-    # Since version 15, use_legacy_dataset is deprecated.
-    if parse_version(pa.__version__) >= parse_version("15.0.0"):
-        ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
-    else:
-        ds = pq.ParquetDataset(
-            tmp_path / "test_row_group_5k.parquet",
-            use_legacy_dataset=False,  # required for .fragments attribute
-        )
+    ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
     assert ds.fragments[0].num_row_groups == 2
 
 
@@ -1973,14 +1964,7 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
         )
     )
 
-    # Since version 15, use_legacy_dataset is deprecated.
-    if parse_version(pa.__version__) >= parse_version("15.0.0"):
-        ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
-    else:
-        ds = pq.ParquetDataset(
-            tmp_path / "test_row_group_1k.parquet",
-            use_legacy_dataset=False,
-        )
+    ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
     assert ds.fragments[0].num_row_groups == 10
 
 
@@ -2864,10 +2848,6 @@ def hive_partitioned_dataset(tmp_path):
     ],
     ids=lambda ops: "_".join(ops) if isinstance(ops, tuple) else ops,
 )
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
-)
 def test_hive_partitioned_parquet_operations(
     ray_start_regular_shared,
     hive_partitioned_dataset,
@@ -3106,10 +3086,6 @@ def test_hive_partitioned_parquet_operations(
 
 
 @pytest.mark.parametrize("choice", ["default", "hive", "filename", "ray_default"])
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
-)
 def test_write_parquet_partitioning(choice, tmp_path):
 
     # Ray's default is "hive", while pyarrow's default is "directory" (when None).
@@ -3339,10 +3315,6 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
     return str(tmp_path), file_path, num_rows, schema
 
 
-@pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("16.0.0"),
-    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
-)
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     ray_start_regular_shared, nested_parquet_exceeding_2gb
@@ -3364,10 +3336,6 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     assert total_rows == num_rows
 
 
-@pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("16.0.0"),
-    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
-)
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_column(
     ray_start_regular_shared, nested_parquet_exceeding_2gb
@@ -3409,10 +3377,6 @@ def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_co
     assert _needs_nested_type_fallback(fragment, read_columns) is True
 
 
-@pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("16.0.0"),
-    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
-)
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     ray_start_regular_shared, nested_parquet_exceeding_2gb

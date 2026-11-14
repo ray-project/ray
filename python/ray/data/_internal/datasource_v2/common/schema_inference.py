@@ -4,6 +4,7 @@ import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -32,6 +33,9 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 
+_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
+
+# Bound submitted reads, not just executing threads, for full inference.
 _SCHEMA_READ_BATCH_SIZE = 256
 _FULL_SCHEMA_INFERENCE_MIN_FILES = env_integer(
     "RAY_DATA_FULL_SCHEMA_INFERENCE_MIN_FILES", 2048
@@ -107,6 +111,7 @@ def _add_unique_schema(
     index: int,
     schema: pa.Schema,
     value: bytes,
+    read_original_metadata: Optional[Callable[[], bytes]] = None,
 ) -> None:
     if value in unique:
         return
@@ -116,14 +121,24 @@ def _add_unique_schema(
         return
     import pyarrow.parquet as pq
 
-    output = pa.BufferOutputStream()
-    pq.write_metadata(schema, output)
-    encoded = output.getvalue().to_pybytes()
-    restored = pq.read_schema(pa.BufferReader(encoded))
-    if not schema.equals(restored, check_metadata=True):
-        raise pa.ArrowInvalid(
-            "Unable to preserve schema through IPC or Parquet metadata"
-        )
+    try:
+        output = pa.BufferOutputStream()
+        pq.write_metadata(schema, output)
+        encoded = output.getvalue().to_pybytes()
+        restored = pq.read_schema(pa.BufferReader(encoded))
+        if not schema.equals(restored, check_metadata=True):
+            raise pa.ArrowInvalid(
+                "Unable to preserve schema through IPC or Parquet metadata"
+            )
+    except (pa.ArrowInvalid, pa.ArrowTypeError, pa.ArrowNotImplementedError):
+        if read_original_metadata is None:
+            raise
+        encoded = read_original_metadata()
+        restored = pq.read_schema(pa.BufferReader(encoded))
+        if not schema.equals(restored, check_metadata=True):
+            raise pa.ArrowInvalid(
+                "Unable to preserve schema through original Parquet metadata"
+            )
     unique[value] = (index, encoded, True)
 
 
@@ -143,6 +158,7 @@ def _read_schema_batch(
     format_name: str,
     context: DataContext,
     io_concurrency: int,
+    read_schema_metadata: Optional[Callable] = None,
 ) -> List[Tuple[int, bytes, bool]]:
     DataContext._set_current(context)
 
@@ -160,7 +176,12 @@ def _read_schema_batch(
         values = executor.map(read_file, zip(paths, sizes))
         unique: Dict[bytes, Tuple[int, bytes, bool]] = {}
         for index, (schema, value) in enumerate(values):
-            _add_unique_schema(unique, index, schema, value)
+            read_original = (
+                partial(read_schema_metadata, paths[index], filesystem, sizes[index])
+                if read_schema_metadata is not None
+                else None
+            )
+            _add_unique_schema(unique, index, schema, value, read_original)
     return list(unique.values())
 
 
@@ -216,7 +237,7 @@ def _read_schema_metadata_batch(
                     mtimes[index] if mtimes is not None else None,
                 )
             value = schema.serialize().to_pybytes()
-            return schema, value, metadata
+            return schema, value, metadata, parquet_metadata
         except (OSError, pa.ArrowInvalid, pa.ArrowTypeError) as error:
             raise type(error)(
                 f"Failed to read {format_name} schema from {path!r}: {error}"
@@ -230,11 +251,17 @@ def _read_schema_metadata_batch(
     unique: Dict[bytes, Tuple[int, bytes, bool]] = {}
     metadata_values: List[Optional[FileMetadata]] = []
     with ThreadPoolExecutor(max_workers=min(concurrency, len(paths))) as executor:
-        for index, (schema, value, file_metadata) in enumerate(
+        for index, (schema, value, file_metadata, parquet_metadata) in enumerate(
             executor.map(read_file, enumerate(paths))
         ):
             metadata_values.append(file_metadata)
-            _add_unique_schema(unique, index, schema, value)
+
+            def read_original_metadata() -> bytes:
+                output = pa.BufferOutputStream()
+                parquet_metadata.write_metadata_file(output)
+                return output.getvalue().to_pybytes()
+
+            _add_unique_schema(unique, index, schema, value, read_original_metadata)
     metadata = (
         pa.array(
             [
@@ -302,12 +329,14 @@ def infer_full_schema_from_files(
     read_schema: Callable,
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
+    read_schema_metadata: Optional[Callable] = None,
 ) -> Optional[pa.Schema]:
     """Read schemas on workers and merge once in candidate order on the driver.
 
     Return None when the caller should use its existing driver inference.
     Each task returns distinct schemas and their first positions. Schemas that
-    cannot round-trip through IPC use a metadata-only Parquet representation.
+    cannot round-trip through IPC use a metadata-only Parquet representation;
+    if needed, Parquet tasks can return the original file metadata instead.
     The driver restores candidate order before the one-shot merge. The first
     batch is a single file so progress lands early; if the first distributed
     result does not arrive within ``_FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S``
@@ -361,6 +390,7 @@ def infer_full_schema_from_files(
                     format_name,
                     context,
                     _FULL_SCHEMA_INFERENCE_IO_CONCURRENCY,
+                    read_schema_metadata,
                 )
                 pending[ref] = start
                 start = stop

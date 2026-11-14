@@ -3,8 +3,6 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG ARROW_VERSION=14.*
-ARG ARROW_MONGO_VERSION=
 ARG RAY_CI_JAVA_BUILD=
 ARG PYTHON=3.12
 ARG PYTHON_DEPSET=python/deplocks/tests/data/datatfds_py$PYTHON.lock
