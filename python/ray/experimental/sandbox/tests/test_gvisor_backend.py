@@ -1,6 +1,7 @@
 import contextlib
 import ctypes
 import errno
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -2886,6 +2887,83 @@ def test_reclaim_takes_only_bundles_whose_owner_is_gone(private_bundles, monkeyp
 
     # The owner of the first bundle closed its file, so it goes next.
     assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000a"]
+
+
+def test_a_deleted_sandboxs_leftover_runsc_lock_is_removed(tmp_path, monkeypatch):
+    """A runsc command that loads a container while it's being destroyed
+    makes its lock file again. Teardown removes such a file, but only once
+    the container has no state left."""
+    monkeypatch.setattr(gvisor, "_RUNSC_ROOT", str(tmp_path))
+    sandbox_id = "ray-sandbox-00000000000a"
+    lock = tmp_path / f"{sandbox_id}_sandbox:{sandbox_id}.lock"
+    state = tmp_path / f"{sandbox_id}_sandbox:{sandbox_id}.state"
+    lock.touch()
+    state.touch()
+    gvisor._remove_leftover_runsc_lock(sandbox_id)
+    assert lock.exists()  # Still a container's.
+    state.unlink()
+    gvisor._remove_leftover_runsc_lock(sandbox_id)
+    assert not lock.exists()
+    gvisor._remove_leftover_runsc_lock(sandbox_id)  # Nothing left: no error.
+
+
+def test_a_runsc_lock_that_a_command_holds_is_never_removed(tmp_path, monkeypatch):
+    """runsc holds a container's lock from before its state file exists, for
+    as long as a slow create takes. Neither teardown nor the sweep for old
+    lock files removes a lock that's held, whatever its age."""
+    monkeypatch.setattr(gvisor, "_RUNSC_ROOT", str(tmp_path))
+    sandbox_id = "ray-sandbox-00000000000a"
+    lock = tmp_path / f"{sandbox_id}_sandbox:{sandbox_id}.lock"
+    lock.touch()
+    old = time.time() - 2 * gvisor._ORPHANED_LOCK_SECONDS
+    os.utime(lock, (old, old))
+    with open(lock) as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        gvisor._remove_leftover_runsc_lock(sandbox_id)
+        assert gvisor._remove_orphaned_runsc_locks() == []
+        assert lock.exists()
+    assert gvisor._remove_orphaned_runsc_locks() == [sandbox_id]
+    assert not lock.exists()
+
+
+def test_reclaim_removes_old_orphaned_runsc_locks(tmp_path, monkeypatch):
+    """Lock files that earlier deletes left go once they're old enough. A
+    container's, one that may belong to a create, and other runtimes' stay."""
+    monkeypatch.setattr(gvisor, "_RUNSC_ROOT", str(tmp_path))
+    old = time.time() - 2 * gvisor._ORPHANED_LOCK_SECONDS
+
+    def lock(sandbox_id, container_id=None, mtime=old, state=False):
+        base = tmp_path / f"{sandbox_id}_sandbox:{container_id or sandbox_id}"
+        path = Path(f"{base}.lock")
+        path.touch()
+        os.utime(path, (mtime, mtime))
+        if state:
+            Path(f"{base}.state").touch()
+        return path
+
+    orphan = lock("ray-sandbox-00000000000a")
+    fresh = lock("ray-sandbox-00000000000b", mtime=time.time())
+    live = lock("ray-sandbox-00000000000c", state=True)
+    other = lock("pod-0123")
+    subcontainer = lock("ray-sandbox-00000000000d", "ray-sandbox-00000000000e")
+    assert gvisor._remove_orphaned_runsc_locks() == ["ray-sandbox-00000000000a"]
+    assert not orphan.exists()
+    assert all(p.exists() for p in (fresh, live, other, subcontainer))
+
+
+def test_concurrent_deletes_leave_no_runsc_lock_files():
+    """Sandboxes deleted while others start and stop leave no lock file in
+    runsc's root, which every later runsc call would glob through."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    backend = GVisorSandboxBackend()
+    config = GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+    with ThreadPoolExecutor(8) as pool:
+        ids = list(pool.map(lambda _: backend.create_sandbox(config), range(24)))
+        list(pool.map(backend.delete_sandbox, ids))
+    root = gvisor._RUNSC_ROOT
+    left = [i for i in ids if os.path.exists(f"{root}/{i}_sandbox:{i}.lock")]
+    assert left == []
 
 
 def test_reclaim_never_runs_a_command_from_the_owner_file(private_bundles):

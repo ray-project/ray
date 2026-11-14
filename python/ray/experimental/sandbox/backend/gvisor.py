@@ -79,6 +79,90 @@ logger = logging.getLogger(__name__)
 # Directory where runsc keeps container state. Every runsc invocation for a
 # sandbox must agree on this, otherwise the container cannot be looked up.
 _RUNSC_ROOT = "/tmp/runsc"
+# The sweep for orphaned lock files in _RUNSC_ROOT leaves younger ones alone.
+# A create holds its lock until the state file exists, and the sweep doesn't
+# remove a held lock, so the age only covers the instant between a create
+# opening the file and locking it.
+_ORPHANED_LOCK_SECONDS = 600.0
+
+
+def _runsc_state_base(sandbox_id: str) -> str:
+    """The path of a sandbox's runsc files in _RUNSC_ROOT, without extension."""
+    return os.path.join(_RUNSC_ROOT, f"{sandbox_id}_sandbox:{sandbox_id}")
+
+
+def _remove_leftover_runsc_lock(sandbox_id: str) -> None:
+    """Remove the lock file that a deleted sandbox can leave in _RUNSC_ROOT.
+
+    runsc removes a container's lock file when it destroys the container,
+    but a runsc command that loads the container during that teardown, such
+    as the ``runsc delete -force`` that races the launch process's own,
+    takes the lock after the file is gone, which creates it again, and then
+    finds no state. runsc looks a container up by globbing _RUNSC_ROOT, so
+    every lock file left there makes every later runsc call on the node
+    slower. Call this once nothing runs runsc for the sandbox anymore.
+    """
+    _remove_runsc_lock_without_state(_runsc_state_base(sandbox_id))
+
+
+def _remove_runsc_lock_without_state(base: str) -> bool:
+    """Remove a lock file that no container and no runsc command has a use for.
+
+    A runsc command holds the lock while it works on a container, and a
+    create takes it before the container's state file exists. So the file
+    goes only if nothing holds the lock and, with the lock held here, there's
+    still no state file.
+
+    Args:
+        base: The path of the container's runsc files, without extension.
+
+    Returns:
+        Whether it removed the file.
+    """
+    path = base + ".lock"
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if os.path.exists(base + ".state"):
+            return False  # Still a container, whose lock this is.
+        if os.stat(path).st_ino != os.fstat(fd).st_ino:
+            return False  # runsc made the file again since it was opened.
+        os.unlink(path)
+        return True
+    except OSError:
+        return False  # A runsc command holds the lock, or the file is gone.
+    finally:
+        os.close(fd)
+
+
+def _remove_orphaned_runsc_locks() -> List[str]:
+    """Remove the lock files of Ray sandboxes long gone from _RUNSC_ROOT.
+
+    They're what deletes left before ``_remove_leftover_runsc_lock`` existed,
+    and what processes that died mid-delete leave.
+
+    Returns:
+        The sandbox IDs whose lock files were removed.
+    """
+    cutoff = time.time() - _ORPHANED_LOCK_SECONDS
+    removed = []
+    for path in glob.glob(os.path.join(_RUNSC_ROOT, "*_sandbox:*.lock")):
+        base = path[: -len(".lock")]
+        sandbox_id, _, container_id = os.path.basename(base).partition("_sandbox:")
+        if sandbox_id != container_id or not _BUNDLE_NAME.fullmatch(sandbox_id):
+            continue  # Not a Ray sandbox's.
+        try:
+            if os.stat(path).st_mtime > cutoff:
+                continue  # Maybe a container that's being created.
+        except OSError:
+            continue
+        if _remove_runsc_lock_without_state(base):
+            removed.append(sandbox_id)
+    return removed
+
 
 # How long teardown waits for a sandbox's launch process to exit on its own
 # after the container stops, before it kills that process.
@@ -1099,6 +1183,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # and everything it started.
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
+            _remove_leftover_runsc_lock(sandbox_id)
             stderr_file.close()
             raise
         return proc, stderr_file
@@ -1127,6 +1212,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # shell still stops and reaps the namespace holder and slirp4netns.
             if proc:
                 self._terminate_tree(proc)
+            _remove_leftover_runsc_lock(sandbox_id)
 
             if stderr_file:
                 try:
@@ -1946,6 +2032,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 pass
             self._terminate_tree(proc)
         self._delete_container_state(meta["config"], sandbox_id)
+        _remove_leftover_runsc_lock(sandbox_id)
         stderr_file = meta.get("stderr_file")
         if stderr_file is not None:
             try:
@@ -2619,6 +2706,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 logger.exception("Failed to reclaim sandbox %s", sandbox_id)
         if reclaimed:
             logger.info("Reclaimed sandboxes whose owner is gone: %s", reclaimed)
+        removed = _remove_orphaned_runsc_locks()
+        if removed:
+            logger.info(
+                "Removed %d runsc lock files of deleted sandboxes", len(removed)
+            )
         return reclaimed
 
     def _reclaim_if_unowned(self, root_dir: str, sandbox_id: str) -> bool:
@@ -2658,6 +2750,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 except (OSError, subprocess.TimeoutExpired):
                     pass
+            _remove_leftover_runsc_lock(sandbox_id)
             # A sandbox with limits ran in a cgroup of its own. One that
             # can't be removed raises, which leaves the bundle to a later pass.
             SandboxCgroupManager().remove(sandbox_id)
