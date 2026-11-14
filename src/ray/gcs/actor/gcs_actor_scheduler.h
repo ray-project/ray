@@ -365,6 +365,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
   ClockInterface &clock_;
 
+  /// Outstanding lease callbacks allowed to affect scheduling. An older grant
+  /// can retire a replacement request before canceling it on the raylet.
+  absl::flat_hash_set<LeaseID> pending_lease_requests_;
+
   /// Select a node where the actor is forwarded (for queueing and scheduling).
   ///
   /// \param actor The actor to be forwarded.
