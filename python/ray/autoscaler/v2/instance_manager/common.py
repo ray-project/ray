@@ -1,9 +1,24 @@
+from __future__ import annotations
+
 import time
 import uuid
-from typing import Dict, List, Optional, Set
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from ray._private.ray_constants import env_integer
-from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
+from ray.core.generated.instance_manager_pb2 import (
+    Instance,
+    InstanceUpdateEvent,
+    NodeKind,
+)
+
+if TYPE_CHECKING:
+    from ray.autoscaler.v2.instance_manager.node_provider import (
+        CloudInstance,
+        CloudInstanceId,
+    )
+    from ray.autoscaler.v2.schema import NodeType
 
 # Upper bound on retained status-history entries per instance. The history is
 # append-only and read only for the most recent transitions (e.g. latest
@@ -512,3 +527,396 @@ class InstanceUtil:
             # All nodes reachable from 'start'
             visited = set()
             cls._reachable_from[status] = dfs(valid_transitions, status, visited)
+
+
+# Exhaustive partition of every non-UNKNOWN Instance.InstanceStatus used by
+# multi-host replica reconciliation and scheduling. Every state belongs to
+# exactly one bucket:
+#   TERMINAL | UNALLOCATED | BOOTING | {RAY_RUNNING} | DRAINING | TEARDOWN.
+_TERMINAL_INSTANCE_STATUSES = frozenset(
+    {
+        Instance.TERMINATED,
+        Instance.ALLOCATION_FAILED,
+    }
+)
+_UNALLOCATED_INSTANCE_STATUSES = frozenset(
+    {
+        Instance.QUEUED,
+        Instance.REQUESTED,
+    }
+)
+_BOOTING_INSTANCE_STATUSES = frozenset(
+    {
+        Instance.ALLOCATED,
+        Instance.RAY_INSTALLING,
+    }
+)
+_DRAINING_INSTANCE_STATUSES = frozenset(
+    {
+        Instance.RAY_STOP_REQUESTED,
+        Instance.RAY_STOPPING,
+    }
+)
+_TEARDOWN_INSTANCE_STATUSES = frozenset(
+    {
+        Instance.ALLOCATION_TIMEOUT,
+        Instance.RAY_INSTALL_FAILED,
+        Instance.RAY_STOPPED,
+        Instance.TERMINATING,
+        Instance.TERMINATION_FAILED,
+    }
+)
+_ACTIVE_CID_STATUSES = (
+    _BOOTING_INSTANCE_STATUSES
+    | {Instance.RAY_RUNNING}
+    | _DRAINING_INSTANCE_STATUSES
+    | {Instance.TERMINATING}
+)
+_LIVE_CID_STATUSES = _BOOTING_INSTANCE_STATUSES | {Instance.RAY_RUNNING}
+_OCCUPYING_CLOUD_STATUSES = _LIVE_CID_STATUSES | _DRAINING_INSTANCE_STATUSES
+_TEARDOWN_HISTORY_STATUSES = frozenset(
+    {
+        Instance.TERMINATING,
+        Instance.TERMINATION_FAILED,
+        Instance.ALLOCATION_TIMEOUT,
+        Instance.RAY_INSTALL_FAILED,
+        Instance.RAY_STOPPING,
+    }
+)
+
+
+@dataclass
+class _MultiHostReplicaView:
+    """Canonical multi-host replica state projection shared across allocation,
+    scaling clamps, partial-replica drain filtering, instance termination, and
+    V2 resource scheduling."""
+
+    active_cids: Set[CloudInstanceId] = field(default_factory=set)
+    live_cids: Set[Tuple[NodeType, CloudInstanceId]] = field(default_factory=set)
+    assigned_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    rep_assigned_cids: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    rep_lids: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    rep_bound_cids_by_lid: Dict[Tuple[Tuple[NodeType, str], str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    non_fillable_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    rep_occupying: Dict[Tuple[NodeType, str], int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    draining_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    ray_running_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    claimed_reps_by_lid: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    requested_by_lid: Dict[Tuple[NodeType, str], int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    vanished_cids_by_lid: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    torn_down_lids: Set[Tuple[NodeType, str]] = field(default_factory=set)
+
+    def owed_batch_slots(self, nt: NodeType, rid: str, lid: str, size: int) -> int:
+        """Unallocated pods that batch `lid` still owes live replica `(nt, rid)`."""
+        rk = (nt, rid)
+        if not rid or not lid or rk in self.non_fillable_reps:
+            return 0
+        bound = self.rep_bound_cids_by_lid.get((rk, lid))
+        if not bound:
+            return 0
+        return min(
+            max(0, size - len(self.rep_assigned_cids[rk])),
+            max(0, size - len(bound)),
+        )
+
+
+def _get_replica_key(
+    inst: Optional[Instance],
+    cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    replica_sizes: Dict[NodeType, int],
+) -> Optional[Tuple[NodeType, str]]:
+    """Return `(instance_type, replica_id)` for a labeled multi-worker instance."""
+    if (
+        inst is None
+        or not inst.cloud_instance_id
+        or inst.instance_type not in replica_sizes
+    ):
+        return None
+    c_inst = cloud_instances.get(inst.cloud_instance_id)
+    if (
+        c_inst is not None
+        and c_inst.replica_id
+        and c_inst.node_kind != NodeKind.HEAD
+        and (not c_inst.node_type or c_inst.node_type == inst.instance_type)
+    ):
+        return (inst.instance_type, c_inst.replica_id)
+    return None
+
+
+def _has_teardown_history(inst: Instance) -> bool:
+    """Return True if an IM record ever entered a teardown status."""
+    return any(
+        h.instance_status in _TEARDOWN_HISTORY_STATUSES for h in inst.status_history
+    )
+
+
+def _instance_cloud_start_ns(inst: Instance) -> int:
+    """Earliest post-allocation status timestamp for incarnation ordering on a cid.
+
+    Ignores QUEUED/REQUESTED timestamps because a launch batch can be requested
+    before an earlier incarnation on the same cloud_instance_id starts.
+    """
+    times = [
+        h.timestamp_ns
+        for h in inst.status_history
+        if h.instance_status not in _UNALLOCATED_INSTANCE_STATUSES
+    ]
+    if times:
+        return min(times)
+    if inst.status_history:
+        return min(h.timestamp_ns for h in inst.status_history)
+    return 0
+
+
+def _propagate_cid_teardown_lids(
+    nt: NodeType,
+    tagged_rows: List[Tuple[int, str]],
+    torn_down_lids: Set[Tuple[NodeType, str]],
+    max_start_ns: Optional[int] = None,
+) -> None:
+    """Propagate untagged teardown on `(nt, cid)` to its latest prior tagged batch.
+
+    When `max_start_ns` is given (for a TERMINATED untagged teardown row), only
+    tagged incarnations whose cloud start is at or before `max_start_ns` are
+    considered so a stale terminal row cannot poison a newer reused pod. When
+    `max_start_ns` is None (for a live untagged teardown row), no newer
+    incarnation can have allocated the same cloud_instance_id, so the latest
+    tagged incarnation on that cid owns the pod.
+    """
+    candidates = [
+        (start_ns, lid)
+        for start_ns, lid in tagged_rows
+        if max_start_ns is None or start_ns <= max_start_ns
+    ]
+    if not candidates:
+        return
+    latest_start_ns = max(start_ns for start_ns, _ in candidates)
+    for start_ns, lid in candidates:
+        if start_ns == latest_start_ns:
+            torn_down_lids.add((nt, lid))
+
+
+def _build_multihost_replica_view(
+    im_instances: List[Instance],
+    cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    replica_sizes: Dict[NodeType, int],
+    status_overrides: Optional[Dict[str, "Instance.InstanceStatus"]] = None,
+) -> _MultiHostReplicaView:
+    """Project per-instance IM rows and cloud replica IDs into one canonical view."""
+    view = _MultiHostReplicaView()
+    overrides = status_overrides or {}
+
+    active_nt_cids: Set[Tuple[NodeType, CloudInstanceId]] = set()
+    for inst in im_instances:
+        st = overrides.get(inst.instance_id, inst.status)
+        if not inst.cloud_instance_id:
+            continue
+        if st in _ACTIVE_CID_STATUSES:
+            view.active_cids.add(inst.cloud_instance_id)
+            active_nt_cids.add((inst.instance_type, inst.cloud_instance_id))
+        if st in _LIVE_CID_STATUSES:
+            view.live_cids.add((inst.instance_type, inst.cloud_instance_id))
+
+    if not replica_sizes:
+        return view
+
+    live_term_rows_by_rep_lid: Dict[
+        Tuple[Tuple[NodeType, str], str], List[Instance]
+    ] = defaultdict(list)
+    missing_rows_by_lid: Dict[Tuple[NodeType, str], List[Instance]] = defaultdict(list)
+    untagged_active_cids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
+    teardown_reps: Set[Tuple[NodeType, str]] = set()
+    tagged_rows_by_cid: Dict[Tuple[NodeType, str], List[Tuple[int, str]]] = defaultdict(
+        list
+    )
+    term_untagged_td_by_cid: Dict[Tuple[NodeType, str], List[int]] = defaultdict(list)
+    live_untagged_td_cids: Set[Tuple[NodeType, str]] = set()
+    term_tagged_rows: List[Tuple[NodeType, str, str, str, bool, int, Instance]] = []
+
+    for inst in im_instances:
+        if inst.node_kind == NodeKind.HEAD or inst.instance_type not in replica_sizes:
+            continue
+        nt = inst.instance_type
+        st = overrides.get(inst.instance_id, inst.status)
+        lid = inst.launch_request_id
+
+        if inst.cloud_instance_id:
+            c_inst = cloud_instances.get(inst.cloud_instance_id)
+            if c_inst is not None and (
+                c_inst.node_kind == NodeKind.HEAD
+                or (c_inst.node_type and c_inst.node_type != nt)
+            ):
+                c_inst = None
+            rid = c_inst.replica_id if c_inst is not None and c_inst.replica_id else ""
+            ck = (nt, inst.cloud_instance_id)
+            if st in _TERMINAL_INSTANCE_STATUSES:
+                if not lid:
+                    if _has_teardown_history(inst):
+                        end_ns = max(
+                            (h.timestamp_ns for h in inst.status_history), default=0
+                        )
+                        term_untagged_td_by_cid[ck].append(end_ns)
+                    continue
+                start_ns = _instance_cloud_start_ns(inst)
+                tagged_rows_by_cid[ck].append((start_ns, lid))
+                if _has_teardown_history(inst):
+                    view.torn_down_lids.add((nt, lid))
+                term_tagged_rows.append(
+                    (
+                        nt,
+                        inst.cloud_instance_id,
+                        rid,
+                        lid,
+                        c_inst is not None,
+                        start_ns,
+                        inst,
+                    )
+                )
+                continue
+
+            is_shadowed_stopped = (
+                st == Instance.RAY_STOPPED
+                and (nt, inst.cloud_instance_id) in active_nt_cids
+            )
+            in_teardown = not is_shadowed_stopped and st in (
+                _TEARDOWN_INSTANCE_STATUSES | {Instance.RAY_STOPPING}
+            )
+            if lid:
+                tagged_rows_by_cid[ck].append((_instance_cloud_start_ns(inst), lid))
+                if in_teardown:
+                    view.torn_down_lids.add((nt, lid))
+            elif in_teardown:
+                live_untagged_td_cids.add(ck)
+
+            if c_inst is None:
+                if lid and not is_shadowed_stopped:
+                    missing_rows_by_lid[(nt, lid)].append(inst)
+                continue
+
+            if not rid:
+                continue
+
+            rk = (nt, rid)
+            view.assigned_reps.add(rk)
+            if lid:
+                view.claimed_reps_by_lid[(nt, lid)].add(rid)
+                view.rep_bound_cids_by_lid[(rk, lid)].add(inst.cloud_instance_id)
+                view.rep_lids[rk].add(lid)
+
+            # Ignore stale RAY_STOPPED rows shadowed by an active IM row on the
+            # same cloud instance (e.g. after a raylet restart).
+            if is_shadowed_stopped:
+                continue
+
+            if not lid:
+                untagged_active_cids[rk].add(inst.cloud_instance_id)
+
+            if in_teardown:
+                teardown_reps.add(rk)
+            if st in _DRAINING_INSTANCE_STATUSES | _TEARDOWN_INSTANCE_STATUSES:
+                view.non_fillable_reps.add(rk)
+
+            view.rep_assigned_cids[rk].add(inst.cloud_instance_id)
+            if st in _OCCUPYING_CLOUD_STATUSES:
+                view.rep_occupying[rk] += 1
+            if st in _DRAINING_INSTANCE_STATUSES:
+                view.draining_reps.add(rk)
+                view.ray_running_reps.add(rk)
+            elif st == Instance.RAY_RUNNING:
+                view.ray_running_reps.add(rk)
+        elif st == Instance.REQUESTED:
+            view.requested_by_lid[(nt, lid or "")] += 1
+
+    # Propagate teardown from already-TERMINATED untagged rows (e.g. after a
+    # mid-boot raylet restart on an unlabeled pod or post-delete reconcile)
+    # before reattaching live terminal rows, bounded by incarnation timestamps
+    # so stale records cannot poison a newer reused cloud_instance_id.
+    for ck, td_end_times in term_untagged_td_by_cid.items():
+        tagged_rows = tagged_rows_by_cid.get(ck)
+        if not tagged_rows:
+            continue
+        for td_end_ns in td_end_times:
+            _propagate_cid_teardown_lids(
+                ck[0], tagged_rows, view.torn_down_lids, max_start_ns=td_end_ns
+            )
+
+    # Classify terminal tagged rows after all incarnations on (nt, cid) are known
+    # so a stale row on a reused cloud_instance_id cannot hijack a newer replica
+    # or lose its vanished-slot accounting on its original replica.
+    latest_start_by_cid = {
+        ck: max(start_ns for start_ns, _ in rows)
+        for ck, rows in tagged_rows_by_cid.items()
+    }
+    for nt, cid, rid, lid, has_c_inst, start_ns, inst in term_tagged_rows:
+        if start_ns < latest_start_by_cid[(nt, cid)] or not has_c_inst:
+            missing_rows_by_lid[(nt, lid)].append(inst)
+        elif rid:
+            live_term_rows_by_rep_lid[((nt, rid), lid)].append(inst)
+
+    # Reattach terminal rows whose cloud pod is still alive (e.g. a raylet
+    # restart mid-replica-boot where an untagged RAY_RUNNING row adopted the pod).
+    for (rk, lid), rows in live_term_rows_by_rep_lid.items():
+        nt, rid = rk
+        term_cids = {r.cloud_instance_id for r in rows}
+        is_td = (nt, lid) in view.torn_down_lids
+        if rk in view.assigned_reps and (
+            lid in view.rep_lids[rk]
+            or (not is_td and bool(term_cids & untagged_active_cids[rk]))
+        ):
+            view.claimed_reps_by_lid[(nt, lid)].add(rid)
+            view.rep_bound_cids_by_lid[(rk, lid)].update(term_cids)
+            view.rep_lids[rk].add(lid)
+            if is_td:
+                view.non_fillable_reps.add(rk)
+
+    # Propagate teardown of any live pod on a replica (including untagged rows
+    # from raylet restarts or ray-node adoption) to all launch batches bound to
+    # that replica so sibling REQUESTED slots fail instead of leaking.
+    for rk in teardown_reps:
+        for bound_lid in view.rep_lids[rk]:
+            view.torn_down_lids.add((rk[0], bound_lid))
+
+    # Propagate teardown of live untagged rows by (node_type, cloud_instance_id)
+    # so unlabeled legacy pods and pods whose cloud instance already vanished
+    # before _handle_cloud_instance_terminated still mark their launch batch.
+    for ck in live_untagged_td_cids:
+        tagged_rows = tagged_rows_by_cid.get(ck)
+        if tagged_rows:
+            _propagate_cid_teardown_lids(ck[0], tagged_rows, view.torn_down_lids)
+
+    # Reattach pods that disappeared from cloud_instances to their per-replica
+    # launch batch: onto its live replica if any pod remains alive, or into
+    # vanished_cids_by_lid if all bound pods of a non-torn-down batch vanished
+    # mid-boot before all `size` slots allocated.
+    for (nt, lid), rows in missing_rows_by_lid.items():
+        missing_cids = {r.cloud_instance_id for r in rows}
+        is_td = (nt, lid) in view.torn_down_lids
+        claimed_rids = view.claimed_reps_by_lid.get((nt, lid), set())
+        if claimed_rids:
+            for rid in claimed_rids:
+                rk = (nt, rid)
+                view.rep_bound_cids_by_lid[(rk, lid)].update(missing_cids)
+                if is_td:
+                    view.non_fillable_reps.add(rk)
+        elif (
+            not is_td
+            and view.requested_by_lid[(nt, lid)] > 0
+            and len(missing_cids) < replica_sizes[nt]
+        ):
+            view.vanished_cids_by_lid[(nt, lid)].update(missing_cids)
+
+    return view
