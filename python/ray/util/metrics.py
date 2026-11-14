@@ -1,5 +1,6 @@
 import logging
 import re
+import threading
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -342,6 +343,10 @@ class Gauge(Metric):
             self._metric = None
         else:
             self._metric = CythonGauge(self._name, self._description, self._tag_keys)
+        # Last value recorded per tag set, so that inc()/dec() can be applied on
+        # top of it. Keyed by the sorted (key, value) pairs of the final tags.
+        self._values: Dict[Tuple[Tuple[str, str], ...], float] = {}
+        self._values_lock = threading.Lock()
 
     def set(self, value: Optional[Union[int, float]], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.
@@ -362,7 +367,51 @@ class Gauge(Metric):
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
-        self._record(value, tags)
+        # Record under the lock so concurrent updates export in the same order
+        # they are applied to _values.
+        with self._values_lock:
+            self._record(value, tags)
+            self._values[self._values_key(tags)] = value
+
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        """Increment the gauge by `value` (defaults to 1).
+
+        The increment is applied to the last value recorded by this Gauge
+        instance for the same tags (0 if none), mirroring the Prometheus client
+        semantics. Tags passed in will take precedence over the metric's default
+        tags.
+
+        Args:
+            value: Amount to add to the gauge.
+            tags: Tags to set or override for this gauge.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+
+        with self._values_lock:
+            key = self._values_key(tags)
+            new_value = self._values.get(key, 0) + value
+            self._record(new_value, tags)
+            self._values[key] = new_value
+
+    def dec(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        """Decrement the gauge by `value` (defaults to 1).
+
+        See :meth:`inc` for the semantics.
+
+        Args:
+            value: Amount to subtract from the gauge.
+            tags: Tags to set or override for this gauge.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+
+        self.inc(-value, tags)
+
+    def _values_key(
+        self, tags: Optional[Dict[str, str]]
+    ) -> Tuple[Tuple[str, str], ...]:
+        return tuple(sorted(self._get_final_tags(tags).items()))
 
     def __reduce__(self):
         deserializer = Gauge
