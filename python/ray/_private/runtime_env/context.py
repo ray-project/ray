@@ -5,7 +5,7 @@ import re
 import shlex
 import subprocess
 import sys
-from typing import Any, Dict, List, NoReturn, Optional
+from typing import Any, Dict, List, NoReturn, Optional, Union
 
 from ray._private.services import get_ray_jars_dir
 from ray._private.utils import update_envs
@@ -50,6 +50,43 @@ def expand_run_option(run_option: str, env: Dict[str, str]) -> str:
         return env.get(name or braced_name, "")
 
     return _RUN_OPTION_REFERENCE.sub(expand, run_option)
+
+
+def build_windows_worker_command(
+    command_prefix: List[str], executable: List[str], passthrough_args: List[str]
+) -> Union[str, List[str]]:
+    """Builds the command that `subprocess.Popen(..., shell=True)` runs on Windows.
+
+    On POSIX, `py_executable` goes unquoted into `bash -c`, so a value with
+    arguments, such as `uv run --locked python`, works. On Windows, `Popen`
+    turns a list into a command line with `subprocess.list2cmdline`, which
+    quotes every item that contains whitespace, so cmd.exe would look for a
+    program named `uv run --locked python`. To match POSIX, an executable that
+    contains whitespace and isn't an existing file goes into the command line
+    as written. A path that contains spaces, such as
+    `C:\\Program Files\\Python\\python.exe`, is still quoted.
+
+    Args:
+        command_prefix: Items to run before the executable, each quoted.
+        executable: The Python executable, as a single-item list, or empty.
+        passthrough_args: The worker's arguments, each quoted.
+
+    Returns:
+        A command line string when the executable goes in as written,
+        otherwise the list for `Popen` to quote.
+    """
+    if (
+        len(executable) == 1
+        and any(c.isspace() for c in executable[0])
+        and not os.path.isfile(executable[0])
+    ):
+        parts = [
+            subprocess.list2cmdline(command_prefix),
+            executable[0],
+            subprocess.list2cmdline(passthrough_args),
+        ]
+        return " ".join(part for part in parts if part)
+    return [*command_prefix, *executable, *passthrough_args]
 
 
 @DeveloperAPI
@@ -127,7 +164,9 @@ class RuntimeEnvContext:
 
             passthrough_args = [quote(s) for s in passthrough_args]
 
-            cmd = [*self.command_prefix, *executable, *passthrough_args]
+            cmd = build_windows_worker_command(
+                self.command_prefix, executable, passthrough_args
+            )
             logger.debug(f"Exec'ing worker with command: {cmd}")
             subprocess.Popen(cmd, shell=True).wait()
         else:
