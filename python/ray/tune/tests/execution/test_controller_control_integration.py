@@ -205,5 +205,35 @@ def test_pause_trial_during_buffered_results(
         runner.step()
 
 
+def test_pending_trials_list_preserves_remaining_on_limit(ray_start_4_cpus_2_gpus_extra):
+    """Ensure _maybe_add_actors preserves remaining pending trials when max_pending_trials is reached."""
+    register_mock_trainable()
+    runner = TuneController(
+        resource_manager_factory=lambda: FixedResourceManager(), storage=STORAGE
+    )
+    runner._max_pending_trials = 2
+    kwargs = {
+        "stopping_criterion": {"training_iteration": 5},
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "GPU": 1}]),
+        "config": {"sleep": 1},
+        "storage": STORAGE,
+    }
+    trials = [Trial(MOCK_TRAINABLE_NAME, **kwargs) for _ in range(4)]
+    for t in trials:
+        runner.add_trial(t)
+
+    # Mark second trial as no longer pending in the set (stale list entry)
+    runner._pending_trials.discard(trials[1])
+
+    runner._maybe_add_actors()
+
+    # trials[0] was staged by choose_trial_to_run (so it is in _trial_to_actor and kept in new_candidates),
+    # trials[1] (stale) was skipped, trials[2] was staged (reaching max_pending_trials=2),
+    # and trials[3] remains from the unconsumed tail of candidates.
+    assert trials[0] in runner._staged_trials
+    assert trials[2] in runner._staged_trials
+    assert runner._pending_trials_list == [trials[0], trials[3]]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))
