@@ -112,11 +112,19 @@ class FeatureHasher(SerializablePreprocessorBase):
         return self._output_column
 
     def _transform_pandas(self, df: pd.DataFrame):
+        if df.empty:
+            df.loc[:, self._output_column] = pd.Series([], index=df.index, dtype=object)
+            return df
+
+        column_hashes = {
+            column: simple_hash(column, self._num_features) for column in self._columns
+        }
+
         # TODO(matt): Use sparse matrix for efficiency.
         def row_feature_hasher(row):
             hash_counts = collections.defaultdict(int)
             for column in self._columns:
-                hashed_value = simple_hash(column, self._num_features)
+                hashed_value = column_hashes[column]
                 value = row[column]
                 # An Arrow-backed column represents a missing value with
                 # `pd.NA`, which absorbs whatever it is added to: `0 + pd.NA` is
@@ -139,7 +147,7 @@ class FeatureHasher(SerializablePreprocessorBase):
         concatenated = feature_columns[hash_columns].to_numpy()
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
-        df.loc[:, self._output_column] = pd.Series(list(concatenated))
+        df.loc[:, self._output_column] = pd.Series(list(concatenated), index=df.index)
 
         return df
 
