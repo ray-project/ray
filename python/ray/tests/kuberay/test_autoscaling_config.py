@@ -9,17 +9,28 @@ import pytest
 import requests
 import yaml
 
-from ray.autoscaler._private.kuberay.autoscaling_config import (
+from ray._private.accelerators.tpu import (
     GKE_TPU_ACCELERATOR_LABEL,
     GKE_TPU_TOPOLOGY_LABEL,
+)
+from ray.autoscaler._private.kuberay.autoscaling_config import (
+    EXTERNAL_PLACEMENT_NONEMPTY_KEYS,
+    KUEUE_PODSET_UNCONSTRAINED_TOPOLOGY_ANNOTATION,
+    RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION,
+    RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION,
     AutoscalingConfigProducer,
     _derive_autoscaling_config_from_ray_cr,
+    _generate_available_node_types_from_ray_cr_spec,
     _get_custom_resources,
     _get_num_tpus,
     _get_ray_resources_from_group_spec,
+    _get_required_node_labels,
+    _has_external_multihost_placement,
+    _is_k8s_qualified_name,
+    _parse_worker_group_label_refs,
     _round_up_k8s_quantity,
+    is_exclusive_tpu_slice_topology_key,
 )
-from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
 
@@ -116,7 +127,11 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
-                "labels": {},
+                "labels": {
+                    "ray.io/accelerator-type": "TPU-V4",
+                    "ray.io/tpu-topology": "2x2x2",
+                    "ray.io/tpu-pod-type": "v4-16",
+                },
                 "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
@@ -128,6 +143,17 @@ def _get_basic_autoscaling_config() -> dict:
                     "TPU": 4,
                     "TPU-v4-16-head": 1,
                 },
+                "replica_config": {
+                    "workers_per_replica": 2,
+                    "domain_label_key": "ray.io/tpu-slice-name",
+                    "domain_exclusive": True,
+                    "worker_index_label_key": "ray.io/tpu-worker-id",
+                    "head_resources": ["TPU-v4-16-head"],
+                },
+                "runtime_label_keys": [
+                    "ray.io/tpu-slice-name",
+                    "ray.io/tpu-worker-id",
+                ],
             },
         },
         "auth": {},
@@ -229,6 +255,12 @@ def _get_ray_cr_with_top_level_labels() -> dict:
     cr = get_basic_ray_cr()
     # This top-level structured labels take priority.
     cr["spec"]["workerGroupSpecs"][0]["labels"] = {"instance-type": "mx5"}
+    # Top-level labels are merged over, and override, labels derived from the
+    # TPU nodeSelector.
+    cr["spec"]["workerGroupSpecs"][2]["labels"] = {
+        "ray.io/market-type": "spot",
+        "ray.io/tpu-pod-type": "v4-16-custom",
+    }
 
     # rayStartParams labels field should be ignored.
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["labels"] = "instance-type=n2"
@@ -238,6 +270,9 @@ def _get_ray_cr_with_top_level_labels() -> dict:
 def _get_autoscaling_config_with_top_level_labels() -> dict:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["small-group"]["labels"] = {"instance-type": "mx5"}
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {"ray.io/market-type": "spot", "ray.io/tpu-pod-type": "v4-16-custom"}
+    )
     return config
 
 
@@ -407,6 +442,16 @@ def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["replica_config"]["head_resources"] = [
+        "TPU-v7x-16-head"
+    ]
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+    )
     return config
 
 
@@ -430,6 +475,16 @@ def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["replica_config"]["head_resources"] = [
+        "TPU-v5litepod-8-head"
+    ]
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V5LITEPOD",
+            "ray.io/tpu-topology": "2x4",
+            "ray.io/tpu-pod-type": "v5litepod-8",
+        }
+    )
     return config
 
 
@@ -673,81 +728,6 @@ def test_autoscaling_config_fetch_retries(exception, num_exceptions):
             assert out == {"ok-key": "ok-value"}
 
 
-TPU_TYPES_ARGS = ",".join(
-    [
-        "accelerator",
-        "topology",
-        "expected_tpu_type",
-    ]
-)
-TPU_TYPES_DATA = (
-    []
-    if platform.system() == "Windows"
-    else [
-        pytest.param(
-            "tpu-v4-podslice",
-            None,
-            None,
-            id="tpu-none-topology",
-        ),
-        pytest.param(
-            None,
-            "2x2x2",
-            None,
-            id="tpu-none-accelerator",
-        ),
-        pytest.param(
-            "tpu-v4-podslice",
-            "2x2x2",
-            "v4-16",
-            id="tpu-v4-test",
-        ),
-        pytest.param(
-            "tpu-v5-lite-device",
-            "2x2",
-            "v5litepod-4",
-            id="tpu-v5e-device-test",
-        ),
-        pytest.param(
-            "tpu-v5-lite-podslice",
-            "2x4",
-            "v5litepod-8",
-            id="tpu-v5e-podslice-test",
-        ),
-        pytest.param(
-            "tpu-v5p-slice",
-            "2x2x4",
-            "v5p-32",
-            id="tpu-v5p-test",
-        ),
-        pytest.param(
-            "tpu-v6e-slice",
-            "16x16",
-            "v6e-256",
-            id="tpu-v6e-test",
-        ),
-        pytest.param(
-            "tpu7x",
-            "2x2x2",
-            "v7x-16",
-            id="tpu-v7x-test",
-        ),
-    ]
-)
-
-
-@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
-@pytest.mark.parametrize(TPU_TYPES_ARGS, TPU_TYPES_DATA)
-def test_tpu_node_selectors_to_type(
-    accelerator: str, topology: str, expected_tpu_type: str
-):
-    """Verify that tpu_node_selectors_to_type correctly returns TPU type from
-    TPU nodeSelectors.
-    """
-    tpu_type = tpu_node_selectors_to_type(topology, accelerator)
-    assert expected_tpu_type == tpu_type
-
-
 TPU_PARAM_ARGS = ",".join(
     [
         "ray_cr_in",
@@ -942,6 +922,22 @@ def test_get_ray_resources_from_group_spec(
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_get_ray_resources_malformed_tpu_topology_skips_head_resource():
+    group_spec = copy.deepcopy(get_basic_ray_cr()["spec"]["workerGroupSpecs"][2])
+    group_spec["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+        "cloud.google.com/gke-tpu-topology": "4x",
+    }
+    assert _get_ray_resources_from_group_spec(group_spec, False) == {
+        "CPU": 1,
+        "memory": 536870912,
+        "Custom2": 5,
+        "Custom3": 1,
+        "TPU": 4,
+    }
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 def test_top_level_resources_override_warnings():
     """
     Verify all override warnings are logged when a top-level `resources` field is used in
@@ -975,6 +971,1391 @@ def test_top_level_resources_override_warnings():
         # Assert that all expected calls were made, in any order.
         mock_logger.warning.assert_has_calls(expected_calls, any_order=True)
         assert mock_logger.warning.call_count == 4
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_dynamic_slicing_tpu_labels_and_resources():
+    """Verify GKE TPU Dynamic Slicing pod annotations, single-host TPU, and
+    zero-TPU groups derive expected default labels and head resources."""
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    cr["spec"]["workerGroupSpecs"][1]["numOfHosts"] = 4
+    cr["spec"]["workerGroupSpecs"][1]["maxReplicas"] = 2
+
+    # GKE TPU Dynamic Slicing worker group: topology lives on pod annotation
+    # `cloud.google.com/gke-tpu-slice-topology` without `gke-tpu-topology` selector.
+    tpu_ds = cr["spec"]["workerGroupSpecs"][2]
+    tpu_ds["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+    }
+    tpu_ds["template"].setdefault("metadata", {}).setdefault("annotations", {})[
+        "cloud.google.com/gke-tpu-slice-topology"
+    ] = "2x2x2"
+    tpu_ds["resources"] = {"TPU": "8"}
+    tpu_ds["numOfHosts"] = 2
+    tpu_ds["maxReplicas"] = 3
+
+    # Dynamic Slicing overriding a larger shared pool selector (`4x4x4` -> `2x2x2`),
+    # plus a single-host TPU group (`numOfHosts=1`) and zero-TPU groups.
+    tpu_override = copy.deepcopy(tpu_ds)
+    tpu_override["groupName"] = "tpu-ds-override"
+    tpu_override["template"]["spec"]["nodeSelector"][
+        "cloud.google.com/gke-tpu-topology"
+    ] = "4x4x4"
+
+    tpu_single = copy.deepcopy(tpu_ds)
+    tpu_single["groupName"] = "tpu-single"
+    tpu_single["numOfHosts"] = 1
+    tpu_single["template"]["metadata"]["annotations"][
+        "cloud.google.com/gke-tpu-slice-topology"
+    ] = "2x2x1"
+    tpu_zero = copy.deepcopy(tpu_ds)
+    tpu_zero["groupName"] = "tpu-zero-hosts"
+    tpu_zero["numOfHosts"] = 0
+    tpu_zero["template"]["metadata"] = {}
+    tpu_zero["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x1",
+    }
+    tpu_zero_res = copy.deepcopy(tpu_zero)
+    tpu_zero_res["groupName"] = "tpu-zero-resource"
+    tpu_zero_res["resources"] = {"CPU": "4", "TPU": "0"}
+    tpu_zero_res["numOfHosts"] = 1
+    cpu_zero_tpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][0])
+    cpu_zero_tpu["groupName"] = "cpu-zero-tpu"
+    cpu_zero_tpu["resources"] = {"CPU": "4", "TPU": "0"}
+    cr["spec"]["workerGroupSpecs"].extend(
+        [tpu_override, tpu_single, tpu_zero, tpu_zero_res, cpu_zero_tpu]
+    )
+
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    autoscaling_cfg = AutoscalingConfig(configs=derived)
+    nt_cfgs = autoscaling_cfg.get_node_type_configs()
+
+    from ray.autoscaler.v2.instance_manager.config import WorkerReplicaConfig
+
+    for name in ("tpu-zero-resource", "cpu-zero-tpu"):
+        assert not any(
+            k.startswith("TPU-") and k.endswith("-head")
+            for k in nt_cfgs[name].resources
+        )
+        assert "ray.io/accelerator-type" not in nt_cfgs[name].labels
+        assert "ray.io/tpu-topology" not in nt_cfgs[name].labels
+        assert "ray.io/tpu-pod-type" not in nt_cfgs[name].labels
+        assert nt_cfgs[name].replica_config is None
+        assert nt_cfgs[name].runtime_label_keys == ()
+    assert nt_cfgs["gpu-group"].max_worker_nodes == 8
+    for name in ("tpu-group", "tpu-ds-override"):
+        assert nt_cfgs[name].max_worker_nodes == 6
+        assert nt_cfgs[name].labels == {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+        assert nt_cfgs[name].resources["TPU-v7x-16-head"] == 1
+        assert nt_cfgs[name].replica_config == WorkerReplicaConfig(
+            workers_per_replica=2,
+            domain_label_key="ray.io/tpu-slice-name",
+            domain_exclusive=True,
+            worker_index_label_key="ray.io/tpu-worker-id",
+            head_resources=("TPU-v7x-16-head",),
+        )
+        assert nt_cfgs[name].runtime_label_keys == (
+            "ray.io/tpu-slice-name",
+            "ray.io/tpu-worker-id",
+        )
+    assert nt_cfgs["tpu-single"].max_worker_nodes == 3
+    assert nt_cfgs["tpu-single"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=1,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=("TPU-v7x-8-head",),
+    )
+    assert nt_cfgs["tpu-single"].runtime_label_keys == (
+        "ray.io/tpu-slice-name",
+        "ray.io/tpu-worker-id",
+    )
+    assert nt_cfgs["tpu-zero-hosts"].max_worker_nodes == 0
+    assert nt_cfgs["tpu-zero-hosts"].replica_config is None
+    assert nt_cfgs["tpu-zero-hosts"].runtime_label_keys == ()
+    for name in ("tpu-single", "tpu-zero-hosts"):
+        assert nt_cfgs[name].labels == {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x1",
+            "ray.io/tpu-pod-type": "v7x-8",
+        }
+        assert nt_cfgs[name].resources["TPU-v7x-8-head"] == 1
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(
+    "pod_spec, expected",
+    [
+        pytest.param(
+            {
+                "nodeSelector": {
+                    "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                    "cloud.google.com/gke-tpu-topology": "2x2x2",
+                }
+            },
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            id="node-selector-only",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        },
+                                        {
+                                            "key": "topology.kubernetes.io/zone",
+                                            "operator": "In",
+                                            "values": ["us-east5-a"],
+                                        },
+                                    ]
+                                },
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        },
+                                        {
+                                            "key": "topology.kubernetes.io/zone",
+                                            "operator": "In",
+                                            "values": ["us-east5-b"],
+                                        },
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            id="multi-term-affinity-keeps-common-pin",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu-v6e-slice", "tpu7x"],
+                                        },
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-topology",
+                                            "operator": "In",
+                                            "values": ["2x2x1", "2x2x2"],
+                                        },
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-topology",
+                                            "operator": "In",
+                                            "values": ["2x2x2", "4x4x4"],
+                                        },
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            id="intersecting-in-expressions-pin-singleton",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": []
+                        }
+                    }
+                },
+            },
+            {},
+            id="empty-node-selector-terms-unsatisfiable",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [{}]
+                        }
+                    }
+                },
+            },
+            {},
+            id="only-empty-term-unsatisfiable",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchFields": [
+                                        {
+                                            "key": "metadata.name",
+                                            "operator": "In",
+                                            "values": ["node-0"],
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            id="match-fields-only-term-preserves-node-selector",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        }
+                                    ]
+                                },
+                                {
+                                    "matchFields": [
+                                        {
+                                            "key": "metadata.name",
+                                            "operator": "In",
+                                            "values": ["node-0"],
+                                        }
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+            {},
+            id="match-fields-only-second-term-breaks-uniqueness",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu-v6e-slice"],
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+            {},
+            id="conflicting-in-and-node-selector-unsatisfiable",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x", "tpu-v6e-slice"],
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            {},
+            id="multi-valued-in-not-pinned",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        }
+                                    ]
+                                },
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu-v6e-slice"],
+                                        }
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+            {},
+            id="disjoint-terms-not-pinned",
+        ),
+        pytest.param(
+            {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        },
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-topology",
+                                            "operator": "Exists",
+                                        },
+                                    ]
+                                },
+                                {},
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": [],
+                                        }
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            id="skips-empty-and-empty-in-terms",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {
+                    "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                    "cloud.google.com/gke-tpu-topology": "4x4",
+                },
+                "affinity": {
+                    "nodeAffinity": {
+                        "preferredDuringSchedulingIgnoredDuringExecution": [
+                            {
+                                "weight": 100,
+                                "preference": {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "cloud.google.com/gke-tpu-accelerator",
+                                            "operator": "In",
+                                            "values": ["tpu7x"],
+                                        }
+                                    ]
+                                },
+                            }
+                        ]
+                    }
+                },
+            },
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            id="preferred-affinity-ignored",
+        ),
+    ],
+)
+def test_get_required_node_labels(pod_spec, expected):
+    assert _get_required_node_labels(pod_spec) == expected
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_node_affinity_tpu_labels_and_resources():
+    """Verify required nodeAffinity derives TPU labels and head resources,
+    ignores Pod template labels, and preserves explicit overrides."""
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+
+    tpu_affinity = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    tpu_affinity["groupName"] = "tpu-affinity"
+    tpu_affinity["template"]["spec"].pop("nodeSelector", None)
+    tpu_affinity["template"]["spec"]["affinity"] = {
+        "nodeAffinity": {
+            "requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [
+                    {
+                        "matchExpressions": [
+                            {
+                                "key": "cloud.google.com/gke-tpu-accelerator",
+                                "operator": "In",
+                                "values": ["tpu-v6e-slice"],
+                            },
+                            {
+                                "key": "cloud.google.com/gke-tpu-topology",
+                                "operator": "In",
+                                "values": ["4x4"],
+                            },
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+    tpu_affinity["labels"] = {"ray.io/tpu-pod-type": "custom-override"}
+    tpu_affinity["resources"] = {"TPU": "4", "TPU-v6e-16-head": "2"}
+
+    # Pod metadata.labels and worker group labels must never be read as GKE TPU inputs.
+    tpu_pod_labels_only = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    tpu_pod_labels_only["groupName"] = "tpu-pod-labels-only"
+    tpu_pod_labels_only["template"]["spec"].pop("nodeSelector", None)
+    tpu_pod_labels_only["template"].setdefault("metadata", {})["labels"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x2",
+    }
+    tpu_pod_labels_only["labels"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x2",
+    }
+
+    cr["spec"]["workerGroupSpecs"].extend([tpu_affinity, tpu_pod_labels_only])
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    nt_cfgs = AutoscalingConfig(configs=derived).get_node_type_configs()
+
+    assert nt_cfgs["tpu-affinity"].labels == {
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "4x4",
+        "ray.io/tpu-pod-type": "custom-override",
+    }
+    assert nt_cfgs["tpu-affinity"].resources["TPU-v6e-16-head"] == 2
+
+    assert "ray.io/accelerator-type" not in nt_cfgs["tpu-pod-labels-only"].labels
+    assert "ray.io/tpu-topology" not in nt_cfgs["tpu-pod-labels-only"].labels
+    assert "ray.io/tpu-pod-type" not in nt_cfgs["tpu-pod-labels-only"].labels
+    assert not any(
+        k.startswith("TPU-") and k.endswith("-head")
+        for k in nt_cfgs["tpu-pod-labels-only"].resources
+    )
+    assert nt_cfgs["tpu-affinity"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=2,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=("TPU-v6e-16-head",),
+    )
+    assert nt_cfgs["tpu-affinity"].runtime_label_keys == (
+        "ray.io/tpu-slice-name",
+        "ray.io/tpu-worker-id",
+    )
+    assert nt_cfgs["tpu-pod-labels-only"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=2,
+    )
+    assert nt_cfgs["tpu-pod-labels-only"].runtime_label_keys == ()
+
+
+@pytest.mark.parametrize(
+    "key, expected",
+    [
+        ("cloud.google.com/gke-nodepool", True),
+        ("cloud.google.com/gke-tpu-slice", True),
+        ("cloud.google.com/gke-tpu-partition-2x2x2-id", True),
+        ("cloud.google.com/gke-tpu-slice-2x4-id", True),
+        ("cloud.google.com/gke-tpu-partition-foo-id", True),
+        ("cloud.google.com/gke-tpu-partition--id", False),
+        ("cloud.google.com/gke-tpu-slice--id", False),
+        ("cloud.google.com/gke-tpu-partition-id", False),
+        ("cloud.google.com/gke-tpu-slice-id", False),
+        ("cloud.google.com/gke-tpu-partition-2x2x2-ID", False),
+        ("Cloud.Google.Com/gke-nodepool", False),
+        ("nvidia.com/gpu.clique", False),
+        ("cloud.google.com/gce-topology-block", False),
+        ("topology.kubernetes.io/zone", False),
+        ("", False),
+        (None, False),
+        (123, False),
+    ],
+)
+def test_is_exclusive_tpu_slice_topology_key(key, expected):
+    assert is_exclusive_tpu_slice_topology_key(key) is expected
+
+
+def _make_label_ref(node_label_key: str, name: Optional[str] = None) -> Dict[str, Any]:
+    ref: Dict[str, Any] = {
+        "valueFrom": {"nodeRef": {"fieldPath": f"metadata.labels['{node_label_key}']"}}
+    }
+    if name is not None:
+        ref["name"] = name
+    return ref
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_worker_group_label_refs_parsing_and_runtime_label_keys():
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    cr["metadata"]["annotations"] = {
+        RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "nvidia.com/gpu.clique",
+    }
+
+    # Synthetic labelRefs and multihost annotations on headGroupSpec must be ignored.
+    cr["spec"]["headGroupSpec"]["labelRefs"] = [
+        _make_label_ref("topology.kubernetes.io/zone")
+    ]
+    cr["spec"]["headGroupSpec"]["template"].setdefault("metadata", {})[
+        "annotations"
+    ] = {
+        RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "topology.kubernetes.io/zone",
+    }
+
+    # Single-host non-TPU group with labelRefs (including malformed, duplicate,
+    # and static-overlapping entries): emits runtime_label_keys, omits replica_config.
+    small = cr["spec"]["workerGroupSpecs"][0]
+    small["numOfHosts"] = 1
+    small["labels"] = {"static-key": "val"}
+    small["labelRefs"] = [
+        None,
+        "not-a-dict",
+        {},
+        {"valueFrom": None},
+        {"valueFrom": {"nodeRef": None}},
+        {"valueFrom": {"nodeRef": {"fieldPath": 123}}},
+        {"valueFrom": {"nodeRef": {"fieldPath": 'metadata.labels["double-quoted"]'}}},
+        {"valueFrom": {"nodeRef": {"fieldPath": "metadata.annotations['ann']"}}},
+        {"valueFrom": {"nodeRef": {"fieldPath": "metadata.labels['trailing-nl']\n"}}},
+        {"valueFrom": {"nodeRef": {"fieldPath": "metadata.labels['']"}}},
+        {"valueFrom": {"nodeRef": {"fieldPath": "metadata.labels['   ']"}}},
+        {"valueFrom": {"nodeRef": {"fieldPath": "metadata.labels[' padded ']"}}},
+        {"valueFrom": {"nodeRef": {"fieldPath": "spec.providerID"}}},
+        _make_label_ref("nvidia.com/gpu.clique", name="   "),
+        _make_label_ref("nvidia.com/gpu.clique", name=" padded "),
+        {"name": 999, "valueFrom": {"nodeRef": {"fieldPath": "metadata.labels['k']"}}},
+        _make_label_ref("topology.kubernetes.io/zone"),
+        _make_label_ref("nvidia.com/gpu.clique", name=""),
+        _make_label_ref("cloud.google.com/gce-topology-block", name="block-alias"),
+        _make_label_ref("topology.kubernetes.io/zone"),  # duplicate delivered key
+        _make_label_ref("ignored.node/key", name="static-key"),  # overlaps static label
+    ]
+
+    # Multi-host GPU group with two labelRefs aliasing the same node label:
+    # both appear in runtime_label_keys; first-seen wins domain_label_key.
+    gpu = cr["spec"]["workerGroupSpecs"][1]
+    gpu["numOfHosts"] = 4
+    gpu["maxReplicas"] = 2
+    gpu["labelRefs"] = [
+        _make_label_ref("nvidia.com/gpu.clique", name="clique-a"),
+        _make_label_ref("nvidia.com/gpu.clique", name="clique-b"),
+    ]
+
+    # TPU group with labelRefs and pod-level topology annotation: accelerator hook
+    # retains TPU domain_label_key and merges labelRefs + TPU keys in order.
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"].setdefault("metadata", {})["annotations"] = {
+        RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "cloud.google.com/gce-topology-block",
+        RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION: "false",
+    }
+    tpu_group["labelRefs"] = [
+        _make_label_ref("cloud.google.com/gce-topology-block"),
+        _make_label_ref("cloud.google.com/gke-tpu-slice-coordinates"),
+    ]
+
+    # Explicit numOfHosts: None defaults to 1.
+    none_hosts = copy.deepcopy(cr["spec"]["workerGroupSpecs"][1])
+    none_hosts["groupName"] = "none-hosts-group"
+    none_hosts["numOfHosts"] = None
+    none_hosts["maxReplicas"] = 3
+    none_hosts["labelRefs"] = [_make_label_ref("topology.kubernetes.io/zone")]
+    cr["spec"]["workerGroupSpecs"].append(none_hosts)
+
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    assert "replica_config" not in derived["available_node_types"]["headgroup"]
+    assert "runtime_label_keys" not in derived["available_node_types"]["headgroup"]
+    assert "replica_config" not in derived["available_node_types"]["small-group"]
+    assert derived["available_node_types"]["small-group"]["runtime_label_keys"] == [
+        "topology.kubernetes.io/zone",
+        "nvidia.com/gpu.clique",
+        "block-alias",
+    ]
+    assert "replica_config" not in derived["available_node_types"]["none-hosts-group"]
+    assert derived["available_node_types"]["none-hosts-group"]["max_workers"] == 3
+
+    nt_cfgs = AutoscalingConfig(configs=derived).get_node_type_configs()
+    assert nt_cfgs["headgroup"].replica_config is None
+    assert nt_cfgs["headgroup"].runtime_label_keys == ()
+    assert nt_cfgs["small-group"].replica_config is None
+    assert nt_cfgs["small-group"].runtime_label_keys == (
+        "topology.kubernetes.io/zone",
+        "nvidia.com/gpu.clique",
+        "block-alias",
+    )
+    assert nt_cfgs["gpu-group"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=4,
+        domain_label_key="clique-a",
+        domain_exclusive=False,
+    )
+    assert nt_cfgs["gpu-group"].runtime_label_keys == ("clique-a", "clique-b")
+    assert nt_cfgs["tpu-group"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=2,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=("TPU-v4-16-head",),
+    )
+    assert nt_cfgs["tpu-group"].runtime_label_keys == (
+        "cloud.google.com/gce-topology-block",
+        "cloud.google.com/gke-tpu-slice-coordinates",
+        "ray.io/tpu-slice-name",
+        "ray.io/tpu-worker-id",
+    )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_multihost_topology_annotations_precedence_and_exclusivity():
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    def _derive_gpu_group(
+        cluster_annotations: Optional[Dict[str, str]] = None,
+        pod_annotations: Optional[Dict[str, str]] = None,
+        label_refs: Optional[list] = None,
+        num_of_hosts: int = 4,
+    ):
+        cr = get_basic_ray_cr()
+        cr["metadata"]["namespace"] = "default"
+        if cluster_annotations is not None:
+            cr["metadata"]["annotations"] = dict(cluster_annotations)
+        gpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][1])
+        gpu["numOfHosts"] = num_of_hosts
+        gpu["maxReplicas"] = 2
+        if pod_annotations is not None:
+            gpu["template"].setdefault("metadata", {})["annotations"] = dict(
+                pod_annotations
+            )
+        if label_refs is not None:
+            gpu["labelRefs"] = label_refs
+        cr["spec"]["workerGroupSpecs"] = [gpu]
+        derived = _derive_autoscaling_config_from_ray_cr(cr)
+        nt_cfg = AutoscalingConfig(configs=derived).get_node_type_configs()["gpu-group"]
+        return derived["available_node_types"]["gpu-group"], nt_cfg
+
+    # 1. Cluster annotation only with unaliased labelRef (non-TPU clique -> exclusive False).
+    raw, nt = _derive_gpu_group(
+        cluster_annotations={
+            RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "nvidia.com/gpu.clique"
+        },
+        label_refs=[_make_label_ref("nvidia.com/gpu.clique")],
+    )
+    assert raw["replica_config"] == {
+        "workers_per_replica": 4,
+        "domain_label_key": "nvidia.com/gpu.clique",
+        "domain_exclusive": False,
+    }
+    assert nt.replica_config == WorkerReplicaConfig(
+        workers_per_replica=4,
+        domain_label_key="nvidia.com/gpu.clique",
+        domain_exclusive=False,
+    )
+    assert nt.runtime_label_keys == ("nvidia.com/gpu.clique",)
+
+    # 2. Pod annotation overrides cluster annotation; aliased labelRef evaluates
+    # is_exclusive_tpu_slice_topology_key on the K8s node key, NOT the alias.
+    _, nt = _derive_gpu_group(
+        cluster_annotations={
+            RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "nvidia.com/gpu.clique"
+        },
+        pod_annotations={
+            RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "cloud.google.com/gke-tpu-slice"
+        },
+        label_refs=[
+            _make_label_ref("nvidia.com/gpu.clique"),
+            _make_label_ref("cloud.google.com/gke-tpu-slice", name="custom-slice"),
+        ],
+    )
+    assert nt.replica_config == WorkerReplicaConfig(
+        workers_per_replica=4,
+        domain_label_key="custom-slice",
+        domain_exclusive=True,
+    )
+
+    _, nt = _derive_gpu_group(
+        pod_annotations={
+            RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "cloud.google.com/gke-tpu-partition-2x2x2-id"
+        },
+        label_refs=[
+            _make_label_ref(
+                "cloud.google.com/gke-tpu-partition-2x2x2-id", name="slice-id"
+            )
+        ],
+    )
+    assert nt.replica_config == WorkerReplicaConfig(
+        workers_per_replica=4,
+        domain_label_key="slice-id",
+        domain_exclusive=True,
+    )
+
+    # 3. Pod annotation set to "" shadows non-empty cluster annotation (no fallback).
+    raw, nt = _derive_gpu_group(
+        cluster_annotations={
+            RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "nvidia.com/gpu.clique"
+        },
+        pod_annotations={RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: ""},
+        label_refs=[_make_label_ref("nvidia.com/gpu.clique")],
+    )
+    assert raw["replica_config"] == {"workers_per_replica": 4}
+    assert nt.replica_config == WorkerReplicaConfig(workers_per_replica=4)
+    assert nt.runtime_label_keys == ("nvidia.com/gpu.clique",)
+
+    # 4. Topology annotation without matching labelRef emits workers_per_replica only.
+    raw, nt = _derive_gpu_group(
+        pod_annotations={
+            RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "nvidia.com/gpu.clique"
+        },
+        label_refs=[_make_label_ref("topology.kubernetes.io/zone")],
+    )
+    assert raw["replica_config"] == {"workers_per_replica": 4}
+    assert nt.replica_config == WorkerReplicaConfig(workers_per_replica=4)
+    assert nt.runtime_label_keys == ("topology.kubernetes.io/zone",)
+
+    # 5. ray.io/multihost-topology-exclusive parsing (case-insensitive "true" only;
+    # no whitespace trimming).
+    for true_val in ("true", "True", "TRUE"):
+        _, nt = _derive_gpu_group(
+            pod_annotations={
+                RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "nvidia.com/gpu.clique",
+                RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION: true_val,
+            },
+            label_refs=[_make_label_ref("nvidia.com/gpu.clique")],
+        )
+        assert nt.replica_config.domain_exclusive is True
+
+    for false_val in ("false", "False", "FALSE", "invalid", "", " true ", "1", "yes"):
+        _, nt = _derive_gpu_group(
+            cluster_annotations={
+                RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION: "true",
+            },
+            pod_annotations={
+                RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "cloud.google.com/gke-tpu-slice",
+                RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION: false_val,
+            },
+            label_refs=[_make_label_ref("cloud.google.com/gke-tpu-slice")],
+        )
+        # Pod presence shadows cluster "true" AND overrides exclusive TPU key default.
+        assert nt.replica_config.domain_exclusive is False
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_external_multihost_placement_triggers_and_scopes():
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    def _base_cr_and_gpu():
+        cr = get_basic_ray_cr()
+        cr["metadata"]["namespace"] = "default"
+        gpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][1])
+        gpu["numOfHosts"] = 4
+        gpu["maxReplicas"] = 2
+        gpu["template"].setdefault("metadata", {})["annotations"] = {
+            RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "nvidia.com/gpu.clique",
+            RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION: "true",
+        }
+        gpu["labelRefs"] = [_make_label_ref("nvidia.com/gpu.clique")]
+        cr["spec"]["workerGroupSpecs"] = [gpu]
+        return cr, gpu
+
+    # Baseline without external placement: domain_label_key IS inferred.
+    cr, gpu = _base_cr_and_gpu()
+    assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    assert derived["available_node_types"]["gpu-group"]["replica_config"] == {
+        "workers_per_replica": 4,
+        "domain_label_key": "nvidia.com/gpu.clique",
+        "domain_exclusive": True,
+    }
+
+    # Trigger 1: schedulerName == "slice-scheduler" (and negative other scheduler).
+    cr, gpu = _base_cr_and_gpu()
+    gpu["template"]["spec"]["schedulerName"] = "default-scheduler"
+    assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+    gpu["template"]["spec"]["schedulerName"] = "slice-scheduler"
+    assert _has_external_multihost_placement(cr["metadata"], gpu) is True
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    assert derived["available_node_types"]["gpu-group"]["replica_config"] == {
+        "workers_per_replica": 4
+    }
+    assert derived["available_node_types"]["gpu-group"]["runtime_label_keys"] == [
+        "nvidia.com/gpu.clique"
+    ]
+
+    # Trigger 2: schedulingGates contains {"name": "kueue.x-k8s.io/topology"}.
+    cr, gpu = _base_cr_and_gpu()
+    gpu["template"]["spec"]["schedulingGates"] = [{"name": "other/gate"}, None, "bad"]
+    assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+    gpu["template"]["spec"]["schedulingGates"].append(
+        {"name": "kueue.x-k8s.io/topology"}
+    )
+    assert _has_external_multihost_placement(cr["metadata"], gpu) is True
+
+    # Trigger 3: slice.tpu.google.com/* in exactly 4 maps (NOT RayCluster.metadata).
+    def _set_scope(cr_obj, gpu_obj, scope_name, key, val):
+        if scope_name == "nodeSelector":
+            gpu_obj["template"]["spec"].setdefault("nodeSelector", {})[key] = val
+        elif scope_name == "pod_labels":
+            gpu_obj["template"].setdefault("metadata", {}).setdefault("labels", {})[
+                key
+            ] = val
+        elif scope_name == "pod_annotations":
+            gpu_obj["template"].setdefault("metadata", {}).setdefault(
+                "annotations", {}
+            )[key] = val
+        elif scope_name == "group_labels":
+            gpu_obj.setdefault("labels", {})[key] = val
+        elif scope_name == "cr_labels":
+            cr_obj["metadata"].setdefault("labels", {})[key] = val
+        elif scope_name == "cr_annotations":
+            cr_obj["metadata"].setdefault("annotations", {})[key] = val
+        else:
+            raise AssertionError(scope_name)
+
+    for scope in ("nodeSelector", "pod_labels", "pod_annotations", "group_labels"):
+        for val in ("2x2x2", " "):
+            cr, gpu = _base_cr_and_gpu()
+            _set_scope(cr, gpu, scope, "slice.tpu.google.com/topology", val)
+            assert _has_external_multihost_placement(cr["metadata"], gpu) is True
+        # Empty string does NOT trigger.
+        cr, gpu = _base_cr_and_gpu()
+        _set_scope(cr, gpu, scope, "slice.tpu.google.com/topology", "")
+        assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+
+    for neg_scope in ("cr_labels", "cr_annotations"):
+        cr, gpu = _base_cr_and_gpu()
+        _set_scope(cr, gpu, neg_scope, "slice.tpu.google.com/topology", "2x2x2")
+        assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+
+    # Trigger 4a: 5 Volcano/Kueue non-empty keys across 5 maps (NOT nodeSelector).
+    volcano_kueue_scopes = (
+        "cr_labels",
+        "cr_annotations",
+        "pod_labels",
+        "pod_annotations",
+        "group_labels",
+    )
+    for key in EXTERNAL_PLACEMENT_NONEMPTY_KEYS:
+        for scope in volcano_kueue_scopes:
+            cr, gpu = _base_cr_and_gpu()
+            _set_scope(cr, gpu, scope, key, "rack")
+            assert _has_external_multihost_placement(cr["metadata"], gpu) is True
+            # Empty string does NOT trigger.
+            cr, gpu = _base_cr_and_gpu()
+            _set_scope(cr, gpu, scope, key, "")
+            assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+        # nodeSelector does NOT trigger.
+        cr, gpu = _base_cr_and_gpu()
+        _set_scope(cr, gpu, "nodeSelector", key, "rack")
+        assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+
+    # kueue.x-k8s.io/queue-name alone does NOT trigger.
+    for scope in volcano_kueue_scopes:
+        cr, gpu = _base_cr_and_gpu()
+        _set_scope(cr, gpu, scope, "kueue.x-k8s.io/queue-name", "local-queue")
+        assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+
+    # Trigger 4b: kueue.x-k8s.io/podset-unconstrained-topology case-insensitive "true".
+    for scope in volcano_kueue_scopes:
+        for true_val in ("true", "True", "TRUE"):
+            cr, gpu = _base_cr_and_gpu()
+            _set_scope(
+                cr,
+                gpu,
+                scope,
+                KUEUE_PODSET_UNCONSTRAINED_TOPOLOGY_ANNOTATION,
+                true_val,
+            )
+            assert _has_external_multihost_placement(cr["metadata"], gpu) is True
+        for false_val in ("false", "False", "", "1", "yes", " true "):
+            cr, gpu = _base_cr_and_gpu()
+            _set_scope(
+                cr,
+                gpu,
+                scope,
+                KUEUE_PODSET_UNCONSTRAINED_TOPOLOGY_ANNOTATION,
+                false_val,
+            )
+            assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+    cr, gpu = _base_cr_and_gpu()
+    _set_scope(
+        cr,
+        gpu,
+        "nodeSelector",
+        KUEUE_PODSET_UNCONSTRAINED_TOPOLOGY_ANNOTATION,
+        "true",
+    )
+    assert _has_external_multihost_placement(cr["metadata"], gpu) is False
+
+    # Interaction: TPU multi-host with external placement (slice-scheduler +
+    # slice.tpu.google.com/* + Kueue TAS) STILL emits full TPU replica_config.
+    tpu_cr = get_basic_ray_cr()
+    tpu_cr["metadata"]["namespace"] = "default"
+    tpu_cr["metadata"]["annotations"] = {
+        "kueue.x-k8s.io/podset-required-topology": "cloud.google.com/gce-topology-block"
+    }
+    tpu_group = tpu_cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"]["schedulerName"] = "slice-scheduler"
+    tpu_group["template"]["spec"]["nodeSelector"][
+        "slice.tpu.google.com/topology"
+    ] = "2x2x2"
+    tpu_group["labelRefs"] = [_make_label_ref("cloud.google.com/gce-topology-block")]
+    derived = _derive_autoscaling_config_from_ray_cr(tpu_cr)
+    nt_cfgs = AutoscalingConfig(configs=derived).get_node_type_configs()
+    assert nt_cfgs["tpu-group"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=2,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=("TPU-v4-16-head",),
+    )
+    assert nt_cfgs["tpu-group"].runtime_label_keys == (
+        "cloud.google.com/gce-topology-block",
+        "ray.io/tpu-slice-name",
+        "ray.io/tpu-worker-id",
+    )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_direct_spec_helper_without_metadata_backwards_compat():
+    cr = get_basic_ray_cr()
+    node_types = _generate_available_node_types_from_ray_cr_spec(cr["spec"])
+    assert node_types["tpu-group"]["replica_config"] == {
+        "workers_per_replica": 2,
+        "domain_label_key": "ray.io/tpu-slice-name",
+        "domain_exclusive": True,
+        "worker_index_label_key": "ray.io/tpu-worker-id",
+        "head_resources": ["TPU-v4-16-head"],
+    }
+    assert node_types["tpu-group"]["runtime_label_keys"] == [
+        "ray.io/tpu-slice-name",
+        "ray.io/tpu-worker-id",
+    ]
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        # Valid qualified names (including max boundary lengths and >63-char prefix segments)
+        ("a", True),
+        ("A", True),
+        ("0", True),
+        ("a-b_c.d", True),
+        ("example.com/My_Name-1.0", True),
+        ("a..b", True),
+        ("a__b", True),
+        ("a--b", True),
+        ("a" * 63, True),
+        ("a" * 253 + "/" + "b" * 63, True),
+        ("a" * 64 + "." + "b" * 64 + "/name", True),
+        ("ray.io/tpu-slice-name", True),
+        ("cloud.google.com/gke-tpu-partition-2x2x2-id", True),
+        ("topology.kubernetes.io/zone", True),
+        # Invalid: whitespace and trailing newline
+        ("a b", False),
+        ("a\nb", False),
+        ("foo\nbar", False),
+        ("a\tb", False),
+        (" leading", False),
+        ("trailing ", False),
+        ("foo\n", False),
+        ("example.com/foo\n", False),
+        # Invalid: slash structure
+        ("", False),
+        ("/", False),
+        ("/foo", False),
+        ("foo/", False),
+        ("a/b/c", False),
+        # Invalid: DNS1123 subdomain prefix
+        ("FOO.com/bar", False),
+        ("example_com/bar", False),
+        ("a..b/c", False),
+        (".a/b", False),
+        ("a./b", False),
+        ("-a.com/b", False),
+        ("a-.com/b", False),
+        ("a" * 254 + "/bar", False),
+        # Invalid: name part
+        ("a" * 64, False),
+        ("example.com/" + "a" * 64, False),
+        ("-bad", False),
+        ("bad-", False),
+        ("_bad", False),
+        ("bad_", False),
+        (".bad", False),
+        ("bad.", False),
+        ("bad@char", False),
+        ("caf\u00e9", False),
+        ("\u00e9.com/a", False),
+        # Non-string values
+        (None, False),
+        (123, False),
+    ],
+)
+def test_is_k8s_qualified_name(value, expected):
+    assert _is_k8s_qualified_name(value) is expected
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_worker_group_label_refs_k8s_qualified_name_validation():
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    # Unit checks: invalid node label keys and invalid name aliases are skipped.
+    invalid_keys = [
+        "a b",
+        "a\nb",
+        "foo\nbar",
+        "a\tb",
+        " leading",
+        "trailing ",
+        "foo\n",
+        "a/b/c",
+        "/foo",
+        "foo/",
+        "/",
+        "FOO.com/bar",
+        "example_com/bar",
+        "a..b/c",
+        ".a/b",
+        "a./b",
+        "-a.com/b",
+        "a-.com/b",
+        "a" * 254 + "/bar",
+        "a" * 64,
+        "example.com/" + "a" * 64,
+        "-bad",
+        "bad-",
+        "_bad",
+        "bad_",
+        ".bad",
+        "bad.",
+        "bad@char",
+        "caf\u00e9",
+    ]
+    invalid_refs = [_make_label_ref(key) for key in invalid_keys] + [
+        _make_label_ref("topology.kubernetes.io/zone", name=key) for key in invalid_keys
+    ]
+    assert _parse_worker_group_label_refs({"labelRefs": invalid_refs}) == ([], {})
+
+    # Valid boundary keys pass through intact.
+    valid_boundary_keys = [
+        "a",
+        "0",
+        "a-b_c.d",
+        "example.com/My_Name-1.0",
+        "a" * 63,
+        "a" * 253 + "/" + "b" * 63,
+        "a" * 64 + "." + "b" * 64 + "/name",
+        "ray.io/tpu-slice-name",
+        "cloud.google.com/gke-tpu-partition-2x2x2-id",
+        "topology.kubernetes.io/zone",
+    ]
+    delivered, mapping = _parse_worker_group_label_refs(
+        {"labelRefs": [_make_label_ref(key) for key in valid_boundary_keys]}
+    )
+    assert delivered == valid_boundary_keys
+    assert mapping == {key: key for key in valid_boundary_keys}
+
+    # Duplicate delivered key across distinct node labels preserves first-seen entry only.
+    dup_delivered, dup_mapping = _parse_worker_group_label_refs(
+        {
+            "labelRefs": [
+                _make_label_ref("node.a/key", name="dup"),
+                _make_label_ref("node.b/key", name="dup"),
+            ]
+        }
+    )
+    assert dup_delivered == ["dup"]
+    assert dup_mapping == {"node.a/key": "dup"}
+
+    # E2E regression: invalid labelRefs never leak into runtime_label_keys or replica_config.
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    gpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][1])
+    gpu["numOfHosts"] = 2
+    gpu["maxReplicas"] = 2
+    gpu["template"].setdefault("metadata", {})["annotations"] = {
+        RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "a b",
+    }
+    gpu["labelRefs"] = [
+        _make_label_ref("a b"),
+        _make_label_ref("a\nb"),
+        _make_label_ref("topology.kubernetes.io/zone", name="foo\nbar"),
+        _make_label_ref("a/b/c"),
+        _make_label_ref("/foo"),
+        _make_label_ref("FOO.com/bar"),
+        _make_label_ref("a" * 64),
+        _make_label_ref("a" * 254 + "/bar"),
+        _make_label_ref(" padded "),
+    ]
+
+    # Duplicate delivered key E2E: second distinct node label is not bound to "dup".
+    dup_gpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][1])
+    dup_gpu["groupName"] = "dup-gpu-group"
+    dup_gpu["numOfHosts"] = 4
+    dup_gpu["maxReplicas"] = 2
+    dup_gpu["template"].setdefault("metadata", {})["annotations"] = {
+        RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "node.b/key",
+    }
+    dup_gpu["labelRefs"] = [
+        _make_label_ref("node.a/key", name="dup"),
+        _make_label_ref("node.b/key", name="dup"),
+    ]
+
+    cr["spec"]["workerGroupSpecs"] = [gpu, dup_gpu]
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    nt_cfgs = AutoscalingConfig(configs=derived).get_node_type_configs()
+    assert nt_cfgs["gpu-group"].runtime_label_keys == ()
+    assert nt_cfgs["gpu-group"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=2
+    )
+    assert nt_cfgs["dup-gpu-group"].runtime_label_keys == ("dup",)
+    assert nt_cfgs["dup-gpu-group"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=4
+    )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_negative_num_of_hosts_and_explicit_zero_tpu_head_override():
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+
+    # Negative numOfHosts clamps workers to 0 and skips replica_config while keeping labelRefs.
+    neg_hosts = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    neg_hosts["groupName"] = "neg-hosts-tpu"
+    neg_hosts["numOfHosts"] = -1
+    neg_hosts["minReplicas"] = 1
+    neg_hosts["maxReplicas"] = 4
+    neg_hosts["labelRefs"] = [_make_label_ref("topology.kubernetes.io/zone")]
+
+    # Explicit "TPU-v4-16-head": "0" suppresses head_resources while keeping TPU slice metadata.
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["resources"] = {"TPU": "4", "TPU-v4-16-head": "0"}
+
+    cr["spec"]["workerGroupSpecs"].append(neg_hosts)
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    raw_neg = derived["available_node_types"]["neg-hosts-tpu"]
+    assert raw_neg["min_workers"] == 0
+    assert raw_neg["max_workers"] == 0
+    assert "replica_config" not in raw_neg
+
+    nt_cfgs = AutoscalingConfig(configs=derived).get_node_type_configs()
+    neg_nt = nt_cfgs["neg-hosts-tpu"]
+    assert neg_nt.min_worker_nodes == 0
+    assert neg_nt.max_worker_nodes == 0
+    assert neg_nt.replica_config is None
+    assert neg_nt.runtime_label_keys == ("topology.kubernetes.io/zone",)
+
+    tpu_nt = nt_cfgs["tpu-group"]
+    assert tpu_nt.resources["TPU-v4-16-head"] == 0
+    assert tpu_nt.replica_config == WorkerReplicaConfig(
+        workers_per_replica=2,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=(),
+    )
+    assert tpu_nt.runtime_label_keys == (
+        "ray.io/tpu-slice-name",
+        "ray.io/tpu-worker-id",
+    )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(
+    "label_key, label_val",
+    [
+        ("slice.tpu.google.com/topology", "2x2x2"),
+        ("kueue.x-k8s.io/podset-required-topology", "rack"),
+        ("kueue.x-k8s.io/podset-unconstrained-topology", "true"),
+    ],
+)
+def test_worker_group_labels_external_placement_e2e(label_key, label_val):
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    gpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][1])
+    gpu["numOfHosts"] = 4
+    gpu["maxReplicas"] = 2
+    gpu["template"].setdefault("metadata", {})["annotations"] = {
+        RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION: "nvidia.com/gpu.clique",
+        RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION: "true",
+    }
+    gpu["labelRefs"] = [_make_label_ref("nvidia.com/gpu.clique")]
+    gpu["labels"] = {label_key: label_val}
+    cr["spec"]["workerGroupSpecs"] = [gpu]
+
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    nt = AutoscalingConfig(configs=derived).get_node_type_configs()["gpu-group"]
+    assert nt.labels[label_key] == label_val
+    assert nt.replica_config == WorkerReplicaConfig(workers_per_replica=4)
+    assert nt.runtime_label_keys == ("nvidia.com/gpu.clique",)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_replica_metadata_head_resources_none_and_workers_per_replica_precedence():
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    class _SingleHostNoneHeadManager:
+        @staticmethod
+        def get_node_group_accelerator_labels(
+            resources, node_selector, annotations=None
+        ):
+            return None
+
+        @staticmethod
+        def get_node_group_additional_resources(
+            resources, node_selector, annotations=None
+        ):
+            return None
+
+        @staticmethod
+        def get_node_group_replica_metadata(resources, node_selector, annotations=None):
+            return {"head_resources": None}
+
+    class _MultiHostOverrideManager:
+        @staticmethod
+        def get_node_group_accelerator_labels(
+            resources, node_selector, annotations=None
+        ):
+            return None
+
+        @staticmethod
+        def get_node_group_additional_resources(
+            resources, node_selector, annotations=None
+        ):
+            return None
+
+        @staticmethod
+        def get_node_group_replica_metadata(resources, node_selector, annotations=None):
+            return {
+                "domain_label_key": "custom/domain",
+                "head_resources": None,
+                "workers_per_replica": 999,
+            }
+
+    # Case 1: single-host group with head_resources=None pops the key and omits replica_config.
+    cr1 = get_basic_ray_cr()
+    cr1["metadata"]["namespace"] = "default"
+    single = copy.deepcopy(cr1["spec"]["workerGroupSpecs"][1])
+    single["numOfHosts"] = 1
+    single["maxReplicas"] = 2
+    cr1["spec"]["workerGroupSpecs"] = [single]
+    with mock.patch(
+        f"{AUTOSCALING_CONFIG_MODULE_PATH}.get_all_accelerator_managers",
+        return_value=[_SingleHostNoneHeadManager],
+    ):
+        derived1 = _derive_autoscaling_config_from_ray_cr(cr1)
+    raw1 = derived1["available_node_types"]["gpu-group"]
+    assert "replica_config" not in raw1
+    nt1 = AutoscalingConfig(configs=derived1).get_node_type_configs()["gpu-group"]
+    assert nt1.replica_config is None
+
+    # Case 2: multi-host group pops head_resources=None and keeps CR numOfHosts=4 over 999.
+    cr2 = get_basic_ray_cr()
+    cr2["metadata"]["namespace"] = "default"
+    multi = copy.deepcopy(cr2["spec"]["workerGroupSpecs"][1])
+    multi["numOfHosts"] = 4
+    multi["maxReplicas"] = 2
+    cr2["spec"]["workerGroupSpecs"] = [multi]
+    with mock.patch(
+        f"{AUTOSCALING_CONFIG_MODULE_PATH}.get_all_accelerator_managers",
+        return_value=[_MultiHostOverrideManager],
+    ):
+        derived2 = _derive_autoscaling_config_from_ray_cr(cr2)
+    raw2 = derived2["available_node_types"]["gpu-group"]
+    assert "head_resources" not in raw2["replica_config"]
+    nt2 = AutoscalingConfig(configs=derived2).get_node_type_configs()["gpu-group"]
+    assert nt2.replica_config == WorkerReplicaConfig(
+        workers_per_replica=4,
+        domain_label_key="custom/domain",
+        domain_exclusive=True,
+        head_resources=(),
+    )
 
 
 if __name__ == "__main__":

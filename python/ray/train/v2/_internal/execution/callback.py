@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.callback import RayTrainCallback
@@ -126,7 +126,7 @@ class ControllerCallback(RayTrainCallback):
     # tightly coupled to this purpose and limits its reuse for other use-cases.
     def on_controller_start_worker_group(
         self, *, scaling_config: ScalingConfig, num_workers: int
-    ) -> Optional[Dict[str, str]]:
+    ) -> Optional[Union[Dict[str, str], List[Dict[str, str]]]]:
         """Called by the TrainController before the worker group is started.
 
         This hook can be used to perform setup that modifies the worker group's
@@ -137,8 +137,8 @@ class ControllerCallback(RayTrainCallback):
             num_workers: The number of workers to be started.
 
         Returns:
-            An optional dictionary defining a `label_selector`
-            to gang schedule the worker group on the reserved TPU slice.
+            An optional dictionary or per-worker list of dictionaries defining
+            a `label_selector` to gang schedule the worker group.
         """
         return None
 

@@ -1,7 +1,7 @@
 import logging
 import queue
 import threading
-from typing import Optional
+from typing import List, Optional, Union
 
 import ray
 from ray.train.v2._internal.state.util import is_actor_alive
@@ -33,14 +33,19 @@ class PlacementGroupCleaner:
         self._monitor_thread: Optional[threading.Thread] = None
         self._exiting: bool = False
 
-    def register_placement_group(self, placement_group: PlacementGroup):
+    def register_placement_group(
+        self, placement_group: Union[PlacementGroup, List[PlacementGroup]]
+    ):
+        pgs = (
+            placement_group if isinstance(placement_group, list) else [placement_group]
+        )
         logger.debug(
-            "PlacementGroupCleaner registered placement group %s for controller %s",
-            placement_group.id,
+            "PlacementGroupCleaner registered %d placement group(s) for controller %s",
+            len(pgs),
             self._controller_actor_id,
         )
         # Send placement group update to the monitor thread via queue
-        self._pg_queue.put(placement_group)
+        self._pg_queue.put(pgs)
 
     def start_monitoring(self):
         """Start monitoring the controller and placement group."""
@@ -64,14 +69,16 @@ class PlacementGroupCleaner:
         This runs continuously until controller dies or stop() is called.
         Uses a queue to receive placement group updates.
         """
-        curr_placement_group: Optional[PlacementGroup] = None
+        curr_placement_groups: Optional[List[PlacementGroup]] = None
 
         while not self._stop_event.is_set():
             # Check for new placement group updates from queue
             try:
-                pg = self._pg_queue.get(timeout=self._check_interval_s)
-                curr_placement_group = pg
-                logger.debug(f"Updated current placement group to {pg.id}")
+                pgs = self._pg_queue.get(timeout=self._check_interval_s)
+                curr_placement_groups = pgs
+                logger.debug(
+                    f"Updated current placement group(s) to {[pg.id for pg in pgs]}"
+                )
             except queue.Empty:
                 pass  # continue to monitor current placement group
 
@@ -93,11 +100,12 @@ class PlacementGroupCleaner:
                 # Drain any queued placement groups
                 while True:
                     try:
-                        pg = self._pg_queue.get_nowait()
-                        curr_placement_group = pg
+                        pgs = self._pg_queue.get_nowait()
+                        curr_placement_groups = pgs
                     except queue.Empty:
                         break
-                self._cleanup_placement_group(curr_placement_group)
+                for pg in curr_placement_groups or []:
+                    self._cleanup_placement_group(pg)
                 break
 
         # Exit the actor after cleanup since controller is dead
