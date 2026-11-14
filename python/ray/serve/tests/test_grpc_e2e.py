@@ -1,15 +1,20 @@
+import asyncio
 import os
 import signal
 import subprocess
 import sys
 from pathlib import Path
 
+import grpc
 import pytest
 import requests
 
-from ray import serve
+from ray import ActorID, serve
 from ray._common.test_utils import wait_for_condition
+from ray.exceptions import ActorUnavailableError
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.replica_result import gRPCReplicaResult
 from ray.serve.schema import ApplicationStatus, LoggingConfig
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.conftest import _shared_serve_instance  # noqa
@@ -22,6 +27,61 @@ class Downstream:
 
 
 downstream_node = Downstream.bind()
+
+
+@pytest.mark.asyncio
+async def test_grpc_done_callback_translates_real_unavailable_call():
+    async def unavailable(_request, context):
+        await context.abort(grpc.StatusCode.UNAVAILABLE, "replica unavailable")
+
+    server = grpc.aio.server()
+    server.add_generic_rpc_handlers(
+        (
+            grpc.method_handlers_generic_handler(
+                "ray.serve.tests.UnavailableService",
+                {
+                    "Call": grpc.unary_unary_rpc_method_handler(
+                        unavailable,
+                        request_deserializer=lambda value: value,
+                        response_serializer=lambda value: value,
+                    )
+                },
+            ),
+        )
+    )
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+    channel = grpc.aio.insecure_channel(f"127.0.0.1:{port}")
+
+    try:
+        call = channel.unary_unary(
+            "/ray.serve.tests.UnavailableService/Call",
+            request_serializer=lambda value: value,
+            response_deserializer=lambda value: value,
+        )(b"request")
+        result = gRPCReplicaResult(
+            call,
+            metadata=RequestMetadata(
+                request_id="request-id",
+                internal_request_id="internal-request-id",
+                is_streaming=False,
+                _on_separate_loop=False,
+            ),
+            actor_id=ActorID(b"2" * 16),
+            loop=asyncio.get_running_loop(),
+        )
+        callback_result = asyncio.get_running_loop().create_future()
+        result.add_done_callback(callback_result.set_result)
+
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            await call
+        assert exc_info.value.code() == grpc.StatusCode.UNAVAILABLE
+
+        translated = await asyncio.wait_for(callback_result, timeout=5)
+        assert isinstance(translated, ActorUnavailableError)
+    finally:
+        await channel.close()
+        await server.stop(grace=None)
 
 
 @serve.deployment
