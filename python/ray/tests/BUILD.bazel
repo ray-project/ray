@@ -320,6 +320,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "accelerators/test_hpu.py",
+        "accelerators/test_mlu.py",
         "accelerators/test_neuron.py",
         "test_actor_bounded_threads.py",
         "test_actor_retry_1.py",
@@ -513,21 +514,6 @@ py_test_module_list(
 )
 
 ##### End 'minimal installation' tests #####
-
-py_test_module_list(
-    size = "medium",
-    files = [
-        "accelerators/test_mlu.py",
-    ],
-    tags = [
-        "exclusive",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
 
 py_test_module_list(
     size = "small",
