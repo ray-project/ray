@@ -15,8 +15,8 @@ class LLMTokenAutoscalingPolicy:
     across routers to conservatively reconcile their replicated global views.
 
     Args:
-        target_prefill_tokens_per_replica: Outstanding uncached prefill tokens
-            that one replica should handle.
+        target_prefill_tokens_per_replica: Target mean outstanding uncached
+            prefill tokens per replica.
     """
 
     def __init__(self, target_prefill_tokens_per_replica: int):
