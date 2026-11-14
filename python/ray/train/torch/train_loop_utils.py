@@ -99,21 +99,21 @@ def get_devices() -> List[torch.device]:
     Examples:
         Example: Launched 2 workers on the current node, each with 1 GPU
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"  # doctest: +SKIP_EXAMPLE
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"  # doctest: +SKIP_EXAMPLE
         >>> ray.get_gpu_ids() == [2]
         >>> torch.cuda.is_available() == True
         >>> get_devices() == [torch.device("cuda:0")]
 
         Example: Launched 4 workers on the current node, each with 1 GPU
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
         >>> ray.get_gpu_ids() == [2]
         >>> torch.cuda.is_available() == True
         >>> get_devices() == [torch.device("cuda:2")]
 
         Example: Launched 2 workers on the current node, each with 2 GPUs
 
-        >>> os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
         >>> ray.get_gpu_ids() == [2,3]
         >>> torch.cuda.is_available() == True
         >>> get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
@@ -182,7 +182,7 @@ def prepare_data_loader(
     """Prepares :class:`~torch.utils.data.DataLoader` for distributed execution.
 
     This allows you to use the same exact code regardless of number of
-    workers or the device type being used (CPU, GPU).
+    workers or the device type being used (CPU, GPU, TPU).
 
     .. note::
 
@@ -205,13 +205,13 @@ def prepare_data_loader(
         >>> train_dataloader = torch.utils.data.DataLoader(
         ...     ..., batch_size=..., shuffle=True
         ... )
-        >>> train_dataloader = ray.train.torch.prepare_data_loader(train_loader)
+        >>> train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
         >>> for epoch in range(10):
         ...     if ray.train.get_context().get_world_size() > 1:
         ...         # Required for the distributed sampler to shuffle properly across epochs
         ...         train_dataloader.sampler.set_epoch(epoch)
         ...
-        ...     for X, y in train_loader:
+        ...     for X, y in train_dataloader:
         ...         # No need to move data to GPU, this is done by `prepare_data_loader`!
         ...         # X, y = X.to("cuda"), y.to("cuda")
         ...         ...
@@ -222,12 +222,10 @@ def prepare_data_loader(
             the provided DataLoader.
         move_to_device: If set, automatically move the data
             returned by the data loader to the correct device.
-        auto_transfer: If set and device is GPU, another CUDA stream
-            is created to automatically copy data from host (CPU) memory
-            to device (GPU) memory (the default CUDA stream still runs the
-            training procedure). If device is CPU, it will be disabled
-            regardless of the setting. This configuration will be ignored
-            if ``move_to_device`` is False.
+        auto_transfer: If ``True`` and the device supports streams, such as on
+            GPU or TPU, copies batches to the device on a separate stream while
+            the current stream runs training. Ignored when ``move_to_device`` is
+            ``False`` or the device doesn't support streams.
 
     Returns:
         The prepared DataLoader.

@@ -3284,5 +3284,544 @@ def test_build_slice_worker_to_node_ignores_dead_nodes(monkeypatch):
     assert ray.util.tpu._collect_known_slices("4x4", nodes) == [("slice-1", {"0": 0})]
 
 
+def test_normalize_torchtpu_topology():
+    """Test topology normalization for 3D and 4D topologies across TPU generations."""
+    # 3D topologies (Megacore and Single-Core)
+    assert tpu.normalize_torchtpu_topology("2x2x1", tpu_resource_per_chip=1) == "2,2,1"
+    assert tpu.normalize_torchtpu_topology("2x2x4", tpu_resource_per_chip=1) == "2,2,4"
+    assert tpu.normalize_torchtpu_topology("4x4x4", tpu_resource_per_chip=1) == "4,4,4"
+    assert tpu.normalize_torchtpu_topology("4x4", tpu_resource_per_chip=1) == "4,4,1"
+    assert tpu.normalize_torchtpu_topology("2x4", tpu_resource_per_chip=1) == "2,4,1"
+    assert tpu.normalize_torchtpu_topology(" 4X4 ", tpu_resource_per_chip=1) == "4,4,1"
+    assert (
+        tpu.normalize_torchtpu_topology(" 2, 4, 1 ", tpu_resource_per_chip=1) == "2,4,1"
+    )
+    assert (
+        tpu.normalize_torchtpu_topology(" 4 x 4 ", tpu_resource_per_chip=1) == "4,4,1"
+    )
+
+    # 4D topologies (Dual-Device e.g. v7x with 2 devices per chip, or 4D pass-through)
+    assert tpu.normalize_torchtpu_topology("2x4", tpu_resource_per_chip=2) == "2,4,1,2"
+    assert (
+        tpu.normalize_torchtpu_topology("2x2x4", tpu_resource_per_chip=2) == "2,2,4,2"
+    )
+    assert tpu.normalize_torchtpu_topology("2x4", accelerator_type="v7x") == "2,4,1,2"
+    assert tpu.normalize_torchtpu_topology("2x2x4", accelerator_type="v7x") == "2,2,4,2"
+    assert tpu.normalize_torchtpu_topology("2x2x4", accelerator_type="v6e") == "2,2,4"
+    assert (
+        tpu.normalize_torchtpu_topology(
+            "2x2x1", tpu_resource_per_chip=4, accelerator_type="v7x"
+        )
+        == "2,2,1,2"
+    )
+    assert tpu.normalize_torchtpu_topology("2,2,1,2") == "2,2,1,2"
+    assert (
+        tpu.normalize_torchtpu_topology("2x2x1x2", accelerator_type="v7x") == "2,2,1,2"
+    )
+    # GKE-style and Ray label spellings of v7x also get the dual-device dimension.
+    for v7x_type in ["tpu7x", "tpu7x-16", "TPU-V7X"]:
+        assert (
+            tpu.normalize_torchtpu_topology("2x2x1", accelerator_type=v7x_type)
+            == "2,2,1,2"
+        )
+
+    # Invalid topology strings raise ValueError
+    for invalid_topo in ["", "foo", "4x0", "-2x4", "2x2x2x2x2", None]:
+        with pytest.raises(ValueError, match="Invalid topology string"):
+            tpu.normalize_torchtpu_topology(invalid_topo)
+
+    # Invalid non-positive tpu_resource_per_chip raises ValueError
+    for invalid_rpc in [0, -1]:
+        with pytest.raises(ValueError, match="tpu_resource_per_chip must be positive"):
+            tpu.normalize_torchtpu_topology("4x4", tpu_resource_per_chip=invalid_rpc)
+
+    # Invalid types for tpu_resource_per_chip raise TypeError
+    for invalid_type in [True, 2.0]:
+        with pytest.raises(TypeError, match="must be an integer"):
+            tpu.normalize_torchtpu_topology("4x4", tpu_resource_per_chip=invalid_type)
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected_env",
+    [
+        # Derived slicebuilder addresses across 2 hosts (4 devices/host), worker_id=1.
+        (
+            {
+                "topology": "2x4",
+                "worker_hostnames": ["host-a:8471", "host-b:8471"],
+                "worker_id": 1,
+            },
+            {
+                "TORCH_TPU_TOPOLOGY": "2,4,1",
+                "TPU_WORKER_HOSTNAMES": "host-a,host-b",
+                "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
+                    "host-a:8471,host-a:8472,host-a:8473,host-a:8474,"
+                    "host-b:8471,host-b:8472,host-b:8473,host-b:8474"
+                ),
+                "MASTER_ADDR": "host-a",
+                "TPU_WORKER_ID": "1",
+            },
+        ),
+        # Single-host defaults worker_id=0; explicit master_addr strips port and overrides host[0];
+        # the last derived port may be exactly 65535.
+        (
+            {
+                "topology": "2x2",
+                "worker_hostnames": "10.0.0.1",
+                "master_addr": "10.0.0.99:8471",
+                "slicebuilder_port": 65532,
+            },
+            {
+                "TORCH_TPU_TOPOLOGY": "2,2,1",
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1",
+                "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
+                    "10.0.0.1:65532,10.0.0.1:65533,10.0.0.1:65534,10.0.0.1:65535"
+                ),
+                "MASTER_ADDR": "10.0.0.99",
+                "TPU_WORKER_ID": "0",
+            },
+        ),
+        # Explicit slicebuilder_addresses deduplicates hosts and preserves order; worker_id=None on multi-host omits TPU_WORKER_ID.
+        (
+            {
+                "topology": "2x2",
+                "slicebuilder_addresses": [
+                    "10.0.0.1:8471",
+                    "10.0.0.1:8472",
+                    "10.0.0.2:8471",
+                    "10.0.0.2:8472",
+                ],
+            },
+            {
+                "TORCH_TPU_TOPOLOGY": "2,2,1",
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
+                "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
+                    "10.0.0.1:8471,10.0.0.1:8472,10.0.0.2:8471,10.0.0.2:8472"
+                ),
+                "MASTER_ADDR": "10.0.0.1",
+            },
+        ),
+        # IPv6 worker_hostnames strip ports/brackets for TPU_WORKER_HOSTNAMES and MASTER_ADDR,
+        # and bracket IPv6 endpoints in TORCH_TPU_SLICEBUILDER_ADDRESSES.
+        (
+            {
+                "topology": "2x4",
+                "worker_hostnames": ["2001:db8::1", "[2001:db8::2]:8471"],
+                "worker_id": 1,
+            },
+            {
+                "TORCH_TPU_TOPOLOGY": "2,4,1",
+                "TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2",
+                "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
+                    "[2001:db8::1]:8471,[2001:db8::1]:8472,[2001:db8::1]:8473,[2001:db8::1]:8474,"
+                    "[2001:db8::2]:8471,[2001:db8::2]:8472,[2001:db8::2]:8473,[2001:db8::2]:8474"
+                ),
+                "MASTER_ADDR": "2001:db8::1",
+                "TPU_WORKER_ID": "1",
+            },
+        ),
+        # Whitespace, IPv6, and leading-zero port slicebuilder_addresses normalization.
+        (
+            {
+                "topology": "2x2",
+                "slicebuilder_addresses": (
+                    " 10.0.0.1:8471 , [2001:db8::1]:8472 , node-2:9000 , node-2:09001 "
+                ),
+                "worker_id": 0,
+            },
+            {
+                "TORCH_TPU_TOPOLOGY": "2,2,1",
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1,2001:db8::1,node-2",
+                "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
+                    "10.0.0.1:8471,[2001:db8::1]:8472,node-2:9000,node-2:9001"
+                ),
+                "MASTER_ADDR": "10.0.0.1",
+                "TPU_WORKER_ID": "0",
+            },
+        ),
+        # Topology-only mode (paired with ambient container env vars).
+        (
+            {
+                "topology": "2x4",
+                "worker_id": 1,
+                "master_addr": "10.0.0.99:8471",
+            },
+            {
+                "TORCH_TPU_TOPOLOGY": "2,4,1",
+                "MASTER_ADDR": "10.0.0.99",
+                "TPU_WORKER_ID": "1",
+            },
+        ),
+    ],
+)
+def test_get_torchtpu_env_vars_free_function(kwargs, expected_env):
+    """Test get_torchtpu_env_vars address derivation, deduplication, and overrides."""
+    assert ray.util.tpu.get_torchtpu_env_vars(**kwargs) == expected_env
+
+
+@pytest.mark.parametrize(
+    "kwargs, exc_type, match",
+    [
+        ({"topology": "2x4", "worker_hostnames": []}, ValueError, "at least one host"),
+        (
+            {"topology": "2x4", "worker_hostnames": " , "},
+            ValueError,
+            "at least one host",
+        ),
+        (
+            {"topology": "2x4", "worker_hostnames": [":8471"]},
+            ValueError,
+            "Invalid host in worker_hostnames",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": []},
+            ValueError,
+            "at least one address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": " , "},
+            ValueError,
+            "at least one address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": ["10.0.0.1"]},
+            ValueError,
+            "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": [":8471"]},
+            ValueError,
+            "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": ["10.0.0.1:0"]},
+            ValueError,
+            "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": ["10.0.0.1:65536"]},
+            ValueError,
+            "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_port": True},
+            TypeError,
+            "slicebuilder_port must be an integer",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_port": 0},
+            ValueError,
+            "slicebuilder_port must be in",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_port": 65536},
+            ValueError,
+            "slicebuilder_port must be in",
+        ),
+        (
+            {
+                "topology": "2x2",
+                "worker_hostnames": "10.0.0.1",
+                "slicebuilder_port": 65533,
+            },
+            ValueError,
+            "exceeds the maximum TCP port",
+        ),
+        (
+            {"topology": "2x4", "master_addr": ":8471"},
+            ValueError,
+            "Invalid master_addr",
+        ),
+        (
+            {"topology": "2x4", "worker_id": -1},
+            ValueError,
+            "worker_id -1 must be >= 0",
+        ),
+        (
+            {
+                "topology": "2x4",
+                "worker_hostnames": ["10.0.0.1", "10.0.0.2"],
+                "worker_id": 2,
+            },
+            ValueError,
+            "out of bounds",
+        ),
+        (
+            {"topology": "2x4", "worker_id": "invalid"},
+            TypeError,
+            "must be an integer",
+        ),
+        (
+            {"topology": "2x4", "worker_id": True},
+            TypeError,
+            "must be an integer",
+        ),
+        (
+            {
+                "topology": "2x2",
+                "worker_hostnames": ["10.0.0.1", "10.0.0.2", "10.0.0.3"],
+            },
+            ValueError,
+            "must be divisible by the number of hosts",
+        ),
+    ],
+)
+def test_get_torchtpu_env_vars_rejects_invalid_input(kwargs, exc_type, match):
+    """get_torchtpu_env_vars validates hosts, addresses, divisibility, and worker_id."""
+    with pytest.raises(exc_type, match=match):
+        ray.util.tpu.get_torchtpu_env_vars(**kwargs)
+
+
+@pytest.fixture
+def _clean_ray():
+    if ray.is_initialized():
+        ray.shutdown()
+    yield
+    if ray.is_initialized():
+        ray.shutdown()
+
+
+def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypatch):
+    """Placed/unplaced SlicePlacementGroup and SubslicePlacementGroup get_torchtpu_env_vars on a live cluster."""
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "192.168.1.1,192.168.1.2")
+    monkeypatch.setenv(
+        "TORCH_TPU_SLICEBUILDER_ADDRESSES", "192.168.1.1:8471,192.168.1.2:8471"
+    )
+    # Give each live raylet in the two v4-16 slices a distinct host IP so
+    # multi-slice MASTER_ADDR vs. slice-local addresses cannot pass vacuously
+    # on a single-machine 127.0.0.1 cluster.
+    orig_ray_nodes = ray.nodes
+    slice_to_subnet = {"test-slice-0": 0, "test-slice-1": 1}
+
+    def _nodes_with_distinct_slice_ips():
+        out = []
+        for node in orig_ray_nodes():
+            labels = node.get("Labels", {})
+            sname = labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+            wid = labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
+            if sname in slice_to_subnet and wid is not None:
+                node = {
+                    **node,
+                    "NodeManagerAddress": f"10.0.{slice_to_subnet[sname]}.{int(wid) + 1}",
+                }
+            out.append(node)
+        return out
+
+    monkeypatch.setattr("ray.nodes", _nodes_with_distinct_slice_ips)
+
+    for pg_per_slice in (False, True):
+        spg = ray.util.tpu.slice_placement_group(
+            topology="2x2x2",
+            accelerator_version="v4",
+            num_slices=2,
+            resources_per_bundle={"CPU": 0, "TPU": 1},
+            pg_per_slice=pg_per_slice,
+        )
+        pgs = spg.slice_placement_groups if pg_per_slice else [spg.placement_group]
+        ray.get([pg.ready() for pg in pgs], timeout=10)
+
+        s0_addrs = spg.get_worker_addrs(0)
+        s1_addrs = spg.get_worker_addrs(1)
+        assert len(s0_addrs) == 2 and None not in s0_addrs
+        assert len(s1_addrs) == 2 and None not in s1_addrs
+        assert s0_addrs[0] != s1_addrs[0]
+        assert [addr.split(".")[-1] for addr in s0_addrs] == ["1", "2"]
+        assert [addr.split(".")[-1] for addr in s1_addrs] == ["1", "2"]
+
+        expected_sb_s0 = ",".join(
+            f"{host}:{8471 + i}" for host in s0_addrs for i in range(4)
+        )
+        expected_sb_s1 = ",".join(
+            f"{host}:{8471 + i}" for host in s1_addrs for i in range(4)
+        )
+        assert spg.get_torchtpu_env_vars() == {
+            "TORCH_TPU_TOPOLOGY": "2,2,2",
+            "TORCH_TPU_SLICEBUILDER_ADDRESSES": expected_sb_s0,
+            "TPU_WORKER_HOSTNAMES": ",".join(s0_addrs),
+            "MASTER_ADDR": s0_addrs[0],
+        }
+        # Slice 1 gets its own slice-local hostnames and slicebuilder endpoints, while
+        # MASTER_ADDR defaults to global rank 0 (host 0 of slice 0) for torch.distributed
+        # TCPStore rendezvous across all workers in both slices.
+        for wid in (0, 1):
+            assert spg.get_torchtpu_env_vars(wid, slice_index=0)[
+                "TPU_WORKER_ID"
+            ] == str(wid)
+            assert spg.get_torchtpu_env_vars(wid, slice_index=1) == {
+                "TORCH_TPU_TOPOLOGY": "2,2,2",
+                "TORCH_TPU_SLICEBUILDER_ADDRESSES": expected_sb_s1,
+                "TPU_WORKER_HOSTNAMES": ",".join(s1_addrs),
+                "TPU_WORKER_ID": str(wid),
+                "MASTER_ADDR": s0_addrs[0],
+            }
+        # Callers running independent single-slice worlds can override master_addr per slice.
+        assert (
+            spg.get_torchtpu_env_vars(0, slice_index=1, master_addr=s1_addrs[0])[
+                "MASTER_ADDR"
+            ]
+            == s1_addrs[0]
+        )
+
+        explicit_s0 = spg.get_torchtpu_env_vars(
+            worker_id=0, worker_hostnames=["host-a", "host-b"]
+        )
+        assert explicit_s0["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
+        assert explicit_s0["MASTER_ADDR"] == "host-a"
+        explicit_s1 = spg.get_torchtpu_env_vars(
+            worker_id=0, slice_index=1, worker_hostnames=["host-c", "host-d"]
+        )
+        assert explicit_s1["TPU_WORKER_HOSTNAMES"] == "host-c,host-d"
+        assert explicit_s1["MASTER_ADDR"] == s0_addrs[0]
+
+        with pytest.raises(ValueError, match="slice_index 2 is out of range"):
+            spg.get_torchtpu_env_vars(slice_index=2)
+        with pytest.raises(ValueError, match="out of bounds"):
+            spg.get_torchtpu_env_vars(worker_id=2)
+
+        spg.shutdown()
+
+    # Partially placed SlicePlacementGroup (slice 0 unplaced, slice 1 placed on
+    # test-slice-1) must not leak ambient env vars on slice 0 or resolve MASTER_ADDR
+    # from an unplaced slice 0 when slice 1 is ready.
+    slice_name_key = ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
+    spg_partial = SlicePlacementGroup(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        resources_per_bundle={"CPU": 0, "TPU": 1},
+        pg_per_slice=True,
+        bundle_label_selector=(
+            [{slice_name_key: "unplaced-slice-0"}] * 8
+            + [{slice_name_key: "test-slice-1"}] * 8
+        ),
+    )
+    ray.get(spg_partial.slice_placement_groups[1].ready(), timeout=10)
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        spg_partial.get_torchtpu_env_vars(worker_id=0)
+    assert (
+        spg_partial.get_torchtpu_env_vars(slice_index=0, worker_hostnames=["dns-0"])[
+            "MASTER_ADDR"
+        ]
+        == "dns-0"
+    )
+    with pytest.raises(
+        RuntimeError, match="Could not resolve MASTER_ADDR from slice 0"
+    ):
+        spg_partial.get_torchtpu_env_vars(0, slice_index=1)
+    with pytest.raises(
+        RuntimeError, match="Could not resolve MASTER_ADDR from slice 0"
+    ):
+        spg_partial.get_torchtpu_env_vars(slice_index=1, worker_hostnames=["dns-1"])
+    partial_s1 = spg_partial.get_torchtpu_env_vars(
+        0, slice_index=1, master_addr="dns-0"
+    )
+    assert partial_s1["TPU_WORKER_HOSTNAMES"] == "10.0.1.1,10.0.1.2"
+    assert partial_s1["MASTER_ADDR"] == "dns-0"
+    spg_partial.shutdown()
+
+    # SubslicePlacementGroup via _build_subslice_pg (unplaced on ray_tpu_cluster).
+    sg_v6e = ray.util.tpu._build_subslice_pg(
+        worker_ids=["0", "1"],
+        subslice_index=1,
+        slice_name="slice-sub",
+        subslice_topology="2x4",
+        parent_topology="4x4",
+        chips_per_vm=4,
+        resources_per_bundle=None,
+        strategy="SPREAD",
+        name="",
+        lifetime=None,
+        accelerator_version="v6e",
+    )
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        sg_v6e.get_torchtpu_env_vars(worker_id=0)
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        sg_v6e.get_jax_env_vars(worker_id=0)
+
+    assert sg_v6e.get_torchtpu_env_vars(
+        worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"]
+    ) == {
+        "TORCH_TPU_TOPOLOGY": "2,4,1",
+        "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
+            "10.0.0.10:8471,10.0.0.10:8472,10.0.0.10:8473,10.0.0.10:8474,"
+            "10.0.0.11:8471,10.0.0.11:8472,10.0.0.11:8473,10.0.0.11:8474"
+        ),
+        "TPU_WORKER_HOSTNAMES": "10.0.0.10,10.0.0.11",
+        "TPU_WORKER_ID": "1",
+        "MASTER_ADDR": "10.0.0.10",
+        "TPU_TOPOLOGY": "2x4",
+    }
+    assert "TPU_WORKER_ID" not in sg_v6e.get_torchtpu_env_vars(
+        worker_hostnames=["10.0.0.10", "10.0.0.11"]
+    )
+    with pytest.raises(ValueError, match="out of bounds"):
+        sg_v6e.get_torchtpu_env_vars(
+            worker_id=2, worker_hostnames=["10.0.0.10", "10.0.0.11"]
+        )
+    sg_v6e.shutdown()
+
+    # A 2x2 subslice on an 8-chip v6e host stays 3D ("2,2,1").
+    sg_8chip = ray.util.tpu._build_subslice_pg(
+        worker_ids=["0"],
+        subslice_index=0,
+        slice_name="slice-8chip",
+        subslice_topology="2x2",
+        parent_topology="2x4",
+        chips_per_vm=8,
+        resources_per_bundle=None,
+        strategy="SPREAD",
+        name="",
+        lifetime=None,
+        accelerator_version="v6e",
+    )
+    assert (
+        sg_8chip.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])[
+            "TORCH_TPU_TOPOLOGY"
+        ]
+        == "2,2,1"
+    )
+    sg_8chip.shutdown()
+
+    # End-to-end subslice_placement_group() forwards normalized accelerator_version ("v7x")
+    # so get_torchtpu_env_vars produces 4D topology ("2,2,1,2") and 8 device ports on 1 host.
+    v7x_nodes = [
+        {
+            "NodeID": f"node_{i}",
+            "Alive": True,
+            "NodeManagerAddress": f"10.0.0.{10 + i}",
+            "Resources": {"TPU": 4, "CPU": 4},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-v7x",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x2x2",
+            },
+        }
+        for i in range(2)
+    ]
+    monkeypatch.setattr("ray.nodes", lambda: v7x_nodes)
+    monkeypatch.setattr(
+        "ray._private.state.available_resources_per_node",
+        lambda: {f"node_{i}": {"TPU": 4, "CPU": 4} for i in range(2)},
+    )
+    monkeypatch.setattr("ray.util.tpu._refresh_cache_from_kv", lambda *_: None)
+    with ray.util.tpu._tpu_subslice_cache_lock:
+        ray.util.tpu._tpu_subslice_cache["slice-v7x"] = {"0": 0, "1": 1}
+    try:
+        sg_v7x = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x2x1",
+            accelerator_version="tpu7x",
+        )
+        v7x_env = sg_v7x.get_torchtpu_env_vars(worker_hostnames=["10.0.0.10"])
+        assert v7x_env["TORCH_TPU_TOPOLOGY"] == "2,2,1,2"
+        assert v7x_env["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == ",".join(
+            f"10.0.0.10:{8471 + i}" for i in range(8)
+        )
+        assert v7x_env["TPU_WORKER_ID"] == "0"
+        sg_v7x.shutdown()
+    finally:
+        with ray.util.tpu._tpu_subslice_cache_lock:
+            ray.util.tpu._tpu_subslice_cache.pop("slice-v7x", None)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

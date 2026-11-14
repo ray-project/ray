@@ -6,6 +6,9 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Deque, Dict, List, Optional, Tuple
 
+import pyarrow as pa
+
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     ChunkMetadata,
@@ -25,6 +28,11 @@ class BinItem:
     file: FileInfo
     # ``None`` for a whole-file listing row: indivisible, sized by the listing.
     run: Optional[FileChunk] = None
+    # This row's extra columns, as a one-row table (see
+    # ``FileManifest.extra_columns``). The packer never looks inside; it hands
+    # them back out in ``_bin_to_manifest``, so a source's per-file state
+    # survives packing.
+    extra_columns: Optional[pa.Table] = None
 
     @property
     def size_bytes(self) -> int:
@@ -101,7 +109,7 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
         unit_sizes=sizes if b - a > 1 else (),
         unit_rows=rows if b - a > 1 else (),
     )
-    return BinItem(file=item.file, run=piece)
+    return BinItem(file=item.file, run=piece, extra_columns=item.extra_columns)
 
 
 def _subitem(item: BinItem, num_units: int, start: int, end: int) -> BinItem:
@@ -272,14 +280,24 @@ def _bin_items(manifest: FileManifest) -> List[BinItem]:
     file's units.
     """
     items: List[BinItem] = []
-    for path, file_size, md in zip(
-        manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas
+    extra_columns = manifest.extra_columns
+    for row_index, (path, file_size, md) in enumerate(
+        zip(manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas)
     ):
         file = FileInfo(path=str(path), size=int(file_size))
-        if md is None or "unit_ids" not in md:
-            items.append(BinItem(file=file))
-        else:
-            items.append(BinItem(file=file, run=FileChunk.from_metadata(md)))
+        run = (
+            None if md is None or "unit_ids" not in md else FileChunk.from_metadata(md)
+        )
+        items.append(
+            BinItem(
+                file=file,
+                run=run,
+                # Zero-copy view of this row's extra columns, if it has any.
+                extra_columns=(
+                    None if extra_columns is None else extra_columns.slice(row_index, 1)
+                ),
+            )
+        )
     return items
 
 
@@ -324,8 +342,14 @@ class OnlineBinPacker(FilePartitioner):
     :meth:`has_partition` / :meth:`next_partition` as they become available;
     call :meth:`finalize` once all input is added to flush the still-open bins.
 
-    Packs globally -- one pool of open bins keyed by file -- so it needs every
-    listing row, hence ``requires_global_input``.
+    By default it packs globally, so it needs every listing row
+    (``requires_global_input=True``). Setting ``requires_global_input=False``
+    lets listing run as parallel tasks: the listing planner
+    (``plan_list_files_op``) splits the paths passed to ``read_*`` evenly across
+    up to ``DEFAULT_MAX_NUM_LIST_FILES_TASKS`` (200) tasks, and a folder counts
+    as one path. It still uses one task when the read shuffles files. The cost
+    is that bins may not fill as well, since each task packs only its own
+    files, which may lead to more read tasks.
     """
 
     def __init__(
@@ -335,9 +359,13 @@ class OnlineBinPacker(FilePartitioner):
         max_shared_open_bins: int = 16,
         split_coalesced: bool = False,
         isolate_heavy_files: bool = True,
+        requires_global_input: bool = True,
     ):
         # ``max_bin_bytes`` doubles as the "file turns heavy" isolate threshold.
         self._cap = max_bin_bytes
+        # Whether the planner must feed every listing row to one instance
+        # (global packing) or may run one instance per listing shard.
+        self._requires_global_input = requires_global_input
         # When True, a multi-unit run that does not fit whole is split at unit
         # boundaries to fill residual bin space instead of opening a fresh bin.
         # Single units stay atomic, so with coalescing off (every run is one
@@ -359,7 +387,7 @@ class OnlineBinPacker(FilePartitioner):
 
     @property
     def requires_global_input(self) -> bool:
-        return True
+        return self._requires_global_input
 
     # === Feeding ===
 
@@ -455,13 +483,20 @@ class OnlineBinPacker(FilePartitioner):
         # live in its chunk metadata.
         files: List[FileInfo] = []
         chunk_metadatas: List[Optional[ChunkMetadata]] = []
+        extra_columns: List[Optional[pa.Table]] = []
         runs_by_file: Dict[FileInfo, List[FileChunk]] = defaultdict(list)
+        # A file can put several runs in one bin, and they merge into output
+        # rows below. Every run of a file carries the same extra columns, even
+        # across copies of a path listed more than once; keep the first.
+        extra_columns_by_file: Dict[FileInfo, Optional[pa.Table]] = {}
         for item in bin_.items:
             if item.run is None:
                 files.append(item.file)
                 chunk_metadatas.append(None)
+                extra_columns.append(item.extra_columns)
             else:
                 runs_by_file[item.file].append(item.run)
+                extra_columns_by_file.setdefault(item.file, item.extra_columns)
 
         for file, runs in runs_by_file.items():
             for disjoint_runs in _group_disjoint_runs(runs):
@@ -475,6 +510,7 @@ class OnlineBinPacker(FilePartitioner):
                 )
                 files.append(file)
                 chunk_metadatas.append(merged.to_metadata())
+                extra_columns.append(extra_columns_by_file[file])
         sizes: List[int] = []
         for file in files:
             assert file.size is not None
@@ -483,4 +519,27 @@ class OnlineBinPacker(FilePartitioner):
             paths=[file.path for file in files],
             sizes=sizes,
             chunk_metadatas=chunk_metadatas,
+            extra_columns=_concat_extra_columns(extra_columns),
         )
+
+
+def _concat_extra_columns(per_row: List[Optional[pa.Table]]) -> Optional[pa.Table]:
+    """The bin's extra columns, one row per output row, or ``None`` for none."""
+    # All-or-nothing: a bin can hold rows from several ``add_input`` calls, but
+    # every manifest one source lists carries the same extra columns, built
+    # with one explicit schema.
+    present = [table for table in per_row if table is not None]
+    if not present:
+        return None
+    assert len(present) == len(per_row), (
+        f"{len(present)} of {len(per_row)} bin items carry extra columns; "
+        "a manifest's rows either all have them or none do"
+    )
+    schema = present[0].schema
+    assert all(table.schema.equals(schema) for table in present), (
+        "a source's manifests must build their extra columns with one explicit "
+        "schema, not one inferred from values"
+    )
+    # Each row arrived as its own one-row slice; merge them into one chunk per
+    # column, since Ray serializes a column chunk by chunk.
+    return transform_pyarrow.concat(present).combine_chunks()

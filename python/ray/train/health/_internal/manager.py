@@ -1,15 +1,48 @@
 import logging
+import time
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Union,
+)
 
-from ray.train.health._internal.constants import DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
-from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
-from ray.train.health._internal.probe_utils import merge_probes
+import ray
+from ray.train.health._internal.constants import (
+    DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
+    DEFAULT_ON_DEMAND_PROBE_POLL_INTERVAL_S,
+    DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
+)
+from ray.train.health._internal.node_monitor import NodeMonitorStatus
+from ray.train.health._internal.node_monitor_group import (
+    NodeMonitorGroup,
+    NodeMonitorGroupPollStatus,
+)
+from ray.train.health._internal.probe_utils import ScheduledProbe, merge_probes
 from ray.train.health.check import HealthCheck, PeriodicHealthCheck
 from ray.train.health.decision import Diagnose, Evict, HealthDecision, Noop, Reattempt
 from ray.train.health.evaluator import Evaluator
-from ray.train.health.probe import NodeIdStr, NodeProbe, ProbeResult
+from ray.train.health.probe import (
+    ControllerProbe,
+    NodeIdStr,
+    NodeProbe,
+    Probe,
+    ProbeResult,
+    WorkerProbe,
+)
 from ray.train.health.state import HealthState
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.worker_group import (
+        WorkerGroup,
+        WorkerStatus,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +69,7 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
         TypeError: If a decision is not a ``Noop``, ``Reattempt``, ``Evict`` or
             ``Diagnose``.
     """
-    # TODO: Add a field to Diagnose for checks that need the workers stopped,
-    # such as an all-reduce test, and rank those above Reattempt.
+    # TODO: Rank a Diagnose whose checks require idle workers above Reattempt.
     evicts, reattempts, diagnoses = [], [], []
     for decision in decisions:
         if isinstance(decision, Evict):
@@ -64,8 +96,8 @@ class HealthManager:
     """Runs a training run's health checks, and evaluates their results into
     health decisions.
 
-    It runs two kinds of checks on the nodes of the attempt that ``reset()``
-    starts:
+    It runs two kinds of checks on the nodes and workers of the attempt that
+    ``reset()`` starts, and on the controller's node:
 
     - In-flight checks run throughout training. Their probes are sampled
       continuously, and each ``evaluate_inflight_checks()`` evaluates their
@@ -89,14 +121,26 @@ class HealthManager:
             for check in inflight_checks
             for evaluator in check.evaluator_creator()
         ]
-        self._node_monitor_group = NodeMonitorGroup(
-            [p for p in inflight_probes if isinstance(p.probe, NodeProbe)]
+        self._inflight_probes = [p.probe for p in inflight_probes]
+        self._worker_probes = [
+            p for p in inflight_probes if isinstance(p.probe, WorkerProbe)
+        ]
+        self._node_monitor_group = NodeMonitorGroup(inflight_probes)
+        # The last status of each NodeMonitor of the in-flight probes, merged
+        # over the polls.
+        self._last_node_monitor_group_status = NodeMonitorGroupPollStatus(
+            node_monitor_statuses={}
         )
-        # {probe name: {node ID, world rank or ControllerProbe key: the latest
-        # ProbeResult}}
-        self._latest_results: Dict[str, Dict[Any, ProbeResult]] = {}
-        # The evaluators of the on-demand checks that are running.
+        # The last status of each worker, by world rank, merged over the polls.
+        self._last_worker_statuses: Dict[int, "WorkerStatus"] = {}
+        # The attempt's worker group, which runs the on-demand WorkerProbes.
+        self._worker_group: Optional["WorkerGroup"] = None
+        # The probes and evaluators of the on-demand checks that are running.
+        self._on_demand_probes: List[Probe] = []
         self._on_demand_evaluators: List[Evaluator] = []
+        # {probe name: {world rank: ProbeResult}} of the on-demand
+        # WorkerProbes. None while they run.
+        self._on_demand_worker_results: Optional[Dict[str, Dict[int, ProbeResult]]] = {}
         # The IDs of the evaluators whose failure was logged.
         self._failed_evaluators: Set[int] = set()
         # The nodes evicted so far. reset() keeps them.
@@ -106,18 +150,37 @@ class HealthManager:
     def evicted_nodes(self) -> List[NodeIdStr]:
         return sorted(self._evicted)
 
-    def reset(self, node_ids: List[NodeIdStr]) -> None:
+    @property
+    def worker_probes(self) -> List[ScheduledProbe]:
+        """The in-flight checks' ``WorkerProbe``\\ s, for each worker to sample."""
+        return list(self._worker_probes)
+
+    def reset(
+        self,
+        node_ids: List[NodeIdStr],
+        worker_group: Optional["WorkerGroup"] = None,
+    ) -> None:
         """Start monitoring a new attempt of the training run, and stop
         monitoring the previous one. Called at the start of each attempt, before
         its pre-flight checks and training.
 
         Args:
             node_ids: The nodes the attempt's workers run on.
+            worker_group: The attempt's worker group, which runs the on-demand
+                WorkerProbes.
         """
-        self._latest_results.clear()
+        self._last_node_monitor_group_status = NodeMonitorGroupPollStatus(
+            node_monitor_statuses={}
+        )
+        self._last_worker_statuses = {}
+        self._worker_group = worker_group
         self._on_demand_evaluators = []
+        self._on_demand_worker_results = {}
         self._node_monitor_group.shutdown()
-        self._node_monitor_group.start(node_ids)
+        self._node_monitor_group.start_worker_node_monitors(node_ids)
+        self._node_monitor_group.start_controller_node_monitor(
+            ray.get_runtime_context().get_node_id()
+        )
         for evaluator in self._inflight_evaluators:
             try:
                 evaluator.on_reset()
@@ -132,42 +195,99 @@ class HealthManager:
         """Stop monitoring."""
         self._node_monitor_group.shutdown()
 
-    def evaluate_inflight_checks(
-        self, timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
+    def evaluate(
+        self,
+        worker_statuses: Optional[Mapping[int, "WorkerStatus"]] = None,
+        timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
     ) -> HealthDecision:
-        """Evaluate the in-flight checks' latest results.
+        """Evaluate the on-demand checks once they are back, and the in-flight
+        checks. While on-demand checks run, an in-flight ``Diagnose`` is
+        dropped rather than start more, unless a check requires idle workers:
+        that ``Diagnose`` restarts the worker group instead.
 
         Args:
-            timeout: Timeout in seconds to wait for the latest results.
+            worker_statuses: ``{world rank: WorkerStatus}`` from the worker
+                group's latest poll, with each worker's ``WorkerProbe`` results
+                and health report.
+            timeout: Timeout in seconds to wait for the in-flight checks' latest
+                results.
 
         Returns:
             The health decision to carry out. ``Noop()`` if there is nothing to
             do.
         """
-        self._poll_latest_results(timeout)
-        state = HealthState(
-            probe_results={name: dict(r) for name, r in self._latest_results.items()}
+        on_demand_decision = self.evaluate_on_demand_checks()
+        inflight_decision = self.evaluate_inflight_checks(worker_statuses, timeout)
+        if on_demand_decision is None:
+            on_demand_decision = Noop()
+            if isinstance(inflight_decision, Diagnose) and not any(
+                check.requires_idle_workers for check in inflight_decision.checks
+            ):
+                inflight_decision = Noop()
+        return merge_decisions([on_demand_decision, inflight_decision])
+
+    def evaluate_inflight_checks(
+        self,
+        worker_statuses: Optional[Mapping[int, "WorkerStatus"]] = None,
+        timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
+    ) -> HealthDecision:
+        """Evaluate the in-flight checks' latest results.
+
+        Args:
+            worker_statuses: ``{world rank: WorkerStatus}`` from the worker
+                group's latest poll, with each worker's ``WorkerProbe`` results
+                and health report.
+            timeout: Timeout in seconds to wait for the ``NodeMonitor``\\ s'
+                latest results. The worker group polled ``worker_statuses``
+                already.
+
+        Returns:
+            The health decision to carry out. ``Noop()`` if there is nothing to
+            do.
+        """
+        self._poll_node_monitor_group_status(timeout)
+        self._merge_worker_statuses(worker_statuses or {})
+        state = _to_health_state(
+            self._last_node_monitor_group_status,
+            self._inflight_probes,
+            self._last_worker_statuses,
         )
         return self._decide(self._inflight_evaluators, state)
 
     def start_on_demand_checks(
-        self, checks: Sequence[HealthCheck], timeout: float
+        self,
+        checks: Sequence[HealthCheck],
+        timeout: float = DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
     ) -> None:
-        """Start running on-demand checks once on the monitored nodes.
-        ``evaluate_on_demand_checks()`` evaluates their results.
+        """Start running on-demand checks once on the monitored nodes and
+        workers. ``evaluate_on_demand_checks()`` evaluates their results.
 
         Args:
             checks: The checks, such as pre-flight checks or the checks of a
                 ``Diagnose``.
-            timeout: Timeout in seconds for the nodes to answer.
+            timeout: Timeout in seconds for the nodes and workers to answer.
         """
-        probes = {p.probe_name(): p for check in checks for p in check.probe_creator()}
-        self._node_monitor_group.poll_probes_async(
-            [p for p in probes.values() if isinstance(p, NodeProbe)], timeout_s=timeout
-        )
+        # New evaluators for each run: the checks differ from run to run, such
+        # as the pre-flight checks, then a Diagnose's, and an evaluator can
+        # keep state from the run it was created for.
         self._on_demand_evaluators = [
             evaluator for check in checks for evaluator in check.evaluator_creator()
         ]
+        # No results to check.
+        if not self._on_demand_evaluators:
+            return
+        probes = {p.probe_name(): p for check in checks for p in check.probe_creator()}
+        self._on_demand_probes = list(probes.values())
+        self._node_monitor_group.poll_probes_async(
+            self._on_demand_probes, timeout_s=timeout
+        )
+        worker_probes = [
+            p for p in self._on_demand_probes if isinstance(p, WorkerProbe)
+        ]
+        self._on_demand_worker_results = {}
+        if worker_probes and self._worker_group is not None:
+            self._worker_group.poll_probes_async(worker_probes, timeout_s=timeout)
+            self._on_demand_worker_results = None
 
     def evaluate_on_demand_checks(self) -> Optional[HealthDecision]:
         """Evaluate the results of the on-demand checks that
@@ -175,34 +295,112 @@ class HealthManager:
 
         Returns:
             The health decision to carry out, or ``None`` while the checks run.
+            ``Noop()`` if no on-demand check is running.
         """
-        results = self._node_monitor_group.poll_probe_results()
-        if results is None:
+        if not self._on_demand_evaluators:
+            return Noop()
+        if self._on_demand_worker_results is None:
+            self._on_demand_worker_results = self._worker_group.poll_probe_results()
+        status = self._node_monitor_group.poll_probe_results()
+        if status is None or self._on_demand_worker_results is None:
             return None
         evaluators, self._on_demand_evaluators = self._on_demand_evaluators, []
-        return self._decide(evaluators, HealthState(probe_results=results))
+        state = _to_health_state(status, self._on_demand_probes)
+        state = replace(
+            state,
+            probe_results={**state.probe_results, **self._on_demand_worker_results},
+        )
+        decision = self._decide(evaluators, state)
+        # The controller logs every other decision when it acts on it. A Noop
+        # has no action, so log here that the checks, such as a Diagnose's,
+        # are done and found nothing.
+        if isinstance(decision, Noop):
+            logger.info("The on-demand health checks found nothing to act on.")
+        return decision
 
-    def _poll_latest_results(self, timeout: float) -> None:
-        """Poll the latest probe results. A ``NodeMonitor`` that failed stops,
-        with its results, until the next ``reset()``.
+    def start_and_evaluate_on_demand_checks(
+        self,
+        checks: Sequence[HealthCheck],
+        timeout: float = DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
+    ) -> HealthDecision:
+        """Run on-demand checks once on the monitored nodes, and wait for their
+        decision: until their results are back, or the timeout passed.
+
+        Args:
+            checks: The checks, such as the pre-flight checks that stop the
+                workers.
+            timeout: Timeout in seconds for the nodes to answer.
+
+        Returns:
+            The health decision to carry out. ``Noop()`` if there is nothing to
+            do.
+        """
+        self.start_on_demand_checks(checks, timeout)
+        decision = self.evaluate_on_demand_checks()
+        while decision is None:
+            time.sleep(DEFAULT_ON_DEMAND_PROBE_POLL_INTERVAL_S)
+            decision = self.evaluate_on_demand_checks()
+        return decision
+
+    def _merge_worker_statuses(
+        self, worker_statuses: Mapping[int, "WorkerStatus"]
+    ) -> None:
+        """Merge each worker's new status into its last one. A worker keeps its
+        last ``WorkerProbe`` results and health report while its poll hangs.
+
+        Args:
+            worker_statuses: ``{world rank: WorkerStatus}`` from the worker
+                group's latest poll.
+        """
+        for rank, new_status in worker_statuses.items():
+            last_status = self._last_worker_statuses.get(rank)
+            if last_status is not None:
+                new_status = replace(
+                    new_status,
+                    probe_results={
+                        **last_status.probe_results,
+                        **new_status.probe_results,
+                    },
+                    health_report=(
+                        new_status.health_report
+                        if new_status.health_report is not None
+                        else last_status.health_report
+                    ),
+                )
+            self._last_worker_statuses[rank] = new_status
+
+    def _poll_node_monitor_group_status(self, timeout: float) -> None:
+        """Poll each ``NodeMonitor``, and merge its new status into its last
+        one. A monitor keeps its last results while its poll hangs. A worker
+        node's monitor that failed stops, with its results, until the next
+        ``reset()``.
 
         Args:
             timeout: Timeout in seconds to wait for the ``NodeMonitor``\\ s.
         """
-        status = self._node_monitor_group.poll_status(timeout)
-        for node_id, node_monitor_status in status.node_monitor_statuses.items():
+        new_status = self._node_monitor_group.poll_status(timeout)
+        last_status = self._last_node_monitor_group_status
+        node_monitor_statuses: Dict[NodeIdStr, NodeMonitorStatus] = {}
+        for node_id, node_monitor_status in new_status.node_monitor_statuses.items():
             if node_monitor_status.monitor_error is None:
-                for name, result in node_monitor_status.probe_results.items():
-                    self._latest_results.setdefault(name, {})[node_id] = result
+                node_monitor_statuses[node_id] = _merge(
+                    last_status.node_monitor_statuses.get(node_id, NodeMonitorStatus()),
+                    node_monitor_status,
+                )
                 continue
             logger.warning(
                 "Stopped monitoring node %s until the next attempt: %s",
                 node_id,
                 node_monitor_status.monitor_error,
             )
-            self._node_monitor_group.shutdown([node_id])
-            for results in self._latest_results.values():
-                results.pop(node_id, None)
+            self._node_monitor_group.shutdown_worker_node_monitors([node_id])
+        self._last_node_monitor_group_status = NodeMonitorGroupPollStatus(
+            node_monitor_statuses=node_monitor_statuses,
+            controller_node_monitor_status=_merge(
+                last_status.controller_node_monitor_status,
+                new_status.controller_node_monitor_status,
+            ),
+        )
 
     def _decide(
         self, evaluators: List[Evaluator], state: HealthState
@@ -260,3 +458,80 @@ class HealthManager:
                 "Evaluator %s failed.", type(evaluator).__name__, exc_info=error
             )
         return Noop()
+
+
+def _merge(last: NodeMonitorStatus, new: NodeMonitorStatus) -> NodeMonitorStatus:
+    """Merge a monitor's new status into its last one, which keeps the
+    results of the probes the new one has none for, such as while a poll
+    hangs. The error is the new status's: a monitor that fails reports its
+    error on every poll, and one that answers again has none."""
+    return NodeMonitorStatus(
+        probe_results={**last.probe_results, **new.probe_results},
+        monitor_error=new.monitor_error,
+    )
+
+
+def _to_health_state(
+    status: NodeMonitorGroupPollStatus,
+    probes: Sequence[Probe],
+    worker_statuses: Optional[Mapping[int, "WorkerStatus"]] = None,
+) -> HealthState:
+    """Build the ``HealthState`` of some probes from the statuses of their
+    monitors and workers. A monitor that failed gives each of its probes a
+    result with its error, and a ``ControllerProbe`` whose poll failed has its
+    error in ``probe_errors``.
+
+    Args:
+        status: The statuses of the monitors.
+        probes: The probes the monitors poll.
+        worker_statuses: ``{world rank: WorkerStatus}``, with each worker's
+            ``WorkerProbe`` results and health report.
+
+    Returns:
+        The ``HealthState``.
+    """
+    node_probe_names = [p.probe_name() for p in probes if isinstance(p, NodeProbe)]
+    # {node ID: {probe name: result}} -> {probe name: {node ID: result}}
+    probe_results: Dict[str, Dict[Any, ProbeResult]] = {}
+    for node_id, node_monitor_status in status.node_monitor_statuses.items():
+        node_results = _probe_results(node_monitor_status, node_probe_names)
+        for name, result in node_results.items():
+            probe_results.setdefault(name, {})[node_id] = result
+
+    controller_probe_names = [
+        p.probe_name() for p in probes if isinstance(p, ControllerProbe)
+    ]
+    probe_errors: Dict[str, Exception] = {}
+    controller_results = _probe_results(
+        status.controller_node_monitor_status, controller_probe_names
+    )
+    for name, result in controller_results.items():
+        if isinstance(result, ProbeResult):
+            probe_errors[name] = result.error
+        else:
+            probe_results[name] = dict(result)
+
+    health_reports: Dict[int, ProbeResult] = {}
+    for rank, worker_status in (worker_statuses or {}).items():
+        for name, result in worker_status.probe_results.items():
+            probe_results.setdefault(name, {})[rank] = result
+        if worker_status.health_report is not None:
+            health_reports[rank] = worker_status.health_report
+    return HealthState(
+        probe_results=probe_results,
+        probe_errors=probe_errors,
+        health_reports=health_reports,
+    )
+
+
+def _probe_results(
+    status: NodeMonitorStatus, probe_names: List[str]
+) -> Dict[str, Union[ProbeResult, Dict[Any, ProbeResult]]]:
+    """Get a monitor's probe results, or if the monitor failed, a result with
+    its error for each probe."""
+    if status.monitor_error is None:
+        return status.probe_results
+    return {
+        name: ProbeResult(timestamp_s=time.time(), error=status.monitor_error)
+        for name in probe_names
+    }

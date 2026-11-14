@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
 
 import ray
 from ray import ObjectRef
@@ -42,6 +43,7 @@ from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
     TaskPoolStrategy,
+    maybe_promote_compute_strategy,
 )
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
@@ -88,6 +90,7 @@ from ray.data._internal.execution.util import (
     merge_label_selector,
     yield_block_with_stats,
 )
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -383,6 +386,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        output_partitioning: Optional[HashPartitioning] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -423,6 +427,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            output_partitioning: See ``PhysicalOperator.output_partitioning``.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -438,6 +443,11 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
 
+        # The actor-only backend transparently promotes ``TaskPoolStrategy`` to
+        # ``ActorPoolStrategy`` here; this is a no-op otherwise. The decision is
+        # self-gated inside the helper so this factory stays backend-agnostic.
+        compute_strategy = maybe_promote_compute_strategy(compute_strategy)
+
         # Apply per-block limit to the map transformer if set
         if per_block_limit is not None:
             map_transformer = _wrap_transformer_with_limit(
@@ -449,7 +459,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
 
             TaskPoolMapOperator = get_task_pool_map_operator_cls()
-            return TaskPoolMapOperator(
+            op = TaskPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -478,7 +488,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
-            return ActorPoolMapOperator(
+            op = ActorPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -496,14 +506,19 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        op._output_partitioning = output_partitioning
+        return op
 
     def start(
         self,
         options: "ExecutionOptions",
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ):
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = ReorderingBundleQueue()
@@ -625,6 +640,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -823,6 +839,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 task_index, output
             ),
             task_done_callback=functools.partial(_task_done_callback, task_index),
+            task_resource_request=task_resource_request,
             operator_name=self.name,
             lineage_task_id=lineage_task_id,
             reconstruction_plan_ids=reconstruction_plan_ids,
@@ -995,7 +1012,24 @@ def _map_task(
         # `max_concurrent_calls_per_actor > 1` several run at once.
         clock = TransformClock()
 
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+        max_attempts = data_context.max_map_retries + 1
+        attempts_started = 0
+
         def transform_iter_factory():
+            nonlocal attempts_started
+            # Tell the transform whether this attempt can still be rerun, so it
+            # knows whether to emit its buffered rows before an error.
+            attempts_started += 1
+            ctx.rerun_policy = ctx.rerun_policy.with_map_retries(
+                max_attempts - attempts_started, to_match
+            )
             # Clear any per-task custom stats before each attempt (the reporter
             # is reused across retries of this task), so a prior attempt's stats
             # can't leak into this one. A producing transform repopulates it
@@ -1012,19 +1046,11 @@ def _map_task(
                 clock=clock,
             )
 
-        match retry_on:
-            case True:
-                to_match = None
-            case False:
-                to_match = []
-            case _:
-                to_match = retry_on
-
         block_iter = iterate_with_retry(
             transform_iter_factory,
             description="apply UDF transform",
             match=to_match,
-            max_attempts=data_context.max_map_retries + 1,
+            max_attempts=max_attempts,
             unwrap_cause=True,
         )
 

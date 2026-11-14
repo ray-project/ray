@@ -1,7 +1,10 @@
+import errno
 import glob
+import itertools
 import logging
 import os
 import re
+import time
 from functools import lru_cache
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
@@ -40,6 +43,7 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+TPU_VISIBLE_DEVICES_ENV_VAR = "TPU_VISIBLE_DEVICES"
 RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
@@ -79,8 +83,19 @@ DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 # See https://cloud.google.com/tpu/docs/custom-os-image.
 TPU_PCI_VENDOR_ID = "0x1ae0"
 
+# VFIO teardown after SIGKILL took 2.07-2.39s on TPU v7x (256 GiB HBM
+# allocated); 10s gives ~4x headroom.
+DEFAULT_TPU_VFIO_READY_TIMEOUT_S = 10.0
+_TPU_VFIO_POLL_INTERVAL_S = 0.05
+
 # Default port for MegaScale coordinator in multi-slice TPU training.
 DEFAULT_MEGASCALE_PORT = "8081"
+
+# TorchTPU (torch_tpu) environment variables and defaults.
+# Port 8471 matches DEFAULT_TPU_PROCESS_PORT and kuberay-tpu-webhook's base port.
+TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
+TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
+DEFAULT_TORCH_TPU_SLICEBUILDER_PORT = 8471
 
 # Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
 TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
@@ -214,6 +229,41 @@ def _accelerator_type_check(accelerator_type: str):
         raise ValueError(
             f"Invalid accelerator type: {accelerator_type}. Must start with one of: {VALID_TPU_TYPES}"
         )
+
+
+def normalize_torchtpu_topology(
+    topology: str,
+    tpu_resource_per_chip: int = 1,
+    accelerator_type: Optional[str] = None,
+) -> str:
+    """Normalizes TPU topology strings for TorchTPU (e.g. '4x4' -> '4,4,1'; '2x2x4' with tpu_resource_per_chip=2 -> '2,2,4,2')."""
+    if type(tpu_resource_per_chip) is not int:
+        raise TypeError(
+            f"tpu_resource_per_chip must be an integer, got {type(tpu_resource_per_chip)}."
+        )
+    if tpu_resource_per_chip <= 0:
+        raise ValueError("tpu_resource_per_chip must be positive")
+
+    if not isinstance(topology, str):
+        raise ValueError(f"Invalid topology string: {topology!r}")
+
+    dims = [d.strip() for d in topology.lower().replace("x", ",").split(",")]
+    if len(dims) not in (2, 3, 4) or not all(
+        d.isdecimal() and int(d) > 0 for d in dims
+    ):
+        raise ValueError(f"Invalid topology string: {topology!r}")
+    dims = [str(int(d)) for d in dims]
+
+    # 2D topologies (e.g. "2x4") are padded with 1 for the Z dimension ("2,4,1").
+    if len(dims) == 2:
+        dims.append("1")
+    # For dual-device TPUs (or when tpu_resource_per_chip > 1), expand 3D to 4D ("2,4,1,2").
+    if len(dims) == 3:
+        if normalize_tpu_accelerator_type(accelerator_type).startswith("v7x"):
+            dims.append("2")
+        elif tpu_resource_per_chip > 1:
+            dims.append(str(tpu_resource_per_chip))
+    return ",".join(dims)
 
 
 def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
@@ -530,12 +580,17 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
         closed because a false positive here would prevent the actual
         accelerators (e.g. NVIDIA GPUs) from being registered.
     """
+    return _tpu_vfio_bdf(group) is not None
+
+
+def _tpu_vfio_bdf(group: int) -> Optional[str]:
+    """Return the sysfs PCI BDF name if VFIO ``group`` is a Google TPU, else None."""
     sysfs_root = f"/sys/kernel/iommu_groups/{group}/devices"
     try:
         devices = os.listdir(sysfs_root)
     except OSError as e:
         logger.debug("Unable to inspect VFIO group %s at %s: %s", group, sysfs_root, e)
-        return False
+        return None
     for device in devices:
         vendor_path = os.path.join(sysfs_root, device, "vendor")
         try:
@@ -550,8 +605,125 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
             )
             continue
         if vendor.lower() == TPU_PCI_VENDOR_ID:
+            return device.lower()
+    return None
+
+
+def _discover_tpu_vfio_devices() -> List[List[str]]:
+    """Return Google TPU ``/dev/vfio/<group>`` paths grouped by physical chip.
+
+    Chips, and the PCI functions within each chip, are in PCI address order.
+    A chip that exposes several functions, such as a TPU v7x chip, contributes
+    one path per function.
+    """
+    try:
+        entries = os.listdir("/dev/vfio")
+    except OSError:
+        return []
+
+    located = sorted(
+        (bdf, f"/dev/vfio/{entry}")
+        for entry in entries
+        if entry.isdigit() and (bdf := _tpu_vfio_bdf(int(entry))) is not None
+    )
+    return [
+        [path for _, path in chip]
+        for _, chip in itertools.groupby(
+            located, key=lambda item: item[0].partition(".")[0]
+        )
+    ]
+
+
+def _parse_indices(raw: str) -> List[int]:
+    return [int(t) for t in raw.split(",") if t.strip().isdecimal()]
+
+
+def get_current_process_tpu_vfio_devices(
+    visible_devices: Optional[str] = None,
+) -> List[str]:
+    """Return the TPU ``/dev/vfio/<group>`` paths that this process will open.
+
+    Args:
+        visible_devices: Comma-separated device indices, counted over all TPU
+            PCI functions on the host in PCI address order. If None, selects
+            every function on the chips listed in ``TPU_VISIBLE_CHIPS``, or on
+            all chips if the variable is unset.
+
+    Returns:
+        The selected paths. Hosts without TPU VFIO groups, such as TPU v4 hosts
+        that expose ``/dev/accel*``, return an empty list.
+    """
+    chips = _discover_tpu_vfio_devices()
+    all_paths = [path for chip in chips for path in chip]
+    if visible_devices is not None:
+        indices = _parse_indices(visible_devices)
+        return [all_paths[i] for i in indices if i < len(all_paths)]
+    mask = os.environ.get(TPU_VISIBLE_CHIPS_ENV_VAR)
+    if mask is None:
+        return all_paths
+    return [path for i in _parse_indices(mask) if i < len(chips) for path in chips[i]]
+
+
+def _vfio_group_busy(path: str) -> bool:
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError as exc:
+        if exc.errno == errno.EBUSY:
             return True
+        logger.debug("Skipping non-EBUSY error while probing %s: %s", path, exc)
+        return False
+    os.close(fd)
     return False
+
+
+def wait_for_tpu_vfio_ready(
+    timeout_s: float = DEFAULT_TPU_VFIO_READY_TIMEOUT_S,
+    visible_devices: Optional[str] = None,
+) -> None:
+    """Wait until the kernel releases the TPU VFIO groups this process will open.
+
+    When ``ray.kill`` sends SIGKILL to a TPU worker, the Raylet releases the
+    worker's TPU placement group bundle as soon as the worker's IPC socket
+    closes, while the kernel is still tearing down the worker's VFIO devices
+    and IOMMU DMA mappings. libtpu and TorchTPU open each ``/dev/vfio/<group>``
+    once without retrying, so a replacement worker that starts in that window
+    fails with EBUSY.
+
+    Call this before the process opens its TPU devices. VFIO group opens are
+    exclusive, so this probes only the groups that this process will open.
+
+    Args:
+        timeout_s: Seconds to poll before logging a warning and returning. A
+            probe can block in the kernel until the previous owner's release
+            finishes, and the timeout doesn't interrupt a blocked probe.
+        visible_devices: Forwarded to
+            :func:`get_current_process_tpu_vfio_devices`.
+    """
+    start_time = time.monotonic()
+    busy_devs = [
+        dev
+        for dev in get_current_process_tpu_vfio_devices(visible_devices)
+        if _vfio_group_busy(dev)
+    ]
+    pending = busy_devs
+    while pending:
+        if time.monotonic() - start_time >= timeout_s:
+            logger.warning(
+                "Timed out after %.2fs waiting for TPU VFIO devices to be released: %s. "
+                "Proceeding with TPU initialization; libtpu may fail with EBUSY.",
+                timeout_s,
+                pending,
+            )
+            return
+        time.sleep(_TPU_VFIO_POLL_INTERVAL_S)
+        pending = [dev for dev in pending if _vfio_group_busy(dev)]
+
+    if busy_devs:
+        logger.info(
+            "TPU VFIO devices %s became ready after %.2fs.",
+            busy_devs,
+            time.monotonic() - start_time,
+        )
 
 
 def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
@@ -737,17 +909,16 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         To access a subset of the TPU visible chips, we must use a combination of
         environment variables that tells the compiler (via ML framework) the:
-        - Visible chips
+        - Visible chips and logical devices
         - The physical bounds of chips per host
         - The host bounds within the context of a TPU pod.
 
         See: https://github.com/google/jax/issues/14977 for an example/more details.
 
-        TPU_VISIBLE_CHIPS has whole-chip granularity, so an allocation covering
-        part of a chip is masked to the whole chip and sees every device on it.
-        Frameworks that bind one process per device (TorchTPU) overwrite this
-        mask with their own; frameworks that claim every visible device (JAX)
-        need whole-chip allocations to avoid contending for the same chip.
+        TPU_VISIBLE_CHIPS masks physical chips, while TPU_VISIBLE_DEVICES
+        tracks the logical device IDs assigned by Ray. Per-device frameworks
+        (TorchTPU) read TPU_VISIBLE_DEVICES; whole-chip frameworks (JAX) read
+        TPU_VISIBLE_CHIPS and require whole-chip allocations.
 
         Args:
             visible_tpu_chips: List of str representing TPU chips, or device IDs
@@ -777,6 +948,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             == TPUAcceleratorManager.get_current_node_num_accelerators()
         ):
             os.environ.pop(TPU_VISIBLE_CHIPS_ENV_VAR, None)
+            os.environ.pop(TPU_VISIBLE_DEVICES_ENV_VAR, None)
             # If this worker on a >2-chip node previously ran a 1- or 2-chip
             # sub-host task, clear the stale sub-host overrides so the ML
             # framework uses the full-node defaults.
@@ -785,12 +957,12 @@ class TPUAcceleratorManager(AcceleratorManager):
                 os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
 
-        visible_chips_env_var = (
-            TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        os.environ[TPU_VISIBLE_CHIPS_ENV_VAR] = ",".join(
+            str(chip) for chip in physical_chips
         )
-        visible_chips_str = ",".join(str(chip) for chip in physical_chips)
-        if os.environ.get(visible_chips_env_var) != visible_chips_str:
-            os.environ[visible_chips_env_var] = visible_chips_str
+        os.environ[TPU_VISIBLE_DEVICES_ENV_VAR] = ",".join(
+            sorted(visible_tpu_chips, key=int)
+        )
         if len(physical_chips) in (1, 2):
             expected_chip_bounds = (
                 TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG

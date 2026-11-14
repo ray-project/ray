@@ -2,12 +2,15 @@ import base64
 import os
 import sys
 import types
+from contextlib import nullcontext
 from decimal import Decimal
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from pyarrow import ArrowInvalid
 
@@ -17,11 +20,131 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
     ArrowRow,
+    _arrow_backed_pandas_dtype,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import GiB, MiB
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+
+
+@pytest.mark.parametrize(
+    "sort_key,limit",
+    [
+        (SortKey(["a", "b"], descending=[False, True]), 0),
+        (SortKey(["a", "b"], descending=[False, True]), 3),
+        (SortKey(["a", "b"], descending=[True, False]), 5),
+        (SortKey(["a", "b"], descending=[True, True]), 10),
+    ],
+)
+def test_top_n_matches_sort_with_nulls_and_mixed_directions(sort_key, limit):
+    table = pa.table(
+        {
+            "a": [2, None, 1, 1, None, 2, 1],
+            "b": [1, 0, 3, None, 4, 0, 2],
+            "row_id": list(range(7)),
+        }
+    )
+    accessor = ArrowBlockAccessor(table)
+    sorted_table = accessor.sort(sort_key)
+    expected = ArrowBlockAccessor(sorted_table).slice(
+        0, min(limit, sorted_table.num_rows)
+    )
+
+    assert accessor.top_n(sort_key, limit).equals(expected)
+
+
+def test_top_n_uses_arrow_bounded_selection():
+    table = pa.table({"key": [4, 1, 3, 2], "value": [40, 10, 30, 20]})
+    accessor = ArrowBlockAccessor(table)
+
+    with mock.patch.object(
+        pc, "select_k_unstable", wraps=pc.select_k_unstable
+    ) as select_k_unstable:
+        result = accessor.top_n(SortKey("key"), 2)
+
+    select_k_unstable.assert_called_once()
+    assert result.to_pylist() == [
+        {"key": 1, "value": 10},
+        {"key": 2, "value": 20},
+    ]
+
+
+@pytest.mark.parametrize("descending", [False, True])
+def test_top_n_matches_sort_with_nan(descending):
+    table = pa.table(
+        {
+            "key": [2.0, np.nan, 1.0, np.nan, 3.0],
+            "row_id": list(range(5)),
+        }
+    )
+    accessor = ArrowBlockAccessor(table)
+    sort_key = SortKey("key", descending=descending)
+    expected = ArrowBlockAccessor(accessor.sort(sort_key)).slice(0, 4)
+
+    result = accessor.top_n(sort_key, 4)
+
+    assert result["row_id"].to_pylist() == expected["row_id"].to_pylist()
+
+
+@pytest.mark.parametrize("use_polars", [False, True])
+@pytest.mark.parametrize("fallback", ["nulls", "unsupported"])
+@pytest.mark.parametrize("limit", [2, 128])
+def test_top_n_fallback_compacts_selected_payload(
+    restore_data_context, use_polars: bool, fallback: str, limit: int
+) -> None:
+    ctx = DataContext.get_current()
+    ctx.use_polars = False
+    ctx.use_polars_sort = use_polars
+
+    table = pa.table(
+        {
+            "key": pa.array(
+                [None] * 128 if fallback == "nulls" else list(range(128)),
+                type=pa.int64(),
+            ),
+            "row_id": list(reversed(range(128))),
+            "payload": [b"x" * 4096] * 128,
+            "__top_n_row_index": list(range(128)),
+            "__top_n_row_index_": list(range(128)),
+        }
+    )
+    accessor = ArrowBlockAccessor(table)
+    sort_key = SortKey(["key", "row_id", "__top_n_row_index", "__top_n_row_index_"])
+    expected = accessor.sort(sort_key).slice(0, limit)
+
+    selection_patch = (
+        mock.patch.object(
+            pc,
+            "select_k_unstable",
+            side_effect=pa.ArrowNotImplementedError("unsupported"),
+        )
+        if fallback == "unsupported"
+        else nullcontext()
+    )
+
+    original_sort = ArrowBlockAccessor.sort
+    sorted_columns = []
+
+    def record_sort(block: ArrowBlockAccessor, keys: SortKey) -> Block:
+        sorted_columns.append(block.to_arrow().column_names)
+        return original_sort(block, keys)
+
+    with (
+        selection_patch,
+        mock.patch.object(ArrowBlockAccessor, "sort", record_sort),
+    ):
+        result = accessor.top_n(sort_key, limit)
+
+    assert result.equals(expected)
+
+    if limit < table.num_rows:
+        assert len(sorted_columns) == int(use_polars)
+        assert all("payload" not in cols for cols in sorted_columns)
+        assert result.get_total_buffer_size() < table.get_total_buffer_size() // 8
+    else:
+        assert sorted_columns == [table.column_names]
 
 
 def test_combine_chunked_fixed_width_array_large():
@@ -328,24 +451,59 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
             pa.list_(pa.string()),
             [["a", "b"], None],
         ),
+        # Types with a null type nested inside. Before pandas 3.1, the cast in
+        # pd.ArrowDtype.__from_arrow__ resizes the null child to the number of
+        # rows, so each case holds more child elements than rows.
+        (
+            pa.array([[None] * 3, [None, None], [], None], type=pa.list_(pa.null())),
+            None,
+            pa.list_(pa.null()),
+            [[None] * 3, [None, None], [], None],
+        ),
+        (
+            pa.array(
+                [[[None, None], [None]], [[None], [None]], None],
+                type=pa.list_(pa.list_(pa.null())),
+            ),
+            None,
+            pa.list_(pa.list_(pa.null())),
+            [[[None, None], [None]], [[None], [None]], None],
+        ),
+        # A slice of a block, as a UDF sees it when batch_size is smaller than
+        # the block. The cast aborts the process on the slice offset.
+        (
+            pa.array([[None], [None, None], [None]], type=pa.list_(pa.null()))[1:],
+            None,
+            pa.list_(pa.null()),
+            [[None, None], [None]],
+        ),
     ],
 )
 def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
     input_array, transform, expected_type, expected_values
 ):
+    """A column converts to a plain Arrow-backed pandas column, round-trips to the
+    same Arrow type and values, and converts to pandas again from the
+    round-tripped block."""
     table = pa.table({"x": input_array})
 
     df = ArrowBlockAccessor(table).to_pandas()
-    assert isinstance(df.dtypes["x"], pd.ArrowDtype)
-    assert df.dtypes["x"].pyarrow_dtype == expected_type
+    assert type(df.dtypes["x"]) is pd.ArrowDtype
+    assert df.dtypes["x"] == pd.ArrowDtype(expected_type)
+    assert pd.ArrowDtype(expected_type) == df.dtypes["x"]
 
     if transform is not None:
         df = transform(df)
 
     roundtripped = BlockAccessor.for_block(df).to_arrow()
+    # The round-tripped block carries pandas metadata naming the Arrow-backed
+    # dtype, which pandas cannot parse back from its string form.
+    df_again = ArrowBlockAccessor(roundtripped).to_pandas()
 
     assert roundtripped.schema.field("x").type == expected_type
     assert roundtripped.to_pydict() == {"x": expected_values}
+    assert df_again.dtypes["x"] == pd.ArrowDtype(expected_type)
+    assert pa.array(df_again["x"].array).to_pylist() == expected_values
 
 
 def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
@@ -367,6 +525,20 @@ def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
     # Filling the nulls now works and yields the fill value's type.
     filled = BlockAccessor.for_block(df.fillna({"x": 3.0})).to_arrow()
     assert filled.to_pydict() == {"x": [3.0, 3.0]}
+
+
+def test_arrow_backed_pandas_dtype_for_nested_null_equals_plain_dtype():
+    """The dtype the types mapper returns for a nested-null type compares equal
+    to, and hashes like, the plain ``pd.ArrowDtype`` of that type."""
+    nested_null = pa.list_(pa.null())
+
+    mapped = _arrow_backed_pandas_dtype(nested_null)
+    plain = pd.ArrowDtype(nested_null)
+
+    assert mapped == plain
+    assert plain == mapped
+    assert hash(mapped) == hash(plain)
+    assert mapped == str(plain)
 
 
 def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
