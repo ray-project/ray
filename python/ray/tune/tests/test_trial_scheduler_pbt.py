@@ -16,6 +16,7 @@ import pytest
 import ray
 from ray import cloudpickle, tune
 from ray._private.test_utils import object_memory_usage
+from ray.train.tests.util import mock_storage_context
 from ray.tune import (
     Callback,
     Checkpoint,
@@ -24,6 +25,7 @@ from ray.tune import (
     RunConfig,
     Trainable,
 )
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.schedulers.pb2 import PB2
@@ -401,6 +403,54 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         np.random.seed(1000)
         results = tuner.fit()
         assert not results.errors
+
+    def testPauseWhileSavingThenResume(self):
+        """Regression test for https://github.com/ray-project/ray/issues/57906
+
+        Synch PBT pauses a trial with ``should_checkpoint=False`` while it may
+        still be saving. That discards the in-flight save, so no decision may be
+        left behind for it: a leftover decision is executed by the trial's next
+        save after it resumes, terminating (or pausing) the resumed trial.
+        """
+        register_mock_trainable()
+        storage = mock_storage_context()
+        runner = TuneController(storage=storage, checkpoint_period=0)
+        trial = Trial(MOCK_TRAINABLE_NAME, storage=storage)
+        runner.add_trial(trial)
+
+        def step_until(condition, max_steps=200):
+            for _ in range(max_steps):
+                if condition():
+                    return
+                runner.step()
+            raise TimeoutError(f"Condition not met, trial status: {trial.status}")
+
+        # Start the trial and wait for its first training result.
+        step_until(lambda: trial.status == Trial.RUNNING and trial.last_result)
+
+        # Pause the trial while it is saving, discarding the save.
+        runner._schedule_trial_save(trial)
+        assert trial.is_saving
+        runner.pause_trial(trial, should_checkpoint=False)
+        assert trial.status == Trial.PAUSED
+        assert trial.trial_id not in runner._cached_trial_decisions
+
+        # Resume the trial (the FIFO scheduler picks up paused trials).
+        step_until(lambda: trial.status == Trial.RUNNING)
+
+        # Complete a save on the resumed trial. The discarded save produced no
+        # checkpoint, so this is the trial's first one.
+        assert trial.latest_checkpoint_result is None
+        runner._schedule_trial_save(trial)
+        step_until(lambda: not trial.is_saving)
+        assert trial.latest_checkpoint_result is not None
+
+        # The save must not execute a stale STOP/PAUSE decision.
+        for _ in range(5):
+            runner.step()
+        assert trial.status == Trial.RUNNING
+
+        runner.cleanup()
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
