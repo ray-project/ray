@@ -114,6 +114,11 @@ def get_request_metadata(init_options, handle_options):
         elif _request_context.grpc_context:
             request_protocol = RequestProtocol.GRPC
 
+    candidate_multiplexed_model_ids = handle_options.candidate_multiplexed_model_ids
+    multiplexed_model_id = handle_options.multiplexed_model_id
+    if not multiplexed_model_id and candidate_multiplexed_model_ids:
+        multiplexed_model_id = candidate_multiplexed_model_ids[0]
+
     return RequestMetadata(
         request_id=_request_context.request_id
         if _request_context.request_id
@@ -124,7 +129,8 @@ def get_request_metadata(init_options, handle_options):
         call_method=handle_options.method_name,
         route=_request_context.route,
         app_name=_request_context.app_name,
-        multiplexed_model_id=handle_options.multiplexed_model_id,
+        multiplexed_model_id=multiplexed_model_id,
+        candidate_multiplexed_model_ids=candidate_multiplexed_model_ids,
         session_id=handle_options.session_id,
         is_streaming=handle_options.stream,
         _request_protocol=request_protocol,

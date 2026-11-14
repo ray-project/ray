@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import List
+from typing import List, Optional
 
 import httpx
 import pytest
@@ -13,9 +13,17 @@ from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
+from ray.serve._private.test_utils import skip_if_haproxy
+from ray.serve.config import RequestRouterConfig
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.request_router import (
+    FIFOMixin,
+    MultiplexMixin,
+    PendingRequest,
+    RunningReplica,
+)
 
 
 def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
@@ -801,6 +809,127 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
         f"read the same model_id because they share context. "
         f"Full readings: {readings}"
     )
+
+
+class CandidateAwareRouter(FIFOMixin, MultiplexMixin, RequestRouter):
+    """Ranks replicas by the caller's ordered candidate model IDs."""
+
+    async def choose_replicas(
+        self,
+        candidate_replicas: List[RunningReplica],
+        pending_request: Optional[PendingRequest] = None,
+    ) -> List[List[RunningReplica]]:
+        if pending_request is None:
+            return [candidate_replicas]
+
+        candidates = pending_request.metadata.candidate_multiplexed_model_ids
+        if not candidates:
+            return [candidate_replicas]
+
+        return self.rank_replicas_via_multiplex_candidates(
+            replicas=candidate_replicas,
+            candidate_multiplexed_model_ids=candidates,
+        )
+
+
+@skip_if_haproxy(
+    "a custom request_router_class on the ingress deployment is rejected at "
+    "serve.run(), because HAProxy bypasses that router"
+)
+def test_multiplexed_candidate_model_ids_e2e(serve_instance):
+    """A warm later candidate is served instead of cold-loading the first one."""
+
+    @serve.deployment(
+        num_replicas=2,
+        request_router_config=RequestRouterConfig(
+            request_router_class=CandidateAwareRouter,
+        ),
+    )
+    class Model:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def get_model(self, model_id: str):
+            return model_id
+
+        async def __call__(self):
+            model_id = serve.get_multiplexed_model_id()
+            await self.get_model(model_id)
+            return model_id, os.getpid()
+
+    handle = serve.run(Model.bind())
+
+    # Warm "v6" somewhere, and wait until the routers observe it.
+    _, warm_pid = handle.options(multiplexed_model_id="v6").remote().result()
+    wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="v6")
+
+    # "v7" is the preferred candidate but isn't loaded anywhere, so the request
+    # should be served by the replica that already has "v6" rather than paying a
+    # cold load for "v7".
+    for _ in range(5):
+        model_id, pid = (
+            handle.options(candidate_multiplexed_model_ids=["v7", "v6"])
+            .remote()
+            .result()
+        )
+        assert model_id == "v6"
+        assert pid == warm_pid
+
+    # "v7" was never requested of any replica.
+    request_router = _get_request_router(handle)
+    assert all(
+        "v7" not in replica.multiplexed_model_ids
+        for replica in request_router.curr_replicas.values()
+    )
+
+
+@skip_if_haproxy(
+    "a custom request_router_class on the ingress deployment is rejected at "
+    "serve.run(), because HAProxy bypasses that router"
+)
+def test_multiplexed_candidate_model_ids_skips_full_replica(serve_instance):
+    """When the best-ranked replica is full, the next one serves its own warm model."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        num_replicas=2,
+        max_ongoing_requests=1,
+        request_router_config=RequestRouterConfig(
+            request_router_class=CandidateAwareRouter,
+        ),
+    )
+    class Model:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def get_model(self, model_id: str):
+            return model_id
+
+        async def __call__(self, block: bool = False):
+            model_id = serve.get_multiplexed_model_id()
+            await self.get_model(model_id)
+            if block:
+                await signal.wait.remote()
+            return model_id, os.getpid()
+
+    handle = serve.run(Model.bind())
+
+    # Load "v7" on one replica and keep it full.
+    blocked_ref = handle.options(multiplexed_model_id="v7").remote(block=True)
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+    # The full replica can't take this, so "v6" loads on the other one.
+    _, free_pid = handle.options(multiplexed_model_id="v6").remote().result()
+    wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="v7")
+    wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="v6")
+
+    # The replica holding "v7" ranks first but is full, so the request lands on
+    # the one holding "v6" and must run "v6" there rather than cold-load "v7".
+    model_id, pid = (
+        handle.options(candidate_multiplexed_model_ids=["v7", "v6"]).remote().result()
+    )
+    assert (model_id, pid) == ("v6", free_pid)
+
+    ray.get(signal.send.remote())
+    blocked_model_id, blocked_pid = blocked_ref.result()
+    assert blocked_model_id == "v7"
+    assert blocked_pid != free_pid
 
 
 if __name__ == "__main__":

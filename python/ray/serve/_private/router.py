@@ -1023,6 +1023,25 @@ class AsyncioRouter:
         wrapped.__cause__ = e
         return wrapped
 
+    def _resolve_multiplexed_model_id(
+        self, request_meta: RequestMetadata, replica: RunningReplica
+    ) -> None:
+        """Set the model ID that the request runs on, now that its replica is known.
+
+        A request with candidate model IDs runs on the first candidate that the
+        replica has loaded, or on the first candidate if it has none of them.
+        Other requests keep their model ID.
+        """
+        candidates = request_meta.candidate_multiplexed_model_ids
+        if not candidates:
+            return
+
+        loaded_model_ids = replica.multiplexed_model_ids
+        request_meta.multiplexed_model_id = next(
+            (model_id for model_id in candidates if model_id in loaded_model_ids),
+            candidates[0],
+        )
+
     async def _route_and_send_request_once(
         self,
         pr: PendingRequest,
@@ -1044,6 +1063,7 @@ class AsyncioRouter:
                 replica = await self._active_request_router._choose_replica_for_request(
                     pr, is_retry=is_retry
                 )
+                self._resolve_multiplexed_model_id(pr.metadata, replica)
 
                 # If the queue len cache is disabled or we're sending a request to Java,
                 # then directly send the query and hand the response back. The replica will
@@ -1304,6 +1324,7 @@ class AsyncioRouter:
                 raise self._make_upstream_crash_error(e)
             if reserve:
                 replica, slot_token = await self._pick_and_reserve_replica(pr)
+                self._resolve_multiplexed_model_id(request_meta, replica)
             else:
                 # Policies can return no candidates temporarily (e.g. while
                 # waiting for multiplexed model metadata). Reuse their selection
@@ -1322,6 +1343,7 @@ class AsyncioRouter:
                     finally:
                         await candidates.aclose()
                 slot_token = None
+                self._resolve_multiplexed_model_id(request_meta, replica)
                 # Pick-only callers send the request themselves (e.g. the
                 # direct-streaming LLM ingress router through HAProxy), so this
                 # pick is the routing decision. Report it so stateful policies
@@ -1647,6 +1669,7 @@ class AsyncioRouter:
                 ),
             )
             replica_pr.resolved = True
+            self._resolve_multiplexed_model_id(replica_pr.metadata, replica)
             try:
                 result = replica.try_send_request(replica_pr, with_rejection=False)
             except ActorDiedError:

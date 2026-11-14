@@ -14,6 +14,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Sequence,
     Set,
     Tuple,
 )
@@ -391,21 +392,50 @@ class MultiplexMixin:
         Returns:
             Three lists of replicas, ordered by rank.
         """
-        replica_ids_with_multiplexed_model = (
-            self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
+        return self.rank_replicas_via_multiplex_candidates(
+            replicas, [multiplexed_model_id]
         )
-        replica_ids_with_fewest_multiplexed_models = (
+
+    def rank_replicas_via_multiplex_candidates(
+        self,
+        replicas: List[RunningReplica],
+        candidate_multiplexed_model_ids: Sequence[str],
+    ) -> List[List[RunningReplica]]:
+        """Rank replicas by an ordered list of acceptable multiplexed model IDs.
+
+        Rank ``i`` is the list of replicas that have the i-th candidate loaded.
+        The next rank is the list of replicas that have the fewest multiplexed
+        models, and the last rank is the list of all other replicas.
+
+        The request runs on the first candidate that the chosen replica has loaded,
+        or on the first candidate if the replica has none of them.
+
+        Args:
+            replicas: The replicas to rank.
+            candidate_multiplexed_model_ids: Acceptable multiplexed model IDs,
+                ordered from most to least preferred.
+
+        Returns:
+            Ranked lists of replicas, best rank first.
+        """
+        replica_ids_by_rank: List[Set[ReplicaID]] = [
+            self._multiplexed_model_id_to_replica_ids.get(model_id, set())
+            for model_id in candidate_multiplexed_model_ids
+        ]
+        replica_ids_by_rank.append(
             self._get_replica_ids_with_fewest_multiplexed_models()
         )
 
-        ranked_replicas: List[List[RunningReplica]] = [[] for _ in range(3)]
+        ranked_replicas: List[List[RunningReplica]] = [
+            [] for _ in range(len(replica_ids_by_rank) + 1)
+        ]
         for replica in replicas:
-            if replica.replica_id in replica_ids_with_multiplexed_model:
-                ranked_replicas[0].append(replica)
-            elif replica.replica_id in replica_ids_with_fewest_multiplexed_models:
-                ranked_replicas[1].append(replica)
+            for rank, replica_ids in enumerate(replica_ids_by_rank):
+                if replica.replica_id in replica_ids:
+                    ranked_replicas[rank].append(replica)
+                    break
             else:
-                ranked_replicas[2].append(replica)
+                ranked_replicas[-1].append(replica)
         return ranked_replicas
 
 
