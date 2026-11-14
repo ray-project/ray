@@ -361,7 +361,9 @@ def test_set_max_concurrency():
     assert limiter.suggest("test_3")["score"] == 3
 
 
-def test_search_generator_duplicate_wrapper_save_restore(tmp_path, caplog):
+def test_search_generator_duplicate_wrapper_save_restore(
+    tmp_path, propagate_logs, caplog
+):
     class DummySearcher(Searcher):
         def suggest(self, trial_id):
             return {"score": 1}
@@ -390,6 +392,7 @@ def test_search_generator_duplicate_wrapper_save_restore(tmp_path, caplog):
     restored_alg = SearchGenerator(restored_outer)
     restored_alg.restore_from_dir(str(tmp_path))
     assert restored_outer.repeat == 2
+    assert restored_outer.searcher.repeat == 1
 
 
 if __name__ == "__main__":

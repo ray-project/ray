@@ -175,8 +175,8 @@ class SearchGenerator(SearchAlgorithm):
             state_key = f"name:{searcher_name}"
             if state_key in search_alg_state:
                 logger.warning(
-                    "There was a duplicate when saving {}. "
-                    "Restore may not work properly.".format(searcher_name)
+                    f"There was a duplicate when saving {searcher_name}. "
+                    "Restore may not work properly."
                 )
             else:
                 search_alg_state[state_key] = searcher.get_state()
