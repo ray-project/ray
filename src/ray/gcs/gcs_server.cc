@@ -1264,6 +1264,9 @@ void GcsServer::InstallEventListeners() {
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
+        if (ray_syncer_) {
+          ray_syncer_->RemoveDeadNode(node_id.Binary());
+        }
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node, node_ip_address);
         gcs_job_manager_->OnNodeDead(node_id);

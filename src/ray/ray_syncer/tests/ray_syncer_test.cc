@@ -169,6 +169,32 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   ASSERT_EQ(0, consume(msg));
 }
 
+// Tests that a node marked dead is dropped from the view, and that a message from it
+// arriving after the death notice is ignored instead of recreating its entry.
+TEST_F(RaySyncerTest, NodeStateMarkNodeDead) {
+  auto node_status = std::make_unique<NodeState>();
+  node_status->SetComponent(
+      MessageType::RESOURCE_VIEW, nullptr, GetReceiver(MessageType::RESOURCE_VIEW));
+  auto dead_node_id = NodeID::FromRandom();
+  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, dead_node_id);
+  auto consume = [&node_status](const RaySyncMessage &m) {
+    return node_status->ConsumeSyncMessages({std::make_shared<RaySyncMessage>(m)}).size();
+  };
+  ASSERT_EQ(1, consume(msg));
+  ASSERT_TRUE(node_status->GetClusterView().contains(dead_node_id.Binary()));
+
+  node_status->MarkNodeDead(dead_node_id.Binary());
+  EXPECT_FALSE(node_status->GetClusterView().contains(dead_node_id.Binary()));
+
+  // A late message, even with a newer version, is dropped.
+  msg.set_version(1);
+  EXPECT_EQ(0, consume(msg));
+  EXPECT_FALSE(node_status->GetClusterView().contains(dead_node_id.Binary()));
+
+  // Other nodes are unaffected.
+  EXPECT_EQ(1, consume(MakeMessage(MessageType::RESOURCE_VIEW, 0, NodeID::FromRandom())));
+}
+
 // Tests that a mixed batch is split by type, one call per receiver.
 TEST_F(RaySyncerTest, NodeStateConsumeGroupsByMessageType) {
   using ReceiverCalls = std::vector<std::pair<MessageType, size_t>>;
@@ -459,6 +485,40 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
 }
 
+// Tests that ForgetNode drops a dead node's known versions and its unsent messages,
+// and leaves other nodes alone.
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseForgetNode) {
+  FakeRaySyncerBidiReactorBase<FakeReactor> sync_reactor(
+      /* io_context */ io_context_,
+      /* remote_node_id */ NodeID::FromRandom().Binary(),
+      /* message_processor */
+      [](std::vector<std::shared_ptr<const RaySyncMessage>>) {},
+      /* max_batch_size */ 10,
+      /* max_batch_delay_ms */ 100000);
+  sync_reactor.SetSelfRef(std::shared_ptr<FakeRaySyncerBidiReactorBase<FakeReactor>>(
+      &sync_reactor, [](auto *) {}));
+
+  auto dead_node_id = NodeID::FromRandom();
+  auto live_node_id = NodeID::FromRandom();
+  // Both messages stay batched because of the long delay.
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(std::make_shared<RaySyncMessage>(
+      MakeMessage(MessageType::RESOURCE_VIEW, 1, dead_node_id))));
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(std::make_shared<RaySyncMessage>(
+      MakeMessage(MessageType::COMMANDS, 1, dead_node_id))));
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(std::make_shared<RaySyncMessage>(
+      MakeMessage(MessageType::RESOURCE_VIEW, 1, live_node_id))));
+  ASSERT_EQ(3, sync_reactor.sending_buffer_.size());
+  ASSERT_EQ(2, sync_reactor.node_versions_.size());
+
+  sync_reactor.ForgetNode(dead_node_id.Binary());
+
+  EXPECT_EQ(1, sync_reactor.sending_buffer_.size());
+  EXPECT_EQ(live_node_id.Binary(), sync_reactor.sending_buffer_.begin()->first.first);
+  EXPECT_EQ(1, sync_reactor.node_versions_.size());
+  EXPECT_FALSE(sync_reactor.node_versions_.contains(dead_node_id.Binary()));
+  EXPECT_TRUE(sync_reactor.node_versions_.contains(live_node_id.Binary()));
+}
+
 // Tests that malformed messages and empty batches are dropped at the read; nothing
 // reaches the processor and reading continues.
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseDropsMalformedMessages) {
@@ -668,6 +728,11 @@ struct SyncerServerTest {
   }
 
   void Stop() {
+    // Tests may stop a server mid-test to simulate a node dying; TearDown stops it again.
+    if (stopped) {
+      return;
+    }
+    stopped = true;
     for (auto node_id : syncer->GetAllConnectedNodeIDs()) {
       syncer->Disconnect(node_id);
     }
@@ -691,6 +756,26 @@ struct SyncerServerTest {
     }
   }
 
+  // Must run on io_context.
+  bool ClusterViewHasNode(const std::string &node_id) {
+    return syncer->node_state_->GetClusterView().contains(node_id);
+  }
+
+  // Whether the connection to `remote_node_id` still tracks versions for `node_id`
+  // in its node_versions_. Must run on io_context.
+  bool ConnectionTracksNode(const std::string &remote_node_id,
+                            const std::string &node_id) {
+    auto iter = syncer->sync_reactors_.find(remote_node_id);
+    if (iter == syncer->sync_reactors_.end()) {
+      return false;
+    }
+    if (auto *server = dynamic_cast<RayServerBidiReactor *>(iter->second.get())) {
+      return server->node_versions_.contains(node_id);
+    }
+    return dynamic_cast<RayClientBidiReactor *>(iter->second.get())
+        ->node_versions_.contains(node_id);
+  }
+
   std::array<std::atomic<int64_t>, kTestComponents> _v;
   const std::array<std::atomic<int64_t>, kTestComponents> &GetReceivedVersions(
       const std::string &node_id) {
@@ -712,6 +797,7 @@ struct SyncerServerTest {
   instrumented_io_context io_context;
   work_guard_type work_guard;
   std::string server_port;
+  bool stopped = false;
   std::array<std::atomic<int64_t>, kTestComponents> local_versions;
   std::array<std::unique_ptr<FakeReporterInterface>, kTestComponents> reporters = {
       nullptr};
@@ -999,6 +1085,86 @@ TEST_F(SyncerTest, Broadcast) {
         return s1.syncer->node_state_->GetClusterView().count(node_id) == 0;
       },
       5));
+}
+
+// Tests that RemoveDeadNode clears a dead node from every syncer that learned about
+// it through the GCS, not only from the GCS whose connection to it broke. Raylets s2
+// and s3 are gRPC clients of the GCS, as in production.
+TEST_F(SyncerTest, RemoveDeadNode) {
+  auto &gcs = MakeServer("19990");
+  auto &s3 = MakeServer("19992");
+  auto &s2 = MakeServer("19991");
+  const auto gcs_id = gcs.syncer->GetLocalNodeID();
+  const auto s2_id = s2.syncer->GetLocalNodeID();
+  const auto s3_id = s3.syncer->GetLocalNodeID();
+
+  s2.syncer->Connect(gcs_id, MakeChannel("19990"));
+  s3.syncer->Connect(gcs_id, MakeChannel("19990"));
+  ASSERT_TRUE(s3.WaitUntil([&]() { return s3.ClusterViewHasNode(s2_id); }, 5));
+  ASSERT_TRUE(s3.WaitUntil([&]() { return s3.ConnectionTracksNode(gcs_id, s2_id); }, 5));
+  ASSERT_TRUE(gcs.WaitUntil([&]() { return gcs.ConnectionTracksNode(s3_id, s2_id); }, 5));
+
+  // s2 dies, and both the GCS and s3 are told (node-removed listener, NodeRemoved).
+  // The stopped server object is kept until TearDown: gRPC can still call into its
+  // reactors, which reference its io_context.
+  s2.Stop();
+  gcs.syncer->RemoveDeadNode(s2_id);
+  s3.syncer->RemoveDeadNode(s2_id);
+
+  EXPECT_TRUE(s3.WaitUntil([&]() { return !s3.ClusterViewHasNode(s2_id); }, 5));
+  EXPECT_EQ(nullptr, s3.syncer->GetSyncMessage(s2_id, MessageType::RESOURCE_VIEW));
+  EXPECT_TRUE(s3.WaitUntil([&]() { return !s3.ConnectionTracksNode(gcs_id, s2_id); }, 5));
+  EXPECT_TRUE(gcs.WaitUntil([&]() { return !gcs.ClusterViewHasNode(s2_id); }, 5));
+  EXPECT_TRUE(
+      gcs.WaitUntil([&]() { return !gcs.ConnectionTracksNode(s3_id, s2_id); }, 5));
+
+  // A fresh GCS (as after a GCS restart) gets nothing about s2 from s3. s3's new
+  // version is sent after its initial view on the same stream, so once it arrives
+  // anything about s2 would have arrived too.
+  auto &new_gcs = MakeServer("19993");
+  s3.syncer->Connect(new_gcs.syncer->GetLocalNodeID(), MakeChannel("19993"));
+  s3.local_versions[0] = 1;
+  ASSERT_TRUE(
+      new_gcs.WaitUntil([&]() { return new_gcs.GetReceivedVersions(s3_id)[0] == 1; }, 5));
+  EXPECT_TRUE(new_gcs.WaitUntil([&]() { return !new_gcs.ClusterViewHasNode(s2_id); }, 1));
+  EXPECT_EQ(0, new_gcs.GetNumConsumedMessages(s2_id));
+}
+
+// Tests that once a dead node is removed, a raylet reconnecting to the same GCS does
+// not put it back into the GCS's view, and a raylet joining later never receives it.
+TEST_F(SyncerTest, RemoveDeadNodeSurvivesReconnect) {
+  auto &gcs = MakeServer("19990");
+  auto &raylet_a = MakeServer("19992");
+  auto &node_c = MakeServer("19991");
+  const auto gcs_id = gcs.syncer->GetLocalNodeID();
+  const auto a_id = raylet_a.syncer->GetLocalNodeID();
+  const auto c_id = node_c.syncer->GetLocalNodeID();
+
+  node_c.syncer->Connect(gcs_id, MakeChannel("19990"));
+  raylet_a.syncer->Connect(gcs_id, MakeChannel("19990"));
+  ASSERT_TRUE(raylet_a.WaitUntil([&]() { return raylet_a.ClusterViewHasNode(c_id); }, 5));
+
+  node_c.Stop();
+  gcs.syncer->RemoveDeadNode(c_id);
+  raylet_a.syncer->RemoveDeadNode(c_id);
+  ASSERT_TRUE(
+      raylet_a.WaitUntil([&]() { return !raylet_a.ClusterViewHasNode(c_id); }, 5));
+
+  // Raylet A's connection to the GCS blips and reconnects.
+  raylet_a.syncer->Disconnect(gcs_id);
+  raylet_a.syncer->Connect(gcs_id, MakeChannel("19990"));
+  raylet_a.local_versions[0] = 1;
+  ASSERT_TRUE(gcs.WaitUntil([&]() { return gcs.GetReceivedVersions(a_id)[0] == 1; }, 5));
+  EXPECT_TRUE(gcs.WaitUntil([&]() { return !gcs.ClusterViewHasNode(c_id); }, 1));
+
+  // A raylet joining afterwards gets A's state but nothing about C.
+  auto &raylet_n = MakeServer("19993");
+  raylet_n.syncer->Connect(gcs_id, MakeChannel("19990"));
+  ASSERT_TRUE(raylet_n.WaitUntil(
+      [&]() { return raylet_n.GetReceivedVersions(a_id)[0] == 1; }, 5));
+  EXPECT_TRUE(
+      raylet_n.WaitUntil([&]() { return !raylet_n.ClusterViewHasNode(c_id); }, 1));
+  EXPECT_EQ(0, raylet_n.GetNumConsumedMessages(c_id));
 }
 
 bool CompareViews(const std::vector<SyncerServerTest *> &servers,

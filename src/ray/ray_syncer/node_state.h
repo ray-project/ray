@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/ray_syncer/common.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
@@ -90,6 +91,10 @@ class NodeState {
   /// Remove a node from the cluster view.
   bool RemoveNode(const std::string &node_id);
 
+  /// Remove a dead node from the cluster view and drop any later message from it.
+  /// Unlike RemoveNode, this is permanent: node ids are never reused.
+  void MarkNodeDead(const std::string &node_id);
+
  private:
   /// For local nodes
   std::array<const ReporterInterface *, kComponentArraySize> reporters_ = {nullptr};
@@ -104,6 +109,10 @@ class NodeState {
       std::string,
       std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
       cluster_view_;
+
+  /// Nodes reported dead. Messages from them can still arrive after the death notice,
+  /// since the two travel on different channels, and must not recreate their entries.
+  absl::flat_hash_set<std::string> dead_nodes_;
 };
 
 }  // namespace ray::syncer

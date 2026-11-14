@@ -170,6 +170,17 @@ void RaySyncer::Disconnect(const std::string &node_id) {
   boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }
 
+void RaySyncer::RemoveDeadNode(const std::string &node_id) {
+  io_context_.dispatch(
+      [this, node_id]() {
+        node_state_->MarkNodeDead(node_id);
+        for (auto &[_, reactor] : sync_reactors_) {
+          reactor->ForgetNode(node_id);
+        }
+      },
+      "RaySyncer.RemoveDeadNode");
+}
+
 void RaySyncer::Register(MessageType message_type,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
