@@ -1677,9 +1677,11 @@ def test_layer_cache_reclaimed_before_images(tmp_path, monkeypatch, pressure):
     for i, path in enumerate(paths):
         newer = time.time() + i + 10
         os.utime(path, (newer, newer))
+    # Under size pressure: room for this image, the one pulled below, and
+    # one of the two layers.
     monkeypatch.setenv(
         "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES",
-        str(image_size + 10) if pressure == "size" else "0",
+        str(2 * image_size + 10) if pressure == "size" else "0",
     )
     monkeypatch.setenv(
         "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "90" if pressure == "free" else "0"
@@ -1690,6 +1692,12 @@ def test_layer_cache_reclaimed_before_images(tmp_path, monkeypatch, pressure):
         lambda _: 100 - sum(10 for path in paths if os.path.exists(path)),
     )
 
+    if pressure == "size":
+        # A cache hit doesn't grow the cache, so it leaves the size cap to
+        # a pull, which checks it again once its own image counts.
+        other_tar = tmp_path / "other.tar"
+        _write_sample_tar(other_tar)
+        pull_and_extract_container_image(str(other_tar), images_dir)
     assert pull_and_extract_container_image(str(local_tar), images_dir) == image_dir
     assert [os.path.exists(path) for path in paths] == [False, True]
     assert _image_file(image_dir, "hello.txt") == b"hello"
