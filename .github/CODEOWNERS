@@ -65,13 +65,7 @@
 
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
-/python/ray/data/datasource/ @ray-project/ray-data @ray-project/ray-data-connectors
-/python/ray/data/_internal/datasource/ @ray-project/ray-data @ray-project/ray-data-connectors
-/python/ray/data/_internal/datasource_v2/ @ray-project/ray-data @ray-project/ray-data-connectors
-/python/ray/data/tests/datasource/ @ray-project/ray-data @ray-project/ray-data-connectors
-/python/ray/data/tests/datasource_v2/ @ray-project/ray-data @ray-project/ray-data-connectors
-/python/ray/data/tests/unit/datasource/ @ray-project/ray-data @ray-project/ray-data-connectors
-/python/ray/data/tests/unit/datasource_v2/ @ray-project/ray-data @ray-project/ray-data-connectors
+/python/ray/data/**/datasource*/ @ray-project/ray-data @ray-project/ray-data-connectors
 /python/ray/data/tests/test_read_datasource.py @ray-project/ray-data @ray-project/ray-data-connectors
 /doc/source/data/ @ray-project/ray-data @ray-project/ray-docs @ray-project/ray-docs-reviewers
 /python/ray/dashboard/modules/data/ @ray-project/ray-data
