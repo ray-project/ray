@@ -99,7 +99,7 @@ def _max_throughput_from_resources(
         # an unspecified (None) limit to 0.0, which would incorrectly cap
         # the throughput at 0. An unspecified limit means the resource is
         # unconstrained, so it must not bound the throughput at all.
-        resource_limit = getattr(resource_limits, f"_{resource_name}")
+        resource_limit = getattr(resource_limits, f"_{resource_name}", None)
         if resource_limit is None:
             continue
         resource_cost_per_unit_throughput = sum(
