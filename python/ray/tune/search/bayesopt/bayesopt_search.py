@@ -83,7 +83,8 @@ class BayesOptSearch(Searcher):
         random_state: Used to initialize BayesOpt.
         random_search_steps: Number of initial random searches.
             This is necessary to avoid initial local overfitting
-            of the Bayesian process.
+            of the Bayesian process. Failed trials count as completed initial
+            searches, but only successful results update the optimizer.
         verbose: Sets verbosity level for BayesOpt packages.
         patience: Number of times a configuration may be repeatedly suggested
             before the search terminates early. The Bayesian optimizer can
@@ -386,28 +387,26 @@ class BayesOptSearch(Searcher):
         # We try to get the parameters used for this trial
         params = self._live_trial_mapping.pop(trial_id, None)
 
-        # The results may be None if some exception is raised during the trial.
-        # Also, if the parameters are None (were already processed)
-        # we interrupt the following procedure.
-        # Additionally, if somehow the error is True but
-        # the remaining values are not we also block the method
-        if result is None or params is None or error:
+        # Ignore unknown trials and repeated completion notifications.
+        if params is None:
             return
+        if error:
+            result = None
 
-        # If we don't have to execute some random search steps
+        # After warm-up, only successful observations update the optimizer.
         if len(self._buffered_trial_results) >= self.random_search_trials:
-            #  we simply register the obtained result
-            self._register_result(params, result)
+            if result is not None:
+                self._register_result(params, result)
             return
 
-        # We store the results into a temporary cache
+        # Failed trials also complete a warm-up slot, but add no observation.
         self._buffered_trial_results.append((params, result))
 
-        # If the random search finished,
-        # we update the BO with all the computer points.
+        # Once every warm-up trial has completed, register successful results.
         if len(self._buffered_trial_results) == self.random_search_trials:
             for params, result in self._buffered_trial_results:
-                self._register_result(params, result)
+                if result is not None:
+                    self._register_result(params, result)
 
     def _register_result(self, params: Tuple[str], result: Dict):
         """Register given tuple of params and results."""
