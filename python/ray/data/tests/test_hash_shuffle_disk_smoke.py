@@ -10,6 +10,7 @@ that the planner-driven tests in
 ``test_hash_shuffle_disk_repartition.py`` don't isolate.
 """
 
+import random
 from typing import List, Optional, Sequence, cast
 
 import pyarrow as pa
@@ -37,7 +38,12 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_o
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
 )
+from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
+    DiskSortShuffleMapOp,
+)
+from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.stats import Timer
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -159,6 +165,51 @@ def test_disk_repartition_smoke(
         assert (
             got_rows == expected_total_rows
         ), f"row count mismatch: got {got_rows}, expected {expected_total_rows}"
+    finally:
+        _shutdown_ops(reduce_op, map_op, upstream)
+
+
+def test_disk_sort_smoke(ray_start_regular_shared_2_cpus):
+    """Sort map -> ordered reduce, bypassing the planner: output is globally sorted."""
+    ctx = DataContext.get_current()
+    num_partitions = 4
+    ids = list(range(100))
+    random.Random(0).shuffle(ids)
+    input_bundles = make_ref_bundles(
+        [ids[i::num_partitions] for i in range(num_partitions)]
+    )
+    sort_key = SortKey("id", boundaries=[25, 50, 75])
+
+    upstream = InputDataBuffer(ctx, input_bundles)
+    block_ref_counter = BlockRefCounter()
+    upstream.start(ExecutionOptions(), block_ref_counter)
+    map_op = DiskSortShuffleMapOp(
+        upstream, ctx, num_partitions=num_partitions, sort_key=sort_key
+    )
+    reduce_op = DiskHashShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=num_partitions,
+        reduce_fn=make_sort_reduce_fn(sort_key, ctx),
+        preserve_partition_order=True,
+    )
+    map_op.start(ExecutionOptions(), block_ref_counter)
+    reduce_op.start(ExecutionOptions(), block_ref_counter)
+    try:
+        while upstream.has_next():
+            map_op.add_input(upstream.get_next(), input_index=0)
+        map_op.all_inputs_done()
+        for bundle in _run_and_collect(map_op):
+            reduce_op.add_input(bundle, input_index=0)
+        reduce_op.all_inputs_done()
+
+        got = [
+            row
+            for bundle in _run_and_collect(reduce_op)
+            for block in ray.get(list(bundle.block_refs))
+            for row in BlockAccessor.for_block(block).to_arrow()["id"].to_pylist()
+        ]
+        assert got == list(range(100))
     finally:
         _shutdown_ops(reduce_op, map_op, upstream)
 

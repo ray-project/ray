@@ -76,7 +76,8 @@ struct TaskOptions {
               std::unordered_map<std::string, std::string> labels_p = {},
               LabelSelector label_selector_p = {},
               std::optional<std::string> tensor_transport_p = std::nullopt,
-              std::vector<FallbackOption> fallback_strategy_p = {})
+              std::vector<FallbackOption> fallback_strategy_p = {},
+              bool consume_once_p = false)
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -88,7 +89,8 @@ struct TaskOptions {
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
         fallback_strategy(std::move(fallback_strategy_p)),
-        tensor_transport(std::move(tensor_transport_p)) {}
+        tensor_transport(std::move(tensor_transport_p)),
+        consume_once(consume_once_p) {}
 
   /// The name of this task.
   std::string name;
@@ -119,6 +121,14 @@ struct TaskOptions {
   std::vector<FallbackOption> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
   std::optional<std::string> tensor_transport;
+  /// Private: experimental and not part of the public API (the Python option is
+  /// `_consume_once`). Only applicable to actor tasks. If true, the task's returns are
+  /// created MOVABLE: each can be passed to exactly one actor task and can't be
+  /// borrowed. If the consuming actor runs on another node, the value is moved there:
+  /// once the consumer's node has its copy, the copy in the object store on the
+  /// producing actor's node is freed. If the consumer runs on the same node, it uses
+  /// that copy, and nothing is copied.
+  bool consume_once = false;
 };
 
 /// Options for actor creation tasks.

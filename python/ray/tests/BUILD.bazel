@@ -539,6 +539,7 @@ py_test_module_list(
         "test_bounded_unix_sockets.py",
         "test_component_failures.py",
         "test_concurrency_group.py",
+        "test_consume_once.py",
         "test_core_worker_io_thread_stack_size.py",
         "test_cpu_tensor_zero_copy_serialization.py",
         "test_cross_language.py",
