@@ -12,8 +12,53 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 # resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 
-# Default resolvers for network="public" (Google and Cloudflare public DNS).
+# Default resolvers for network="public" (Google and Cloudflare public DNS),
+# unless the node sets RAY_SANDBOX_DEFAULT_DNS (see default_public_dns).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
+
+_DEFAULT_DNS_ENV = "RAY_SANDBOX_DEFAULT_DNS"
+
+
+def default_public_dns() -> Tuple[str, ...]:
+    """Resolvers a network="public" sandbox uses when its config sets no dns.
+
+    ``RAY_SANDBOX_DEFAULT_DNS``, a comma-separated list of IPv4 addresses,
+    replaces ``DEFAULT_PUBLIC_DNS`` on a node. Networks that block DNS to
+    public resolvers need it, since a sandbox can't fall back to the node's
+    own resolver. A "public" sandbox has no IPv6 route, so an IPv6 resolver
+    could never answer it.
+
+    Returns:
+        The resolvers.
+
+    Raises:
+        ValueError: If an entry of ``RAY_SANDBOX_DEFAULT_DNS`` isn't an IPv4
+            address, or is one that no sandbox can reach.
+    """
+    value = os.environ.get(_DEFAULT_DNS_ENV, "")
+    servers = tuple(s.strip() for s in value.split(",") if s.strip())
+    if not servers:
+        return DEFAULT_PUBLIC_DNS
+    for server in servers:
+        try:
+            address = ipaddress.ip_address(server)
+        except ValueError:
+            address = None
+        if address is None or address.version != 4:
+            raise ValueError(
+                f"{_DEFAULT_DNS_ENV} entry {server!r} isn't an IPv4 address, "
+                'and network="public" sandboxes have no IPv6 route'
+            )
+        if address.is_loopback or address.is_unspecified:
+            # Such as 127.0.0.53, which systemd-resolved puts in the node's
+            # resolv.conf. A sandbox has no route to the node's loopback.
+            raise ValueError(
+                f"{_DEFAULT_DNS_ENV} entry {server!r} is a loopback or "
+                'unspecified address, which network="public" sandboxes '
+                "can't reach"
+            )
+    return servers
+
 
 # The egress allowlist that permits every destination outside the denylist
 # (EGRESS_ALWAYS_DENIED, the Kubernetes API service, and
@@ -292,7 +337,8 @@ class SandboxConfig:
             "sandbox" uses gVisor's netstack and requires ``rootless=False``.
         dns: Nameserver IPs for a generated /etc/resolv.conf, mounted
             read-only (like ``docker --dns``); useful when public DNS is
-            blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public";
+            blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public", or
+            the node's ``RAY_SANDBOX_DEFAULT_DNS``;
             overrides the host file for "host". Only valid with those modes.
         cidr_allowlist: Egress allowlist for network="public". None
             (default) means ``DEFAULT_PUBLIC_ALLOWLIST``, the public

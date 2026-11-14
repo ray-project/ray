@@ -703,12 +703,28 @@ def _prepare(mgr, root_dir, **kwargs):
     return mgr.spec_kwargs["resolv_conf_source"]
 
 
-def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path):
+def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path, monkeypatch):
+    # The built-in resolvers, whatever this node sets.
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
     mgr = _SpecCapturingManager(tmp_path)
     source = _prepare(mgr, tmp_path, network="public")
     assert source == os.path.join(str(tmp_path), "resolv.conf")
     content = open(source, encoding="utf-8").read()
     assert content == "nameserver 8.8.8.8\nnameserver 1.1.1.1\n"
+
+
+def test_prepare_oci_bundle_public_uses_the_node_default_resolvers(
+    tmp_path, monkeypatch
+):
+    """RAY_SANDBOX_DEFAULT_DNS replaces the public resolvers on networks that
+    block them; a sandbox's own dns still wins."""
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", " 103.247.36.36, 10.0.0.2 ")
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="public")
+    content = open(source, encoding="utf-8").read()
+    assert content == "nameserver 103.247.36.36\nnameserver 10.0.0.2\n"
+    source = _prepare(mgr, tmp_path, network="public", dns=["10.0.0.9"])
+    assert open(source, encoding="utf-8").read() == "nameserver 10.0.0.9\n"
 
 
 def test_prepare_oci_bundle_dns_overrides_for_public_and_host(tmp_path):
