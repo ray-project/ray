@@ -12,7 +12,8 @@ Key differences from the default Serve proxy:
    replicas), so these won't generate Serve metrics. Tests that need to verify 404
    metrics must deploy an application that returns 404s.
 4. HAProxy has its own metrics exposed on a separate port (default 9101), but these
-   tests focus on Serve metrics exposed via the Ray metrics port (9999).
+   tests focus on Serve metrics exposed via the Ray metrics port
+   (`TEST_METRICS_EXPORT_PORT`).
 """
 import http
 import json
@@ -110,7 +111,8 @@ def get_metric_float(
     """
 
     metrics = httpx.get(
-        "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+        headers=get_auth_headers_if_auth_enabled({}),
     ).text
     metric_value = -1
     for line in metrics.split("\n"):
@@ -135,7 +137,7 @@ def check_sum_metric_eq(
     if tags is None:
         tags = {}
 
-    metrics = fetch_prometheus_metrics(["localhost:9999"])
+    metrics = fetch_prometheus_metrics([f"localhost:{TEST_METRICS_EXPORT_PORT}"])
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
     if metric_samples is None:
@@ -178,7 +180,8 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     def verify_metrics(do_assert=False):
         try:
             resp = httpx.get(
-                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+                f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+                headers=get_auth_headers_if_auth_enabled({}),
             ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
@@ -244,7 +247,8 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
 
     def ensure_request_processing():
         resp = httpx.get(
-            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+            headers=get_auth_headers_if_auth_enabled({}),
         ).text
         resp = resp.split("\n")
         for metrics in resp:
@@ -286,7 +290,8 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
             resp = httpx.get(
-                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+                f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+                headers=get_auth_headers_if_auth_enabled({}),
             ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
@@ -315,7 +320,8 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
 
     def verify_error_count(do_assert=False):
         resp = httpx.get(
-            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+            headers=get_auth_headers_if_auth_enabled({}),
         ).text
         resp = resp.split("\n")
         http_error_count = 0
@@ -376,7 +382,7 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
             resp = httpx.get(
-                "http://127.0.0.1:9999",
+                f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
                 headers=get_auth_headers_if_auth_enabled({}),
                 timeout=None,
             ).text
@@ -420,7 +426,7 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     def verify_error_count(do_assert=False):
         resp = httpx.get(
-            "http://127.0.0.1:9999",
+            f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
             headers=get_auth_headers_if_auth_enabled({}),
             timeout=None,
         ).text
@@ -493,7 +499,8 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
             resp = httpx.get(
-                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+                f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+                headers=get_auth_headers_if_auth_enabled({}),
             ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
@@ -522,7 +529,8 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
 
     def verify_error_count(do_assert=False):
         resp = httpx.get(
-            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+            headers=get_auth_headers_if_auth_enabled({}),
         ).text
         resp = resp.split("\n")
         http_error_count = 0
@@ -747,7 +755,8 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
         expected_success_count: int,
     ):
         resp = httpx.get(
-            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+            headers=get_auth_headers_if_auth_enabled({}),
         ).text
         error_count = 0
         success_count = 0
@@ -996,7 +1005,8 @@ def test_multiplexed_metrics(metrics_start_shutdown):
     def verify_metrics():
         try:
             resp = httpx.get(
-                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+                f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+                headers=get_auth_headers_if_auth_enabled({}),
             ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:

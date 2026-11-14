@@ -297,9 +297,7 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
             )
         return
 
-    client = ServeControllerClient(
-        controller,
-    )
+    client = ServeControllerClient.from_controller(controller)
     _set_global_client(client)
     return client
 

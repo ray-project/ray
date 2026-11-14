@@ -22,6 +22,7 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
     SERVE_INSTANCE_SIGNAL_ACTOR_NAME,
     TELEMETRY_ROUTE_PREFIX,
+    TEST_HTTP_PORT,
     TEST_METRICS_EXPORT_PORT,
     check_ray_started,
     check_ray_stopped,
@@ -168,12 +169,12 @@ def _shared_serve_instance():
         address="local",
         num_cpus=36,
         namespace="default_test_namespace",
-        _metrics_export_port=9999,
+        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(
         proxy_location=ProxyLocation.HeadOnly,
-        http_options={"host": "0.0.0.0"},
+        http_options={"host": "0.0.0.0", "port": TEST_HTTP_PORT},
         grpc_options={
             "port": 9000,
             "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
@@ -304,7 +305,7 @@ def ray_instance(
     os.environ.update(requested_env_vars)
     yield ray.init(
         address="local",
-        _metrics_export_port=9999,
+        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
             "metrics_report_interval_ms": 1000,
             "task_retry_delay_ms": 50,
