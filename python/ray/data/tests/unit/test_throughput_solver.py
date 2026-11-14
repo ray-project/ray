@@ -38,6 +38,39 @@ class TestComputeOptimalThroughput:
         )
         assert result == pytest.approx(2.0)
 
+    def test_unspecified_limit_is_unconstrained(self):
+        # Regression test for #62601: an unspecified (None) resource limit
+        # means the resource is unconstrained, so it must not cap the
+        # throughput at 0 even when an operator requires that resource.
+        result = compute_optimal_throughput(
+            rates={"A": 2.0},
+            resource_requirements={"A": ExecutionResources(cpu=1, memory=100)},
+            resource_limits=ExecutionResources(cpu=4),
+            concurrency_limits={"A": float("inf")},
+        )
+        # Only the CPU limit bounds the throughput: 4 / (1 / 2.0) = 8.0.
+        assert result == pytest.approx(8.0)
+
+    def test_unspecified_gpu_limit_is_unconstrained(self):
+        result = compute_optimal_throughput(
+            rates={"A": 1.0},
+            resource_requirements={"A": ExecutionResources(cpu=1, gpu=1)},
+            resource_limits=ExecutionResources(cpu=2),
+            concurrency_limits={"A": float("inf")},
+        )
+        assert result == pytest.approx(2.0)
+
+    def test_explicit_zero_limit_still_bounds_throughput(self):
+        # An explicit 0 limit is a real limit (unlike an unspecified one)
+        # and must still cap the throughput at 0.
+        result = compute_optimal_throughput(
+            rates={"A": 1.0},
+            resource_requirements={"A": ExecutionResources(cpu=1)},
+            resource_limits=ExecutionResources(cpu=0),
+            concurrency_limits={"A": float("inf")},
+        )
+        assert result == 0.0
+
     def test_one_op_concurrency_bound(self):
         result = compute_optimal_throughput(
             rates={"A": 1.0},

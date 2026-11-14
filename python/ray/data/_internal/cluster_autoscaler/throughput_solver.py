@@ -95,7 +95,13 @@ def _max_throughput_from_resources(
     max_throughput = float("inf")
 
     for resource_name in _SCHEDULABLE_RESOURCE_NAMES:
-        resource_limit = getattr(resource_limits, resource_name)
+        # Read the raw field rather than the property: the property coerces
+        # an unspecified (None) limit to 0.0, which would incorrectly cap
+        # the throughput at 0. An unspecified limit means the resource is
+        # unconstrained, so it must not bound the throughput at all.
+        resource_limit = getattr(resource_limits, f"_{resource_name}")
+        if resource_limit is None:
+            continue
         resource_cost_per_unit_throughput = sum(
             getattr(resource_requirements[op], resource_name) / rates[op]
             for op in rates
