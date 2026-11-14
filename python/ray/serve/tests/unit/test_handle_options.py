@@ -123,7 +123,6 @@ def test_dynamic_handle_options_candidate_multiplexed_model_ids():
     [
         (["v7", "v6", "v5"], ("v7", "v6", "v5")),
         ([], ()),
-        # Already-frozen input is accepted so internal callers can pass it back.
         (("v7",), ("v7",)),
     ],
 )
@@ -160,6 +159,13 @@ def test_options_rejects_both_multiplexed_model_id_fields():
             {"candidate_multiplexed_model_ids": ["v7", "v6"]},
             "",
             ("v7", "v6"),
+        ),
+        # An empty ID means no model, so it also drops the candidates.
+        (
+            {"candidate_multiplexed_model_ids": ["v7", "v6"]},
+            {"multiplexed_model_id": ""},
+            "",
+            (),
         ),
         # An empty list carries no model ID, so it clears the candidates without
         # disturbing a single ID set earlier.

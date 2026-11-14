@@ -18,14 +18,12 @@ def init_options() -> InitHandleOptions:
         ("", ("v7", "v6", "v5"), "v7"),
         ("", ("only",), "only"),
         ("", (), ""),
-        ("explicit", ("v7", "v6"), "explicit"),
     ],
     ids=[
         "single_id_is_passed_through",
         "candidates_resolve_to_first_entry",
         "one_candidate_behaves_like_a_single_id",
         "no_multiplexing_options_set",
-        "explicit_id_wins_over_candidates",
     ],
 )
 def test_multiplexed_model_id_resolution(
@@ -37,8 +35,7 @@ def test_multiplexed_model_id_resolution(
     """`get_request_metadata` resolves a candidate list to a single model ID.
 
     The replica loads exactly one model, so routers that don't understand candidate
-    lists must still see a usable `multiplexed_model_id`. An explicitly set ID is
-    never overwritten.
+    lists must still see a usable `multiplexed_model_id`.
     """
     handle_options = DynamicHandleOptions(
         multiplexed_model_id=multiplexed_model_id,

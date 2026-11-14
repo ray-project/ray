@@ -66,7 +66,7 @@ R = TypeVar("R")
 
 
 def _normalize_candidate_multiplexed_model_ids(
-    candidate_multiplexed_model_ids: List[str],
+    candidate_multiplexed_model_ids: Union[List[str], Tuple[str, ...]],
 ) -> Tuple[str, ...]:
     """Validate a caller-supplied candidate model ID list and freeze it to a tuple.
 
@@ -81,7 +81,7 @@ def _normalize_candidate_multiplexed_model_ids(
         candidate_multiplexed_model_ids, (list, tuple)
     ):
         raise TypeError(
-            "candidate_multiplexed_model_ids must be a list of strings, got "
+            "candidate_multiplexed_model_ids must be a list or tuple of strings, got "
             f"{type(candidate_multiplexed_model_ids)}."
         )
 
@@ -334,7 +334,9 @@ class _DeploymentHandleBase(Generic[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-        candidate_multiplexed_model_ids: Union[List[str], DEFAULT] = DEFAULT.VALUE,
+        candidate_multiplexed_model_ids: Union[
+            List[str], Tuple[str, ...], DEFAULT
+        ] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1133,7 +1135,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-        candidate_multiplexed_model_ids: Union[List[str], DEFAULT] = DEFAULT.VALUE,
+        candidate_multiplexed_model_ids: Union[
+            List[str], Tuple[str, ...], DEFAULT
+        ] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1148,8 +1152,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             multiplexed_model_id: The model ID to use for multiplexed model requests.
             candidate_multiplexed_model_ids: Multiplexed model IDs that are all
                 acceptable for this request, ordered from most to least preferred.
-                A custom request router chooses among them; the default router
-                routes on the first entry. Setting this clears
+                The request runs on the first of them that the chosen replica has
+                loaded, or on the first entry if it has none. Setting this clears
                 ``multiplexed_model_id``, and setting that clears this.
             session_id: Session identifier used for honoring session stickiness.
             stream: Whether to use streaming for the request.
@@ -1174,7 +1178,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 multiplexed_model_id="model:v1",
             ).remote()
 
-            # A custom request router picks whichever of these is already loaded.
+            # Runs whichever of these the chosen replica already has loaded.
             response: DeploymentResponse = handle.options(
                 candidate_multiplexed_model_ids=["model:v3", "model:v2"],
             ).remote()
@@ -1191,14 +1195,14 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 raise ValueError(
                     "Only one of `multiplexed_model_id` and "
                     "`candidate_multiplexed_model_ids` may be set. Pass the ordered "
-                    "list alone to let a custom request router choose among them."
+                    "list alone to accept any of its models."
                 )
             candidate_model_ids = _normalize_candidate_multiplexed_model_ids(
                 candidate_multiplexed_model_ids
             )
             if candidate_model_ids:
                 multiplexed_model_id = ""
-        elif multiplexed_model_id is not DEFAULT.VALUE and multiplexed_model_id:
+        elif multiplexed_model_id is not DEFAULT.VALUE:
             candidate_model_ids = ()
 
         return self._options(

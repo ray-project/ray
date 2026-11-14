@@ -392,22 +392,9 @@ class MultiplexMixin:
         Returns:
             Three lists of replicas, ordered by rank.
         """
-        replica_ids_with_multiplexed_model = (
-            self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
+        return self.rank_replicas_via_multiplex_candidates(
+            replicas, [multiplexed_model_id]
         )
-        replica_ids_with_fewest_multiplexed_models = (
-            self._get_replica_ids_with_fewest_multiplexed_models()
-        )
-
-        ranked_replicas: List[List[RunningReplica]] = [[] for _ in range(3)]
-        for replica in replicas:
-            if replica.replica_id in replica_ids_with_multiplexed_model:
-                ranked_replicas[0].append(replica)
-            elif replica.replica_id in replica_ids_with_fewest_multiplexed_models:
-                ranked_replicas[1].append(replica)
-            else:
-                ranked_replicas[2].append(replica)
-        return ranked_replicas
 
     def rank_replicas_via_multiplex_candidates(
         self,
@@ -420,10 +407,8 @@ class MultiplexMixin:
         The next rank is the list of replicas that have the fewest multiplexed
         models, and the last rank is the list of all other replicas.
 
-        Routing to a replica from rank ``i`` only avoids a model load if the request
-        is then served with ``candidate_multiplexed_model_ids[i]``, so the caller is
-        responsible for setting ``RequestMetadata.multiplexed_model_id`` to the
-        candidate it matched on.
+        The request runs on the first candidate that the chosen replica has loaded,
+        or on the first candidate if the replica has none of them.
 
         Args:
             replicas: The replicas to rank.
