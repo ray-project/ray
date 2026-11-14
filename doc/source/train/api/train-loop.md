@@ -45,6 +45,7 @@ Call these `ray.train` APIs from inside your training function to save and load 
     :nosignatures:
     :toctree: doc/
 
+    ~train.annotate
     ~train.get_all_reported_checkpoints
     ~train.get_checkpoint
     ~train.get_context

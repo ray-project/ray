@@ -15,8 +15,7 @@ if TYPE_CHECKING:
 
 @ray.remote(num_cpus=0)
 class CPUCommBarrier:
-    """
-    Barrier actor that blocks the given number of actors until all actors have
+    """Barrier actor that blocks the given number of actors until all actors have
     reached the Barrier.
 
     p2p operations are not done here (completed via shared memory channel).
@@ -37,8 +36,7 @@ class CPUCommBarrier:
         self.num_actors_read = defaultdict(int)
 
     async def wait_collective(self, op_id: int, data: "torch.Tensor", op: ReduceOp):
-        """
-        Wait at the communicator until all actors have sent `op_id` and `data`.
+        """Wait at the communicator until all actors have sent `op_id` and `data`.
         Once data from all actors is received, execute the collective `op`
         on the communicator actor and return the result.
         """
@@ -90,9 +88,7 @@ class CPUCommBarrier:
 
 
 class CPUCommunicator(Communicator):
-    """
-    Uses a CPU-based communicator actor instead of an accelerator group like NCCL.
-    """
+    """Uses a CPU-based communicator actor instead of an accelerator group like NCCL."""
 
     def __init__(self, world_size: int, actor_handles: List["ray.actor.ActorHandle"]):
         """We use the op index to synchronize the sender and receiver at the
@@ -188,9 +184,7 @@ class CPUCommunicator(Communicator):
         return self._rank
 
     def get_world_size(self) -> int:
-        """
-        Return the number of ranks in the CPU communicator.
-        """
+        """Return the number of ranks in the CPU communicator."""
         return self._world_size
 
     def get_transport_name(self) -> str:

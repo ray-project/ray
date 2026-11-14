@@ -1,4 +1,4 @@
-""" Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
+"""Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 from typing import Any, List, Tuple, Union
 
 import numpy as np

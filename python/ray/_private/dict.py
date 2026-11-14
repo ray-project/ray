@@ -10,8 +10,7 @@ T = TypeVar("T")
 
 @Deprecated
 def merge_dicts(d1: dict, d2: dict) -> dict:
-    """
-    Args:
+    """Args:
         d1: Dict 1.
         d2: Dict 2.
 
@@ -227,8 +226,7 @@ def unflatten_list_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
 def unflattened_lookup(
     flat_key: str, lookup: Union[Mapping, Sequence], delimiter: str = "/", **kwargs
 ) -> Union[Mapping, Sequence]:
-    """
-    Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
+    """Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
     """
     if flat_key in lookup:

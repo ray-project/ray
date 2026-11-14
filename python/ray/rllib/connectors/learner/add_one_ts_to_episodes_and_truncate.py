@@ -29,53 +29,48 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
       etc..
     }
 
-    .. testcode::
-
-        from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
-        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-        from ray.rllib.utils.test_utils import check
-
-        # Create 2 episodes (both to be extended by one timestep).
-        episode1 = SingleAgentEpisode(
-            observations=[0, 1, 2],
-            actions=[0, 1],
-            rewards=[0.0, 1.0],
-            terminated=False,
-            truncated=False,
-            len_lookback_buffer=0,
-        ).to_numpy()
-        check(len(episode1), 2)
-        check(episode1.is_truncated, False)
-
-        episode2 = SingleAgentEpisode(
-            observations=[0, 1, 2, 3, 4, 5],
-            actions=[0, 1, 2, 3, 4],
-            rewards=[0.0, 1.0, 2.0, 3.0, 4.0],
-            terminated=True,  # a terminated episode
-            truncated=False,
-            len_lookback_buffer=0,
-        ).to_numpy()
-        check(len(episode2), 5)
-        check(episode2.is_truncated, False)
-        check(episode2.is_terminated, True)
-
-        # Create an instance of this class.
-        connector = AddOneTsToEpisodesAndTruncate()
-
-        # Call the connector.
-        shared_data = {}
-        _ = connector(
-            rl_module=None,  # Connector used here does not require RLModule.
-            batch={},
-            episodes=[episode1, episode2],
-            shared_data=shared_data,
-        )
-        # Check on the episodes. Both of them should now be 1 timestep longer.
-        check(len(episode1), 3)
-        check(episode1.is_truncated, True)
-        check(len(episode2), 6)
-        check(episode2.is_truncated, False)
-        check(episode2.is_terminated, True)
+    Examples:
+        >>> from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
+        >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+        >>> from ray.rllib.utils.test_utils import check
+        >>> # Create 2 episodes (both to be extended by one timestep).
+        >>> episode1 = SingleAgentEpisode(
+        ...     observations=[0, 1, 2],
+        ...     actions=[0, 1],
+        ...     rewards=[0.0, 1.0],
+        ...     terminated=False,
+        ...     truncated=False,
+        ...     len_lookback_buffer=0,
+        ... ).to_numpy()
+        >>> check(len(episode1), 2)
+        >>> check(episode1.is_truncated, False)
+        >>> episode2 = SingleAgentEpisode(
+        ...     observations=[0, 1, 2, 3, 4, 5],
+        ...     actions=[0, 1, 2, 3, 4],
+        ...     rewards=[0.0, 1.0, 2.0, 3.0, 4.0],
+        ...     terminated=True,  # a terminated episode
+        ...     truncated=False,
+        ...     len_lookback_buffer=0,
+        ... ).to_numpy()
+        >>> check(len(episode2), 5)
+        >>> check(episode2.is_truncated, False)
+        >>> check(episode2.is_terminated, True)
+        >>> # Create an instance of this class.
+        >>> connector = AddOneTsToEpisodesAndTruncate()
+        >>> # Call the connector.
+        >>> shared_data = {}
+        >>> _ = connector(
+        ...     rl_module=None,  # Connector used here does not require RLModule.
+        ...     batch={},
+        ...     episodes=[episode1, episode2],
+        ...     shared_data=shared_data,
+        ... )
+        >>> # Check on the episodes. Both of them should now be 1 timestep longer.
+        >>> check(len(episode1), 3)
+        >>> check(episode1.is_truncated, True)
+        >>> check(len(episode2), 6)
+        >>> check(episode2.is_truncated, False)
+        >>> check(episode2.is_terminated, True)
     """
 
     @override(ConnectorV2)

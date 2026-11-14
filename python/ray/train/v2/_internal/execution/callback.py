@@ -7,6 +7,7 @@ from ray.train.v2.api.config import ScalingConfig
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    from ray.train.health import HealthDecision
     from ray.train.v2._internal.execution.context import TrainRunContext
     from ray.train.v2._internal.execution.controller import (
         TrainControllerState,
@@ -168,6 +169,11 @@ class ControllerCallback(RayTrainCallback):
         """Called before the controller executes a resize decision."""
         pass
 
+    def after_health_decision(self, health_decision: "HealthDecision"):
+        """Called after the health checks decide on something other than a
+        ``Noop``, before the controller acts on it."""
+        pass
+
     def after_controller_finish(self, result: "Result"):
         """Called after the training run completes, providing access to the final result.
 
@@ -201,8 +207,7 @@ class ReportCallback(RayTrainCallback):
 
 @DeveloperAPI
 class WorkerCallback(RayTrainCallback):
-    """
-    Callbacks that are hooked to the worker event.
+    """Callbacks that are hooked to the worker event.
 
     These callbacks are created on the train driver process and then
     copied and passed to all the workers.
@@ -219,8 +224,7 @@ class WorkerCallback(RayTrainCallback):
 
 @DeveloperAPI
 class TrainContextCallback(RayTrainCallback):
-    """
-    Callbacks that are hooked to the train context event.
+    """Callbacks that are hooked to the train context event.
 
     These callbacks are created on the train driver process and then
     copied and passed to all the workers.
