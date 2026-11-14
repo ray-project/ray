@@ -5,7 +5,6 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, Tuple
 
-import numpy as np
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
@@ -20,6 +19,9 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_row_group_coalesci
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     _row_group_uncompressed_size,
+)
+from ray.data._internal.datasource_v2.formats.parquet.statistics_bounds import (
+    _add_statistics_bounds,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
@@ -88,182 +90,6 @@ class _FilterLeaves(NamedTuple):
     indices: list[int]
     all_filter_columns_found: bool
     has_float_leaf: bool = False
-
-
-def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
-    """Replace the leaves PyArrow cannot prune with by exact statistics bounds.
-
-    PyArrow's row-group pruning only evaluates column-vs-literal comparisons
-    against statistics, so a wrapped arithmetic comparison or a string prefix
-    keeps every row group alive. Each modeled leaf is exactly equivalent to
-    comparisons PyArrow CAN evaluate: ``starts_with(p)`` is
-    ``col >= p and col < next(p)``, and ``(col + c) >= t`` is ``col >= t - c``
-    -- plus ``col <= MAX - c`` on signed columns, where the sum wraps --
-    whenever the literal reaches PyArrow as an int64 scalar. Because the
-    bound is then equivalent to the leaf, including under ``~`` and for
-    nulls, the leaf can be replaced outright: the rewritten filter stays
-    semantically equal to the original, so pruning and the fully-matched
-    negation test both see evaluable comparisons. Literals whose kernel path
-    is order-dependent only get the necessary lower bound appended. Every
-    other form is left untouched: PyArrow already prunes plain comparisons,
-    null checks and membership, so rewriting them would only run the same
-    split twice.
-    """
-    import pyarrow.compute as pc
-
-    from ray.data.expressions import (
-        BinaryExpr,
-        ColumnExpr,
-        LiteralExpr,
-        Operation,
-        PyArrowComputeUDFExpr,
-        UnaryExpr,
-    )
-
-    if isinstance(expr, BinaryExpr) and expr.op in (
-        Operation.AND,
-        Operation.OR,
-    ):
-        left = _add_statistics_bounds(expr.left, schema)
-        right = _add_statistics_bounds(expr.right, schema)
-        if left is expr.left and right is expr.right:
-            return expr
-        if expr.op == Operation.AND:
-            return left & right
-        return left | right
-
-    # A rewritten leaf is equivalent to its bound, so NOT can recurse into
-    # it: ~(bound) is the same predicate as ~leaf, and PyArrow evaluates it
-    # against statistics, which the raw leaf never allowed.
-    if isinstance(expr, UnaryExpr) and expr.op == Operation.NOT:
-        operand = _add_statistics_bounds(expr.operand, schema)
-        if operand is expr.operand:
-            return expr
-        return ~operand
-
-    # (col + literal) >=/> literal: the statistics cannot evaluate the
-    # addition, but the equivalent column range they can.
-    if (
-        isinstance(expr, BinaryExpr)
-        and expr.op in (Operation.GE, Operation.GT)
-        and isinstance(expr.left, BinaryExpr)
-        and expr.left.op == Operation.ADD
-        and isinstance(expr.right, LiteralExpr)
-    ):
-        addition = expr.left
-        column: ColumnExpr | None = None
-        literal: LiteralExpr | None = None
-        if isinstance(addition.left, ColumnExpr) and isinstance(
-            addition.right, LiteralExpr
-        ):
-            column, literal = addition.left, addition.right
-        elif isinstance(addition.left, LiteralExpr) and isinstance(
-            addition.right, ColumnExpr
-        ):
-            column, literal = addition.right, addition.left
-
-        if column is not None and literal is not None:
-            offset = literal.value
-            target = expr.right.value
-            idx = schema.get_field_index(column.name)
-
-            value_type = schema.field(idx).type if idx >= 0 else None
-
-            # Mixed signed/unsigned kernels can narrow uint64 to int64.
-            # Keep uint64 conservative until its cast semantics are modeled.
-            if value_type is not None and (
-                pa.types.is_signed_integer(value_type)
-                or (
-                    pa.types.is_unsigned_integer(value_type)
-                    and value_type.bit_width < 64
-                )
-            ):
-                bit_width = value_type.bit_width
-                if pa.types.is_signed_integer(value_type):
-                    min_value = -(1 << (bit_width - 1))
-                    max_value = (1 << (bit_width - 1)) - 1
-                else:
-                    min_value = 0
-                    max_value = (1 << bit_width) - 1
-
-                if (
-                    isinstance(offset, (int, np.integer))
-                    and not isinstance(offset, (bool, np.bool_))
-                    and isinstance(target, (int, np.integer))
-                    and not isinstance(target, (bool, np.bool_))
-                ):
-                    # Python ints avoid overflow in NumPy scalar subtraction.
-                    offset_val = int(offset)
-                    # Fold the strict comparison into the threshold: x + c > t
-                    # is x + c >= t + 1, so GE and GT share one formula.
-                    threshold = int(target) + (1 if expr.op == Operation.GT else 0)
-                    if (
-                        0 < offset_val <= max_value
-                        and min_value <= threshold <= max_value
-                        and threshold - offset_val >= min_value
-                    ):
-                        lower = column >= threshold - offset_val
-                        if pa.types.is_int64(pa.scalar(offset).type):
-                            # A Python int (or numpy int64) literal reaches
-                            # PyArrow as an int64 scalar. On a signed column
-                            # the kernel then computes at the column's own
-                            # width: sums above ``max_value`` wrap and come
-                            # back below the threshold, so those rows never
-                            # match and the exact range needs the upper side.
-                            # On an unsigned column the kernel promotes to
-                            # int64 instead, no sum can overflow, and the
-                            # lower side alone is the whole range.
-                            if pa.types.is_signed_integer(value_type):
-                                return lower & (column <= max_value - offset_val)
-                            return lower
-                        # Other numpy scalar types take kernel paths that
-                        # differ by operand order, so only the necessary
-                        # lower bound is appended and the leaf stays.
-                        return expr & lower
-
-    # str.starts_with(col, prefix): the statistics cannot evaluate the match,
-    # but the string range it spans they can.
-    if (
-        isinstance(expr, PyArrowComputeUDFExpr)
-        and expr.pc_func is pc.starts_with
-        and len(expr.args) == 1
-        and isinstance(expr.args[0], ColumnExpr)
-        and len(expr.pc_positional) == 1
-        and not expr.pc_kwargs
-    ):
-        column = expr.args[0]
-        prefix = expr.pc_positional[0]
-        idx = schema.get_field_index(column.name)
-
-        if (
-            idx >= 0
-            and (
-                pa.types.is_string(schema.field(idx).type)
-                or pa.types.is_large_string(schema.field(idx).type)
-            )
-            and isinstance(prefix, str)
-            and not any(0xD800 <= ord(ch) <= 0xDFFF for ch in prefix)
-        ):
-            if not prefix:
-                # Every non-null string starts with the empty prefix.
-                return column >= prefix
-
-            lower = column >= prefix
-            last = ord(prefix[-1])
-
-            if last == 0x10FFFF:
-                # No next codepoint exists, so no exact upper end can be
-                # given. Keep the leaf and append the lower side, which is
-                # still equivalent to the leaf; the negation just stays
-                # unevaluable, like the leaf itself.
-                return expr & lower
-
-            # U+D7FF has no successor inside a single UTF-8 unit step (U+D800
-            # is a surrogate), so skip the whole surrogate block.
-            next_char = "\ue000" if last == 0xD7FF else chr(last + 1)
-            return lower & (column < prefix[:-1] + next_char)
-
-    return expr
 
 
 class FooterReader:
@@ -477,20 +303,9 @@ class FooterReader:
             description=f"read Parquet footer for {path}",
             match=self.retried_io_errors,
         )
-        # Both column look-ups are schema-derived, and a Parquet file has a
-        # single schema, so resolve them once rather than rescanning every leaf
-        # for each group. The read-column lookup reads leaf paths off row group 0,
-        # which a file with no row groups has none of; it sizes nothing either way.
         original_filter = self.filter
-        # The deriver replaces the leaves PyArrow cannot prune with by the
-        # exact column range each one spans: an arithmetic comparison becomes
-        # the equivalent two-sided bound, a string prefix the string range it
-        # covers. The rewrite is semantically equal to the original filter,
-        # so one split over it prunes exactly as the original would while the
-        # bounds stay evaluable -- including under ~, which PyArrow handles
-        # for plain comparisons but not for a wrapped addition. A filter with
-        # no modeled leaf comes back unchanged, so the plain filter is split
-        # exactly as before and no second pass runs over the same statistics.
+        # Rewrite arithmetic and prefix leaves so the statistics can prune
+        # them; see ``_add_statistics_bounds``.
         prune_filter = original_filter
         if self.filter_expr is not None:
             try:
@@ -505,6 +320,10 @@ class FooterReader:
                     e,
                     exc_info=True,
                 )
+        # Both column look-ups are schema-derived, and a Parquet file has a
+        # single schema, so resolve them once rather than rescanning every leaf
+        # for each group. The read-column lookup reads leaf paths off row group 0,
+        # which a file with no row groups has none of; it sizes nothing either way.
         filter_leaves = self._locate_filter_columns(metadata.schema)
         leaf_indices = (
             self._read_leaf_indices(metadata.row_group(0))
@@ -548,11 +367,12 @@ class FooterReader:
             # predicate negation: a group is fully matched iff
             # ~filter cannot match any of its rows, i.e. the negation prunes it
             # out. For those, num_rows is an exact survivor count and can drive
-            # the limit push-down. The test runs on the rewritten filter: its
-            # bounds are exact, so ~prune_filter is equivalent to ~original and
-            # -- unlike ~original -- stays evaluable for the modeled leaves,
-            # whose arithmetic and prefix forms PyArrow cannot reason about.
-            # Any failure defaults to "not fully matched",
+            # the limit push-down. The test runs on the rewritten filter: every
+            # row it passes the original passes too, so a group it covers
+            # entirely is fully matched by the original as well, and -- unlike
+            # ~original -- ~prune_filter stays evaluable for the modeled
+            # leaves, whose arithmetic and prefix forms PyArrow cannot reason
+            # about. Any failure defaults to "not fully matched",
             # which is always safe (falls back to the post-filter stop).
             not_fully_ids = self._try_split_by_row_group(fragment, ~prune_filter, path)
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
