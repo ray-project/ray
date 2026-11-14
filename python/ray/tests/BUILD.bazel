@@ -639,6 +639,7 @@ py_test_module_list(
         "rdt/test_nixl_agent_lock.py",
         "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
+        "rdt/test_nixl_pool_stats.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
     ],

@@ -1,6 +1,10 @@
 """Memory pool management for NIXL RDT optimization."""
 
+import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Sequence, Tuple
+
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
@@ -8,6 +12,60 @@ if TYPE_CHECKING:
 # Pool blocks are carved on this boundary so every block starts aligned for any
 # torch dtype (complex128 has the largest element size).
 _MAX_ALIGNMENT = 16
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class NixlMemoryPoolStats:
+    """A point-in-time snapshot of a registered NIXL memory pool.
+
+    The snapshot holds only scalar values, so it keeps no reference to the pool
+    tensor, to any allocated tensor, or to the transport. It is immutable
+    (frozen) and describes the state of the pool at the moment it was taken.
+
+    ``capacity_bytes == allocated_bytes + free_bytes`` always holds.
+
+    Args:
+        device: The process-local actual device the pool tensor lives on, for
+            example ``"cpu"`` or ``"cuda:0"``. When the pool is registered on
+            ``torch.device("cuda")`` this is the concrete device PyTorch
+            allocated on (``"cuda:0"``), not the ambiguous ``"cuda"``.
+        capacity_bytes: The total pool size in bytes, exactly the ``size``
+            passed to :func:`ray.experimental.register_nixl_memory_pool`.
+        allocated_bytes: Bytes currently carved out for live objects. Each
+            carved block is rounded up toward a 16-byte boundary, clamped to
+            the free block's remaining size, so this includes any alignment and
+            packing padding.
+        free_bytes: Bytes available for new allocations, the sum of the free
+            block sizes.
+        largest_free_block_bytes: The size of the largest contiguous free block
+            (hole). ``0`` when the pool has no holes. This is a diagnostic
+            figure, not a promise that an arbitrary packed request of that size
+            will fit: a request may be split across holes or inflated by
+            alignment.
+        num_allocated_objects: The number of existing object entries in the
+            pool. An object whose tensors are all empty (zero ``numel``) still
+            creates a (zero-size) entry and is counted.
+        num_free_blocks: The number of distinct free regions of positive size.
+            The free list is always coalesced, so adjacent holes are one block.
+            A zero-capacity pool has no free region, so this is ``0``. Freeing
+            a zero-size object entry contributes no positive-size free region.
+        allocation_failures: The cumulative number of
+            :class:`NixlOutOfMemoryError` failures raised by
+            ``allocate_group`` over this pool's lifetime. Incremented once per
+            failed allocation attempt, not per tensor. Frees and queries never
+            change it, and non-OOM errors (for example a copy failure) are not
+            counted.
+    """
+
+    device: str
+    capacity_bytes: int
+    allocated_bytes: int
+    free_bytes: int
+    largest_free_block_bytes: int
+    num_allocated_objects: int
+    num_free_blocks: int
+    allocation_failures: int
 
 
 def _align_up(value: int, alignment: int) -> int:
@@ -187,6 +245,10 @@ class MemoryPoolManager:
         self.pool_size = pool_size
         self.device = device
 
+        # Serializes allocate_group/free_object/get_stats. Lock order is always
+        # transport cache lock -> this lock; get_stats never takes the cache lock.
+        self._lock = threading.RLock()
+
         # Allocate the memory pool as a single tensor
         # We use a 1D tensor of uint8 to represent raw memory
         self._pool_tensor = torch.zeros(
@@ -197,6 +259,10 @@ class MemoryPoolManager:
         self._free_blocks: List[MemoryBlock] = [MemoryBlock(offset=0, size=pool_size)]
         # Blocks allocated per object ID.
         self._allocated_by_obj: Dict[str, List[MemoryBlock]] = {}
+
+        # Cumulative count of NixlOutOfMemoryError raised by allocate_group over
+        # this pool's lifetime, incremented once per failed attempt.
+        self._allocation_failures = 0
 
     def get_pool_tensor(self) -> "torch.Tensor":
         """Get the underlying pool tensor.
@@ -229,6 +295,23 @@ class MemoryPoolManager:
         Raises:
             NixlOutOfMemoryError: If the pool has insufficient space.
         """
+        with self._lock:
+            try:
+                return self._allocate_group_unlocked(obj_id, tensors)
+            except NixlOutOfMemoryError:
+                # Count the failure once per allocate_group call that raises,
+                # regardless of how many tensors or blocks were involved. Copy
+                # or input exceptions are not NixlOutOfMemoryError and are not
+                # counted.
+                self._allocation_failures += 1
+                raise
+
+    def _allocate_group_unlocked(
+        self,
+        obj_id: str,
+        tensors: List["torch.Tensor"],
+    ) -> List["torch.Tensor"]:
+        """Pack a tensor group, assuming the caller holds ``self._lock``."""
         tensor_layouts = [
             TensorLayout(t.numel() * t.element_size(), t.element_size())
             for t in tensors
@@ -353,9 +436,40 @@ class MemoryPoolManager:
         Returns:
             True if blocks were freed, False if ``obj_id`` had no allocation.
         """
-        blocks = self._allocated_by_obj.pop(obj_id, None)
-        if blocks is None:
-            return False
-        self._free_blocks.extend(blocks)
-        _merge_free_blocks(self._free_blocks)
-        return True
+        with self._lock:
+            blocks = self._allocated_by_obj.pop(obj_id, None)
+            if blocks is None:
+                return False
+            self._free_blocks.extend(blocks)
+            _merge_free_blocks(self._free_blocks)
+            return True
+
+    def get_stats(self) -> "NixlMemoryPoolStats":
+        """Return an immutable snapshot of this pool's current state.
+
+        Runs under the pool lock so the snapshot is atomic with concurrent
+        ``allocate_group`` and ``free_object`` calls. The returned dataclass
+        holds only scalars and no tensor or transport references.
+
+        Returns:
+            A :class:`NixlMemoryPoolStats` snapshot of this pool.
+        """
+        with self._lock:
+            allocated_bytes = sum(
+                block.size
+                for blocks in self._allocated_by_obj.values()
+                for block in blocks
+            )
+            free_blocks = [block for block in self._free_blocks if block.size > 0]
+            return NixlMemoryPoolStats(
+                device=str(self._pool_tensor.device),
+                capacity_bytes=self.pool_size,
+                allocated_bytes=allocated_bytes,
+                free_bytes=sum(block.size for block in free_blocks),
+                largest_free_block_bytes=max(
+                    (block.size for block in free_blocks), default=0
+                ),
+                num_allocated_objects=len(self._allocated_by_obj),
+                num_free_blocks=len(free_blocks),
+                allocation_failures=self._allocation_failures,
+            )

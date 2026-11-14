@@ -40,6 +40,8 @@ Advanced APIs
     ray.experimental.register_nixl_memory
     ray.experimental.deregister_nixl_memory
     ray.experimental.register_nixl_memory_pool
+    ray.experimental.get_nixl_memory_pool_stats
+    ray.experimental.NixlMemoryPoolStats
     ray.experimental.set_nixl_cuda_stream
     ray.experimental.set_target_for_ref
     ray.experimental.set_target_device_for_ref
