@@ -36,6 +36,8 @@ export type ServeDeployment = {
   status: ServeDeploymentStatus;
   message: string;
   deployment_config: ServeDeploymentConfig;
+  target_num_replicas: number;
+  num_running_replicas_at_target_version?: number | null;
   replicas: ServeReplica[];
   recent_dead_replicas?: ServeReplica[];
 };

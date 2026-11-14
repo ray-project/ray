@@ -51,6 +51,8 @@ describe("ServeDeploymentDetailPage", () => {
                 },
                 status: ServeDeploymentStatus.HEALTHY,
                 message: "deployment is healthy",
+                target_num_replicas: 2,
+                num_running_replicas_at_target_version: 1,
                 replicas: [
                   {
                     actor_id: "test-actor-id",
@@ -116,8 +118,8 @@ describe("ServeDeploymentDetailPage", () => {
       "HEALTHY",
     );
     expect(
-      screen.getByTestId("metadata-content-for-Replicas"),
-    ).toHaveTextContent("2");
+      screen.getByTestId("metadata-content-for-Ready / target replicas"),
+    ).toHaveTextContent("1 / 2");
 
     // First replica
     // First instance of text is the Replica row

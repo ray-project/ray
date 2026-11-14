@@ -31,7 +31,7 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Deployment name" },
   { label: "Status" },
   { label: "Status message", width: "30%" },
-  { label: "Num replicas" },
+  { label: "Ready / target replicas" },
   { label: "Actions" },
   { label: "Route prefix" },
   { label: "Last deployed at" },
