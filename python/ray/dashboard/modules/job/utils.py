@@ -335,19 +335,31 @@ def fast_tail_last_n_lines(
         chunks = []
         position = file_size
         newlines_found = 0
+        bytes_read = 0
+        # A UTF-8 character is at most 4 bytes (plus up to 3 leading continuation
+        # bytes if a multi-byte character straddles the first read boundary), so
+        # reading at most 4 * max_chars + 4 bytes always covers the last max_chars
+        # characters even when fewer than num_lines + 1 newlines exist.
+        max_bytes = 4 * max_chars + 4
 
-        # We read backwards in chunks until we have enough newlines for num_lines.
+        # We read backwards in chunks until we have enough newlines for num_lines
+        # or enough bytes to cover max_chars characters.
         # We may need one more newline to capture the content before the first newline.
-        while position > 0 and newlines_found < num_lines + 1:
-            read_size = min(block_size, position)
+        while (
+            position > 0
+            and newlines_found < num_lines + 1
+            and bytes_read < max_bytes
+        ):
+            read_size = min(block_size, position, max_bytes - bytes_read)
             position -= read_size
             f.seek(position)
 
             chunk = f.read(read_size)
             newlines_found += chunk.count(b"\n")
-            chunks.insert(0, chunk)
+            bytes_read += len(chunk)
+            chunks.append(chunk)
 
-    buffer = b"".join(chunks)
+    buffer = b"".join(reversed(chunks))
     lines = buffer.decode("utf-8", errors="replace").splitlines(keepends=True)
 
     if len(lines) <= num_lines:
