@@ -176,6 +176,20 @@ spec:
 * See the official [PodMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.PodMonitor) for more details about configurations.
 * `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label. See [here](#prometheus-can-only-detect-this-label) for more details.
 
+:::{note}
+From Ray 2.61, a RayCluster with token authentication (`authOptions.mode: token`, see [Configure Ray clusters to use token authentication](kuberay-auth)) also requires the token on its metrics endpoints, so the PodMonitor above gets `401`. Either set `RAY_AUTH_SKIP_METRICS=1` on every Ray container to serve metrics without the token, or give Prometheus the token: copy the RayCluster's token Secret into the Prometheus namespace (a PodMonitor can only reference Secrets in its own namespace) and add an `authorization` block to each endpoint:
+
+```yaml
+podMetricsEndpoints:
+- port: metrics
+  authorization:
+    type: Bearer
+    credentials:
+      name: <raycluster-name>
+      key: auth_token
+```
+:::
+
 (prometheus-can-only-detect-this-label)=
   ```sh
   helm ls -n prometheus-system
