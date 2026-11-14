@@ -81,7 +81,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             The total number of workers in this run.
@@ -102,7 +103,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             This worker's rank among all workers in this run.
@@ -123,7 +125,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             This worker's rank among the workers on its node.
@@ -143,7 +146,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             The number of workers running on this node.
@@ -163,7 +167,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=1),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             The rank of this node among the nodes participating in training.

@@ -278,6 +278,25 @@ py_test(
 )
 
 py_test(
+    name = "test_hive_direct_integration",
+    size = "medium",
+    srcs = [
+        "tests/datasource/test_hive_direct_integration.py",
+        "tests/datasource/test_hive_integration.py",
+    ],
+    main = "tests/datasource/test_hive_direct_integration.py",
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hive_auth_utils",
     size = "small",
     srcs = [
@@ -297,8 +316,9 @@ py_test(
     srcs = [
         "tests/datasource/_hive_test_utils.py",
         "tests/datasource/test_hive_auth_integration.py",
+        "tests/datasource/test_hive_integration.py",
     ],
-    data = ["//ci/ray_ci/data/hive_auth:cases.json"],
+    main = "tests/datasource/test_hive_auth_integration.py",
     tags = [
         "hive_auth_integration",
         "manual",
@@ -2019,12 +2039,68 @@ py_test(
 )
 
 py_test(
+    name = "test_top_n_execution",
+    size = "medium",
+    srcs = ["tests/test_top_n_execution.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_operator",
+    size = "medium",
+    srcs = ["tests/test_top_n_operator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_rewrite",
+    size = "medium",
+    srcs = ["tests/test_top_n_rewrite.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_push_based_shuffle",
     size = "enormous",
     srcs = ["tests/test_push_based_shuffle.py"],
     tags = [
         "data_non_parallel",
         "data_non_parallel_postmerge_only",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_shuffle_phase_metrics",
+    size = "small",
+    srcs = ["tests/test_shuffle_phase_metrics.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],
@@ -2795,8 +2871,22 @@ py_test(
 )
 
 py_test(
+    name = "test_shuffle_elimination",
+    size = "large",
+    srcs = ["tests/test_shuffle_elimination.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_checkpoint",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_checkpoint.py"],
     tags = [
         "exclusive",
@@ -2842,6 +2932,35 @@ py_test(
     srcs = ["tests/test_catalog.py"],
     tags = [
         "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_gravitino_catalog",
+    size = "small",
+    srcs = ["tests/test_gravitino_catalog.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_gravitino_catalog_integration",
+    size = "large",
+    srcs = ["tests/datasource/test_gravitino_catalog_integration.py"],
+    tags = [
+        "exclusive",
+        "manual",
         "team:data",
     ],
     deps = [

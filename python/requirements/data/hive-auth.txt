@@ -1,4 +1,0 @@
-# Client and test dependencies for explicit Hive security validation.
-impyla[kerberos]==0.23.0
-pytest==7.4.4
-pytest-timeout==2.1.0

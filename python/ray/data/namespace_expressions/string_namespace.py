@@ -227,8 +227,8 @@ class _StringNamespace:
     def replace_slice(
         self, start: int, stop: int, replacement: str, *args: Any, **kwargs: Any
     ) -> "PyArrowComputeUDFExpr":
-        """Replace a slice with a string."""
-        return _create_str_udf(pc.binary_replace_slice, DataType.string())(
+        """Replace a slice by Unicode character indices."""
+        return _create_str_udf(pc.utf8_replace_slice, DataType.string())(
             self._expr, start, stop, replacement, *args, **kwargs
         )
 

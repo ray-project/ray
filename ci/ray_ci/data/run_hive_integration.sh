@@ -2,6 +2,12 @@
 # Run the real-server suite on an isolated, disposable HiveServer2 service.
 set -euo pipefail
 
+tls=false
+if [[ $# -gt 0 ]]; then
+  [[ $# -eq 1 && $1 == --tls ]] || { echo "Usage: $0 [--tls]" >&2; exit 2; }
+  tls=true
+fi
+
 service="ray-hive-${BUILDKITE_JOB_ID:-$$}"
 network="${service}-network"
 log_dir="${RAY_HIVE_LOG_DIR:-/artifact-mount/hive}"
@@ -53,36 +59,81 @@ trap 'exit 143' TERM
 docker network create "${network}"
 # NONE still uses SASL PLAIN; the password is only a non-secret placeholder.
 # Local MapReduce and Derby keep the fixture independent of HDFS/YARN services.
-docker run -d --name "${service}" --network "${network}" \
-  --network-alias hiveserver2 \
-  -e SERVICE_NAME=hiveserver2 \
-  -e 'SERVICE_OPTS=-Dhive.server2.authentication=NONE -Dhive.server2.enable.doAs=false -Dhive.execution.engine=mr -Dmapreduce.framework.name=local -Dfs.defaultFS=file:///' \
-  apache/hive:4.2.0@sha256:b0d2842722567a89ac35da8af9002b6bba0fc2d0eb272664954a1fa46d694472
+if [[ "$tls" == true ]]; then
+  export HIVE_TLS_PASSWORD
+  HIVE_TLS_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_hex(24))')
+  docker run -d --name "${service}" --network "${network}" \
+    --network-alias hiveserver2 --network-alias wrong-hiveserver2 \
+    -e SERVICE_NAME=hiveserver2 -e HIVE_TLS_PASSWORD \
+    -e 'SERVICE_OPTS=-Dhive.server2.authentication=NONE -Dhive.server2.enable.doAs=false -Dhive.execution.engine=mr -Dmapreduce.framework.name=local -Dfs.defaultFS=file:///' \
+    -v "$(cd "$(dirname "$0")" && pwd)/hive_tls_entry.sh:/tmp/hive_tls_entry.sh:ro" \
+    --entrypoint bash \
+    apache/hive:4.2.0@sha256:b0d2842722567a89ac35da8af9002b6bba0fc2d0eb272664954a1fa46d694472 \
+    /tmp/hive_tls_entry.sh
+else
+  docker run -d --name "${service}" --network "${network}" \
+    --network-alias hiveserver2 \
+    -e SERVICE_NAME=hiveserver2 \
+    -e 'SERVICE_OPTS=-Dhive.server2.authentication=NONE -Dhive.server2.enable.doAs=false -Dhive.execution.engine=mr -Dmapreduce.framework.name=local -Dfs.defaultFS=file:///' \
+    apache/hive:4.2.0@sha256:b0d2842722567a89ac35da8af9002b6bba0fc2d0eb272664954a1fa46d694472
+fi
 
 # A listening TCP socket is insufficient: require an authenticated SQL query.
 # Bound both each probe and the total wait, and detect a crashed service early.
 # Hive 4.2's Beeline requires a terminal even for -e, and its JLine terminal
 # provider uses Java 21 preview features. Allocate a PTY without interactive stdin.
 deadline=$((SECONDS + ${RAY_HIVE_STARTUP_TIMEOUT:-300}))
-until docker exec -t -e JAVA_TOOL_OPTIONS=--enable-preview \
-  "${service}" timeout 30s beeline \
-  -u jdbc:hive2://localhost:10000/default -n hive -p hive \
-  -e 'SELECT 1' > "${log_dir}/readiness.log" 2>&1; do
-  if [[ $(docker inspect -f '{{.State.Running}}' "${service}") != true ]] || \
-      (( SECONDS >= deadline )); then
-    echo "HiveServer2 did not become ready" >&2
-    exit 1
-  fi
-  sleep 5
-done
+if [[ "$tls" == true ]]; then
+  # SQL readiness is checked through the real TLS client by the test fixture.
+  until docker exec "${service}" bash -c 'echo > /dev/tcp/localhost/10000' \
+    > "${log_dir}/readiness.log" 2>&1; do
+    if [[ $(docker inspect -f '{{.State.Running}}' "${service}") != true ]] || \
+        (( SECONDS >= deadline )); then
+      echo "HiveServer2 did not become ready" >&2
+      exit 1
+    fi
+    sleep 5
+  done
+else
+  until docker exec -t -e JAVA_TOOL_OPTIONS=--enable-preview \
+    "${service}" timeout 30s beeline \
+    -u jdbc:hive2://localhost:10000/default -n hive -p hive \
+    -e 'SELECT 1' > "${log_dir}/readiness.log" 2>&1; do
+    if [[ $(docker inspect -f '{{.State.Running}}' "${service}") != true ]] || \
+        (( SECONDS >= deadline )); then
+      echo "HiveServer2 did not become ready" >&2
+      exit 1
+    fi
+    sleep 5
+  done
+fi
 
-bazel run //ci/ray_ci:test_in_docker -- \
-  //python/ray/data:test_hive_integration data \
-  --build-name datamongobuild-py3.10 --python-version 3.10 \
-  --exact-targets --network "${network}" \
-  --test-env RAY_HIVE_TEST_HOST=hiveserver2 \
-  --test-env RAY_HIVE_TEST_PORT=10000 \
-  --test-env RAY_HIVE_TEST_AUTH=PLAIN \
-  --test-env RAY_HIVE_TEST_USER=hive \
-  --test-env HIVE_TEST_PASSWORD=hive \
-  --test-env RAY_HIVE_TEST_USE_SSL=false
+if [[ "$tls" == true ]]; then
+  # Only the public CA crosses into the test container; the keystore stays in Hive.
+  ca_pem=$(docker exec "${service}" cat /tmp/ray-hive-tls/ca.pem | base64 | tr -d '\n')
+  [[ -n "$ca_pem" ]] || { echo "Missing Hive TLS CA" >&2; exit 1; }
+  bazel run //ci/ray_ci:test_in_docker -- \
+    //python/ray/data:test_hive_auth_integration data \
+    --bisect-run-test-target //python/ray/data:test_hive_auth_integration \
+    --build-name datamongobuild-py3.10 --python-version 3.10 \
+    --exact-targets --network "${network}" \
+    --test-env RAY_HIVE_TEST_HOST=hiveserver2 \
+    --test-env RAY_HIVE_TEST_PORT=10000 \
+    --test-env RAY_HIVE_TEST_AUTH=PLAIN \
+    --test-env RAY_HIVE_TEST_USER=hive \
+    --test-env HIVE_TEST_PASSWORD=hive \
+    --test-env RAY_HIVE_TEST_USE_SSL=true \
+    --test-env RAY_AUTH_MODE=disabled \
+    --test-env "RAY_HIVE_CA_PEM_B64=${ca_pem}"
+else
+  bazel run //ci/ray_ci:test_in_docker -- \
+    //python/ray/data:test_hive_integration data \
+    --build-name datamongobuild-py3.10 --python-version 3.10 \
+    --exact-targets --network "${network}" \
+    --test-env RAY_HIVE_TEST_HOST=hiveserver2 \
+    --test-env RAY_HIVE_TEST_PORT=10000 \
+    --test-env RAY_HIVE_TEST_AUTH=PLAIN \
+    --test-env RAY_HIVE_TEST_USER=hive \
+    --test-env HIVE_TEST_PASSWORD=hive \
+    --test-env RAY_HIVE_TEST_USE_SSL=false
+fi

@@ -1,240 +1,110 @@
-"""Helpers for the fixed real-service Hive security fixture."""
+"""Observe the actual reader's TLS connection without recording RPCs."""
 
 import json
-import os
+import logging
+import ssl
+import threading
 import uuid
-from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Any
 
 
-def _connection_options(profile):
-    return dict(
-        host="hive.auth.test",
-        port=10000,
-        user="hive",
-        auth_mechanism="GSSAPI"
-        if profile in {"G", "GT"}
-        else ("NOSASL" if profile == "N" else "PLAIN"),
-        kerberos_service_name="hive",
-        use_ssl=profile in {"T", "GT"},
-        ca_cert="/ca/ca.pem",
-    )
-
-
-def _make_connection_factory(options):
-    def factory():
-        from impala.dbapi import connect
-
-        password = (
-            os.environ["HIVE_TEST_PASSWORD"]
-            if options["auth_mechanism"] == "PLAIN"
-            else None
+def _certificate_error(error):
+    """Find a certificate error without trusting generic transport messages."""
+    seen = set()
+    pending = [error]
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, ssl.SSLCertVerificationError):
+            return current
+        pending.extend(
+            getattr(current, name, None)
+            for name in ("__cause__", "__context__", "inner")
         )
-        return connect(
-            **options,
-            password=password,
-            verify_cert=options["use_ssl"],
-            use_http_transport=False,
-            retries=1,
-            timeout=30,
-        )
-
-    return factory
+    return None
 
 
-@contextmanager
-def _temporary_table(options):
-    created = False
-    table = f"ray_hive_it_{uuid.uuid4().hex[:12]}"
-    with closing(_make_connection_factory(options)()) as connection:
-        with closing(connection.cursor(user=options["user"])) as cursor:
-            try:
-                cursor.execute(
-                    f"CREATE TABLE {table} (id BIGINT, name STRING) "
-                    "ROW FORMAT DELIMITED FIELDS TERMINATED BY '\\t' STORED AS TEXTFILE"
-                )
-                created = True
-                cursor.execute(
-                    f"LOAD DATA LOCAL INPATH '/security/test-data.tsv' INTO TABLE {table}"
-                )
-                yield table
-            finally:
-                if created:
-                    cursor.execute(f"DROP TABLE IF EXISTS {table}")
+def _hostname_mismatch(error):
+    # Thrift 0.16 calls ssl.match_hostname after the verified TLS handshake;
+    # its CertificateError has no OpenSSL verify_code.
+    match_hostname = getattr(ssl, "match_hostname", None)
+    trace = getattr(error, "__traceback__", None)
+    while trace and match_hostname is not None:
+        if trace.tb_frame.f_code is match_hostname.__code__:
+            return True
+        trace = trace.tb_next
+    return False
 
 
-class _Summary:
-    """One file per connection, persisted before delegation; unfinished is not zero."""
+class _CertificateFailure(logging.Handler):
+    """Capture certificate errors from this synchronous Thrift connection only."""
 
-    def __init__(self, directory, role, node, source):
-        directory.mkdir(parents=True, exist_ok=True)
-        self.path = directory / f"{uuid.uuid4().hex}.json"
-        self.data: dict[str, Any] = dict(
-            case_id=directory.name,
-            role=role,
-            node=node,
-            pid=os.getpid(),
-            source=source,
-            data_rpc=0,
-            metadata_rpc=0,
-            batches=0,
-            rows=0,
-            cursor_closed=False,
-            connection_closed=False,
-            error=None,
-        )
-        self.update(complete=False)
+    def __init__(self):
+        super().__init__(logging.INFO)
+        self.thread = threading.get_ident()
+        self.error: ssl.SSLCertVerificationError | None = None
 
-    def update(self, **fields):
-        self.data.update(fields)
-        self.path.write_text(json.dumps(self.data) + "\n")
-
-    def call(self, stage, function, *args, **kwargs):
-        self.update(stage=stage)
-        try:
-            return function(*args, **kwargs)
-        except Exception:
-            self.update(error=stage)
-            raise
+    def emit(self, record):
+        if record.thread == self.thread and record.exc_info:
+            self.error = _certificate_error(record.exc_info[1]) or self.error
 
 
-def _case_directory(case_id):
-    return Path(os.environ["HIVE_AUTH_EVENTS"]) / case_id
+def _make_auth_factory(factory, directory):
+    """Record node and certificate failure for each actual reader connection."""
 
-
-def _make_auth_factory(options, case_id):
-    def factory():
+    def observed():
         import ray
         from ray.data._internal.datasource_v2.formats.hive import hive_hs2
 
-        summary = _Summary(
-            _case_directory(case_id),
-            os.environ["HIVE_AUTH_ROLE"],
-            ray.get_runtime_context().get_node_id(),
-            str(Path(hive_hs2.__file__).resolve()),
+        path = Path(directory) / f"{uuid.uuid4().hex}.json"
+        evidence = dict(
+            node=ray.get_runtime_context().get_node_id(),
+            source=str(Path(hive_hs2.__file__).resolve()),
+            complete=False,
+            connected=False,
+            certificate_error=False,
+            hostname_mismatch=False,
+            verify_code=None,
         )
-        resolved = dict(options)
-        for key, variable in (
-            ("host", "HIVE_AUTH_HOST_OVERRIDE"),
-            ("ca_cert", "HIVE_AUTH_CA_OVERRIDE"),
-            ("kerberos_service_name", "HIVE_AUTH_SERVICE_OVERRIDE"),
-        ):
-            if variable in os.environ:
-                resolved[key] = os.environ[variable]
+        path.write_text(json.dumps(evidence) + "\n")
+        logger = logging.getLogger("thrift.transport.TSocket")
+        handler = _CertificateFailure()
+        level, propagate = logger.level, logger.propagate
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
         try:
-            connection = summary.call("connect", _make_connection_factory(resolved))
-        except Exception:
-            summary.update(complete=True)
+            connection = factory()
+        except Exception as exc:
+            error = _certificate_error(exc) or handler.error
+            evidence["certificate_error"] = error is not None
+            evidence["verify_code"] = getattr(error, "verify_code", None)
+            evidence["hostname_mismatch"] = _hostname_mismatch(error)
             raise
-        client = connection.service.client
-        execute = client.ExecuteStatement
+        else:
+            evidence["connected"] = True
+            return connection
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(level)
+            logger.propagate = propagate
+            evidence["complete"] = True
+            path.write_text(json.dumps(evidence) + "\n")
 
-        def execute_statement(request):
-            key = (
-                "metadata_rpc"
-                if request.statement.lstrip().upper().startswith(("DESCRIBE ", "USE "))
-                else "data_rpc"
-            )
-            summary.update(**{key: summary.data[key] + 1})
-            return summary.call("execute", execute, request)
-
-        client.ExecuteStatement = execute_statement
-        return _TrackedConnection(connection, summary)
-
-    return factory
+    return observed
 
 
-class _TrackedConnection:
-    def __init__(self, connection: Any, summary):
-        self.connection, self.summary = connection, summary
-
-    def cursor(self, **kwargs):
-        cursor = self.summary.call("session", self.connection.cursor, **kwargs)
-        return _TrackedCursor(cursor, self.summary)
-
-    def close(self):
-        self.summary.call("connection_close", self.connection.close)
-        self.summary.update(connection_closed=True, complete=True)
-
-
-class _TrackedCursor:
-    def __init__(self, cursor: Any, summary):
-        self.cursor, self.summary = cursor, summary
-
-    def __getattr__(self, name):
-        return getattr(self.cursor, name)
-
-    def execute(self, *args):
-        return self.summary.call("execute", self.cursor.execute, *args)
-
-    def fetchmany(self, *args):
-        rows = self.summary.call("fetch", self.cursor.fetchmany, *args)
-        self.summary.update(
-            rows=self.summary.data["rows"] + len(rows),
-            batches=self.summary.data["batches"] + bool(rows),
-        )
-        return rows
-
-    def cancel_operation(self):
-        result = self.summary.call("cancel", self.cursor.cancel_operation)
-        self.summary.update(cancelled=True)
-        return result
-
-    def close(self):
-        result = self.summary.call("cursor_close", self.cursor.close)
-        self.summary.update(cursor_closed=True)
-        return result
-
-
-def _read_summaries(directory, nodes):
-    records = []
-    for path in directory.glob("*.json"):
-        text = path.read_text()
-        record = json.loads(text)
-        if (
-            record["complete"] is not True
-            or record["case_id"] != directory.name
-            or record["role"] not in nodes
-            or record["node"] != nodes[record["role"]]
-            or not record["source"].startswith("/ray/python/ray/data/")
-        ):
-            raise ValueError("Incomplete or unexpected connection evidence")
-        records.append(record)
-    if {r["role"] for r in records} != set(nodes):
-        raise ValueError("Missing connection evidence")
+def _read_evidence(directory, nodes, test_file):
+    records = [json.loads(path.read_text()) for path in Path(directory).glob("*.json")]
+    if not records or {record["node"] for record in records} != set(nodes):
+        raise ValueError("Missing or unexpected reader connection evidence")
+    expected_source = (
+        Path(test_file).resolve().parents[2]
+        / "_internal/datasource_v2/formats/hive/hive_hs2.py"
+    ).resolve()
+    for record in records:
+        if record["complete"] is not True or record["source"] != str(expected_source):
+            raise ValueError("Incomplete or unexpected reader connection evidence")
     return records
-
-
-def _native(options):
-    import ray
-
-    with closing(_make_connection_factory(options)()) as connection:
-        with closing(connection.cursor()) as cursor:
-            cursor.execute("SELECT 1")
-            assert cursor.fetchall() == [(1,)]
-    return ray.get_runtime_context().get_node_id()
-
-
-def _tls_condition(condition):
-    import socket
-    import ssl
-
-    import pytest
-
-    host = "hive.auth.test"
-    assert socket.gethostbyname(host) == socket.gethostbyname("wrong.hive.auth.test")
-    good = ssl.create_default_context(cafile="/ca/ca.pem")
-    with socket.create_connection((host, 10000), timeout=30) as transport:
-        with good.wrap_socket(transport, server_hostname=host):
-            pass
-    if condition == "file":
-        assert not Path("/ca/missing.pem").exists()
-        return
-    context = ssl.create_default_context(
-        cafile="/ca/wrong-ca.pem" if condition == "ca" else "/ca/ca.pem"
-    )
-    name = "wrong.hive.auth.test" if condition == "host" else host
-    with socket.create_connection((host, 10000), timeout=30) as transport:
-        with pytest.raises(ssl.SSLCertVerificationError):
-            context.wrap_socket(transport, server_hostname=name)

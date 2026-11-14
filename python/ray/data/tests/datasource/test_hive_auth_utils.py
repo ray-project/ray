@@ -1,164 +1,166 @@
-"""Check the small security fixture helpers and connection summaries."""
+"""Check the small TLS fixture's reader connection evidence."""
 
 import json
+import logging
+import ssl
 import sys
-from types import ModuleType, SimpleNamespace
+import threading
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from ray.data.tests.datasource import _hive_test_utils as utils
 
 
-@pytest.mark.parametrize("profile", ["T", "G", "N"])
-def test_factory_reads_password_at_invocation(monkeypatch, profile):
-    import ray.cloudpickle
-
-    module = ModuleType("impala.dbapi")
-    calls = []
-    module.__dict__["connect"] = lambda **kw: calls.append(kw)
-    monkeypatch.setitem(sys.modules, "impala.dbapi", module)
-    monkeypatch.setenv("HIVE_TEST_PASSWORD", "before-serialization")
-    factory = utils._make_connection_factory(utils._connection_options(profile))
-    assert b"before-serialization" not in ray.cloudpickle.dumps(factory)
-    monkeypatch.setenv("HIVE_TEST_PASSWORD", "current-password")
-    factory()
-    assert calls[0]["password"] == ("current-password" if profile == "T" else None)
-    assert calls[0]["verify_cert"] == (profile == "T")
-    assert calls[0]["retries"] == 1 and calls[0]["timeout"] == 30
+def test_certificate_error_traverses_thrift_inner_and_cause():
+    cert_error = ssl.SSLCertVerificationError("certificate marker")
+    wrapped = SimpleNamespace(inner=cert_error)
+    assert utils._certificate_error(wrapped) is cert_error
+    error = RuntimeError("reader")
+    error.__cause__ = cert_error
+    assert utils._certificate_error(error) is cert_error
+    assert utils._certificate_error(RuntimeError("unrelated")) is None
 
 
 @pytest.mark.parametrize(
-    "damage", ["missing", "truncated", "unfinished", "role", "case_id", "node"]
+    "failure", ["logged_tls", "wrapped_tls", "hostname", "unrelated", "success"]
 )
-def test_incomplete_summary_is_not_zero(tmp_path, damage):
-    if damage != "missing":
-        summary = utils._Summary(
-            tmp_path, "worker", "node", "/ray/python/ray/data/hive.py"
-        )
-        summary.update(complete=damage != "unfinished", error="connect")
-        if damage in {"role", "case_id", "node"}:
-            summary.update(**{damage: "unexpected"})
-        if damage == "truncated":
-            summary.path.write_text(summary.path.read_text()[:-2])
-    with pytest.raises(ValueError):
-        utils._read_summaries(tmp_path, {"worker": "node"})
-
-
-@pytest.mark.parametrize("counts", [(0,), (1, 1)])
-def test_completed_json_without_newline_counts_all_connections(tmp_path, counts):
-    for count in counts:
-        summary = utils._Summary(
-            tmp_path, "worker", "node", "/ray/python/ray/data/hive.py"
-        )
-        summary.update(
-            complete=True, data_rpc=count, error="connect" if count == 0 else None
-        )
-        summary.path.write_text(json.dumps(summary.data))
-    records = utils._read_summaries(tmp_path, {"worker": "node"})
-    assert len(records) == len(counts)
-    assert sum(r["data_rpc"] for r in records) == sum(counts)
-
-
-def test_real_client_boundary_is_persisted_before_delegation(tmp_path, monkeypatch):
+def test_factory_records_only_this_readers_connection(tmp_path, monkeypatch, failure):
     import ray
 
-    monkeypatch.setenv("HIVE_AUTH_EVENTS", str(tmp_path))
-    monkeypatch.setenv("HIVE_AUTH_ROLE", "worker")
-    monkeypatch.setenv("HIVE_AUTH_CA_OVERRIDE", "/role-specific.pem")
     monkeypatch.setattr(
         ray, "get_runtime_context", lambda: SimpleNamespace(get_node_id=lambda: "node")
     )
-    directory = tmp_path / "abc123"
-    resolved = []
+    directory = tmp_path
 
-    def execute(request):
-        record = json.loads(next(directory.glob("*.json")).read_text())
-        assert record["data_rpc"] == 1 and record["complete"] is False
-        return "actual-result"
+    logger = logging.getLogger("thrift.transport.TSocket")
+    old_level, old_propagate = logger.level, logger.propagate
+    secret = "secret-error-marker"
+    connection = object()
 
-    client = SimpleNamespace(ExecuteStatement=execute)
-    cursor = SimpleNamespace(
-        fetchmany=lambda n: [(1,)], close=lambda: None, cancel_operation=lambda: None
-    )
-    connection = SimpleNamespace(
-        service=SimpleNamespace(client=client),
-        cursor=lambda **kw: cursor,
-        close=lambda: None,
-    )
+    # Python 3.13 removed ssl.match_hostname; model Thrift's Python 3.10
+    # callback while still exercising this helper on newer test hosts.
+    def match_hostname(cert, hostname):
+        raise ssl.CertificateError("hostname mismatch")
 
-    def build(options):
-        resolved.append(options)
-        return lambda: connection
+    monkeypatch.setattr(ssl, "match_hostname", match_hostname, raising=False)
 
-    monkeypatch.setattr(utils, "_make_connection_factory", build)
-    tracked = utils._make_auth_factory(utils._connection_options("G"), "abc123")()
-    wrapped = tracked.cursor()
-    assert (
-        client.ExecuteStatement(SimpleNamespace(statement="SELECT secret_sql_marker"))
-        == "actual-result"
-    )
-    assert wrapped.fetchmany(1024) == [(1,)]
-    wrapped.cancel_operation()
-    wrapped.close()
-    tracked.close()
-    record = json.loads(next(directory.glob("*.json")).read_text())
-    assert (
-        record["complete"] and record["cursor_closed"] and record["connection_closed"]
-    )
-    assert record["batches"] == record["rows"] == 1
-    assert resolved[0]["ca_cert"] == "/role-specific.pem"
-    assert "secret_sql_marker" not in next(directory.glob("*.json")).read_text()
+    class TransportFailure(RuntimeError):
+        def __init__(self, inner):
+            super().__init__("transport failed")
+            self.inner = inner
 
+    def connect():
+        assert (
+            json.loads(next(directory.glob("*.json")).read_text())["complete"] is False
+        )
+        if failure == "logged_tls":
+            try:
+                error = ssl.SSLCertVerificationError(secret)
+                error.verify_code = 19
+                raise error
+            except ssl.SSLCertVerificationError:
+                logger.info("certificate failed", exc_info=True)
+            raise RuntimeError("transport failed")
+        if failure == "wrapped_tls":
+            error = ssl.SSLCertVerificationError(secret)
+            error.verify_code = 62
+            raise TransportFailure(error)
+        if failure == "hostname":
+            try:
+                match_hostname({"subjectAltName": (("DNS", "hiveserver2"),)}, "wrong")
+            except ssl.CertificateError as error:
+                raise TransportFailure(error) from error
+        if failure == "unrelated":
 
-def test_failed_factory_has_complete_zero_evidence(tmp_path, monkeypatch):
-    import ray
+            def log_other_thread():
+                try:
+                    raise ssl.SSLCertVerificationError(secret)
+                except ssl.SSLCertVerificationError:
+                    logger.info("unrelated certificate failure", exc_info=True)
 
-    monkeypatch.setenv("HIVE_AUTH_EVENTS", str(tmp_path))
-    monkeypatch.setenv("HIVE_AUTH_ROLE", "worker")
-    monkeypatch.setattr(
-        ray, "get_runtime_context", lambda: SimpleNamespace(get_node_id=lambda: "node")
-    )
+            thread = threading.Thread(target=log_other_thread)
+            thread.start()
+            thread.join()
+            raise OSError("unrelated connection failure")
+        return connection
 
-    def rejected():
-        raise ValueError("rejected")
-
-    monkeypatch.setattr(utils, "_make_connection_factory", lambda options: rejected)
-    with pytest.raises(ValueError, match="rejected"):
-        utils._make_auth_factory(utils._connection_options("G"), "abc123")()
-    record = json.loads(next((tmp_path / "abc123").glob("*.json")).read_text())
-    assert (
-        record["complete"] and record["error"] == "connect" and record["data_rpc"] == 0
-    )
-
-
-@pytest.mark.parametrize("failure", [None, "CREATE", "LOAD"])
-def test_table_cleanup_on_preparation_failure(monkeypatch, failure):
-    calls = []
-
-    def execute(statement):
-        calls.append(statement.split()[0])
-        if calls[-1] == failure:
-            raise ValueError("preparation failed")
-
-    cursor = SimpleNamespace(
-        execute=execute, close=lambda: calls.append("cursor_close")
-    )
-    connection = SimpleNamespace(
-        cursor=lambda **kw: cursor, close=lambda: calls.append("connection_close")
-    )
-    monkeypatch.setattr(
-        utils, "_make_connection_factory", lambda options: lambda: connection
-    )
-    if failure:
-        with pytest.raises(
-            ValueError, match="preparation failed"
-        ), utils._temporary_table({"user": "hive"}):
-            pass
+    factory = utils._make_auth_factory(connect, directory)
+    if failure == "success":
+        assert factory() is connection
     else:
-        with utils._temporary_table({"user": "hive"}):
-            pass
-    assert ("DROP" in calls) == (failure != "CREATE")
-    assert calls[-2:] == ["cursor_close", "connection_close"]
+        expected_error: tuple[type[Exception], ...] = (RuntimeError, OSError)
+        with pytest.raises(expected_error):
+            factory()
+    record_text = next(directory.glob("*.json")).read_text()
+    record = json.loads(record_text)
+    assert record["complete"] is True
+    assert record["node"] == "node"
+    assert record["connected"] is (failure == "success")
+    assert record["certificate_error"] is (
+        failure in {"logged_tls", "wrapped_tls", "hostname"}
+    )
+    assert record["verify_code"] == {"logged_tls": 19, "wrapped_tls": 62}.get(failure)
+    assert record["hostname_mismatch"] is (failure == "hostname")
+    assert secret not in record_text
+    assert (logger.level, logger.propagate) == (old_level, old_propagate)
+
+
+def test_certificate_log_from_another_thread_is_not_attributed():
+    handler = utils._CertificateFailure()
+    record = logging.LogRecord(
+        "thrift.transport.TSocket", logging.INFO, "", 0, "", (), None
+    )
+    record.exc_info = (
+        ssl.SSLCertVerificationError,
+        ssl.SSLCertVerificationError("bad"),
+        None,
+    )
+    record.thread = threading.get_ident() + 1
+    handler.emit(record)
+    assert handler.error is None
+
+
+@pytest.mark.parametrize("checkout", ["/ray", "/rayci"])
+def test_reader_evidence_matches_its_checkout(tmp_path, checkout):
+    data_dir = Path(checkout) / "python/ray/data"
+    test_file = data_dir / "tests/datasource/test_hive_auth_integration.py"
+    source = data_dir / "_internal/datasource_v2/formats/hive/hive_hs2.py"
+    record = dict(complete=True, node="node", source=str(source.resolve()))
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(record))
+    assert utils._read_evidence(tmp_path, {"node"}, test_file) == [record]
+
+    for wrong_source in (
+        source.with_name("another_hive_module.py"),
+        Path(checkout + "-stale")
+        / "python/ray/data/_internal/datasource_v2/formats/hive/hive_hs2.py",
+    ):
+        record["source"] = str(wrong_source.resolve())
+        event.write_text(json.dumps(record))
+        with pytest.raises(ValueError):
+            utils._read_evidence(tmp_path, {"node"}, test_file)
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing", "truncated", "unfinished", "node", "source"]
+)
+def test_rejects_missing_or_invalid_reader_evidence(tmp_path, damage):
+    data_dir = tmp_path / "checkout/python/ray/data"
+    test_file = data_dir / "tests/datasource/test_hive_auth_integration.py"
+    if damage != "missing":
+        record = dict(
+            complete=damage != "unfinished",
+            node="node",
+            source=str(data_dir / "_internal/datasource_v2/formats/hive/hive_hs2.py"),
+        )
+        if damage in {"node", "source"}:
+            record[damage] = "unexpected"
+        path = tmp_path / "event.json"
+        path.write_text(json.dumps(record) if damage != "truncated" else "{")
+    with pytest.raises(ValueError):
+        utils._read_evidence(tmp_path, {"node"}, test_file)
 
 
 if __name__ == "__main__":

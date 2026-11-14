@@ -33,38 +33,38 @@ class TestWandaImageName:
         ("ray_type", "python_version", "platform", "architecture", "expected"),
         [
             # CPU images
-            (RayType.RAY, "3.10", "cpu", DEFAULT_ARCHITECTURE, "ray-py3.10-cpu"),
-            (RayType.RAY, "3.10", "cpu", "aarch64", "ray-py3.10-cpu-aarch64"),
+            (RayType.RAY, "3.11", "cpu", DEFAULT_ARCHITECTURE, "ray-py3.11-cpu"),
+            (RayType.RAY, "3.11", "cpu", "aarch64", "ray-py3.11-cpu-aarch64"),
             (
                 RayType.RAY_EXTRA,
-                "3.10",
+                "3.11",
                 "cpu",
                 DEFAULT_ARCHITECTURE,
-                "ray-extra-py3.10-cpu",
+                "ray-extra-py3.11-cpu",
             ),
             # TPU images
-            (RayType.RAY, "3.10", "tpu", DEFAULT_ARCHITECTURE, "ray-py3.10-tpu"),
+            (RayType.RAY, "3.11", "tpu", DEFAULT_ARCHITECTURE, "ray-py3.11-tpu"),
             # CUDA images
             (
                 RayType.RAY,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 DEFAULT_ARCHITECTURE,
-                f"ray-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
+                f"ray-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
             (
                 RayType.RAY,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 "aarch64",
-                f"ray-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}-aarch64",
+                f"ray-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}-aarch64",
             ),
             (
                 RayType.RAY_EXTRA,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 DEFAULT_ARCHITECTURE,
-                f"ray-extra-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
+                f"ray-extra-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
             (
                 RayType.RAY_LLM,
@@ -202,24 +202,24 @@ class TestDestinationTags:
 
     @mock.patch("ci.ray_ci.automation.push_ray_image.datetime")
     def test_nightly_cpu_default_python(self, mock_datetime):
-        """Test: nightly.260107.abc123-py310-cpu"""
+        """Test: nightly.260107.abc123-py311-cpu"""
         mock_datetime.now.return_value.strftime.return_value = "260107"
         ctx = make_ctx(branch="master", commit="abc123def456", rayci_schedule="nightly")
         tags = ctx.destination_tags()
         # nightly versions x cpu suffixes x python suffixes
-        # ["nightly.260107.abc123", "nightly"] x ["-cpu", ""] x ["-py310", ""]
-        assert "nightly.260107.abc123-py310-cpu" in tags
+        # ["nightly.260107.abc123", "nightly"] x ["-cpu", ""] x ["-py311", ""]
+        assert "nightly.260107.abc123-py311-cpu" in tags
         assert "nightly.260107.abc123-cpu" in tags
-        assert "nightly.260107.abc123-py310" in tags
+        assert "nightly.260107.abc123-py311" in tags
         assert "nightly.260107.abc123" in tags
-        assert "nightly-py310-cpu" in tags
+        assert "nightly-py311-cpu" in tags
         assert "nightly-cpu" in tags
-        assert "nightly-py310" in tags
+        assert "nightly-py311" in tags
         assert "nightly" in tags
 
     @mock.patch("ci.ray_ci.automation.push_ray_image.datetime")
     def test_nightly_extra_gpu(self, mock_datetime):
-        """Test: nightly-extra-py310-cu121 and nightly.260107.abc123-extra-py310-gpu"""
+        """Test: nightly-extra-py311-cu121 and nightly.260107.abc123-extra-py311-gpu"""
         mock_datetime.now.return_value.strftime.return_value = "260107"
         ctx = make_ctx(
             ray_type=RayType.RAY_EXTRA,
@@ -230,48 +230,48 @@ class TestDestinationTags:
         )
         tags = ctx.destination_tags()
         # Should include -extra variation and -gpu alias
-        assert "nightly.260107.abc123-extra-py310-cu121" in tags
-        assert "nightly.260107.abc123-extra-py310-gpu" in tags
-        assert "nightly-extra-py310-cu121" in tags
-        assert "nightly-extra-py310-gpu" in tags
+        assert "nightly.260107.abc123-extra-py311-cu121" in tags
+        assert "nightly.260107.abc123-extra-py311-gpu" in tags
+        assert "nightly-extra-py311-cu121" in tags
+        assert "nightly-extra-py311-gpu" in tags
         assert "nightly.260107.abc123-extra-cu121" in tags
         assert "nightly-extra-gpu" in tags
 
     @mock.patch("ci.ray_ci.automation.push_ray_image.datetime")
     def test_nightly_gpu_platform_non_default_python(self, mock_datetime):
-        """Test: nightly.260107.abc123-py311-cu121"""
+        """Test: nightly.260107.abc123-py312-cu121"""
         mock_datetime.now.return_value.strftime.return_value = "260107"
         ctx = make_ctx(
-            python_version="3.11",
+            python_version="3.12",
             platform=GPU_PLATFORM,
             branch="master",
             commit="abc123def456",
             rayci_schedule="nightly",
         )
         tags = ctx.destination_tags()
-        # Should include -cu121, -gpu aliases but NOT empty python suffix (3.11 is not default)
-        assert "nightly.260107.abc123-py311-cu121" in tags
-        assert "nightly.260107.abc123-py311-gpu" in tags
-        assert "nightly-py311-cu121" in tags
-        assert "nightly-py311-gpu" in tags
+        # Should include -cu121, -gpu aliases but NOT empty python suffix (3.12 is not default)
+        assert "nightly.260107.abc123-py312-cu121" in tags
+        assert "nightly.260107.abc123-py312-gpu" in tags
+        assert "nightly-py312-cu121" in tags
+        assert "nightly-py312-gpu" in tags
         # Should NOT have empty python suffix variants
         assert "nightly.260107.abc123-cu121" not in tags
         assert "nightly-gpu" not in tags
 
     def test_release_gpu(self):
-        """Test: 2.53.0.abc123-py310-cu121"""
+        """Test: 2.53.0.abc123-py311-cu121"""
         ctx = make_ctx(
             platform=GPU_PLATFORM, branch="releases/2.53.0", commit="abc123def456"
         )
         tags = ctx.destination_tags()
-        assert "2.53.0.abc123-py310-cu121" in tags
-        assert "2.53.0.abc123-py310-gpu" in tags
+        assert "2.53.0.abc123-py311-cu121" in tags
+        assert "2.53.0.abc123-py311-gpu" in tags
         # Default python suffix variants
         assert "2.53.0.abc123-cu121" in tags
         assert "2.53.0.abc123-gpu" in tags
 
     def test_release_extra_gpu(self):
-        """Test: 2.53.0.abc123-extra-py310-cu121"""
+        """Test: 2.53.0.abc123-extra-py311-cu121"""
         ctx = make_ctx(
             ray_type=RayType.RAY_EXTRA,
             platform=GPU_PLATFORM,
@@ -279,8 +279,8 @@ class TestDestinationTags:
             commit="abc123def456",
         )
         tags = ctx.destination_tags()
-        assert "2.53.0.abc123-extra-py310-cu121" in tags
-        assert "2.53.0.abc123-extra-py310-gpu" in tags
+        assert "2.53.0.abc123-extra-py311-cu121" in tags
+        assert "2.53.0.abc123-extra-py311-gpu" in tags
         # Default python suffix variants
         assert "2.53.0.abc123-extra-cu121" in tags
         assert "2.53.0.abc123-extra-gpu" in tags
@@ -288,15 +288,15 @@ class TestDestinationTags:
     def test_release_non_gpu_platform_cuda(self):
         """Test release with non-GPU_PLATFORM CUDA version (no -gpu alias)."""
         ctx = make_ctx(
-            python_version="3.11",
+            python_version="3.12",
             platform="cu12.3.2-cudnn9",  # Not GPU_PLATFORM
             branch="releases/2.44.0",
             commit="abc123def456",
         )
         tags = ctx.destination_tags()
-        assert "2.44.0.abc123-py311-cu123" in tags
+        assert "2.44.0.abc123-py312-cu123" in tags
         # Should NOT have -gpu alias since this isn't GPU_PLATFORM
-        assert "2.44.0.abc123-py311-gpu" not in tags
+        assert "2.44.0.abc123-py312-gpu" not in tags
 
     def test_release_cpu_aarch64(self):
         """Test release with architecture suffix."""
@@ -306,10 +306,10 @@ class TestDestinationTags:
             commit="abc123def456",
         )
         tags = ctx.destination_tags()
-        assert "2.44.0.abc123-py310-cpu-aarch64" in tags
+        assert "2.44.0.abc123-py311-cpu-aarch64" in tags
         assert "2.44.0.abc123-cpu-aarch64" in tags
         # Empty platform suffix variant (ray cpu alias)
-        assert "2.44.0.abc123-py310-aarch64" in tags
+        assert "2.44.0.abc123-py311-aarch64" in tags
         assert "2.44.0.abc123-aarch64" in tags
 
     def test_pull_request_tags(self):
@@ -318,8 +318,8 @@ class TestDestinationTags:
             branch="feature-branch", commit="abc123def456", pull_request="12345"
         )
         tags = ctx.destination_tags()
-        assert "pr-12345.abc123-py310-cpu" in tags
-        assert "build123-py310-cpu" in tags
+        assert "pr-12345.abc123-py311-cpu" in tags
+        assert "build123-py311-cpu" in tags
 
     def test_feature_branch_non_pr(self):
         """Test non-PR feature branch uses sha and build_id."""
@@ -507,7 +507,7 @@ class TestMultiplePlatforms:
             main,
             [
                 "--python-version",
-                "3.10",
+                "3.11",
                 "--platform",
                 "cpu",
                 "--platform",
@@ -533,15 +533,15 @@ class TestMultiplePlatforms:
         # Should check image exists for both platforms
         assert mock_exists.call_count == 2
         exists_calls = [call[0][0] for call in mock_exists.call_args_list]
-        assert any("ray-py3.10-cpu" in call for call in exists_calls)
-        assert any("ray-py3.10-cu12.1.1-cudnn8" in call for call in exists_calls)
+        assert any("ray-py3.11-cpu" in call for call in exists_calls)
+        assert any("ray-py3.11-cu12.1.1-cudnn8" in call for call in exists_calls)
         # Should have tags from both platforms
         copy_calls = [call.args for call in mock_copy.call_args_list]
         assert any(
-            "ray-py3.10-cpu" in src and "-cpu" in dest for src, dest in copy_calls
+            "ray-py3.11-cpu" in src and "-cpu" in dest for src, dest in copy_calls
         )
         assert any(
-            "ray-py3.10-cu12.1.1-cudnn8" in src and "-cu121" in dest
+            "ray-py3.11-cu12.1.1-cudnn8" in src and "-cu121" in dest
             for src, dest in copy_calls
         )
 
@@ -575,7 +575,7 @@ class TestMultiplePlatforms:
             main,
             [
                 "--python-version",
-                "3.10",
+                "3.11",
                 "--platform",
                 "cpu",
                 "--platform",
@@ -608,30 +608,30 @@ class TestPipFreezeArtifact:
     def test_release_branch_cpu_default_python(self):
         ctx = make_ctx(
             ray_type=RayType.RAY,
-            python_version="3.10",
+            python_version="3.11",
             platform="cpu",
             architecture=DEFAULT_ARCHITECTURE,
             branch="releases/2.56.0",
             commit="d7951f63abcd",
         )
-        assert ctx.pip_freeze_canonical_tag() == "2.56.0.d7951f-py310-cpu"
+        assert ctx.pip_freeze_canonical_tag() == "2.56.0.d7951f-py311-cpu"
         assert (
             ctx.pip_freeze_artifact_filename()
-            == "ray:2.56.0.d7951f-py310-cpu_pip-freeze.txt"
+            == "ray:2.56.0.d7951f-py311-cpu_pip-freeze.txt"
         )
 
     def test_master_branch_uses_bare_sha(self):
         ctx = make_ctx(
             ray_type=RayType.RAY,
-            python_version="3.10",
+            python_version="3.11",
             platform="cpu",
             architecture=DEFAULT_ARCHITECTURE,
             branch="master",
             commit="d7951f63abcd",
         )
-        assert ctx.pip_freeze_canonical_tag() == "d7951f-py310-cpu"
+        assert ctx.pip_freeze_canonical_tag() == "d7951f-py311-cpu"
         assert (
-            ctx.pip_freeze_artifact_filename() == "ray:d7951f-py310-cpu_pip-freeze.txt"
+            ctx.pip_freeze_artifact_filename() == "ray:d7951f-py311-cpu_pip-freeze.txt"
         )
 
     def test_pr_branch_uses_bare_sha(self):
@@ -639,29 +639,29 @@ class TestPipFreezeArtifact:
         # this change is verified against on the PR's own release-pipeline CI).
         ctx = make_ctx(
             ray_type=RayType.RAY,
-            python_version="3.10",
+            python_version="3.11",
             platform="cpu",
             architecture=DEFAULT_ARCHITECTURE,
             branch="ci-publish-step-pip-freeze-artifact",
             commit="d7951f63abcd",
         )
         assert (
-            ctx.pip_freeze_artifact_filename() == "ray:d7951f-py310-cpu_pip-freeze.txt"
+            ctx.pip_freeze_artifact_filename() == "ray:d7951f-py311-cpu_pip-freeze.txt"
         )
 
     def test_extra_variation_and_aarch64_suffix(self):
         ctx = make_ctx(
             ray_type=RayType.RAY_EXTRA,
-            python_version="3.11",
+            python_version="3.12",
             platform="cpu",
             architecture="aarch64",
             branch="releases/2.56.0",
             commit="d7951f63abcd",
         )
-        assert ctx.pip_freeze_canonical_tag() == "2.56.0.d7951f-extra-py311-cpu-aarch64"
+        assert ctx.pip_freeze_canonical_tag() == "2.56.0.d7951f-extra-py312-cpu-aarch64"
         assert (
             ctx.pip_freeze_artifact_filename()
-            == "ray-extra:2.56.0.d7951f-extra-py311-cpu-aarch64_pip-freeze.txt"
+            == "ray-extra:2.56.0.d7951f-extra-py312-cpu-aarch64_pip-freeze.txt"
         )
 
     @mock.patch("ci.ray_ci.automation.push_ray_image.read_file_from_image")
@@ -680,19 +680,19 @@ class TestPipFreezeArtifact:
         ):
             ctx = make_ctx(
                 ray_type=RayType.RAY,
-                python_version="3.10",
+                python_version="3.11",
                 platform="cpu",
                 architecture=DEFAULT_ARCHITECTURE,
                 branch="releases/2.56.0",
                 commit="d7951f63abcd",
             )
-            dest = _export_pip_freeze("work-repo:build123-ray-py3.10-cpu", ctx)
+            dest = _export_pip_freeze("work-repo:build123-ray-py3.11-cpu", ctx)
 
-        expected = artifact_dir / "ray:2.56.0.d7951f-py310-cpu_pip-freeze.txt"
+        expected = artifact_dir / "ray:2.56.0.d7951f-py311-cpu_pip-freeze.txt"
         assert dest == str(expected)
         assert expected.read_text() == "ray==2.56.0\nnumpy==1.26.4\n"
         mock_read.assert_called_once_with(
-            "work-repo:build123-ray-py3.10-cpu", PIP_FREEZE_PATH_IN_IMAGE
+            "work-repo:build123-ray-py3.11-cpu", PIP_FREEZE_PATH_IN_IMAGE
         )
 
     @mock.patch("ci.ray_ci.automation.push_ray_image.read_file_from_image")
@@ -782,7 +782,7 @@ class TestPipFreezeArtifact:
             main,
             [
                 "--python-version",
-                "3.10",
+                "3.11",
                 "--platform",
                 "cpu",
                 "--platform",
@@ -808,7 +808,7 @@ class TestPipFreezeArtifact:
         # Exactly one export -- for the cpu platform, not the cuda one.
         assert mock_export.call_count == 1
         src_ref = mock_export.call_args[0][0]
-        assert "ray-py3.10-cpu" in src_ref
+        assert "ray-py3.11-cpu" in src_ref
 
     @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
@@ -892,7 +892,7 @@ class TestPipFreezeArtifact:
             main,
             [
                 "--python-version",
-                "3.10",
+                "3.11",
                 "--platform",
                 "cpu",
                 "--image-type",
@@ -951,7 +951,7 @@ class TestPipFreezeArtifact:
             main,
             [
                 "--python-version",
-                "3.10",
+                "3.11",
                 "--platform",
                 "cpu",
                 "--image-type",
@@ -1014,7 +1014,7 @@ class TestPipFreezeArtifact:
             main,
             [
                 "--python-version",
-                "3.10",
+                "3.11",
                 "--platform",
                 "cu13.0.0-cudnn",
                 "--platform",
