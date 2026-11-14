@@ -178,8 +178,7 @@ class GpuProfilingManager:
     async def gpu_profile(
         self, pid: int, num_iterations: int, _timeout_s: int = _DEFAULT_TIMEOUT_S
     ) -> Tuple[bool, str]:
-        """
-        Perform GPU profiling on a specified process.
+        """Perform GPU profiling on a specified process.
 
         Args:
             pid: The process ID (PID) of the target process to be profiled.

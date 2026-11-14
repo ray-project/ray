@@ -20,6 +20,19 @@ from ray._common.test_utils import (
     SignalActor,
     wait_for_condition,
 )
+from ray._private.authentication.authentication_token_generator import (
+    generate_new_authentication_token,
+)
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
+from ray._private.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
 from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
@@ -721,7 +734,10 @@ def test_haproxy_metrics(ray_shutdown):
 
     def metrics_show_2xx_response():
         assert httpx.get("http://localhost:8000/").text == "hello1"
-        resp = httpx.get("http://localhost:9101/metrics")
+        resp = httpx.get(
+            "http://localhost:9101/metrics",
+            headers=get_auth_headers_if_auth_enabled({}),
+        )
         assert resp.status_code == 200
         last_metrics[0] = resp.text
         for line in resp.text.splitlines():
@@ -738,6 +754,138 @@ def test_haproxy_metrics(ray_shutdown):
         raise
 
     serve.shutdown()
+
+
+@pytest.fixture
+def serve_with_auth(request, monkeypatch):
+    """Start Ray and Serve with the auth setup named by the param: "token",
+    "skip_metrics" (token auth plus RAY_AUTH_SKIP_METRICS=1) or "disabled".
+    Yields the token."""
+    token = generate_new_authentication_token()
+    with authentication_env_guard():
+        if request.param == "disabled":
+            set_auth_mode("disabled")
+            clear_auth_token_sources(remove_default=True)
+        else:
+            set_auth_mode("token")
+            set_env_auth_token(token)
+        if request.param == "skip_metrics":
+            # Set before ray.init so every Ray process inherits it.
+            monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+        reset_auth_token_state()
+        try:
+            ray.init(num_cpus=4)
+            serve.start()
+
+            @serve.deployment
+            def hello(_):
+                return "hello"
+
+            serve.run(hello.bind())
+            yield token
+        finally:
+            if ray.is_initialized():
+                serve.shutdown()
+                ray.shutdown()
+            reset_auth_token_state()
+
+
+def _get_haproxy_endpoint(port: int, path: str, **kwargs) -> requests.Response:
+    return requests.get(f"http://127.0.0.1:{port}{path}", timeout=5, **kwargs)
+
+
+def _haproxy_exporter_up(**kwargs) -> bool:
+    """Whether :9101/metrics returns HAProxy's own exporter output."""
+    resp = _get_haproxy_endpoint(9101, "/metrics", **kwargs)
+    return b"haproxy_process_" in resp.content
+
+
+@pytest.mark.parametrize("serve_with_auth", ["token"], indirect=True)
+def test_haproxy_metrics_and_stats_require_token(serve_with_auth):
+    """With token auth on, HAProxy's exporter and stats page answer on the
+    metrics port only with the token, and nothing listens on the stats port."""
+    token = serve_with_auth
+    accepted_forms = [
+        {"headers": {"Authorization": f"Bearer {token}"}},
+        {"headers": {"X-Ray-Authorization": f"Bearer {token}"}},
+        {"cookies": {"ray-authentication-token": token}},
+    ]
+    wait_for_condition(_haproxy_exporter_up, timeout=30, **accepted_forms[0])
+
+    missing = _get_haproxy_endpoint(9101, "/metrics")
+    assert missing.status_code == 401
+    assert missing.headers["WWW-Authenticate"] == "Bearer"
+    wrong = _get_haproxy_endpoint(
+        9101, "/metrics", headers={"Authorization": "Bearer " + "0" * 64}
+    )
+    assert wrong.status_code == 403
+    for form in accepted_forms:
+        assert _get_haproxy_endpoint(9101, "/metrics", **form).status_code == 200
+
+    assert _get_haproxy_endpoint(9101, "/stats").status_code == 401
+    stats = _get_haproxy_endpoint(9101, "/stats;csv", **accepted_forms[0])
+    assert stats.status_code == 200
+    assert stats.text.startswith("# pxname")
+    with pytest.raises(requests.ConnectionError):
+        _get_haproxy_endpoint(8404, "/stats")
+
+
+@pytest.mark.parametrize("serve_with_auth", ["skip_metrics", "disabled"], indirect=True)
+def test_haproxy_metrics_and_stats_open_without_token(serve_with_auth):
+    """With RAY_AUTH_SKIP_METRICS=1 or auth disabled, HAProxy serves the
+    exporter and stats page itself, as before, and needs no token."""
+    wait_for_condition(_haproxy_exporter_up, timeout=30)
+    assert _get_haproxy_endpoint(8404, "/stats").status_code == 200
+
+
+def test_haproxy_metrics_token_auth_with_colocated_reuse_port_proxies(monkeypatch):
+    """With SERVE_SOCKET_REUSE_PORT_ENABLED=1, co-located EveryNode proxies
+    share the metrics port. In token mode each HAProxyManager's metrics server
+    must share it too, or the second manager fails to bind."""
+    # Set before the nodes start so every Ray process inherits it.
+    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
+    token = generate_new_authentication_token()
+    with authentication_env_guard():
+        set_auth_mode("token")
+        set_env_auth_token(token)
+        reset_auth_token_state()
+        cluster = Cluster()
+        try:
+            head_node = cluster.add_node(num_cpus=0)
+            cluster.add_node(num_cpus=1)
+            cluster.wait_for_nodes()
+            ray.init(address=head_node.address)
+            serve.start(http_options={"location": "EveryNode"})
+
+            @serve.deployment
+            def hello(_):
+                return "hello"
+
+            serve.run(hello.bind())
+            client = _get_global_client()
+
+            def both_proxies_healthy() -> bool:
+                details = ServeInstanceDetails(
+                    **ray.get(client._controller.get_serve_instance_details.remote())
+                )
+                return len(details.proxies) == 2 and all(
+                    proxy.status == ProxyStatus.HEALTHY
+                    for proxy in details.proxies.values()
+                )
+
+            wait_for_condition(both_proxies_healthy, timeout=60)
+            wait_for_condition(
+                _haproxy_exporter_up,
+                timeout=30,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert _get_haproxy_endpoint(9101, "/metrics").status_code == 401
+        finally:
+            if ray.is_initialized():
+                serve.shutdown()
+                ray.shutdown()
+            cluster.shutdown()
+            reset_auth_token_state()
 
 
 def test_haproxy_safe_name():
@@ -1373,7 +1521,10 @@ def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
     wait_for_condition(deploy_failed)
 
 
-def test_router_application_dispatches_across_applications(ray_shutdown):
+@pytest.mark.parametrize("router_scaled_to_zero", [False, True])
+def test_router_application_dispatches_across_applications(
+    ray_shutdown, router_scaled_to_zero
+):
     """A router app picks sibling-app replicas; HAProxy sends requests there."""
     from fastapi.responses import JSONResponse
 
@@ -1398,7 +1549,19 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
 
     router_api = FastAPI()
 
-    @serve.deployment
+    router_options = {}
+    if router_scaled_to_zero:
+        router_options["autoscaling_config"] = {
+            "min_replicas": 0,
+            "initial_replicas": 0,
+            "max_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 60,
+            "upscale_delay_s": 0,
+        }
+
+    @serve.deployment(**router_options)
     @serve._router_application
     @serve.ingress(router_api)
     class Router:
@@ -1438,10 +1601,28 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
             "http://localhost:8000/llm/v1/chat/completions",
             json={"model": model},
             headers={"x-request-id": request_id},
-            timeout=10,
+            timeout=30,
         )
 
-    wait_for_condition(lambda: chat("model-a", "warmup").status_code == 200)
+    if router_scaled_to_zero:
+        wait_for_condition(
+            lambda: "/llm" in httpx.get("http://localhost:8000/-/routes").json(),
+            timeout=30,
+        )
+        assert not list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+                ("class_name", "=", "ServeReplica:router:Router"),
+            ],
+        )
+        response = chat("model-a", "wakeup")
+        assert response.status_code == 200, response.text
+        assert response.json()["request_id"] == "wakeup"
+        assert response.json()["path"] == "/v1/model-a/v1/chat/completions"
+        assert "::model-a#Backend#" in response.json()["replica_id"]
+    else:
+        wait_for_condition(lambda: chat("model-a", "warmup").status_code == 200)
 
     served = {}
     for i in range(8):

@@ -1,5 +1,4 @@
-"""
-Utility functions for the DreamerV3 ([1]) algorithm.
+"""Utility functions for the DreamerV3 ([1]) algorithm.
 
 [1] Mastering Diverse Domains through World Models - 2023
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap

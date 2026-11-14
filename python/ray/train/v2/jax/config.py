@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray._private import ray_constants
+from ray._private.accelerators.tpu import wait_for_tpu_vfio_ready
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -38,6 +39,18 @@ _JAX_MULTISLICE_OVERRIDE_KEYS = frozenset(
 @PublicAPI(stability="alpha")
 @dataclass
 class JaxConfig(BackendConfig):
+    """Configuration for JAX distributed training setup.
+
+    If neither ``use_tpu`` nor ``use_gpu`` is ``True``, Ray Train doesn't set up
+    JAX distributed training.
+
+    Args:
+        use_tpu: Whether to set up JAX for TPU. If ``JAX_PLATFORMS`` isn't set,
+            sets it to ``"tpu"``.
+        use_gpu: Whether to set up JAX for GPU. If ``JAX_PLATFORMS`` isn't set,
+            sets it to ``"cuda"``.
+    """
+
     use_tpu: bool = False
     use_gpu: bool = False
 
@@ -117,6 +130,7 @@ def _setup_jax_distributed_environment(
     jax_platforms_list = jax_platforms.split(",")
 
     if "tpu" in jax_platforms_list:
+        wait_for_tpu_vfio_ready()
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
         logger.info("Initialized JAX distributed on TPU.")
     elif "cuda" in jax_platforms_list:

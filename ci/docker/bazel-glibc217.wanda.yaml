@@ -1,0 +1,8 @@
+name: "bazel-glibc217-$HOSTTYPE"
+froms: ["rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"]
+dockerfile: ci/docker/bazel-glibc217.Dockerfile
+srcs:
+  - .bazelversion
+build_args:
+  - MANYLINUX_VERSION
+  - HOSTTYPE

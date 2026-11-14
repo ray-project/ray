@@ -712,6 +712,18 @@ def raise_sys_exit_with_custom_error_message(
     raise e
 
 
+cdef CRayStatus check_no_consume_once_args(args):
+    """Return InvalidArgument if any ObjectRef arg was created with _consume_once=True.
+
+    Other args are serialized into new objects, which are never consume-once.
+    """
+    cdef c_vector[CObjectID] arg_ids
+    for arg in args:
+        if isinstance(arg, ObjectRef):
+            arg_ids.push_back((<ObjectRef>arg).native())
+    return CCoreWorkerProcess.GetCoreWorker().CheckNoConsumeOnceArgs(arg_ids)
+
+
 cdef prepare_args_and_increment_put_refs(
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
@@ -2472,15 +2484,16 @@ cdef execute_task_with_cancellation_handler(
     title = f"ray::{task_name}"
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
-    # runtime_ids, OMP_NUM_THREADS to restrict availability to this task.
+    # runtime_ids, and the num threads env vars such as OMP_NUM_THREADS, to restrict
+    # availability to this task.
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
         original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
-        omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+        num_threads_env_vars_set = ray._private.utils.set_num_threads_env_vars_if_unset()
     else:
         original_visible_accelerator_env_vars = None
-        omp_num_threads_overriden = False
+        num_threads_env_vars_set = []
 
     # Initialize the actor if this is an actor creation task. We do this here
     # before setting the current task ID so that we can get the execution info,
@@ -2587,9 +2600,18 @@ cdef execute_task_with_cancellation_handler(
             if original_visible_accelerator_env_vars:
                 # Reset the visible accelerator env vars for normal tasks, since they may be reused.
                 ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
-            if omp_num_threads_overriden:
-                # Reset the OMP_NUM_THREADS environ if it was set.
-                os.environ.pop("OMP_NUM_THREADS", None)
+            # Reset the num threads env vars if they were set.
+            for env_var in num_threads_env_vars_set:
+                os.environ.pop(env_var, None)
+            if "OMP_NUM_THREADS" in num_threads_env_vars_set:
+                # Restore default single-thread fallback (set_num_threads_env_vars_if_unset()
+                # sets OMP_NUM_THREADS when unset) if modules were imported pre-fork.
+                for module_name in ray_constants.THREAD_POOL_MODULES:
+                    if module_name in sys.modules:
+                        try:
+                            sys.modules[module_name].set_num_threads(1)
+                        except Exception:
+                            pass
 
 
     if execution_info.max_calls != 0:
@@ -3987,6 +4009,12 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string call_site
 
+        status = check_no_consume_once_args(args)
+        if not status.ok():
+            raise ValueError(
+                f"{status.message().decode()} "
+                "It can't be passed as an argument to a task.")
+
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
@@ -4089,6 +4117,12 @@ cdef class CoreWorker:
             CLabelSelector c_label_selector
             c_vector[CFallbackOption] c_fallback_strategy
             c_string call_site
+
+        status = check_no_consume_once_args(args)
+        if not status.ok():
+            raise ValueError(
+                f"{status.message().decode()} "
+                "It can't be passed as an argument to an actor constructor.")
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -4249,7 +4283,8 @@ cdef class CoreWorker:
                           int64_t num_objects_per_yield,
                           c_bool enable_task_events,
                           tensor_transport: Optional[str],
-                          dict labels=None):
+                          dict labels=None,
+                          c_bool consume_once=False):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -4268,6 +4303,7 @@ cdef class CoreWorker:
             c_vector[CFallbackOption] c_fallback_strategy
             optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
             c_string c_tensor_transport_str
+            CTaskOptions task_options
 
         if tensor_transport is not None:
             c_tensor_transport_str = tensor_transport.encode("utf-8")
@@ -4292,24 +4328,27 @@ cdef class CoreWorker:
 
             current_c_task_id = current_task.native()
 
+            task_options = CTaskOptions(
+                name,
+                num_returns,
+                c_resources,
+                concurrency_group_name,
+                generator_backpressure_num_objects,
+                num_objects_per_yield,
+                serialized_runtime_env,
+                enable_task_events,
+                c_labels,
+                c_label_selector,
+                c_tensor_transport,
+                c_fallback_strategy,
+                consume_once)
+
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                     c_actor_id,
                     ray_function,
                     args_vector,
-                    CTaskOptions(
-                        name,
-                        num_returns,
-                        c_resources,
-                        concurrency_group_name,
-                        generator_backpressure_num_objects,
-                        num_objects_per_yield,
-                        serialized_runtime_env,
-                        enable_task_events,
-                        c_labels,
-                        c_label_selector,
-                        c_tensor_transport,
-                        c_fallback_strategy),
+                    task_options,
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

@@ -314,6 +314,33 @@ class TestGPUHashAggregatePlanning:
         mock_default_pool.assert_not_called()
         assert op._aggregation_plan is aggregation_plan
         assert op._rank_pool.nranks == 4
+        assert op.get_sub_progress_bar_names() == ["GPU Shuffle", "GPU Aggregation"]
+        assert list(op.get_stats()) == ["shuffle", "finalize"]
+
+    def test_row_total_uses_rank_estimate_because_rows_are_not_preserved(self):
+        ctx = DataContext()
+        ctx.gpu_shuffle_num_actors = 4
+        ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
+        schema = pa.schema([("user_id", pa.int64()), ("value", pa.int64())])
+        aggregation_plan = build_gpu_aggregation_plan(
+            ("user_id",), (Count(),), input_schema=schema
+        )
+        assert isinstance(aggregation_plan, GPUAggregationPlan), aggregation_plan
+        with patch("ray.data._internal.gpu_shuffle.hash_shuffle.GPURankPool"):
+            op = GPUHashAggregateOperator(
+                ctx,
+                _make_input_op_mock(),
+                key_columns=("user_id",),
+                aggregation_plan=aggregation_plan,
+                num_partitions=8,
+            )
+        op._inputs_complete = True
+        shuffle_metrics = op._phase_metrics.phase_metrics["shuffle"].metrics
+        shuffle_metrics.rows_inputs_of_submitted_tasks = 10
+        # Ten input rows are not a row total: aggregation changes the count.
+        assert op.num_output_rows_total() is None
+        op._phase_metrics._estimated_output_num_rows = 3
+        assert op.num_output_rows_total() == 3
 
     def test_gpu_shuffle_unsupported_aggregate_falls_back_to_cpu_hash_aggregate(self):
         from ray.data._internal.execution.operators.hash_aggregate import (

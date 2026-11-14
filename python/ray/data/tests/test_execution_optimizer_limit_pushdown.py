@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray.data import Dataset
 from ray.data._internal.logical.interfaces import LogicalOperator, Plan
-from ray.data._internal.logical.operators import Download, Limit
+from ray.data._internal.logical.operators import Download, Limit, MapBatches
 from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
@@ -58,6 +58,19 @@ def test_limit_pushdown_recreates_frozen_download():
     assert isinstance(result.input_dependencies[0], Limit)
     assert result.input_dependencies[0].limit == 1
     assert result.input_dependencies[0].input_dependencies[0] is input_op
+
+
+def test_limit_pushdown_respects_map_batch_size():
+    input_op = _DummyLogicalOperator(input_dependencies=[], name="DummyInput")
+    map_op = MapBatches(
+        fn=lambda batch: batch,
+        input_dependencies=[input_op],
+        batch_size=8,
+        min_rows_per_bundled_input=8,
+    )
+    limit_op = Limit(3, input_dependencies=[map_op])
+
+    assert LimitPushdownRule()._push_limit_down(limit_op) is limit_op
 
 
 class _LimitRecordingScanner:

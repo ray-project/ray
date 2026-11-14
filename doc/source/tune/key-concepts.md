@@ -79,7 +79,7 @@ The following example covers all the search space functions:
 
 Use {ref}`Tuner.fit <tune-run-ref>` to run and manage hyperparameter tuning and generate your trials. At a minimum, your `Tuner` call takes a trainable as the first argument and a `param_space` dictionary that defines the search space.
 
-`Tuner.fit()` also provides many features, such as {ref}`logging <tune-logging>`, {ref}`checkpointing <tune-trial-checkpoint>`, and {ref}`early stopping <tune-stopping-ref>`. The following example shows a basic Tune run for the example objective `a (x ** 2) + b`, with a simple search space for `a` and `b`:
+`Tuner.fit()` also provides many features, such as {ref}`logging <tune-logging>`, {ref}`checkpointing <tune-trial-checkpoint>`, and {ref}`early stopping <tune-stopping-ref>`. The following example shows a basic Tune run for the example objective `a * (x ** 2) + b`, with a simple search space for `a` and `b`:
 
 ```{literalinclude} doc_code/key_concepts.py
 :language: python
@@ -255,7 +255,7 @@ When you use schedulers, you might run into compatibility issues, as the followi
   - {doc}`Basic example </tune/examples/includes/pb2-example>`, {doc}`PPO example </tune/examples/includes/pb2-ppo-example>`
 ```
 
-To learn more about trial schedulers, see the {ref}`scheduler API documentation <schedulers-ref>`.
+To learn more about trial schedulers, see the {ref}`scheduler API documentation <tune-schedulers>`.
 
 (tune-concepts-analysis)=
 

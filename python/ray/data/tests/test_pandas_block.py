@@ -2,12 +2,13 @@ import logging
 import pickle
 import random
 import sys
+from typing import Any, Dict, List
+from unittest import mock
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 import ray.data
@@ -16,13 +17,105 @@ from ray.data._internal.pandas_block import (
     PandasBlockBuilder,
     PandasBlockColumnAccessor,
     PandasRow,
+    _parsable_pandas_metadata,
 )
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_null
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 
 # Set seed for the test for size as it related to sampling
 np.random.seed(42)
+
+
+@pytest.mark.parametrize(
+    "sort_key,limit",
+    [
+        (SortKey(["a", "b"], descending=[False, True]), 0),
+        (SortKey(["a", "b"], descending=[False, True]), 3),
+        (SortKey(["a", "b"], descending=[True, False]), 5),
+        (SortKey(["a", "b"], descending=[True, True]), 10),
+    ],
+)
+def test_top_n_matches_sort_with_nulls_and_mixed_directions(sort_key, limit):
+    frame = pd.DataFrame(
+        {
+            "a": [2, None, 1, 1, None, 2, 1],
+            "b": ["b", "a", "c", None, "d", "a", "b"],
+            "row_id": list(range(7)),
+        }
+    )
+    accessor = PandasBlockAccessor(frame)
+    expected = accessor.sort(sort_key).iloc[:limit]
+    result = accessor.top_n(sort_key, limit)
+
+    pd.testing.assert_frame_equal(result, expected)
+
+
+def test_top_n_uses_pandas_bounded_selection():
+    frame = pd.DataFrame({"key": [4, 1, 3, 2], "value": [40, 10, 30, 20]})
+    accessor = PandasBlockAccessor(frame)
+
+    result = accessor.top_n(SortKey("key"), 2)
+
+    assert result.to_dict("records") == [
+        {"key": 1, "value": 10},
+        {"key": 2, "value": 20},
+    ]
+
+
+@pytest.mark.parametrize(
+    "keys,sort_key,method",
+    [
+        ({"key": [2, 1, 1, 3]}, SortKey("key"), "nsmallest"),
+        ({"key": [2, 1, 1, 3]}, SortKey("key", descending=True), "nlargest"),
+        ({"key": [2, None, 1, 3]}, SortKey("key"), "sort_values"),
+        ({"key": ["b", "a", "a", "c"]}, SortKey("key"), "sort_values"),
+        (
+            {"key": [2, 1, 1, 3], "secondary": [0, 1, 2, 3]},
+            SortKey(["key", "secondary"], descending=[False, True]),
+            "sort_values",
+        ),
+    ],
+)
+@pytest.mark.parametrize("limit", [2, 10])
+@pytest.mark.parametrize(
+    "index",
+    [
+        pd.Index([7, 7, 2, 9], name="original"),
+        pd.MultiIndex.from_tuples(
+            [("a", 1), ("a", 1), ("b", 2), ("c", 3)],
+            names=["group", "row"],
+        ),
+    ],
+)
+def test_top_n_selects_only_keys_and_preserves_index(
+    keys: Dict[str, List[Any]],
+    sort_key: SortKey,
+    method: str,
+    limit: int,
+    index: pd.Index,
+) -> None:
+    frame = pd.DataFrame(keys, index=index)
+    frame["payload"] = pd.Categorical(["x", "y", "z", "w"])
+    frame["nullable_payload"] = pd.array([1, None, 3, 4], dtype="Int64")
+    columns, ascending = sort_key.to_pandas_sort_args()
+
+    if method == "sort_values":
+        expected = frame.sort_values(columns, ascending=ascending).head(limit)
+    else:
+        expected = getattr(frame, method)(limit, columns)
+
+    original = getattr(pd.DataFrame, method)
+
+    with mock.patch.object(
+        pd.DataFrame, method, autospec=True, side_effect=original
+    ) as select:
+        result = PandasBlockAccessor(frame).top_n(sort_key, limit)
+
+    pd.testing.assert_frame_equal(result, expected)
+    assert select.call_count == 1
+    assert list(select.call_args.args[0].columns) == columns
 
 
 def simple_series(null):
@@ -441,10 +534,6 @@ class TestSizeBytes:
         true_size = block.memory_usage(index=True, deep=True).sum()
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
-    @pytest.mark.skipif(
-        get_pyarrow_version() < parse_version("10.0.1"),
-        reason="ArrowDtype requires pyarrow>=10.0.1",
-    )
     def test_arrow(ray_start_regular_shared):
         data = [
             random.choice(["alligator", "crocodile", "flamingo"]) for _ in range(50_000)
@@ -606,6 +695,72 @@ def test_pandas_row_tensor_column_does_not_log(propagate_logs, caplog):
             row["emb"]
 
     assert caplog.records == []
+
+
+def _pandas_metadata_dtype_names(block: pa.Table) -> dict:
+    return {c["name"]: c["numpy_type"] for c in block.schema.pandas_metadata["columns"]}
+
+
+def test_to_arrow_metadata_names_only_dtypes_pandas_can_parse(restore_data_context):
+    """A pandas block with an Arrow-backed list column becomes an Arrow block whose
+    pandas metadata names a dtype pandas can rebuild, so the block converts back
+    to pandas with or without the Arrow-backed mapper. Other dtype names stay."""
+    df = pd.DataFrame(
+        {
+            "lists": pd.array([[1, 2], [3]], dtype=pd.ArrowDtype(pa.list_(pa.int64()))),
+            "nullable": pd.array([1, None], dtype="Int64"),
+        }
+    )
+
+    block = PandasBlockAccessor(df).to_arrow()
+
+    assert _pandas_metadata_dtype_names(block) == {
+        "lists": "object",
+        "nullable": "Int64",
+    }
+    # pyarrow's own conversion reads the metadata when no mapper covers a column.
+    assert block.to_pandas()["lists"].tolist()[0].tolist() == [1, 2]
+
+    ctx = DataContext.get_current()
+    ctx.enable_arrow_backed_pandas_conversion = False
+    numpy_backed = BlockAccessor.for_block(block).to_pandas()
+    ctx.enable_arrow_backed_pandas_conversion = True
+    arrow_backed = BlockAccessor.for_block(block).to_pandas()
+
+    assert numpy_backed.dtypes["lists"] == np.dtype(object)
+    assert str(numpy_backed.dtypes["nullable"]) == "Int64"
+    assert arrow_backed.dtypes["lists"] == pd.ArrowDtype(pa.list_(pa.int64()))
+
+
+def test_parsable_pandas_metadata_returns_same_bytes_when_nothing_changes():
+    """Metadata whose dtype names all parse comes back as the same object, so the
+    schema is not rewritten for the common case."""
+    df = pd.DataFrame({"a": [1, 2], "b": pd.array(["x", None], dtype="string")})
+    metadata = pa.Table.from_pandas(df, preserve_index=False).schema.metadata[b"pandas"]
+
+    assert _parsable_pandas_metadata(metadata) is metadata
+
+
+def test_pandas_udf_arrow_backed_list_column_converts_back_with_mapper_off(
+    ray_start_regular_shared, restore_data_context
+):
+    """With the Arrow-backed conversion off, a pandas UDF that returns its own
+    Arrow-backed list column still lets the next to_pandas() succeed."""
+    DataContext.get_current().enable_arrow_backed_pandas_conversion = False
+    lists = [[1, 2], [3]]
+
+    def udf(df):
+        return pd.DataFrame(
+            {"x": pd.array(lists, dtype=pd.ArrowDtype(pa.list_(pa.int64())))}
+        )
+
+    df = (
+        ray.data.from_items([{"x": 1}, {"x": 2}], override_num_blocks=1)
+        .map_batches(udf, batch_format="pandas")
+        .to_pandas()
+    )
+
+    assert [list(v) for v in df["x"]] == lists
 
 
 if __name__ == "__main__":
