@@ -120,8 +120,11 @@ class RaySyncerBidiReactor {
   /// See MessagesReceivedCallback in common.h.
   MessagesReceivedCallback on_messages_received_;
 
-  /// Self-owned shared_ptr for lifetime guarding in async callbacks (timer/dispatch). Set
-  /// by caller/factory, released in OnDone.
+  /// Self-owned shared_ptr for lifetime guarding in async callbacks. Set by the
+  /// caller/factory before any gRPC callback can fire and released in OnDone. Every
+  /// handler dispatched to io_context_ captures a copy so that it can never outlive
+  /// the reactor; the batch timer holds a weak_ptr instead so that a pending timer
+  /// does not keep a finished reactor alive.
   std::shared_ptr<RaySyncerBidiReactor> self_ref_;
 
  private:
