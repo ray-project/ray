@@ -211,6 +211,57 @@ async def test_chat_template_udf_assistant_prefill(mock_tokenizer_setup):
     assert not kwargs2.get("continue_final_message")
 
 
+@pytest.mark.parametrize(
+    "conversation",
+    [
+        pytest.param(
+            [
+                {"role": "user", "content": "What's the weather in Paris?"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_0",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": '{"city": "Paris"}',
+                            },
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_0", "content": '{"temp_c": 21}'},
+            ],
+            id="tool",
+        ),
+        pytest.param([{"role": "system", "content": "Greet the user."}], id="system"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_chat_template_udf_non_assistant_final_message(
+    mock_tokenizer_setup, conversation
+):
+    # Only a final assistant message is a prefill to continue. After a tool
+    # result or a system message the model has to start a new assistant turn.
+    mock_tokenizer = mock_tokenizer_setup
+    mock_tokenizer.apply_chat_template.return_value = "<chat>"
+
+    udf = ChatTemplateUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        model="test-model",
+    )
+
+    async for _ in udf({"__data": [{"messages": conversation}]}):
+        pass
+
+    mock_tokenizer.apply_chat_template.assert_called_once()
+    _, kwargs = mock_tokenizer.apply_chat_template.call_args
+    assert kwargs["add_generation_prompt"] is True
+    assert kwargs["continue_final_message"] is False
+
+
 def test_trust_remote_code(model_internlm2_1_8b):
     model_entry = get_model_entrypoint(model_internlm2_1_8b)
     if model_entry != model_internlm2_1_8b:

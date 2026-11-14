@@ -34,7 +34,7 @@ class VLLMChatTemplate:
                 messages = messages.tolist()
             all_messages.append(messages)
 
-            add_generation_prompt = messages[-1]["role"] == "user"
+            add_generation_prompt = messages[-1]["role"] != "assistant"
             prompt = self.tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
