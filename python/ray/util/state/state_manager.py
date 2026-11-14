@@ -20,7 +20,7 @@ from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
 )
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
-from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated import gcs_service_pb2_grpc, reporter_pb2
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
     FilterPredicate,
@@ -40,11 +40,13 @@ from ray.core.generated.node_manager_pb2 import (
 )
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
 from ray.core.generated.reporter_pb2 import (
+    GetAcceleratorInventoryReply,
+    GetAcceleratorInventoryRequest,
     ListLogsReply,
     ListLogsRequest,
     StreamLogRequest,
 )
-from ray.core.generated.reporter_pb2_grpc import LogServiceStub
+from ray.core.generated.reporter_pb2_grpc import LogServiceStub, ReporterServiceStub
 from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoReply,
     GetRuntimeEnvsInfoRequest,
@@ -117,6 +119,23 @@ def handle_grpc_network_errors(func):
                 raise e
 
     return api_with_network_error_handler
+
+
+async def _close_grpc_channel(channel: grpc.aio.Channel) -> None:
+    """Close an aio gRPC channel, including when the task is being cancelled.
+
+    The close is scheduled as its own task once and then shielded, so
+    cancellation of the caller never prevents the channel from being released,
+    and the close coroutine is never rescheduled.
+    """
+    if channel is None:
+        return
+    close_task = asyncio.get_running_loop().create_task(channel.close())
+    try:
+        await asyncio.shield(close_task)
+    except asyncio.CancelledError:
+        # close_task keeps running to completion in the background.
+        raise
 
 
 class StateDataSourceClient:
@@ -194,6 +213,77 @@ class StateDataSourceClient:
             build_address(ip, grpc_port), options=options, asynchronous=True
         )
         return LogServiceStub(channel)
+
+    async def get_reporter_service_stub(
+        self, node_id: NodeID
+    ) -> Optional[Tuple[ReporterServiceStub, grpc.aio.Channel]]:
+        """Return a ``(stub, channel)`` pair, or None if the node's agent is not
+        registered in the internal KV.
+
+        The caller is responsible for closing the returned channel. The
+        reporter and log agents are served from the same agent gRPC port, keyed
+        by the dashboard agent address in the internal KV.
+        """
+        from ray._private.grpc_utils import init_grpc_channel
+
+        agent_addr = await self._gcs_client.async_internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if not agent_addr:
+            return None
+        ip, http_port, grpc_port = json.loads(agent_addr)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        channel = init_grpc_channel(
+            build_address(ip, grpc_port), options=options, asynchronous=True
+        )
+        return ReporterServiceStub(channel), channel
+
+    async def get_accelerator_inventory(
+        self, node_id: str, timeout: Optional[float] = None
+    ) -> Optional[GetAcceleratorInventoryReply]:
+        """Return the accelerator inventory for the given node, or None if the
+        node's agent is not registered (e.g. the node is dead/missing).
+
+        The whole operation (internal-KV lookup + gRPC call) is bounded by a
+        single ``timeout`` deadline, and the gRPC channel is closed on all
+        paths, including cancellation. Raises ``DataSourceUnavailable`` on
+        network errors and ``asyncio.TimeoutError`` on deadline. A gRPC
+        ``UNIMPLEMENTED`` (an older reporter agent without this RPC) returns a
+        reply with ``UNSUPPORTED`` status rather than breaking node listing.
+        """
+        if timeout is not None:
+            return await asyncio.wait_for(
+                self._get_accelerator_inventory(node_id), timeout=timeout
+            )
+        return await self._get_accelerator_inventory(node_id)
+
+    @handle_grpc_network_errors
+    async def _get_accelerator_inventory(
+        self, node_id: str
+    ) -> Optional[GetAcceleratorInventoryReply]:
+        pair = await self.get_reporter_service_stub(NodeID.from_hex(node_id))
+        if pair is None:
+            return None
+        stub, channel = pair
+        try:
+            try:
+                return await stub.GetAcceleratorInventory(
+                    GetAcceleratorInventoryRequest()
+                )
+            except grpc.aio.AioRpcError as e:
+                if e.code() == grpc.StatusCode.UNIMPLEMENTED:
+                    reply = GetAcceleratorInventoryReply()
+                    reply.status = reporter_pb2.ACCELERATOR_INVENTORY_STATUS_UNSUPPORTED
+                    reply.status_message = (
+                        "The reporter agent on this node does not implement "
+                        "accelerator inventory."
+                    )
+                    return reply
+                raise
+        finally:
+            await _close_grpc_channel(channel)
 
     async def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
         """Return the node id in hex that corresponds to the given ip.

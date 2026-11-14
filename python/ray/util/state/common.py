@@ -616,6 +616,26 @@ class NodeState(StateSchema):
     end_time_ms: Optional[int] = state_column(
         filterable=False, detail=True, format_fn=Humanify.timestamp
     )
+    #: A read-only inventory of the accelerator devices visible to this node's
+    #: agent, with the device's CPU NUMA locality. Only present when
+    #: ``detail=True``. None when the inventory could not be queried (e.g. a
+    #: dead node) and a dict otherwise:
+    #:
+    #: ``{"status": <str>, "status_message": <Optional[str]>, "devices": <list>}``
+    #:
+    #: ``status`` is one of "ok", "unsupported", "unavailable", or "error". A
+    #: successful empty inventory ("ok" with no devices) is distinct from
+    #: "unsupported" (no discovery implementation for this family, or the
+    #: discovery library is not installed) and "unavailable" (the driver/library
+    #: is present but failed to initialize). "ok" covers only the accelerator
+    #: families that implement discovery, so a mixed-vendor node reports only the
+    #: discovered families. Each device has ``vendor``, ``resource_family``,
+    #: ``model``, ``uuid``, ``memory_total_bytes`` (bytes), ``pci_bus_id``,
+    #: ``numa_node`` (nullable), ``kind`` ("gpu"/"mig"), and ``parent_uuid``.
+    #: The NVIDIA implementation reports physical GPUs only, not MIG instances.
+    #: This is node-agent-visible physical hardware, not a free-resource count
+    #: or a scheduling guarantee.
+    accelerator_inventory: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 # NOTE: Declaring this as dataclass would make __init__ not being called properly.
