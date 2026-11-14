@@ -83,12 +83,12 @@ class _HiveReader(Reader[FileManifest]):
         yield from read_hs2_batches(self._spec, self._schema, **self._options)
 
 
-@dataclass(frozen=True, eq=False)
 class _HiveScanner(Scanner[FileManifest]):
     """Read caller-supplied SQL without advertising SQL rewrite capabilities."""
 
-    _spec: HiveReadSpec
-    _schema: pa.Schema
+    def __init__(self, spec: HiveReadSpec, schema: pa.Schema):
+        self._spec = spec
+        self._schema = schema
 
     def read_schema(self) -> pa.Schema:
         return self._schema
@@ -99,15 +99,18 @@ class _HiveScanner(Scanner[FileManifest]):
 
 @dataclass(frozen=True, eq=False)
 class _HiveTableScanner(
-    _HiveScanner, SupportsColumnPruning, SupportsFilterPushdown, SupportsLimitPushdown
+    Scanner[FileManifest],
+    SupportsColumnPruning,
+    SupportsFilterPushdown,
+    SupportsLimitPushdown,
 ):
     """Immutable table scan; accepted filters run before the SQL row limit."""
 
+    _spec: HiveReadSpec
+    _schema: pa.Schema
     native_types: Tuple[Tuple[str, str], ...]
-    columns: Optional[Tuple[str, ...]] = None
     predicate: Optional[Expr] = field(default=None, repr=False)
     predicate_sql: Optional[str] = field(default=None, repr=False)
-    limit: Optional[int] = None
 
     def read_schema(self) -> pa.Schema:
         if self.columns is None:
@@ -122,9 +125,6 @@ class _HiveTableScanner(
         if any(name not in available for name in columns):
             raise ValueError("HiveServer2 projection references an unavailable column")
         return replace(self, columns=tuple(columns))
-
-    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
-        return self.columns
 
     def push_filters(
         self, predicate: Expr
@@ -159,9 +159,7 @@ class _HiveTableScanner(
         # Dataset limits in Ray rather than changing their requested row count.
         if limit > 2**31 - 1:
             return self
-        return replace(
-            self, limit=limit if self.limit is None else min(limit, self.limit)
-        )
+        return super().push_limit(limit)
 
     def pushed_limit(self) -> Optional[int]:
         limits = [

@@ -2,16 +2,32 @@
 
 import sys
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pyarrow as pa
 import pytest
 
 import ray.cloudpickle as cloudpickle
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
+    NonSamplingFileIndexer,
+)
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import HiveReadSpec
 from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
     HiveDatasourceV2,
+    _HiveIndexer,
     _HiveScanner,
     _HiveTableScanner,
+)
+from ray.data._internal.datasource_v2.formats.hive.hive_direct import (
+    _HiveFileIndexer,
+    _HiveParquetScanner,
+)
+from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+    FooterFileIndexer,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
 )
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
@@ -19,10 +35,20 @@ from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsLimitPushdown,
 )
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan
-from ray.data._internal.logical.operators import Filter, Limit, Project, ReadFiles
+from ray.data._internal.logical.operators import (
+    Filter,
+    Limit,
+    ListFiles,
+    Project,
+    ReadFiles,
+    Union,
+)
 from ray.data._internal.logical.operators.all_to_all_operator import Sort
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.logical.operators.join_operator import Join
+from ray.data._internal.logical.optimizers import LogicalOptimizer, get_logical_ruleset
+from ray.data._internal.logical.rules.projection_pushdown import ProjectionPushdown
+from ray.data._internal.metadata_exporter import sanitize_for_struct
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data.block import Block
 from ray.data.context import DataContext
@@ -82,6 +108,198 @@ def _schema(root) -> pa.Schema:
     return schema
 
 
+def test_projection_rule_keeps_upstream_order():
+    names = [rule.__name__ for rule in get_logical_ruleset()]
+    expected = [
+        "ProjectionPushdown",
+        "PredicatePushdown",
+        "CombineShuffles",
+        "CombineDownloads",
+        "PushdownCountFiles",
+        "LimitPushdownRule",
+    ]
+    assert [name for name in names if name in expected] == expected
+
+
+@pytest.mark.parametrize("source", ["parquet", "orc", "hive_direct", "hive_query"])
+def test_non_table_read_metadata_preserves_original_args(source):
+    if source == "hive_query":
+        scanner = _HiveScanner(
+            HiveReadSpec(lambda: None, query="SELECT * FROM events", schema=_SCHEMA),
+            _SCHEMA,
+        )
+        datasource_name = "Hive"
+    elif source == "hive_direct":
+        scanner = _HiveParquetScanner(
+            schema=_SCHEMA, hive_schema=_SCHEMA, sampled_names=()
+        )
+        datasource_name = "HiveDirect"
+    else:
+        scanner = (ParquetScanner if source == "parquet" else OrcScanner)(
+            schema=_SCHEMA
+        )
+        datasource_name = source
+    read = replace(_read(scanner), datasource_name=datasource_name)
+    original_args = super(ReadFiles, read)._get_args()
+    current_args = read._get_args()
+    assert current_args["_scanner"] is original_args["_scanner"] is scanner
+    assert sanitize_for_struct(current_args) == sanitize_for_struct(original_args)
+
+
+@pytest.mark.parametrize("source", ["parquet", "orc", "hive_direct", "hive_query"])
+def test_non_table_list_metadata_preserves_original_args(source):
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+    predicate = col("id") > 1
+    if source == "parquet":
+        indexer = FooterFileIndexer(ignore_missing_paths=False)
+    elif source == "hive_direct":
+        direct_source = SimpleNamespace(
+            _get_file_indexer=lambda: indexer, paths=[], filesystem=None
+        )
+        indexer = _HiveFileIndexer(direct_source, retained=None)
+    elif source == "hive_query":
+        indexer = _HiveIndexer()
+        predicate = None
+    listing = ListFiles(
+        paths=[],
+        source_paths=[],
+        file_indexer=indexer,
+        filesystem=None,
+        predicate=predicate,
+    )
+    original_args = super(ListFiles, listing)._get_args()
+    current_args = listing._get_args()
+    assert current_args["_predicate"] is original_args["_predicate"] is predicate
+    assert sanitize_for_struct(current_args) == sanitize_for_struct(original_args)
+
+
+def test_hive_list_metadata_redacts_only_pushed_predicate():
+    predicate = col("name") == "synthetic_private_value"
+    listing = ListFiles(
+        paths=["hive://read"],
+        source_paths=["hive://read"],
+        file_indexer=_HiveIndexer(),
+        filesystem=None,
+        predicate=predicate,
+    )
+    original_args = super(ListFiles, listing)._get_args()
+    current_args = listing._get_args()
+    assert listing.predicate is predicate
+    assert original_args.pop("_predicate") is predicate
+    assert current_args.pop("_predicate") == "<Hive table predicate>"
+    assert sanitize_for_struct(current_args) == sanitize_for_struct(original_args)
+
+
+def test_optimized_hive_predicate_is_redacted_from_listing_metadata():
+    marker = "synthetic_private_value"
+    listing = ListFiles(
+        paths=["hive://read"],
+        source_paths=["hive://read"],
+        file_indexer=_HiveIndexer(),
+        filesystem=None,
+    )
+    read = replace(_read(_scanner()), input_dependencies=[listing])
+    root = Filter(predicate_expr=col("name") == marker, input_dependencies=[read])
+    optimized = LogicalOptimizer().optimize(
+        LogicalPlan(root, DataContext.get_current())
+    )
+    nodes = list(_nodes(optimized.dag))
+    scanner = next(node.scanner for node in nodes if isinstance(node, ReadFiles))
+    listing = next(node for node in nodes if isinstance(node, ListFiles))
+    assert isinstance(scanner, _HiveTableScanner)
+    assert scanner.pushed_predicate() is not None
+    assert listing.predicate is not None
+    assert marker not in str(sanitize_for_struct(listing._get_args()))
+    assert listing._get_args()["_predicate"] == "<Hive table predicate>"
+
+
+@pytest.mark.parametrize("operator", ["filter", "limit"])
+@pytest.mark.parametrize("source", ["parquet", "orc", "hive_direct", "hive_query"])
+def test_projection_rule_does_not_rewrite_non_table_sources(source, operator):
+    if source == "hive_query":
+        scanner = _HiveScanner(
+            HiveReadSpec(lambda: None, query="SELECT * FROM events", schema=_SCHEMA),
+            _SCHEMA,
+        )
+        datasource_name = "Hive"
+    elif source == "hive_direct":
+        scanner = _HiveParquetScanner(
+            schema=_SCHEMA, hive_schema=_SCHEMA, sampled_names=()
+        )
+        datasource_name = "HiveDirect"
+    else:
+        scanner = (ParquetScanner if source == "parquet" else OrcScanner)(
+            schema=_SCHEMA
+        )
+        datasource_name = source
+    read = replace(_read(scanner), datasource_name=datasource_name)
+    row_op = (
+        Filter(predicate_expr=col("id") > 1, input_dependencies=[read])
+        if operator == "filter"
+        else Limit(1, input_dependencies=[read])
+    )
+    root = Project(exprs=[col("name")], input_dependencies=[row_op])
+    plan = LogicalPlan(root, DataContext.get_current())
+    assert ProjectionPushdown().apply(plan) is plan
+
+
+def test_hive_projection_does_not_rewrite_other_union_branch():
+    hive_read = _read(_scanner())
+    hive_filter = Filter(predicate_expr=col("id") > 1, input_dependencies=[hive_read])
+    hive_project = Project(exprs=[col("name")], input_dependencies=[hive_filter])
+    parquet_read = replace(
+        _read(ParquetScanner(schema=_SCHEMA)), datasource_name="Parquet"
+    )
+    parquet_limit = Limit(1, input_dependencies=[parquet_read])
+    parquet_project = Project(exprs=[col("name")], input_dependencies=[parquet_limit])
+    root = Union([hive_project, parquet_project])
+    optimized = ProjectionPushdown().apply(LogicalPlan(root, DataContext.get_current()))
+    assert optimized.dag.input_dependencies[1] is parquet_project
+    hive_scan = _table_scan(optimized.dag.input_dependencies[0])
+    assert hive_scan.pruned_column_names() == ("name",)
+    pushed = hive_scan.pushed_predicate()
+    assert pushed is not None and pushed.structurally_equals(col("id") > 1)
+
+
+def test_hive_projection_does_not_rewrite_other_join_branch():
+    hive_read = _read(_scanner())
+    hive_filter = Filter(predicate_expr=col("id") > 1, input_dependencies=[hive_read])
+    hive_project = Project(
+        exprs=[col("id"), col("name")], input_dependencies=[hive_filter]
+    )
+    parquet_read = replace(
+        _read(ParquetScanner(schema=_SCHEMA)), datasource_name="Parquet"
+    )
+    parquet_project = Project(
+        exprs=[col("id"), col("name")],
+        input_dependencies=[Limit(1, input_dependencies=[parquet_read])],
+    )
+    context = DataContext.get_current()
+    standalone = LogicalOptimizer().optimize(LogicalPlan(parquet_project, context)).dag
+    joined = Join(
+        left_input_op=hive_project,
+        right_input_op=parquet_project,
+        join_type="inner",
+        left_key_columns=("id",),
+        right_key_columns=("id",),
+        num_partitions=1,
+    )
+    optimized = LogicalOptimizer().optimize(LogicalPlan(joined, context)).dag
+    other = optimized.input_dependencies[1]
+    assert other.dag_str == standalone.dag_str
+    original_scan = next(
+        node.scanner for node in _nodes(standalone) if isinstance(node, ReadFiles)
+    )
+    joined_scan = next(
+        node.scanner for node in _nodes(other) if isinstance(node, ReadFiles)
+    )
+    assert isinstance(original_scan, ParquetScanner)
+    assert isinstance(joined_scan, ParquetScanner)
+    assert joined_scan.pruned_column_names() == original_scan.pruned_column_names()
+    assert joined_scan.pushed_limit() == original_scan.pushed_limit()
+    assert joined_scan.pushed_predicate() is original_scan.pushed_predicate() is None
+
+
 def test_table_plan_cloning_schema_serialization_and_sql():
     original = _scanner()
     first, remainder = original.push_filters(col("id") > 1)
@@ -112,14 +330,6 @@ def test_table_plan_cloning_schema_serialization_and_sql():
     assert selected.field("id").equals(_SCHEMA.field("id"), check_metadata=True)
     with pytest.raises(ValueError, match="unavailable"):
         final.prune_columns(["id"])
-
-
-@pytest.mark.parametrize("scanner", [_scanner(100), _scanner().push_limit(100)])
-def test_limit_is_a_filter_barrier(scanner):
-    predicate = col("id") > 1
-    result, residual = scanner.push_filters(predicate)
-    assert result is scanner and residual is predicate
-    assert scanner.push_limit(10).pushed_limit() == 10
 
 
 @pytest.mark.parametrize(
@@ -237,6 +447,10 @@ def test_full_optimizer_preserves_projection_residual_and_limit(
     assert (scan.predicate is not None) == where
     assert scan.columns == columns
     assert any(isinstance(node, Filter) for node in nodes) == residual
+    if steps in ("l100,p,project", "p,l10,project") and residual:
+        remaining = next(node for node in nodes if isinstance(node, Filter))
+        assert remaining.predicate_expr is not None
+        assert remaining.predicate_expr.structurally_equals(col("id") > 1)
     assert _schema(optimized.dag).names == ([] if "empty" in steps else ["name"])
     again = LogicalOptimizer().optimize(optimized)
     assert again.dag.dag_str == optimized.dag.dag_str

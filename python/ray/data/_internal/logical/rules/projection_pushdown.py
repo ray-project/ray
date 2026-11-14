@@ -1,5 +1,5 @@
 from dataclasses import replace
-from typing import Dict, List, Optional, Set, Tuple, Type
+from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -27,8 +27,7 @@ __all__ = [
 
 
 def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
-    """
-    Extract all column names referenced by the given expressions.
+    """Extract all column names referenced by the given expressions.
 
     Recursively traverses expression trees to find all ColumnExpr nodes
     and collects their names.
@@ -53,8 +52,7 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
 def _analyze_upstream_project(
     upstream_project: Project,
 ) -> Tuple[Set[str], dict[str, Expr], Set[str]]:
-    """
-    Analyze what the upstream project produces and identifies removed columns.
+    """Analyze what the upstream project produces and identifies removed columns.
 
     Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
     """
@@ -88,8 +86,7 @@ def _validate_fusion(
     upstream_output_columns: Set[str],
     removed_by_renames: Set[str],
 ) -> Tuple[bool, Set[str]]:
-    """
-    Validate if fusion is possible without rewriting expressions.
+    """Validate if fusion is possible without rewriting expressions.
 
     Args:
         downstream_project: The downstream Project operator
@@ -185,8 +182,7 @@ def _would_duplicate_nonidempotent_expr(
 
 
 def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project:
-    """
-    Attempt to merge two consecutive Project operations into one.
+    """Attempt to merge two consecutive Project operations into one.
 
     Example: Upstream: [star(), col("x").alias("y")], Downstream: [star(), (col("y") + 1).alias("z")] → Fused: [star(), (col("x") + 1).alias("z")]
     """
@@ -339,25 +335,13 @@ def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
 
 
 class ProjectionPushdown(Rule):
-    """
-    Optimization rule that pushes projections (column selections) down the query plan.
+    """Optimization rule that pushes projections (column selections) down the query plan.
 
     This rule performs two optimizations:
     1. Fuses consecutive Project operations to eliminate redundant projections
     2. Pushes projections into data sources (e.g., Read operations) to enable
        column pruning at the storage layer
     """
-
-    @classmethod
-    def dependencies(cls) -> List[Type[Rule]]:
-        from ray.data._internal.logical.rules.predicate_pushdown import (
-            PredicatePushdown,
-        )
-
-        # Derive column requirements from the residual predicate in this pass.
-        # A partial push can leave the truncated Filter name unchanged, so the
-        # optimizer's name-based convergence check may not allow another pass.
-        return [PredicatePushdown]
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         """Apply projection pushdown optimization to the entire plan."""
@@ -366,18 +350,49 @@ class ProjectionPushdown(Rule):
         # first, so the fuse/push steps can carry the narrowed columns into the
         # read.
         new_dag = dag._apply_transform(self._prune_aggregate_input)
-        new_dag = new_dag._apply_transform(
-            self._push_projection_through_filter_or_limit
-        )
-        new_dag = new_dag._apply_transform(self._try_fuse_projects)
+
+        def fuse_projects(op: LogicalOperator) -> LogicalOperator:
+            if (
+                isinstance(op, Project)
+                and isinstance(op.input_dependencies[0], (Filter, Limit))
+                and self._is_hive_table_chain(op)
+            ):
+                from ray.data._internal.logical.rules.predicate_pushdown import (
+                    PredicatePushdown,
+                )
+
+                # A partially pushed predicate can retain the same truncated
+                # Filter name, so optimize this Hive branch before deriving its
+                # residual columns instead of relying on another global pass.
+                op = PredicatePushdown().apply(LogicalPlan(op, plan.context)).dag
+                op = self._push_projection_through_filter_or_limit(op)
+            return self._try_fuse_projects(op)
+
+        new_dag = new_dag._apply_transform(fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
+
+    @staticmethod
+    def _is_hive_table_chain(op: LogicalOperator) -> bool:
+        while isinstance(op, (Filter, Limit, Project)):
+            op = op.input_dependencies[0]
+        if (
+            not isinstance(op, ReadFiles)
+            or op.datasource_name != "Hive"
+            or op.block_udf is not None
+        ):
+            return False
+        from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
+            _HiveTableScanner,
+        )
+
+        return isinstance(op.scanner, _HiveTableScanner)
 
     @classmethod
     def _push_projection_through_filter_or_limit(
         cls, op: LogicalOperator
     ) -> LogicalOperator:
-        """Prune V2 read chains while retaining filter dependencies."""
+        """Prune Hive table read chains while retaining filter dependencies."""
         if not isinstance(op, Project):
             return op
         input_op = op.input_dependencies[0]
@@ -398,15 +413,7 @@ class ProjectionPushdown(Rule):
         source = upstream
         while isinstance(source, (Filter, Limit, Project)):
             source = source.input_dependencies[0]
-        # Keep this propagation on V2 reads, which expose their post-read hooks.
-        # Legacy readers may need raw columns absent from their output schema.
-        if not (
-            isinstance(source, ReadFiles) and source.supports_projection_pushdown()
-        ):
-            return op
-        if source.block_udf is not None:
-            # The post-read hook may require physical fields absent from its
-            # output schema. Its column dependencies aren't declared.
+        if not cls._is_hive_table_chain(source):
             return op
         schema = upstream.infer_schema()
         # A strict subset makes the rewrite idempotent and never resurrects a
@@ -479,8 +486,7 @@ class ProjectionPushdown(Rule):
 
     @classmethod
     def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:
-        """
-        Optimize a single Project operator.
+        """Optimize a single Project operator.
 
         Steps:
         1. Iteratively fuse with upstream Project operations

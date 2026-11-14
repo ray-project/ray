@@ -198,8 +198,6 @@ class ClusterResourceScheduler {
       bool force_spillback,
       const std::string &preferred_node_id);
 
-  /// Judging whether it affinity with placement group bundle
-  bool IsAffinityWithBundleSchedule(const rpc::SchedulingStrategy &scheduling_strategy);
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Callback to check if node is available.
@@ -238,7 +236,6 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
   FRIEND_TEST(ClusterLeaseManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
-  FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);

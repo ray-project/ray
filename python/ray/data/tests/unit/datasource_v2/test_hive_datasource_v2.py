@@ -2,6 +2,8 @@
 
 import os
 import sys
+from dataclasses import asdict, is_dataclass
+from typing import cast
 
 import pyarrow as pa
 import pytest
@@ -13,11 +15,18 @@ from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
 )
 from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
     HiveDatasourceV2,
+    _HiveIndexer,
+    _HiveTableScanner,
 )
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import HiveTableMetadata
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import DatasourceCategory
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
+from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.logical.operators import ListFiles, ReadFiles
+from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.metadata_exporter import Topology
+from ray.data.expressions import col
 
 
 def _query_spec():
@@ -87,6 +96,60 @@ def test_query_schema_does_not_request_table_metadata(monkeypatch):
     )
     spec = _query_spec()
     assert HiveDatasourceV2(spec).infer_schema(None) == spec.schema
+
+
+@pytest.mark.parametrize("source", ["query", "table"])
+def test_topology_does_not_export_hive_query_or_pushed_literal(source):
+    marker = "synthetic_private_value"
+    schema = pa.schema([("value", pa.string())])
+    if source == "query":
+        spec = HiveReadSpec(
+            lambda: None, query=f"SELECT '{marker}' AS value", schema=schema
+        )
+        scanner = HiveDatasourceV2(spec).create_scanner(schema)
+        assert not is_dataclass(scanner)
+    else:
+        scanner = _HiveTableScanner(
+            HiveReadSpec(lambda: None, table="events"), schema, (("value", "string"),)
+        )
+        scanner, residual = scanner.push_filters(col("value") == marker)
+        assert residual is None
+
+    read = ReadFiles(
+        datasource_name="Hive",
+        scanner=scanner,
+        schema=schema,
+        parallelism=1,
+        input_dependencies=[InputData([])],
+    )
+    listing = ListFiles(
+        paths=["hive://read"],
+        source_paths=["hive://read"],
+        file_indexer=_HiveIndexer(),
+        filesystem=None,
+        predicate=(
+            scanner.pushed_predicate()
+            if isinstance(scanner, _HiveTableScanner)
+            else None
+        ),
+    )
+
+    class PhysicalRead:
+        name = "Read"
+        id = "read"
+        input_dependencies = []
+        _logical_operators = [listing, read]
+        _get_logical_args = PhysicalOperator._get_logical_args
+
+        def post_order_iter(self):
+            yield self
+
+    physical = cast(PhysicalOperator, PhysicalRead())
+    topology = Topology.create_topology_metadata(physical, {physical: "read"})
+    assert marker not in str(asdict(topology))
+    if source == "table":
+        assert "<Hive table scanner>" in str(asdict(topology))
+        assert "<Hive table predicate>" in str(asdict(topology))
 
 
 def test_table_schema_uses_hive_metadata(monkeypatch):

@@ -43,9 +43,7 @@ Ray doesn't automatically set any environment variables or configuration related
 
 [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy) provides synchronous distributed training. You must build and compile the `Model` inside the strategy's scope.
 
-```{testcode}
-:skipif: True
-
+```python
 with tf.distribute.MultiWorkerMirroredStrategy().scope():
     model = ... # build model
     model.compile()
@@ -53,11 +51,11 @@ with tf.distribute.MultiWorkerMirroredStrategy().scope():
 
 ### Step 2: Update your `Dataset` batch size to the global batch size
 
-Because the [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch) splits evenly across worker processes, set `batch_size` to the per-worker batch size times the number of workers.
+TensorFlow splits each [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch) evenly across worker processes. Set the dataset's `batch_size` to the global batch size, which is the per-worker batch size times the number of workers.
 
 ```diff
--batch_size = worker_batch_size
-+batch_size = worker_batch_size * train.get_context().get_world_size()
+-batch_size = per_worker_batch_size
++global_batch_size = per_worker_batch_size * train.get_context().get_world_size()
 ```
 
 ## Create a `TensorflowTrainer`
@@ -83,9 +81,7 @@ trainer = TensorflowTrainer(
 
 To customize the backend setup, pass a {class}`~ray.train.tensorflow.TensorflowConfig`:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
 
@@ -104,9 +100,7 @@ For more configuration options, see the {py:class}`~ray.train.data_parallel_trai
 
 With a distributed training function and a Ray Train trainer in place, call `fit()` to start training:
 
-```{testcode}
-:skipif: True
-
+```python
 trainer.fit()
 ```
 
@@ -131,6 +125,11 @@ def train_func(config: dict):
     # Get dataset shard from Ray Train
     dataset_shard = train.get_context().get_dataset_shard("train")
 
+    # The dataset batch size is the global batch size, which TensorFlow splits
+    # evenly across workers.
+    per_worker_batch_size = 64
+    global_batch_size = per_worker_batch_size * train.get_context().get_world_size()
+
     # Define a helper function to build a TensorFlow dataset
     def to_tf_dataset(dataset, batch_size):
         def to_tensor_iterator():
@@ -154,7 +153,7 @@ def train_func(config: dict):
         # Call our helper function to build the dataset
         tf_dataset = to_tf_dataset(
             dataset=dataset_shard,
-            batch_size=64,
+            batch_size=global_batch_size,
         )
         history = multi_worker_model.fit(tf_dataset)
 ```

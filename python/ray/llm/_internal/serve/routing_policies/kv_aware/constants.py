@@ -45,6 +45,11 @@ DEFAULT_KV_TOKEN_PORT_BASE = 7557
 KV_INDEXER_THREADS_KEY = "KV_INDEXER_THREADS"
 DEFAULT_KV_INDEXER_THREADS = 4
 
+# Autoscaling snapshot key: estimated uncached prefill tokens of all in-flight
+# requests that are queued or in prefill.
+# KVTokenTracker publishes the snapshot via set_autoscaling_metrics_callback.
+OUTSTANDING_EFFECTIVE_PREFILL_TOKENS = "outstanding_effective_prefill_tokens"
+
 # The engine's KV-event replay (ROUTER) socket sits this many ports above its PUB
 # port, a separate range so it never collides with the PUB ports of colocated
 # replicas (PORT_BASE + replica rank). Dynamo's selection service dials it to recover
@@ -55,6 +60,13 @@ DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET = 1000
 # replica whose completion event was lost (e.g. a batch dropped on a
 # transient actor outage) would otherwise leave its entry tracked forever.
 REQUEST_TRACKING_TTL_S = 3600
+
+# Session pinning idle timeout in seconds.
+DEFAULT_SESSION_AFFINITY_TTL_S = 1800.0
+
+# Soft affinity rebinds a session when Serve excludes its bound worker from the
+# request's candidates; hard affinity would reject the request instead.
+SESSION_AFFINITY_MODE = "soft"
 
 # Bound best-effort lifecycle broadcast delivery so one slow ingress replica
 # cannot stall an engine replica's whole lifecycle-event queue indefinitely.

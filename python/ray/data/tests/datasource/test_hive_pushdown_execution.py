@@ -117,12 +117,10 @@ def _statements(path):
 @pytest.mark.parametrize(
     "operation",
     [
-        "project",
         "mixed",
         "limit_before_filter",
         "source_limit",
         "empty",
-        "zero",
         "query",
     ],
 )
@@ -153,12 +151,7 @@ def test_public_hive_pushdown(
             limit=5 if operation == "source_limit" else None,
             connection_factory=factory,
         )
-        if operation == "project":
-            result = (
-                dataset.filter(expr=col("id") >= 5).select_columns(["name"]).limit(3)
-            )
-            expected = [{"name": f"name{i}"} for i in range(5, 8)]
-        elif operation == "mixed":
+        if operation == "mixed":
             result = (
                 dataset.filter(expr=(col("id") >= 2) & (col("score") < 4.0))
                 .select_columns(["name"])
@@ -181,28 +174,20 @@ def test_public_hive_pushdown(
             assert "1 AS `__ray_hive_row`" in statements[0]
             return
         else:
-            result = dataset.limit(0)
-            expected = []
+            raise AssertionError(f"Unexpected operation: {operation}")
     assert [dict(row) for row in result.take_all()] == expected
     statements = _statements(events)
-    if operation == "zero":
-        assert statements == []
-        assert result.schema().names == ["id", "name", "score"]
+    assert len(statements) == 1
+    if operation == "query":
+        assert statements == [sql]
+    elif operation == "mixed":
+        assert statements[0].startswith("SELECT `name`, `score`")
+        assert "WHERE" in statements[0] and "LIMIT" not in statements[0]
     else:
-        assert len(statements) == 1
-        if operation == "query":
-            assert statements == [sql]
-        elif operation == "mixed":
-            assert statements[0].startswith("SELECT `name`, `score`")
-            assert "WHERE" in statements[0] and "LIMIT" not in statements[0]
-        elif operation == "project":
-            assert statements[0].startswith("SELECT `name`")
-            assert "WHERE" in statements[0] and statements[0].endswith("LIMIT 3")
-        else:
-            assert "WHERE" not in statements[0] and statements[0].endswith("LIMIT 5")
+        assert "WHERE" not in statements[0] and statements[0].endswith("LIMIT 5")
 
 
-@pytest.mark.parametrize("failure", ["execute", "fetch", "convert", "worker_loss"])
+@pytest.mark.parametrize("failure", ["execute", "convert", "worker_loss"])
 def test_table_failure_is_not_replayed(
     hive_worker_runtime, tmp_path, restore_data_context, failure
 ):

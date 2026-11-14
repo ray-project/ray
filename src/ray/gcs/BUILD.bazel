@@ -272,7 +272,7 @@ ray_cc_library(
         "//src/ray/util:clock",
         "//src/ray/util:thread_checker",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_cc_grpc",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -384,6 +384,7 @@ ray_cc_library(
         ":gcs_placement_group",
         ":gcs_table_storage",
         "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:bundle_location_index",
         "//src/ray/common:id",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:scheduling_context",

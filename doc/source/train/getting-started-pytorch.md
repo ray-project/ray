@@ -22,9 +22,7 @@ Learn how to do the following:
 
 For reference, the final code looks similar to the following:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
 
@@ -137,9 +135,7 @@ with result.checkpoint.as_directory() as checkpoint_dir:
 :::{tab-item} PyTorch
 <!-- This snippet isn't tested because it doesn't use any Ray code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import tempfile
 
@@ -255,9 +251,7 @@ You don't need this step if you pass a Ray Data dataset to your trainer. See {re
 :::{tip}
 The `batch_size` that `DataLoader` takes is the batch size for each worker. To convert between the worker batch size and the global batch size, use the following equation:
 
-```{testcode}
-:skipif: True
-
+```python
 global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 ```
 :::

@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Literal, Optional, TypedDict, cast
 
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -416,12 +417,15 @@ def test_hive_table_pushdown_types_and_combinations(tmp_path, restore_data_conte
                     table, connection_factory=_traced_factory(options, trace)
                 )
                 .filter(expr=col("id") >= 2)
-                .select_columns(["id"])
+                .select_columns(["name"])
                 .limit(1)
             )
             rows = limited.take_all()
-            assert len(rows) == 1 and rows[0]["id"] in (2, 3)
-            assert _data_statements(trace)[0].endswith("LIMIT 1")
+            assert len(rows) == 1 and rows[0]["name"] in (None, "b")
+            statements = _data_statements(trace)
+            assert len(statements) == 1
+            assert statements[0].startswith("SELECT `name` FROM")
+            assert " WHERE " in statements[0] and statements[0].endswith("LIMIT 1")
 
             trace = tmp_path / "source-limit.jsonl"
             source_limited = (
@@ -460,6 +464,50 @@ def test_hive_table_pushdown_types_and_combinations(tmp_path, restore_data_conte
             assert zero.take_all() == []
             assert zero.schema().base_schema == schema
             assert _data_statements(trace) == []
+
+            from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+                ParquetScanner,
+            )
+            from ray.data._internal.logical.operators import ReadFiles
+            from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+            context.use_datasource_v2 = True
+            path = tmp_path / "other.parquet"
+            pq.write_table(pa.table({"name": ["x", "y"], "unused": [1, 2]}), path)
+            other = (
+                ray.data.read_parquet(str(path), override_num_blocks=1)
+                .limit(2)
+                .select_columns(["name"])
+            )
+            hive = (
+                ray.data.read_hive(
+                    table, connection_factory=_make_connection_factory(options)
+                )
+                .filter(expr=col("id") == 1)
+                .select_columns(["name"])
+            )
+
+            def parquet_scanner(dataset):
+                dag = LogicalOptimizer().optimize(dataset._logical_plan).dag
+                return next(
+                    node.scanner
+                    for node in dag.post_order_iter()
+                    if isinstance(node, ReadFiles)
+                    and isinstance(node.scanner, ParquetScanner)
+                )
+
+            standalone = parquet_scanner(other)
+            mixed_sources = hive.union(other)
+            combined = parquet_scanner(mixed_sources)
+            assert standalone.pruned_column_names() is None
+            assert combined.pruned_column_names() == standalone.pruned_column_names()
+            assert combined.pushed_limit() == standalone.pushed_limit()
+            assert combined.pushed_predicate() is standalone.pushed_predicate() is None
+            assert sorted(row["name"] for row in mixed_sources.take_all()) == [
+                "a",
+                "x",
+                "y",
+            ]
 
             trace = tmp_path / "fetch-failure.jsonl"
             failing = ray.data.read_hive(

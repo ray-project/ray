@@ -1,3 +1,4 @@
+import re
 import sys
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from ray.experimental.sandbox.config import (
     GVisorSandboxConfig,
     SandboxConfig,
+    normalize_cidr_allowlist,
     parse_memory_bytes,
 )
 
@@ -60,6 +62,39 @@ def test_capabilities_config():
     assert config.capabilities == ["CAP_CHOWN", "CAP_SETUID"]
 
 
+@pytest.mark.parametrize(
+    "mounts",
+    [
+        {"data": "/srv/inbox"},
+        {"/data": "srv/inbox"},
+        {"data": "srv/inbox"},
+        {"/data": "/srv/inbox", "/other": ""},
+    ],
+)
+def test_mounts_require_absolute_paths(mounts: dict[str, str]) -> None:
+    with pytest.raises(ValueError, match="mounts must map absolute paths"):
+        SandboxConfig(image="busybox:latest", mounts=mounts)
+
+
+@pytest.mark.parametrize("value", [-1001, 1001, True, False, 0.0, "0"])
+def test_invalid_oom_score_adj_rejected(value):
+    with pytest.raises(ValueError, match="oom_score_adj"):
+        SandboxConfig(image="busybox:latest", oom_score_adj=value)
+
+
+@pytest.mark.parametrize("value", [None, -1000, 0, 1000])
+def test_oom_score_adj_with_mounts_and_gpus(value: int | None) -> None:
+    config = SandboxConfig(
+        image="busybox:latest",
+        mounts={"/data": "/srv/inbox"},
+        gpu_ids=[0],
+        oom_score_adj=value,
+    )
+    assert config.oom_score_adj == value
+    assert config.mounts == {"/data": "/srv/inbox"}
+    assert config.gpu_ids == ["0"]
+
+
 def test_invalid_network_mode_rejected():
     with pytest.raises(ValueError, match="network mode"):
         SandboxConfig(image="python:3.10-slim", network="bridge")
@@ -88,6 +123,92 @@ def test_dns_only_valid_with_host_side_networking():
         )
 
 
+def test_cidr_allowlist_only_with_public_network_and_normalized():
+    config = SandboxConfig(
+        image="python:3.10-slim",
+        network="public",
+        cidr_allowlist=["10.0.1.5/24", "2001:db8::1"],
+    )
+    # Host bits are cleared; bare addresses become single-host networks.
+    assert config.cidr_allowlist == ["10.0.1.0/24", "2001:db8::1/128"]
+    empty = SandboxConfig(image="python:3.10-slim", network="public", cidr_allowlist=[])
+    assert empty.cidr_allowlist == []
+    assert (
+        SandboxConfig(image="python:3.10-slim", network="public").cidr_allowlist is None
+    )
+
+    for mode, rootless in (("none", True), ("host", True), ("sandbox", False)):
+        with pytest.raises(ValueError, match="cidr_allowlist"):
+            SandboxConfig(
+                image="python:3.10-slim",
+                network=mode,
+                rootless=rootless,
+                cidr_allowlist=["10.0.0.0/8"],
+            )
+
+
+@pytest.mark.parametrize(
+    "entry", ["example.com", "", "10.0.0.0/33", "10.0.0.256", "not a cidr"]
+)
+def test_cidr_allowlist_rejects_non_ip_entries(entry):
+    """Entries feed an nftables ruleset, so anything but an IP literal is
+    refused up front, naming the entry."""
+    with pytest.raises(ValueError, match=re.escape(repr(entry))):
+        SandboxConfig(
+            image="python:3.10-slim", network="public", cidr_allowlist=[entry]
+        )
+
+
+def test_normalize_cidr_allowlist():
+    assert normalize_cidr_allowlist(["0.0.0.0/0", "::/0"]) == ["0.0.0.0/0", "::/0"]
+    assert normalize_cidr_allowlist([" 52.0.0.1 "]) == ["52.0.0.1/32"]
+    assert normalize_cidr_allowlist(()) == []
+    # A bare string is a mistake, not a one-entry list.
+    with pytest.raises(ValueError, match="list"):
+        normalize_cidr_allowlist("10.0.0.0/8")
+
+
+def test_normalize_cidr_allowlist_ports_and_internet():
+    assert normalize_cidr_allowlist(
+        [
+            "10.0.0.5:8000",
+            "10.0.1.7/24:8000-8010",
+            "[2001:db8::1]:443",
+            "[2001:db8::/32]",
+            " Internet ",
+            "internet:443",
+            "10.0.0.5:22-22",
+        ]
+    ) == [
+        "10.0.0.5/32:8000",
+        "10.0.1.0/24:8000-8010",
+        "[2001:db8::1/128]:443",
+        "2001:db8::/32",
+        "internet",
+        "internet:443",
+        "10.0.0.5/32:22",
+    ]
+
+
+@pytest.mark.parametrize(
+    "entry, message",
+    [
+        ("10.0.0.5:0", "port"),
+        ("10.0.0.5:65536", "port"),
+        ("10.0.0.5:9000-8000", "port"),
+        ("10.0.0.5:", "port"),
+        ("internet:https", "port"),
+        ("[2001:db8::1:443", "unclosed"),
+        ("[2001:db8::1]443", "after ']'"),
+        ("example.com:443", "not an IP address"),
+    ],
+)
+def test_cidr_allowlist_rejects_bad_ports_and_destinations(entry, message):
+    with pytest.raises(ValueError, match=message) as err:
+        normalize_cidr_allowlist([entry])
+    assert repr(entry) in str(err.value)
+
+
 def test_sandbox_network_requires_rootful():
     with pytest.raises(ValueError, match="rootless"):
         SandboxConfig(image="python:3.10-slim", network="sandbox")
@@ -112,6 +233,38 @@ def test_disk_requires_a_writable_rootfs():
         SandboxConfig(image="python:3.10-slim", readonly=False, disk="lots")
 
 
+def test_gpu_ids_config():
+    config = SandboxConfig(image="python:3.10-slim")
+    assert config.gpu_ids is None
+
+    config = SandboxConfig(image="python:3.10-slim", gpu_ids=["0", "1"])
+    assert config.gpu_ids == ["0", "1"]
+
+    # ray.get_gpu_ids() returns integer indices unless CUDA_VISIBLE_DEVICES was
+    # set when the worker started.
+    config = SandboxConfig(image="python:3.10-slim", gpu_ids=[0, 1])
+    assert config.gpu_ids == ["0", "1"]
+
+
+@pytest.mark.parametrize(
+    "gpu_ids",
+    [
+        [],
+        "0",
+        ["0", ""],
+        [-1],
+        [True],
+        [1.0],
+        [None],
+        ["0", "0"],
+        [0, "0"],
+    ],
+)
+def test_invalid_gpu_ids_rejected(gpu_ids):
+    with pytest.raises(ValueError, match="gpu_ids"):
+        SandboxConfig(image="python:3.10-slim", gpu_ids=gpu_ids)
+
+
 def test_parse_memory_bytes():
     assert parse_memory_bytes("1Gi") == 1073741824
     assert parse_memory_bytes("1GiB") == 1073741824
@@ -125,6 +278,25 @@ def test_parse_memory_bytes():
 
     with pytest.raises(ValueError):
         parse_memory_bytes("invalid_format")
+
+
+def test_default_public_dns_reads_the_node_override(monkeypatch):
+    from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, default_public_dns
+
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
+    assert default_public_dns() == DEFAULT_PUBLIC_DNS
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "  ")
+    assert default_public_dns() == DEFAULT_PUBLIC_DNS
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.0.0.2, 10.0.0.3")
+    assert default_public_dns() == ("10.0.0.2", "10.0.0.3")
+    # A typo, or an IPv6 resolver that a public sandbox can't reach, fails
+    # every public create rather than leaving DNS broken.
+    # So does the node's own resolver stub: a sandbox has no route to the
+    # node's loopback.
+    for entry in ("dns.internal", "fd00::53", "127.0.0.53", "0.0.0.0"):
+        monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", f"10.0.0.2,{entry}")
+        with pytest.raises(ValueError, match=entry):
+            default_public_dns()
 
 
 if __name__ == "__main__":
