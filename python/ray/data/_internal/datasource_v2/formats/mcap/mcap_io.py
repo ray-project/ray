@@ -5,21 +5,34 @@ read of a raw file is one request, so parsing a summary that way takes several
 requests per chunk it indexes. Here the bytes are fetched first and parsed in
 memory:
 
-- ``read_summary_section_from`` checks both magic bytes and the footer, then
-  returns the summary section, all in one to three ranged reads.
-  ``read_summary_from`` also parses it.
+- ``read_tail`` checks the magic bytes and footer, which give the summary
+  section's exact length; ``read_section`` returns the section, reading more
+  only when it starts before the tail. ``read_summary_from`` also parses it.
 - ``summary_records`` splits a section into its raw records, and
   ``parse_summary_records`` parses records copied out of a section.
-- ``read_chunk`` fetches one chunk record in one ranged read.
+- ``read_chunks`` fetches chunk records that lie close together in one ranged
+  read, as ``ChunkReads`` allows; ``read_chunk`` fetches one chunk record.
 - ``buffered`` wraps a file for a linear scan, so it reads in large blocks.
 
 Format specification: https://mcap.dev/spec
 """
 
 import io
-from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
-from ray.data._internal.util import KiB
+from ray._common.utils import env_integer
+from ray.data._internal.util import KiB, MiB
 
 if TYPE_CHECKING:
     from mcap.records import Chunk, ChunkIndex
@@ -30,11 +43,136 @@ if TYPE_CHECKING:
 # one more read.
 _SUMMARY_TAIL_BYTES = 64 * KiB
 
+# Defaults of ``ChunkReads``. A request to object storage costs a fixed delay
+# (16-32 ms on S3) plus its bytes over the connection's bandwidth (about
+# 64 MiB/s). Reading through a gap costs less than the request it saves while
+# the gap is under delay x bandwidth: 1 MiB at 16 ms. A 16 MiB read spends about
+# 90% of its time moving bytes. A first read of 4 MiB keeps a read that stops
+# early, such as under a row limit, from fetching far more than it parses.
+_CHUNK_READ_BYTES = env_integer("RAY_DATA_MCAP_CHUNK_READ_BYTES", 16 * MiB)
+_CHUNK_READ_GAP_BYTES = env_integer("RAY_DATA_MCAP_CHUNK_READ_GAP_BYTES", 1 * MiB)
+_CHUNK_READ_FIRST_BYTES = env_integer("RAY_DATA_MCAP_CHUNK_READ_FIRST_BYTES", 4 * MiB)
+
 _MAGIC = b"\x89MCAP0\r\n"
 # A footer record is the opcode, an 8-byte length and 20 bytes of fields:
 # ``summary_start`` (8), ``summary_offset_start`` (8) and ``summary_crc`` (4).
 _FOOTER_BYTES = 1 + 8 + 20
 _RECORD_PREFIX_BYTES = 1 + 8  # opcode and record length
+
+
+@dataclass(frozen=True)
+class ChunkReads:
+    """How ``read_chunks`` groups chunk records into ranged reads.
+
+    Attributes:
+        max_bytes: Most bytes one read spans, gaps included. A chunk record
+            longer than this is read alone, and 0 reads every chunk alone.
+            A read task holds one read's bytes at a time.
+        max_gap_bytes: Longest gap between two chunk records that one read
+            spans; the gap's bytes are read and dropped. Neighbouring chunks
+            are apart by their message index records (16 bytes per message),
+            and a chunk the read does not need is a gap as large as itself.
+        first_bytes: Most bytes the first read of a file spans. Each later
+            read may span twice as many as the one before, up to
+            ``max_bytes``, so a read that stops early fetches little.
+    """
+
+    max_bytes: int = _CHUNK_READ_BYTES
+    max_gap_bytes: int = _CHUNK_READ_GAP_BYTES
+    first_bytes: int = _CHUNK_READ_FIRST_BYTES
+
+
+@dataclass(frozen=True)
+class RangedRead:
+    """Bytes ``[start, end)`` of a file, which hold the ``chunk_indexes``' records."""
+
+    start: int
+    end: int
+    chunk_indexes: Tuple["ChunkIndex", ...]
+
+
+def plan_chunk_reads(
+    chunk_indexes: Iterable["ChunkIndex"], reads: ChunkReads
+) -> List[RangedRead]:
+    """Group chunks, taken in the order given, into ranged reads.
+
+    A chunk joins the read before it if it starts at or after that read's end,
+    at most ``max_gap_bytes`` past it, and the read then spans at most its
+    size limit: ``first_bytes`` for the first read, then twice the previous
+    limit, up to ``max_bytes``. Otherwise it starts a new read.
+    """
+    planned: List[RangedRead] = []
+    group: List["ChunkIndex"] = []
+    limit = min(reads.first_bytes, reads.max_bytes)
+    for chunk_index in chunk_indexes:
+        if group and not _extends(group, chunk_index, reads.max_gap_bytes, limit):
+            planned.append(_ranged_read(group))
+            group = []
+            limit = min(2 * limit, reads.max_bytes)
+        group.append(chunk_index)
+    if group:
+        planned.append(_ranged_read(group))
+    return planned
+
+
+# Takes a chunk that cannot be decoded and the error, in a read that skips
+# corrupt chunks (``SelectedMessageReader.iter_chunks``).
+OnCorrupt = Callable[["ChunkIndex", Exception], None]
+
+
+def is_corrupt_data_error(error: BaseException) -> bool:
+    """Whether ``error`` says MCAP bytes do not decode, rather than that a read
+    failed or the reader has a bug.
+
+    Parsing a malformed record raises an mcap ``McapError``, ``struct.error`` or
+    a ``ValueError`` such as ``UnicodeDecodeError``. Decompressing raises
+    ``zstandard.ZstdError``, or for lz4 a ``RuntimeError`` whose message starts
+    with ``LZ4F_``. An ``OSError`` and a missing codec
+    (``UnsupportedCompressionError``) are not corruption.
+    """
+    import struct
+
+    from mcap.exceptions import McapError, UnsupportedCompressionError
+
+    if isinstance(error, (OSError, UnsupportedCompressionError)):
+        return False
+    if isinstance(error, (McapError, struct.error, ValueError)):
+        return True
+    if type(error) is RuntimeError:
+        return str(error).startswith("LZ4F_")
+    try:
+        import zstandard
+    except ImportError:
+        return False
+    return isinstance(error, zstandard.ZstdError)
+
+
+def read_chunks(
+    f: Any,
+    chunk_indexes: Iterable["ChunkIndex"],
+    reads: ChunkReads,
+    on_corrupt: Optional[OnCorrupt] = None,
+) -> Iterator[Tuple["ChunkIndex", Optional["Chunk"]]]:
+    """Yield the chunk record of each of ``chunk_indexes``, in that order.
+
+    Each read of ``plan_chunk_reads`` is made when its first chunk is needed,
+    and its bytes are released once its last chunk is parsed. With
+    ``on_corrupt``, a chunk record that does not parse is handed to it and
+    yielded as ``None``; an error reading ``f`` still raises.
+    """
+    for ranged_read in plan_chunk_reads(chunk_indexes, reads):
+        # ``BytesIO`` shares the bytes rather than copying them; parsing a
+        # chunk copies only the chunk's records.
+        stream = io.BytesIO(_read_range(f, ranged_read.start, ranged_read.end))
+        last = len(ranged_read.chunk_indexes) - 1
+        for i, chunk_index in enumerate(ranged_read.chunk_indexes):
+            position = chunk_index.chunk_start_offset - ranged_read.start
+            chunk = _parse_chunk_or_report(stream, position, chunk_index, on_corrupt)
+            if i == last:
+                # Free the bytes now, not when the next read replaces them, so
+                # two reads are never held at once.
+                stream.close()
+            yield chunk_index, chunk
 
 
 def read_summary_from(f: Any, path: str) -> Optional["Summary"]:
@@ -48,33 +186,70 @@ def read_summary_from(f: Any, path: str) -> Optional["Summary"]:
     recording. Errors reading ``f`` propagate unchanged, so callers can retry
     them.
     """
-    section = read_summary_section_from(f, path)
+    section = read_section(f, read_tail(f, path))
     return None if section is None else _parse_summary(section, path)
 
 
-def read_summary_section_from(f: Any, path: str) -> Optional[memoryview]:
-    """Return the raw summary section of the open MCAP file ``f``, or ``None``.
+@dataclass(frozen=True)
+class SummaryTail:
+    """The checked last bytes of an MCAP file, which locate its summary section.
 
-    The section runs from the first summary record through the footer. Raises
-    as ``read_summary_from`` does, except that the records are not parsed.
+    Attributes:
+        path: The file the bytes come from.
+        start: Offset of ``data`` in the file.
+        data: The file's last ``_SUMMARY_TAIL_BYTES`` bytes, or all of a smaller file.
+        summary_start: Offset of the summary section; 0 when there is none.
+    """
+
+    path: str
+    start: int
+    data: bytes
+    summary_start: int
+
+    @property
+    def section_bytes(self) -> int:
+        """The summary section's exact length, footer included; 0 if it has none."""
+        if self.summary_start == 0:
+            return 0
+        return self.start + len(self.data) - len(_MAGIC) - self.summary_start
+
+    @property
+    def holds_section(self) -> bool:
+        """Whether ``data`` holds the whole summary section, or there is none."""
+        return self.summary_start == 0 or self.summary_start >= self.start
+
+
+def read_tail(f: Any, path: str) -> SummaryTail:
+    """Read the tail of the open MCAP file ``f``, checking magic bytes and footer.
+
+    Raises as ``read_summary_from`` does, except that no record is parsed.
     """
     size = f.seek(0, io.SEEK_END)
-    tail_start = max(0, size - _SUMMARY_TAIL_BYTES)
-    tail = _read_range(f, tail_start, size)
-    head = tail if tail_start == 0 else _read_range(f, 0, len(_MAGIC))
+    start = max(0, size - _SUMMARY_TAIL_BYTES)
+    data = _read_range(f, start, size)
+    head = data if start == 0 else _read_range(f, 0, len(_MAGIC))
     if not head.startswith(_MAGIC):
         raise ValueError(
             f"{path!r} is not an MCAP file: it does not start with the MCAP "
             "magic bytes."
         )
-    summary_start = _summary_start(tail, size, path)
-    if summary_start == 0:
+    return SummaryTail(path, start, data, _summary_start(data, size, path))
+
+
+def read_section(f: Any, tail: SummaryTail) -> Optional[memoryview]:
+    """Return the raw summary section that ``tail`` locates, or ``None``.
+
+    The section runs through the footer. ``f`` is read only for the part
+    before the tail, and may be ``None`` when ``tail.holds_section``.
+    """
+    if tail.summary_start == 0:
         return None
-    if summary_start < tail_start:
-        tail = _read_range(f, summary_start, tail_start) + tail
-        tail_start = summary_start
-    end = len(tail) - len(_MAGIC)
-    return memoryview(tail)[summary_start - tail_start : end]
+    data, start = tail.data, tail.start
+    if not tail.holds_section:
+        data = _read_range(f, tail.summary_start, start) + data
+        start = tail.summary_start
+    end = len(data) - len(_MAGIC)
+    return memoryview(data)[tail.summary_start - start : end]
 
 
 def summary_records(section: memoryview) -> Iterator[Tuple[int, memoryview]]:
@@ -107,13 +282,57 @@ def parse_summary_records(records: Union[bytes, memoryview], path: str) -> "Summ
 
 def read_chunk(f: Any, chunk_index: "ChunkIndex") -> "Chunk":
     """Read the chunk record that ``chunk_index`` points to, in one ranged read."""
+    start = chunk_index.chunk_start_offset
+    stream = io.BytesIO(_read_range(f, start, start + chunk_index.chunk_length))
+    return _parse_chunk(stream, 0)
+
+
+def _parse_chunk_or_report(
+    stream: io.BytesIO,
+    position: int,
+    chunk_index: "ChunkIndex",
+    on_corrupt: Optional[OnCorrupt],
+) -> Optional["Chunk"]:
+    """``_parse_chunk``, or ``None`` after handing a corrupt record to
+    ``on_corrupt``. Without ``on_corrupt``, or for an error that is not
+    corruption (``is_corrupt_data_error``), the error raises."""
+    try:
+        return _parse_chunk(stream, position)
+    except Exception as e:
+        if on_corrupt is None or not is_corrupt_data_error(e):
+            raise
+        on_corrupt(chunk_index, e)
+        return None
+
+
+def _parse_chunk(stream: io.BytesIO, position: int) -> "Chunk":
+    """Parse the chunk record that starts at ``position`` of ``stream``."""
     from mcap.data_stream import ReadDataStream
     from mcap.records import Chunk
 
-    start = chunk_index.chunk_start_offset
-    stream = io.BytesIO(_read_range(f, start, start + chunk_index.chunk_length))
-    stream.seek(_RECORD_PREFIX_BYTES)
+    stream.seek(position + _RECORD_PREFIX_BYTES)
     return Chunk.read(ReadDataStream(stream))
+
+
+def _record_end(chunk_index: "ChunkIndex") -> int:
+    """The offset just past the chunk record that ``chunk_index`` points to."""
+    return chunk_index.chunk_start_offset + chunk_index.chunk_length
+
+
+def _extends(
+    group: List["ChunkIndex"], chunk_index: "ChunkIndex", max_gap: int, limit: int
+) -> bool:
+    """Whether ``chunk_index`` can join the read of ``group`` (``plan_chunk_reads``)."""
+    end = _record_end(group[-1])
+    return (
+        end <= chunk_index.chunk_start_offset <= end + max_gap
+        and _record_end(chunk_index) - group[0].chunk_start_offset <= limit
+    )
+
+
+def _ranged_read(group: List["ChunkIndex"]) -> RangedRead:
+    """The read that spans the chunk records of ``group``, in file order."""
+    return RangedRead(group[0].chunk_start_offset, _record_end(group[-1]), tuple(group))
 
 
 def buffered(f: Any, buffer_size: int) -> io.BufferedReader:

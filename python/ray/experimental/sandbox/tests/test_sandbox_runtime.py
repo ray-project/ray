@@ -6,15 +6,21 @@ shipped behind a green suite.
 """
 
 import asyncio
+import concurrent.futures
+import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from unittest.mock import Mock
 
 import pytest
 
+from ray.experimental.sandbox._internal.image_utils import image_cache_name
 from ray.experimental.sandbox.backend.base import ExecResult, SandboxStatus
+from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.exceptions import SandboxError
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
@@ -245,6 +251,121 @@ def test_gvisor_write_file_fallback_and_append(
     if not append:
         assert commands[0][0] == "tee"
     assert commands[-1][:2] == ["/bin/sh", "-c"]
+
+
+def _fake_running_backend(tmp_path):
+    from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+    from ray.experimental.sandbox.config import SandboxConfig
+
+    backend = GVisorSandboxBackend(image_manager=_FakeImageManager())
+    backend._sandbox_metadata["sandbox"] = {
+        "config": SandboxConfig(image="fake:latest"),
+        "root_dir": str(tmp_path),
+        "cwd": "/",
+        "status": SandboxStatus.RUNNING,
+    }
+    return backend
+
+
+@pytest.mark.parametrize("paused", [False, True])
+@pytest.mark.parametrize("failure", [None, "error", "timeout"])
+def test_export_rootfs_preserves_pause_state(tmp_path, monkeypatch, paused, failure):
+    backend = _fake_running_backend(tmp_path)
+    initial = SandboxStatus.PAUSED if paused else SandboxStatus.RUNNING
+    backend._sandbox_metadata["sandbox"]["status"] = initial
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append((args, kwargs["timeout"]))
+        if "tar" in args:
+            assert backend.get_status("sandbox") == SandboxStatus.PAUSED
+            if failure == "timeout":
+                raise subprocess.TimeoutExpired(args, 7)
+            return subprocess.CompletedProcess(
+                args, 1 if failure else 0, stdout="", stderr="export failed"
+            )
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    if failure:
+        expected = subprocess.TimeoutExpired if failure == "timeout" else SandboxError
+        with pytest.raises(expected):
+            backend.export_rootfs_changes("sandbox", str(tmp_path / "rootfs.tar"), 7)
+    else:
+        backend.export_rootfs_changes("sandbox", str(tmp_path / "rootfs.tar"), 7)
+    assert backend.get_status("sandbox") == initial
+    assert [args[args.index("tar") :] for args, _ in calls if "tar" in args] == [
+        ["tar", "rootfs-upper", "--file", str(tmp_path / "rootfs.tar"), "sandbox"]
+    ]
+    assert [timeout for _, timeout in calls] == ([7] if paused else [60, 7, 60])
+
+
+def test_concurrent_exports_of_one_sandbox_run_one_at_a_time(tmp_path, monkeypatch):
+    """Each export pauses, exports and resumes on its own: a second one neither
+    pauses an already paused sandbox nor has it resumed under its export."""
+    backend = _fake_running_backend(tmp_path)
+    commands = []
+    first_export_running = threading.Event()
+    second_command_seen = threading.Event()
+
+    def run(args, **kwargs):
+        command = next(c for c in ("pause", "tar", "resume") if c in args)
+        commands.append(command)
+        if command == "tar" and not first_export_running.is_set():
+            first_export_running.set()
+            # Leave the other export time to barge in.
+            second_command_seen.wait(0.3)
+        elif first_export_running.is_set():
+            second_command_seen.set()
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with concurrent.futures.ThreadPoolExecutor(2) as pool:
+        first = pool.submit(
+            backend.export_rootfs_changes, "sandbox", str(tmp_path / "a.tar")
+        )
+        assert first_export_running.wait(5)
+        second = pool.submit(
+            backend.export_rootfs_changes, "sandbox", str(tmp_path / "b.tar")
+        )
+        first.result()
+        second.result()
+    assert commands == ["pause", "tar", "resume"] * 2
+    assert backend.get_status("sandbox") == SandboxStatus.RUNNING
+
+
+@pytest.mark.parametrize(
+    "readonly, target, cached_base, match",
+    [
+        (True, "registry.example/target:new", True, "readonly=False"),
+        (
+            False,
+            f"registry.example/target@sha256:{'0' * 64}",
+            True,
+            "needs a tag, not a digest",
+        ),
+        (False, "registry.example/target:new", False, "Cannot commit base image"),
+    ],
+)
+def test_commit_fails_before_exporting_the_rootfs(
+    tmp_path, readonly: bool, target: str, cached_base: bool, match: str
+) -> None:
+    base = "registry.example/source:old"
+    if cached_base:
+        image_dir = tmp_path / image_cache_name(base)
+        image_dir.mkdir()
+        (image_dir / ".manifest.json").write_text(json.dumps({"config": {}}))
+        (image_dir / ".image_config.json").write_text("{}")
+    runtime = _fake_runtime()
+    runtime._image_manager = Mock(images_dir=str(tmp_path))
+    runtime._backend = Mock()
+    runtime._backend.get_config.return_value = SandboxConfig(
+        image=base, readonly=readonly
+    )
+
+    with pytest.raises(SandboxError, match=match):
+        runtime.commit("sandbox", target)
+    runtime._backend.export_rootfs_changes.assert_not_called()
 
 
 def test_ttl_is_enforced_by_the_runtime():
