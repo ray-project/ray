@@ -361,6 +361,40 @@ def test_set_max_concurrency():
     assert limiter.suggest("test_3")["score"] == 3
 
 
+def test_search_generator_duplicate_wrapper_save_restore(
+    tmp_path, propagate_logs, caplog
+):
+    class DummySearcher(Searcher):
+        def suggest(self, trial_id):
+            return {"score": 1}
+
+        def save(self, checkpoint_path):
+            with open(checkpoint_path, "wb"):
+                pass
+
+        def restore(self, checkpoint_path):
+            pass
+
+    outer_repeater = Repeater(
+        Repeater(DummySearcher(metric="result", mode="max"), repeat=5),
+        repeat=2,
+    )
+    alg = SearchGenerator(outer_repeater)
+    with caplog.at_level("WARNING"):
+        alg.save_to_dir(str(tmp_path), session_str="test_session")
+
+    assert "There was a duplicate when saving Repeater." in caplog.text
+
+    restored_outer = Repeater(
+        Repeater(DummySearcher(metric="result", mode="max"), repeat=1),
+        repeat=1,
+    )
+    restored_alg = SearchGenerator(restored_outer)
+    restored_alg.restore_from_dir(str(tmp_path))
+    assert restored_outer.repeat == 2
+    assert restored_outer.searcher.repeat == 1
+
+
 if __name__ == "__main__":
     import sys
 
