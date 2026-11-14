@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
 
+from ray._common.retry import call_with_retry
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
@@ -18,6 +19,7 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
 )
 from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_full_schema_from_files,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.size_estimators import (
@@ -49,6 +51,22 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
+
+
+def _read_orc_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+    import pyarrow.orc as orc
+
+    def read():
+        if filesystem is None:
+            return orc.ORCFile(path).schema
+        with filesystem.open_input_file(path) as source:
+            return orc.ORCFile(source).schema
+
+    return call_with_retry(
+        read,
+        description=f"read ORC schema for {path}",
+        match=DataContext.get_current().retried_io_errors,
+    )
 
 
 @DeveloperAPI
@@ -128,8 +146,6 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        import pyarrow.orc as orc
-
         assert sample is not None
         if len(sample) == 0:
             return pa.schema([])
@@ -137,13 +153,32 @@ class OrcDatasourceV2(FileDataSourceV2):
         filesystem = self._filesystem
 
         def _read_schema(path: str) -> pa.Schema:
-            if filesystem is None:
-                return orc.ORCFile(path).schema
-            with filesystem.open_input_file(path) as source:
-                return orc.ORCFile(source).schema
+            return _read_orc_schema(path, filesystem, None)
 
         schema = infer_schema_from_files(sample_paths, _read_schema, format_name="ORC")
 
+        return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> pa.Schema:
+        if not len(sample):
+            return self.infer_schema(sample)
+        schema = infer_full_schema_from_files(
+            sample,
+            self._filesystem,
+            format_name="ORC",
+            read_schema=_read_orc_schema,
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+        )
+        if schema is None:
+            return self.infer_schema(sample)
+        return self._augment_schema(schema, sample)
+
+    def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
+        sample_paths = sample.paths.tolist()
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
             parser = PathPartitionParser(resolved_partitioning)

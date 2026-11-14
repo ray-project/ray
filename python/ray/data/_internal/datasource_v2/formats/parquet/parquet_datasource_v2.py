@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -21,6 +21,7 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
     resolve_partitioning,
 )
 from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_full_schema_from_files,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
@@ -67,6 +68,39 @@ if TYPE_CHECKING:
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[int]):
+    import pyarrow.dataset as pds
+    import pyarrow.parquet as pq
+
+    if filesystem is None:
+        return pq.read_metadata(path)
+    filesystem = filesystem_for_sized_opens(filesystem)
+    fragment = pds.ParquetFileFormat().make_fragment(
+        path, filesystem=filesystem, file_size=size
+    )
+    return call_with_retry(
+        lambda: fragment.metadata,
+        description=f"read Parquet footer for {path}",
+        match=DataContext.get_current().retried_io_errors,
+    )
+
+
+def _read_parquet_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+    if filesystem is None:
+        import pyarrow.parquet as pq
+
+        return pq.read_schema(path)
+    return _read_parquet_metadata(path, filesystem, size).schema.to_arrow_schema()
+
+
+def _read_parquet_schema_metadata(
+    path: str, filesystem: "FileSystem", size: Optional[int]
+) -> bytes:
+    output = pa.BufferOutputStream()
+    _read_parquet_metadata(path, filesystem, size).write_metadata_file(output)
+    return output.getvalue().to_pybytes()
 
 
 @DeveloperAPI
@@ -261,9 +295,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
         ``Partitioning`` can flow through ``_read_datasource_v2`` into
         :meth:`create_scanner` without side effects.
         """
-        import pyarrow.dataset as pds
-        import pyarrow.parquet as pq
-
         # See ``resolve_partitioning``: ``None`` is reachable only for a
         # source that answers ``schema_needs_file_sample`` False.
         assert sample is not None, "Parquet always receives a sample"
@@ -286,7 +317,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # With a filesystem, the footer is read through a fragment rather
         # than ``pq.read_schema``: a fragment takes the listing's file size,
         # which spares the open a request for it (a HEAD on S3).
-        filesystem = filesystem_for_sized_opens(self._filesystem)
+        filesystem = self._filesystem
         file_sizes = dict(zip(sample_paths, sample.known_file_sizes))
 
         user_schema = self._user_schema
@@ -298,23 +329,34 @@ class ParquetDatasourceV2(FileDataSourceV2):
         else:
 
             def _read_schema(path: str):
-                if filesystem is None:
-                    return pq.read_schema(path)
-                fragment = pds.ParquetFileFormat().make_fragment(
-                    path, filesystem=filesystem, file_size=file_sizes[path]
-                )
-                # ``make_fragment`` is lazy, so this is the footer read itself.
-                metadata = call_with_retry(
-                    lambda: fragment.metadata,
-                    description=f"read Parquet footer for {path}",
-                    match=DataContext.get_current().retried_io_errors,
-                )
-                return metadata.schema.to_arrow_schema()
+                return _read_parquet_schema(path, filesystem, file_sizes[path])
 
             schema = infer_schema_from_files(
                 sample_paths, _read_schema, format_name="Parquet"
             )
 
+        return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> pa.Schema:
+        if self._user_schema is not None or not len(sample):
+            return self.infer_schema(sample)
+        schema = infer_full_schema_from_files(
+            sample,
+            self._filesystem,
+            format_name="Parquet",
+            read_schema=_read_parquet_schema,
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+            read_schema_metadata=_read_parquet_schema_metadata,
+        )
+        if schema is None:
+            return self.infer_schema(sample)
+        return self._augment_schema(schema, sample)
+
+    def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
             field_names = resolved_partitioning.field_names or []
