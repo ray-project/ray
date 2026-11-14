@@ -64,7 +64,7 @@ from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
 )
-from ray._private.client_mode_hook import client_mode_hook
+from ray._private.client_mode_hook import client_mode_hook, client_mode_should_convert
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -109,6 +109,7 @@ from ray.experimental.internal_kv import (
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.client import num_connected_contexts
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
@@ -1743,6 +1744,14 @@ def init(
         # ray client. Raise an error, since most likely a typo in keyword
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
+
+    if client_mode_should_convert() and num_connected_contexts() == 0:
+        raise RuntimeError(
+            "Ray Client is already initialized in this process, but no Ray "
+            "Client connection is active, likely because a previous "
+            '`ray.init("ray://...")` failed. Call `ray.util.disconnect()` '
+            "before calling `ray.init()` to start or connect to a local cluster."
+        )
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
