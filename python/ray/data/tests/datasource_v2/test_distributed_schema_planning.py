@@ -3,6 +3,7 @@
 import json
 import os
 from collections import Counter
+from pathlib import Path
 from typing import Any, Dict, cast
 
 import pyarrow as pa
@@ -210,8 +211,9 @@ def test_driver_schema_fallback_when_workers_are_busy(
         ray.kill(holder)
 
 
+@pytest.mark.parametrize("empty_struct", [False, True])
 def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
-    monkeypatch, tmp_path, ray_start_2_cpus
+    monkeypatch, tmp_path, ray_start_2_cpus, empty_struct
 ):
     monkeypatch.delenv("RAY_SCHEMA_TEST", raising=False)
     ctx = DataContext.get_current()
@@ -222,7 +224,13 @@ def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     table = pa.table({"attrs": values}).replace_schema_metadata({b"source": b"map"})
     paths = [tmp_path / f"map{i}.parquet" for i in range(3)]
     for path in paths:
-        pq.write_table(table, path)
+        if empty_struct:
+            # This file has a manually constructed empty struct in its footer;
+            # PyArrow can read it, but its Parquet writer cannot create it.
+            fixture = Path(__file__).parent / "data" / "map_empty_struct.parquet"
+            path.write_bytes(fixture.read_bytes())
+        else:
+            pq.write_table(table, path)
     expected = pq.read_schema(paths[0])
     decoded = pa.ipc.read_schema(pa.BufferReader(expected.serialize()))
     assert not expected.equals(decoded, check_metadata=True)
@@ -244,7 +252,8 @@ def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     )
     records = _records(trace)
     assert Counter(r["path"] for r in records if r["pid"] != os.getpid()) == {
-        str(path): 1 for path in paths
+        str(path): 1 + int(empty_struct and index < 2)
+        for index, path in enumerate(paths)
     }
     assert all(r["pid"] != os.getpid() for r in records)
 

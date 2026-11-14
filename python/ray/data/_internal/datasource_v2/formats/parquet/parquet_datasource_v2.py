@@ -70,22 +70,37 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _read_parquet_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[int]):
     import pyarrow.dataset as pds
     import pyarrow.parquet as pq
 
     if filesystem is None:
-        return pq.read_schema(path)
+        return pq.read_metadata(path)
     filesystem = filesystem_for_sized_opens(filesystem)
     fragment = pds.ParquetFileFormat().make_fragment(
         path, filesystem=filesystem, file_size=size
     )
-    metadata = call_with_retry(
+    return call_with_retry(
         lambda: fragment.metadata,
         description=f"read Parquet footer for {path}",
         match=DataContext.get_current().retried_io_errors,
     )
-    return metadata.schema.to_arrow_schema()
+
+
+def _read_parquet_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+    if filesystem is None:
+        import pyarrow.parquet as pq
+
+        return pq.read_schema(path)
+    return _read_parquet_metadata(path, filesystem, size).schema.to_arrow_schema()
+
+
+def _read_parquet_schema_metadata(
+    path: str, filesystem: "FileSystem", size: Optional[int]
+) -> bytes:
+    output = pa.BufferOutputStream()
+    _read_parquet_metadata(path, filesystem, size).write_metadata_file(output)
+    return output.getvalue().to_pybytes()
 
 
 @DeveloperAPI
@@ -335,6 +350,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
             read_schema=_read_parquet_schema,
             ray_remote_args=ray_remote_args,
             supports_distributed_reads=self.supports_distributed_reads,
+            read_schema_metadata=_read_parquet_schema_metadata,
         )
         if schema is None:
             return self.infer_schema(sample)

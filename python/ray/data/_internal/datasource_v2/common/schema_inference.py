@@ -52,6 +52,7 @@ def _read_schema_batch(
     format_name: str,
     context: DataContext,
     io_concurrency: int,
+    read_schema_metadata: Optional[Callable] = None,
 ) -> List[Tuple[int, bytes, bool]]:
     DataContext._set_current(context)
 
@@ -76,14 +77,30 @@ def _read_schema_batch(
                 else:
                     import pyarrow.parquet as pq
 
-                    output = pa.BufferOutputStream()
-                    pq.write_metadata(schema, output)
-                    encoded = output.getvalue().to_pybytes()
-                    restored = pq.read_schema(pa.BufferReader(encoded))
-                    if not schema.equals(restored, check_metadata=True):
-                        raise pa.ArrowInvalid(
-                            "Unable to preserve schema through IPC or Parquet metadata"
+                    try:
+                        output = pa.BufferOutputStream()
+                        pq.write_metadata(schema, output)
+                        encoded = output.getvalue().to_pybytes()
+                        restored = pq.read_schema(pa.BufferReader(encoded))
+                        if not schema.equals(restored, check_metadata=True):
+                            raise pa.ArrowInvalid(
+                                "Unable to preserve schema through IPC or Parquet metadata"
+                            )
+                    except (
+                        pa.ArrowInvalid,
+                        pa.ArrowTypeError,
+                        pa.ArrowNotImplementedError,
+                    ):
+                        if read_schema_metadata is None:
+                            raise
+                        encoded = read_schema_metadata(
+                            paths[index], filesystem, sizes[index]
                         )
+                        restored = pq.read_schema(pa.BufferReader(encoded))
+                        if not schema.equals(restored, check_metadata=True):
+                            raise pa.ArrowInvalid(
+                                "Unable to preserve schema through original Parquet metadata"
+                            )
                     unique[value] = (index, encoded, True)
     return list(unique.values())
 
@@ -139,12 +156,14 @@ def infer_full_schema_from_files(
     read_schema: Callable,
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
+    read_schema_metadata: Optional[Callable] = None,
 ) -> Optional[pa.Schema]:
     """Read schemas on workers and merge once in candidate order on the driver.
 
     Return None when the caller should use its existing driver inference.
     Each task returns distinct schemas and their first positions. Schemas that
-    cannot round-trip through IPC use a metadata-only Parquet representation.
+    cannot round-trip through IPC use a metadata-only Parquet representation;
+    if needed, Parquet tasks can return the original file metadata instead.
     The driver restores candidate order before the one-shot merge.
     """
     context = DataContext.get_current()
@@ -194,6 +213,7 @@ def infer_full_schema_from_files(
                     format_name,
                     context,
                     _FULL_SCHEMA_INFERENCE_IO_CONCURRENCY,
+                    read_schema_metadata,
                 )
                 pending[ref] = start
                 start = stop

@@ -48,6 +48,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    data = ["tests/datasource_v2/data/map_empty_struct.parquet"],
     files = glob(["tests/datasource_v2/test_*.py"]),
     tags = [
         "exclusive",
