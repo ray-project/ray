@@ -4104,6 +4104,43 @@ def read_webdataset(
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
 
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.webdataset.webdataset_datasource_v2 import (
+            WebDatasetDatasourceV2,
+        )
+
+        datasource_v2 = WebDatasetDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            decoder=decoder,
+            fileselect=fileselect,
+            filerename=filerename,
+            suffixes=suffixes,
+            verbose_open=verbose_open,
+            expand_json=expand_json,
+            include_paths=include_paths,
+            file_extensions=file_extensions,
+            shuffle=shuffle,
+            open_stream_args=arrow_open_stream_args,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
+
     datasource = WebDatasetDatasource(
         paths,
         decoder=decoder,

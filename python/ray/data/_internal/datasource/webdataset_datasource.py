@@ -349,6 +349,9 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
             import PIL.Image
 
             if isinstance(value, np.ndarray):
+                # PIL can't encode (H, W, 1) arrays.
+                if value.ndim == 3 and value.shape[2] == 1:
+                    value = value[:, :, 0]
                 value = PIL.Image.fromarray(value)
             assert isinstance(value, PIL.Image.Image)
             stream = io.BytesIO()

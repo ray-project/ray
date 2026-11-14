@@ -3,12 +3,15 @@
 
 import glob
 import io
+import json
 import os
 import pickle
 import tarfile
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.fs
 import pytest
 import webdataset as wds
 
@@ -55,6 +58,26 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
 @pytest.fixture
 def allow_unsafe_deserialization(monkeypatch):
     monkeypatch.setenv("RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION", "1")
+
+
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def use_datasource_v2(request, monkeypatch):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", request.param)
+    return request.param
+
+
+def _as_read_output(df, use_datasource_v2):
+    """Convert an expected frame to the dtypes ``to_pandas`` returns.
+
+    V2 blocks are Arrow tables, so ``to_pandas`` returns Arrow-backed columns;
+    V1 blocks are pandas frames with object columns.
+    """
+    if not use_datasource_v2:
+        return df
+    types = {"__key__": pa.string()}
+    return df.astype({c: pd.ArrowDtype(types.get(c, pa.binary())) for c in df.columns})
 
 
 def test_webdataset_expand_json(
@@ -256,7 +279,9 @@ def custom_decoder(sample):
     return sample
 
 
-def test_webdataset_coding(ray_start_2_cpus, tmp_path, allow_unsafe_deserialization):
+def test_webdataset_coding(
+    ray_start_2_cpus, tmp_path, allow_unsafe_deserialization, use_datasource_v2
+):
     import numpy as np
     import PIL.Image
     import torch
@@ -296,7 +321,9 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path, allow_unsafe_deserializat
         assert isinstance(sample["jpg"], np.ndarray)
         assert sample["jpg"].shape == (100, 100, 3)
         assert isinstance(sample["gray.png"], np.ndarray)
-        assert sample["gray.png"].shape == (100, 100)
+        # V2 returns grayscale images with a channel axis, like color images.
+        expected_gray_shape = (100, 100, 1) if use_datasource_v2 else (100, 100)
+        assert sample["gray.png"].shape == expected_gray_shape
         assert isinstance(sample["mp"], dict)
         assert sample["mp"]["a"] == [1]
         assert sample["mp"]["b"]["c"] == 2
@@ -374,7 +401,7 @@ def test_write_min_rows_per_file(tmp_path, ray_start_2_cpus, min_rows_per_file):
     ["000000.pkl", "000000.pickle", "000000.pt", "000000.pth"],
 )
 def test_default_decoder_rejects_unsafe_extensions(
-    ray_start_2_cpus, tmp_path, filename
+    ray_start_2_cpus, tmp_path, filename, use_datasource_v2
 ):
     path = os.path.join(tmp_path, "unsafe.tar")
     with TarWriter(path) as tf:
@@ -419,7 +446,9 @@ def test_custom_decoder_bypasses_unsafe_guard(ray_start_2_cpus, tmp_path):
 
 
 @pytest.mark.parametrize("num_samples", [1, 511, 512, 513, 1000])
-def test_read_webdataset_chunked_samples(ray_start_2_cpus, tmp_path, num_samples):
+def test_read_webdataset_chunked_samples(
+    ray_start_2_cpus, tmp_path, num_samples, use_datasource_v2
+):
     path = os.path.join(tmp_path, "data-000000.tar")
     with wds.TarWriter(path) as writer:
         for i in range(num_samples):
@@ -437,10 +466,14 @@ def test_read_webdataset_chunked_samples(ray_start_2_cpus, tmp_path, num_samples
             "cls": [str(i).encode("utf-8") for i in range(num_samples)],
         }
     )
-    pd.testing.assert_frame_equal(actual[["__key__", "cls"]], expected)
+    pd.testing.assert_frame_equal(
+        actual[["__key__", "cls"]], _as_read_output(expected, use_datasource_v2)
+    )
 
 
-def test_read_webdataset_chunked_heterogeneous_keys(ray_start_2_cpus, tmp_path):
+def test_read_webdataset_chunked_heterogeneous_keys(
+    ray_start_2_cpus, tmp_path, use_datasource_v2
+):
     path = os.path.join(tmp_path, "data-000000.tar")
     n = 6
     with wds.TarWriter(path) as writer:
@@ -465,7 +498,9 @@ def test_read_webdataset_chunked_heterogeneous_keys(ray_start_2_cpus, tmp_path):
             ],
         }
     )
-    pd.testing.assert_frame_equal(actual[["__key__", "cls", "aux"]], expected)
+    pd.testing.assert_frame_equal(
+        actual[["__key__", "cls", "aux"]], _as_read_output(expected, use_datasource_v2)
+    )
 
 
 def test_read_webdataset_forwards_ray_remote_args(ray_start_2_cpus, tmp_path):
@@ -516,6 +551,322 @@ def test_default_decoder_allows_png(tmp_path):
     Image.new("RGB", (4, 4), (1, 2, 3)).save(buf, "PNG")
     out = _default_decoder({"__key__": "0001", "png": buf.getvalue()})
     assert out["png"].shape == (4, 4, 3)
+
+
+def _png_bytes(image: np.ndarray) -> bytes:
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.fromarray(image).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _write_png_shard(path, images):
+    with TarWriter(path) as writer:
+        for key, image in images.items():
+            writer.write(f"{key}.png", _png_bytes(image))
+
+
+@pytest.mark.parametrize(
+    "expand_grayscale, expected_gray_shape", [(False, (3, 4)), (True, (3, 4, 1))]
+)
+def test_default_decoder_expand_grayscale(expand_grayscale, expected_gray_shape):
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_utils import (
+        _default_decoder,
+    )
+
+    gray = np.arange(12, dtype=np.uint8).reshape(3, 4)
+    color = np.zeros((3, 4, 3), dtype=np.uint8)
+    out = _default_decoder(
+        {"__key__": "0", "a.png": _png_bytes(gray), "b.png": _png_bytes(color)},
+        expand_grayscale=expand_grayscale,
+    )
+    assert out["a.png"].shape == expected_gray_shape
+    np.testing.assert_array_equal(out["a.png"].reshape(3, 4), gray)
+    assert out["b.png"].shape == (3, 4, 3)
+
+
+def test_read_webdataset_v2_grayscale_and_color_images(
+    ray_start_2_cpus, tmp_path, monkeypatch
+):
+    # Each chunk of samples becomes its own Arrow table. The first chunk holds
+    # only color images and the second mixes in grayscale ones, so the chunks
+    # concatenate only if grayscale images get the same ndim as color images.
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    rng = np.random.default_rng(0)
+    images = {}
+    for i in range(600):
+        shape = (4 + i % 3, 5 + i % 2)
+        if i < 512 or i % 2:
+            shape += (3,)
+        images[f"{i:06d}"] = rng.integers(0, 256, shape, dtype=np.uint8)
+    path = os.path.join(tmp_path, "data-000000.tar")
+    _write_png_shard(path, images)
+
+    rows = ray.data.read_webdataset([path]).take_all()
+
+    assert len(rows) == len(images)
+    for row in rows:
+        expected = images[row["__key__"]]
+        if expected.ndim == 2:
+            expected = expected[:, :, np.newaxis]
+        np.testing.assert_array_equal(row["png"], expected)
+
+
+def test_read_webdataset_v2_mixed_image_dtypes(ray_start_2_cpus, tmp_path, monkeypatch):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    images = {
+        f"{i:06d}": np.zeros((4, 5), dtype=np.uint8 if i < 512 else np.uint16)
+        for i in range(600)
+    }
+    path = os.path.join(tmp_path, "data-000000.tar")
+    _write_png_shard(path, images)
+
+    # Known limitation: tensor columns whose dtypes differ between chunks can't
+    # be concatenated.
+    with pytest.raises(Exception, match="divergent scalar types"):
+        ray.data.read_webdataset([path]).take_all()
+
+
+def test_read_webdataset_v2_npy_mixed_ndim(ray_start_2_cpus, tmp_path, monkeypatch):
+    # Known limitation: grayscale expansion only applies to images. The first
+    # chunk holds only 2D arrays and the second mixes 2D and 3D ones, so the
+    # second chunk falls back to objects and can't be concatenated.
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        for i in range(600):
+            buf = io.BytesIO()
+            np.save(buf, np.zeros((4, 5) if i < 512 or i % 2 else (4, 5, 1)))
+            writer.write(f"{i:06d}.npy", buf.getvalue())
+
+    with pytest.raises(Exception, match="both objects and tensors"):
+        ray.data.read_webdataset([path]).take_all()
+
+
+class _FailOnceReader:
+    """Raise a retryable error once, after ``fail_after`` bytes have been read.
+
+    ``marker`` is a file so the failure happens once across retries and processes.
+    """
+
+    def __init__(self, f, marker, fail_after):
+        self._f, self._marker, self._fail_after, self._pos = f, marker, fail_after, 0
+
+    def read(self, size=-1):
+        if not os.path.exists(self._marker):
+            if self._pos >= self._fail_after:
+                open(self._marker, "w").close()
+                raise OSError(ray.data.DataContext.get_current().retried_io_errors[0])
+            if size is None or size < 0 or self._pos + size > self._fail_after:
+                size = self._fail_after - self._pos
+        data = self._f.read(size)
+        self._pos += len(data)
+        return data
+
+    def readable(self):
+        return True
+
+    def seekable(self):
+        return False
+
+    def close(self):
+        self._f.close()
+
+    @property
+    def closed(self):
+        return self._f.closed
+
+
+class _FailOnceFileSystemHandler(pa.fs.FileSystemHandler):
+    def __init__(self, marker, fail_after):
+        self._fs = pa.fs.LocalFileSystem()
+        self._marker, self._fail_after = marker, fail_after
+
+    def __eq__(self, other):
+        return isinstance(other, _FailOnceFileSystemHandler)
+
+    def __ne__(self, other):
+        return not self == other
+
+    def get_type_name(self):
+        return "fail-once"
+
+    def normalize_path(self, path):
+        return self._fs.normalize_path(path)
+
+    def get_file_info(self, paths):
+        return self._fs.get_file_info(paths)
+
+    def get_file_info_selector(self, selector):
+        return self._fs.get_file_info(selector)
+
+    def open_input_stream(self, path):
+        f = _FailOnceReader(open(path, "rb"), self._marker, self._fail_after)
+        return pa.PythonFile(f, mode="r")
+
+    def open_input_file(self, path):
+        return self._fs.open_input_file(path)
+
+    def create_dir(self, path, recursive):
+        raise NotImplementedError
+
+    def delete_dir(self, path):
+        raise NotImplementedError
+
+    def delete_dir_contents(self, path, missing_dir_ok=False):
+        raise NotImplementedError
+
+    def delete_root_dir_contents(self):
+        raise NotImplementedError
+
+    def delete_file(self, path):
+        raise NotImplementedError
+
+    def move(self, src, dest):
+        raise NotImplementedError
+
+    def copy_file(self, src, dest):
+        raise NotImplementedError
+
+    def open_output_stream(self, path, metadata):
+        raise NotImplementedError
+
+    def open_append_stream(self, path, metadata):
+        raise NotImplementedError
+
+
+def test_read_webdataset_v2_retries_transient_error_mid_read(
+    ray_start_2_cpus, tmp_path, monkeypatch
+):
+    # A tar stream can't be rewound, so a retry must reopen the shard instead of
+    # resuming on the stream that failed. Resuming would skip samples.
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = os.path.join(tmp_path, "data", "data-000000.tar")
+    os.makedirs(os.path.dirname(path))
+    with TarWriter(path) as writer:
+        for i in range(1000):
+            writer.write(f"{i:06d}.txt", f"{i:06d}".encode() * 50)
+    fs = pa.fs.PyFileSystem(
+        _FailOnceFileSystemHandler(
+            str(tmp_path / "failed"), fail_after=os.path.getsize(path) // 2
+        )
+    )
+
+    rows = ray.data.read_webdataset(path, filesystem=fs, decoder=None).take_all()
+
+    assert os.path.exists(tmp_path / "failed")
+    assert sorted(row["__key__"] for row in rows) == [f"{i:06d}" for i in range(1000)]
+
+
+def test_webdataset_datasource_v2_keeps_source_paths(tmp_path):
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_datasource_v2 import (  # noqa: E501
+        WebDatasetDatasourceV2,
+    )
+
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        writer.write("000000.txt", b"a")
+
+    datasource = WebDatasetDatasourceV2(paths=[f"file://{path}"])
+
+    assert datasource.paths == [path]
+    assert datasource.source_paths == [f"file://{path}"]
+
+
+def test_read_webdataset_v2_expand_json_skips_samples_without_json(
+    ray_start_2_cpus, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        writer.write("000000.cls", b"0")
+        writer.write("000000.json", b'{"width": 640}')
+        writer.write("000001.cls", b"1")
+
+    rows = sorted(
+        ray.data.read_webdataset(path, expand_json=True).take_all(),
+        key=lambda row: row["__key__"],
+    )
+
+    assert [row["width"] for row in rows] == [640, None]
+
+
+def test_read_webdataset_v2_expand_json_rejects_colliding_field(
+    ray_start_2_cpus, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        writer.write("000000.cls", b"1")
+        writer.write("000000.json", b'{"cls": 5}')
+
+    with pytest.raises(Exception, match="expand_json can't add JSON field 'cls'"):
+        ray.data.read_webdataset(path, expand_json=True).take_all()
+
+
+def test_read_webdataset_v2_one_element_lists(ray_start_2_cpus, tmp_path, monkeypatch):
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_utils import (
+        WEBDATASET_READ_CHUNK_SIZE,
+    )
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    num_samples = WEBDATASET_READ_CHUNK_SIZE + 10
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        for i in range(num_samples):
+            value = ["a"] if i < WEBDATASET_READ_CHUNK_SIZE else ["a", "b"]
+            writer.write(f"{i:06d}.json", json.dumps(value).encode("utf-8"))
+
+    rows = sorted(
+        ray.data.read_webdataset(path, override_num_blocks=1).take_all(),
+        key=lambda row: row["__key__"],
+    )
+    assert len(rows) == num_samples
+    assert list(rows[0]["json"]) == ["a"]
+    assert list(rows[-1]["json"]) == ["a", "b"]
+
+
+def test_group_by_keys_duplicate_member_without_meta():
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_utils import (
+        _group_by_keys,
+    )
+
+    data = [
+        {"fname": "001.jpg", "data": b"a"},
+        {"fname": "001.jpg", "data": b"b"},
+    ]
+    with pytest.raises(ValueError, match="duplicate file name"):
+        list(_group_by_keys(data))
+
+
+def test_webdataset_grayscale_round_trip(ray_start_2_cpus, tmp_path, use_datasource_v2):
+    gray = np.arange(28 * 28, dtype=np.uint8).reshape(28, 28)
+    os.makedirs(tmp_path / "in")
+    with TarWriter(str(tmp_path / "in" / "data-000000.tar")) as writer:
+        writer.write("000000.png", _png_bytes(gray))
+
+    ray.data.read_webdataset(str(tmp_path / "in")).write_webdataset(
+        str(tmp_path / "out")
+    )
+    [row] = ray.data.read_webdataset(str(tmp_path / "out")).take_all()
+
+    expected_shape = (28, 28, 1) if use_datasource_v2 else (28, 28)
+    assert row["png"].shape == expected_shape
+    np.testing.assert_array_equal(row["png"].reshape(28, 28), gray)
 
 
 if __name__ == "__main__":
