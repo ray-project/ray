@@ -5,6 +5,7 @@ registration, ``KVAwareRouter`` binding to it, and the
 
 import asyncio
 import sys
+from types import SimpleNamespace
 from typing import List
 
 import pytest
@@ -18,6 +19,8 @@ from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware import kv_token_tracker
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     KVTokenTracker,
+    PeerUpdateForwarder,
+    PeerUpdateKind,
     build_kv_token_tracker,
     get_kv_token_tracker,
     get_worker_id,
@@ -38,7 +41,13 @@ def reset_process_global():
 class _SpyTracker:
     """Records constructor kwargs; skips the real selection service + LongPoll."""
 
-    def __init__(self, *, indexer_threads, serve_deployment_id, session_affinity_ttl_s):
+    def __init__(
+        self,
+        *,
+        indexer_threads,
+        serve_deployment_id,
+        session_affinity_ttl_s=1800,
+    ):
         self.session_affinity_ttl_s = session_affinity_ttl_s
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
@@ -119,6 +128,20 @@ def test_router_binds_tracker():
     router = KVAwareRouter.__new__(KVAwareRouter)
     router.initialize_state()
     assert router._kv_token_tracker is sentinel
+
+
+def test_router_binds_tracker_for_its_deployment():
+    first = _SpyTracker(indexer_threads=1, serve_deployment_id="dep-1")
+    second = _SpyTracker(indexer_threads=1, serve_deployment_id="dep-2")
+    set_kv_token_tracker(first)
+    set_kv_token_tracker(second)
+
+    router = KVAwareRouter.__new__(KVAwareRouter)
+    router._deployment_id = "dep-1"
+    router.initialize_state()
+
+    assert router._kv_token_tracker is first
+    assert get_kv_token_tracker("dep-2") is second
 
 
 def test_router_degrades_without_tracker():
@@ -215,6 +238,34 @@ class _RecordingSelectionService:
 
 
 @pytest.mark.asyncio
+async def test_replica_broadcast_targets_router_application_model():
+    class Target:
+        def __init__(self):
+            self.calls = []
+
+        async def on_model_replica_updates(self, model_id, source_writer_id, updates):
+            self.calls.append((model_id, source_writer_id, updates))
+
+    target = Target()
+    forwarder = PeerUpdateForwarder(
+        _TrackerBroadcastHandle(target), source_writer_id=7, model_id="model-a"
+    )
+    reservation = object()
+
+    forwarder.report(PeerUpdateKind.LOAD_RESERVATION, reservation)
+    await forwarder.flush()
+
+    assert target.calls == [
+        (
+            "model-a",
+            7,
+            [{"kind": PeerUpdateKind.LOAD_RESERVATION, "event": reservation}],
+        )
+    ]
+    forwarder.close()
+
+
+@pytest.mark.asyncio
 async def test_lifecycle_booking_end_to_end():
     """End-to-end router-local path on the real Dynamo selection service:
     select_and_reserve books load immediately, and engine lifecycle events move
@@ -243,7 +294,7 @@ async def test_lifecycle_booking_end_to_end():
         assert _active_requests(tracker, worker_id) == 1
 
         router = LLMRouter.__new__(LLMRouter)
-        router._kv_token_tracker = tracker
+        router._kv_state = SimpleNamespace(tracker=tracker)
         await router.on_lifecycle_events([("on_prefill_complete", ("req-e2e",))])
         assert _active_requests(tracker, worker_id) == 1
         await router.on_lifecycle_events([("on_request_completed", ("req-e2e",))])
@@ -408,7 +459,7 @@ async def _broadcast_one_selection(session_id=None):
 async def _apply_from(source, peer, updates) -> None:
     """Deliver ``updates`` from ``source`` through the peer's LLMRouter intake."""
     router = LLMRouter.__new__(LLMRouter)
-    router._kv_token_tracker = peer
+    router._kv_state = SimpleNamespace(tracker=peer)
     await router.on_replica_updates(source._replication_writer_id, updates)
     await peer.flush_replica_updates()
 

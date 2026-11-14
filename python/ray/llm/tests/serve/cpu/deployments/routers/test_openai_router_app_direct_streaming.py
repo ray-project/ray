@@ -1,12 +1,17 @@
 """End-to-end tests for `build_openai_router_app` over HAProxy."""
 
+import asyncio
 import json
 import sys
+from contextlib import aclosing
+from types import SimpleNamespace
 from typing import Dict, List, Optional
 from unittest.mock import patch
 
 import httpx
 import pytest
+from vllm.sampling_params import RequestOutputKind, SamplingParams
+from vllm.v1.executor.abstract import Executor
 
 import ray
 from ray import serve
@@ -15,18 +20,31 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.core.ingress import router_application
 from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
     build_openai_router_app,
 )
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    KVTokenTracker,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm import tokenizer
+from ray.llm.tests.serve.cpu.deployments.routers.kv.test_request_lifecycle_tracking import (  # noqa: E501
+    MockSelectionService,
+    delta_steps,
+)
 from ray.llm.tests.serve.cpu.deployments.utils.direct_streaming_utils import (
     CONTENT_HASH_ROUTER,
     consistent_hash_deployment_config,
     requires_direct_streaming,
 )
+from ray.llm.tests.serve.mocks.mock_vllm_engine import MockAsyncLLM, MockVLLMEngine
 from ray.serve._private.constants import SERVE_SESSION_ID
 from ray.serve.config import RequestRouterConfig
+from ray.serve.llm.request_router import KVAwareRouter
 from ray.serve.schema import ApplicationStatus
 
 BASE_URL = "http://localhost:8000"
@@ -294,6 +312,173 @@ def test_scale_from_zero(applications):
     wait_for_condition(served, timeout=180, retry_interval_ms=2000)
     assert set(statuses) <= {200, 503}, statuses
     assert json.loads(_chat(model_id).text)["object"] == "chat.completion"
+
+
+@requires_direct_streaming
+def test_shared_kv_router_releases_streaming_reservation():
+    model_id = "kv-model"
+    router_name = "shared-kv-router"
+    request_id = "shared-kv-stream"
+
+    class StreamingAsyncLLM(MockAsyncLLM):
+        def __init__(self, **kwargs):
+            super().__init__(delta_steps(1))
+            self.finish_stream = asyncio.Event()
+
+        async def generate(self, *args, **kwargs):
+            async for output in super().generate(*args, **kwargs):
+                yield output
+            await self.finish_stream.wait()
+
+    class StreamingEngine(MockVLLMEngine):
+        async def start(self):
+            # Use the real engine setup to select the lifecycle destination from
+            # LLMConfig, while substituting a CPU-only generation client.
+            with patch(
+                "vllm.v1.engine.async_llm.AsyncLLM", StreamingAsyncLLM
+            ), patch.object(Executor, "get_class", return_value=None):
+                self.client = VLLMEngine._start_async_llm_engine(
+                    self,
+                    SimpleNamespace(enable_log_requests=False, disable_log_stats=True),
+                    SimpleNamespace(
+                        parallel_config=SimpleNamespace(),
+                        cache_config=SimpleNamespace(kv_offloading_size=None),
+                    ),
+                    placement_group=None,
+                )
+            await super().start()
+
+        async def chat(self, request, raw_request_info=None):
+            responses = super().chat(request, raw_request_info)
+            outputs = self.client.generate(
+                {"prompt_token_ids": [1, 2, 3]},
+                SamplingParams(max_tokens=2, output_kind=RequestOutputKind.DELTA),
+                "engine-request-id",
+            )
+            async with aclosing(outputs), aclosing(responses):
+                async for _ in outputs:
+                    yield await anext(responses)
+                async for response in responses:
+                    yield response
+
+    class StreamingServer(LLMServer):
+        _default_engine_cls = StreamingEngine
+
+        async def finish_stream(self):
+            self.engine.client.finish_stream.set()
+
+    class FixedTokenizer:
+        def __init__(self, config):
+            pass
+
+        async def tokenize(self, *args, **kwargs):
+            return [1, 2, 3]
+
+    def create_selection_service(tracker):
+        tracker._svc = MockSelectionService()
+        # The mock model has no KV events from which to learn the block size.
+        tracker._block_size = 16
+
+    class ObservedRouter(router_application.RouterApplication):
+        async def __init__(self, *args, **kwargs):
+            with patch.object(tokenizer, "Tokenizer", FixedTokenizer):
+                await super().__init__(*args, **kwargs)
+
+        async def _resolve_handle(self, *args, **kwargs):
+            with patch.object(
+                KVTokenTracker, "_create_selection_service", create_selection_service
+            ):
+                return await super()._resolve_handle(*args, **kwargs)
+
+        def reservation_state(self, request_id):
+            tracker = self._kv_states[model_id].tracker
+            return request_id in tracker._requests, tracker._svc.calls
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id=model_id),
+        server_cls=StreamingServer,
+        log_engine_metrics=False,
+        deployment_config={
+            **_deployment_config(1),
+            "request_router_config": RequestRouterConfig(
+                request_router_class=KVAwareRouter,
+                request_router_kwargs={
+                    "kv_router_application_name": router_name,
+                    "session_affinity_ttl_s": 0,
+                },
+            ),
+        },
+    )
+
+    serve.shutdown()
+    ray.shutdown()
+    try:
+        with patch.object(
+            VLLMEngineConfig, "placement_bundles", new=property(lambda self: [])
+        ):
+            model = serve.run(
+                build_openai_app({"llm_configs": [config]}),
+                name="kv-model-app",
+                route_prefix="/models/kv",
+            )
+        with patch.object(router_application, "RouterApplication", ObservedRouter):
+            app = build_openai_router_app(
+                {
+                    "model_applications": {model_id: "kv-model-app"},
+                    "llm_configs": [config],
+                }
+            )
+        deployment = app._bound_deployment
+        router = serve.run(
+            deployment.options(
+                name="RouterApplication", num_replicas=1, autoscaling_config=None
+            ).bind(**deployment.init_kwargs),
+            name=router_name,
+            route_prefix="/",
+        )
+
+        with httpx.stream(
+            "POST",
+            f"{BASE_URL}/v1/chat/completions",
+            headers={"x-request-id": request_id},
+            json={
+                "model": model_id,
+                "messages": [{"role": "user", "content": "hello"}],
+                "max_tokens": 2,
+                "stream": True,
+            },
+            timeout=30,
+        ) as response:
+            assert response.status_code == 200, response.read()
+            assert response.headers["content-type"].startswith("text/event-stream")
+            events = (
+                line.removeprefix("data: ")
+                for line in response.iter_lines()
+                if line.startswith("data: ")
+            )
+            assert json.loads(next(events))["object"] == "chat.completion.chunk"
+            active, calls = router.reservation_state.remote(request_id).result(
+                timeout_s=10
+            )
+            assert active
+            assert calls[0] == ("select_and_reserve", request_id, 2)
+            model.finish_stream.remote().result(timeout_s=10)
+            assert list(events)[-1] == "[DONE]"
+
+        def reservation_released():
+            active, calls = router.reservation_state.remote(request_id).result(
+                timeout_s=10
+            )
+            return not active and calls == [
+                ("select_and_reserve", request_id, 2),
+                ("prefill_complete", request_id),
+                ("free_reservation", request_id),
+            ]
+
+        wait_for_condition(reservation_released, timeout=10)
+    finally:
+        serve.shutdown()
+        ray.shutdown()
 
 
 if __name__ == "__main__":

@@ -19,13 +19,14 @@ from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
+ROUTER_APPLICATION_DEPLOYMENT_NAME = "RouterApplication"
+
 
 class LifecycleEventForwarder:
-    """Ordered, non-blocking bridge from the engine to every LLMRouter
-    replica's KVTokenTracker, which maintains per-replica token load
-    statistics. Each batch is broadcast to all ingress replicas, whose
-    selection services received the reservation through the ingress-side
-    background broadcast.
+    """Ordered, non-blocking bridge from the engine to KV routing replicas.
+
+    Each batch reaches the replicas whose selection services received the
+    reservation through the router-side background broadcast.
 
     ``report`` only enqueues locally, so generation never blocks on delivery.
     A single delivery task per replica drains the queue to the trackers,
@@ -34,9 +35,15 @@ class LifecycleEventForwarder:
     the next one.
     """
 
-    def __init__(self, handle: DeploymentHandle, worker_id: int):
+    def __init__(
+        self,
+        handle: DeploymentHandle,
+        worker_id: int,
+        model_id: Optional[str] = None,
+    ):
         self.handle = handle
         self.worker_id = worker_id
+        self.model_id = model_id
         self._events: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
 
@@ -57,9 +64,13 @@ class LifecycleEventForwarder:
             try:
                 # return_exceptions so one failed replica cannot mask delivery
                 # to the rest; failures are logged and dropped below.
-                results = await self.handle.broadcast(
-                    "on_lifecycle_events", batch
-                ).results_async(
+                method_name = (
+                    "on_model_lifecycle_events"
+                    if self.model_id is not None
+                    else "on_lifecycle_events"
+                )
+                args = (self.model_id, batch) if self.model_id is not None else (batch,)
+                results = await self.handle.broadcast(method_name, *args).results_async(
                     timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
                     return_exceptions=True,
                 )
@@ -136,7 +147,10 @@ class RequestTokenTracker:
 
 
 def enable_token_tracking(
-    engine_cls: Type[AsyncLLM], report_decode_progress: bool = False
+    engine_cls: Type[AsyncLLM],
+    report_decode_progress: bool = False,
+    model_id: Optional[str] = None,
+    kv_router_application_name: Optional[str] = None,
 ) -> Type[AsyncLLM]:
     """Decorator adding KV-router request lifecycle tracking."""
 
@@ -148,14 +162,22 @@ def enable_token_tracking(
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarder is None:
                 try:
-                    # The KVTokenTracker lives inside the LLMRouter, so
-                    # forward lifecycle events to its deployment handle method.
-                    handle = get_llm_router_handle()
+                    if kv_router_application_name is None:
+                        handle = get_llm_router_handle()
+                        destination_model_id = None
+                    else:
+                        handle = serve.get_deployment_handle(
+                            ROUTER_APPLICATION_DEPLOYMENT_NAME,
+                            app_name=kv_router_application_name,
+                        )
+                        destination_model_id = model_id
                     worker_id = get_worker_id(
                         serve.get_replica_context().replica_id.unique_id
                     )
                     self._lifecycle_forwarder = LifecycleEventForwarder(
-                        handle, worker_id
+                        handle,
+                        worker_id,
+                        model_id=destination_model_id,
                     )
                 except Exception as e:
                     # Warn once: resolution is retried per request until it succeeds.

@@ -22,21 +22,9 @@ from ray.llm._internal.serve.engines.vllm.vllm_engine import (
     _get_vllm_engine_config,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.router_state import TokenizeError
 
 logger = get_logger(__name__)
-
-
-class TokenizeError(Exception):
-    """A client error from vLLM's native prompt renderer.
-
-    Carries the HTTP ``status_code``, ``message`` and error ``type``.
-    """
-
-    def __init__(self, message: str, *, status_code: int, type: str):
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
-        self.type = type
 
 
 def build_tokenize_request(

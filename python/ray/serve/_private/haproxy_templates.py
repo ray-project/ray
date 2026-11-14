@@ -215,6 +215,8 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     {%- endif %}
+    # Drop client-supplied router-owned headers before applying any routing decision.
+    http-request del-header {{ ingress_request_router_header_prefix }} -m beg
     {%- if has_router_applications %}
     # Requests whose longest-prefix match is a router application: Lua asks it
     # for a replica; anything unrouted 503s, never reaching the router's backend.
@@ -227,8 +229,6 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl is_router_request var(txn.router_app) -m found
-    # Drop client-supplied Serve-owned headers.
-    http-request del-header {{ ingress_request_router_header_prefix }} -m beg if is_router_request
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if is_router_request
     http-request lua.route_via_router_application if is_router_request
     http-request return status 503 content-type text/plain lf-string "Router application failed: %[var(txn.router_failed)]" hdr X-Serve-Reason %[var(txn.router_failed)] hdr Retry-After 1 if is_router_request !{ var(txn.router_backend) -m found }
@@ -247,11 +247,9 @@ frontend http_frontend
     # metadata. Prefer the canonical underscore spelling when both are sent.
     http-request set-var-fmt(txn.multiplexed_model_id) %[req.hdr(serve_multiplexed_model_id)] if { req.hdr(serve_multiplexed_model_id) -m found } has_ingress_request_router_app
     http-request set-var-fmt(txn.multiplexed_model_id) %[req.hdr(serve-multiplexed-model-id)] if { req.hdr(serve-multiplexed-model-id) -m found } !{ var(txn.multiplexed_model_id) -m found } has_ingress_request_router_app
-    # Remove client-supplied values from the router-owned header namespace.
-    # Lua then applies trusted metadata returned by /internal/route.
-    http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
+    # Preserve trusted multiplexing headers returned by a router application.
     {%- for header in multiplexed_model_id_headers %}
-    http-request del-header {{ header }} if has_ingress_request_router_app
+    http-request del-header {{ header }} if has_ingress_request_router_app{% if has_router_applications %} !is_router_request{% endif %}
     {%- endfor %}
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if has_ingress_request_router_app
