@@ -1,5 +1,5 @@
-load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
 
 exports_files([
@@ -16,10 +16,10 @@ py_binary(
 py_library(
     name = "gen_extract",
     srcs = ["gen_extract.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ci_require("bazel-runfiles"),
     ],
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
