@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <ctime>
 #include <deque>
 #include <fstream>
 #include <iostream>
@@ -30,6 +31,7 @@
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
@@ -61,6 +63,10 @@ std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t detected_cpus,
 }
 
 namespace {
+
+constexpr char kContainerLaunchError[] =
+    "Worker container cancellation is pending on this node; retry the request. "
+    "see raylet and runtime env agent logs";
 
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
@@ -202,6 +208,9 @@ WorkerPool::~WorkerPool() {
   for (auto &entry : states_by_lang_) {
     // Kill all the worker processes.
     for (auto &worker_process : entry.second.worker_processes) {
+      if (worker_process.second.cleanup_retry_timer) {
+        worker_process.second.cleanup_retry_timer->cancel();
+      }
       auto pid = worker_process.second.proc->GetId();
       procs_to_kill.try_emplace(pid, std::move(worker_process.second.proc));
     }
@@ -292,7 +301,62 @@ const ProcessInterface &WorkerPool::AddWorkerProcess(
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state, const WorkerID &worker_id) {
+  if (auto &timer = state.worker_processes.at(worker_id).cleanup_retry_timer) {
+    timer->cancel();
+  }
   state.worker_processes.erase(worker_id);
+}
+
+void WorkerPool::StopWorkerContainer(const Language &language,
+                                     const WorkerID &worker_id,
+                                     State &state,
+                                     WorkerProcessInfo &info) {
+  if (info.cleanup_requested) return;
+  info.cleanup_requested = true;
+  info.is_pending_registration = false;
+  if (auto worker = GetWorker(state.registered_workers, worker_id)) {
+    worker->MarkDead();
+  }
+  pending_container_cancellations_.insert(worker_id);
+  SendStopWorkerContainer(state, worker_id, info);
+  // Container workers are ordinary workers. Release startup quota independently
+  // of cancellation delivery, without retaining info across new worker starts.
+  TryPendingStartRequests(language);
+  starting_worker_timeout_callback_();
+}
+
+void WorkerPool::SendStopWorkerContainer(State &state,
+                                         const WorkerID &worker_id,
+                                         const WorkerProcessInfo &info) {
+  // State entries are fixed after construction, but worker_processes can rehash.
+  // Only use info synchronously; look up the worker again in callbacks.
+  runtime_env_agent_client_->StopWorkerContainer(
+      worker_id,
+      node_id_,
+      info.job_id,
+      info.container_deadline_ms,
+      [this, &state, worker_id](bool accepted) {
+        auto it = state.worker_processes.find(worker_id);
+        if (it == state.worker_processes.end()) return;
+        if (!accepted) {
+          RAY_LOG(WARNING)
+              << "Container cancellation delivery failed; retrying. Worker ID: "
+              << worker_id;
+          it->second.cleanup_retry_timer = execute_after(
+              *io_service_,
+              [this, &state, worker_id]() {
+                auto retry_it = state.worker_processes.find(worker_id);
+                if (retry_it == state.worker_processes.end()) return;
+                SendStopWorkerContainer(state, worker_id, retry_it->second);
+              },
+              std::chrono::milliseconds(
+                  RayConfig::instance().agent_manager_retry_interval_ms()));
+          return;
+        }
+        pending_container_cancellations_.erase(worker_id);
+        DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
+        RemoveWorkerProcess(state, worker_id);
+      });
 }
 
 std::pair<std::vector<std::string>, ProcessEnvironment>
@@ -501,7 +565,14 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
     const int runtime_env_hash,
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info,
-    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
+    std::optional<absl::Duration> worker_startup_keep_alive_duration,
+    bool has_worker_container) {
+  const bool has_container = language == Language::PYTHON && has_worker_container;
+  if (has_container && !pending_container_cancellations_.empty()) {
+    *status = PopWorkerStatus::RuntimeEnvCreationFailed;
+    return {kNullProcess, WorkerID::Nil()};
+  }
+
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -556,6 +627,50 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                               serialized_runtime_env_context,
                               state);
 
+  int64_t container_deadline_ms = 0;
+  if (has_container) {
+    // Python's time.monotonic() uses CLOCK_MONOTONIC on Linux too. Wall-clock
+    // adjustments must not extend grants or poison subsequent launches.
+#ifdef __linux__
+    timespec now;
+    RAY_CHECK_EQ(clock_gettime(CLOCK_MONOTONIC, &now), 0);
+    container_deadline_ms = now.tv_sec * 1000 + now.tv_nsec / 1000000;
+#else
+    // Containers require Linux; keep the worker-pool unit tests portable.
+    container_deadline_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch())
+                                .count();
+#endif
+    container_deadline_ms +=
+        1000 * RayConfig::instance().worker_register_timeout_seconds();
+    env["RAY_WORKER_CONTAINER_LAUNCH_ID"] = worker_id.Hex();
+    env["RAY_WORKER_CONTAINER_SESSION_ID"] = node_id_.Hex();
+    env["RAY_WORKER_CONTAINER_JOB_ID"] = job_id.Hex();
+    env["RAY_WORKER_CONTAINER_DEADLINE_MS"] = std::to_string(container_deadline_ms);
+    // Registration and creation are idempotent. The agent suspends an early
+    // create request until this raylet-owned grant arrives.
+    runtime_env_agent_client_->RegisterWorkerContainer(
+        worker_id,
+        node_id_,
+        job_id,
+        container_deadline_ms,
+        [this, language, worker_id](bool registered) {
+          if (!registered) {
+            io_service_->post(
+                [this, language, worker_id]() {
+                  auto &callback_state = GetStateForLanguage(language);
+                  auto it = callback_state.worker_processes.find(worker_id);
+                  if (it != callback_state.worker_processes.end() &&
+                      it->second.is_pending_registration) {
+                    if (it->second.proc->IsAlive()) it->second.proc->Kill();
+                    StopWorkerContainer(language, worker_id, callback_state, it->second);
+                  }
+                },
+                "WorkerPool.ContainerRegistrationFailed");
+          }
+        });
+  }
+
   SteadyTimePoint start = clock_.SteadyNow();
   // Start a process and measure the startup time.
   std::unique_ptr<ProcessInterface> proc =
@@ -576,6 +691,10 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                        runtime_env_info,
                        dynamic_options,
                        worker_startup_keep_alive_duration);
+  state.worker_processes.at(worker_id).has_container = has_container;
+  state.worker_processes.at(worker_id).job_id = job_id;
+  if (has_container)
+    state.worker_processes.at(worker_id).container_deadline_ms = container_deadline_ms;
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -669,6 +788,10 @@ void WorkerPool::MonitorStartingWorkerProcess(const WorkerID &worker_id,
       }
 
       process_failed_pending_registration_++;
+      if (it->second.has_container) {
+        StopWorkerContainer(language, worker_id, state, it->second);
+        return;
+      }
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, worker_id);
       if (IsIOWorkerType(worker_type)) {
@@ -827,7 +950,8 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
         job_id,
         [job_id](bool successful,
                  const std::string &serialized_runtime_env_context,
-                 const std::string &setup_error_message) {
+                 const std::string &setup_error_message,
+                 bool has_worker_container) {
           if (successful) {
             RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
                           << ".";
@@ -867,7 +991,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const WorkerID &worker_id = worker->WorkerId();
   auto it = state.worker_processes.find(worker_id);
-  if (it == state.worker_processes.end()) {
+  if (it == state.worker_processes.end() || it->second.cleanup_requested) {
     RAY_LOG(WARNING).WithField(worker_id)
         << "Received a register request from an unknown worker";
     Status status = Status::Invalid("Unknown worker");
@@ -936,6 +1060,10 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   const auto &worker_type = worker->GetWorkerType();
 
   auto it = state.worker_processes.find(worker_id);
+  if (it != state.worker_processes.end() && it->second.cleanup_requested) {
+    worker->MarkDead();
+    return;
+  }
   if (it != state.worker_processes.end()) {
     it->second.is_pending_registration = false;
     // We may have slots to start more workers now.
@@ -1412,9 +1540,9 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
 
 void WorkerPool::StartNewWorker(
     const std::shared_ptr<PopWorkerRequest> &pop_worker_request) {
-  auto start_worker_process_fn = [this](
-                                     std::shared_ptr<PopWorkerRequest> request,
-                                     const std::string &serialized_runtime_env_context) {
+  auto start_worker_process_fn = [this](std::shared_ptr<PopWorkerRequest> request,
+                                        const std::string &serialized_runtime_env_context,
+                                        bool has_worker_container) {
     auto &state = GetStateForLanguage(request->language_);
     const std::string &serialized_runtime_env =
         request->runtime_env_info_.serialized_runtime_env();
@@ -1429,7 +1557,8 @@ void WorkerPool::StartNewWorker(
                            request->runtime_env_hash_,
                            serialized_runtime_env_context,
                            request->runtime_env_info_,
-                           request->worker_startup_keep_alive_duration_);
+                           request->worker_startup_keep_alive_duration_,
+                           has_worker_container);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
@@ -1440,6 +1569,10 @@ void WorkerPool::StartNewWorker(
       // but reuse it the next time we retry the request.
       DeleteRuntimeEnvIfPossible(serialized_runtime_env);
       state.pending_start_requests.emplace_back(std::move(request));
+    } else if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
+      DeleteRuntimeEnvIfPossible(serialized_runtime_env);
+      process_failed_runtime_env_setup_failed_++;
+      request->callback_(nullptr, status, kContainerLaunchError);
     } else {
       DeleteRuntimeEnvIfPossible(serialized_runtime_env);
       PopWorkerCallbackAsync(std::move(request->callback_), nullptr, status);
@@ -1458,9 +1591,11 @@ void WorkerPool::StartNewWorker(
         [this, start_worker_process_fn, pop_worker_request](
             bool successful,
             const std::string &serialized_runtime_env_context,
-            const std::string &setup_error_message) {
+            const std::string &setup_error_message,
+            bool has_worker_container) {
           if (successful) {
-            start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
+            start_worker_process_fn(
+                pop_worker_request, serialized_runtime_env_context, has_worker_container);
           } else {
             process_failed_runtime_env_setup_failed_++;
             pop_worker_request->callback_(
@@ -1470,7 +1605,7 @@ void WorkerPool::StartNewWorker(
           }
         });
   } else {
-    start_worker_process_fn(pop_worker_request, "");
+    start_worker_process_fn(pop_worker_request, "", false);
   }
 }
 
@@ -1627,7 +1762,8 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
         lease_spec.JobId(),
         [this, lease_spec = lease_spec](bool successful,
                                         const std::string &serialized_runtime_env_context,
-                                        const std::string &setup_error_message) {
+                                        const std::string &setup_error_message,
+                                        bool has_worker_container) {
           if (!successful) {
             RAY_LOG(ERROR) << "Fails to create or get runtime env "
                            << setup_error_message;
@@ -1641,7 +1777,9 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                              /*dynamic_options=*/{},
                              lease_spec.GetRuntimeEnvHash(),
                              serialized_runtime_env_context,
-                             lease_spec.RuntimeEnvInfo());
+                             lease_spec.RuntimeEnvInfo(),
+                             std::nullopt,
+                             has_worker_container);
         });
   }
 }
@@ -1651,7 +1789,14 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   MarkPortAsFree(worker->AssignedPort());
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.worker_processes.find(worker->WorkerId());
-  if (it != state.worker_processes.end()) {
+  const bool was_starting =
+      it != state.worker_processes.end() && it->second.is_pending_registration;
+  const bool container_cleanup_pending = it != state.worker_processes.end() &&
+                                         it->second.has_container &&
+                                         it->second.is_pending_registration;
+  if (container_cleanup_pending) {
+    StopWorkerContainer(worker->GetLanguage(), worker->WorkerId(), state, it->second);
+  } else if (it != state.worker_processes.end() && !it->second.cleanup_requested) {
     const auto serialized_runtime_env =
         it->second.runtime_env_info.serialized_runtime_env();
     if (it->second.is_pending_registration) {
@@ -1674,7 +1819,8 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   if (IsIOWorkerType(worker->GetWorkerType())) {
     auto &io_worker_state =
         GetIOWorkerStateFromWorkerType(worker->GetWorkerType(), state);
-    if (!RemoveWorker(io_worker_state.started_io_workers, worker)) {
+    if (!RemoveWorker(io_worker_state.started_io_workers, worker) &&
+        !container_cleanup_pending && was_starting) {
       // IO worker is either starting or started,
       // if it's not started, we should remove it from starting.
       io_worker_state.num_starting_io_workers--;
@@ -1919,9 +2065,10 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
       [job_id, serialized_runtime_env, runtime_env_config, callback](
           bool successful,
           const std::string &serialized_runtime_env_context,
-          const std::string &setup_error_message) {
+          const std::string &setup_error_message,
+          bool has_worker_container) {
         if (successful) {
-          callback(true, serialized_runtime_env_context, "");
+          callback(true, serialized_runtime_env_context, "", has_worker_container);
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
                            << ".";
@@ -1929,7 +2076,8 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
                          << serialized_runtime_env;
           callback(/*successful=*/false,
                    /*serialized_runtime_env_context=*/"",
-                   /*setup_error_message=*/setup_error_message);
+                   /*setup_error_message=*/setup_error_message,
+                   false);
         }
       });
 }
