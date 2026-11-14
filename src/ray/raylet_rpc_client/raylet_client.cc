@@ -325,6 +325,7 @@ void RayletClient::PinObjectIDs(
     const rpc::Address &caller_address,
     const std::vector<ObjectID> &object_ids,
     const ObjectID &generator_id,
+    const WorkerID &producer_worker_id,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(caller_address);
@@ -333,6 +334,9 @@ void RayletClient::PinObjectIDs(
   }
   if (!generator_id.IsNil()) {
     request.set_generator_id(generator_id.Binary());
+  }
+  if (!producer_worker_id.IsNil()) {
+    request.set_producer_worker_id(producer_worker_id.Binary());
   }
 
   // NOTE: this callback can execute after the RayletClient instance is destroyed, so

@@ -119,6 +119,17 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto fake_raylet_ipc_client = std::make_shared<ipc::FakeRayletIpcClient>();
 
+    fake_plasma_client_ = std::make_shared<plasma::FakePlasmaClient>();
+    auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
+        /*store_socket=*/"",
+        fake_raylet_ipc_client,
+        /*check_signals=*/[] { return Status::OK(); },
+        /*warmup=*/false,
+        /*store_client=*/fake_plasma_client_,
+        /*fetch_batch_size=*/1,
+        /*clock=*/clock_,
+        /*get_current_call_site=*/nullptr);
+
     auto service_handler = std::make_unique<CoreWorkerServiceHandlerProxy>();
     auto worker_context = std::make_unique<WorkerContext>(
         WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1));
@@ -268,8 +279,8 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto periodical_runner = std::make_unique<FakePeriodicalRunner>();
 
-    // TODO(joshlee): Dependency inject socket into plasma_store_provider_ so we can
-    // create a real plasma_store_provider_ and mutable_object_provider_
+    // TODO(joshlee): Dependency inject socket into mutable_object_provider_ so we can
+    // create a real mutable_object_provider_
     core_worker_ = std::make_shared<CoreWorker>(
         std::move(options),
         std::move(worker_context),
@@ -287,7 +298,7 @@ class CoreWorkerTest : public ::testing::Test {
         object_freed_callback_thread_,
         reference_counter_,
         memory_store_,
-        nullptr,  // plasma_store_provider_
+        std::move(plasma_store_provider),
         nullptr,  // mutable_object_provider_
         std::move(future_resolver),
         task_manager_,
@@ -335,6 +346,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
   std::shared_ptr<rpc::FakeRayletClient> local_raylet_client_;
+  std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
   pubsub::Publisher *object_info_publisher_;
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<gcs::FakeGcsClient> fake_gcs_client_;
@@ -2259,6 +2271,118 @@ TEST_F(CoreWorkerTest, OnObjectFreedRunsNothingWithoutHook) {
   ASSERT_TRUE(reply_status.ok());
   task_execution_service_.poll();
   ASSERT_TRUE(hook_calls_.empty());
+}
+
+class CoreWorkerProducerIdTest : public CoreWorkerTest {
+ protected:
+  /// Creates and pins an object the way Python's `ray.put` does.
+  ObjectID PutLikePython() {
+    ObjectID object_id;
+    std::shared_ptr<Buffer> data;
+    RAY_CHECK_OK(core_worker_->CreateOwnedAndIncrementLocalRef(
+        /*is_experimental_mutable_object=*/false,
+        metadata_,
+        /*data_size=*/8,
+        /*contained_object_ids=*/{},
+        &object_id,
+        &data));
+    RAY_CHECK_OK(core_worker_->SealOwned(object_id, /*pin_object=*/true));
+    return object_id;
+  }
+
+  /// Creates and pins an object the way a task return is stored.
+  ObjectID StoreTaskReturn() {
+    const ObjectID object_id = ObjectID::FromRandom();
+    std::shared_ptr<Buffer> data;
+    RAY_CHECK_OK(core_worker_->CreateExisting(metadata_,
+                                              /*data_size=*/8,
+                                              object_id,
+                                              owner_address_,
+                                              &data,
+                                              /*created_by_worker=*/true));
+    RAY_CHECK_OK(
+        core_worker_->SealExisting(object_id,
+                                   /*pin_object=*/true,
+                                   /*generator_id=*/ObjectID::Nil(),
+                                   std::make_unique<rpc::Address>(owner_address_)));
+    return object_id;
+  }
+
+  WorkerID CreatedProducer(const ObjectID &object_id) {
+    return fake_plasma_client_->producer_worker_ids.at(object_id);
+  }
+
+  WorkerID PinnedProducer(const ObjectID &object_id) {
+    return local_raylet_client_->pinned_producer_worker_ids.at(object_id);
+  }
+
+  std::shared_ptr<Buffer> metadata_ =
+      std::make_shared<LocalMemoryBuffer>(std::vector<uint8_t>{1}.data(), 1, true);
+  rpc::Address owner_address_ = [] {
+    rpc::Address address;
+    address.set_node_id(NodeID::FromRandom().Binary());
+    address.set_worker_id(WorkerID::FromRandom().Binary());
+    return address;
+  }();
+};
+
+TEST_F(CoreWorkerProducerIdTest, ObjectsRecordNoProducerWithoutHook) {
+  const ObjectID put_id = PutLikePython();
+  const ObjectID return_id = StoreTaskReturn();
+
+  for (const ObjectID &object_id : {put_id, return_id}) {
+    ASSERT_TRUE(CreatedProducer(object_id).IsNil());
+    ASSERT_TRUE(PinnedProducer(object_id).IsNil());
+  }
+}
+
+TEST_F(CoreWorkerProducerIdTest, HookActorRecordsItselfOnPutsAndTaskReturns) {
+  core_worker_->SetProducerFreedCallback(/*enabled=*/true, /*concurrency_group=*/"");
+  const ObjectID put_id = PutLikePython();
+  const ObjectID return_id = StoreTaskReturn();
+
+  for (const ObjectID &object_id : {put_id, return_id}) {
+    ASSERT_EQ(CreatedProducer(object_id), core_worker_->GetWorkerID());
+    ASSERT_EQ(PinnedProducer(object_id), core_worker_->GetWorkerID());
+  }
+}
+
+TEST_F(CoreWorkerProducerIdTest, HookActorRecordsNoProducerOnObjectsItDidNotCreate) {
+  core_worker_->SetProducerFreedCallback(/*enabled=*/true, /*concurrency_group=*/"");
+
+  // A copy restored from a spilled file.
+  const ObjectID restored_id = ObjectID::FromRandom();
+  std::shared_ptr<Buffer> data;
+  ASSERT_TRUE(core_worker_
+                  ->CreateExisting(metadata_,
+                                   /*data_size=*/8,
+                                   restored_id,
+                                   owner_address_,
+                                   &data,
+                                   /*created_by_worker=*/false)
+                  .ok());
+  ASSERT_TRUE(CreatedProducer(restored_id).IsNil());
+
+  // An object stored through PutInLocalPlasmaStore, as the owner does for errors and
+  // re-executed tasks' returns.
+  ObjectID stored_id;
+  ASSERT_TRUE(core_worker_
+                  ->Put(RayObject(std::make_shared<LocalMemoryBuffer>(8), nullptr, {}),
+                        /*contained_object_ids=*/{},
+                        &stored_id)
+                  .ok());
+  ASSERT_TRUE(CreatedProducer(stored_id).IsNil());
+  ASSERT_TRUE(PinnedProducer(stored_id).IsNil());
+
+  // A task return that an earlier execution already stored.
+  const ObjectID existing_return_id = ObjectID::FromRandom();
+  fake_plasma_client_->MarkLocal({existing_return_id});
+  std::shared_ptr<RayObject> return_object;
+  ASSERT_TRUE(core_worker_->PinExistingReturnObject(existing_return_id,
+                                                    &return_object,
+                                                    /*generator_id=*/ObjectID::Nil(),
+                                                    owner_address_));
+  ASSERT_TRUE(PinnedProducer(existing_return_id).IsNil());
 }
 
 }  // namespace core

@@ -118,10 +118,15 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// that should already be owned by the same worker. If the outer ObjectID is
   /// still in scope, then the owner can add the dynamically created ObjectID
   /// to its ref count. Set to nil for statically allocated ObjectIDs.
-  void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
-                                std::vector<std::unique_ptr<RayObject>> &&objects,
-                                const rpc::Address &owner_address,
-                                const ObjectID &generator_id = ObjectID::Nil()) override;
+  /// \param producer_worker_id The worker that created the objects, if its actor
+  /// defines `__on_object_freed__`. Nil otherwise. An object that is already pinned
+  /// keeps the producer recorded by its first pin, unless that pin recorded none.
+  void PinObjectsAndWaitForFree(
+      const std::vector<ObjectID> &object_ids,
+      std::vector<std::unique_ptr<RayObject>> &&objects,
+      const rpc::Address &owner_address,
+      const ObjectID &generator_id = ObjectID::Nil(),
+      const WorkerID &producer_worker_id = WorkerID::Nil()) override;
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
@@ -215,21 +220,28 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
       const NodeID &node_id) const override;
 
+  /// The record stays until the object's last copy here is deleted, so it survives
+  /// spilling, eviction of the in-memory copy, and a free while spilled.
+  WorkerID GetProducerWorkerId(const ObjectID &object_id) const override;
+
   std::string DebugString() const override;
 
  private:
   struct LocalObjectInfo {
     LocalObjectInfo(const rpc::Address &owner_address,
                     const ObjectID &generator_id,
-                    size_t object_size)
+                    size_t object_size,
+                    const WorkerID &producer_worker_id)
         : owner_address_(owner_address),
           generator_id_(generator_id.IsNil() ? std::nullopt
                                              : std::optional<ObjectID>(generator_id)),
-          object_size_(object_size) {}
+          object_size_(object_size),
+          producer_worker_id_(producer_worker_id) {}
     rpc::Address owner_address_;
     bool is_freed_ = false;
     std::optional<ObjectID> generator_id_;
     size_t object_size_;
+    WorkerID producer_worker_id_;
   };
 
   FRIEND_TEST(LocalObjectManagerTest, TestTryToSpillObjectsZero);
