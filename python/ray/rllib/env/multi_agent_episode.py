@@ -414,7 +414,12 @@ class MultiAgentEpisode:
         # not yet terminated. If at least one agent terminated, declare the episode
         # terminated. If all agents were only truncated, declare it truncated, so the
         # last observations are still bootstrapped and not treated as terminal.
-        if not self.is_terminated and all(aid in agents_done for aid in self.agent_ids):
+        # Agents observed for the first time in this step count as well: they are
+        # only added to `self.agent_episodes` further below.
+        if not self.is_terminated and all(
+            aid in agents_done
+            for aid in self.agent_episodes.keys() | observations.keys()
+        ):
             if any(
                 terminateds.get(aid, False)
                 or (
