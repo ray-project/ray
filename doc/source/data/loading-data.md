@@ -867,7 +867,7 @@ Ray Data reads from databases such as MySQL, PostgreSQL, MongoDB, and BigQuery.
 
 ### Reading HiveServer2
 
-Install `impyla` on the driver and Ray workers, then call {func}`~ray.data.read_hive`
+For the default HS2 mode, install `impyla` on the driver and Ray workers, then call {func}`~ray.data.read_hive`
 with a table name. Table reads infer their Arrow schema from HiveServer2 metadata.
 For a trusted, row-producing SQL query, pass `query` and an explicit `pyarrow.Schema`; the query is sent to HiveServer2 as given. Result columns must match the schema in count and order; names match case-insensitively, and types must use a supported Arrow mapping. Hive may prefix `SELECT *` result labels with the table name or alias. Use those labels in the schema or alias columns in your query.
 
@@ -881,11 +881,11 @@ Because table reads use `SELECT *`, an unsupported column type prevents reading 
 
 The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` into HiveServer2. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause.
 
-Pass a zero-argument `connection_factory` that Ray can serialize and that returns a new connection from `impala.dbapi.connect()` on each call. Ray calls the factory on the driver for table metadata and on the read worker for data. Query reads with an explicit schema only call it on the read worker. Ray closes each returned connection. Install the factory's dependencies and make its credentials and certificate files available wherever it runs.
+Pass a zero-argument `connection_factory` that Ray can serialize and that returns a new connection from `impala.dbapi.connect()` on each call. In HS2 mode, Ray calls the factory on the driver for table metadata and on the read worker for data. Query reads with an explicit schema only call it on the read worker. In direct mode, Ray calls it on the driver for table metadata; workers read storage directly. Ray closes each returned connection. Install the factory's dependencies and make its credentials and certificate files available wherever it runs.
 
-Configure authentication, transport, TLS certificate verification, and client retries in the factory. Choose `auth_mechanism` explicitly when calling `impala.dbapi.connect()`. Use `NOSASL` only with a HiveServer2 configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple Authentication and Security Layer (SASL) mechanism. Use a non-sensitive placeholder password because that server mode doesn't check it. `PLAIN` doesn't encrypt the password without TLS. For TLS connections, set `verify_cert=True` or provide a trusted `ca_cert`. For `GSSAPI`, install `impyla[kerberos]`, set `kerberos_service_name="hive"`, and configure authentication credentials on the driver and read worker.
+Configure authentication, transport, TLS certificate verification, and client retries in the factory. Choose `auth_mechanism` explicitly when calling `impala.dbapi.connect()`. Use `NOSASL` only with a HiveServer2 configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple Authentication and Security Layer (SASL) mechanism. Use a non-sensitive placeholder password because that server mode doesn't check it. `PLAIN` doesn't encrypt the password without TLS. For TLS, set `use_ssl=True`, `verify_cert=True`, and `ca_cert` to a trusted certificate authority (CA) file. The host name must match the server certificate.
 
-The real-server integration test verifies the `PLAIN` mechanism with HiveServer2 in server mode `NONE`. It doesn't cover `NOSASL` or `GSSAPI`.
+The HS2 TLS integration suite exercises verified TLS with Hive 4.2.0 and `impyla==0.23.0`, using `PLAIN` with HiveServer2 in server mode `NONE`. GSSAPI and NOSASL aren't covered by this TLS suite.
 
 Read credentials inside the factory. Captured values, including passwords stored in a closure or `functools.partial`, can be serialized with the factory. The optional `user` argument to `read_hive` sets the HS2 session or proxy user through `connection.cursor(user=user)`. Configure the authentication user separately in the factory.
 
@@ -959,6 +959,35 @@ dataset = ray.data.read_hive(
     override_num_blocks=8,
 )
 ```
+
+(read-hive-auth-tls)=
+#### Configure TLS certificate verification
+
+Configure verified TLS inside `connection_factory` and make the trusted CA file available wherever the factory runs. The host name must match the server certificate. For GSSAPI, install `impyla[kerberos]` and provide the required credentials wherever the factory runs; the TLS validation described here doesn't cover GSSAPI.
+
+```python
+def create_tls_connection():
+    import os
+
+    from impala.dbapi import connect
+
+    return connect(
+        host=os.environ["HIVE_HOST"],
+        port=10000,
+        auth_mechanism="PLAIN",
+        user=os.environ["HIVE_USER"],
+        password=os.environ["HIVE_PASSWORD"],
+        use_ssl=True,
+        verify_cert=True,
+        ca_cert=os.environ["HIVE_CA_CERT"],
+        timeout=30,
+        retries=1,
+    )
+```
+
+Pass the factory through `connection_factory`. Read credentials inside the factory rather than capturing them in a serialized closure. In HS2 mode, table metadata is queried on the driver and data is read on a worker; an explicit-schema query connects on the worker. In direct mode, only the driver connects to HiveServer2; workers need their storage credentials separately. Make the CA file and connection settings available on every node where the factory runs.
+
+The socket timeout bounds client socket operations, not server-side query cancellation. `retries=1` requests one RPC attempt; Ray's separate HS2 no-replay contract still applies. Ray doesn't switch authentication modes or disable certificate verification after a failure. Underlying exception causes can contain sensitive details; Ray doesn't automatically redact SQL or credentials from arbitrary factories or exceptions.
 
 (reading_sql)=
 (reading-sql-databases)=

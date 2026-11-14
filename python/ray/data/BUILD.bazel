@@ -297,6 +297,41 @@ py_test(
 )
 
 py_test(
+    name = "test_hive_auth_utils",
+    size = "small",
+    srcs = [
+        "tests/datasource/_hive_test_utils.py",
+        "tests/datasource/test_hive_auth_utils.py",
+    ],
+    data = ["tests/datasource/test_hive_auth_integration.py"],
+    tags = ["team:data"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_auth_integration",
+    size = "large",
+    srcs = [
+        "tests/datasource/_hive_test_utils.py",
+        "tests/datasource/test_hive_auth_integration.py",
+        "tests/datasource/test_hive_integration.py",
+    ],
+    main = "tests/datasource/test_hive_auth_integration.py",
+    tags = [
+        "hive_auth_integration",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_snowflake",
     size = "small",
     srcs = ["tests/datasource/test_snowflake.py"],

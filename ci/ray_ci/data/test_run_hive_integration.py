@@ -71,7 +71,7 @@ def run_script(tmp_path):
     for tool in ("docker", "bazel", "sleep"):
         (tmp_path / tool).symlink_to(executable)
 
-    def run(scenario, cleanup="success"):
+    def run(scenario, cleanup="success", tls=False):
         calls_path = tmp_path / "calls.jsonl"
         env = {
             **os.environ,
@@ -84,7 +84,11 @@ def run_script(tmp_path):
             "CLEANUP": cleanup,
         }
         result = subprocess.run(
-            ["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=15
+            ["bash", str(SCRIPT), *(["--tls"] if tls else [])],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         calls = [json.loads(line) for line in calls_path.read_text().splitlines()]
         assert calls[-4:] == [
@@ -186,6 +190,33 @@ def test_already_absent_resources_are_clean(run_script, scenario, exit_code):
     assert "Removal failed:" in result.stderr
     assert "Resource remains after cleanup:" not in result.stderr
     assert "Could not verify cleanup" not in result.stderr
+
+
+def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script, monkeypatch):
+    monkeypatch.setenv("RAYCI_CHECKOUT_DIR", "/docker-host/ray checkout")
+    result, calls = run_script("success", tls=True)
+    assert result.returncode == 0, result.stderr
+    service = next(call for call in calls if call[:2] == ["docker", "run"])
+    assert service[service.index("-v") + 1] == (
+        "/docker-host/ray checkout/ci/ray_ci/data/hive_tls_entry.sh:"
+        "/tmp/hive_tls_entry.sh:ro"
+    )
+    assert "wrong-hiveserver2" in service
+    assert "HIVE_TLS_PASSWORD" in service
+    assert not any(arg.startswith("HIVE_TLS_PASSWORD=") for arg in service)
+    test = next(call for call in calls if call[0] == "bazel")
+    assert "//python/ray/data:test_hive_auth_integration" in test
+    assert test[test.index("--bisect-run-test-target") + 1] == (
+        "//python/ray/data:test_hive_auth_integration"
+    )
+    envs = [test[i + 1] for i, arg in enumerate(test) if arg == "--test-env"]
+    assert "RAY_HIVE_TEST_USE_SSL=true" in envs
+    assert any(value.startswith("RAY_HIVE_CA_PEM_B64=") for value in envs)
+    assert not any(value.startswith("HIVE_TLS_PASSWORD") for value in envs)
+    assert any(
+        call[:2] == ["docker", "exec"] and "/tmp/ray-hive-tls/ca.pem" in call
+        for call in calls
+    )
 
 
 if __name__ == "__main__":
