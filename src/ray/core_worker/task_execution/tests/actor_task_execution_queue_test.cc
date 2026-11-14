@@ -826,6 +826,48 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   queue.Stop();
 }
 
+TEST(UnorderedActorTaskExecutionQueueTest, TestClientProcessedUpToRejectsStaleTask) {
+  instrumented_io_context io_service;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
+  ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+  auto pool_manager = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>();
+
+  int n_executed = 0;
+  int n_canceled = 0;
+  UnorderedActorTaskExecutionQueue queue(
+      io_service,
+      waiter,
+      task_event_buffer,
+      ray_task_event_recorder,
+      pool_manager,
+      /*fiber_state_manager=*/nullptr,
+      /*is_asyncio=*/false,
+      /*fiber_max_concurrency=*/1,
+      /*concurrency_groups=*/{},
+      [&](TaskToExecute &) { n_executed++; },
+      [&](const TaskToExecute &, const Status &status) {
+        EXPECT_TRUE(status.IsInvalid());
+        n_canceled++;
+      });
+
+  const auto job_id = JobID::FromInt(1);
+  auto stale = CreateActorTaskSpec(0, /*is_retry=*/false, /*dependency=*/true);
+  stale.GetMutableMessage().set_task_id(TaskID::FromRandom(job_id).Binary());
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(stale));
+  EXPECT_EQ(n_executed, 0);
+
+  auto newer = CreateActorTaskSpec(1);
+  newer.GetMutableMessage().set_task_id(TaskID::FromRandom(job_id).Binary());
+  EnqueueWithFetch(queue, waiter, 1, 0, MakeTaskToExecute(newer));
+  EXPECT_EQ(n_executed, 1);
+
+  waiter.Complete(0);
+  EXPECT_EQ(n_executed, 1);
+  EXPECT_EQ(n_canceled, 1);
+  queue.Stop();
+}
+
 TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
   // Test that if multiple attempts of the same task are received,
   // the next attempt only runs after the previous attempt finishes.
