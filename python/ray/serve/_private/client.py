@@ -4,6 +4,7 @@ import logging
 import random
 import time
 from collections.abc import Sequence
+from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 
@@ -48,6 +49,19 @@ from ray.serve.schema import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+class ClientState(Enum):
+    """Where a `ServeControllerClient` is in its lifecycle.
+
+    Only ever moves forward. A shutdown that fails partway leaves the client in
+    `SHUTTING_DOWN` for good: it can't tell whether the Serve instance survived,
+    so `serve.shutdown*` drops it as the global client rather than reusing it.
+    """
+
+    RUNNING = "RUNNING"
+    SHUTTING_DOWN = "SHUTTING_DOWN"
+    SHUT_DOWN = "SHUT_DOWN"
+
+
 def _ensure_connected(f: Callable) -> Callable:
     """Raise if the client has been shut down before running `f`.
 
@@ -59,7 +73,7 @@ def _ensure_connected(f: Callable) -> Callable:
 
         @wraps(f)
         async def check_async(self, *args, **kwargs):
-            if self._shutdown:
+            if self._state is ClientState.SHUT_DOWN:
                 raise RayServeException("Client has already been shut down.")
             return await f(self, *args, **kwargs)
 
@@ -67,7 +81,7 @@ def _ensure_connected(f: Callable) -> Callable:
 
     @wraps(f)
     def check(self, *args, **kwargs):
-        if self._shutdown:
+        if self._state is ClientState.SHUT_DOWN:
             raise RayServeException("Client has already been shut down.")
         return f(self, *args, **kwargs)
 
@@ -78,21 +92,33 @@ class ServeControllerClient:
     def __init__(
         self,
         controller: ActorHandle,
+        http_config: HTTPOptions,
+        root_url: str,
     ):
+        """Wrap `controller`, whose HTTP config and root URL the caller fetched.
+
+        Use `from_controller` to fetch them; taking them as arguments keeps
+        construction free of controller calls.
+        """
         self._controller: Any = controller
-        self._shutdown = False
-        # Set when a shutdown starts, before the cached handles are cleared, so
-        # an async handle getter that resumes mid-shutdown can't re-populate the
-        # cache with a handle that nothing will ever shut down.
-        self._is_shutting_down = False
-        self._http_config: HTTPOptions = ray.get(
-            self._controller.get_http_config.remote()
-        )
-        self._root_url = cast(str, ray.get(self._controller.get_root_url.remote()))
+        self._state = ClientState.RUNNING
+        self._http_config = http_config
+        self._root_url = root_url
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache: Dict[Tuple[str, str, bool], DeploymentHandle] = dict()
         self._evicted_handle_keys: Set[Tuple[str, str, bool]] = set()
+
+    @classmethod
+    def from_controller(cls, controller: ActorHandle) -> "ServeControllerClient":
+        """Connect to `controller`, blocking to fetch its HTTP config and root URL."""
+        # `ActorHandle` doesn't type its remote methods, so call through `Any`,
+        # as `__init__` does by holding the controller as `Any`.
+        actor: Any = controller
+        http_config, root_url = ray.get(
+            [actor.get_http_config.remote(), actor.get_root_url.remote()]
+        )
+        return cls(controller, cast(HTTPOptions, http_config), cast(str, root_url))
 
     @property
     def root_url(self):
@@ -130,16 +156,27 @@ class ServeControllerClient:
             *[shutdown_task(cache_key) for cache_key in list(self.handle_cache)]
         )
 
+    def _begin_shutdown(self) -> None:
+        """Stop handing out handles.
+
+        Called first by `shutdown` and `shutdown_async`, before they clear the
+        handle cache, so no getter can hand out a handle to a Serve instance
+        that is going away. Leaves a finished shutdown as `SHUT_DOWN`, since the
+        lifecycle never moves backward.
+        """
+        if self._state is ClientState.RUNNING:
+            self._state = ClientState.SHUTTING_DOWN
+
     def shutdown(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-        self._is_shutting_down = True
+        self._begin_shutdown()
         self.shutdown_cached_handles()
 
-        if ray.is_initialized() and not self._shutdown:
+        if ray.is_initialized() and self._state is not ClientState.SHUT_DOWN:
             try:
                 ray.get(self._controller.graceful_shutdown.remote(), timeout=timeout_s)
             except ray.exceptions.RayActorError:
@@ -150,7 +187,7 @@ class ServeControllerClient:
                     f"Controller failed to shut down within {timeout_s}s. "
                     "Check controller logs for more details."
                 )
-            self._shutdown = True
+        self._state = ClientState.SHUT_DOWN
 
     async def shutdown_async(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
@@ -158,10 +195,10 @@ class ServeControllerClient:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-        self._is_shutting_down = True
+        self._begin_shutdown()
         await self.shutdown_cached_handles_async()
 
-        if ray.is_initialized() and not self._shutdown:
+        if ray.is_initialized() and self._state is not ClientState.SHUT_DOWN:
             try:
                 await asyncio.wait_for(
                     self._controller.graceful_shutdown.remote(), timeout=timeout_s
@@ -174,7 +211,7 @@ class ServeControllerClient:
                     f"Controller failed to shut down within {timeout_s}s. "
                     "Check controller logs for more details."
                 )
-            self._shutdown = True
+        self._state = ClientState.SHUT_DOWN
 
     def _wait_for_deployment_created(
         self, deployment_name: str, app_name: str, timeout_s: int = -1
@@ -585,6 +622,7 @@ class ServeControllerClient:
         """
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         cache_key = (deployment_name, app_name, check_exists)
+        self._raise_unless_running()
         if (cached_handle := self.handle_cache.get(cache_key)) is not None:
             return cached_handle
 
@@ -618,6 +656,7 @@ class ServeControllerClient:
         """
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         cache_key = (deployment_name, app_name, check_exists)
+        self._raise_unless_running()
         if (cached_handle := self.handle_cache.get(cache_key)) is not None:
             return cached_handle
 
@@ -636,14 +675,12 @@ class ServeControllerClient:
     ) -> DeploymentHandle:
         """Return the cached handle for `cache_key`, creating it on a miss.
 
-        Raises `RayServeException` once the client has started shutting down.
-        Re-checks the shutdown state and the cache because the async getters
-        await the controller before this call, so a concurrent caller may have
+        Re-checks the client state and the cache because the getters wait on
+        the controller before this call, so a concurrent caller may have
         started shutting down the client or cached a handle for the same key in
         the meantime.
         """
-        if self._is_shutting_down:
-            raise RayServeException("Client is shutting down.")
+        self._raise_unless_running()
 
         if (cached_handle := self.handle_cache.get(cache_key)) is not None:
             return cached_handle
@@ -669,6 +706,17 @@ class ServeControllerClient:
             self.handle_cache.pop(evict_key)
 
         return handle
+
+    def _raise_unless_running(self) -> None:
+        """Refuse to hand out a handle once shutdown has started.
+
+        A handle from a client that is shutting down points at a Serve instance
+        that is going away, so it would fail on first use.
+        """
+        if self._state is ClientState.SHUTTING_DOWN:
+            raise RayServeException("Client is shutting down.")
+        if self._state is ClientState.SHUT_DOWN:
+            raise RayServeException("Client has already been shut down.")
 
     @_ensure_connected
     def record_request_routing_info(self, info: RequestRoutingInfo):

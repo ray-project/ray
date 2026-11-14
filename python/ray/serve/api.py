@@ -2,7 +2,18 @@ import collections
 import inspect
 import logging
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+    overload,
+)
 
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
@@ -75,6 +86,12 @@ from ray.serve.schema import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
+
+if TYPE_CHECKING:
+    # Annotation-only: importing the client module at runtime from here starts
+    # a cycle, since it transitively imports `ray.serve.context`, which
+    # imports the client module back before it has finished loading.
+    from ray.serve._private.client import ServeControllerClient
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -164,8 +181,12 @@ def shutdown():
             )
             return
 
-    client.shutdown()
-    _disconnect()
+    try:
+        client.shutdown()
+    finally:
+        # Drop the client even if shutdown fails partway: it no longer hands out
+        # handles, and the next Serve call reconnects with a fresh one.
+        _disconnect()
 
 
 @PublicAPI(stability="alpha")
@@ -192,8 +213,12 @@ async def shutdown_async():
             )
             return
 
-    await client.shutdown_async()
-    _disconnect()
+    try:
+        await client.shutdown_async()
+    finally:
+        # Drop the client even if shutdown fails partway: it no longer hands out
+        # handles, and the next Serve call reconnects with a fresh one.
+        _disconnect()
 
 
 @DeveloperAPI
@@ -1377,13 +1402,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
 
     client = _get_global_client()
     ingress = ray.get(client._controller.get_ingress_deployment_name.remote(name))
-    if ingress is None:
-        raise RayServeException(f"Application '{name}' does not exist.")
-
-    ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    # There is no need to check if the deployment exists since the
-    # deployment name was just fetched from the controller
-    return client.get_handle(ingress, name, check_exists=False)
+    return _get_app_handle_for_ingress(client, name, ingress)
 
 
 @PublicAPI(stability="alpha")
@@ -1429,13 +1448,25 @@ async def get_app_handle_async(name: str) -> DeploymentHandle:
 
     client = _get_global_client()
     ingress = await client._controller.get_ingress_deployment_name.remote(name)
+    return _get_app_handle_for_ingress(client, name, ingress)
+
+
+def _get_app_handle_for_ingress(
+    client: "ServeControllerClient", name: str, ingress: Optional[str]
+) -> DeploymentHandle:
+    """Return the handle to app `name`'s ingress deployment, named `ingress`.
+
+    Shared by `get_app_handle` and `get_app_handle_async`, which differ only in
+    how they fetch `ingress` from the controller. Raises `RayServeException`
+    when `ingress` is None, which is how the controller reports a missing app.
+    Makes no controller call, so it doesn't block the async caller's event loop.
+    """
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
     # There is no need to check if the deployment exists since the
-    # deployment name was just fetched from the controller, so this
-    # makes no controller call and doesn't block.
+    # deployment name was just fetched from the controller.
     return client.get_handle(ingress, name, check_exists=False)
 
 

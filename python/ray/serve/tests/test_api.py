@@ -13,6 +13,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
@@ -30,6 +31,7 @@ from ray.serve._private.request_router.request_router import (
 )
 from ray.serve._private.test_utils import SharedCounter, get_application_url
 from ray.serve.config import GangSchedulingConfig, RequestRouterConfig
+from ray.serve.context import _set_global_client
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -1308,6 +1310,52 @@ async def test_get_handle_async_does_not_call_ray_get(
         await serve.get_deployment_handle_async("f", app_name="app"),
         DeploymentHandle,
     )
+
+
+class _ShutdownInterrupted(Exception):
+    """Raised partway through a shutdown, standing in for a cancel or Ctrl-C."""
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+async def test_shutdown_failing_partway_does_not_block_later_handles(
+    serve_instance_async, monkeypatch, use_async
+):
+    """A shutdown that fails partway must not leave Serve refusing handles.
+
+    The interrupted client stays refusing handles, so `serve.shutdown*` has to
+    drop it as the global client for the next call to reconnect.
+    """
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    serve.run(f.bind(), name="app")
+
+    # Interrupt a client of our own: later tests reuse the session's shared one.
+    client = ServeControllerClient.from_controller(serve_instance_async._controller)
+
+    def interrupt():
+        raise _ShutdownInterrupted()
+
+    async def interrupt_async():
+        raise _ShutdownInterrupted()
+
+    monkeypatch.setattr(client, "shutdown_cached_handles", interrupt)
+    monkeypatch.setattr(client, "shutdown_cached_handles_async", interrupt_async)
+    _set_global_client(client)
+    try:
+        with pytest.raises(_ShutdownInterrupted):
+            if use_async:
+                await serve.shutdown_async()
+            else:
+                serve.shutdown()
+
+        handle = await serve.get_app_handle_async("app")
+        assert await handle.remote() == "hello world"
+        await handle.shutdown_async()
+    finally:
+        _set_global_client(serve_instance_async)
 
 
 async def test_get_deployment_handle_async_concurrent_calls_share_handle(

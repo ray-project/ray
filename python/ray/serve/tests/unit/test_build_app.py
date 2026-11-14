@@ -15,7 +15,7 @@ from ray.serve._private.build_app import (
 )
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
-from ray.serve.config import RequestRouterConfig
+from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -925,9 +925,9 @@ def _router_application_deploy_args(
     """Returns `{app: {deployment: router_application}}` sent to the controller."""
     from ray.serve.generated.serve_pb2 import DeploymentArgs
 
-    client = object.__new__(ServeControllerClient)
-    client._shutdown = False
-    client._controller = mock.Mock()
+    client = ServeControllerClient(
+        mock.Mock(), http_config=HTTPOptions(), root_url="http://serve.test:8123"
+    )
     with mock.patch("ray.get"), mock.patch.object(
         client, "get_handle", create=True
     ), mock.patch.object(client, "wait_for_proxies_serving", create=True), mock.patch(
