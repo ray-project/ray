@@ -1,3 +1,4 @@
+from collections import deque
 import copy
 import itertools
 import os
@@ -45,7 +46,7 @@ class _VariantIterator:
         if lazy_eval:
             self._load_value()
         else:
-            self.iterable = list(iterable)
+            self.iterable = deque(iterable)
             self._has_next = bool(self.iterable)
 
     def _load_value(self):
@@ -62,7 +63,9 @@ class _VariantIterator:
             current_value = self.next_value
             self._load_value()
             return current_value
-        current_value = self.iterable.pop(0)
+        if not isinstance(self.iterable, deque):
+            self.iterable = deque(self.iterable)
+        current_value = self.iterable.popleft()
         self._has_next = bool(self.iterable)
         return current_value
 
@@ -108,7 +111,7 @@ class _TrialIterator:
         self.num_samples_left = num_samples
         self.unresolved_spec = unresolved_spec
         self.constant_grid_search = constant_grid_search
-        self.points_to_evaluate = points_to_evaluate or []
+        self.points_to_evaluate = deque(points_to_evaluate or [])
         self.num_points_to_evaluate = len(self.points_to_evaluate)
         self.counter = start
         self.lazy_eval = lazy_eval
@@ -152,7 +155,9 @@ class _TrialIterator:
             return self.create_trial(resolved_vars, spec)
 
         if self.points_to_evaluate:
-            config = self.points_to_evaluate.pop(0)
+            if not isinstance(self.points_to_evaluate, deque):
+                self.points_to_evaluate = deque(self.points_to_evaluate)
+            config = self.points_to_evaluate.popleft()
             self.num_samples_left -= 1
             self.variants = _VariantIterator(
                 _get_preset_variants(
