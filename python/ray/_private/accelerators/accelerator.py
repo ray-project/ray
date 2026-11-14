@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # https://github.com/ray-project/ray/issues/54868
 # Ray no longer overrides accelerator ids environment variables when the number
@@ -156,6 +156,70 @@ class AcceleratorManager(ABC):
 
         Returns:
             A dictionary mapping accelerator related label keys to values.
+        """
+        return None
+
+    @staticmethod
+    def get_node_group_accelerator_labels(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, str]]:
+        """Get accelerator-related Ray node labels for a node group from its
+        base resources, required pod node labels, and optional pod annotations.
+
+        Args:
+            resources: Base Ray resources already parsed for the node group.
+            node_selector: Required pod node labels (for example from
+                `nodeSelector` and required `nodeAffinity`).
+            annotations: Optional pod metadata annotations dictionary.
+
+        Returns:
+            A dictionary mapping accelerator-related label keys to values, or
+            None if not applicable.
+        """
+        return None
+
+    @staticmethod
+    def get_node_group_additional_resources(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, int]]:
+        """Get any additional Ray resources derived for a node group from its
+        base resources, required pod node labels, and optional pod annotations.
+
+        Args:
+            resources: Base Ray resources already parsed for the node group.
+            node_selector: Required pod node labels (for example from
+                `nodeSelector` and required `nodeAffinity`).
+            annotations: Optional pod metadata annotations dictionary.
+
+        Returns:
+            A dictionary of additional node-group resources, or None if not
+            applicable.
+        """
+        return None
+
+    @staticmethod
+    def get_node_group_replica_metadata(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Get runtime replica metadata for a node group from its base
+        resources, required pod node labels, and optional pod annotations.
+
+        Args:
+            resources: Base Ray resources already parsed for the node group.
+            node_selector: Required pod node labels (for example from
+                `nodeSelector` and required `nodeAffinity`).
+            annotations: Optional pod metadata annotations dictionary.
+
+        Returns:
+            A dictionary of replica metadata keys (such as `domain_label_key`,
+            `domain_exclusive`, `worker_index_label_key`, and JSON-serializable
+            `head_resources`), or None if not applicable.
         """
         return None
 
