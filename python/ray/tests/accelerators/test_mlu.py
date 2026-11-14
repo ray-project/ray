@@ -328,8 +328,7 @@ def mlu_job_manager(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("resources_specified", [True, False])
-async def test_mlu_visible_devices(mlu_job_manager, resources_specified):
-    import shlex
+async def test_mlu_visible_devices(mlu_job_manager, resources_specified, tmp_path):
     import textwrap
 
     from ray._common.test_utils import async_wait_for_condition
@@ -363,8 +362,10 @@ async def test_mlu_visible_devices(mlu_job_manager, resources_specified):
             assert visible != driver_visible, (driver_visible, visible)
         """
     )
+    script_path = tmp_path / "mlu_job.py"
+    script_path.write_text(script)
     job_id = await mlu_job_manager.submit_job(
-        entrypoint=f"python -c {shlex.quote(script)}",
+        entrypoint=f'python "{script_path.as_posix()}"',
         runtime_env={
             "env_vars": {
                 "CN_VISIBLE_DEVICES": "0,2",
