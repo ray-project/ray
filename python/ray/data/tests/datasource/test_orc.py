@@ -348,6 +348,12 @@ def test_read_orc_multiple_files(
 
     assert ds.count() == 3
     assert sorted(row["id"] for row in ds.take_all()) == [0, 1, 2]
+    if orc_reader_version:
+        path = os.path.join(tmp_path, "part_1.orc")
+        ds = ray.data.read_orc(str(tmp_path), include_paths=True)
+        assert ds.filter(expr=col("path") == path).take_all() == [
+            {"id": 1, "path": path}
+        ]
 
 
 def test_read_orc_include_paths(ray_start_regular_shared, tmp_path, orc_reader_version):
