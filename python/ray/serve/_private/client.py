@@ -86,6 +86,19 @@ def _ensure_connected(f: Callable) -> Callable:
     return check
 
 
+def _raise_first_handle_shutdown_error(errors: Sequence[BaseException]) -> None:
+    """Raise the first error from shutting down cached handles, logging the rest.
+
+    Callers collect these rather than stopping at the first, so one handle's
+    failure doesn't leave the others running.
+    """
+    if not errors:
+        return
+    for error in errors[1:]:
+        logger.warning(f"Failed to shut down a cached handle: {error!r}")
+    raise errors[0]
+
+
 class ServeControllerClient:
     def __init__(
         self,
@@ -133,26 +146,39 @@ class ServeControllerClient:
         """Shuts down all cached handles.
 
         Remove the reference to the cached handles so that they can be
-        garbage collected.
+        garbage collected. Tries every handle even if some fail to shut down,
+        then raises the first failure.
         """
+        errors: List[Exception] = []
         for handle in self._take_cached_handles():
-            handle.shutdown()
+            try:
+                handle.shutdown()
+            except Exception as e:
+                errors.append(e)
+        _raise_first_handle_shutdown_error(errors)
 
     async def shutdown_cached_handles_async(self):
         """Shuts down all cached handles asynchronously.
 
         Remove the reference to the cached handles so that they can be
-        garbage collected.
+        garbage collected. Tries every handle even if some fail to shut down,
+        then raises the first failure.
         """
-        await asyncio.gather(
-            *[handle.shutdown_async() for handle in self._take_cached_handles()]
+        results = await asyncio.gather(
+            *[handle.shutdown_async() for handle in self._take_cached_handles()],
+            return_exceptions=True,
+        )
+        _raise_first_handle_shutdown_error(
+            [result for result in results if isinstance(result, BaseException)]
         )
 
     def _take_cached_handles(self) -> List[DeploymentHandle]:
         """Empty the handle cache and return the handles it held.
 
         Taking them all before shutting any down means each handle is shut
-        down by exactly one caller, even when shutdowns overlap.
+        down by exactly one caller, even when shutdowns overlap. The cache no
+        longer holds them, so callers must try every handle even when one
+        fails, or the rest are never shut down.
         """
         handles = list(self.handle_cache.values())
         self.handle_cache.clear()
@@ -670,6 +696,25 @@ class ServeControllerClient:
                 raise KeyError(f"{deployment_id} does not exist.")
 
         return self._get_or_create_cached_handle(deployment_name, app_name, cache_key)
+
+    @_ensure_connected
+    def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
+        """Return the name of app `app_name`'s ingress deployment.
+
+        Returns None when the app doesn't exist, as the controller does.
+        """
+        ingress = ray.get(self._controller.get_ingress_deployment_name.remote(app_name))
+        # Shutdown may have started while this waited on the controller.
+        self._raise_unless_running()
+        return cast(Optional[str], ingress)
+
+    @_ensure_connected
+    async def get_ingress_deployment_name_async(self, app_name: str) -> Optional[str]:
+        """Same as `get_ingress_deployment_name`, but awaits the controller."""
+        ingress = await self._controller.get_ingress_deployment_name.remote(app_name)
+        # Shutdown may have started while this awaited the controller.
+        self._raise_unless_running()
+        return cast(Optional[str], ingress)
 
     def _get_or_create_cached_handle(
         self,

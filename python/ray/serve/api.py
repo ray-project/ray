@@ -1401,7 +1401,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
     """
 
     client = _get_global_client()
-    ingress = ray.get(client._controller.get_ingress_deployment_name.remote(name))
+    ingress = client.get_ingress_deployment_name(name)
     return _get_app_handle_for_ingress(client, name, ingress)
 
 
@@ -1447,7 +1447,7 @@ async def get_app_handle_async(name: str) -> DeploymentHandle:
     """
 
     client = _get_global_client()
-    ingress = await client._controller.get_ingress_deployment_name.remote(name)
+    ingress = await client.get_ingress_deployment_name_async(name)
     return _get_app_handle_for_ingress(client, name, ingress)
 
 

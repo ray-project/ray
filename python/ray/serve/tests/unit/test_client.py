@@ -215,5 +215,97 @@ async def test_overlapping_shutdowns_shut_each_cached_handle_down_once():
     assert cached.shutdown_calls == 1
 
 
+async def _get_ingress_sync(client: ServeControllerClient) -> Optional[str]:
+    return client.get_ingress_deployment_name("app")
+
+
+async def _get_ingress_async(client: ServeControllerClient) -> Optional[str]:
+    return await client.get_ingress_deployment_name_async("app")
+
+
+@SHUTDOWNS
+@pytest.mark.parametrize(
+    "get_ingress", [_get_ingress_sync, _get_ingress_async], ids=["sync", "async"]
+)
+async def test_ingress_lookup_is_refused_after_shutdown(shutdown, get_ingress):
+    controller = mock.Mock()
+    client = _make_client(controller)
+
+    await shutdown(client)
+
+    with pytest.raises(RayServeException, match=r"Client has already been shut down\."):
+        await get_ingress(client)
+    controller.get_ingress_deployment_name.remote.assert_not_called()
+
+
+@SHUTDOWNS
+@pytest.mark.parametrize("ingress", ["f", None], ids=["app_present", "app_missing"])
+async def test_ingress_lookup_async_raises_when_shutdown_starts_mid_call(
+    shutdown, ingress
+):
+    controller_called = asyncio.Event()
+    controller_reply = asyncio.get_running_loop().create_future()
+
+    def get_ingress_deployment_name(app_name: str) -> "asyncio.Future":
+        controller_called.set()
+        return controller_reply
+
+    controller = mock.Mock()
+    controller.get_ingress_deployment_name.remote.side_effect = (
+        get_ingress_deployment_name
+    )
+    client = _make_client(controller)
+    lookup = asyncio.create_task(client.get_ingress_deployment_name_async("app"))
+    await controller_called.wait()
+
+    await shutdown(client)
+    controller_reply.set_result(ingress)
+
+    with pytest.raises(RayServeException, match=REFUSED):
+        await lookup
+
+
+class RecordingShutdownHandle:
+    """Stands in for a cached handle, recording whether it was shut down.
+
+    With `error` set, both shutdown methods raise it after recording the call.
+    `shutdown_async` first yields to the event loop `yields` times, so it can
+    finish after a sibling handle's shutdown has already failed.
+    """
+
+    def __init__(self, error: Optional[Exception] = None, yields: int = 0) -> None:
+        self.error = error
+        self.yields = yields
+        self.was_shut_down = False
+
+    def shutdown(self) -> None:
+        self.was_shut_down = True
+        if self.error is not None:
+            raise self.error
+
+    async def shutdown_async(self) -> None:
+        for _ in range(self.yields):
+            await asyncio.sleep(0)
+        self.shutdown()
+
+
+@SHUTDOWNS
+async def test_shutdown_tries_every_cached_handle_when_one_fails(shutdown):
+    client = _make_client()
+    failing = RecordingShutdownHandle(error=RuntimeError("router stuck"))
+    # The failing handle comes first in the cache, so a sync shutdown that
+    # stopped at the first error would never reach the healthy one. The healthy
+    # one finishes last, so an async shutdown that raised at the first error
+    # would return before it finished.
+    healthy = RecordingShutdownHandle(yields=3)
+    client.handle_cache[("failing", "app", True)] = failing
+    client.handle_cache[("healthy", "app", True)] = healthy
+
+    with pytest.raises(RuntimeError, match="router stuck"):
+        await shutdown(client)
+
+    assert healthy.was_shut_down
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
