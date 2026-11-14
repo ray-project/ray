@@ -1,6 +1,10 @@
+import ast
 import asyncio
+import glob
 import json
+import os
 import time
+from typing import Any, Dict, Iterator, List, Optional, Sequence
 from unittest import mock
 
 import pytest
@@ -19,6 +23,7 @@ from ray.serve._private.controller import (
     ServeController,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.test_utils import MockKVStore
@@ -504,6 +509,321 @@ def test_get_health_metrics(serve_instance):
     # Verify the metrics are JSON serializable
     metrics_json = json.dumps(metrics)
     assert isinstance(metrics_json, str)
+
+
+def _parse_snapshot_payload(message: Any) -> Optional[Dict[str, Any]]:
+    """Try to parse a snapshot payload from a log message."""
+    if not message:
+        return None
+
+    # If message is already a dict (e.g., from JSON parsing)
+    if isinstance(message, dict):
+        return message
+
+    # Try to parse as a string representation of a dict
+    try:
+        payload = ast.literal_eval(str(message))
+        if isinstance(payload, dict):
+            return payload
+    except (ValueError, SyntaxError):
+        pass
+
+    # Try JSON parsing
+    try:
+        payload = json.loads(str(message))
+        if isinstance(payload, dict):
+            return payload
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return None
+
+
+def _iter_snapshot_batches(log_paths: Sequence[str]) -> Iterator[List[Dict[str, Any]]]:
+    """Yield the deployment snapshots of each log line, one list per batch."""
+    for path in log_paths:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                payload = _parse_snapshot_payload(rec.get("message"))
+                if not payload or "snapshots" not in payload:
+                    continue
+                yield [
+                    snap
+                    for snap in payload["snapshots"]
+                    if isinstance(snap, dict)
+                    and snap.get("snapshot_type") == "deployment"
+                ]
+
+
+def _parse_batched_snapshots_from_log(
+    log_paths: Sequence[str],
+    target_deployment_name: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Snapshots from all batches, optionally for one deployment, by timestamp."""
+    snaps = [
+        snap
+        for batch in _iter_snapshot_batches(log_paths)
+        for snap in batch
+        if target_deployment_name is None
+        or snap.get("deployment") == target_deployment_name
+    ]
+    return sorted(snaps, key=lambda s: s.get("timestamp_str", ""))
+
+
+def _snapshot_log_paths() -> List[str]:
+    return glob.glob(os.path.join(get_serve_logs_dir(), "autoscaling_snapshot_*.log"))
+
+
+def _read_deployment_snapshots(deployment_name: str) -> List[Dict[str, Any]]:
+    return _parse_batched_snapshots_from_log(_snapshot_log_paths(), deployment_name)
+
+
+def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
+    """Validate controller emits well-formed autoscaling snapshot structured logs.
+
+    Tests deterministic autoscaling: 1 -> 2 replicas.
+    """
+
+    DEPLOY_NAME = f"snap_app_{int(time.time())}"
+
+    @serve.deployment(
+        name=DEPLOY_NAME,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "initial_replicas": 1,
+            "metrics_interval_s": 0.2,
+            "look_back_period_s": 0.5,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 600.0,
+            "target_ongoing_requests": 1.0,
+        },
+    )
+    async def snap_app():
+        return "ok"
+
+    handle = serve.run(snap_app.bind())
+
+    def wait_for_replicas(current, timeout=10):
+        """Wait for exact current replica count."""
+        wait_for_condition(
+            lambda: any(
+                s.get("current_replicas") == current
+                for s in _read_deployment_snapshots(DEPLOY_NAME)
+            ),
+            timeout=timeout,
+        )
+
+    # Wait for initial replica to be ready
+    wait_for_replicas(1, timeout=5)
+    initial = [
+        s for s in _read_deployment_snapshots(DEPLOY_NAME) if s["current_replicas"] == 1
+    ][0]
+    assert initial["current_replicas"] == 1
+    assert initial["min_replicas"] == 1
+    assert initial["max_replicas"] == 2
+
+    reqs = [handle.remote() for _ in range(6)]
+    # Wait for scaling to 2 replicas.
+    wait_for_replicas(2, timeout=5)
+
+    all_snaps = _read_deployment_snapshots(DEPLOY_NAME)
+
+    snap_1 = next((s for s in all_snaps if s["current_replicas"] == 1), None)
+    snap_2 = next((s for s in all_snaps if s["current_replicas"] == 2), None)
+
+    assert snap_1 is not None
+    assert snap_2 is not None and snap_2["target_replicas"] == 2
+
+    seen_states = []
+    for snap in all_snaps:
+        current = snap["current_replicas"]
+        if current not in seen_states:
+            seen_states.append(current)
+
+    assert seen_states in [[0, 1, 2], [1, 2]]
+    assert 1 in seen_states and 2 in seen_states
+
+    for snap in [snap_1, snap_2]:
+        for key in [
+            "timestamp_str",
+            "app",
+            "deployment",
+            "current_replicas",
+            "target_replicas",
+            "min_replicas",
+            "max_replicas",
+            "policy_name",
+            "metrics_health",
+            "look_back_period_s",
+            "snapshot_type",
+        ]:
+            assert key in snap, f"Missing {key}"
+
+    for req in reqs:
+        assert req.result() == "ok"
+
+
+# Test that no autoscaling snapshot logs are emitted for deployments without autoscaling_config
+def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
+    """Ensure no deployment-type autoscaling snapshot logs are emitted without autoscaling_config."""
+
+    DEPLOY_NAME = f"snap_no_auto_{int(time.time())}"
+
+    @serve.deployment(name=DEPLOY_NAME)
+    def app():
+        return "no autoscale"
+
+    serve.run(app.bind())
+
+    candidate_paths = _snapshot_log_paths()
+    assert candidate_paths, "No autoscaling snapshot logs found"
+
+    found = _parse_batched_snapshots_from_log(candidate_paths, DEPLOY_NAME)
+
+    assert not found, (
+        f"Found deployment-type autoscaling snapshot logs for deployment {DEPLOY_NAME} "
+        f"even though no autoscaling_config was set: {found}"
+    )
+
+
+def test_autoscaling_snapshot_not_emitted_every_iteration(serve_instance):
+    """Ensure identical autoscaling snapshots are not written repeatedly."""
+
+    DEPLOY_NAME = f"snap_dedupe_{int(time.time())}"
+
+    @serve.deployment(
+        name=DEPLOY_NAME,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 1,
+            "initial_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 600.0,
+            "target_ongoing_requests": 1.0,
+        },
+    )
+    def app():
+        return "ok"
+
+    serve.run(app.bind())
+
+    # Wait until the first stable snapshot shows up
+    def has_initial_snapshot():
+        snaps = _read_deployment_snapshots(DEPLOY_NAME)
+        return bool(snaps) and snaps[-1]["current_replicas"] == 1
+
+    wait_for_condition(has_initial_snapshot, timeout=10)
+
+    controller = _get_global_client()._controller
+
+    def num_control_loops() -> int:
+        return ray.get(controller.get_health_metrics.remote())["num_control_loops"]
+
+    initial_count = len(_read_deployment_snapshots(DEPLOY_NAME))
+
+    # Let the controller run ten more full loops, each deciding and emitting.
+    start = num_control_loops()
+    wait_for_condition(lambda: num_control_loops() >= start + 10, timeout=30)
+
+    # The scaling numbers didn't change, so no new snapshot was written.
+    assert len(_read_deployment_snapshots(DEPLOY_NAME)) == initial_count
+
+
+def test_autoscaling_snapshot_batched_single_write_per_loop(serve_instance):
+    """Ensure multiple deployments are batched in a single log write per loop."""
+
+    ts = int(time.time())
+    NUM_DEPLOYMENTS = 3
+    APP_NAME = f"batch_app_{ts}"
+
+    # Create multiple deployments in a SINGLE application
+    deployments = []
+    deployment_names = []
+
+    for i in range(NUM_DEPLOYMENTS):
+        dep_name = f"Dep{i}"
+        deployment_names.append(dep_name)
+
+        @serve.deployment(
+            name=dep_name,
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 1,
+                "initial_replicas": 1,
+                "metrics_interval_s": 0.1,
+                "look_back_period_s": 0.2,
+            },
+        )
+        class Deployment:
+            def __call__(self):
+                return "ok"
+
+        deployments.append(Deployment.bind())
+
+    # Create ingress that references all deployments
+    @serve.deployment
+    class Ingress:
+        def __init__(self, *deps):
+            self.deps = deps
+
+        def __call__(self):
+            return "ok"
+
+    # Bind all deployments to ingress and run as single app
+    app = Ingress.bind(*deployments)
+    serve.run(app, name=APP_NAME, route_prefix=f"/{APP_NAME}")
+
+    def get_batch_payloads():
+        """Return (deployment_names_set, batch_dict) for each batch with targets."""
+        batches = []
+        for batch in _iter_snapshot_batches(_snapshot_log_paths()):
+            target_snaps = [
+                snap
+                for snap in batch
+                if snap.get("app") == APP_NAME
+                and snap.get("deployment") in deployment_names
+            ]
+            if target_snaps:
+                names = {snap["deployment"] for snap in target_snaps}
+                batches.append((names, {"snapshots": target_snaps}))
+        return batches
+
+    # Wait until a batch containing ALL deployments appears
+    def has_full_batch():
+        batches = get_batch_payloads()
+        for names, _ in batches:
+            if names == set(deployment_names):
+                return True
+        return False
+
+    wait_for_condition(has_full_batch, timeout=15)
+    batches = get_batch_payloads()
+
+    # Only verify batches that contain all deployments (full batches)
+    # Partial batches can occur due to individual deployment state changes
+    full_batches = [
+        (names, batch) for names, batch in batches if names == set(deployment_names)
+    ]
+
+    assert len(full_batches) >= 1, (
+        f"Expected at least one batch containing all {NUM_DEPLOYMENTS} deployments "
+        f"{sorted(deployment_names)}, but none found"
+    )
+
+    for names, batch in full_batches:
+        assert len(batch["snapshots"]) == NUM_DEPLOYMENTS, (
+            f"Expected {NUM_DEPLOYMENTS} snapshots in batch, "
+            f"but found {len(batch['snapshots'])}"
+        )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
+import logging
 import pickle
 from copy import deepcopy
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -739,6 +741,38 @@ class TestConfigCheckpoint:
         _, config, _ = self._read(current)
         assert config.config_id == "c1"
         assert self._read(None) == (0.0, None, None)
+
+
+def test_autoscaling_snapshots_written_in_one_log_line():
+    """The controller writes every snapshot that changed in a loop as one line."""
+    snapshots = [{"deployment": "a"}, {"deployment": "b"}]
+    manager = MagicMock()
+    manager.log_deployment_snapshots.side_effect = lambda write: write(snapshots)
+    controller = SimpleNamespace(
+        autoscaling_state_manager=manager, _autoscaling_logger=MagicMock()
+    )
+
+    ServeController._emit_deployment_autoscaling_snapshots(controller)
+
+    controller._autoscaling_logger.info.assert_called_once_with(
+        {"snapshots": snapshots}
+    )
+
+
+def test_autoscaling_snapshots_skipped_when_info_is_off():
+    """With the snapshot logger above INFO, no snapshot is built or marked logged,
+    so the current state is written once INFO is back on."""
+    manager = MagicMock()
+    logger = MagicMock()
+    logger.isEnabledFor.return_value = False
+    controller = SimpleNamespace(
+        autoscaling_state_manager=manager, _autoscaling_logger=logger
+    )
+
+    ServeController._emit_deployment_autoscaling_snapshots(controller)
+
+    logger.isEnabledFor.assert_called_once_with(logging.INFO)
+    manager.log_deployment_snapshots.assert_not_called()
 
 
 if __name__ == "__main__":
