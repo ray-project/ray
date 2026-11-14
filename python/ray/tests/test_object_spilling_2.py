@@ -330,7 +330,7 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/12912
-def test_release_resource(object_spilling_config, shutdown_only):
+def test_release_resource(object_spilling_config, shutdown_only, tmp_path):
     object_spilling_config, temp_folder = object_spilling_config
     ray.init(
         num_cpus=1,
@@ -349,8 +349,11 @@ def test_release_resource(object_spilling_config, shutdown_only):
     def sneaky_task_tries_to_steal_released_resources():
         print("resources were released!")
 
+    f_started = tmp_path / "f_started"
+
     @ray.remote
     def f(dep):
+        f_started.touch()
         while True:
             try:
                 ray.get(dep[0], timeout=0.001)
@@ -358,6 +361,9 @@ def test_release_resource(object_spilling_config, shutdown_only):
                 pass
 
     done = f.remote([plasma_obj])  # noqa
+    # The raylet may grant leases out of submission order, so make sure f
+    # holds the CPU before submitting the canary.
+    wait_for_condition(f_started.exists)
     canary = sneaky_task_tries_to_steal_released_resources.remote()
     ready, _ = ray.wait([canary], timeout=2)
     assert not ready

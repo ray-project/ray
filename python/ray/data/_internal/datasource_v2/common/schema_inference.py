@@ -21,6 +21,9 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 
+_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
+
+# Bound submitted reads, not just executing threads, for full inference.
 _SCHEMA_READ_BATCH_SIZE = 256
 _FULL_SCHEMA_INFERENCE_MIN_FILES = env_integer(
     "RAY_DATA_FULL_SCHEMA_INFERENCE_MIN_FILES", 2048

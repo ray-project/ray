@@ -2,9 +2,13 @@ import abc
 import copy
 from typing import Any, Dict, Optional
 
+from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    COMPLETE_AGGREGATION_PEAK_MEMORY_MULTIPLIER,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.interfaces import Rule
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
+from ray.data._internal.logical.operators import Aggregate
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 __all__ = [
@@ -69,6 +73,17 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
 
 class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
     def estimate_per_task_memory_requirement(self, op: MapOperator) -> Optional[int]:
+        # A one-phase aggregation (the only map op built from an Aggregate):
+        # its heap grows with its groups, so size it by a task's whole output,
+        # not by one output block. See COMPLETE_AGGREGATION_PEAK_MEMORY_MULTIPLIER.
+        if any(
+            isinstance(logical_op, Aggregate) for logical_op in op._logical_operators
+        ):
+            bytes_per_task = op.metrics.average_bytes_outputs_per_task
+            if bytes_per_task is None:
+                return None
+            return int(bytes_per_task * COMPLETE_AGGREGATION_PEAK_MEMORY_MULTIPLIER)
+
         # Typically, this configuration won't make a difference because
         # `average_bytes_per_output` is usually ~128 MiB and each core usually has
         # 4 GiB of memory. However, if `num_cpus` is small (e.g., 0.01) or
