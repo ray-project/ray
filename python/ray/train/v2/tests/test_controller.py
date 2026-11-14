@@ -895,6 +895,14 @@ async def test_resize_and_fail_with_replica_groups():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RestartingState)
 
+    # Partial replacement is impossible when all replica groups failed, so the
+    # failed worker group must be shut down immediately even on NoopDecision.
+    scaling_policy.queue_recovery_decision(NoopDecision())
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+    assert not worker_group_after_case3.has_started()
+    assert controller.get_worker_group() is None
+
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=6, resources_per_worker={})
     )
@@ -1104,6 +1112,48 @@ async def test_abort_while_step_raises(monkeypatch):
     await asyncio.wait_for(run_task, timeout=5)
     assert isinstance(controller.get_state(), AbortedState)
     assert not callback.failure_decision_called
+
+
+@pytest.mark.asyncio
+async def test_restart_shuts_down_worker_group_before_scaling_decision():
+    """A restart shuts down the failed worker group before asking the scaling
+    policy for a new size, even while the policy returns NoopDecision (e.g. an
+    elastic run waiting for min_workers)."""
+    worker_group_alive_during_decision = []
+
+    class RecordingScalingPolicy(MockScalingPolicy):
+        def make_decision_for_non_running_worker_group(self):
+            worker_group_alive_during_decision.append(
+                controller.get_worker_group() is not None
+            )
+            return super().make_decision_for_non_running_worker_group()
+
+    scaling_policy = RecordingScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+    await _advance_to_running(controller, scaling_policy, num_workers=4)
+    failed_worker_group = controller.get_worker_group()
+
+    failed_worker_group.error_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+
+    worker_group_alive_during_decision.clear()
+    scaling_policy.queue_recovery_decision(NoopDecision())
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+    assert worker_group_alive_during_decision == [False]
+    assert not failed_worker_group.has_started()
+    assert controller.get_worker_group() is None
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    assert len(controller.get_worker_group().get_workers()) == 2
 
 
 if __name__ == "__main__":
