@@ -29,19 +29,26 @@ from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer impor
     RayInstallError,
 )
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
+from ray.autoscaler.v2.schema import Stats
 from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
+from ray.autoscaler.v2.utils import ClusterStatusFormatter, ClusterStatusParser
 from ray.core.generated.autoscaler_pb2 import (
+    AutoscalingState,
     ClusterResourceState,
     GangResourceRequest,
+    GetClusterStatusReply,
     NodeState,
     NodeStatus,
     ResourceRequest,
 )
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
+    InstanceUpdateEvent,
     LaunchRequest,
     NodeKind,
+    StatusCode,
     TerminationRequest,
+    UpdateInstanceManagerStateRequest,
 )
 
 s_to_ns = 1 * 1_000_000_000
@@ -137,6 +144,98 @@ class TestReconciler:
         for instance in instances:
             ok, _ = instance_storage.upsert_instance(instance)
             assert ok
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "status",
+        [Instance.ALLOCATION_FAILED, Instance.ALLOCATED, Instance.RAY_INSTALLING],
+        ids=["failed-allocation", "pending-allocation", "pending-installation"],
+    )
+    def test_transition_details_reach_autoscaling_state(setup, status):
+        instance_manager, instance_storage, subscriber, _ = setup
+        config = MockAutoscalingConfig()
+
+        # Use legal manager transitions and distinct times so the pending-state
+        # reporter selects the latest transition deterministically.
+        with mock.patch("time.time_ns", return_value=s_to_ns) as mock_time:
+            reply = instance_manager.update_instance_manager_state(
+                UpdateInstanceManagerStateRequest(
+                    expected_version=0,
+                    updates=[
+                        InstanceUpdateEvent(
+                            instance_id="i-1",
+                            instance_type="type-1",
+                            new_instance_status=Instance.QUEUED,
+                            upsert=True,
+                        )
+                    ],
+                )
+            )
+            assert reply.status.code == StatusCode.OK
+            mock_time.return_value = 2 * s_to_ns
+            Reconciler._handle_instances_launch(instance_manager, config)
+            instances, _ = instance_storage.get_instances()
+            assert instances["i-1"].status == Instance.REQUESTED
+
+            mock_time.return_value = 3 * s_to_ns
+            if status == Instance.ALLOCATION_FAILED:
+                error = LaunchNodeError(
+                    node_type="type-1",
+                    count=1,
+                    request_id=instances["i-1"].launch_request_id,
+                    timestamp_ns=3 * s_to_ns,
+                    details="capacity unavailable",
+                )
+                expected = f"launch failed with {error}"
+                Reconciler._handle_cloud_instance_allocation(
+                    instance_manager, {}, [error]
+                )
+            else:
+                cloud_instances = {
+                    "c-1": CloudInstance("c-1", "type-1", NodeKind.WORKER, True)
+                }
+                Reconciler._handle_cloud_instance_allocation(
+                    instance_manager, cloud_instances, []
+                )
+                expected = "allocated unassigned cloud instance c-1"
+                if status == Instance.RAY_INSTALLING:
+                    mock_time.return_value = 4 * s_to_ns
+                    Reconciler._install_ray(instance_manager, cloud_instances)
+                    expected = "installing ray"
+
+        # Reading InstanceStorage deserializes the persisted protobuf bytes.
+        instances, _ = instance_storage.get_instances()
+        instance = instances["i-1"]
+        assert instance.status == status
+        assert len(instance.status_history) == (
+            4 if status == Instance.RAY_INSTALLING else 3
+        )
+        event = subscriber.events[-1]
+        assert event.new_instance_status == status
+        assert event.details == expected
+
+        state = AutoscalingState()
+        Reconciler._fill_autoscaling_state(instance_manager, state, config)
+        state = AutoscalingState.FromString(state.SerializeToString())
+        cluster_status = ClusterStatusParser.from_get_cluster_status_reply(
+            GetClusterStatusReply(autoscaling_state=state), Stats()
+        )
+        if status == Instance.ALLOCATION_FAILED:
+            reported = state.failed_instance_requests[0].reason
+            parsed = cluster_status.failed_launches[0].details
+        else:
+            reported = state.pending_instances[0].details
+            parsed = cluster_status.pending_nodes[0].details
+        assert {
+            "history": instance.status_history[-1].details,
+            "autoscaling_state": reported,
+            "parsed_status": parsed,
+        } == dict.fromkeys(["history", "autoscaling_state", "parsed_status"], expected)
+
+        # Exercise the formatter used by ray status, without a GCS connection.
+        assert expected in ClusterStatusFormatter.format(cluster_status, verbose=True)
+        if status != Instance.ALLOCATION_FAILED:
+            assert expected in ClusterStatusFormatter.format(cluster_status)
 
     @staticmethod
     def test_requested_instance_no_op(setup):
