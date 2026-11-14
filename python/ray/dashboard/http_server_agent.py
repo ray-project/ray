@@ -20,6 +20,7 @@ routes = dashboard_optional_utils.DashboardAgentRouteTable
 PUBLIC_EXACT_PATHS = [
     "/api/healthz",
     "/api/local_raylet_healthz",
+    "/api/ray_service_healthz",
 ]
 
 
