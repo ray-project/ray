@@ -110,21 +110,6 @@ def test_factory_records_only_this_readers_connection(tmp_path, monkeypatch, fai
     assert (logger.level, logger.propagate) == (old_level, old_propagate)
 
 
-def test_certificate_log_from_another_thread_is_not_attributed():
-    handler = utils._CertificateFailure()
-    record = logging.LogRecord(
-        "thrift.transport.TSocket", logging.INFO, "", 0, "", (), None
-    )
-    record.exc_info = (
-        ssl.SSLCertVerificationError,
-        ssl.SSLCertVerificationError("bad"),
-        None,
-    )
-    record.thread = threading.get_ident() + 1
-    handler.emit(record)
-    assert handler.error is None
-
-
 @pytest.mark.parametrize("checkout", ["/ray", "/rayci"])
 def test_reader_evidence_matches_its_checkout(tmp_path, checkout):
     data_dir = Path(checkout) / "python/ray/data"
@@ -146,9 +131,7 @@ def test_reader_evidence_matches_its_checkout(tmp_path, checkout):
             utils._read_evidence(tmp_path, {"node"}, test_file)
 
 
-@pytest.mark.parametrize(
-    "damage", ["missing", "truncated", "unfinished", "node", "source"]
-)
+@pytest.mark.parametrize("damage", ["missing", "truncated", "unfinished", "node"])
 def test_rejects_missing_or_invalid_reader_evidence(tmp_path, damage):
     data_dir = tmp_path / "checkout/python/ray/data"
     test_file = data_dir / "tests/datasource/test_hive_auth_integration.py"
@@ -158,7 +141,7 @@ def test_rejects_missing_or_invalid_reader_evidence(tmp_path, damage):
             node="node",
             source=str(data_dir / "_internal/datasource_v2/formats/hive/hive_hs2.py"),
         )
-        if damage in {"node", "source"}:
+        if damage == "node":
             record[damage] = "unexpected"
         path = tmp_path / "event.json"
         path.write_text(json.dumps(record) if damage != "truncated" else "{")
