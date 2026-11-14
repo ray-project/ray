@@ -304,10 +304,17 @@ def test_copy_dir_retry_preserves_exclude(temp_data_dirs, monkeypatch):
             return self._lock.__exit__(exc_type, exc_val, exc_tb)
 
     monkeypatch.setattr(ft, "TempFileLock", FirstAttemptTimeoutLock)
-    _copy_dir(tmp_source, tmp_target, exclude=["subdir/*"])
+    _copy_dir(
+        tmp_source,
+        tmp_target,
+        exclude=["subdir_exclude", "level0_exclude.txt", "subdir/*"],
+    )
 
     assert_file(True, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "level0_exclude.txt")
     assert_file(False, tmp_target, "subdir/level1.txt")
+    assert_file(False, tmp_target, "subdir_exclude")
+    assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
 if __name__ == "__main__":

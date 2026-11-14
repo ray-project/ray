@@ -224,6 +224,28 @@ def _get_recursive_files_and_stats(path: str) -> Dict[str, Tuple[float, int]]:
 _remote_get_recursive_files_and_stats = ray.remote(_get_recursive_files_and_stats)
 
 
+def _should_exclude(candidate: str, exclude: Optional[List] = None) -> bool:
+    if not exclude:
+        return False
+
+    norm_candidate = os.path.normpath(candidate)
+    for excl in exclude:
+        excl_stripped = excl.rstrip("/")
+        if (
+            fnmatch.fnmatch(candidate, excl)
+            or fnmatch.fnmatch(norm_candidate, excl)
+            or (
+                excl_stripped != excl
+                and (
+                    fnmatch.fnmatch(candidate, excl_stripped)
+                    or fnmatch.fnmatch(norm_candidate, excl_stripped)
+                )
+            )
+        ):
+            return True
+    return False
+
+
 def _pack_dir(
     source_dir: str,
     exclude: Optional[List] = None,
@@ -250,16 +272,6 @@ def _pack_dir(
     Returns:
         Tarfile as a stream object.
     """
-
-    def _should_exclude(candidate: str) -> bool:
-        if not exclude:
-            return False
-
-        for excl in exclude:
-            if fnmatch.fnmatch(candidate, excl):
-                return True
-        return False
-
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
 
@@ -277,13 +289,7 @@ def _pack_dir(
                 active_dirs = []
                 for dir in dirs:
                     key = os.path.join(rel_root, dir)
-                    norm_key = os.path.normpath(key)
-                    if (
-                        _should_exclude(key)
-                        or _should_exclude(key + "/")
-                        or _should_exclude(norm_key)
-                        or _should_exclude(norm_key + "/")
-                    ):
+                    if _should_exclude(key, exclude):
                         continue
                     active_dirs.append(dir)
                     try:
@@ -296,7 +302,7 @@ def _pack_dir(
                 # Add files where our information differs
                 for file in files:
                     key = os.path.join(rel_root, file)
-                    if _should_exclude(key):
+                    if _should_exclude(key, exclude):
                         # If the file matches an exclude pattern, skip
                         continue
 
@@ -461,10 +467,8 @@ def _copy_dir(
                     rel_path = os.path.relpath(path, source_dir)
                     for name in names:
                         candidate = os.path.join(rel_path, name)
-                        for excl in exclude:
-                            if fnmatch.fnmatch(candidate, excl):
-                                ignored_names.add(name)
-                                break
+                        if _should_exclude(candidate, exclude):
+                            ignored_names.add(name)
                     return ignored_names
 
                 _ignore_func = _ignore
