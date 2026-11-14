@@ -4977,9 +4977,9 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
             >>> ds.input_files()
-            ['ray-example-data/iris.csv']
+            ['ray-example-data/this.txt']
 
         Returns:
             The list of input files used to create the dataset, or an empty
@@ -7435,7 +7435,13 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
-            Dataset(num_rows=?, schema=...)
+            shape: (?, 5)
+            ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+            │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+            │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+            │ double            ┆ double           ┆ double            ┆ double           ┆ int64  │
+            ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+            (Dataset isn't materialized)
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -7457,7 +7463,8 @@ class Dataset:
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
-            +- Dataset(num_rows=?, schema=...)
+            +- ReadFilesCsvV2
+               +- Dataset(num_rows=?, schema=...)
             >>> ds.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -8266,7 +8273,13 @@ class Dataset:
             >>> serialized_ds = ds.serialize_lineage()
             >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
             >>> print(ds)
-            Dataset(num_rows=?, schema=...)
+            shape: (?, 5)
+            ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+            │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+            │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+            │ double            ┆ double           ┆ double            ┆ double           ┆ int64  │
+            ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+            (Dataset isn't materialized)
 
 
         Returns:
@@ -8329,7 +8342,13 @@ class Dataset:
             >>> serialized_ds = ds.serialize_lineage()
             >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
             >>> print(ds)
-            Dataset(num_rows=?, schema=...)
+            shape: (?, 5)
+            ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+            │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+            │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+            │ double            ┆ double           ┆ double            ┆ double           ┆ int64  │
+            ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+            (Dataset isn't materialized)
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
