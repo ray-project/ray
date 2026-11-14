@@ -61,6 +61,15 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 /// The duration between loads pulled by GCS
 RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 
+/// The most pulled resource loads the GCS applies in one main-thread handler.
+/// Batching saves a post per reply; the cap bounds how long one batch blocks
+/// the main loop.
+RAY_CONFIG(uint64_t, gcs_resource_load_apply_batch_size, 100)
+
+/// The longest a pulled resource load waits on the pull thread for its batch
+/// to fill before it is posted to the main thread anyway.
+RAY_CONFIG(uint64_t, gcs_resource_load_apply_batch_delay_milliseconds, 100)
+
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 
