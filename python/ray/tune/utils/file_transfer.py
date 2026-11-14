@@ -270,19 +270,29 @@ def _pack_dir(
             files_stats = files_stats or {}
             # Otherwise, only pack differing files
             tar.add(source_dir, arcname="", recursive=False)
-            for root, dirs, files in os.walk(source_dir, topdown=False):
+            for root, dirs, files in os.walk(source_dir, topdown=True):
                 rel_root = os.path.relpath(root, source_dir)
-                # Add non-excluded directories
+                # Add non-excluded directories and prune them in-place so os.walk
+                # does not descend into excluded directories
+                active_dirs = []
                 for dir in dirs:
                     key = os.path.join(rel_root, dir)
-                    if _should_exclude(key) or _should_exclude(key + "/"):
+                    norm_key = os.path.normpath(key)
+                    if (
+                        _should_exclude(key)
+                        or _should_exclude(key + "/")
+                        or _should_exclude(norm_key)
+                        or _should_exclude(norm_key + "/")
+                    ):
                         continue
+                    active_dirs.append(dir)
                     try:
                         tar.add(
                             os.path.join(source_dir, key), arcname=key, recursive=False
                         )
                     except FileNotFoundError:
                         pass
+                dirs[:] = active_dirs
                 # Add files where our information differs
                 for file in files:
                     key = os.path.join(rel_root, file)

@@ -247,17 +247,24 @@ def test_pack_dir_excludes_directories_and_handles_missing_files(
     temp_data_dirs, monkeypatch
 ):
     tmp_source, _ = temp_data_dirs
+    lstat_paths = []
+    orig_lstat = os.lstat
+
+    def tracking_lstat(path, *args, **kwargs):
+        lstat_paths.append(path)
+        return orig_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "lstat", tracking_lstat)
     stream = _pack_dir(
         tmp_source,
-        exclude=["*subdir_exclude*", "*_exclude.txt"],
+        exclude=["subdir_exclude", "*_exclude.txt"],
     )
     stream.seek(0)
     with tarfile.open(fileobj=stream) as tar:
         names = tar.getnames()
     assert not any("subdir_exclude" in name for name in names)
     assert not any(name.endswith("_exclude.txt") for name in names)
-
-    orig_lstat = os.lstat
+    assert not any("subdir_exclude" in p for p in lstat_paths)
 
     def disappearing_lstat(path, *args, **kwargs):
         if path.endswith("level1.txt"):
