@@ -49,9 +49,13 @@ class _ObjectCache:
 
         Args:
             key: Group key.
-            by: Decrease by this amount.
+            by: Increase by this amount.
         """
-        self._max_num_objects[key] += by
+        new_max = self._max_num_objects[key] + by
+        if new_max <= 0:
+            self._max_num_objects.pop(key, None)
+        else:
+            self._max_num_objects[key] = new_max
 
     def decrease_max(self, key: T, by: int = 1) -> None:
         """Decrease number of max objects for this key.
@@ -60,7 +64,11 @@ class _ObjectCache:
             key: Group key.
             by: Decrease by this amount.
         """
-        self._max_num_objects[key] -= by
+        new_max = self._max_num_objects[key] - by
+        if new_max <= 0:
+            self._max_num_objects.pop(key, None)
+        else:
+            self._max_num_objects[key] = new_max
 
     def has_cached_object(self, key: T) -> bool:
         """Return True if at least one cached object exists for this key.
@@ -71,7 +79,7 @@ class _ObjectCache:
         Returns:
             True if at least one cached object exists for this key.
         """
-        return bool(self._cached_objects[key])
+        return bool(self._cached_objects.get(key))
 
     def cache_object(self, key: T, obj: U) -> bool:
         """Cache object for a given key.
@@ -93,7 +101,7 @@ class _ObjectCache:
 
         """
         # If we have more objects cached already than we desire
-        if len(self._cached_objects[key]) >= self._max_num_objects[key]:
+        if len(self._cached_objects.get(key, ())) >= self._max_num_objects[key]:
             # If may_keep_one is False, never cache
             if not self._may_keep_one:
                 return False
@@ -103,7 +111,7 @@ class _ObjectCache:
                 return False
 
             # If any other objects are expected to be cached, don't cache
-            if any(v for v in self._max_num_objects.values()):
+            if self._max_num_objects:
                 return False
 
         # Otherwise, cache (for now).
@@ -123,11 +131,15 @@ class _ObjectCache:
         Returns:
             Cached object.
         """
-        if not self.has_cached_object(key):
+        objs = self._cached_objects.get(key)
+        if not objs:
             return None
 
         self._num_cached_objects -= 1
-        return self._cached_objects[key].pop(0)
+        obj = objs.pop(0)
+        if not objs:
+            self._cached_objects.pop(key, None)
+        return obj
 
     def flush_cached_objects(self, force_all: bool = False) -> Generator[U, None, None]:
         """Return a generator over cached objects evicted from the cache.
@@ -157,17 +169,20 @@ class _ObjectCache:
         # If force_all=True, don't keep one.
         keep_one = self._may_keep_one and not force_all
 
-        for key, objs in self._cached_objects.items():
+        for key in list(self._cached_objects.keys()):
+            objs = self._cached_objects[key]
             max_cached = self._max_num_objects[key] if not force_all else 0
 
-            if (
-                self._num_cached_objects == 1
-                and keep_one
-                # Only keep this object if we don't expect a different one
-                and not any(v for v in self._max_num_objects.values())
-            ):
-                break
-
             while len(objs) > max_cached:
+                if (
+                    self._num_cached_objects == 1
+                    and keep_one
+                    # Only keep this object if we don't expect a different one
+                    and not self._max_num_objects
+                ):
+                    break
                 self._num_cached_objects -= 1
                 yield objs.pop(0)
+
+            if not objs:
+                self._cached_objects.pop(key, None)

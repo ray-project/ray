@@ -118,6 +118,56 @@ def test_force_all(eager):
     assert cache.num_cached_objects == 0
 
 
+def test_decrease_max_clamps_at_zero():
+    """Decreasing max below zero should clamp at 0 and not corrupt cache invariants."""
+    cache = _ObjectCache(may_keep_one=True)
+
+    cache.increase_max("A", 1)
+    assert cache.cache_object("A", 1)
+    assert cache.pop_cached_object("A") == 1
+    assert cache.num_cached_objects == 0
+
+    # Decreasing below 0 should clamp at 0 rather than setting _max_num_objects["A"] = -1
+    cache.decrease_max("A", 2)
+    assert cache.total_max_objects == 0
+
+    # Flushing an empty key after over-decreasing must not raise IndexError
+    assert list(cache.flush_cached_objects()) == []
+    assert cache.num_cached_objects == 0
+
+    # Eager caching of another key should still work when all max counts are 0
+    assert cache.cache_object("B", 2)
+    assert list(cache.flush_cached_objects()) == []
+    assert cache.num_cached_objects == 1
+
+
+@pytest.mark.parametrize("eager", [False, True])
+def test_single_flush_after_multiple_decreases(eager):
+    """Flushing once after decreasing max from 2 to 0 should still retain one object if may_keep_one=True."""
+    cache = _ObjectCache(may_keep_one=eager)
+
+    cache.increase_max("A", 2)
+    assert cache.cache_object("A", 1)
+    assert cache.cache_object("A", 2)
+    assert cache.num_cached_objects == 2
+
+    cache.decrease_max("A", 2)
+    assert list(cache.flush_cached_objects()) == ([1, 2] if not eager else [1])
+    assert cache.num_cached_objects == (0 if not eager else 1)
+
+
+def test_has_and_pop_cached_object_invariants():
+    """Querying or popping missing keys must not mutate state or corrupt counts."""
+    cache = _ObjectCache(may_keep_one=False)
+
+    assert not cache.has_cached_object("missing")
+    assert "missing" not in cache._cached_objects
+
+    assert cache.pop_cached_object("missing") is None
+    assert "missing" not in cache._cached_objects
+    assert cache.num_cached_objects == 0
+
+
 if __name__ == "__main__":
     import sys
 
