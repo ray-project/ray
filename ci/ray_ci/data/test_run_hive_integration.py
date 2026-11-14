@@ -192,10 +192,15 @@ def test_already_absent_resources_are_clean(run_script, scenario, exit_code):
     assert "Could not verify cleanup" not in result.stderr
 
 
-def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script):
+def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script, monkeypatch):
+    monkeypatch.setenv("RAYCI_CHECKOUT_DIR", "/docker-host/ray checkout")
     result, calls = run_script("success", tls=True)
     assert result.returncode == 0, result.stderr
     service = next(call for call in calls if call[:2] == ["docker", "run"])
+    assert service[service.index("-v") + 1] == (
+        "/docker-host/ray checkout/ci/ray_ci/data/hive_tls_entry.sh:"
+        "/tmp/hive_tls_entry.sh:ro"
+    )
     assert "wrong-hiveserver2" in service
     assert "HIVE_TLS_PASSWORD" in service
     assert not any(arg.startswith("HIVE_TLS_PASSWORD=") for arg in service)

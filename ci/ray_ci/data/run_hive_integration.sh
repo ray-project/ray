@@ -66,7 +66,7 @@ if [[ "$tls" == true ]]; then
     --network-alias hiveserver2 --network-alias wrong-hiveserver2 \
     -e SERVICE_NAME=hiveserver2 -e HIVE_TLS_PASSWORD \
     -e 'SERVICE_OPTS=-Dhive.server2.authentication=NONE -Dhive.server2.enable.doAs=false -Dhive.execution.engine=mr -Dmapreduce.framework.name=local -Dfs.defaultFS=file:///' \
-    -v "$(cd "$(dirname "$0")" && pwd)/hive_tls_entry.sh:/tmp/hive_tls_entry.sh:ro" \
+    -v "${RAYCI_CHECKOUT_DIR:?RAYCI_CHECKOUT_DIR must be set}/ci/ray_ci/data/hive_tls_entry.sh:/tmp/hive_tls_entry.sh:ro" \
     --entrypoint bash \
     apache/hive:4.2.0@sha256:b0d2842722567a89ac35da8af9002b6bba0fc2d0eb272664954a1fa46d694472 \
     /tmp/hive_tls_entry.sh
