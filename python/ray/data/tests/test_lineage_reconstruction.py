@@ -776,6 +776,31 @@ def test_lost_child_reconstructs_across_graph_shapes(
     assert len(_nodes(tracker)) == num_blocks + num_children
 
 
+@reconstruction_enabled
+def test_recovery_status_records_the_re_run_task(
+    ray_start_regular_shared, lose_output, monkeypatch  # noqa: F405
+):
+    """After a real reconstruction, the seed operator reports the re-run task as
+    finished, with nothing left queued or running."""
+    started_ops = []
+    original_start = MapOperator.start
+
+    def recording_start(self, *args, **kwargs):
+        started_ops.append(self)
+        return original_start(self, *args, **kwargs)
+
+    monkeypatch.setattr(MapOperator, "start", recording_start)
+    fired = lose_output("ReadRange")
+
+    ray.data.range(100, override_num_blocks=4).map(
+        lambda row: {"id": row["id"] * 2}
+    ).take_all()
+
+    assert fired == [0]
+    statuses = [op.lineage_recovery_progress_str() for op in started_ops]
+    assert statuses == ["Recovery: 0 queued, 0 running, 1 finished"]
+
+
 def test_reconstruction_stamp_survives_schema_divergence():
     """``OpState.add_output`` rebuilds a bundle whose schema diverges from the
     operator's, field by field. The stamp must survive the rebuild, or the
@@ -1058,7 +1083,7 @@ def test_reconstruction_error_wraps_object_lost_error():
         )
     reconstruction_error = raised.value
 
-    assert isinstance(reconstruction_error, ObjectLostError)
+    assert isinstance(raised.value, ObjectLostError)
     assert reconstruction_error.lost_error is object_lost_error
     assert reconstruction_error.__cause__ is object_lost_error
     for field in ("object_ref_hex", "owner_address", "call_site"):
