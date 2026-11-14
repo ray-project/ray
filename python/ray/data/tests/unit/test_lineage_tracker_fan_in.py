@@ -1019,7 +1019,6 @@ def test_retry_does_not_release_a_queued_sibling_again():
     # The seed completes and releases both branches' input.
     for output_index in (0, 1):
         tracker.register_block_queued(seed, output_index, plan)
-    tracker.register_task_complete(seed, plan)
 
     # left is submitted and loses its output. right's input is still queued.
     tracker.register_task_submission(left, left_input, plan)
