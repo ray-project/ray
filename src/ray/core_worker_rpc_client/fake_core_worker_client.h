@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/status.h"
@@ -118,7 +119,9 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
       const ClientCallback<PlasmaObjectReadyReply> &callback) override {}
 
   void OnObjectFreed(const OnObjectFreedRequest &request,
-                     const ClientCallback<OnObjectFreedReply> &callback) override {}
+                     const ClientCallback<OnObjectFreedReply> &callback) override {
+    on_object_freed_requests.push_back(request);
+  }
 
   void RayletNotifyGCSRestart(
       const RayletNotifyGCSRestartRequest &request,
@@ -164,6 +167,7 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
 
   std::list<ClientCallback<PushTaskReply>> callbacks_ ABSL_GUARDED_BY(mutex_);
   size_t num_kill_actor_requests = 0;
+  std::vector<OnObjectFreedRequest> on_object_freed_requests;
   absl::Mutex mutex_;
 };
 
