@@ -6,25 +6,36 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray._common.utils import resources_from_ray_options
 from ray.data import DataContext, ExecutionResources
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
+    ExecutionOptions,
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.physical_operator import MetadataOpTask
 from ray.data._internal.execution.operators.hash_aggregate import HashAggregateOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShuffleAggregator,
     HashShuffleOperator,
     _derive_max_shuffle_aggregators,
 )
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.join import JoinOperator
+from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.streaming_executor_state import (
+    build_streaming_topology,
+)
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.stats import Timer
 from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import AggregateFnV2, Count, Sum
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+from ray.data.tests.conftest import noop_counter
 
 
 @pytest.mark.parametrize(
@@ -54,6 +65,243 @@ def _create_aggregator_pool_for_test(op, estimated_dataset_bytes: Optional[int])
     )
     op._aggregator_pool = pool
     return pool
+
+
+@pytest.fixture(
+    params=[
+        (1, None, 0),
+        (1, {"num_gpus": None}, 0),
+        (1, {"num_gpus": 0}, 0),
+        (1, {"num_gpus": 0.5}, 0.5),
+        (4, {"num_gpus": 0.5}, 2),
+        (1, {"num_gpus": 1}, 1),
+    ],
+    ids=[
+        "default",
+        "explicit-none",
+        "explicit-zero",
+        "one-aggregator",
+        "four-aggregators",
+        "integer-gpu",
+    ],
+)
+def hash_shuffle_resource_usage_case(request):
+    num_aggregators, override, expected_gpu = request.param
+    ctx = DataContext()
+    input_op = InputDataBuffer(ctx, [])
+    input_op._logical_operators = [MagicMock(LogicalOperator)]
+    with (
+        patch(
+            "ray.data._internal.execution.operators.hash_shuffle"
+            "._get_total_cluster_resources",
+            return_value=ExecutionResources(cpu=4, memory=32 * GiB),
+        ),
+        patch("ray.data._internal.execution.operators.hash_shuffle.ray.put"),
+    ):
+        op = HashShuffleOperator(
+            input_op,
+            ctx,
+            key_columns=("id",),
+            num_partitions=num_aggregators,
+            aggregator_ray_remote_args_override=override,
+        )
+        yield op, expected_gpu
+
+
+def test_hash_shuffle_aggregator_gpu_usage_matches_actor_options(
+    hash_shuffle_resource_usage_case,
+):
+    op, expected_gpu = hash_shuffle_resource_usage_case
+    op.start(ExecutionOptions(), noop_counter())
+    pool = _create_aggregator_pool_for_test(op, estimated_dataset_bytes=None)
+    override = op._aggregator_ray_remote_args_override or {}
+
+    with (
+        patch.object(pool, "_check_cluster_resources"),
+        patch.object(pool, "start_health_monitoring"),
+        # Keep ActorClass.options validation; only mock actor submission.
+        patch.object(HashShuffleAggregator, "_remote") as create_actor,
+        patch("ray.data._internal.execution.operators.hash_shuffle.ray.kill"),
+    ):
+        pool.start()
+        assert create_actor.call_count == pool.num_aggregators
+        requested_gpu = 0
+        for actor_call in create_actor.call_args_list:
+            options = actor_call.kwargs
+            assert ("num_gpus" in options) == ("num_gpus" in override)
+            if "num_gpus" in override:
+                assert options["num_gpus"] == override["num_gpus"]
+            # Ray accepts None and omits its GPU resource request.
+            requested_gpu += resources_from_ray_options(options).get("GPU", 0)
+
+        assert requested_gpu == expected_gpu
+        assert op.base_resource_usage.gpu == expected_gpu
+        assert op.current_logical_usage().gpu == expected_gpu
+        assert op.running_logical_usage().gpu == expected_gpu
+        op.shutdown(Timer(), force=True)
+
+
+@pytest.mark.parametrize("phase", ["no_pool", "created", "started", "shutdown"])
+def test_hash_shuffle_aggregator_gpu_usage_lifecycle(
+    hash_shuffle_resource_usage_case, phase
+):
+    op, expected_gpu = hash_shuffle_resource_usage_case
+    assert op.base_resource_usage == ExecutionResources.zero()
+    assert op.current_logical_usage() == ExecutionResources.zero()
+    assert op.running_logical_usage() == ExecutionResources.zero()
+    op.start(ExecutionOptions(), noop_counter())
+    expected = ExecutionResources.zero()
+
+    if phase != "no_pool":
+        pool = _create_aggregator_pool_for_test(op, estimated_dataset_bytes=None)
+        effective_args = pool._aggregator_ray_remote_args
+        expected = ExecutionResources(
+            cpu=pool.num_aggregators * effective_args["num_cpus"],
+            gpu=expected_gpu,
+            memory=pool.num_aggregators * effective_args["memory"],
+        )
+        if phase in ("started", "shutdown"):
+            with (
+                patch.object(pool, "_check_cluster_resources"),
+                patch.object(pool, "start_health_monitoring"),
+                patch(
+                    "ray.data._internal.execution.operators.hash_shuffle"
+                    ".HashShuffleAggregator.options"
+                ),
+            ):
+                pool.start()
+            assert len(pool._aggregators) == pool.num_aggregators
+        if phase == "shutdown":
+            with patch(
+                "ray.data._internal.execution.operators.hash_shuffle.ray.kill"
+            ) as kill:
+                op.shutdown(Timer(), force=True)
+            assert kill.call_count == pool.num_aggregators
+            assert pool._aggregators == []
+            assert op.get_active_tasks() == []
+
+    # The configured footprint survives shutdown; current usage does not.
+    assert op.base_resource_usage == expected
+    current = ExecutionResources.zero() if phase == "shutdown" else expected
+    assert op.current_logical_usage() == current
+    # Hash shuffle does not split pending actors from its logical footprint.
+    assert op.pending_logical_usage() == ExecutionResources.zero()
+    assert op.running_logical_usage() == current
+
+    # Also cover shutdown before pool creation/start, and repeated shutdown.
+    with patch("ray.data._internal.execution.operators.hash_shuffle.ray.kill"):
+        op.shutdown(Timer(), force=True)
+    assert op.base_resource_usage == expected
+    assert op.current_logical_usage() == ExecutionResources.zero()
+    assert op.running_logical_usage() == ExecutionResources.zero()
+
+
+@pytest.mark.parametrize("reservation_enabled", [True, False])
+@pytest.mark.parametrize("force", [True, False])
+def test_resource_manager_includes_hash_shuffle_aggregator_gpus(
+    hash_shuffle_resource_usage_case, reservation_enabled, force
+):
+    op, expected_gpu = hash_shuffle_resource_usage_case
+    op.data_context.op_resource_reservation_enabled = reservation_enabled
+    options = ExecutionOptions()
+    counter = noop_counter()
+    topology = build_streaming_topology(op, options, counter)
+    manager = ResourceManager(
+        topology,
+        options,
+        lambda: ExecutionResources(
+            cpu=8, gpu=4, memory=32 * GiB, object_store_memory=GiB
+        ),
+        op.data_context,
+        counter,
+    )
+    assert manager.op_resource_allocator_enabled() == reservation_enabled
+
+    manager.update_usages()
+    assert manager.get_op_usage(op) == ExecutionResources.zero()
+    assert manager.get_global_usage() == ExecutionResources.zero()
+    assert manager.get_global_running_usage() == ExecutionResources.zero()
+
+    pool = _create_aggregator_pool_for_test(op, estimated_dataset_bytes=None)
+    effective_args = pool._aggregator_ray_remote_args
+    configured = op.base_resource_usage
+    manager.update_usages()
+    assert manager.get_op_usage(op) == configured
+    assert manager.get_global_usage() == configured
+    assert manager.get_global_running_usage() == configured
+
+    with (
+        patch.object(pool, "_check_cluster_resources"),
+        patch.object(pool, "start_health_monitoring"),
+        patch(
+            "ray.data._internal.execution.operators.hash_shuffle"
+            ".HashShuffleAggregator.options"
+        ),
+    ):
+        pool.start()
+    assert len(pool._aggregators) == pool.num_aggregators
+
+    # Shuffling tasks are accounted separately; finalization uses pool actors.
+    task_ref = ray.ObjectRef.from_random()
+    task_done = MagicMock()
+    task = MetadataOpTask(
+        task_index=0,
+        object_ref=task_ref,
+        task_done_callback=task_done,
+        task_resource_bundle=ExecutionResources(cpu=1, memory=128),
+    )
+    op._shuffling_tasks[0][0] = task
+    op._shuffling_resource_usage = task.get_requested_resource_bundle()
+    expected = ExecutionResources(
+        cpu=pool.num_aggregators * effective_args["num_cpus"] + 1,
+        gpu=expected_gpu,
+        memory=pool.num_aggregators * effective_args["memory"] + 128,
+    )
+
+    manager.update_usages()
+
+    assert manager.get_op_usage(op) == expected
+    assert manager.get_global_usage() == expected
+    assert manager.get_global_running_usage() == expected
+    assert manager.get_global_pending_usage() == ExecutionResources.zero()
+
+    # Live output references remain separately accounted after operator shutdown.
+    output_ref = ray.ObjectRef.from_random()
+    counter.on_block_produced(output_ref, 4096, op.id)
+    manager.update_usages()
+    with (
+        patch("ray.data._internal.execution.operators.hash_shuffle.ray.kill") as kill,
+        patch(
+            "ray.data._internal.execution.interfaces.physical_operator.ray.cancel"
+        ) as cancel,
+        patch(
+            "ray.data._internal.execution.interfaces.physical_operator.ray.get"
+        ) as get,
+    ):
+        op.shutdown(Timer(), force=force)
+    assert kill.call_count == pool.num_aggregators
+    assert pool._aggregators == []
+    cancel.assert_called_once_with(task_ref, recursive=True, force=force)
+    if force:
+        get.assert_called_once_with(task_ref)
+    else:
+        get.assert_not_called()
+    task_done.assert_not_called()
+    assert op.get_active_tasks() == []
+    assert op.base_resource_usage == configured
+    # ResourceManager getters retain the last snapshot until explicitly refreshed.
+    assert manager.get_op_usage(op) == expected.copy(object_store_memory=4096)
+
+    manager.update_usages()
+
+    remaining = ExecutionResources(object_store_memory=4096)
+    assert manager.get_op_usage(op) == remaining
+    assert manager.get_global_usage() == remaining
+    assert manager.get_global_running_usage() == remaining
+    assert manager.get_global_pending_usage() == ExecutionResources.zero()
+    assert op.current_logical_usage() == ExecutionResources.zero()
+    assert op.running_logical_usage() == ExecutionResources.zero()
+    assert op.pending_logical_usage() == ExecutionResources.zero()
 
 
 def _make_ref_bundle(size_bytes: int) -> RefBundle:
