@@ -689,6 +689,33 @@ The cache bounds both EROFS images and downloaded layers so that a node that run
 
 Ray verifies downloaded image layers against their digests and stores them in `/tmp/ray/sandbox/images/.blobs/sha256/<digest>`. Images and tags that share layers reuse these files. Rebuilding an evicted image downloads only layers the node no longer has. Concurrent pulls of the same layer, from any process on the node, download it once. A cached image's EROFS file doesn't depend on its layers, so evicting layers doesn't affect a running sandbox.
 
+### Place sandboxes on the node that caches their image
+
+A cold pull of a large image takes a minute or more, and every node that runs an image caches its own copy. So that sandboxes of one image share a node's cache, {func}`~ray.experimental.sandbox.create` and the HTTP and gRPC APIs prefer one node for each image, chosen among the nodes that could host the sandbox. The choice is a hash of the image and the node IDs, so every process picks the same node without coordination. That holds even for a burst of sandboxes that start before any pull finishes. A node that joins or leaves the cluster moves only a share of the images. The preference is soft. When that node lacks the resources for another sandbox, Ray schedules it as usual.
+
+Ray doesn't apply the preference to an image in a local tar archive, because the archive is on one node only. It also doesn't apply it when the caller runs in a placement group.
+
+An actor that creates sandboxes with `SandboxRuntime` gets the same preference from {func}`~ray.experimental.sandbox.image_scheduling_strategy`. Pass it the actor's resource requests, so that only nodes that can host the actor count:
+
+```python
+import ray
+from ray.experimental.sandbox import SandboxRuntime, image_scheduling_strategy
+
+ray.init()
+
+@ray.remote
+class Rollout:
+    def __init__(self, image: str):
+        self.runtime = SandboxRuntime()
+        self.sandbox = self.runtime.create(image=image)
+
+image = "python:3.12-slim"
+rollout = Rollout.options(
+    num_cpus=1,
+    scheduling_strategy=image_scheduling_strategy(image, num_cpus=1),
+).remote(image)
+```
+
 ### Route Docker Hub pulls through a mirror
 
 Unless the nodes hold Docker Hub credentials, every node pulling from Docker Hub consumes the anonymous pull-rate limit and downloads the image over the WAN. In a large cluster, concurrent pulls of multi-GB images can quickly hit the rate limit or saturate network bandwidth, causing image pulls to fail or become slow.

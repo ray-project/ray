@@ -965,6 +965,54 @@ def test_resolver_reuses_one_actor_class_and_caches_fresh_handles(
     assert lookups == ["sb-token", "sb-fresh"]
 
 
+def test_resolver_prefers_the_node_the_image_maps_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ray
+    from ray.experimental.sandbox.http import resolver as resolver_module
+
+    options = []
+
+    class _ActorClass:
+        def options(self, **actor_options):
+            options.append(actor_options)
+            return self
+
+        def remote(self, **kwargs):
+            return object()
+
+    monkeypatch.setattr(ray, "remote", lambda cls: _ActorClass())
+    monkeypatch.setattr(
+        resolver_module,
+        "image_scheduling_strategy",
+        lambda image, **demand: ("strategy", image, demand),
+    )
+    resolver = RayActorHandleResolver(SandboxAPISettings())
+    resolver.create(
+        "sb-1",
+        {"num_cpus": 2, "num_gpus": 1, "memory": 1 << 30, "resources": {"gvisor": 1}},
+        {"spec": {"image": "python:3.12-slim"}},
+        get_if_exists=False,
+    )
+    assert options[0]["scheduling_strategy"] == (
+        "strategy",
+        "python:3.12-slim",
+        {"num_cpus": 2, "num_gpus": 1, "memory": 1 << 30, "resources": {"gvisor": 1}},
+    )
+    assert options[0]["resources"] == {"gvisor": 1}
+    # A placement in the actor options wins, and Ray takes only one of a
+    # scheduling strategy and a placement group.
+    for own in ("scheduling_strategy", "placement_group"):
+        resolver.create(
+            "sb-2",
+            {"num_cpus": 2, own: "the caller's"},
+            {"spec": {"image": "python:3.12-slim"}},
+            get_if_exists=False,
+        )
+        assert options[-1][own] == "the caller's"
+        assert set(options[-1]) & {"scheduling_strategy", "placement_group"} == {own}
+
+
 class _LosesFirstBoot(FakeResolver):
     """The first create's boot() never reaches the actor, as when its replica
     dies right after registering the actor."""

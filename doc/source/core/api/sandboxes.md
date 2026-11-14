@@ -25,6 +25,7 @@ For an introduction and usage guides, see {ref}`ray-core-sandboxes`.
     ray.experimental.sandbox.restore
     ray.experimental.sandbox.Sandbox
     ray.experimental.sandbox.SandboxRuntime
+    ray.experimental.sandbox.image_scheduling_strategy
 ```
 
 ## Data structures and status
