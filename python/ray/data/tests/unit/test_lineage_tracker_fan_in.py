@@ -1145,10 +1145,11 @@ def test_retry_does_not_resubmit_the_seed_while_a_parent_re_execution_is_queued(
     tracker.register_task_submission("right", _RIGHT_INPUT, plan)
 
 
-def test_retry_does_not_resubmit_the_seed_before_a_parent_re_execution_produces_the_input():
+def test_retry_resubmits_the_seed_while_a_parent_re_execution_is_submitted():
     """``right`` loses its input after the re-execution of ``split`` for ``left``
-    is submitted, but before it produces output 1. That re-execution still
-    produces output 1 for ``right``, so the seed is not resubmitted.
+    is submitted, but before it produces output 1. The seed is resubmitted. The
+    submitted re-execution still produces output 1 for ``right``, so the next
+    re-execution of ``split`` is redundant and its outputs are unrelated.
     """
     tracker = LineageTracker()
     plan = _register_split_graph(tracker)
@@ -1159,11 +1160,17 @@ def test_retry_does_not_resubmit_the_seed_before_a_parent_re_execution_produces_
     reused = ObjectReuseStatus.OBJECT_REUSED
     assert _produce_output(tracker, "split", 0, plan) is reused
 
-    assert tracker.register_task_failed("right", plan) == ([], plan)
+    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
 
     assert _produce_output(tracker, "split", 1, plan) is reused
     tracker.register_task_complete("split", plan)
     tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    unrelated = ObjectReuseStatus.OBJECT_UNRELATED
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        unrelated,
+        unrelated,
+    ]
 
 
 def test_retry_resubmits_the_seed_after_a_parent_re_execution_produced_the_input():
@@ -1214,10 +1221,11 @@ def test_retry_does_not_resubmit_a_seed_that_is_already_queued():
     ]
 
 
-def test_retry_does_not_resubmit_the_seed_while_a_later_parent_re_execution_still_produces_the_input():
+def test_retry_resubmits_the_seed_while_a_later_parent_re_execution_is_submitted():
     """Two re-executions of ``split`` for the plan overlap. The first one completes
-    after the second one is submitted. ``left`` then loses its input. The second
-    re-execution still produces output 0, so the seed is not resubmitted.
+    after the second one is submitted. ``left`` then loses its input. The seed is
+    resubmitted. The second re-execution still produces output 0 for ``left``, so
+    the third re-execution of ``split`` is redundant and its outputs are unrelated.
     """
     tracker = LineageTracker()
     plan = _register_split_graph(tracker)
@@ -1237,12 +1245,33 @@ def test_retry_does_not_resubmit_the_seed_while_a_later_parent_re_execution_stil
     tracker.register_task_complete("split", plan)
     tracker.register_task_submission("left", _LEFT_INPUT, plan)
 
-    assert tracker.register_task_failed("left", plan) == ([], plan)
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
 
     reused = ObjectReuseStatus.OBJECT_REUSED
     assert _produce_output(tracker, "split", 0, plan) is reused
     assert _produce_output(tracker, "split", 1, plan) is reused
     tracker.register_task_complete("split", plan)
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    unrelated = ObjectReuseStatus.OBJECT_UNRELATED
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        unrelated,
+        unrelated,
+    ]
+
+
+def test_re_execution_without_queued_input_for_a_finished_plan_raises():
+    """A re-execution is only submitted for a plan that needs outputs from the task
+    or queued input for it. After the plan is done with ``split``, submitting
+    ``split`` for the plan again raises.
+    """
+    tracker = LineageTracker()
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+
+    with pytest.raises(ValueError, match="not registered as a known reconstruction"):
+        tracker.register_task_submission("split", _SEED_OUTPUT, plan)
 
 
 if __name__ == "__main__":
