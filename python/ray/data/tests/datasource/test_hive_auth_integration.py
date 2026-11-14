@@ -8,7 +8,6 @@ import sys
 import time
 from contextlib import closing
 
-import certifi
 import pyarrow as pa
 import pytest
 
@@ -25,7 +24,13 @@ from ray.data.tests.datasource.test_hive_integration import (
 
 CASES = ("table", "untrusted_ca_driver", "hostname_worker")
 SCHEMA = pa.schema([("id", pa.int64()), ("name", pa.string())])
-pytestmark = pytest.mark.timeout(180)
+pytestmark = [
+    pytest.mark.timeout(180),
+    pytest.mark.skipif(
+        not os.environ.get("RAY_HIVE_CA_PEM_B64"),
+        reason="Set RAY_HIVE_CA_PEM_B64 to run the Hive TLS integration suite",
+    ),
+]
 
 
 def _verification_code(host, ca_path):
@@ -79,6 +84,8 @@ def test_hive_tls(scenario, tmp_path, ray_start_cluster_enabled):
         failing_options = options.copy()
         code: int | None = None
         if scenario == "untrusted_ca_driver":
+            import certifi
+
             failing_options["ca_cert"] = certifi.where()
             code = _verification_code("hiveserver2", certifi.where())
         elif scenario == "hostname_worker":
@@ -126,16 +133,27 @@ def test_hive_tls(scenario, tmp_path, ray_start_cluster_enabled):
 
 
 class _EnsureCases:
+    def __init__(self):
+        self.expected = {f"test_hive_tls[{case}]" for case in CASES}
+        self.executed: set[str] = set()
+        self.skipped = False
+
     def pytest_collection_finish(self, session):
-        expected = {f"test_hive_tls[{case}]" for case in CASES}
-        if {item.name for item in session.items} != expected:
+        if {item.name for item in session.items} != self.expected:
             raise pytest.UsageError(
                 "TLS suite did not collect exactly the expected cases"
             )
 
-    def pytest_terminal_summary(self, terminalreporter):
-        if terminalreporter.stats.get("skipped"):
-            terminalreporter._session.exitstatus = 1
+    def pytest_runtest_logreport(self, report):
+        if report.when == "call":
+            self.executed.add(report.nodeid.rsplit("::", 1)[-1])
+        self.skipped |= report.skipped
+
+    def pytest_sessionfinish(self, session, exitstatus):
+        if session.exitstatus == pytest.ExitCode.OK and (
+            self.skipped or self.executed != self.expected
+        ):
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 if __name__ == "__main__":

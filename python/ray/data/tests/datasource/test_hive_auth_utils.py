@@ -2,8 +2,11 @@
 
 import json
 import logging
+import os
 import ssl
+import subprocess
 import sys
+import textwrap
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -161,6 +164,93 @@ def test_rejects_missing_or_invalid_reader_evidence(tmp_path, damage):
         path.write_text(json.dumps(record) if damage != "truncated" else "{")
     with pytest.raises(ValueError):
         utils._read_evidence(tmp_path, {"node"}, test_file)
+
+
+@pytest.mark.parametrize(
+    "mode,exit_code,summary",
+    [
+        ("ordinary", 0, "3 skipped"),
+        ("entry", 1, "3 skipped"),
+        ("entry_no_summary", 1, "3 skipped"),
+        ("one_skip", 1, "2 passed, 1 skipped"),
+        ("collect_only", 1, "3 tests collected"),
+        ("all_pass", 0, "3 passed"),
+    ],
+)
+def test_tls_opt_in_and_entry_guard(mode, exit_code, summary):
+    """Exercise pytest collection and the real entry guard without Hive or Ray."""
+    target = Path(__file__).with_name("test_hive_auth_integration.py").resolve()
+    bootstrap = textwrap.dedent(
+        """\
+        import os, runpy, sys, types
+        import pytest
+
+        arrow = types.ModuleType('pyarrow')
+        arrow.schema = lambda fields: fields
+        arrow.int64 = arrow.string = lambda: None
+        sys.modules['pyarrow'] = arrow
+        sys.modules['certifi'] = None
+        for name in ('ray', 'ray.data', 'ray.data.tests', 'ray.data.tests.datasource'):
+            module = types.ModuleType(name)
+            module.__path__ = []
+            sys.modules[name] = module
+            if '.' in name:
+                parent, child = name.rsplit('.', 1)
+                setattr(sys.modules[parent], child, module)
+        for name, attrs in (
+            ('_hive_test_utils', ('_make_auth_factory', '_read_evidence')),
+            ('test_hive_integration', ('_connection_options', '_make_connection_factory', '_temporary_table')),
+        ):
+            module = types.ModuleType(name)
+            for attr in attrs:
+                setattr(module, attr, lambda *args, **kwargs: None)
+            sys.modules['ray.data.tests.datasource.' + name] = module
+
+        target, mode = sys.argv[1:]
+        if mode in ('entry', 'entry_no_summary', 'collect_only'):
+            runpy.run_path(target, run_name='__main__')
+        elif mode == 'ordinary':
+            sys.exit(pytest.main(['-q', target]))
+        else:
+            os.environ['RAY_HIVE_CA_PEM_B64'] = 'configured'
+            class StubSuite:
+                @pytest.fixture
+                def ray_start_cluster_enabled(self):
+                    return None
+                def pytest_collection_modifyitems(self, items):
+                    for item in items:
+                        if mode == 'one_skip' and item.name == 'test_hive_tls[table]':
+                            item.obj = lambda **kwargs: pytest.skip('simulated skip')
+                        else:
+                            item.obj = lambda **kwargs: None
+            original_main = pytest.main
+            def main_with_skip(args, plugins=None):
+                return original_main(args, plugins=[*(plugins or []), StubSuite()])
+            pytest.main = main_with_skip
+            runpy.run_path(target, run_name='__main__')
+        """
+    )
+    env = os.environ.copy()
+    env.pop("RAY_HIVE_CA_PEM_B64", None)
+    env.update(
+        RAY_HIVE_TEST_HOST="hiveserver2",
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+        PYTEST_ADDOPTS=f"--noconftest -p no:cacheprovider -c {os.devnull} --disable-warnings",
+        PYTHONDONTWRITEBYTECODE="1",
+    )
+    if mode == "entry_no_summary":
+        env["PYTEST_ADDOPTS"] += " --no-summary"
+    if mode == "collect_only":
+        env["PYTEST_ADDOPTS"] += " --collect-only"
+    result = subprocess.run(
+        [sys.executable, "-c", bootstrap, str(target), mode],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == exit_code, result.stdout + result.stderr
+    assert summary in result.stdout, result.stdout + result.stderr
 
 
 if __name__ == "__main__":

@@ -303,6 +303,7 @@ py_test(
         "tests/datasource/_hive_test_utils.py",
         "tests/datasource/test_hive_auth_utils.py",
     ],
+    data = ["tests/datasource/test_hive_auth_integration.py"],
     tags = ["team:data"],
     deps = [
         ":conftest",
