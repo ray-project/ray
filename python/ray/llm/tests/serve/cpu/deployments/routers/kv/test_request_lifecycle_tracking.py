@@ -14,6 +14,7 @@ import ray.cloudpickle
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
     REQUEST_TRACKING_TTL_S,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
@@ -86,6 +87,7 @@ class MockSelectionService:
         self.calls = []
         self.reservations = []
         self.selects = []
+        self.effective_prefill_tokens = None
 
     async def select_and_reserve(self, request):
         self.calls.append(
@@ -100,7 +102,11 @@ class MockSelectionService:
             "worker_id": request["allowed_worker_ids"][0],
             "dp_rank": 0,
             "overlap": {"longest_matched": 0},
-            "effective_prefill_tokens": len(request["token_ids"]),
+            "effective_prefill_tokens": (
+                self.effective_prefill_tokens
+                if self.effective_prefill_tokens is not None
+                else len(request["token_ids"])
+            ),
             "sequence_hashes": [0],
             "isl_tokens": len(request["token_ids"]),
         }
@@ -126,6 +132,8 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._block_size = block_size
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
+        self._outstanding_effective_prefill_tokens = 0
+        self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
@@ -177,6 +185,8 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._block_size = block_size
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
+        self._outstanding_effective_prefill_tokens = 0
+        self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
@@ -724,6 +734,7 @@ async def test_active_load_tracking():
     assert await actor.get_request_lifecycle("a") == {
         "worker_id": 1,
         "prompt_tokens": 8,
+        "effective_prefill_tokens": 8,
         "expected_output_tokens": None,
         "prefill_completed": True,
         "output_tokens": 5,
@@ -741,6 +752,63 @@ async def test_active_load_tracking():
     await actor.on_decode_progress("missing", 3)
     await actor.on_request_completed("missing")
     assert await actor.get_request_lifecycle("missing") is None
+
+
+@pytest.mark.asyncio
+async def test_autoscaling_snapshot_tracks_request_phases():
+    actor = LocalKVTokenTracker(block_size=16)
+    actor._svc.effective_prefill_tokens = 3
+    published = []
+    actor.set_autoscaling_metrics_callback(published.append)
+    assert published == []
+
+    await reserve(actor, "a", 1, list(range(20)))
+    await reserve(actor, "b", 1, list(range(20, 40)))
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 6}
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
+
+    # Prefill completion drops the request's prefill tokens.
+    await actor.on_prefill_complete("a")
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 3}
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
+
+    # Duplicate lifecycle events are idempotent.
+    await actor.on_prefill_complete("a")
+    assert await actor.get_autoscaling_snapshot() == expected
+
+    # Completing a decoding request leaves prefill tokens unchanged.
+    await actor.on_request_completed("a")
+    assert await actor.get_autoscaling_snapshot() == expected
+
+    # Completing a request still in prefill drops its prefill tokens.
+    await actor.on_request_completed("b")
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0}
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
+
+
+@pytest.mark.asyncio
+async def test_raising_autoscaling_callback_does_not_skip_side_effects():
+    actor = LocalKVTokenTracker(block_size=16)
+    actor._svc.effective_prefill_tokens = 3
+
+    def raising_callback(snapshot):
+        raise RuntimeError("metrics not ready")
+
+    actor.set_autoscaling_metrics_callback(raising_callback)
+
+    await reserve(actor, "a", 1, list(range(20)))
+    await actor.on_prefill_complete("a")
+    await actor.on_request_completed("a")
+    actor.remove_worker(1)
+    await asyncio.gather(*actor._pending_tasks)
+
+    calls = [call[:2] for call in actor._svc.calls]
+    assert ("prefill_complete", "a") in calls
+    assert ("free_reservation", "a") in calls
+    assert ("delete_worker", 1) in calls
 
 
 @pytest.mark.asyncio
@@ -843,6 +911,7 @@ async def test_select_worker_books_request_state():
     assert await actor.get_request_lifecycle("r") == {
         "worker_id": 1,
         "prompt_tokens": 8,
+        "effective_prefill_tokens": 8,
         "expected_output_tokens": 32,
         "prefill_completed": False,
         "output_tokens": 0,
@@ -879,6 +948,7 @@ async def test_tracks_streamed_request_state(build_token_tracking_engine):
     assert await actor.get_request_lifecycle.remote("req-e2e") == {
         "worker_id": WORKER_ID,
         "prompt_tokens": 12,
+        "effective_prefill_tokens": 12,
         "expected_output_tokens": MAX_TOKENS,
         "prefill_completed": True,
         "output_tokens": 9,
