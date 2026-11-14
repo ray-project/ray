@@ -15,12 +15,6 @@ import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
 from ray.util.debug import log_once
-from ray.util.placement_group import (
-    PlacementGroup,
-    placement_group,
-    remove_placement_group,
-)
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -205,21 +199,6 @@ def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
     return (dims[0] // 2, dims[1] // 2, *dims[2:])
 
 
-def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
-    """Return the default chips-per-VM for *topology* on *accelerator_version*
-    (single-host v5e/v6e topologies pack up to 8 chips on one VM).
-    """
-    accel_lower = accelerator_version.strip().lower()
-
-    # Single-host: return total chips in topology
-    if accel_lower in TPU_8_CHIPS_PER_HOST_TYPES:
-        total_chips = get_num_chips_from_topology(topology)
-        if total_chips <= 8:
-            return total_chips
-
-    return DEFAULT_TPU_NUM_CHIPS_PER_HOST
-
-
 def _get_tpu_metadata(key: str) -> Optional[str]:
     """Poll and get TPU metadata."""
     try:
@@ -352,20 +331,6 @@ def infer_tpu_pod_type_from_topology(
         ) from e
 
 
-def fetch_tpu_slice_name_from_pg(pg):
-    @ray.remote(num_cpus=0)
-    def _get_tpu_slice_name():
-        return TPUAcceleratorManager.get_current_node_tpu_name()
-
-    tpu_name_ref = _get_tpu_slice_name.options(
-        scheduling_strategy=PlacementGroupSchedulingStrategy(
-            placement_group=pg, placement_group_bundle_index=0
-        )
-    ).remote()
-
-    return ray.get(tpu_name_ref)
-
-
 def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     """Get the number of chips per host based on topology and accelerator version.
 
@@ -489,92 +454,6 @@ def _get_subslice_index(
         [pos // sub for pos, sub in zip(worker_pos, sub_dims)],
         [dim // sub for dim, sub in zip(parent_dims, sub_dims)],
     )
-
-
-DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S: float = 100.0
-
-
-def reserve_tpu_slice(
-    topology: str,
-    accelerator_type: str,
-    timeout_s: Optional[float] = DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
-    slice_name: Optional[str] = None,
-) -> Optional[Tuple[str, PlacementGroup]]:
-    """Reserves a TPU slice using its head resource and returns the slice name.
-    This enables gang scheduling of training workers with multi-host TPUs.
-    This is used by JaxTrainer with TPUs in Ray Train.
-
-    Args:
-        topology: The TPU topology string (e.g. "2x2x2").
-        accelerator_type: The accelerator type of the node (e.g. "TPU-V4").
-        timeout_s: The maximum time in seconds to wait for the TPU head
-            placement group to become ready. The head reservation must succeed
-            before the slice name can be retrieved, so this call is necessarily
-            blocking. Defaults to ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``.
-            Pass ``None`` to wait indefinitely.
-        slice_name: If provided, target this specific slice by constraining the
-            head reservation to that slice's worker 0. Without it, the head can
-            land on any matching slice's worker 0 — including one whose other
-            workers are busy, which would then fail to gang-schedule.
-
-    Returns:
-        A tuple of a string representing a unique TPU slice name and the placement
-        group handle reserving the TPU head.
-
-    Raises:
-        TimeoutError: If the TPU head placement group does not become ready
-            within ``timeout_s`` seconds.
-    """
-    pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
-    if pod_type is None:
-        return None
-
-    # Reserve a slice by creating a placement group on the TPU head.
-    head_label_selector = {
-        "ray.io/tpu-worker-id": "0",
-        "ray.io/tpu-pod-type": pod_type,
-    }
-    if slice_name is not None:
-        head_label_selector[ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY] = slice_name
-    head_placement_group = placement_group(
-        bundles=[{f"TPU-{pod_type}-head": 1}],
-        bundle_label_selector=[head_label_selector],
-    )
-
-    logger.debug(
-        "Waiting up to %s seconds to reserve multi-host slice head.", timeout_s
-    )
-    ready, _ = ray.wait([head_placement_group.ready()], timeout=timeout_s)
-
-    if not ready:
-        # Clean up the pending head reservation so that resources are not
-        # held while the caller decides whether to retry.
-        try:
-            remove_placement_group(head_placement_group)
-        except Exception:
-            logger.exception(
-                "Failed to clean up pending TPU head placement group after timeout."
-            )
-        raise TimeoutError(
-            "Failed to reserve TPU head for slice with shape: {} after {} "
-            "seconds. Ensure your cluster has sufficient resources. Requesting "
-            "TPU head node with labels: {}. Current resources: {}".format(
-                pod_type,
-                timeout_s,
-                head_label_selector,
-                ray.available_resources(),
-            )
-        )
-
-    # Retrieve the unique slice ID.
-    slice_name = fetch_tpu_slice_name_from_pg(head_placement_group)
-    if slice_name is None:
-        raise RuntimeError(
-            "Failed to retrieve TPU slice name after reserving head placement group. "
-            "Ensure that TPU slice metadata is available and correctly configured on multi-host nodes."
-        )
-
-    return (slice_name, head_placement_group)
 
 
 def _is_vfio_group_a_tpu(group: int) -> bool:
@@ -1282,6 +1161,14 @@ class TPUAcceleratorManager(AcceleratorManager):
             num_hosts = ray.util.tpu.get_current_pod_worker_count()
             tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
             return [tpu_executable.remote() for _ in range(num_hosts)]
+
+        Note: The ``TPU-<pod_type>-head`` and ``<tpu_name>`` custom resources are
+        populated only when GCE TPU metadata / environment variables are present on
+        the node. For multi-host TPU slice scheduling across both KubeRay and GCE,
+        prefer :class:`ray.util.tpu.SlicePlacementGroup`, which uses
+        ``topology_strategy`` on ``ray.io/tpu-slice-name`` and per-bundle
+        ``ray.io/tpu-topology``, ``ray.io/accelerator-type``, and
+        ``ray.io/tpu-worker-id`` node labels.
 
         Returns:
             A dictionary representing additional resources that may be

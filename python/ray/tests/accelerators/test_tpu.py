@@ -2203,18 +2203,6 @@ def test_get_worker_dims_unknown(topology, match):
         tpu._get_worker_dims_for_topology(topology)
 
 
-def test_get_default_chips_per_vm():
-    """Test default chips per VM."""
-    # v6e single-host: total chips
-    assert tpu._get_default_chips_per_vm("2x4", "v6e") == 8
-    assert tpu._get_default_chips_per_vm("2x2", "v6e") == 4
-    assert tpu._get_default_chips_per_vm("1x1", "v6e") == 1
-    # v6e multi-host: 4 chips
-    assert tpu._get_default_chips_per_vm("4x8", "v6e") == 4
-    # v4/v5p: always 4
-    assert tpu._get_default_chips_per_vm("2x2x2", "v4") == 4
-
-
 @pytest.mark.parametrize(
     "physical_worker_id, parent_topology, subslice_topology, expected_index",
     [

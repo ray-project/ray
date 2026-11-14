@@ -29,6 +29,10 @@ from ray.llm._internal.serve.constants import (
     RAYLLM_VLLM_ENGINE_CLS_ENV,
     get_llm_serve_runtime_env,
 )
+from ray.llm._internal.serve.core.configs.accelerators import (
+    normalize_bundle_label_selector,
+    prepare_tpu_bundles_and_label_selector,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -825,11 +829,51 @@ class LLMServer(LLMServerProtocol):
             if "memory" in ray_actor_options:
                 replica_actor_resources["memory"] = ray_actor_options["memory"]
 
+            # Normalize placement_group_bundle_label_selector on non-deferred paths:
+            # pop None/[]/() so DeploymentSchema and ReplicaConfig do not reject
+            # empty/null selectors, convert tuples to lists, and shallow-copy dicts
+            # so aliased caller entries (for example [d, d]) remain independent.
+            if "placement_group_bundle_label_selector" in deployment_options:
+                normalized_selectors = normalize_bundle_label_selector(
+                    deployment_options["placement_group_bundle_label_selector"]
+                )
+                if normalized_selectors is None:
+                    deployment_options.pop("placement_group_bundle_label_selector")
+                else:
+                    deployment_options[
+                        "placement_group_bundle_label_selector"
+                    ] = normalized_selectors
+
             # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
             # more generic place.
             pg_bundles = _merge_replica_actor_and_child_actor_bundles(
                 engine_config.placement_bundles, replica_actor_resources
             )
+            if any(b.get("TPU", 0) > 0 for b in pg_bundles):
+                pg_bundles, label_selector = prepare_tpu_bundles_and_label_selector(
+                    pg_bundles, llm_config.accelerator_type
+                )
+                if label_selector is not None:
+                    user_selectors = deployment_options.get(
+                        "placement_group_bundle_label_selector"
+                    )
+                    if user_selectors is None:
+                        deployment_options[
+                            "placement_group_bundle_label_selector"
+                        ] = label_selector
+                    else:
+                        if len(user_selectors) == 1:
+                            user_selectors = user_selectors * len(label_selector)
+                        if len(user_selectors) != len(label_selector):
+                            raise ValueError(
+                                f"placement_group_bundle_label_selector length "
+                                f"({len(user_selectors)}) must be 1 or match the "
+                                f"number of bundles ({len(label_selector)})."
+                            )
+                        deployment_options["placement_group_bundle_label_selector"] = [
+                            {**tpu_sel, **user_sel}
+                            for tpu_sel, user_sel in zip(label_selector, user_selectors)
+                        ]
 
             deployment_options.update(
                 {
@@ -837,6 +881,13 @@ class LLMServer(LLMServerProtocol):
                     "placement_group_strategy": engine_config.placement_strategy,
                 }
             )
+        else:
+            # Deferred PG creation (for example, multi-host TPU SlicePlacementGroup)
+            # omits placement_group_bundles from Serve deployment options. Strip
+            # placement_group_bundle_label_selector so DeploymentSchema and
+            # ReplicaConfig do not reject an orphaned selector; VLLMEngineConfig
+            # forwards the selector from llm_config.deployment_config at runtime.
+            deployment_options.pop("placement_group_bundle_label_selector", None)
 
         # Handle env vars from runtime_env
         default_runtime_env = ray.get_runtime_context().runtime_env

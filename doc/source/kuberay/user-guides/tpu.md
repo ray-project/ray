@@ -194,7 +194,9 @@ The `ray.util.tpu` package uses the default TPU node labels and {ref}`label sele
 
 #### `SlicePlacementGroup`
 
-{class}`~ray.util.tpu.SlicePlacementGroup` reserves one or more available TPU slices that match your `topology` and `accelerator_version`, and creates a Ray {ref}`placement group <ray-placement-group-doc-ref>` pinned to those physical slices through the `ray.io/tpu-slice-name` node label. By default, it creates one bundle per TPU host, such as `{"TPU": 4}` on a four-chip host. To create one bundle per logical TPU device instead, pass `resources_per_bundle={"TPU": 1}`. For topologies such as TPU v6e `2x4` that can run on either one eight-chip VM or two four-chip VMs, set `chips_per_vm` to match your node pool. {class}`~ray.train.ScalingConfig` with `use_tpu=True` and {class}`~ray.serve.llm.LLMConfig` with `accelerator_config={"kind": "tpu", "topology": ...}` both create a `SlicePlacementGroup` for their workers.
+{class}`~ray.util.tpu.SlicePlacementGroup` reserves one or more TPU slices matching your requested topology and accelerator version. It creates one Ray {ref}`placement group <ray-placement-group-doc-ref>` per slice with TPU topology and accelerator label selectors, adding `ray.io/tpu-slice-name` strict-pack locality and `ray.io/tpu-worker-id` selectors for multi-host slices.
+
+By default, each bundle covers one TPU host, such as `{"TPU": 4}` on a four-chip host; pass `resources_per_bundle={"TPU": 1}` for one bundle per logical TPU device. For topologies such as TPU v6e `2x4` that can run on either one eight-chip VM or two four-chip VMs, set `chips_per_vm` to match your node pool. {class}`~ray.train.ScalingConfig` with `use_tpu=True` and {class}`~ray.serve.llm.LLMConfig` with `accelerator_config={"kind": "tpu", "topology": ...}` both create a `SlicePlacementGroup` for their workers.
 
 Call {func}`ray.util.tpu.slice_placement_group` to reserve slices and {func}`ray.util.tpu.run_on_slice` to launch tasks or actors across the bundles. The following example reserves two multi-host slices and runs one host-level task on every host:
 

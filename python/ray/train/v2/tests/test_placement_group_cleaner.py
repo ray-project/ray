@@ -356,6 +356,54 @@ def test_cleaner_pinned_to_head_node_and_escapes_placement_group():
     assert options_kwargs["lifetime"] == "detached"
 
 
+def test_pg_cleaner_cleans_up_multiple_placement_groups():
+    """Test that the PG cleaner removes a list of PGs (e.g. multi-slice TPU) when controller dies."""
+    from ray.train.v2._internal.callbacks.placement_group_callback import (
+        PlacementGroupCleanerCallback,
+    )
+
+    pg1 = placement_group([{"CPU": 1}], strategy="SPREAD")
+    pg2 = placement_group([{"CPU": 1}], strategy="SPREAD")
+    ray.get([pg1.ready(), pg2.ready()])
+
+    # 1. Verify PlacementGroupCleanerCallback registers the list of PGs when len(pgs) > 1.
+    callback = PlacementGroupCleanerCallback(check_interval_s=0.1)
+    callback._cleaner = MagicMock()
+    callback._controller_actor_id = "test_controller"
+    mock_wg = MagicMock()
+    mock_wg.get_worker_group_state.return_value.placement_group_handle.placement_groups = [
+        pg1,
+        pg2,
+    ]
+    with patch.object(ray, "get"):
+        callback.after_worker_group_start(mock_wg)
+    callback._cleaner.register_placement_group.remote.assert_called_once_with(
+        [pg1, pg2]
+    )
+
+    # 2. Verify PlacementGroupCleaner cleans up all PGs in the registered list on controller death.
+    target = (
+        "ray.train.v2._internal.execution.controller"
+        ".placement_group_cleaner.is_actor_alive"
+    )
+    with patch(target, return_value=False):
+        cleaner = PlacementGroupCleaner(
+            controller_actor_id="test_controller",
+            check_interval_s=0.05,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
+        cleaner.register_placement_group([pg1, pg2])
+        cleaner.start_monitoring()
+        monitor_thread = cleaner._monitor_thread
+        assert monitor_thread is not None
+        monitor_thread.join(timeout=5)
+        assert not monitor_thread.is_alive()
+
+    assert ray.util.placement_group_table(pg1).get("state") == "REMOVED"
+    assert ray.util.placement_group_table(pg2).get("state") == "REMOVED"
+
+
 if __name__ == "__main__":
     import sys
 
