@@ -13,7 +13,8 @@ from ray.dashboard.optional_utils import is_browser_request
 # Keys that carry a `runtime_env` in a response payload, and the shape they take.
 # `worker_runtime_env` is the Train `RunConfig` field for per-worker runtime envs.
 _RUNTIME_ENV_DICT_KEYS = ("runtime_env", "worker_runtime_env")
-_SERIALIZED_RUNTIME_ENV_KEYS = ("serialized_runtime_env",)
+# `serializedRuntimeEnv` is how Ray event protos spell it once converted to JSON.
+_SERIALIZED_RUNTIME_ENV_KEYS = ("serialized_runtime_env", "serializedRuntimeEnv")
 _RUNTIME_ENV_INFO_KEYS = ("runtime_env_info",)
 
 

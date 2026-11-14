@@ -339,8 +339,7 @@ class AsyncResult:
         self._result_thread.start()
 
     def wait(self, timeout: Optional[float] = None):
-        """
-        Returns once the result is ready or the timeout expires (does not
+        """Returns once the result is ready or the timeout expires (does not
         raise TimeoutError).
 
         Args:
@@ -369,16 +368,14 @@ class AsyncResult:
         return results
 
     def ready(self):
-        """
-        Returns true if the result is ready, else false if the tasks are still
+        """Returns true if the result is ready, else false if the tasks are still
         running.
         """
 
         return not self._result_thread.is_alive()
 
     def successful(self):
-        """
-        Returns true if none of the submitted tasks errored, else false. Should
+        """Returns true if none of the submitted tasks errored, else false. Should
         only be called once the result is ready (can be checked using `ready`).
         """
 

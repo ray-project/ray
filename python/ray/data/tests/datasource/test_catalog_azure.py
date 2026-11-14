@@ -1,14 +1,14 @@
 """Azure-backed ``DatabricksUnityCatalog`` Delta reads over a real data plane.
 
 Azure coverage in ``test_catalog.py`` stops at ``resolve()``: the Databricks SDK
-is mocked, the assertions check that ``AZURE_STORAGE_SAS_TOKEN`` lands in
-``os.environ``, and no byte is ever read. That leaves the part that actually
-matters untested -- whether a vended SAS gets a *reader* to the data, on the
-driver and in the read tasks.
+is mocked, the assertions check that the SAS lands in ``storage_options``, and
+no byte is ever read. That leaves the part that actually matters untested --
+whether a vended SAS gets a *reader* to the data, on the driver and in the read
+tasks.
 
 These tests drive the whole path instead: the real ``DatabricksUnityCatalog``
-resolves a table, its real ``_creds_to_env`` / ``_apply_env`` deliver the
-credential, and ``ray.data.read_delta`` fetches real bytes from real Azure blob
+resolves a table, its real ``_resolve_storage`` delivers the credential, and
+``ray.data.read_delta`` fetches real bytes from real Azure blob
 storage. The aggregations (``count`` / ``min`` / ``max``) are the point --
 authenticating is necessary but not sufficient, the rows have to come back
 *correct*.
@@ -86,12 +86,11 @@ How the credential reaches the read tasks
 Via ``storage_options``. There is no picklable pyarrow Azure filesystem to
 build a SAS into, so ``resolve()`` returns the SAS as a plain dict entry, which
 pickles along with the read plan; deltalake's object_store reads it on each
-worker. The environment variable is set too, but it reaches only the driver
-once Ray is running -- ``_apply_env`` can amend the cluster ``runtime_env``
-only while Ray is still uninitialized, and any case with an existing Dataset is
-already past that. AWS gets away with the environment because its vended
-``S3FileSystem`` carries the keys into the tasks; Azure has no such object, so
-``storage_options`` is the channel that has to work.
+worker. ``resolve()`` never writes it to the environment: on a running cluster
+that would reach only the driver, and there it would override every other
+Azure credential in the job. (AWS also has a vended ``S3FileSystem`` that
+carries the keys into the tasks; Azure has no such object for Delta, so
+``storage_options`` is the channel that has to work.)
 
 ``test_vended_credentials_reach_read_tasks`` asserts that channel-agnostically
 -- the credential must be reachable from a read task by *some* route that
@@ -100,13 +99,9 @@ survives pickling -- so it stays honest if the delivery mechanism changes again.
 Parquet takes the other channel
 -------------------------------
 ``read_parquet`` is filesystem-only: it ignores ``storage_options`` entirely, so
-the SAS has to reach it through a ``pyarrow.fs.AzureFileSystem``. ``resolve()``
-builds one, which needs pyarrow >= 20.0.0 -- that is when ``sas_token`` was
-added (apache/arrow#45705). Below it the credential cannot arrive by any route
-and ``resolve()`` raises ``ImportError`` rather than letting pyarrow fall
-through to ``DefaultAzureCredential``.
-``test_resolve_conveys_parquet_credentials_to_reader`` asserts whichever of
-those two outcomes matches the installed pyarrow.
+the SAS has to reach it through a ``pyarrow.fs.AzureFileSystem`` (its
+``sas_token`` parameter, apache/arrow#45705), which ``resolve()`` builds.
+``test_resolve_conveys_parquet_credentials_to_reader`` asserts that it does.
 
 Two details in that filesystem are easy to get wrong and both fail as an
 unauthenticated 404 rather than anything descriptive:
@@ -143,7 +138,6 @@ from typing import Optional
 from unittest import mock
 
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data.tests.conftest import *  # noqa: F401,F403
@@ -207,9 +201,14 @@ _REAL_ENV = {
 # real Azure can serve it (see the module docstring).
 _REAL_PARQUET_TABLE_ENV = "RAY_TEST_AZURE_UC_PARQUET_TABLE"
 
-# Every env var the catalog or the emulator plumbing might set, cleared between
-# tests so one test's vended SAS can never satisfy the next one's read.
+# Every env var the emulator plumbing might set, cleared between tests so one
+# test's SAS can never satisfy the next one's read.
 _AZURE_ENV_PREFIXES = ("AZURE_", "AZURITE_")
+
+
+def _vended_sas(resolved) -> Optional[str]:
+    """The SAS ``resolve()`` vended, from ``storage_options`` (never the env)."""
+    return (resolved.storage_options or {}).get("azure_storage_sas_token")
 
 
 def _free_port() -> int:
@@ -480,8 +479,8 @@ class _AzuriteBackend:
     def catalog(self) -> DatabricksUnityCatalog:
         """The real catalog, with only ``tables.get`` / credential vending faked.
 
-        ``_resolve_storage``, ``_creds_to_env``, ``_apply_env`` and
-        ``_infer_format`` all run as shipped -- they are what is under test.
+        ``_resolve_storage`` and ``_infer_format`` run as shipped -- they are
+        what is under test.
         """
         assert self._sas is not None, "seed() must run before catalog()"
 
@@ -624,12 +623,12 @@ def clean_azure_env():
 
     The teardown half is load-bearing, and ``monkeypatch`` cannot provide it:
     ``monkeypatch.delenv`` only restores variables that existed at setup, and
-    ``_apply_env`` *creates* ``AZURE_STORAGE_SAS_TOKEN`` mid-test by writing
-    straight to ``os.environ``. Leaving it behind is not a cosmetic leak -- the
-    module-scoped Ray cluster inherits the process environment when it starts,
-    so a leaked SAS reaches every read task for free and
-    ``test_vended_credentials_reach_read_tasks`` passes for entirely the wrong
-    reason. Autouse so no test can opt out of it by accident.
+    anything that *creates* an Azure variable mid-test (``resolve()`` used to
+    write ``AZURE_STORAGE_SAS_TOKEN``) would leave it behind. That is not a
+    cosmetic leak -- the module-scoped Ray cluster inherits the process
+    environment when it starts, so a leaked SAS reaches every read task for
+    free and ``test_vended_credentials_reach_read_tasks`` passes for entirely
+    the wrong reason. Autouse so no test can opt out of it by accident.
     """
     saved = {
         name: value
@@ -648,15 +647,17 @@ def clean_azure_env():
 
 @pytest.fixture
 def suppress_ray_init(monkeypatch):
-    """Stop ``resolve()`` from starting a Ray cluster of its own.
+    """Fail a resolve-only test if ``resolve()`` starts a Ray cluster.
 
-    ``_apply_env`` calls ``ray.init(runtime_env=...)`` whenever Ray is not yet
-    up, so a resolve-only test would leave a cluster behind and the next test to
-    ask for a shared cluster would die on "called ray.init twice". Same trick as
-    ``isolated_env`` in ``test_catalog.py``. A no-op once a shared cluster is
-    genuinely running, which makes test order irrelevant.
+    ``resolve()`` used to call ``ray.init(runtime_env=...)`` to hand vended
+    credentials to workers. It must not: the credentials would override every
+    other cloud credential in the job. A started cluster would also outlive the
+    test and make the next shared-cluster fixture die on "called ray.init
+    twice".
     """
-    monkeypatch.setattr("ray.is_initialized", lambda: True)
+    monkeypatch.setattr(
+        "ray.init", mock.Mock(side_effect=AssertionError("resolve() started Ray"))
+    )
 
 
 @pytest.fixture(scope="module")
@@ -717,14 +718,17 @@ def test_resolve_vends_sas_for_azure_delta(azure_backend, suppress_ray_init):
         f"{_REAL_ENV['host']} at an Azure Databricks workspace."
     )
     assert resolved.data_format is ReaderFormat.DELTA
-    sas = os.environ.get("AZURE_STORAGE_SAS_TOKEN")
+    sas = _vended_sas(resolved)
     assert sas, (
-        "resolve() vended no SAS into the environment. On a real workspace this "
+        "resolve() vended no SAS in storage_options. On a real workspace this "
         "usually means credential vending is off: the metastore needs external "
         "data access enabled, and the principal needs EXTERNAL USE SCHEMA on "
         "the schema on top of SELECT."
     )
     assert not sas.startswith("?"), "leading '?' must be stripped"
+    assert (
+        "AZURE_STORAGE_SAS_TOKEN" not in os.environ
+    ), "resolve() must not write the vended SAS to the environment"
 
 
 def test_table_shape_is_non_trivial(azure_backend):
@@ -785,19 +789,14 @@ def test_delta_count_min_max_via_catalog(ray_start_10_cpus_shared, azure_backend
 def test_vended_credentials_reach_read_tasks(ray_start_10_cpus_shared, azure_backend):
     """The vended credential must reach read tasks, not just the driver.
 
-    Deliberately channel-agnostic: it asserts the credential is *reachable* from
-    a worker, not how. Ray gives `resolve()` three ways to manage that, and only
-    two of them work on a running cluster:
+    It travels in `storage_options`, which is pickled along with the read plan.
+    It must not travel through the environment: a worker is a separate process,
+    so the environment only reaches it through the cluster `runtime_env`, and
+    there the credential would override every other Azure credential in the
+    job.
 
-    - inside the returned `filesystem`, or inside `storage_options` -- both are
-      pickled along with the read plan, so they arrive intact;
-    - via the environment, which does NOT arrive: a worker is a separate process
-      and `_apply_env` can only amend the cluster `runtime_env` while Ray is
-      still uninitialized. Every case with an existing Dataset is past that.
-
-    AWS passes by the first route (its vended `S3FileSystem` carries the keys).
     The shared-cluster fixture puts us on an already-running cluster on purpose
-    -- that is the case that breaks.
+    -- the case where only a pickled channel can work.
     """
     assert ray.is_initialized(), "fixture should have started Ray already"
 
@@ -823,74 +822,51 @@ def test_vended_credentials_reach_read_tasks(ray_start_10_cpus_shared, azure_bac
         reader=ReaderFormat.DELTA,
         mode=CatalogAccessMode.READ,
     )
-    driver_sas = os.environ.get("AZURE_STORAGE_SAS_TOKEN")
-    assert driver_sas, "precondition: resolve() should have vended a SAS"
+    sas = _vended_sas(resolved)
+    assert sas, "precondition: resolve() should have vended a SAS"
 
-    travels_in_options = any(
-        driver_sas in str(value) for value in (resolved.storage_options or {}).values()
-    )
-    # A filesystem holding the credential pickles too, but it exposes no way to
-    # read the SAS back out, so its mere presence is the strongest check
-    # available here.
-    travels_in_filesystem = resolved.filesystem is not None
-    reaches_via_env = ray.get(sas_in_worker.remote()) == driver_sas
+    @ray.remote
+    def sas_in_pickled_options(storage_options):
+        return (storage_options or {}).get("azure_storage_sas_token")
 
-    assert travels_in_options or travels_in_filesystem or reaches_via_env, (
-        "read tasks cannot reach the catalog-vended SAS by any channel. "
-        "resolve() returned no filesystem and no storage_options carrying it, "
-        "and _apply_env only seeds runtime_env while Ray is uninitialized -- so "
-        "on a running cluster the credential stops at the driver and every read "
-        "task authenticates with nothing."
+    assert (
+        ray.get(sas_in_pickled_options.remote(resolved.storage_options)) == sas
+    ), "the SAS in storage_options doesn't survive the trip to a read task"
+    assert "AZURE_STORAGE_SAS_TOKEN" not in os.environ
+    assert ray.get(sas_in_worker.remote()) is None, (
+        "the vended SAS reached a worker's environment; it must travel only in "
+        "storage_options"
     )
 
 
 # ---------------------------------------------------------------------------
-# Parquet: a pyarrow version floor, and a path that is still incomplete
+# Parquet: the filesystem credential channel
 # ---------------------------------------------------------------------------
 
 
 def test_resolve_conveys_parquet_credentials_to_reader(
     azure_backend, suppress_ray_init
 ):
-    """Resolving an Azure Parquet table either vends a usable credential or
-    refuses outright -- never silently returns one the reader cannot use.
+    """Resolving an Azure Parquet table vends a credential the reader can use.
 
-    ``read_parquet`` is filesystem-only, and ``pyarrow.fs.AzureFileSystem``
-    gained its ``sas_token`` parameter in pyarrow 20.0.0 (apache/arrow#45705).
-    So which outcome is correct depends on the installed pyarrow, and both are
-    asserted here against the version actually present:
-
-    - below 20, an up-front ``ImportError``. Silently proceeding is much worse
-      than failing: pyarrow reports a missing Azure credential by falling
-      through to ``DefaultAzureCredential``, which stalls on the
-      instance-metadata endpoint or, over a plain-HTTP endpoint, calls
-      ``abort()`` in C++ and kills the process with SIGABRT -- uncatchable from
-      Python, and it would take the rest of this file down with it.
-    - at 20 or above, resolution proceeds and the SAS is present in the
-      resolved source.
-
-    Asserted at the ``resolve()`` boundary rather than by attempting a read, for
-    the SIGABRT reason above.
+    ``read_parquet`` is filesystem-only, so the SAS must arrive inside a
+    ``pyarrow.fs.AzureFileSystem`` (its ``sas_token`` parameter,
+    apache/arrow#45705). Asserted at the ``resolve()`` boundary rather than by
+    attempting a read: pyarrow reports a missing Azure credential by falling
+    through to ``DefaultAzureCredential``, which stalls on the
+    instance-metadata endpoint or, over a plain-HTTP endpoint, calls
+    ``abort()`` in C++ and kills the process with SIGABRT -- uncatchable from
+    Python, and it would take the rest of this file down with it.
     """
-    from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
     catalog = azure_backend.catalog()
     table = azure_backend.parquet_table_identifier()
-    pyarrow_version = get_pyarrow_version()
-
-    if pyarrow_version is not None and pyarrow_version < parse_version("20.0.0"):
-        with pytest.raises(ImportError, match="requires pyarrow >= 20.0.0"):
-            catalog.resolve(
-                table, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.READ
-            )
-        return
 
     with azure_backend.azure_filesystem_patch():
         resolved = catalog.resolve(
             table, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.READ
         )
 
-    sas = os.environ.get("AZURE_STORAGE_SAS_TOKEN")
+    sas = _vended_sas(resolved)
     assert sas, "precondition: resolve() should have vended a SAS"
 
     import pyarrow.fs as pafs
@@ -928,16 +904,6 @@ def test_parquet_count_min_max_via_catalog(ray_start_10_cpus_shared, azure_backe
     ``storage_options``. The data spans several files, so the scan fans out and
     the filesystem has to arrive intact in each read task.
     """
-    from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is not None and pyarrow_version < parse_version("20.0.0"):
-        pytest.skip(
-            "pyarrow.fs.AzureFileSystem gained sas_token in 20.0.0, so the SAS "
-            "cannot reach read_parquet below it -- resolve() refuses instead, "
-            "which test_resolve_conveys_parquet_credentials_to_reader asserts."
-        )
-
     catalog = azure_backend.catalog()
 
     # The filesystem is built during `read_parquet`, on the driver; it pickles

@@ -33,7 +33,10 @@ from ray.tests.conftest import (  # noqa
     _isolate_token_auth_state,  # noqa: F401  autouse fixture
     _restore_token_auth_env,  # noqa: F401
     _token_auth_env_baseline,  # noqa: F401
+    # Fixture parameters named create_auth_token below shadow this import on purpose.
+    create_auth_token,
     external_redis,
+    hold_test_auth_mode,
     propagate_logs,
     pytest_runtest_makereport,
 )
@@ -96,7 +99,7 @@ def ray_autoscaling_cluster(request):
 
 
 @pytest.fixture
-def ray_start(scope="module"):
+def ray_start(create_auth_token, scope="module"):  # noqa: F811
     port = random.randint(MIN_DYNAMIC_PORT, MAX_DYNAMIC_PORT)
     subprocess.check_output(
         [
@@ -125,14 +128,15 @@ def _check_ray_stop():
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(_check_ray_stop, timeout=15)
-    subprocess.check_output(["ray", "start", "--head"])
+    with hold_test_auth_mode():
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(_check_ray_stop, timeout=15)
+        subprocess.check_output(["ray", "start", "--head"])
 
-    yield
+        yield
 
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(_check_ray_stop, timeout=15)
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(_check_ray_stop, timeout=15)
 
 
 @pytest.fixture(scope="module")
@@ -219,7 +223,7 @@ def check_ray_stop():
 
 
 @pytest.fixture(scope="function")
-def ray_start_stop():
+def ray_start_stop(create_auth_token):  # noqa: F811
     subprocess.check_output(["ray", "stop", "--force"])
     ray.shutdown()
     wait_for_condition(
@@ -246,7 +250,7 @@ def ray_start_stop():
 
 
 @pytest.fixture(scope="function")
-def ray_start_stop_in_specific_directory(request):
+def ray_start_stop_in_specific_directory(request, create_auth_token):  # noqa: F811
     original_working_dir = os.getcwd()
 
     # Change working directory so Ray will start in the requested directory.
@@ -315,7 +319,7 @@ def ray_instance(
 
 
 @pytest.fixture
-def manage_ray_with_telemetry(monkeypatch):
+def manage_ray_with_telemetry(monkeypatch, create_auth_token):  # noqa: F811
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv(

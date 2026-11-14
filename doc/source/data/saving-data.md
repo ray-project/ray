@@ -46,7 +46,7 @@ To write data to formats other than Parquet, see the {ref}`Saving Data API <savi
 
 ::::{tab-set}
 
-:::{tab-item} S3
+:::{tab-item} Amazon S3
 
 To save data to Amazon S3, specify a URI with the `s3://` scheme.
 
@@ -61,7 +61,7 @@ ds.write_parquet("s3://my-bucket/my-folder")
 Ray Data relies on PyArrow to authenticate with Amazon S3. To configure your credentials for PyArrow, see the PyArrow [S3 filesystem documentation](https://arrow.apache.org/docs/python/filesystems.html#s3).
 :::
 
-:::{tab-item} GCS
+:::{tab-item} Google Cloud Storage
 
 To save data to Google Cloud Storage, install [`gcsfs`](https://gcsfs.readthedocs.io/en/latest/), the filesystem interface to Google Cloud Storage:
 

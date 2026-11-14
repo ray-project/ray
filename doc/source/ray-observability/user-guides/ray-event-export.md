@@ -269,7 +269,7 @@ For each node, Ray exports two types of events: Node Definition Events and Node 
 }
 ```
 
-## High-level Architecture
+## High-level architecture
 
 The following diagram shows the high-level architecture of Ray Event Export.
 
@@ -277,3 +277,48 @@ The following diagram shows the high-level architecture of Ray Event Export.
 ```
 
 All Ray components send events to an aggregator agent through gRPC. There is an aggregator agent on each node. The aggregator agent collects all events on that node and sends the events to the configured HTTP endpoint.
+
+(task-events-on-api-server)=
+
+## Store task events on the Ray API server
+
+Starting in Ray 2.58, Ray can store {ref}`task events <task-events>` on the Ray API server, the head node process that also serves the {ref}`Ray Dashboard <observability-getting-started>`, instead of on the Global Control Service (GCS). This option reduces GCS memory usage and lets the GCS focus on control plane work. Task events are the first data set to move out of the GCS.
+
+Reading task events doesn't change. `ray list tasks`, `ray.timeline()`/`ray timeline`, and the Ray Dashboard return the same data, and Ray applies the same storage limit and eviction policy that it applies in the GCS. For the components that implement this path, see {ref}`the event exporter internals <task-events-implementation>`.
+
+:::{note}
+This migration is in progress. By default, Ray still stores task events in the GCS. Ray uses the Ray API server only when you set the environment variables in the following section.
+:::
+
+### Enable task event storage on the Ray API server
+
+Set the following environment variables when you start each Ray node:
+
+```bash
+export RAY_enable_ray_event=1
+export RAY_enable_ray_task_event_recorder=1
+export RAY_enable_core_worker_task_event_to_gcs=0
+export RAY_enable_task_events_to_dashboard_head=1
+```
+
+Each variable controls one part of the path:
+
+- `RAY_enable_ray_event=1` to use Ray event export as the event collection backend. Ray records task events for this path only when you set this variable.
+- `RAY_enable_ray_task_event_recorder=1` to record task events with the Ray task event recorder. When the recorder is active, the core worker `TaskEventBuffer` stops sending events to the aggregator agent, so `RAY_enable_core_worker_ray_event_to_aggregator` no longer affects task events.
+- `RAY_enable_core_worker_task_event_to_gcs=0` to stop the core worker from sending task events to the GCS. When you set this variable to `0` and enable the recorder, the core worker `TaskEventBuffer` stops recording task events.
+- `RAY_enable_task_events_to_dashboard_head=1` to complete the migration. This variable makes the aggregator agent publish task events to the Ray API server, starts the task events module there, and points `ray list tasks` and `ray.timeline()`/`ray timeline` at the Ray API server instead of the GCS.
+
+### Requirements
+
+- Start your Ray cluster with the dashboard running. Ray starts the dashboard by default when the dashboard component is installed; install it with `ray[default]` and see {ref}`observability-getting-started` for setup. The Ray API server serves the task events on this path, so `ray.timeline()`/`ray timeline` needs it. `ray list tasks` and the Ray Dashboard need the dashboard on either path.
+- Ray stores the task events in memory. If the Ray API server restarts, Ray loses the task events that it stored.
+
+### Architecture
+
+The following diagram shows how task events flow after you enable this path.
+
+```{image} ../images/task-events-out-of-gcs.png
+:alt: Core workers on a worker node send task and profile events through RayTaskEventRecorder to the node's aggregator agent. The aggregator agent publishes them to the task events head in the Ray API server on the head node. The GCS sends job and worker death events to the task events head over a pub-sub connection, and the State APIs read from the task events head. The direct path from the core worker to the GCS is disabled.
+```
+
+Each core worker emits task definition, lifecycle, and profile events through `RayTaskEventRecorder` to the aggregator agent on its node. The aggregator agent publishes them to the task events module on the Ray API server. That module stores the task events in memory and reconciles them against the worker death and job completion events that it receives from the GCS over a pub-sub connection. The State APIs read task events from that store. In this configuration, the core worker doesn't send task events directly to the GCS.

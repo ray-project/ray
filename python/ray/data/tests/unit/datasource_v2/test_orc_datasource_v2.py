@@ -1,6 +1,7 @@
 """Unit tests for :class:`OrcDatasourceV2`."""
 
 import os
+from dataclasses import replace
 from unittest.mock import Mock
 
 import pyarrow as pa
@@ -17,9 +18,33 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
+from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+from ray.data.expressions import col
+
+
+def test_read_pruning_does_not_depend_on_listing_hook(tmp_path):
+    class NoListingPruner(OrcScanner):
+        def pushed_partition_pruner(self):
+            return None
+
+    scanner = NoListingPruner(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.int64())]),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    ).prune_partitions(col("year") == 2024)
+    paths = [
+        str(tmp_path / "root.orc"),
+        str(tmp_path / "year=2024" / "data.orc"),
+        str(tmp_path / "year=2023" / "data.orc"),
+    ]
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=[1] * 3, chunk_metadatas=[None] * 3
+    )
+    assert scanner.pushed_partition_pruner() is None
+    assert scanner.prune_input_split(manifest).paths.tolist() == paths[:2]
 
 
 def _write_orc(path, table):
@@ -61,12 +86,16 @@ def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
     assert schema.field("path").type == pa.string()
 
 
-def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
+@pytest.mark.parametrize("root_first", [False, True])
+def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, root_first):
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     file_path = partition_dir / "data.orc"
     _write_orc(file_path, pa.table({"id": [1]}))
-    sample = _manifest_of([file_path])
+    root = tmp_path / "root.orc"
+    _write_orc(root, pa.table({"id": [0]}))
+    paths = [root, file_path] if root_first else [file_path, root]
+    sample = _manifest_of(paths)
     datasource = OrcDatasourceV2(
         [str(tmp_path)],
         partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
@@ -75,6 +104,9 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
 
     resolved = datasource.resolve_partitioning(sample)
 
+    assert datasource._partitioning is not None
+    assert datasource._partitioning.field_names is None
+    assert resolved is not datasource._partitioning
     assert resolved is not None
     assert resolved.field_names == ["year"]
     assert isinstance(datasource._get_file_indexer(), NonSamplingFileIndexer)
@@ -198,6 +230,39 @@ def test_infer_schema_unifies_across_batches(tmp_path):
     schema = OrcDatasourceV2([str(tmp_path)]).infer_schema(_manifest_of(paths))
 
     assert schema.names == ["id", "late"]
+
+
+@pytest.mark.parametrize("target_block_size", [None, 128])
+@pytest.mark.parametrize("batch_size", [None, 2])
+def test_orc_batch_sizing_config_survives_pushdowns(
+    tmp_path, monkeypatch, target_block_size, batch_size
+):
+    path = tmp_path / "data.orc"
+    table = pa.table({"id": [0, 1, 2, 3], "payload": ["wide" * 64] * 4})
+    _write_orc(path, table)
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "target_max_block_size", target_block_size)
+    datasource = OrcDatasourceV2([str(path)])
+    scanner = datasource.create_scanner(table.schema)
+    assert scanner.target_block_size == target_block_size
+
+    # The scanner captures the context value and immutable pushdowns retain it.
+    monkeypatch.setattr(context, "target_max_block_size", 8)
+    scanner = replace(scanner, batch_size=batch_size)
+    pushed, residual = scanner.push_filters(col("id") > 0)
+    pushed = pushed.prune_columns(["id"]).push_limit(3)
+    assert isinstance(pushed, OrcScanner)
+    reader = pushed.create_reader()
+
+    assert residual is None
+    assert pushed.target_block_size == target_block_size
+    assert reader._target_block_size == target_block_size
+    assert reader._explicit_batch_size == batch_size
+    batches = list(reader.read(_manifest_of([path])))
+    assert pa.concat_tables(batches).to_pylist() == [{"id": 1}, {"id": 2}, {"id": 3}]
+    if batch_size is not None:
+        assert len(batches) > 1
+        assert all(batch.num_rows <= batch_size for batch in batches)
 
 
 def test_read_orc_routes_to_v1_when_v2_is_disabled(monkeypatch, tmp_path):

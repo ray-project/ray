@@ -1,4 +1,4 @@
-"""Join an already configured sandbox cgroup before executing any workload.
+"""Apply a sandbox's cgroup, CPU affinity and OOM priority before execution.
 
 Execute this file directly with Python -S. It must not import Ray, spawn
 children, or start threads before entering the cgroup. Unlike preexec_fn,
@@ -22,12 +22,19 @@ def main() -> None:
     cpus = None
     if command[:1] == ["--cpus"]:
         cpus, command = _cpus(command[1]), command[2:]
+    oom_score_adj = None
+    if command[:1] == ["--oom-score-adj"]:
+        oom_score_adj, command = int(command[1]), command[2:]
     if not command:
         raise ValueError("A sandbox launch command is required")
-    with os.fdopen(
-        os.open(os.path.join(cgroup, "cgroup.procs"), os.O_WRONLY), "w"
-    ) as stream:
-        stream.write(str(os.getpid()))
+    if cgroup:
+        with os.fdopen(
+            os.open(os.path.join(cgroup, "cgroup.procs"), os.O_WRONLY), "w"
+        ) as stream:
+            stream.write(str(os.getpid()))
+    if oom_score_adj is not None:
+        with open("/proc/self/oom_score_adj", "w", encoding="utf-8") as stream:
+            stream.write(str(oom_score_adj))
     if cpus:
         # gVisor sizes the sandbox's vCPUs from these CPUs, and every process
         # the command starts inherits them.

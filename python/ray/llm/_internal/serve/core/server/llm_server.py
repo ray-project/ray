@@ -589,8 +589,7 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def check_health(self) -> None:
-        """
-        Check the health of the replica. Does not return anything. Raise error when
+        """Check the health of the replica. Does not return anything. Raise error when
         the engine is dead and needs to be restarted.
         """
         if self.engine is None:

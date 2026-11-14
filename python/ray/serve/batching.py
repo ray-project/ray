@@ -3,7 +3,7 @@ import io
 import logging
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
 from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
 from typing import (
@@ -63,6 +63,7 @@ class _SingleRequest:
     future: asyncio.Future
     request_context: serve.context._RequestContext
     trace_context: Optional[Any]
+    enqueue_time: float = field(default_factory=time.time)
 
 
 @dataclass
@@ -310,8 +311,11 @@ class _BatchQueue:
 
         batch.append(first_item)
 
-        # Wait self.timeout_s seconds for new queue arrivals.
+        # Wait self.timeout_s seconds for new queue arrivals, counted from when
+        # the first request arrived. It may have waited in the queue for a
+        # permit, and that time counts toward the timeout.
         batch_start_time = time.time()
+        timeout_start_time = min(first_item.enqueue_time, batch_start_time)
         while True:
             # Record queue length metric.
             self._batch_queue_length_gauge.set(
@@ -319,7 +323,7 @@ class _BatchQueue:
             )
 
             remaining_batch_time_s = max(
-                batch_wait_timeout_s - (time.time() - batch_start_time), 0
+                batch_wait_timeout_s - (time.time() - timeout_start_time), 0
             )
             try:
                 # Wait for new arrivals.
@@ -374,7 +378,7 @@ class _BatchQueue:
 
             current_batch_size = self._compute_batch_size(batch)
             if (
-                time.time() - batch_start_time >= batch_wait_timeout_s
+                time.time() - timeout_start_time >= batch_wait_timeout_s
                 or current_batch_size >= max_batch_size
             ):
                 break
@@ -502,19 +506,29 @@ class _BatchQueue:
         # So we unset the request context so the current context is not inherited by the task, _process_batch.
         serve.context._unset_request_context()
         while not self._loop.is_closed():
-            batch, _ = await self.wait_for_batch()
+            # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
+            # Take the permit before forming the batch, so requests that arrive
+            # while every permit is in use join one batch instead of each
+            # waiting for a permit in a batch of its own.
+            await self.semaphore.acquire()
+            try:
+                batch, _ = await self.wait_for_batch()
 
-            # Split batch by multiplexed_model_id to ensure requests for different
-            # models are processed in separate batches. This is necessary when using
-            # model multiplexing with batching, as a single batch containing requests
-            # for different models would not work correctly.
-            sub_batches = self._split_batch_by_model_id(batch)
+                # Split batch by multiplexed_model_id to ensure requests for different
+                # models are processed in separate batches. This is necessary when using
+                # model multiplexing with batching, as a single batch containing requests
+                # for different models would not work correctly.
+                sub_batches = self._split_batch_by_model_id(batch)
 
-            # Process all sub-batches together under a single semaphore permit.
-            # This ensures sub-batches from the same original batch run concurrently
-            # rather than being serialized by the semaphore.
-            promise = self._process_sub_batches(func, sub_batches)
-            task = asyncio.create_task(promise)
+                # Process all sub-batches together under the permit taken above.
+                # This ensures sub-batches from the same original batch run concurrently
+                # rather than being serialized by the semaphore. The permit is released
+                # in _handle_completed_task.
+                promise = self._process_sub_batches(func, sub_batches)
+                task = asyncio.create_task(promise)
+            except BaseException:
+                self.semaphore.release()
+                raise
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
@@ -524,23 +538,21 @@ class _BatchQueue:
     ) -> None:
         """Processes multiple sub-batches concurrently under a single semaphore permit.
 
-        This method acquires the semaphore once and then processes all sub-batches
-        in parallel, ensuring that sub-batches from the same original batch don't
-        compete for semaphore permits.
+        _process_batches acquires the permit before forming the batch, and this
+        method processes all sub-batches in parallel, ensuring that sub-batches
+        from the same original batch don't compete for semaphore permits.
         """
-        # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
-        async with self.semaphore:
-            # Create tasks for each sub-batch. We use asyncio.create_task() instead
-            # of passing coroutines directly to asyncio.gather() because create_task
-            # copies the current context, giving each sub-batch its own isolated
-            # contextvars. This prevents concurrent sub-batches from overwriting
-            # each other's _serve_batch_request_context, which would cause
-            # get_multiplexed_model_id() to return wrong values.
-            tasks = [
-                asyncio.create_task(self._process_batch_inner(func, sub_batch))
-                for sub_batch in sub_batches
-            ]
-            await asyncio.gather(*tasks)
+        # Create tasks for each sub-batch. We use asyncio.create_task() instead
+        # of passing coroutines directly to asyncio.gather() because create_task
+        # copies the current context, giving each sub-batch its own isolated
+        # contextvars. This prevents concurrent sub-batches from overwriting
+        # each other's _serve_batch_request_context, which would cause
+        # get_multiplexed_model_id() to return wrong values.
+        tasks = [
+            asyncio.create_task(self._process_batch_inner(func, sub_batch))
+            for sub_batch in sub_batches
+        ]
+        await asyncio.gather(*tasks)
 
     async def _process_batch_inner(
         self, func: Callable, batch: List[_SingleRequest]
@@ -624,6 +636,7 @@ class _BatchQueue:
             )
 
     def _handle_completed_task(self, task: asyncio.Task) -> None:
+        self.semaphore.release()
         self.tasks.remove(task)
         del self.curr_iteration_start_times[task]
         self._log_if_exception(task.exception())

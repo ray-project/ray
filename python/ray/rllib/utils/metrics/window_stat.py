@@ -7,19 +7,14 @@ from ray.rllib.utils.annotations import OldAPIStack
 class WindowStat:
     """Handles/stores incoming dataset and provides window-based statistics.
 
-    .. testcode::
-        :skipif: True
-
-        win_stats = WindowStat("level", 3)
-        win_stats.push(5.0)
-        win_stats.push(7.0)
-        win_stats.push(7.0)
-        win_stats.push(10.0)
-        # Expect 8.0 as the mean of the last 3 values: (7+7+10)/3=8.0
-        print(win_stats.mean())
-
-    .. testoutput::
-
+    Examples:
+        >>> win_stats = WindowStat("level", 3)  # doctest: +SKIP_EXAMPLE
+        >>> win_stats.push(5.0)
+        >>> win_stats.push(7.0)
+        >>> win_stats.push(7.0)
+        >>> win_stats.push(10.0)
+        >>> # Expect 8.0 as the mean of the last 3 values: (7+7+10)/3=8.0
+        >>> print(win_stats.mean())
         8.0
     """
 

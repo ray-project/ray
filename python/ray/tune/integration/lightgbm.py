@@ -30,34 +30,25 @@ class TuneReportCheckpointCallback(RayReportCallback):
             the metrics dict that will be reported (after it has been flattened)
             and returns a modified dict.
 
-    Examples
-    --------
+    Examples:
+        Reporting checkpoints and metrics to Ray Tune when running many
+        independent LightGBM trials (without data parallelism within a trial).
 
-    Reporting checkpoints and metrics to Ray Tune when running many
-    independent LightGBM trials (without data parallelism within a trial).
-
-    .. testcode::
-        :skipif: True
-
-        import lightgbm
-
-        from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
-
-        config = {
-            # ...
-            "metric": ["binary_logloss", "binary_error"],
-        }
-
-        # Report only log loss to Tune after each validation epoch.
-        bst = lightgbm.train(
-            ...,
-            callbacks=[
-                TuneReportCheckpointCallback(
-                    metrics={"loss": "eval-binary_logloss"}, frequency=1
-                )
-            ],
-        )
-
+        >>> import lightgbm  # doctest: +SKIP_EXAMPLE
+        >>> from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
+        >>> config = {
+        ...     # ...
+        ...     "metric": ["binary_logloss", "binary_error"],
+        ... }
+        >>> # Report only log loss to Tune after each validation epoch.
+        >>> bst = lightgbm.train(
+        ...     ...,
+        ...     callbacks=[
+        ...         TuneReportCheckpointCallback(
+        ...             metrics={"loss": "eval-binary_logloss"}, frequency=1
+        ...         )
+        ...     ],
+        ... )
     """
 
     @contextmanager

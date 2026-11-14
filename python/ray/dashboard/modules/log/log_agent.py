@@ -61,8 +61,7 @@ def find_offset_of_content_in_file(
 
 
 def find_end_offset_file(file: io.BufferedIOBase) -> int:
-    """
-    Find the offset of the end of a file without changing the file pointer.
+    """Find the offset of the end of a file without changing the file pointer.
 
     Args:
         file: File object
@@ -80,8 +79,7 @@ def find_end_offset_file(file: io.BufferedIOBase) -> int:
 def find_end_offset_next_n_lines_from_offset(
     file: io.BufferedIOBase, start_offset: int, n: int
 ) -> int:
-    """
-    Find the offsets of next n lines from a start offset.
+    """Find the offsets of next n lines from a start offset.
 
     Args:
         file: File object
@@ -108,8 +106,7 @@ def find_end_offset_next_n_lines_from_offset(
 def find_start_offset_last_n_lines_from_offset(
     file: io.BufferedIOBase, offset: int, n: int, block_size: int = BLOCK_SIZE
 ) -> int:
-    """
-    Find the offset of the beginning of the line of the last X lines from an offset.
+    """Find the offset of the beginning of the line of the last X lines from an offset.
 
     Args:
         file: File object
@@ -279,8 +276,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         return False
 
     async def ListLogs(self, request, context):
-        """
-        Lists all files in the active Ray logs directory.
+        """Lists all files in the active Ray logs directory.
 
         Part of `LogService` gRPC.
 
@@ -308,8 +304,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
     @classmethod
     def _resolve_filename(cls, root_log_dir: Path, filename: str) -> Path:
-        """
-        Resolves the file path relative to the root log directory.
+        """Resolves the file path relative to the root log directory.
 
         Args:
             root_log_dir: Root log directory.
@@ -343,8 +338,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         return filepath.resolve()
 
     async def StreamLog(self, request, context):
-        """
-        Streams the log in real time starting from `request.lines` number of lines from
+        """Streams the log in real time starting from `request.lines` number of lines from
         the end of the file if `request.keep_alive == True`. Else, it terminates the
         stream once there are no more bytes to read from the log file.
 

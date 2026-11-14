@@ -12,7 +12,7 @@ from dataclasses import KW_ONLY, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlsplit
 
 from packaging.version import parse as parse_version
 
@@ -38,65 +38,20 @@ logger = logging.getLogger(__name__)
 
 _DELTA_UNIFORM_FORMATS_PROPERTY = "delta.universalFormat.enabledFormats"
 
-# Environment-variable names the underlying readers (pyarrow / deltalake's
-# object_store) pick up vended credentials from.
+# deltalake's object_store config keys for vended AWS credentials, passed via
+# `storage_options`. They're never written to the environment: there they would
+# override the instance role for every other S3 access in the process.
 _AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID"
 _AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY"
 _AWS_SESSION_TOKEN = "AWS_SESSION_TOKEN"
 _AWS_REGION = "AWS_REGION"
-_AWS_DEFAULT_REGION = "AWS_DEFAULT_REGION"
-_AZURE_STORAGE_SAS_TOKEN = "AZURE_STORAGE_SAS_TOKEN"
 
 # deltalake's object_store config key for a SAS, passed via `storage_options`
 # rather than the environment so it pickles into the read tasks.
 _AZURE_STORAGE_SAS_TOKEN_OPTION = "azure_storage_sas_token"
 
-# `pyarrow.fs.AzureFileSystem` gained a `sas_token` parameter in pyarrow 20.0.0
-# (apache/arrow#45705). Before that it accepts only `account_key`, and reads no
-# SAS environment variable, so a Unity Catalog SAS cannot reach it by any route.
-_AZURE_SAS_PYARROW_VERSION_MIN = "20.0.0"
-
-
-def _check_azure_sas_pyarrow_support() -> None:
-    """Raise if pyarrow is too old to authenticate with a vended Azure SAS.
-
-    Only the Parquet reader needs this: it is filesystem-only, so the SAS has to
-    reach it through a `pyarrow.fs.AzureFileSystem`. Delta is unaffected -- its
-    credential travels in `storage_options` to deltalake's object_store, which
-    has its own Azure client and no pyarrow floor.
-
-    Failing here is worth the strictness: pyarrow's Azure filesystem does not
-    report a missing credential as a Python error. It falls through to
-    `DefaultAzureCredential`, which either stalls on the instance-metadata
-    endpoint or, over a plain-HTTP endpoint, calls `abort()` in C++ and takes
-    the whole process down with SIGABRT -- uncatchable from Python.
-    """
-    from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
-    version = get_pyarrow_version()
-    minimum = parse_version(_AZURE_SAS_PYARROW_VERSION_MIN)
-    if version is None:
-        # Version undetectable (pyarrow vendored inside another package). Warn
-        # rather than block -- the same stance `_check_pyarrow_version` takes.
-        logger.warning(
-            "Reading an Azure-backed Parquet table through Unity Catalog needs "
-            "pyarrow >= %s to use the vended SAS, but the installed pyarrow "
-            "version could not be determined.",
-            _AZURE_SAS_PYARROW_VERSION_MIN,
-        )
-        return
-    if version < minimum:
-        raise ImportError(
-            f"Reading an Azure-backed Parquet table through Unity Catalog "
-            f"requires pyarrow >= {_AZURE_SAS_PYARROW_VERSION_MIN}, but "
-            f"{version} is installed. Unity Catalog vends a SAS token, and "
-            f"`pyarrow.fs.AzureFileSystem` only accepts one from pyarrow "
-            f"{_AZURE_SAS_PYARROW_VERSION_MIN} onwards (apache/arrow#45705). "
-            f'Upgrade with `pip install -U "pyarrow>='
-            f'{_AZURE_SAS_PYARROW_VERSION_MIN}"`, or read the table as Delta '
-            f"(`ray.data.read_delta`), which carries the SAS in "
-            f"`storage_options` and has no pyarrow floor."
-        )
+# PyIceberg introduced Basic and noop REST auth managers in 0.10.0.
+_GRAVITINO_PYICEBERG_VERSION_MIN = "0.10.0"
 
 
 def _parse_azure_url(url: str) -> Tuple[str, str, str]:
@@ -197,7 +152,17 @@ class Catalog(ABC):
         reader: ReaderFormat,
         mode: CatalogAccessMode = CatalogAccessMode.READ,
     ) -> ResolvedSource:
-        """Resolve ``table`` for the given ``reader`` and access ``mode``."""
+        """Resolve ``table`` for the given ``reader`` and access ``mode``.
+
+        Args:
+            table: The name of the table to resolve.
+            reader: The reader that asks for the table. It determines which fields of
+                the result are set.
+            mode: Whether to vend read or write credentials.
+
+        Returns:
+            The location and credentials that ``reader`` needs to access ``table``.
+        """
         ...
 
 
@@ -293,24 +258,23 @@ class DatabricksUnityCatalog(Catalog):
         table_info = self._get_table_info(table)
         creds, table_url = self._get_creds(table_info.table_id, mode)
 
-        # Some readers/writers need an explicit pyarrow filesystem:
-        #  - AWS Delta: the vended session token isn't reliably propagated through
-        #    `DeltaTable.to_pyarrow_dataset`'s auto-built filesystem.
-        #  - AWS write: an S3FileSystem built from the default credential chain
-        #    (the `filesystem=None` path) does NOT serialize its credentials, so a
-        #    worker would rebuild it from *its own* environment. Reads get away
-        #    with this because `_apply_env` can seed the vended creds into the
-        #    cluster `runtime_env` while Ray is still uninitialized; a write always
-        #    runs after Ray is initialized (a materialized Dataset already exists),
-        #    so that propagation is unavailable. Build an explicit S3FileSystem
-        #    whose creds *do* pickle into the datasink and reach the workers.
-        #  - GCP Parquet: a bare OAuth token has no env var pyarrow auto-reads,
-        #    so the data scan needs an explicit GcsFileSystem.
+        # Vended credentials travel only inside the objects that use them: an
+        # explicit pyarrow filesystem for the data files, and `storage_options`
+        # for deltalake's object_store (the Delta transaction log read and the
+        # `write_delta` commit). Both pickle into the read and write tasks.
+        # They're never written to `os.environ` or the cluster `runtime_env`:
+        # there they would override the instance role for every other cloud
+        # access in the job, with a short-lived credential scoped to this one
+        # table, so writes to the user's own buckets would fail.
         filesystem = None
-        if creds.aws_temp_credentials is not None and (
-            reader is ReaderFormat.DELTA or mode is CatalogAccessMode.WRITE
-        ):
+        storage_options = None
+        if creds.aws_temp_credentials is not None:
+            # An S3FileSystem built from the default credential chain (the
+            # `filesystem=None` path) doesn't serialize its credentials, so a
+            # worker would rebuild it from its own environment. This one does.
             filesystem = self._build_s3_filesystem(creds.aws_temp_credentials)
+            if reader is ReaderFormat.DELTA:
+                storage_options = self._aws_storage_options(creds.aws_temp_credentials)
         elif creds.gcp_oauth_token is not None:
             if reader is ReaderFormat.DELTA:
                 # Unity Catalog vends a GCP OAuth token, but deltalake's
@@ -324,22 +288,20 @@ class DatabricksUnityCatalog(Catalog):
                     "credential vending is not supported as deltalake "
                     "does not have the required object_store version."
                 )
+            # A bare OAuth token has no env var pyarrow auto-reads, so the data
+            # scan needs an explicit GcsFileSystem.
             filesystem = self._build_gcs_filesystem(
                 creds.gcp_oauth_token, creds.expiration_time
             )
-
-        # Azure. Delta needs no filesystem -- the SAS travels in
-        # `storage_options` below, which deltalake's object_store reads and
-        # which pickles into the read tasks. Parquet is filesystem-only, so it
-        # needs an explicit `AzureFileSystem` carrying the SAS; that requires
-        # pyarrow >= 20, hence the check.
-        storage_options = None
-        if creds.azure_user_delegation_sas is not None:
+        elif creds.azure_user_delegation_sas is not None:
+            # Delta needs no filesystem -- the SAS travels in `storage_options`,
+            # which deltalake's object_store reads and which pickles into the
+            # read tasks. Parquet is filesystem-only, so it needs an explicit
+            # `AzureFileSystem` carrying the SAS.
             storage_options = self._azure_storage_options(
                 creds.azure_user_delegation_sas
             )
             if reader is ReaderFormat.PARQUET:
-                _check_azure_sas_pyarrow_support()
                 filesystem = self._build_azure_filesystem(
                     table_url, creds.azure_user_delegation_sas
                 )
@@ -353,17 +315,10 @@ class DatabricksUnityCatalog(Catalog):
                 # Same reasoning as `_rewrite_azure_blob_https_url` in
                 # `datasource/path_util.py`.
                 table_url = _azure_url_without_authority(table_url)
-
-        # Deliver vended credentials via environment variables as well. This is
-        # the mechanism the underlying libraries read uniformly: pyarrow (Parquet
-        # data, and S3/Azure/GCS auto-filesystems) and deltalake's object_store
-        # (the Delta transaction *log* read in `DeltaTable(...)`). Still needed
-        # for the readers that take no `storage_options` at all -- notably
-        # `read_parquet`, which is filesystem-only.
-        #
-        # TODO: remove the env-var + ray.init mechanism once credential vending
-        # is performed inside the read tasks themselves (worker-side).
-        self._apply_env(self._creds_to_env(creds))
+        else:
+            raise ValueError(
+                "No known credential type found in Databricks UC response."
+            )
 
         return ResolvedSource(
             path=table_url,
@@ -461,74 +416,50 @@ class DatabricksUnityCatalog(Catalog):
         """Best-effort format hint from table metadata or file extension.
 
         Calling this function will query DatabricksUnityCatalog to get the
-        relevant information."""
+        relevant information.
+
+        Args:
+            table: The full name of the Unity Catalog table.
+
+        Returns:
+            The inferred reader format, or ``None`` if neither the table metadata nor
+            the file extension identifies one.
+        """
         info = self._get_table_info(table)
         _, table_url = self._get_creds(info.table_id)
         return self._infer_format(info, table_url)
 
-    def _creds_to_env(
-        self, creds: "GenerateTemporaryTableCredentialResponse"
-    ) -> Dict[str, Optional[str]]:
-        """Translate vended credentials into environment variables."""
-        if creds.aws_temp_credentials is not None:
-            aws = creds.aws_temp_credentials
-            env = {
-                _AWS_ACCESS_KEY_ID: aws.access_key_id,
-                _AWS_SECRET_ACCESS_KEY: aws.secret_access_key,
-                _AWS_SESSION_TOKEN: aws.session_token,
-            }
-            if self.region:
-                env[_AWS_REGION] = self.region
-                env[_AWS_DEFAULT_REGION] = self.region
-            return env
-
-        if creds.azure_user_delegation_sas is not None:
-            return self._parse_azure_creds(creds.azure_user_delegation_sas)
-
-        if creds.gcp_oauth_token is not None:
-            # A bare GCP OAuth token has no env var pyarrow/deltalake auto-read;
-            # it's delivered via an explicit GcsFileSystem (data scan) and via
-            # `storage_options` (Delta log read) in `_resolve_storage` instead.
-            return {}
-
-        raise ValueError("No known credential type found in Databricks UC response.")
-
-    @staticmethod
-    def _apply_env(env_vars: Dict[str, Optional[str]]) -> None:
-        """Set vended credentials in the environment and propagate to workers.
-
-        Credentials are set on the driver's ``os.environ`` and, if Ray has not
-        been initialized yet, into the cluster ``runtime_env`` so read tasks on
-        workers inherit them. If Ray is already running we cannot retroactively
-        amend its ``runtime_env``; driver-side env still covers driver reads
-        (e.g. the Delta log) and single-node execution.
-
-        TODO: remove once credential vending happens inside the read tasks.
-        """
-        import ray
-
-        if not env_vars:
-            return
-
-        for k, v in env_vars.items():
-            if v:
-                os.environ[k] = v
-        if not ray.is_initialized():
-            ray.init(runtime_env={"env_vars": dict(env_vars)})
-
-    def _build_s3_filesystem(self, aws: "AwsCredentials") -> "pyarrow.fs.FileSystem":
+    def _require_region(self) -> str:
         if not self.region:
             raise ValueError(
                 "The 'region' parameter is required for AWS S3 access. "
                 "Please specify the AWS region (e.g., region='us-west-2')."
             )
+        return self.region
+
+    def _aws_storage_options(self, aws: "AwsCredentials") -> Dict[str, str]:
+        """deltalake ``storage_options`` carrying the vended AWS credentials.
+
+        deltalake's object_store reads the Delta transaction log, and commits
+        ``write_delta``'s transaction, with these rather than the pyarrow
+        filesystem. Keys with no value are left out.
+        """
+        options = {
+            _AWS_ACCESS_KEY_ID: aws.access_key_id,
+            _AWS_SECRET_ACCESS_KEY: aws.secret_access_key,
+            _AWS_SESSION_TOKEN: aws.session_token,
+            _AWS_REGION: self._require_region(),
+        }
+        return {key: value for key, value in options.items() if value}
+
+    def _build_s3_filesystem(self, aws: "AwsCredentials") -> "pyarrow.fs.FileSystem":
         import pyarrow.fs as pafs
 
         return pafs.S3FileSystem(
             access_key=aws.access_key_id,
             secret_key=aws.secret_access_key,
             session_token=aws.session_token,
-            region=self.region,
+            region=self._require_region(),
         )
 
     @staticmethod
@@ -560,15 +491,6 @@ class DatabricksUnityCatalog(Catalog):
         return sas_token
 
     @classmethod
-    def _parse_azure_creds(
-        cls, sas: "AzureUserDelegationSas"
-    ) -> Dict[str, Optional[str]]:
-        creds: Dict[str, Optional[str]] = {
-            _AZURE_STORAGE_SAS_TOKEN: cls._azure_sas_token(sas)
-        }
-        return creds
-
-    @classmethod
     def _build_azure_filesystem(
         cls, table_url: str, sas: "AzureUserDelegationSas"
     ) -> "pyarrow.fs.FileSystem":
@@ -579,9 +501,9 @@ class DatabricksUnityCatalog(Catalog):
         service URL verbatim, so without it the token is taken as a *path
         segment* -- requests go to
         `<account>.blob.core.windows.net/<the-whole-sas>/<container>/...` and
-        fail unauthenticated. deltalake's object_store and
-        ``AZURE_STORAGE_SAS_TOKEN`` both want it stripped, so the two channels
-        genuinely disagree on the format.
+        fail unauthenticated. deltalake's object_store (``storage_options``)
+        wants it stripped, so the two channels genuinely disagree on the
+        format.
         """
         import pyarrow.fs as pafs
 
@@ -601,3 +523,204 @@ class DatabricksUnityCatalog(Catalog):
         disagree.
         """
         return {_AZURE_STORAGE_SAS_TOKEN_OPTION: cls._azure_sas_token(sas)}
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class GravitinoCatalog(Catalog):
+    """Resolve Gravitino tables through their format-specific endpoints.
+
+    This adapter maps Gravitino table names to Ray Data reader/writer
+    configuration. Iceberg uses an explicitly configured PyIceberg REST catalog.
+    It performs no metadata requests and does not require the Gravitino Python
+    SDK.
+
+    Resolving tables requires PyIceberg 0.10.0 or later for REST authentication,
+    including the default ``noop`` authentication manager. Install it with
+    ``pip install -U "pyiceberg>=0.10.0"``.
+
+    Args:
+        uri: Gravitino main API base URI, for example
+            ``"http://gravitino:8090"``. Reserved for future format-specific
+            resolution; Iceberg does not contact this endpoint.
+        metalake: Non-empty metalake name retained for future format-specific
+            resolution. The Iceberg REST endpoint must serve this metalake;
+            this adapter does not verify that binding.
+        iceberg_rest_uri: Explicit Iceberg REST endpoint, for example
+            ``"http://gravitino:9001/iceberg/"``. Required when resolving Iceberg
+            tables; endpoint discovery is not implemented.
+        iceberg_rest_catalog_kwargs: Optional PyIceberg authentication and
+            storage properties for the REST endpoint. Supply authentication
+            explicitly in an ``auth`` dictionary with a non-empty ``type`` and
+            all settings required by that authentication manager. If ``auth``,
+            ``token``, and ``credential`` are all absent, the provider sets
+            ``auth={"type": "noop"}``. Legacy top-level ``token`` or
+            ``credential`` properties require an explicit ``auth``
+            dictionary and do not override that authentication manager. For a
+            static Bearer token, use ``auth={"type": "noop"}`` with
+            ``header.Authorization="Bearer <token>"``. Other properties still
+            follow PyIceberg's configuration merging rules; this is not general
+            configuration isolation. Don't rely on configuration files or
+            environment variables to supply authentication settings.
+
+    Example:
+        >>> import ray
+        >>> catalog = ray.data.GravitinoCatalog(  # doctest: +SKIP
+        ...     uri="http://gravitino:8090",
+        ...     metalake="lakehouse",
+        ...     iceberg_rest_uri="http://gravitino:9001/iceberg/",
+        ... )
+        >>> ds = ray.data.read_iceberg(  # doctest: +SKIP
+        ...     table_identifier="iceberg_catalog.sales.orders", catalog=catalog
+        ... )
+
+    Note:
+        The initial scope is existing-table reads and same-schema append writes.
+        Other native Iceberg write modes have not been validated through this
+        provider. Delta and Parquet access are unsupported.
+        The REST service's dynamic catalog configuration binds the metalake;
+        the catalog component of ``catalog.schema.table`` selects its warehouse.
+        Table existence is checked during actual REST operations. Catalog
+        authorization depends on the REST service's deployment and configuration.
+        For Gravitino 1.3.1, catalog access control requires auxiliary REST mode,
+        ``gravitino.authorization.enable=true``, and the dynamic catalog
+        configuration provider. Standalone mode doesn't provide catalog
+        authorization.
+        The default representation hides authentication properties, but this
+        object is not a credential-free serialization boundary. Ray execution
+        state may carry the configuration needed by PyIceberg tasks.
+    """
+
+    _: KW_ONLY
+    uri: str
+    metalake: str
+    iceberg_rest_uri: Optional[str] = None
+    iceberg_rest_catalog_kwargs: Optional[Dict[str, Any]] = field(
+        default=None, repr=False, compare=False
+    )
+
+    def __post_init__(self):
+        object.__setattr__(self, "uri", self._normalize_http_uri(self.uri, "uri"))
+        if not isinstance(self.metalake, str) or not self.metalake.strip():
+            raise ValueError("metalake must be a non-empty string.")
+        if self.iceberg_rest_uri is not None:
+            object.__setattr__(
+                self,
+                "iceberg_rest_uri",
+                self._normalize_http_uri(self.iceberg_rest_uri, "iceberg_rest_uri"),
+            )
+        if self.iceberg_rest_catalog_kwargs is not None and not isinstance(
+            self.iceberg_rest_catalog_kwargs, dict
+        ):
+            raise ValueError("iceberg_rest_catalog_kwargs must be a dictionary.")
+        object.__setattr__(
+            self,
+            "iceberg_rest_catalog_kwargs",
+            dict(self.iceberg_rest_catalog_kwargs or {}),
+        )
+
+    @staticmethod
+    def _normalize_http_uri(uri: str, name: str) -> str:
+        try:
+            parsed = urlsplit(uri) if isinstance(uri, str) else None
+            valid = (
+                parsed is not None
+                and parsed.scheme in ("http", "https")
+                and bool(parsed.hostname)
+                and parsed.port != 0
+                and parsed.username is None
+                and parsed.password is None
+                and not parsed.query
+                and not parsed.fragment
+            )
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError(
+                f"{name} must be an absolute HTTP(S) URI without credentials, "
+                "query parameters, or fragments."
+            )
+        return uri.rstrip("/") + "/"
+
+    @staticmethod
+    def _split_table_identifier(table: str) -> tuple[str, str, str]:
+        if not isinstance(table, str):
+            raise ValueError("table must be a three-part catalog.schema.table string.")
+        parts = table.split(".")
+        if len(parts) != 3 or any(not part.strip() for part in parts):
+            raise ValueError("table must be a three-part catalog.schema.table string.")
+        return parts[0], parts[1], parts[2]
+
+    def resolve(
+        self,
+        table: str,
+        *,
+        reader: ReaderFormat,
+        mode: CatalogAccessMode = CatalogAccessMode.READ,
+    ) -> ResolvedSource:
+        """Resolve a Gravitino table to an Iceberg REST configuration.
+
+        Args:
+            table: Three-part ``catalog.schema.table`` identifier.
+            reader: Requested table format; only Iceberg is supported.
+            mode: Requested read or write access mode.
+
+        Returns:
+            The PyIceberg catalog configuration and table identifier.
+        """
+        if not isinstance(reader, ReaderFormat):
+            raise ValueError("reader must be a ReaderFormat value.")
+        if not isinstance(mode, CatalogAccessMode):
+            raise ValueError("mode must be a CatalogAccessMode value.")
+        if reader is not ReaderFormat.ICEBERG:
+            raise ValueError(
+                f"GravitinoCatalog does not support format={reader.value!r}."
+            )
+        catalog_name, schema_name, table_name = self._split_table_identifier(table)
+        if self.iceberg_rest_uri is None:
+            raise ValueError("iceberg_rest_uri is required to resolve Iceberg tables.")
+        from ray.data._internal.util import _check_import
+
+        _check_import(
+            self,
+            module="pyiceberg",
+            package=f'"pyiceberg>={_GRAVITINO_PYICEBERG_VERSION_MIN}"',
+        )
+        import pyiceberg
+
+        if parse_version(pyiceberg.__version__) < parse_version(
+            _GRAVITINO_PYICEBERG_VERSION_MIN
+        ):
+            raise ImportError(
+                f"GravitinoCatalog requires pyiceberg >= "
+                f"{_GRAVITINO_PYICEBERG_VERSION_MIN}, but "
+                f"{pyiceberg.__version__} is installed. Upgrade with "
+                f'`pip install -U "pyiceberg>={_GRAVITINO_PYICEBERG_VERSION_MIN}"`.'
+            )
+        catalog_kwargs = dict(self.iceberg_rest_catalog_kwargs or {})
+        catalog_kwargs.update(
+            {"type": "rest", "uri": self.iceberg_rest_uri, "warehouse": catalog_name}
+        )
+        catalog_kwargs.setdefault(
+            "header.X-Iceberg-Access-Delegation", "vended-credentials"
+        )
+        if "auth" not in catalog_kwargs:
+            if any(key in catalog_kwargs for key in ("token", "credential")):
+                raise ValueError(
+                    "Top-level token or credential requires explicit auth. "
+                    "For a static Bearer token, use auth={'type': 'noop'} "
+                    "with header.Authorization."
+                )
+            catalog_kwargs["auth"] = {"type": "noop"}
+        auth = catalog_kwargs["auth"]
+        if (
+            not isinstance(auth, dict)
+            or not isinstance(auth.get("type"), str)
+            or not auth["type"].strip()
+        ):
+            raise ValueError("auth must be a dictionary with a non-empty string type.")
+        return ResolvedSource(
+            catalog_kwargs=catalog_kwargs,
+            table_identifier=f"{schema_name}.{table_name}",
+            data_format=ReaderFormat.ICEBERG,
+        )

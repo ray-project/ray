@@ -308,8 +308,7 @@ def _node_res(node: str) -> Dict[str, float]:
 
 @contextlib.contextmanager
 def worker_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
-    """
-    Returns one placement group per node with a `worker` resource. To run
+    """Returns one placement group per node with a `worker` resource. To run
     tasks in the placement group, use
     `@ray.remote(num_cpus=0, resources={"worker": 1})`. Ray does not
     automatically reserve CPU resources, so tasks must specify `num_cpus=0`

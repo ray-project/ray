@@ -179,7 +179,7 @@ Your trainable might start other remote actors, for instance if you're using dis
 :end-before: __resources_pgf_end__
 ```
 
-Here, you're requesting 2 additional CPUs for remote tasks. These two additional actors don't have to live on the same node as your main trainable. You can control this through the `strategy` parameter. In this example, `PACK` tries to schedule the actors on the same node but can also schedule them on other nodes. See the {ref}`placement groups documentation <ray-placement-group-doc-ref>` to learn more about these placement strategies.
+Here, you're requesting 2 additional CPUs for remote actors. These two additional actors don't have to live on the same node as your main trainable. You can control this through the `strategy` parameter. In this example, `PACK` tries to schedule the actors on the same node but can also schedule them on other nodes. See the {ref}`placement groups documentation <ray-placement-group-doc-ref>` to learn more about these placement strategies.
 
 You can also allocate specific resources to a trial based on a custom rule with a lambda function. The following example allocates GPU resources to trials based on a setting in your parameter space:
 
@@ -205,7 +205,7 @@ For example, if your trainable uses Modin DataFrames, operations on them spawn R
 
 ## How can I pass further parameter values to my trainable?
 
-Ray Tune expects your trainable functions to accept at most two parameters, `config` and `checkpoint_dir`. Sometimes, though, you want to pass constant arguments, such as the number of epochs to run or a dataset to train on. For that, Ray Tune offers a wrapper function, {func}`tune.with_parameters() <ray.tune.with_parameters>`:
+Ray Tune expects your trainable functions to accept a single `config` parameter. Sometimes, though, you want to pass constant arguments, such as the number of epochs to run or a dataset to train on. For that, Ray Tune offers a wrapper function, {func}`tune.with_parameters() <ray.tune.with_parameters>`:
 
 ```{literalinclude} doc_code/faq.py
 :language: python
@@ -269,7 +269,7 @@ Before you rely on reproducibility for larger experiments, try it on smaller toy
 ## How can I avoid bottlenecks?
 Sometimes you might see a message such as the following:
 
-```
+```text
 The `experiment_checkpoint` operation took 2.43 seconds to complete, which may be a performance bottleneck
 ```
 
@@ -389,7 +389,7 @@ You can specify a grid search or sampling distribution through the dictionary yo
 :end-before: __grid_search_end__
 ```
 
-By default, Tune samples each random variable and grid search point once. To take multiple random samples, add `num_samples: N` to the experiment configuration. If you provide `grid_search` as an argument, Tune repeats the grid `num_samples` times.
+By default, Tune samples each random variable and grid search point once. To take multiple random samples, set `num_samples=N` in `tune.TuneConfig`. If you provide `grid_search` as an argument, Tune repeats the grid `num_samples` times.
 
 ```{literalinclude} doc_code/faq.py
 :language: python

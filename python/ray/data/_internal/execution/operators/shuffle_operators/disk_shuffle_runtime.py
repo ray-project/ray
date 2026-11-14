@@ -286,7 +286,13 @@ class _PartitionWriter:
         shards = self._staging.get(partition_id)
         if not shards:
             return
-        tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
+        # Promote compatible schemas (e.g. null vs int64 column) like the
+        # object-store map task; plain ``pa.concat_tables`` would reject them.
+        tbl = (
+            transform_pyarrow.concat(shards, promote_types=True, preserve_order=True)
+            if len(shards) > 1
+            else shards[0]
+        )
         if self._combine_native_ok is None:
             # Once per map: concat above guarantees a uniform schema, so native
             # combine is safe iff no column is an extension type. Avoids the
