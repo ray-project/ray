@@ -4,11 +4,11 @@ import logging
 import os
 import sys
 import tarfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray.experimental.sandbox._internal import overlayfs
+from ray.experimental.sandbox._internal import cdi_lib, overlayfs
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
@@ -217,6 +217,116 @@ def test_image_manager_create_oci_spec(tmp_path):
 
     # Verify custom transform
     assert spec.get("customField") == "customValue"
+
+
+def _prepare_gpu_bundle(tmp_path, cdi_spec, **kwargs):
+    """Run prepare_oci_bundle with gpu_ids=["0"] and ``kwargs``, with
+    cdi.get_spec patched to return ``cdi_spec``, and return the bundle's
+    config.json path."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "gpu_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+
+    with patch(
+        "ray.experimental.sandbox._internal.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        return mgr.prepare_oci_bundle(
+            root_dir=str(tmp_path / "bundle"),
+            workdir_path=None,
+            container_cwd="/",
+            image=str(local_tar),
+            gpu_ids=["0"],
+            **kwargs,
+        )
+
+
+def test_prepare_oci_bundle_raises_when_no_cdi_spec_found(tmp_path):
+    """gpu_ids on a node with no GPU CDI spec fails and says so."""
+    with pytest.raises(SandboxCreationError, match="No CDI spec"):
+        _prepare_gpu_bundle(tmp_path, None)
+
+
+def test_prepare_oci_bundle_translates_cdi_error(tmp_path):
+    """A cdi_lib.CDIError, such as a gpu_ids entry with no matching CDI
+    device, surfaces as a SandboxCreationError."""
+    cdi_spec = cdi_lib.CDISpec("acme.com/widget", {"devices": []})
+    with pytest.raises(
+        SandboxCreationError, match="Failed to configure GPU access via CDI"
+    ):
+        _prepare_gpu_bundle(tmp_path, cdi_spec)
+
+
+def test_prepare_oci_bundle_injects_cdi_devices_for_any_kind(tmp_path):
+    """The image manager merges CDI edits for any kind. Whether a backend
+    supports a kind is that backend's concern (see
+    GVisorSandboxBackend._resolve_gpu_run_args)."""
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "kind": "acme.com/widget",
+            "devices": [
+                {
+                    "name": "0",
+                    "containerEdits": {
+                        "env": ["ACME=1"],
+                        "mounts": [
+                            {"hostPath": str(tmp_path), "containerPath": "/acme"}
+                        ],
+                        "hooks": [
+                            {
+                                "hookName": "createContainer",
+                                "path": sys.executable,
+                                "args": ["x"],
+                            }
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+    config_json_path = _prepare_gpu_bundle(tmp_path, cdi_spec)
+    with open(config_json_path, "r", encoding="utf-8") as f:
+        spec = json.load(f)
+
+    assert "ACME=1" in spec["process"]["env"]
+    assert {
+        "destination": "/acme",
+        "type": "bind",
+        "source": str(tmp_path),
+        "options": ["rbind", "ro"],
+    } in spec["mounts"]
+    assert {"path": sys.executable, "args": ["x"]} in spec["hooks"]["createContainer"]
+
+
+def test_prepare_oci_bundle_cdi_env_overrides_image_and_sandbox_env(tmp_path):
+    """A variable the CDI spec sets takes its CDI value, whatever the image
+    or the sandbox's env sets it to."""
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "kind": "acme.com/widget",
+            "containerEdits": {"env": ["FROM_IMAGE=cdi", "FROM_SANDBOX=cdi"]},
+            "devices": [{"name": "0", "containerEdits": {}}],
+        },
+    )
+    with patch.object(
+        ImageManager, "get_envs", return_value=["FROM_IMAGE=image", "KEEP=image"]
+    ):
+        config_json_path = _prepare_gpu_bundle(
+            tmp_path, cdi_spec, env_dict={"FROM_SANDBOX": "sandbox"}
+        )
+    with open(config_json_path, "r", encoding="utf-8") as f:
+        spec = json.load(f)
+
+    assert sorted(spec["process"]["env"]) == [
+        "FROM_IMAGE=cdi",
+        "FROM_SANDBOX=cdi",
+        "KEEP=image",
+    ]
 
 
 def test_image_manager_prepare_oci_bundle(tmp_path):
@@ -593,12 +703,28 @@ def _prepare(mgr, root_dir, **kwargs):
     return mgr.spec_kwargs["resolv_conf_source"]
 
 
-def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path):
+def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path, monkeypatch):
+    # The built-in resolvers, whatever this node sets.
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
     mgr = _SpecCapturingManager(tmp_path)
     source = _prepare(mgr, tmp_path, network="public")
     assert source == os.path.join(str(tmp_path), "resolv.conf")
     content = open(source, encoding="utf-8").read()
     assert content == "nameserver 8.8.8.8\nnameserver 1.1.1.1\n"
+
+
+def test_prepare_oci_bundle_public_uses_the_node_default_resolvers(
+    tmp_path, monkeypatch
+):
+    """RAY_SANDBOX_DEFAULT_DNS replaces the public resolvers on networks that
+    block them; a sandbox's own dns still wins."""
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", " 103.247.36.36, 10.0.0.2 ")
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="public")
+    content = open(source, encoding="utf-8").read()
+    assert content == "nameserver 103.247.36.36\nnameserver 10.0.0.2\n"
+    source = _prepare(mgr, tmp_path, network="public", dns=["10.0.0.9"])
+    assert open(source, encoding="utf-8").read() == "nameserver 10.0.0.9\n"
 
 
 def test_prepare_oci_bundle_dns_overrides_for_public_and_host(tmp_path):
@@ -1098,6 +1224,63 @@ def test_extract_tar_layer_defers_restrictive_directory_modes(tmp_path):
     assert stat.S_IMODE(os.stat(dest / "locked").st_mode) == 0o500
     # Restore writability so pytest can clean the tmp dir up.
     os.chmod(dest / "locked", 0o700)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory modes")
+def test_read_only_directory_stays_writable_until_the_last_layer(tmp_path):
+    """A later layer can add and delete entries in a directory an earlier
+    layer ships read-only, as a commit split mid-directory does; the archived
+    mode lands once every layer is extracted."""
+    import io
+    import stat
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import (
+        apply_dir_attrs,
+        extract_tar_layer,
+    )
+
+    def layer(*members) -> bytes:
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            for name, mode, data in members:
+                info = tarfile.TarInfo(name)
+                info.mode = mode
+                if data is None:
+                    info.type = tarfile.DIRTYPE
+                    tar.addfile(info)
+                else:
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+        return buf.getvalue()
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    dir_attrs = {}
+    layers = [
+        layer(
+            ("gomod", 0o555, None),
+            ("gomod/big0.bin", 0o444, b"0"),
+            ("gomod/stale", 0o444, b"s"),
+            ("gone", 0o555, None),
+        ),
+        layer(
+            ("gomod/big1.bin", 0o444, b"1"),
+            ("gomod/.wh.stale", 0o644, b""),
+            ("gone", 0o644, b"now a file"),
+        ),
+    ]
+    for data in layers:
+        extract_tar_layer(data, str(dest), dir_attrs=dir_attrs)
+    apply_dir_attrs(str(dest), dir_attrs)
+
+    try:
+        assert sorted(os.listdir(dest / "gomod")) == ["big0.bin", "big1.bin"]
+        assert stat.S_IMODE(os.stat(dest / "gomod").st_mode) == 0o555
+        # The replaced directory's mode is not applied to the file.
+        assert stat.S_IMODE(os.stat(dest / "gone").st_mode) == 0o644
+    finally:
+        os.chmod(dest / "gomod", 0o755)
 
 
 if __name__ == "__main__":

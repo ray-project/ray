@@ -24,6 +24,11 @@ from ray.train.v2.api.config import ScalingConfig
 logger = logging.getLogger(__name__)
 
 
+def _to_resource_units(amount: float) -> int:
+    """Convert a resource amount to the scheduler's fixed-point units."""
+    return round(amount * ray._raylet.RESOURCE_UNIT_SCALING)
+
+
 class ElasticScalingPolicy(ScalingPolicy):
 
     # Minimum interval in seconds between querying the AutoscalingCoordinator for reserved resources.
@@ -57,7 +62,6 @@ class ElasticScalingPolicy(ScalingPolicy):
         Returns:
             The number of workers that can be started/restarted with the current resources.
         """
-        # TODO: Fractional resources do not work well here.
         single_worker_resources = self.scaling_config._resources_per_worker_not_none
         total_num_workers = 0
 
@@ -66,9 +70,11 @@ class ElasticScalingPolicy(ScalingPolicy):
             return self.scaling_config.max_workers
 
         for resources in reserved_resources.values():
+            # Divide in fixed-point units: in floats, 1 // 0.1 == 9.0.
             num_workers = min(
                 [
-                    resources.get(resource, 0.0) // single_worker_resources[resource]
+                    _to_resource_units(resources.get(resource, 0.0))
+                    // max(_to_resource_units(single_worker_resources[resource]), 1)
                     for resource in single_worker_resources
                     if single_worker_resources[resource] > 0
                 ]
@@ -152,6 +158,10 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         return 0
 
+    def _effective_min_workers(self) -> int:
+        # A worker group needs at least one worker, even when min_workers is 0.
+        return max(self.scaling_config.min_workers, 1)
+
     def _get_resize_decision(self, num_workers: int) -> ResizeDecision:
         return ResizeDecision(
             num_workers=num_workers,
@@ -166,8 +176,9 @@ class ElasticScalingPolicy(ScalingPolicy):
             return NoopDecision()
 
         num_workers = self._count_possible_workers(reserved_resources)
+        min_workers = self._effective_min_workers()
 
-        if num_workers < self.scaling_config.min_workers:
+        if num_workers < min_workers:
             now = time_monotonic()
             # Only log this warning periodically to avoid spamming logs
             if (
@@ -178,8 +189,8 @@ class ElasticScalingPolicy(ScalingPolicy):
                     f"Detected ready resources for {num_workers} workers "
                     "in the cluster. "
                     "Deciding NOT to start/restart training due to the number of workers "
-                    "falling below the minimum "
-                    f"(min_workers={self.scaling_config.min_workers})."
+                    f"falling below the minimum of {min_workers} "
+                    f"(configured min_workers={self.scaling_config.min_workers})."
                 )
                 self._latest_insufficient_workers_warning_time = now
             return NoopDecision()
@@ -235,7 +246,7 @@ class ElasticScalingPolicy(ScalingPolicy):
                 f"({num_workers})."
             )
             return NoopDecision()
-        elif num_workers < self.scaling_config.min_workers:
+        elif num_workers < self._effective_min_workers():
             # This covers an edge case where reserved resources decrease to less
             # than the minimum number of workers.
             # This situation is rare, since cluster downsizing typically involves

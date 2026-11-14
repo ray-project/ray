@@ -159,7 +159,9 @@ def main(args):
             ]
         )
 
-        # Join with min cost and filter to keep only minimum-cost suppliers.
+        # Join with min cost, keeping only minimum-cost suppliers. The
+        # ``condition`` equality becomes a second hash key, so the hash
+        # partitioning enforces it instead of a filter after the join.
         # Float equality is safe: both sides are cast from the same Decimal
         # source via to_f64, and Min preserves the exact float64 value.
         ds = part_regional.join(
@@ -168,8 +170,8 @@ def main(args):
             join_type="inner",
             on=("p_partkey",),
             right_on=("ps_partkey",),
+            condition=col("ps_supplycost_f") == col("min_supplycost"),
         )
-        ds = ds.filter(expr=col("ps_supplycost_f") == col("min_supplycost"))
 
         # Cast Decimal s_acctbal to float64 for sort compatibility
         ds = ds.with_column("s_acctbal", to_f64(col("s_acctbal")))

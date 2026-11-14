@@ -560,6 +560,20 @@ RAY_ENABLE_GCS_LEADER_ELECTION = env_bool(RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR
 
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
+# Env vars that Ray sets to the number of CPUs assigned to a task or actor, unless
+# the user already set them. Override with the comma-separated
+# RAY_NUM_THREADS_ENV_VARS; an empty string disables this, except on Windows, which
+# deletes an env var set to an empty string. Adding RAYON_NUM_THREADS
+# also sizes the Rayon thread pool that Hugging Face `tokenizers` uses.
+DEFAULT_NUM_THREADS_ENV_VARS = "OMP_NUM_THREADS"
+
+
+def get_num_threads_env_vars() -> list[str]:
+    """Get the env vars that Ray sets from num_cpus."""
+    val = os.environ.get("RAY_NUM_THREADS_ENV_VARS", DEFAULT_NUM_THREADS_ENV_VARS)
+    return [x.strip() for x in val.split(",") if x.strip()]
+
+
 # Filename of "shim process" that sets up Python worker environment.
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
@@ -799,3 +813,7 @@ NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer(
 
 # Name of the environment variable for the Redis password.
 RAY_REDIS_PASSWORD_ENV = "RAY_REDIS_PASSWORD"
+
+# Modules that initialize an internal thread pool at import time and require an
+# explicit .set_num_threads() call if imported before fork().
+THREAD_POOL_MODULES = ["torch"]

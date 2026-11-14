@@ -251,3 +251,26 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
+
+
+@DeveloperAPI
+def maybe_promote_compute_strategy(
+    compute_strategy: ComputeStrategy,
+) -> ComputeStrategy:
+    """Promote a ``TaskPoolStrategy`` to an ``ActorPoolStrategy`` for the
+    actor-only backend.
+
+    When the actor-only backend (``RAY_DATA_ACTOR_ONLY_BACKEND``) is enabled,
+    transparently promote any ``TaskPoolStrategy`` to an equivalent
+    ``ActorPoolStrategy`` so all map ops execute on the actor backend.
+    Fixed-size task pools map to fixed-size actor pools; unsized task pools map
+    to a default autoscaling actor pool.
+
+    This is self-gated so callers (e.g. ``MapOperator.create``) stay
+    backend-agnostic: it is a no-op unless the actor-only backend is enabled.
+    """
+    from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
+
+    if actor_only_backend_enabled() and isinstance(compute_strategy, TaskPoolStrategy):
+        return ActorPoolStrategy(size=compute_strategy.size)
+    return compute_strategy

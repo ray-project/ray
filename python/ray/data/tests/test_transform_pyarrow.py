@@ -6,14 +6,10 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
-)
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
@@ -112,11 +108,6 @@ def test_map_raises_on_incompatible_data(
         ds.materialize()
 
 
-_PYARROW_SUPPORTS_TYPE_PROMOTION = (
-    get_pyarrow_version() >= MIN_PYARROW_VERSION_TYPE_PROMOTION
-)
-
-
 @pytest.mark.parametrize(
     "op, data, should_fail, expected_type",
     [
@@ -126,12 +117,7 @@ _PYARROW_SUPPORTS_TYPE_PROMOTION = (
         ("map_batches", ["1.0", 2**100], False, ArrowPythonObjectType()),
         # Case B: No fallback to `ArrowPythonObjectType`, but type promotion allows
         #         int to be promoted to a double
-        (
-            "map_batches",
-            [1.0, 2**4],
-            not _PYARROW_SUPPORTS_TYPE_PROMOTION,
-            pa.float64(),
-        ),
+        ("map_batches", [1.0, 2**4], False, pa.float64()),
         # Case C: No fallback to `ArrowPythonObjectType` and no type promotion possible
         ("map_batches", ["1.0", 2**4], True, None),
     ],
@@ -180,10 +166,6 @@ def test_pyarrow_conversion_error_handling(
 @pytest.mark.parametrize(
     "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
 )
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires Arrow version of at least 14.0.0",
-)
 def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(tensor_format_context):
     tensor_format = tensor_format_context
     num_rows = 1024
@@ -230,6 +212,69 @@ def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(tensor_format_c
         [("int", pa.float64()), ("tensor", expected_tensor_type)]
     )
     assert ds.count() == num_rows
+
+
+def test_concat_identical_schema_skips_unification(monkeypatch):
+    from ray.data._internal.arrow_ops import transform_pyarrow
+
+    tables = [
+        pa.table(
+            {
+                "id": pa.array([i], type=pa.int64()),
+                "value": pa.array([f"value_{i}"]),
+            }
+        )
+        for i in range(32)
+    ]
+
+    def unexpected_unification(*args, **kwargs):
+        pytest.fail(
+            "Schema unification should be skipped "
+            "when all input schemas are identical."
+        )
+
+    monkeypatch.setattr(
+        transform_pyarrow,
+        "unify_schemas",
+        unexpected_unification,
+    )
+
+    result = transform_pyarrow.concat(tables)
+
+    assert result.num_rows == 32
+    assert result.schema.equals(tables[0].schema)
+    assert result.column("id").to_pylist() == list(range(32))
+
+
+def test_concat_different_schemas_uses_unification(monkeypatch):
+    from ray.data._internal.arrow_ops import transform_pyarrow
+
+    tables = [
+        pa.table({"value": pa.array([1], type=pa.int32())}),
+        pa.table({"value": pa.array([2], type=pa.int64())}),
+    ]
+
+    original_unify = transform_pyarrow.unify_schemas
+    calls = []
+
+    def tracked_unification(*args, **kwargs):
+        calls.append(1)
+        return original_unify(*args, **kwargs)
+
+    monkeypatch.setattr(
+        transform_pyarrow,
+        "unify_schemas",
+        tracked_unification,
+    )
+
+    result = transform_pyarrow.concat(
+        tables,
+        promote_types=True,
+    )
+
+    assert len(calls) == 1
+    assert result.column("value").to_pylist() == [1, 2]
+    assert result.schema.field("value").type == pa.int64()
 
 
 if __name__ == "__main__":

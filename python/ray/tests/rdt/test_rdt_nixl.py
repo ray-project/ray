@@ -498,7 +498,6 @@ def test_nixl_concurrent_batched_get_with_agent_version_change(ray_start_regular
         spare = torch.ones(8, dtype=torch.uint8)
         spare_ref = put(spare)
         del spare_ref
-        gc.collect()
         wait_tensor_freed(spare, timeout=10)
         return ref
 
