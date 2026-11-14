@@ -19,7 +19,9 @@ def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_co
         data_context=data_context,
         ray_remote_args={"num_cpus": 1},
     )
-    op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
+    op._metrics = MagicMock(
+        obj_store_mem_max_pending_output_per_task=3, num_tasks_running=0
+    )
 
     (
         min_resource_usage_bound,
@@ -31,8 +33,56 @@ def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_co
     assert min_resource_usage_bound == ExecutionResources(
         cpu=1, gpu=0, object_store_memory=3
     )
-    # For CPU-only operators, max GPU/memory is 0 (not inf) to prevent hoarding.
+    # With no configured limit and no queued work, demand stays unbounded: there
+    # is nothing to hoard budget from. Max GPU/memory is 0 (not inf) to prevent
+    # hoarding.
     assert max_resource_usage_bound == ExecutionResources.for_limits(gpu=0, memory=0)
+
+
+def test_max_resource_demand_tracks_runnable_tasks(
+    ray_start_regular_shared, restore_data_context
+):
+    """Demand is bounded by running tasks plus input blocks queued to run."""
+    data_context = ray.data.DataContext.get_current()
+    op = TaskPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        ray_remote_args={"num_cpus": 1},
+    )
+    op._metrics = MagicMock(
+        obj_store_mem_max_pending_output_per_task=0, num_tasks_running=0
+    )
+
+    # One task is running and no other input is queued.
+    op._metrics.num_tasks_running = 1
+    _, max_bound = op.min_max_resource_requirements(num_queued_input_blocks=0)
+    assert max_bound.cpu == 1
+
+    # Two more input blocks are queued and can be dispatched.
+    op._metrics.num_tasks_running = 2
+    _, max_bound = op.min_max_resource_requirements(num_queued_input_blocks=2)
+    assert max_bound.cpu == 4
+
+
+def test_max_resource_demand_respects_configured_concurrency(
+    ray_start_regular_shared, restore_data_context
+):
+    """An explicit `max_concurrency` is a deliberate bound and is left unchanged."""
+    data_context = ray.data.DataContext.get_current()
+    op = TaskPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        ray_remote_args={"num_cpus": 1},
+        max_concurrency=8,
+    )
+    op._metrics = MagicMock(
+        obj_store_mem_max_pending_output_per_task=0, num_tasks_running=1
+    )
+
+    _, max_bound = op.min_max_resource_requirements()
+    assert max_bound.cpu == 8
 
 
 def test_dynamic_remote_args_inject_context_label_selector(

@@ -1338,6 +1338,44 @@ class TestIdleDetector:
 class TestReservationOpResourceAllocator:
     """Tests for ReservationOpResourceAllocator's object-store budget throttle."""
 
+    def test_budget_limited_to_runnable_work(self, restore_data_context):
+        """A task pool can't hold budget for tasks it has no input to run.
+
+        An operator with unbounded concurrency used to report infinite demand
+        and could keep most of the shared budget while running a single task,
+        starving downstream runnable operators.
+        """
+        resource_manager, topo, (o2, o3) = _build_reservation_allocator(2)
+        alloc = resource_manager.op_resource_allocator
+        eligible = [o2, o3]
+
+        alloc._update_reservation = MagicMock(return_value=ExecutionResources.zero())
+        alloc._get_eligible_ops = MagicMock(return_value=eligible)
+        alloc._total_shared = ExecutionResources(cpu=100)
+        resource_manager.get_mem_op_internal = MagicMock(return_value=0)
+        resource_manager.get_mem_op_outputs = MagicMock(return_value=0)
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        for op in eligible:
+            alloc._op_reserved[op] = ExecutionResources.zero()
+            alloc._reserved_for_op_outputs[op] = 0.0
+            op.min_scheduling_resources = MagicMock(
+                return_value=ExecutionResources.zero()
+            )
+
+        # `o2` runs one task and has no other input queued, so it needs one CPU.
+        o2.metrics.num_tasks_running = 1
+        alloc.update_budgets(limits=ExecutionResources.zero())
+        assert alloc._op_budgets[o2].cpu == 1
+        # The budget it can't use goes to the downstream operator instead.
+        assert alloc._op_budgets[o3].cpu == 99
+
+        # More queued input raises the bound: one running plus three queued.
+        topo[o2].total_enqueued_input_blocks = MagicMock(return_value=3)
+        alloc.update_budgets(limits=ExecutionResources.zero())
+        assert alloc._op_budgets[o2].cpu == 4
+
     @pytest.mark.parametrize(
         "overshoot_ratio, pressure_fraction, expect_ok",
         [
