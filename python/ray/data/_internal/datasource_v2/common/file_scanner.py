@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field, replace
-from typing import Literal, Optional, Set, Tuple, Union
+from typing import Literal, Optional, Set, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -14,9 +14,6 @@ from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsPartitionPruning,
 )
 from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
-from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
-    SynthesizedColumn,
-)
 from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
     _validate_shuffle_arg,
@@ -57,21 +54,21 @@ class FileScanner(Scanner[FileManifest], SupportsPartitionPruning):
     )
     partitioning: Optional[Partitioning] = field(default=None, kw_only=True)
     partition_predicate: Optional[Expr] = field(default=None, kw_only=True)
-    # Enabled columns are computed after scanning and replace same-named
-    # partition values. Keep this metadata even when projection excludes them.
-    synthesized_columns: Tuple[SynthesizedColumn, ...] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
         _validate_shuffle_arg(self.shuffle)
+
+    def _synthesized_column_names(self) -> Set[str]:
+        return {column.name for column in getattr(self, "synthesized_columns", ())}
 
     @property
     def partition_columns(self) -> Set[str]:
         """Return partition columns not replaced by enabled synthesized columns."""
         if self.partitioning is None:
             return set()
-        return set(self.partitioning.field_names or []) - {
-            column.name for column in self.synthesized_columns
-        }
+        return (
+            set(self.partitioning.field_names or []) - self._synthesized_column_names()
+        )
 
     @override
     def prune_partitions(self, predicate: "Expr") -> "FileScanner":

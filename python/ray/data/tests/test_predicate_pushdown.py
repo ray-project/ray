@@ -61,53 +61,48 @@ READ_OPERATOR_PATTERN = (
 )
 @pytest.mark.parametrize("rename", [False, True])
 def test_synthesized_path_residual_preserves_read_constraints(
-    ray_start_regular_shared, tmp_path, partitioning, rename
+    ray_start_regular_shared, tmp_path, monkeypatch, partitioning, rename
 ):
     directory = tmp_path / "path=foo"
     directory.mkdir()
     file = directory / "data.parquet"
     pq.write_table(pa.table({"id": [1, 2]}), file)
-    ctx = ray.data.DataContext.get_current()
-    original = ctx.use_datasource_v2
-    try:
-        ctx.use_datasource_v2 = True
-        ds = ray.data.read_parquet(
-            str(tmp_path), include_paths=True, partitioning=partitioning
-        )
-        path_name = "source_file" if rename else "path"
-        if rename:
-            ds = ds.rename_columns({"path": path_name})
-        ds = (
-            ds.filter(expr=col(path_name) == str(file))
-            .filter(expr=col("id") == 2)
-            .select_columns(["id"])
-            .limit(1)
-        )
-        plan = LogicalOptimizer().optimize(ds._logical_plan)
-        assert isinstance(plan, LogicalPlan)
-        (residual,) = get_operators_of_type(plan, Filter)
-        (read,) = get_operators_of_type(plan, ReadFiles)
-        (listing,) = get_operators_of_type(plan, ListFiles)
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    ds = ray.data.read_parquet(
+        str(tmp_path), include_paths=True, partitioning=partitioning
+    )
+    path_name = "source_file" if rename else "path"
+    if rename:
+        ds = ds.rename_columns({"path": path_name})
+    ds = (
+        ds.filter(expr=col(path_name) == str(file))
+        .filter(expr=col("id") == 2)
+        .select_columns(["id"])
+        .limit(1)
+    )
+    plan = LogicalOptimizer().optimize(ds._logical_plan)
+    assert isinstance(plan, LogicalPlan)
+    (residual,) = get_operators_of_type(plan, Filter)
+    (read,) = get_operators_of_type(plan, ReadFiles)
+    (listing,) = get_operators_of_type(plan, ListFiles)
 
-        assert isinstance(residual, Filter)
-        assert isinstance(read, ReadFiles)
-        assert isinstance(listing, ListFiles)
-        assert residual.predicate_expr is not None
-        assert isinstance(read.scanner, ParquetScanner)
-        assert read.scanner.predicate is not None
-        assert listing.predicate is not None
-        assert set(get_column_references(residual.predicate_expr)) == {"path"}
-        assert set(get_column_references(read.scanner.predicate)) == {"id"}
-        assert read.scanner.partition_predicate is None
-        assert read.scanner.limit is None
-        assert listing.limit is None
-        assert listing.partition_pruner is None
-        assert set(get_column_references(listing.predicate)) == {"id"}
-        assert plan_operator_comes_before(plan, ReadFiles, Filter)
-        assert plan_operator_comes_before(plan, Filter, Limit)
-        assert ds.take_all() == [{"id": 2}]
-    finally:
-        ctx.use_datasource_v2 = original
+    assert isinstance(residual, Filter)
+    assert isinstance(read, ReadFiles)
+    assert isinstance(listing, ListFiles)
+    assert residual.predicate_expr is not None
+    assert isinstance(read.scanner, ParquetScanner)
+    assert read.scanner.predicate is not None
+    assert listing.predicate is not None
+    assert set(get_column_references(residual.predicate_expr)) == {"path"}
+    assert set(get_column_references(read.scanner.predicate)) == {"id"}
+    assert read.scanner.partition_predicate is None
+    assert read.scanner.limit is None
+    assert listing.limit is None
+    assert listing.partition_pruner is None
+    assert set(get_column_references(listing.predicate)) == {"id"}
+    assert plan_operator_comes_before(plan, ReadFiles, Filter)
+    assert plan_operator_comes_before(plan, Filter, Limit)
+    assert ds.take_all() == [{"id": 2}]
 
 
 def _check_plan_with_flexible_read(

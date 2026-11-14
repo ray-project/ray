@@ -1,5 +1,5 @@
 from dataclasses import dataclass, replace
-from typing import Optional
+from typing import Optional, Tuple
 
 import pyarrow as pa
 from typing_extensions import override
@@ -16,6 +16,9 @@ from ray.data._internal.datasource_v2.common.file_reader import (
 from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    SynthesizedColumn,
+)
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
@@ -29,6 +32,7 @@ class OrcScanner(ArrowFileScanner):
     handling while reusing the shared ``ArrowFileScanner`` pushdowns.
     """
 
+    synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
     target_block_size: Optional[int] = None
 
     @override

@@ -123,8 +123,7 @@ class ArrowFileScanner(
             conjuncts requiring synthesized columns, or ``None`` if all
             conjuncts were accepted.
         """
-        synthesized = {column.name for column in self.synthesized_columns}
-        split = _split_predicate_by_columns(predicate, synthesized)
+        split = _split_predicate_by_columns(predicate, self._synthesized_column_names())
         residual = combine_predicates(
             split.partition_predicate, split.residual_predicate
         )

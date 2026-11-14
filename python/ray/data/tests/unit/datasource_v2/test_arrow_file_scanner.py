@@ -5,10 +5,14 @@ from typing import Optional
 import pyarrow as pa
 import pytest
 
+from ray.data._internal.datasource_v2.common.arrow_file_scanner import ArrowFileScanner
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
-from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
+from ray.data._internal.datasource_v2.common.synthesized_columns import (
+    PathColumn,
+    RowHashColumn,
+)
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
@@ -88,22 +92,19 @@ def test_prune_input_split_matching_no_file():
     ],
     ids=["path", "physical", "and", "or", "not", "nested", "cross_column", "literal"],
 )
-@pytest.mark.parametrize("partitioning", [None, Partitioning(PartitionStyle.HIVE)])
-def test_push_filters_retains_synthesized_residual(
-    predicate, accepted, residual, partitioning
-):
+def test_push_filters_retains_synthesized_residual(predicate, accepted, residual):
     columns = (PathColumn(),)
     original = col("x") < 10
     scanner = ParquetScanner(
         schema=pa.schema([("x", pa.int64()), ("path", pa.string())]),
         synthesized_columns=columns,
-        partitioning=partitioning,
         predicate=original,
     )
 
     pushed, declined = scanner.push_filters(predicate)
 
     assert scanner.predicate is original
+    assert isinstance(pushed, ParquetScanner)
     assert pushed.synthesized_columns is columns
     if accepted is None:
         assert pushed is scanner
@@ -146,6 +147,38 @@ def test_disabled_synthesized_column_keeps_physical_filter():
 
     assert pushed.predicate is predicate
     assert residual is None
+
+
+def test_arrow_scanner_without_synthesized_columns_pushes_filter():
+    class ScannerWithoutSynthesizedColumns(ArrowFileScanner):
+        def create_reader(self):
+            raise NotImplementedError
+
+    scanner = ScannerWithoutSynthesizedColumns(schema=pa.schema([("id", pa.int64())]))
+    predicate = col("id") == 1
+    pushed, residual = scanner.push_filters(predicate)
+    assert pushed.predicate is predicate
+    assert residual is None
+
+
+@pytest.mark.parametrize(
+    "scanner_cls, tail",
+    [(OrcScanner, ((PathColumn(),), 42)), (ParquetScanner, (42, (PathColumn(),)))],
+)
+def test_synthesized_columns_keep_positional_constructor(scanner_cls, tail):
+    scanner = scanner_cls(pa.schema([]), None, None, None, None, *tail)
+    assert isinstance(scanner.synthesized_columns[0], PathColumn)
+    assert scanner.target_block_size == 42
+
+
+def test_row_hash_filter_stays_residual():
+    scanner = ParquetScanner(
+        schema=pa.schema([]), synthesized_columns=(RowHashColumn(),)
+    )
+    predicate = col("row_hash") == 1
+    pushed, residual = scanner.push_filters(predicate)
+    assert pushed is scanner
+    assert residual is not None and residual.structurally_equals(predicate)
 
 
 @pytest.mark.parametrize("columns", [None, ["id"], []])

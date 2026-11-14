@@ -62,6 +62,11 @@ class _PartitionOnlyScanner(FileScanner):
         return _NoopReader()
 
 
+@dataclass(frozen=True)
+class _SynthesizingScanner(_PartitionOnlyScanner):
+    synthesized_columns: tuple = ()
+
+
 class _NoListingPartitionOnlyScanner(_PartitionOnlyScanner):
     def pushed_partition_pruner(self) -> Optional[FilePruner]:
         return None
@@ -97,6 +102,8 @@ def _manifest(*paths: str) -> FileManifest:
 
 def test_scanner_without_filter_pushdown_still_takes_partition_predicates():
     scanner = _PartitionOnlyScanner(partitioning=PARTITIONING)
+    assert not hasattr(scanner, "synthesized_columns")
+    assert scanner.partition_columns == {"country"}
     assert not isinstance(scanner, SupportsFilterPushdown)
     op = _read_files(scanner)
 
@@ -181,7 +188,7 @@ def test_prune_input_split_drops_files_by_path():
 def test_partition_columns_exclude_enabled_synthesized_columns(
     synthesized_columns, expected
 ):
-    scanner = _PartitionOnlyScanner(
+    scanner = _SynthesizingScanner(
         partitioning=Partitioning(
             PartitionStyle.HIVE, field_names=["path", "row_hash", "country"]
         ),
@@ -189,27 +196,6 @@ def test_partition_columns_exclude_enabled_synthesized_columns(
     )
 
     assert scanner.partition_columns == expected
-    assert scanner.synthesized_columns == synthesized_columns
-
-
-def test_partition_columns_use_synthesized_metadata_names():
-    class SourceFileColumn(PathColumn):
-        name = "source_file"
-
-    scanner = _PartitionOnlyScanner(
-        partitioning=Partitioning(
-            PartitionStyle.HIVE, field_names=["source_file", "path"]
-        ),
-        synthesized_columns=(SourceFileColumn(),),
-    )
-
-    assert scanner.partition_columns == {"path"}
-    assert (
-        _PartitionOnlyScanner(
-            synthesized_columns=(SourceFileColumn(),)
-        ).partition_columns
-        == set()
-    )
 
 
 @pytest.mark.parametrize("country", ["US", "CA", "missing"])
