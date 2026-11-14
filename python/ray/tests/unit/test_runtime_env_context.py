@@ -30,6 +30,25 @@ def test_existing_path_with_spaces_is_quoted(tmp_path):
     assert subprocess.list2cmdline(cmd) == f'"{exe}" worker.py'
 
 
+def test_quoted_path_with_arguments_is_kept_as_written():
+    py_executable = '"C:\\Program Files\\Python\\python.exe" -X utf8'
+    cmd = build_windows_worker_command([], [py_executable], ["worker.py"])
+    assert cmd == f"{py_executable} worker.py"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Runs the command with cmd.exe.")
+def test_cmd_exe_runs_quoted_path_with_arguments(tmp_path):
+    script = tmp_path / "dir with space" / "echo args.cmd"
+    script.parent.mkdir()
+    script.write_text("@echo %*\n")
+    cmd = build_windows_worker_command(
+        [], [f'"{script}" --flag'], ["C:\\a b\\worker.py"]
+    )
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == '--flag "C:\\a b\\worker.py"'
+
+
 def test_executable_without_spaces_is_unchanged():
     cmd = build_windows_worker_command(["prefix"], ["python.exe"], ["worker.py"])
     assert cmd == ["prefix", "python.exe", "worker.py"]
