@@ -519,6 +519,27 @@ def test_lance_namespace_write_rejects_non_create_mode(monkeypatch, mode):
         )
 
 
+def test_lance_namespace_write(tmp_path, ray_start_regular_shared):
+    from lance_namespace import DescribeTableRequest
+
+    from ray.data._internal.datasource.lance_utils import get_or_create_namespace
+
+    namespace_properties = {"root": str(tmp_path / "ns")}
+    ds = ray.data.from_items([{"id": 1, "text": "a"}, {"id": 2, "text": "b"}])
+    with pytest.warns(UserWarning, match="'uri' argument is ignored"):
+        ds.write_lance(
+            str(tmp_path / "ignored"),
+            table_id=["t"],
+            namespace_impl="dir",
+            namespace_properties=namespace_properties,
+        )
+
+    namespace = get_or_create_namespace("dir", namespace_properties)
+    location = namespace.describe_table(DescribeTableRequest(id=["t"])).location
+    table = lance.dataset(location).to_table()
+    assert sorted(table.column("id").to_pylist()) == [1, 2]
+
+
 @pytest.mark.parametrize(
     "max_attempts,expected_blocks_consumed_before_write",
     [(1, 1), (2, 3)],

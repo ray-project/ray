@@ -4,7 +4,7 @@
 # pyarrow 26 dropped Python 3.10, so the 3.10 image stays on this pin.
 pyarrow==25.0.1
 hudi>=0.5.0
-pylance
+pylance>=6.0.0
 modin==0.37.1
 pandas==2.3.3
 delta-sharing
