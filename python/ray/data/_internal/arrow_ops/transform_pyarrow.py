@@ -1508,7 +1508,7 @@ def to_numpy(
         )
 
 
-def converts_to_non_object_numpy(schema: "pyarrow.Schema") -> bool:
+def converts_to_non_object_numpy(table: "pyarrow.Table") -> bool:
     """Whether copying each column's NumPy array copies all of its data.
 
     True when every column converts to a non-object NumPy array. Nullable
@@ -1516,7 +1516,8 @@ def converts_to_non_object_numpy(schema: "pyarrow.Schema") -> bool:
     the elements are immutable ``bool``/``None``, so the copy is still complete.
     Other types (lists, structs, strings, variable-shaped tensors, etc.) convert
     to object arrays, and copying those only copies references to the original
-    elements.
+    elements. Fixed-shape tensor columns with null rows do too: each non-null
+    row becomes a view into the original buffer.
     """
     import pyarrow as pa
 
@@ -1524,7 +1525,10 @@ def converts_to_non_object_numpy(schema: "pyarrow.Schema") -> bool:
 
     fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 
-    def is_non_object(t: "pyarrow.DataType") -> bool:
+    def is_non_object(column: "pyarrow.ChunkedArray") -> bool:
+        t = column.type
+        if isinstance(t, fixed_shape_tensor_types) or _is_native_tensor_type(t):
+            return column.null_count == 0
         return (
             pa.types.is_integer(t)
             or pa.types.is_floating(t)
@@ -1533,11 +1537,9 @@ def converts_to_non_object_numpy(schema: "pyarrow.Schema") -> bool:
             or pa.types.is_timestamp(t)
             or pa.types.is_date(t)
             or pa.types.is_duration(t)
-            or isinstance(t, fixed_shape_tensor_types)
-            or _is_native_tensor_type(t)
         )
 
-    return all(is_non_object(field.type) for field in schema)
+    return all(is_non_object(column) for column in table.columns)
 
 
 def try_combine_chunked_columns(

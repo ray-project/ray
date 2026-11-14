@@ -322,7 +322,7 @@ class Batcher(BatcherInterface):
         return (
             self._numpy_copy_follows
             and isinstance(batch, pa.Table)
-            and transform_pyarrow.converts_to_non_object_numpy(batch.schema)
+            and transform_pyarrow.converts_to_non_object_numpy(batch)
         )
 
 

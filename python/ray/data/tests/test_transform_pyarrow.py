@@ -287,6 +287,19 @@ def _variable_shaped_tensor():
     return ArrowTensorArray.from_numpy(ragged)
 
 
+def _tensor_with_null_row():
+    rows = np.empty(2, dtype=object)
+    rows[0], rows[1] = np.zeros((2, 2)), None
+    return BlockAccessor.batch_to_block({"col": rows})["col"]
+
+
+def _native_tensor(with_null_row):
+    tensor = pa.FixedShapeTensorArray.from_numpy_ndarray(np.zeros((2, 2, 2)))
+    mask = pa.array([False, with_null_row])
+    storage = pa.FixedSizeListArray.from_arrays(tensor.storage.values, 4, mask=mask)
+    return pa.ExtensionArray.from_storage(tensor.type, storage)
+
+
 @pytest.mark.parametrize(
     "make_column,expected",
     [
@@ -303,11 +316,15 @@ def _variable_shaped_tensor():
         (lambda: pa.array([[1], [2]]), False),
         (lambda: pa.array([{"x": 1}, {"x": 2}]), False),
         (_variable_shaped_tensor, False),
+        # Null rows make the tensor column an object array of views.
+        (lambda: _tensor_with_null_row(), False),
+        (lambda: _native_tensor(with_null_row=False), True),
+        (lambda: _native_tensor(with_null_row=True), False),
     ],
 )
 def test_converts_to_non_object_numpy(make_column, expected):
     table = pa.table({"col": make_column()})
-    assert converts_to_non_object_numpy(table.schema) == expected
+    assert converts_to_non_object_numpy(table) == expected
 
     # The result has to match what the NumPy conversion actually returns.
     batch = BlockAccessor.for_block(table).to_batch_format("numpy")
