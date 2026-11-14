@@ -876,11 +876,9 @@ class TuneController:
         def _maybe_add_actors(candidates: List[Trial]):
             new_candidates = []
 
-            while candidates:
+            for i, trial in enumerate(candidates):
                 if self._actor_manager.num_pending_actors >= self._max_pending_trials:
-                    break
-
-                trial = candidates.pop(0)
+                    return new_candidates + candidates[i:]
 
                 # If the trial is part of the list, but not of the set,
                 # we just ignore it. Removing it from the list on status
@@ -901,7 +899,7 @@ class TuneController:
                 self._actor_cache.increase_max(trial.placement_group_factory)
                 self._schedule_trial_actor(trial)
 
-            return new_candidates + candidates
+            return new_candidates
 
         self._pending_trials_list = _maybe_add_actors(self._pending_trials_list)
 
