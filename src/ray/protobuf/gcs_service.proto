@@ -291,7 +291,12 @@ message GetInternalConfigReply {
   string config = 2;
 }
 
-message GetAllAvailableResourcesRequest {}
+message GetAllAvailableResourcesRequest {
+  // Also return implicit resources (node:__internal_implicit_resource_*) that are
+  // in use. An implicit resource absent from a node's map has 1.0 available.
+  // Off by default so user-facing APIs don't expose these internal resources.
+  bool include_implicit_resources = 1;
+}
 
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;

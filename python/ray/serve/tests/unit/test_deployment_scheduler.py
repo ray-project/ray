@@ -1775,6 +1775,69 @@ class TestPackScheduling:
         assert state[node_id_1] == 4
         assert state[node_id_2] == 1
 
+    def test_max_replicas_per_node_with_stopping_replica(self):
+        """A stopping replica still holds its max_replicas_per_node slot until
+        its actor exits. The scheduler stops tracking it right away, so it must
+        rely on GCS's implicit resource view to avoid picking that node.
+        """
+        d_id = DeploymentID(name="deployment1")
+        implicit_resource = (
+            f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}{d_id.app_name}:{d_id.name}"
+        )
+        full_node = NodeID.from_random().hex()
+        other_node = NodeID.from_random().hex()
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(full_node, {"CPU": 10})
+        cluster_node_info_cache.add_node(other_node, {"CPU": 10})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(
+                dummy, max_replicas_per_node=2, ray_actor_options={"num_cpus": 1}
+            ),
+        )
+
+        # Two replicas fill full_node's slot, then one starts stopping. Its actor
+        # is still alive, so GCS reports the slot as fully used. other_node runs
+        # an unrelated actor so neither node is idle.
+        scheduler.on_replica_running(ReplicaID("r0", d_id), node_id=full_node)
+        scheduler.on_replica_running(ReplicaID("r1", d_id), node_id=full_node)
+        scheduler.on_replica_stopping(ReplicaID("r0", d_id))
+        cluster_node_info_cache.set_available_resources_per_node(
+            full_node, {"CPU": 8, implicit_resource: 0.0}
+        )
+        cluster_node_info_cache.set_available_resources_per_node(other_node, {"CPU": 9})
+
+        scheduled_nodes = []
+
+        def on_scheduled(actor_handle, placement_group):
+            scheduling_strategy = actor_handle._options["scheduling_strategy"]
+            scheduled_nodes.append(scheduling_strategy.node_id)
+
+        scheduler.schedule(
+            upscales={
+                d_id: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID("r2", d_id),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 1},
+                        max_replicas_per_node=2,
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                ]
+            },
+            downscales={},
+        )
+        assert scheduled_nodes == [other_node]
+
     def test_heterogeneous_resources_with_max_replicas_per_node(self):
         d_id1 = DeploymentID(name="deployment1")
         d_id2 = DeploymentID(name="deployment2")
