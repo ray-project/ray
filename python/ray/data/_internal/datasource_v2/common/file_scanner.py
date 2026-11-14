@@ -58,12 +58,17 @@ class FileScanner(Scanner[FileManifest], SupportsPartitionPruning):
     def __post_init__(self) -> None:
         _validate_shuffle_arg(self.shuffle)
 
+    def _synthesized_column_names(self) -> Set[str]:
+        return {column.name for column in getattr(self, "synthesized_columns", ())}
+
     @property
     def partition_columns(self) -> Set[str]:
-        """Return the set of partition column names, or empty if unpartitioned."""
+        """Return partition columns not replaced by enabled synthesized columns."""
         if self.partitioning is None:
             return set()
-        return set(self.partitioning.field_names or [])
+        return (
+            set(self.partitioning.field_names or []) - self._synthesized_column_names()
+        )
 
     @override
     def prune_partitions(self, predicate: "Expr") -> "FileScanner":

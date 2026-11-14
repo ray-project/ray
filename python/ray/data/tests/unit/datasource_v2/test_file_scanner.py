@@ -23,6 +23,10 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
+from ray.data._internal.datasource_v2.common.synthesized_columns import (
+    PathColumn,
+    RowHashColumn,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
@@ -56,6 +60,11 @@ class _PartitionOnlyScanner(FileScanner):
 
     def create_reader(self) -> Reader[FileManifest]:
         return _NoopReader()
+
+
+@dataclass(frozen=True)
+class _SynthesizingScanner(_PartitionOnlyScanner):
+    synthesized_columns: tuple = ()
 
 
 class _NoListingPartitionOnlyScanner(_PartitionOnlyScanner):
@@ -93,6 +102,8 @@ def _manifest(*paths: str) -> FileManifest:
 
 def test_scanner_without_filter_pushdown_still_takes_partition_predicates():
     scanner = _PartitionOnlyScanner(partitioning=PARTITIONING)
+    assert not hasattr(scanner, "synthesized_columns")
+    assert scanner.partition_columns == {"country"}
     assert not isinstance(scanner, SupportsFilterPushdown)
     op = _read_files(scanner)
 
@@ -164,6 +175,27 @@ def test_prune_input_split_drops_files_by_path():
     assert list(kept.paths) == ["/root/country=US/a.csv", "/root/country=US/c.csv"]
     # Without a spec there is nothing to parse, so the split passes through.
     assert _PartitionOnlyScanner().prune_input_split(manifest) is manifest
+
+
+@pytest.mark.parametrize(
+    "synthesized_columns, expected",
+    [
+        ((), {"path", "row_hash", "country"}),
+        ((PathColumn(),), {"row_hash", "country"}),
+        ((PathColumn(), RowHashColumn()), {"country"}),
+    ],
+)
+def test_partition_columns_exclude_enabled_synthesized_columns(
+    synthesized_columns, expected
+):
+    scanner = _SynthesizingScanner(
+        partitioning=Partitioning(
+            PartitionStyle.HIVE, field_names=["path", "row_hash", "country"]
+        ),
+        synthesized_columns=synthesized_columns,
+    )
+
+    assert scanner.partition_columns == expected
 
 
 @pytest.mark.parametrize("country", ["US", "CA", "missing"])

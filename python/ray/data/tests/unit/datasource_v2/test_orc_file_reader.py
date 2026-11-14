@@ -47,6 +47,32 @@ def _manifest(*paths: Path) -> FileManifest:
     )
 
 
+@pytest.mark.parametrize(
+    "partitioning", [None, Partitioning(PartitionStyle.HIVE, field_names=["path"])]
+)
+def test_orc_scanner_preserves_inherited_synthesized_columns(partitioning):
+    columns = (PathColumn(),)
+    scanner = OrcScanner(
+        schema=pa.schema([("id", pa.int64()), ("path", pa.string())]),
+        synthesized_columns=columns,
+        partitioning=partitioning,
+    )
+    projected = scanner.prune_columns(["id"])
+
+    assert isinstance(projected, OrcScanner)
+    assert projected is not scanner
+    assert projected.synthesized_columns == columns
+    assert projected.partition_columns == set()
+    predicate = col("path") == "/source.orc"
+    pushed, residual = projected.push_filters(predicate)
+    assert pushed is projected
+    assert residual is not None and residual.structurally_equals(predicate)
+    assert projected.predicate is None
+    reader = projected.create_reader()
+    assert isinstance(reader, OrcFileReader)
+    assert reader._synthesized_columns == columns
+
+
 def test_orc_reader_yields_batches(tmp_path):
     path = tmp_path / "data.orc"
     expected = pa.table({"id": [0, 1, 2, 3, 4], "name": ["a", "b", "c", "d", "e"]})

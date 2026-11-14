@@ -16,6 +16,7 @@ from functools import partial
 import pyarrow as pa
 import pytest
 
+from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.mcap import (
     mcap_message_rows,
     mcap_reader,
@@ -38,6 +39,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import message_row_id
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     BASE_TIME,
     CHUNKED_FILE_MESSAGES,
@@ -72,6 +74,21 @@ pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("mcap") is None,
     reason="mcap module not available. Install with: pip install mcap",
 )
+
+
+def test_mcap_scanner_preserves_positional_constructor():
+    scanner = MCAPScanner(
+        pa.schema([]),
+        MCAPSelection(),
+        True,
+        False,
+        True,
+        None,
+        (PathColumn(),),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["path", "year"]),
+    )
+    assert isinstance(scanner.synthesized_columns[0], PathColumn)
+    assert scanner.partition_columns == {"year"}
 
 
 @pytest.mark.parametrize("include_metadata", [True, False])

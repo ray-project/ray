@@ -10,7 +10,9 @@ import pytest
 
 import ray
 from ray.data._internal.datasource_v2.formats.mcap import mcap_datasource_v2
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -287,6 +289,29 @@ def test_read_mcap_include_paths(ray_start_regular_shared, simple_mcap_file):
     for row in rows:
         assert "path" in row
         assert simple_mcap_file in row["path"]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True, ids=["v2"])
+def test_read_mcap_v2_filter_path_over_same_named_partition(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    directory = tmp_path / "path=foo"
+    directory.mkdir()
+    for i in range(2):
+        create_test_mcap_file(
+            str(directory / f"part_{i}.mcap"),
+            [{"topic": "/a", "data": {"value": i}, "log_time": i}],
+        )
+    path = str(directory / "part_1.mcap")
+    ds = ray.data.read_mcap(
+        str(directory),
+        include_paths=True,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["path"]),
+    )
+    rows = ds.filter(expr=col("path") == path).take_all()
+    assert len(rows) == 1
+    assert rows[0]["path"] == path
+    assert rows[0]["data"]["value"] == 1
 
 
 def test_read_mcap_invalid_time_range(ray_start_regular_shared, simple_mcap_file):
