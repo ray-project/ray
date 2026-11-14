@@ -4,6 +4,7 @@ import optparse
 import os
 import pathlib
 import platform
+import shlex
 import sys
 import urllib.parse
 from pathlib import Path
@@ -394,7 +395,12 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # it becomes "uv run --python X.Y.Z python -m default_worker.py"
     remaining_uv_run_args = remaining_uv_run_args + ["python"]
 
-    runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
+    # Ray runs py_executable through a shell (bash -c on POSIX), so quote each
+    # argument: `uv run --with "pkg @ <url>"` must reach the worker as one argument.
+    if sys.platform == "win32":
+        runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
+    else:
+        runtime_env["py_executable"] = shlex.join(remaining_uv_run_args)
 
     # If the user specified a working_dir, we always honor it, otherwise
     # use the same working_dir that uv run would use
