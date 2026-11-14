@@ -393,6 +393,17 @@
 							   }
 						   }
                        },
+                       "replica_config": {
+                           "type": "object",
+                           "description": "Multi-host worker replica sizing configuration.",
+                           "properties": {
+                               "workers_per_replica": {
+                                   "type": "integer",
+                                   "minimum": 1
+                               }
+                           },
+                           "additionalProperties": false
+                       },
                        "initialization_commands": {
                            "$ref": "#/definitions/commands",
                            "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."

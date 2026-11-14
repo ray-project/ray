@@ -51,6 +51,7 @@ IDLE_TERMINATION_OPTIONS_POLICY_DELETE = "Delete"
 IDLE_TERMINATION_OPTIONS_POLICY_SUSPEND = "Suspend"
 IDLE_TERMINATION_CLEANUP_FINALIZER = "ray.io/idle-termination-cleanup-finalizer"
 IDLE_SUSPEND_KEY = "idleSuspend"
+KUBERAY_LABEL_KEY_REPLICA_NAME = "ray.io/worker-group-replica-name"
 
 
 class KubeRayProvider(ICloudInstanceProvider):
@@ -106,6 +107,15 @@ class KubeRayProvider(ICloudInstanceProvider):
             gcs_client=gcs_client, k8s_api_client=self._k8s_api_client
         )
 
+        # Reconcile-step context populated by begin_reconcile_step and cleared by
+        # end_reconcile_step. When inactive, standalone calls preserve legacy
+        # max(spec_replicas * numOfHosts, effective_observed) + to_launch math.
+        self._in_reconcile_step: bool = False
+        self._step_synced: bool = False
+        self._step_known_cloud_instance_ids: Set[CloudInstanceId] = set()
+        self._step_single_host_in_flight: Dict[NodeType, Dict[str, int]] = {}
+        self._step_unclaimed_replicas_by_lid: Dict[NodeType, Dict[str, int]] = {}
+
     @dataclass
     class ScaleRequest:
         """Represents a scale request that contains the current states and go-to states
@@ -134,10 +144,52 @@ class KubeRayProvider(ICloudInstanceProvider):
         )
         # The worker groups that still have workers to be deleted.
         worker_groups_with_pending_deletes: Set[NodeType] = field(default_factory=set)
+        # Worker groups targeted by a terminate request (including pods already
+        # present in workersToDelete so pending-delete checks stay group-scoped).
+        targeted_delete_groups: Set[NodeType] = field(default_factory=set)
 
     ################################
     # Interface for ICloudInstanceProvider
     ################################
+
+    def begin_reconcile_step(
+        self,
+        known_cloud_instance_ids: Set[CloudInstanceId],
+        single_host_in_flight: Dict[NodeType, Dict[str, int]],
+        unclaimed_replicas_by_lid: Dict[NodeType, Dict[str, int]],
+    ) -> None:
+        self._step_known_cloud_instance_ids = set(known_cloud_instance_ids)
+        self._step_single_host_in_flight = {
+            nt: dict(counts) for nt, counts in single_host_in_flight.items()
+        }
+        self._step_unclaimed_replicas_by_lid = {
+            nt: dict(counts) for nt, counts in unclaimed_replicas_by_lid.items()
+        }
+        if not self._in_reconcile_step:
+            self._in_reconcile_step = True
+            self._step_synced = False
+
+    def end_reconcile_step(self) -> None:
+        self._in_reconcile_step = False
+        self._step_synced = False
+        self._step_known_cloud_instance_ids = set()
+        self._step_single_host_in_flight = {}
+        self._step_unclaimed_replicas_by_lid = {}
+
+    def get_node_types_with_pending_deletes(
+        self,
+        terminating_cloud_instance_ids: Optional[Set[CloudInstanceId]] = None,
+    ) -> Set[NodeType]:
+        self._ensure_synced_for_step()
+        pending_groups, _, _ = self._get_workers_delete_info(
+            self._ray_cluster, set(self._cached_instances.keys())
+        )
+        if terminating_cloud_instance_ids:
+            for cid in terminating_cloud_instance_ids:
+                c_inst = self._cached_instances.get(cid)
+                if c_inst is not None and c_inst.node_kind == NodeKind.WORKER:
+                    pending_groups.add(c_inst.node_type)
+        return pending_groups
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
@@ -154,13 +206,17 @@ class KubeRayProvider(ICloudInstanceProvider):
         scale_request = None
         try:
             scale_request = self._initialize_scale_request(
-                to_launch={}, to_delete_instances=ids
+                to_launch={}, to_delete_instances=ids, request_id=request_id
             )
 
-            if scale_request.worker_groups_with_pending_deletes:
+            pending_groups = (
+                scale_request.worker_groups_with_pending_deletes
+                & scale_request.targeted_delete_groups
+            )
+            if pending_groups:
                 errors_msg = (
                     "There are workers to be deleted from: "
-                    f"{scale_request.worker_groups_with_pending_deletes}. "
+                    f"{pending_groups}. "
                     "Waiting for them to be deleted before adding new workers "
                     " to be deleted"
                 )
@@ -173,10 +229,15 @@ class KubeRayProvider(ICloudInstanceProvider):
                 return
 
             self._submit_scale_request(scale_request)
+            if self._in_reconcile_step:
+                # Re-sync before any subsequent launch/pending-delete check in
+                # the same step so updated pod/workersToDelete visibility applies.
+                self._step_synced = False
             # Only add to processed requests if successful
             self._requests.add(request_id)
 
         except Exception as e:
+            self._step_synced = False
             logger.exception(f"Error terminating nodes: {scale_request or 'N/A'}")
             self._add_terminate_errors(ids, request_id, details=str(e), e=e)
 
@@ -188,13 +249,17 @@ class KubeRayProvider(ICloudInstanceProvider):
         scale_request = None
         try:
             scale_request = self._initialize_scale_request(
-                to_launch=shape, to_delete_instances=[]
+                to_launch=shape, to_delete_instances=[], request_id=request_id
             )
 
-            if scale_request.worker_groups_with_pending_deletes:
+            target_groups = {nt for nt, count in shape.items() if count > 0}
+            pending_groups = (
+                scale_request.worker_groups_with_pending_deletes & target_groups
+            )
+            if pending_groups:
                 error_msg = (
                     "There are workers to be deleted from: "
-                    f"{scale_request.worker_groups_with_pending_deletes}. "
+                    f"{pending_groups}. "
                     "Waiting for them to be deleted before creating new workers."
                 )
                 logger.warning(error_msg)
@@ -212,6 +277,9 @@ class KubeRayProvider(ICloudInstanceProvider):
             # a slot are failed below so they do not retry with this same id.
             self._requests.add(request_id)
 
+            if self._in_reconcile_step:
+                self._record_step_launch(shape, request_id, rejected_nodes)
+
             nodes_to_reject = {}
             for node_type, rejected in rejected_nodes.items():
                 requested = shape.get(node_type, 0)
@@ -222,10 +290,14 @@ class KubeRayProvider(ICloudInstanceProvider):
                 self._add_launch_errors(
                     nodes_to_reject,
                     request_id,
-                    details="Launch capped by maxReplicas limit.",
+                    details=(
+                        "Launch rejected by maxReplicas limit or unaligned "
+                        "numOfHosts count."
+                    ),
                 )
 
         except Exception as e:
+            self._step_synced = False
             logger.exception(f"Error launching nodes: {scale_request or 'N/A'}")
             self._add_launch_errors(shape, request_id, details=str(e), e=e)
 
@@ -266,8 +338,53 @@ class KubeRayProvider(ICloudInstanceProvider):
     # Private
     ############################
 
+    def _ensure_synced_for_step(self) -> None:
+        if not self._in_reconcile_step or not self._step_synced:
+            self._sync_with_api_server()
+            if self._in_reconcile_step:
+                self._step_synced = True
+
+    def _record_step_launch(
+        self,
+        shape: Dict[NodeType, int],
+        request_id: str,
+        rejected_nodes: Dict[NodeType, int],
+    ) -> None:
+        hosts_by_type = {
+            wg["groupName"]: (
+                1 if wg.get("numOfHosts") is None else wg.get("numOfHosts")
+            )
+            for wg in self._ray_cluster["spec"].get("workerGroupSpecs", [])
+        }
+        for node_type, req_w in shape.items():
+            if req_w <= 0:
+                continue
+            size = hosts_by_type.get(node_type, 1)
+            if size <= 0:
+                continue
+            if size == 1:
+                sh_map = self._step_single_host_in_flight.setdefault(node_type, {})
+                cur = max(sh_map.get(request_id, 0), req_w)
+                rej = min(req_w, rejected_nodes.get(node_type, 0))
+                accepted = max(0, cur - rej)
+                if accepted > 0:
+                    sh_map[request_id] = accepted
+                else:
+                    sh_map.pop(request_id, None)
+            elif node_type in self._step_unclaimed_replicas_by_lid:
+                unclaimed_map = self._step_unclaimed_replicas_by_lid[node_type]
+                rej = min(req_w, rejected_nodes.get(node_type, 0))
+                acc_reps = max(0, req_w - rej) // size
+                if acc_reps > 0:
+                    unclaimed_map[request_id] = acc_reps
+                else:
+                    unclaimed_map.pop(request_id, None)
+
     def _initialize_scale_request(
-        self, to_launch: Dict[NodeType, int], to_delete_instances: List[CloudInstanceId]
+        self,
+        to_launch: Dict[NodeType, int],
+        to_delete_instances: List[CloudInstanceId],
+        request_id: str = "",
     ) -> "KubeRayProvider.ScaleRequest":
         """Initialize the scale request based on the current state of the cluster and
         the desired state (to launch, to delete).
@@ -275,13 +392,14 @@ class KubeRayProvider(ICloudInstanceProvider):
         Args:
             to_launch: The desired number of workers to launch for each node type.
             to_delete_instances: The instances to delete.
+            request_id: The launch or terminate request ID for in-step accounting.
 
         Returns:
             The scale request.
         """
 
-        # Update the cached states.
-        self._sync_with_api_server()
+        # Update the cached states (once per reconcile step, or every standalone call).
+        self._ensure_synced_for_step()
         ray_cluster = self.ray_cluster
         cur_instances = self.instances
 
@@ -294,74 +412,193 @@ class KubeRayProvider(ICloudInstanceProvider):
             worker_to_delete_set,
         ) = self._get_workers_delete_info(ray_cluster, set(cur_instances.keys()))
 
-        observed_workers_dict = defaultdict(int)
-        for instance in cur_instances.values():
-            if instance.node_kind != NodeKind.WORKER:
-                continue
-            if instance.cloud_instance_id in worker_to_delete_set:
-                continue
-            observed_workers_dict[instance.node_type] += 1
-
-        # Calculate the desired number of workers by type.
-        num_workers_dict = defaultdict(int)
-        worker_groups = ray_cluster["spec"].get("workerGroupSpecs", [])
-        for worker_group in worker_groups:
-            node_type = worker_group["groupName"]
-            # Handle the case where users manually increase `minReplicas`
-            # to scale up the number of worker Pods. In this scenario,
-            # `replicas` will be smaller than `minReplicas`.
-            # num_workers_dict should account for multi-host replicas when
-            # `numOfHosts`` is set.
-            num_of_hosts = worker_group.get("numOfHosts", 1)
-            replicas = (
-                max(worker_group["replicas"], worker_group["minReplicas"])
-                * num_of_hosts
-            )
-
-            # The `replicas` field in worker group specs can be updated by users at any time.
-            # However, users should only increase the field (manually upscaling the worker group), not decrease it,
-            # because downscaling the worker group requires specifying which workers to delete explicitly in the `workersToDelete` field.
-            # Since we don't have a way to enforce this, we need to fix unexpected decreases on the `replicas` field by using actual observations.
-            # For example, if the user manually decreases the `replicas` field to 0 without specifying which workers to delete,
-            # we should fix the `replicas` field back to the number of observed workers excluding the workers to be deleted,
-            # otherwise, we won't have a correct `replicas` matches the actual number of workers eventually.
-            num_workers_dict[node_type] = max(
-                replicas, observed_workers_dict[node_type]
-            )
-
-        # Add to launch nodes.
-        for node_type, count in to_launch.items():
-            num_workers_dict[node_type] += count
-
-        to_delete_instances_by_type = defaultdict(list)
-        # Update the number of workers with to_delete_instances
-        # and group them by type.
+        to_delete_instances_by_type: Dict[NodeType, List[CloudInstance]] = defaultdict(
+            list
+        )
+        targeted_delete_groups: Set[NodeType] = set()
+        to_delete_id_set: Set[CloudInstanceId] = set()
         for to_delete_id in to_delete_instances:
-            to_delete_instance = cur_instances.get(to_delete_id, None)
-            if to_delete_instance is None:
-                # This instance has already been deleted.
+            to_delete_instance = cur_instances.get(to_delete_id)
+            if (
+                to_delete_instance is None
+                or to_delete_instance.node_kind == NodeKind.HEAD
+            ):
                 continue
-
-            if to_delete_instance.node_kind == NodeKind.HEAD:
-                # Not possible to delete head node.
+            targeted_delete_groups.add(to_delete_instance.node_type)
+            if to_delete_id in to_delete_id_set or to_delete_id in worker_to_delete_set:
                 continue
-
-            if to_delete_instance.cloud_instance_id in worker_to_delete_set:
-                # If the instance is already in the workersToDelete field of
-                # any worker group, skip it.
-                continue
-
-            num_workers_dict[to_delete_instance.node_type] -= 1
-            assert num_workers_dict[to_delete_instance.node_type] >= 0
+            to_delete_id_set.add(to_delete_id)
             to_delete_instances_by_type[to_delete_instance.node_type].append(
                 to_delete_instance
             )
+
+        pods_by_type_replica: Dict[
+            NodeType, Dict[str, List[CloudInstance]]
+        ] = defaultdict(lambda: defaultdict(list))
+        unlabeled_pods_by_type: Dict[NodeType, List[CloudInstance]] = defaultdict(list)
+        for instance in cur_instances.values():
+            if (
+                instance.node_kind != NodeKind.WORKER
+                or instance.cloud_instance_id in worker_to_delete_set
+            ):
+                continue
+            if instance.replica_id:
+                pods_by_type_replica[instance.node_type][instance.replica_id].append(
+                    instance
+                )
+            else:
+                unlabeled_pods_by_type[instance.node_type].append(instance)
+
+        # Calculate the desired number of workers by type.
+        num_workers_dict: Dict[NodeType, int] = defaultdict(int)
+        worker_groups = ray_cluster["spec"].get("workerGroupSpecs", [])
+        for worker_group in worker_groups:
+            node_type = worker_group["groupName"]
+            req_w = to_launch.get(node_type, 0)
+            is_targeted = req_w > 0 or node_type in to_delete_instances_by_type
+            if self._in_reconcile_step and not is_targeted:
+                continue
+
+            raw_num_of_hosts = worker_group.get("numOfHosts")
+            num_of_hosts = 1 if raw_num_of_hosts is None else raw_num_of_hosts
+            if num_of_hosts <= 0:
+                if req_w > 0:
+                    num_workers_dict[node_type] = req_w
+                continue
+
+            # Handle the case where users manually increase `minReplicas`
+            # to scale up the number of worker Pods. In this scenario,
+            # `replicas` will be smaller than `minReplicas`.
+            # num_workers_dict accounts for multi-host replicas (`numOfHosts`).
+            spec_replicas = max(
+                worker_group.get("replicas") or 0,
+                worker_group.get("minReplicas") or 0,
+            )
+            by_replica = pods_by_type_replica.get(node_type, {})
+            unlabeled_pods = unlabeled_pods_by_type.get(node_type, [])
+            unlabeled = len(unlabeled_pods)
+            obs_unlabeled_reps = 0
+            if num_of_hosts > 1:
+                # KubeRay reconciles a multi-host group by replica name: each replica
+                # counts whole even while < num_of_hosts pods exist, and naming any
+                # of its pods in workersToDelete deletes the whole replica. Name all
+                # of its pods, so the replica reads as pending deletion until every
+                # pod is gone. Unlabeled pods (legacy KubeRay or mixed upgrade) are
+                # counted in whole-replica ceiling units alongside labeled replicas.
+                removed_replicas = [
+                    r_pods
+                    for r_pods in by_replica.values()
+                    if any(p.cloud_instance_id in to_delete_id_set for p in r_pods)
+                ]
+                for r_pods in removed_replicas:
+                    for pod in r_pods:
+                        if pod.cloud_instance_id not in to_delete_id_set:
+                            to_delete_id_set.add(pod.cloud_instance_id)
+                            to_delete_instances_by_type[node_type].append(pod)
+                removed_unlabeled = sum(
+                    1 for p in unlabeled_pods if p.cloud_instance_id in to_delete_id_set
+                )
+                obs_unlabeled_reps = (unlabeled + num_of_hosts - 1) // num_of_hosts
+                effective_observed = (
+                    len(by_replica) + obs_unlabeled_reps
+                ) * num_of_hosts
+                # Unlabeled removals subtract per pod so partial-tick unlabeled
+                # scale-down converges via floor division (matching base KubeRay).
+                # Strict whole-replica accounting without stranded REQUESTED slots
+                # requires ray.io/worker-group-replica-name (RayMultiHostIndexing).
+                removed_workers = (
+                    len(removed_replicas) * num_of_hosts + removed_unlabeled
+                )
+            else:
+                labeled_count = sum(len(r_pods) for r_pods in by_replica.values())
+                effective_observed = labeled_count + unlabeled
+                removed_workers = len(to_delete_instances_by_type.get(node_type, ()))
+
+            if not self._in_reconcile_step or (
+                num_of_hosts > 1
+                and node_type not in self._step_unclaimed_replicas_by_lid
+            ):
+                # Standalone calls and pre-replica-config multi-host groups keep
+                # max(spec_replicas * num_of_hosts, effective_observed) + to_launch.
+                num_workers_dict[node_type] = (
+                    max(spec_replicas * num_of_hosts, effective_observed)
+                    + req_w
+                    - removed_workers
+                )
+            elif num_of_hosts == 1:
+                known_cids = self._step_known_cloud_instance_ids
+                newly_materialized = sum(
+                    1
+                    for r_pods in by_replica.values()
+                    for p in r_pods
+                    if p.cloud_instance_id not in known_cids
+                ) + sum(
+                    1 for p in unlabeled_pods if p.cloud_instance_id not in known_cids
+                )
+                sh_map = self._step_single_host_in_flight.get(node_type, {})
+                prior_in_flight = sum(c for k, c in sh_map.items() if k != request_id)
+                cur_in_flight = max(sh_map.get(request_id, 0), req_w)
+                in_flight = max(0, prior_in_flight + cur_in_flight - newly_materialized)
+                num_workers_dict[node_type] = (
+                    effective_observed + in_flight - removed_workers
+                )
+            else:
+                known_cids = self._step_known_cloud_instance_ids
+                new_labeled_reps = sum(
+                    1
+                    for r_pods in by_replica.values()
+                    if all(p.cloud_instance_id not in known_cids for p in r_pods)
+                )
+                new_unlabeled_pods = sum(
+                    1 for p in unlabeled_pods if p.cloud_instance_id not in known_cids
+                )
+                known_unlabeled = unlabeled - new_unlabeled_pods
+                known_unlabeled_reps = (
+                    known_unlabeled + num_of_hosts - 1
+                ) // num_of_hosts
+                new_unlabeled_reps = max(0, obs_unlabeled_reps - known_unlabeled_reps)
+                newly_materialized_reps = new_labeled_reps + new_unlabeled_reps
+
+                unclaimed_map = self._step_unclaimed_replicas_by_lid[node_type]
+                if req_w == 0:
+                    cur_reps, cur_unaligned = 0, 0
+                else:
+                    cur_reps, cur_unaligned = (
+                        req_w // num_of_hosts,
+                        req_w % num_of_hosts,
+                    )
+                prior_reps = sum(unclaimed_map.values())
+                in_flight_reps = max(0, prior_reps + cur_reps - newly_materialized_reps)
+                num_workers_dict[node_type] = (
+                    effective_observed
+                    + in_flight_reps * num_of_hosts
+                    + cur_unaligned
+                    - removed_workers
+                )
+
+            if num_workers_dict[node_type] < 0:
+                logger.warning(
+                    "Clamping negative desired worker count %d for group %s to 0 "
+                    "(spec_replicas=%d, observed=%d, removed=%d, to_launch=%d).",
+                    num_workers_dict[node_type],
+                    node_type,
+                    spec_replicas,
+                    effective_observed,
+                    removed_workers,
+                    req_w,
+                )
+                num_workers_dict[node_type] = 0
+
+        for node_type, count in to_launch.items():
+            if count > 0 and node_type not in num_workers_dict:
+                num_workers_dict[node_type] += count
 
         scale_request = KubeRayProvider.ScaleRequest(
             desired_num_workers=num_workers_dict,
             workers_to_delete=to_delete_instances_by_type,
             worker_groups_without_pending_deletes=worker_groups_without_pending_deletes,
             worker_groups_with_pending_deletes=worker_groups_with_pending_deletes,
+            targeted_delete_groups=targeted_delete_groups,
         )
 
         return scale_request
@@ -387,6 +624,8 @@ class KubeRayProvider(ICloudInstanceProvider):
         """
         # Get the current ray cluster spec.
         patch_payload = []
+        patched_replicas: List[Tuple[int, int]] = []
+        patched_deletes: List[Tuple[int, List[CloudInstanceId]]] = []
 
         raycluster = self.ray_cluster
 
@@ -395,10 +634,27 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Collect patches for replica counts.
         for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
+            group_min_replicas = (
+                raycluster["spec"]["workerGroupSpecs"][group_index].get("minReplicas")
+                or 0
+            )
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
-            group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
+            raw_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
+            group_num_of_hosts = 1 if raw_num_of_hosts is None else raw_num_of_hosts
+            if group_num_of_hosts <= 0:
+                if num_workers > 0:
+                    logger.warning(
+                        "Worker group %s has invalid numOfHosts=%s; rejecting launch "
+                        "of %d workers.",
+                        node_type,
+                        group_num_of_hosts,
+                        num_workers,
+                    )
+                    rejected_nodes[node_type] = num_workers
+                continue
             # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
-            target_replicas = num_workers // group_num_of_hosts
+            unaligned_workers = num_workers % group_num_of_hosts
+            target_replicas = max(group_min_replicas, num_workers // group_num_of_hosts)
             # Cap the replica count to maxReplicas.
             original_target_replicas = target_replicas
             if group_max_replicas is not None and group_max_replicas < target_replicas:
@@ -412,6 +668,10 @@ class KubeRayProvider(ICloudInstanceProvider):
                 rejected_replicas = original_target_replicas - target_replicas
                 if rejected_replicas > 0:
                     rejected_nodes[node_type] = rejected_replicas * group_num_of_hosts
+            if unaligned_workers > 0:
+                rejected_nodes[node_type] = (
+                    rejected_nodes.get(node_type, 0) + unaligned_workers
+                )
             # Check if we need to change the target count.
             if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.
@@ -419,6 +679,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             # Need to patch replica count. Format the patch and add it to the payload.
             patch = worker_replica_patch(group_index, target_replicas)
             patch_payload.append(patch)
+            patched_replicas.append((group_index, target_replicas))
 
         # Maps node_type to nodes to delete for that group.
         for (
@@ -431,6 +692,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             ]
             patch = worker_delete_patch(group_index, worker_ids_to_delete)
             patch_payload.append(patch)
+            patched_deletes.append((group_index, worker_ids_to_delete))
 
         # Clear the workersToDelete field for the worker groups that have been deleted.
         for node_type in scale_request.worker_groups_without_pending_deletes:
@@ -440,10 +702,23 @@ class KubeRayProvider(ICloudInstanceProvider):
             group_index = _worker_group_index(raycluster, node_type)
             patch = worker_delete_patch(group_index, [])
             patch_payload.append(patch)
+            patched_deletes.append((group_index, []))
 
         if len(patch_payload) > 0:
             logger.info(f"Submitting a scale request: {scale_request}")
-            self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
+            resp = self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
+            if isinstance(resp, dict) and "spec" in resp:
+                self._ray_cluster = resp
+            elif self._ray_cluster is not None:
+                worker_groups = self._ray_cluster.get("spec", {}).get(
+                    "workerGroupSpecs", []
+                )
+                for group_index, target_replicas in patched_replicas:
+                    worker_groups[group_index]["replicas"] = target_replicas
+                for group_index, worker_ids in patched_deletes:
+                    worker_groups[group_index].setdefault("scaleStrategy", {})[
+                        "workersToDelete"
+                    ] = list(worker_ids)
 
         return rejected_nodes
 
@@ -660,11 +935,17 @@ class KubeRayProvider(ICloudInstanceProvider):
         # TODO: we should prob get from the pod's env var (RAY_CLOUD_INSTANCE_ID)
         # directly.
         cloud_instance_id = pod["metadata"]["name"]
+        replica_id = (
+            (labels.get(KUBERAY_LABEL_KEY_REPLICA_NAME) or None)
+            if kind == NodeKind.WORKER
+            else None
+        )
         return CloudInstance(
             cloud_instance_id=cloud_instance_id,
             node_type=type,
             node_kind=kind,
             is_running=KubeRayProvider._is_running(pod),
+            replica_id=replica_id,
         )
 
     @staticmethod

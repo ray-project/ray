@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from queue import Queue
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -63,6 +63,9 @@ class CloudInstance:
     # to handle cloud instances w/o request ids.
     # TODO: make this a required field.
     request_id: Optional[str] = None
+    # Optional provider-assigned identifier shared by instances provisioned and
+    # managed together as a single multi-worker replica.
+    replica_id: Optional[str] = None
 
 
 class CloudInstanceProviderError(Exception):
@@ -254,6 +257,26 @@ class ICloudInstanceProvider(ABC):
             The errors that happened since the last poll.
         """
         pass
+
+    def begin_reconcile_step(
+        self,
+        known_cloud_instance_ids: Set[CloudInstanceId],
+        single_host_in_flight: Dict[NodeType, Dict[str, int]],
+        unclaimed_replicas_by_lid: Dict[NodeType, Dict[str, int]],
+    ) -> None:
+        """Optional hook called before active reconcile mutations begin."""
+        pass
+
+    def end_reconcile_step(self) -> None:
+        """Optional hook called after active reconcile mutations complete."""
+        pass
+
+    def get_node_types_with_pending_deletes(
+        self,
+        terminating_cloud_instance_ids: Optional[Set[CloudInstanceId]] = None,
+    ) -> Set[NodeType]:
+        """Return worker node types with pending cloud-provider deletions."""
+        return set()
 
 
 @dataclass(frozen=True)
