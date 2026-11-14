@@ -21,6 +21,9 @@ from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
 from ray.data._internal.datasource_v2.common.line_chunkable_datasource_v2 import (
     LineChunkableDatasourceV2,
 )
+from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
+    read_snappy_buffer,
+)
 from ray.data._internal.datasource_v2.common.line_chunking import read_line_aligned
 from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
     COLUMN_NAMES_KEY,
@@ -28,7 +31,6 @@ from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
     csv_file_format,
     has_header,
     invalid_csv_error,
-    read_snappy_buffer,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileIndexer,
