@@ -814,7 +814,9 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessages) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
-  payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
+  rpc::syncer::ResourceInstances cpu_instances;
+  cpu_instances.add_values(kTestTotalCpuResource);
+  (*payload.mutable_resources_available_instances())["CPU"] = cpu_instances;
   payload.mutable_labels()->insert({"label1", "value1"});
 
   std::string serialized;
@@ -845,7 +847,9 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessagesSchedulesOncePerBatch) {
   auto make_resource_view = [](const NodeID &node_id) {
     syncer::ResourceViewSyncMessage payload;
     payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
-    payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
+    rpc::syncer::ResourceInstances cpu_instances;
+    cpu_instances.add_values(kTestTotalCpuResource);
+    (*payload.mutable_resources_available_instances())["CPU"] = cpu_instances;
     payload.mutable_labels()->insert({"label1", "value1"});
     std::string serialized;
     RAY_CHECK(payload.SerializeToString(&serialized));
@@ -902,9 +906,10 @@ TEST_P(NodeManagerDeadResourceSyncTest, IgnoreResourceViewsAfterNodeDeath) {
   const scheduling::NodeID scheduling_id(node_id.Binary());
   syncer::ResourceViewSyncMessage payload;
   (*payload.mutable_resources_total())["CPU"] = kTestTotalCpuResource;
-  (*payload.mutable_resources_available())["CPU"] = kTestTotalCpuResource;
+  (*payload.mutable_resources_available_instances())["CPU"].add_values(
+      kTestTotalCpuResource);
   (*payload.mutable_resources_total())["GPU"] = 1;
-  (*payload.mutable_resources_available())["GPU"] = 1;
+  (*payload.mutable_resources_available_instances())["GPU"].add_values(1);
   (*payload.mutable_labels())["ray.io/accelerator-type"] = "H20";
   auto msg = std::make_shared<syncer::RaySyncMessage>();
   msg->set_node_id(node_id.Binary());
