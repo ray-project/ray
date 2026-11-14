@@ -158,6 +158,46 @@ def test_a_cache_hit_leaves_a_deletion_in_progress_to_its_owner(tmp_path):
     assert not moved_aside.exists()
 
 
+def test_a_cache_hit_leaves_an_image_just_moved_aside_to_its_owner(
+    tmp_path, monkeypatch
+):
+    """A re-pull moves the old image aside under the image's lock, and
+    deletes it once that lock is free. The deletion's lock is taken before
+    the move, so a cache hit in between leaves the old image to the pull."""
+    from ray.experimental.sandbox._internal import image_utils
+
+    images_dir = tmp_path / "images"
+    mgr = ImageManager(images_dir=str(images_dir))
+    local_tar = _hello_tar(tmp_path)
+    other_tar = _hello_tar(tmp_path, "other.tar")
+    image_dir = mgr.pull_image(str(local_tar))
+    mgr.pull_image(str(other_tar))
+    # Force a re-pull.
+    stale = os.path.getmtime(local_tar) - 10
+    os.utime(os.path.join(image_dir, ".extracted"), (stale, stale))
+
+    def moved_aside():
+        return [n for n in os.listdir(images_dir) if n.startswith(".deleting.")]
+
+    seen = []
+
+    def hit_another_image(*args, **kwargs):
+        # In place of the pull's two eviction scans: one before the pull, one
+        # after the old image moved aside.
+        mgr.pull_image(str(other_tar))
+        seen.append(len(moved_aside()))
+
+    monkeypatch.setattr(image_utils, "image_cache_max_bytes", lambda _: 1 << 40)
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
+    monkeypatch.setattr(
+        image_utils, "evict_least_recently_used_images", hit_another_image
+    )
+    mgr.pull_image(str(local_tar))
+    assert seen == [0, 1]
+    # The pull deleted the old image itself, after it released the lock.
+    assert moved_aside() == []
+
+
 def test_a_burst_of_first_creates_runs_runsc_spec_once(tmp_path, monkeypatch):
     runsc = tmp_path / "runsc"
     runsc.write_text("")

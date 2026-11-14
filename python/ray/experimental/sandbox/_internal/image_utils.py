@@ -1030,29 +1030,48 @@ def _file_size_bytes(path: str) -> int:
         return 0
 
 
-def _rename_for_deletion(image_dir: str) -> str:
+def _rename_for_deletion(image_dir: str) -> Tuple[str, int]:
     """Atomically rename a cached image's directory to
-    ``.deleting.<random>``, and return the new path to delete.
+    ``.deleting.<random>``, and return the new path with a descriptor that
+    holds the deletion's lock on it, both for ``_delete_renamed``.
 
     A crash midway through deleting it then never leaves a partly deleted
     image under the image's own name, and the next pull sweeps up what such a
     crash leaves behind (see ``_remove_stale_deletions``). The new name
     leaves out the image's, so it stays short whatever the image's name.
+
+    The lock is taken before the rename, so no sweep finds the directory
+    under its new name without it.
     """
     images_dir = os.path.dirname(image_dir)
     renamed = os.path.join(images_dir, f".deleting.{uuid.uuid4().hex}")
-    os.replace(image_dir, renamed)
-    return renamed
+    lock_fd = os.open(image_dir, os.O_RDONLY)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        os.replace(image_dir, renamed)
+    except BaseException:
+        os.close(lock_fd)
+        raise
+    return renamed, lock_fd
+
+
+def _delete_renamed(renamed: str, lock_fd: int) -> None:
+    """Delete a directory renamed for deletion, then release its lock."""
+    try:
+        shutil.rmtree(renamed, ignore_errors=True)
+    finally:
+        os.close(lock_fd)
 
 
 def _remove_stale_deletions(images_dir: str) -> None:
     """Finish deleting image directories whose deletion was interrupted (see
     ``_rename_for_deletion``).
 
-    Each deletion holds a lock on its directory, and a directory that another
-    process or thread is deleting is left to it, so nobody waits for a
-    deletion that isn't its own. The lock goes with its process, so what a
-    killed worker left is taken at once.
+    Each deletion holds a lock on its directory from before the rename until
+    the directory is gone, and a directory that another process or thread is
+    deleting is left to it, so nobody waits for a deletion that isn't its
+    own. The lock goes with its process, so what a killed worker left is
+    taken at once.
     """
     for name in os.listdir(images_dir):
         if not name.startswith(".deleting."):
@@ -1063,13 +1082,11 @@ def _remove_stale_deletions(images_dir: str) -> None:
         except OSError:
             continue  # Gone since the listing.
         try:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
-                continue  # Being deleted.
-            shutil.rmtree(path, ignore_errors=True)
-        finally:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
             os.close(fd)
+            continue  # Being deleted.
+        _delete_renamed(path, fd)
 
 
 def evict_least_recently_used_images(
@@ -1150,6 +1167,7 @@ def evict_least_recently_used_images(
         if name == keep or (img_dir is not None and _has_users(img_dir)):
             continue
         lock_path = os.path.join(images_dir, f"{name}.lock")
+        moved_aside = None
         try:
             with open(lock_path, "w", encoding="utf-8") as f_lock:
                 fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1166,17 +1184,18 @@ def evict_least_recently_used_images(
                         pass  # Count an entry another pull already evicted.
                 # Another pull may have evicted it since the scan.
                 if img_dir is not None and os.path.isdir(img_dir):
-                    _rename_for_deletion(img_dir)
+                    moved_aside = _rename_for_deletion(img_dir)
                 try:
                     os.remove(tar_path)
                 except OSError:
                     pass
         except OSError:
             continue  # Locked by an in-progress pull; try the next one.
-        # Delete the image once its lock is free, so a pull of it doesn't wait
-        # for the delete.
-        if img_dir is not None:
-            _remove_stale_deletions(images_dir)
+        finally:
+            # Delete the image once its lock is free, so a pull of it doesn't
+            # wait for the delete.
+            if moved_aside is not None:
+                _delete_renamed(*moved_aside)
         total -= size
         free = _free_bytes(images_dir)
         logger.info(
@@ -1297,6 +1316,7 @@ def pull_and_extract_container_image(
             except Exception:
                 pass
 
+    moved_aside = None
     with open(lock_path, "a", encoding="utf-8") as f_lock:
         try:
             fcntl.flock(f_lock, fcntl.LOCK_EX)
@@ -1378,7 +1398,7 @@ def pull_and_extract_container_image(
             if users and os.path.isdir(old_tree):
                 os.replace(old_tree, tmp_rootfs_dir)
             if os.path.exists(target_dir):
-                _rename_for_deletion(target_dir)
+                moved_aside = _rename_for_deletion(target_dir)
             os.replace(tmp_extract_dir, target_dir)
             for user in users:
                 _mark_image_in_use(target_dir, user)
@@ -1398,7 +1418,8 @@ def pull_and_extract_container_image(
                 pass
             # Delete an image the pull moved aside once the lock is free, so
             # other pulls of this image don't wait for it.
-            _remove_stale_deletions(images_dir)
+            if moved_aside is not None:
+                _delete_renamed(*moved_aside)
 
 
 def _download_blobs(
