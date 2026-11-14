@@ -272,25 +272,37 @@ def _pack_dir(
             tar.add(source_dir, arcname="", recursive=False)
             for root, dirs, files in os.walk(source_dir, topdown=False):
                 rel_root = os.path.relpath(root, source_dir)
-                # Always add all directories
+                # Add non-excluded directories
                 for dir in dirs:
                     key = os.path.join(rel_root, dir)
-                    tar.add(os.path.join(source_dir, key), arcname=key, recursive=False)
+                    if _should_exclude(key) or _should_exclude(key + "/"):
+                        continue
+                    try:
+                        tar.add(
+                            os.path.join(source_dir, key), arcname=key, recursive=False
+                        )
+                    except FileNotFoundError:
+                        pass
                 # Add files where our information differs
                 for file in files:
                     key = os.path.join(rel_root, file)
-                    stat = os.lstat(os.path.join(source_dir, key))
-                    file_stat = stat.st_mtime, stat.st_size
-
                     if _should_exclude(key):
                         # If the file matches an exclude pattern, skip
                         continue
 
-                    if key in files_stats and files_stats[key] == file_stat:
-                        # If the file did not change, skip
-                        continue
+                    try:
+                        stat = os.lstat(os.path.join(source_dir, key))
+                        file_stat = stat.st_mtime, stat.st_size
 
-                    tar.add(os.path.join(source_dir, key), arcname=key)
+                        if key in files_stats and files_stats[key] == file_stat:
+                            # If the file did not change, skip
+                            continue
+
+                        tar.add(os.path.join(source_dir, key), arcname=key)
+                    except FileNotFoundError:
+                        # Race condition: If a file is deleted while packing,
+                        # continue without failing.
+                        pass
 
     return stream
 
@@ -456,7 +468,7 @@ def _copy_dir(
         # recreate
         if not os.path.exists(target_dir):
             if _retry:
-                _copy_dir(source_dir, target_dir, _retry=False)
+                _copy_dir(source_dir, target_dir, exclude=exclude, _retry=False)
             else:
                 raise RuntimeError(
                     f"Target directory {target_dir} does not exist "
