@@ -1,8 +1,11 @@
 import asyncio
 import collections
+import contextvars
+import functools
 import inspect
 import logging
 import queue
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
@@ -108,6 +111,7 @@ class _MapActorContext:
         self.is_async = is_async
         self.udf_map_asyncio_loop = None
         self.udf_map_asyncio_thread = None
+        self.udf_map_input_executor = None
         self.udf_instances = udf_instances or {}
 
         if is_async:
@@ -125,6 +129,11 @@ class _MapActorContext:
         thread.start()
         self.udf_map_asyncio_loop = loop
         self.udf_map_asyncio_thread = thread
+        # Advances async batch UDFs' input iterators off the event loop. One
+        # worker, so at most one batch per actor is formatted at a time.
+        self.udf_map_input_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="ray_data_async_udf_input"
+        )
 
 
 def plan_project_op(
@@ -654,6 +663,8 @@ def _generate_transform_fn_for_map_batches(
             fn,
             _validate_batch_output,
             max_concurrency=DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY,
+            # Each advance formats a whole batch, which can take seconds
+            advance_input_in_executor=True,
         )
 
     else:
@@ -793,7 +804,22 @@ def _generate_transform_fn_for_async_map(
     *,
     max_concurrency: int,
     is_flat_map: bool = False,
+    advance_input_in_executor: bool = False,
 ) -> MapTransformCallable:
+    """Create a transform applying an async UDF to its input concurrently.
+
+    Args:
+        fn: The async UDF (coroutine or async generator function).
+        validate_fn: Validates each item the UDF produces.
+        max_concurrency: Max number of concurrent UDF calls per transform.
+        is_flat_map: Whether a coroutine UDF returns a sequence of items.
+        advance_input_in_executor: Whether to advance the input iterator in the
+            actor's input executor instead of on the event loop. Pays off for
+            batches; for rows the round trip costs more than the advance.
+
+    Returns:
+        A transform producing the UDF's outputs in input order.
+    """
     assert max_concurrency > 0, "Max concurrency must be positive"
 
     if inspect.isasyncgenfunction(fn):
@@ -824,6 +850,7 @@ def _generate_transform_fn_for_async_map(
     #   - Order of the items (rows/batches) produced by this method
     #     *must be* deterministic (though is not guaranteed to be specified
     #     if max_concurrency > 1)
+    #   - Formatting an input batch must not block the actor's shared event loop
     #
     # To achieve that, algorithm applying async UDF to elements of the provided sequence
     # is structured like following:
@@ -833,6 +860,10 @@ def _generate_transform_fn_for_async_map(
     #
     #   - Scheduling stage aim to schedule and run no more than `max_concurrency` tasks
     #     at any given moment
+    #
+    #   - With `advance_input_in_executor`, scheduling stage advances the input
+    #     iterator (which formats batches) in the actor's input executor, one
+    #     advance at a time since the iterator isn't thread-safe
     #
     #   - Once task completes it's added into task completion queue for its results to be
     #     subsequently reported with deterministic ordering). Task completion queue is
@@ -848,7 +879,11 @@ def _generate_transform_fn_for_async_map(
     #     reporting stage is throttled (and output queue doesn't grow unbounded) in case
     #     when consumer (Ray task itself) isn't able to keep up
     #
-    async def _execute_transform(it: Iterator[T], output_queue: queue.Queue) -> None:
+    async def _execute_transform(
+        it: Iterator[T],
+        output_queue: queue.Queue,
+        input_executor: Optional[ThreadPoolExecutor],
+    ) -> None:
         loop = asyncio.get_running_loop()
 
         # NOTE: Individual tasks could complete in arbitrary order.
@@ -868,7 +903,8 @@ def _generate_transform_fn_for_async_map(
                 while not completed_scheduling:
                     task, idx = await completed_tasks_queue.get()
 
-                    if isinstance(task, Exception):
+                    # NOTE: Not just `Exception`: a `CancelledError` is forwarded too
+                    if isinstance(task, BaseException):
                         raise task
                     elif task is _SENTINEL:
                         completed_scheduling = True
@@ -905,30 +941,66 @@ def _generate_transform_fn_for_async_map(
 
         cur_task_map: Dict[asyncio.Task, int] = dict()
         consumed = False
+        # Pending advance of the input iterator in the executor, if any
+        next_input: Optional[asyncio.Future] = None
 
         sentinel = _SENTINEL
         enumerated_it = enumerate(it)
 
+        def _advance_input() -> asyncio.Future:
+            # NOTE: Resolves to `_SENTINEL` once exhausted (`StopIteration` can't
+            #       be set on a future), running `next` in a copy of this task's
+            #       context as `asyncio.to_thread` does
+            return loop.run_in_executor(
+                input_executor,
+                functools.partial(
+                    contextvars.copy_context().run, next, enumerated_it, _SENTINEL
+                ),
+            )
+
+        def _launch_udf(next_item: Any) -> bool:
+            """Launch the UDF on the next input; returns whether input is exhausted."""
+            if next_item is _SENTINEL:
+                return True
+
+            idx, item = next_item
+            # Launch async task while keeping track of its
+            # index in the enumerated sequence
+            task = loop.create_task(_apply_udf(item))
+            cur_task_map[task] = idx
+            return False
+
         try:
             while True:
-                while len(cur_task_map) < max_concurrency and not consumed:
-                    try:
-                        idx, item = next(enumerated_it)
-                        # Launch async task while keeping track of its
-                        # index in the enumerated sequence
-                        task = loop.create_task(_apply_udf(item))
-                        cur_task_map[task] = idx
-                    except StopIteration:
-                        consumed = True
-                        break
+                # NOTE: Inline advances fill all free slots here; an advance in
+                #       the executor is awaited below along with the running tasks
+                while (
+                    next_input is None
+                    and not consumed
+                    and len(cur_task_map) < max_concurrency
+                ):
+                    if input_executor is None:
+                        consumed = _launch_udf(next(enumerated_it, _SENTINEL))
+                    else:
+                        next_input = _advance_input()
 
-                # Check if any running tasks remaining
-                if not cur_task_map:
+                # Check if any running tasks (or pending input) remaining
+                if next_input is None and not cur_task_map:
                     break
 
+                waiting_on = set(cur_task_map.keys())
+                if next_input is not None:
+                    waiting_on.add(next_input)
+
                 done, pending = await asyncio.wait(
-                    cur_task_map.keys(), return_when=asyncio.FIRST_COMPLETED
+                    waiting_on, return_when=asyncio.FIRST_COMPLETED
                 )
+
+                if next_input in done:
+                    done.remove(next_input)
+                    # NOTE: Re-raises the iterator's error with its traceback
+                    consumed = _launch_udf(next_input.result())
+                    next_input = None
 
                 for task in done:
                     # Report completed tasks along w/ its corresponding
@@ -946,8 +1018,24 @@ def _generate_transform_fn_for_async_map(
                 if not cur_task.done():
                     cur_task.cancel()
 
+            # NOTE: In-flight tasks (e.g. the iterator failed while UDFs ran) are
+            #       reported only via the sentinel, so await and drop them
+            cancelled_tasks = list(cur_task_map.keys())
+            cur_task_map.clear()
+            await asyncio.gather(*cancelled_tasks, return_exceptions=True)
+
             sentinel = e
         finally:
+            if next_input is not None:
+                # NOTE: Don't send the sentinel mid-advance: the consumer may then
+                #       close the iterator, which raises while it's executing
+                # NOTE: Not `await next_input`: re-raising a failed advance replaces
+                #       its traceback, and awaiting would cancel the future on a
+                #       second cancellation while `next` keeps running
+                await asyncio.wait([next_input])
+                if not next_input.cancelled():
+                    next_input.exception()
+
             assert len(cur_task_map) == 0, f"{cur_task_map}"
             await completed_tasks_queue.put((sentinel, None))
             # Wait for the reorder task to finish draining ``completed_tasks_queue``
@@ -960,16 +1048,21 @@ def _generate_transform_fn_for_async_map(
         output_queue = queue.Queue(maxsize=max_concurrency)
 
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
+        input_executor = (
+            ray.data._map_actor_context.udf_map_input_executor
+            if advance_input_in_executor
+            else None
+        )
 
         asyncio.run_coroutine_threadsafe(
-            _execute_transform(iter(batch_iter), output_queue), loop
+            _execute_transform(iter(batch_iter), output_queue, input_executor), loop
         )
 
         while True:
             items = output_queue.get()
             if items is _SENTINEL:
                 break
-            elif isinstance(items, Exception):
+            elif isinstance(items, BaseException):
                 raise items
             else:
                 # NOTE: Sequences from individual UDFs are combined into a single

@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import logging
 import math
 import os
@@ -27,6 +28,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
+    _generate_transform_fn_for_map_batches,
     _MapActorContext,
 )
 from ray.data.block import Block, BlockMetadata
@@ -1246,6 +1248,10 @@ class TestGenerateTransformFnForAsyncMap:
             )
         if _map_actor_ctx.udf_map_asyncio_thread is not None:
             _map_actor_ctx.udf_map_asyncio_thread.join(timeout=5.0)
+        if _map_actor_ctx.udf_map_input_executor is not None:
+            _map_actor_ctx.udf_map_input_executor.shutdown(
+                wait=False, cancel_futures=True
+            )
         ray.data._map_actor_context = None
 
     def test_non_coroutine_function_assertion(
@@ -1436,6 +1442,259 @@ class TestGenerateTransformFnForAsyncMap:
 
         with pytest.raises(ValueError, match=expected_exception_msg):
             list(transform_fn([1, 2, 3], task_context))
+
+    def test_batch_input_advanced_off_event_loop(
+        self, mock_actor_async_ctx, target_max_block_size_infinite_or_default
+    ):
+        """Test that formatting the next batch doesn't block the event loop.
+
+        The second batch waits for the first UDF call, which can only run while
+        the loop is free.
+        """
+        first_call_ran = threading.Event()
+        advancing_threads = []
+
+        def batch_iter():
+            advancing_threads.append(threading.current_thread())
+            yield {"id": np.array([0])}
+            advancing_threads.append(threading.current_thread())
+            if not first_call_ran.wait(timeout=30):
+                raise TimeoutError("Event loop was blocked by the batch iterator")
+            yield {"id": np.array([1])}
+
+        async def async_fn(batch):
+            first_call_ran.set()
+            yield batch
+
+        transform_fn = _generate_transform_fn_for_map_batches(async_fn)
+
+        outputs = list(transform_fn(batch_iter(), Mock()))
+
+        assert [int(batch["id"][0]) for batch in outputs] == [0, 1]
+        loop_thread = mock_actor_async_ctx.udf_map_asyncio_thread
+        assert advancing_threads and loop_thread not in advancing_threads
+
+    @pytest.mark.parametrize("advance_input_in_executor", [False, True])
+    def test_input_advance_bounded_by_max_concurrency(
+        self,
+        advance_input_in_executor,
+        mock_actor_async_ctx,
+        target_max_block_size_infinite_or_default,
+    ):
+        """Test that the input is advanced only when a UDF call slot is free."""
+        max_concurrency = 3
+        started = []
+        all_started = threading.Event()
+        release = threading.Event()
+        pulled = 0
+
+        def input_iter():
+            nonlocal pulled
+            for i in range(2 * max_concurrency):
+                pulled += 1
+                yield i
+
+        async def async_fn(x):
+            started.append(x)
+            if len(started) == max_concurrency:
+                all_started.set()
+            while not release.is_set():
+                await asyncio.sleep(0.001)
+            yield x
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn,
+            Mock(),
+            max_concurrency=max_concurrency,
+            advance_input_in_executor=advance_input_in_executor,
+        )
+        result = []
+        consumer = threading.Thread(
+            target=lambda: result.extend(transform_fn(input_iter(), Mock()))
+        )
+        consumer.start()
+        try:
+            assert all_started.wait(timeout=30)
+            # Give an over-eager scheduler time to advance the input again
+            time.sleep(0.2)
+            assert pulled == max_concurrency
+        finally:
+            release.set()
+            consumer.join(timeout=30)
+
+        assert result == list(range(2 * max_concurrency))
+
+    def test_one_input_advance_in_flight(
+        self, mock_actor_async_ctx, target_max_block_size_infinite_or_default
+    ):
+        """Test that the input isn't advanced again while an advance is pending.
+
+        A UDF call completing during a pending advance frees a slot, but must
+        not start a second advance, whose item would replace the pending one.
+        """
+        release = threading.Event()
+
+        def input_iter():
+            yield 0
+            release.wait(timeout=30)
+            yield 1
+            yield 2
+
+        async def async_fn(x):
+            yield x
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, Mock(), max_concurrency=2, advance_input_in_executor=True
+        )
+        outputs = transform_fn(input_iter(), Mock())
+
+        # Reported while the second advance blocks, so a slot has freed up
+        first = next(outputs)
+        release.set()
+
+        assert [first, *outputs] == [0, 1, 2]
+
+    @pytest.mark.parametrize("advance_input_in_executor", [False, True])
+    def test_input_iterator_exception_while_udfs_running(
+        self,
+        advance_input_in_executor,
+        mock_actor_async_ctx,
+        target_max_block_size_infinite_or_default,
+    ):
+        """Test that an input iterator failure with UDF calls in flight is raised.
+
+        The in-flight call is cancelled, and the error keeps the traceback of
+        the iterator that raised it.
+        """
+        cancelled = threading.Event()
+
+        def failing_input_iter():
+            yield 0
+            yield 1
+            raise ValueError("Input iterator failure")
+
+        async def async_fn(x):
+            if x == 0:
+                try:
+                    await asyncio.sleep(3600)
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    raise
+            yield x
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn,
+            Mock(),
+            max_concurrency=2,
+            advance_input_in_executor=advance_input_in_executor,
+        )
+
+        with pytest.raises(ValueError, match="Input iterator failure") as exc_info:
+            list(transform_fn(failing_input_iter(), Mock()))
+
+        assert any(
+            entry.name == "failing_input_iter" for entry in exc_info.traceback
+        ), exc_info.traceback
+        assert cancelled.is_set()
+
+    @pytest.mark.parametrize("advance_input_in_executor", [False, True])
+    def test_input_iterator_sees_caller_context(
+        self,
+        advance_input_in_executor,
+        mock_actor_async_ctx,
+        target_max_block_size_infinite_or_default,
+    ):
+        """Test that the input is advanced within the caller's context variables."""
+        var = contextvars.ContextVar("var", default="unset")
+        seen_by_iterator = []
+        seen_by_udf = []
+
+        def input_iter():
+            for i in range(4):
+                seen_by_iterator.append(var.get())
+                yield i
+
+        async def async_fn(x):
+            seen_by_udf.append(var.get())
+            yield x
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn,
+            Mock(),
+            max_concurrency=2,
+            advance_input_in_executor=advance_input_in_executor,
+        )
+
+        token = var.set("caller")
+        try:
+            assert list(transform_fn(input_iter(), Mock())) == [0, 1, 2, 3]
+        finally:
+            var.reset(token)
+
+        assert seen_by_iterator == ["caller"] * 4
+        assert seen_by_udf == ["caller"] * 4
+
+    def test_cancellation_waits_for_input_advance(
+        self, mock_actor_async_ctx, target_max_block_size_infinite_or_default
+    ):
+        """Test cancelling the transform while the input is being advanced.
+
+        The consumer gets the cancellation only once the iterator stopped
+        executing, so it can safely close the iterator right away.
+        """
+        advancing = threading.Event()
+        release = threading.Event()
+
+        def input_iter():
+            yield 0
+            advancing.set()
+            release.wait(timeout=30)
+            yield 1
+
+        async def async_fn(x):
+            await asyncio.sleep(3600)
+            yield x
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, Mock(), max_concurrency=2, advance_input_in_executor=True
+        )
+        gen = input_iter()
+        outcome = {}
+
+        def consume():
+            try:
+                list(transform_fn(gen, Mock()))
+            except BaseException as e:
+                outcome["error"] = e
+                try:
+                    gen.close()
+                except ValueError as close_error:
+                    outcome["close_error"] = close_error
+
+        consumer = threading.Thread(target=consume)
+        consumer.start()
+        try:
+            assert advancing.wait(timeout=30)
+
+            async def _cancel_transform():
+                # Only the scheduling coroutine, not its nested `_reorder`
+                for task in asyncio.all_tasks():
+                    if task.get_coro().__qualname__.endswith("._execute_transform"):
+                        task.cancel()
+
+            asyncio.run_coroutine_threadsafe(
+                _cancel_transform(), mock_actor_async_ctx.udf_map_asyncio_loop
+            ).result(timeout=30)
+            # The advance is still blocked, so the consumer must keep waiting
+            consumer.join(timeout=0.2)
+            assert consumer.is_alive()
+        finally:
+            release.set()
+            consumer.join(timeout=30)
+
+        assert not consumer.is_alive()
+        assert isinstance(outcome.get("error"), asyncio.CancelledError), outcome
+        assert "close_error" not in outcome, outcome
 
 
 @pytest.mark.parametrize("fn_type", ["func", "class"])
