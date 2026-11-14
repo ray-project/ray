@@ -31,7 +31,8 @@ class IcebergFileReader(Reader[FileManifest]):
     """Decodes a manifest's files with PyIceberg's ``ArrowScan``, one at a time.
 
     ``ArrowScan`` applies deletes, schema evolution and partition backfill. It
-    holds every batch of the files it is given, so one file per call keeps
+    reads Parquet and ORC data files; Avro ones raise ``ValueError``, as in V1.
+    It holds every batch of the files it is given, so one file per call keeps
     memory to one file.
     """
 
