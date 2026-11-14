@@ -1,5 +1,9 @@
 from typing import TYPE_CHECKING, List, Optional
 
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    _evaluate_path_predicate,
+    _PartitionValueParser,
+)
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data.datasource import PathPartitionFilter, PathPartitionParser
 from ray.data.datasource.path_util import _has_file_extension
@@ -48,9 +52,10 @@ class PartitionPredicatePruner(FilePruner):
     reader also performs (``FileScanner.prune_input_split``), so the two
     must drop exactly the same files: a pushed-down limit stops listing early,
     and every row listing counted towards it has to belong to a file the reader
-    keeps. Sharing
-    :meth:`PathPartitionParser.evaluate_predicate_on_partition` with
-    ``prune_input_split`` is what holds that equality.
+    keeps. Both listing and ``prune_input_split`` use ``should_include``.
+    The default policy delegates to ``PathPartitionParser``. Mixed-root
+    scanners set ``keep_unknown`` to retain missing path fields for the reader
+    and evaluate known values using the same logical types as row filtering.
 
     The two are therefore not interchangeable. A ``PathPartitionFilter`` is an
     opaque callable carrying no such obligation, and expressing a pushed-down
@@ -64,12 +69,27 @@ class PartitionPredicatePruner(FilePruner):
         predicate: "Expr",
         *,
         schema: Optional["pyarrow.Schema"] = None,
+        keep_unknown: bool = False,
     ):
-        self._parser = PathPartitionParser(partitioning)
-        self._predicate = predicate
-        self._schema = schema
+        self._parser = (
+            _PartitionValueParser(partitioning)
+            if keep_unknown
+            else PathPartitionParser(partitioning)
+        )
+        self.partitioning = partitioning
+        self.predicate = predicate
+        self.schema = schema
+        # Mixed-root readers can evaluate missing path fields from physical
+        # columns or logical nulls. Other callers retain the parser's policy.
+        self._keep_unknown = keep_unknown
 
     def should_include(self, path: str) -> bool:
+        if self._keep_unknown:
+            values = self._parser(path)
+            return (
+                _evaluate_path_predicate(self.predicate, values, self.schema, path=path)
+                is not False
+            )
         return self._parser.evaluate_predicate_on_partition(
-            path, self._predicate, schema=self._schema
+            path, self.predicate, schema=self.schema
         )

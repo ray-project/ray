@@ -11,6 +11,8 @@ steps:
       - ./ci/build/copy_build_artifacts.sh wheel
     array:
       python:
+        # py3.10 wheels still go to S3 for downstream image builds (the Anyscale
+        # runtime images install them). They are no longer released to PyPI.
         - "3.10"
         - "3.11"
         - "3.12"
@@ -28,6 +30,7 @@ steps:
   - name: ray-cpp-core-build
     label: "wanda: cpp core (x86_64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
+    depends_on: bazel-glibc217-x86_64
     env_file: rayci.env
     env:
       ARCH_SUFFIX: ""
@@ -201,7 +204,6 @@ steps:
         --architecture x86_64
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
@@ -336,7 +338,6 @@ steps:
         --architecture x86_64
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
