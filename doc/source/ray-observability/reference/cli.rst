@@ -16,6 +16,27 @@ This section contains commands to access the :ref:`live state of Ray resources (
 
 State CLI allows users to access the state of various resources (e.g., actor, task, object).
 
+Authentication and TLS options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+State CLI commands that connect to the Ray Dashboard support ``--headers`` for
+HTTP headers encoded as a JSON object. If ``--headers`` is omitted, Ray reads
+``RAY_STATE_HEADERS``. A command-line value takes precedence over the environment
+variable.
+
+For TLS, ``--verify true`` enables certificate verification, ``--verify false``
+disables it, and a path value such as ``--verify /path/to/ca-bundle.pem`` uses a
+trusted CA file or directory.
+
+For example:
+
+.. code-block:: bash
+
+    ray list actors \
+        --address https://cluster.example.com:8265 \
+        --headers '{"Authorization": "Bearer <token>"}' \
+        --verify /path/to/ca-bundle.pem
+
 .. click:: ray.util.state.state_cli:task_summary
    :prog: ray summary tasks
 
