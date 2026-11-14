@@ -35,7 +35,7 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
-from ray.train.v2._internal.callbacks.nccl_ras import NCCLRASCallback
+from ray.train.v2._internal.callbacks.nccl_hang_health import NCCLHangHealthCallback
 from ray.train.v2._internal.callbacks.placement_group_callback import (
     PlacementGroupCleanerCallback,
 )
@@ -231,9 +231,9 @@ class DataParallelTrainer:
             callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
-        # TODO: NCCLRASCallback is experimental. Off by default for now
+        # TODO: The NCCL hang detector is experimental. Off by default for now
         if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
-            callbacks.append(NCCLRASCallback())
+            callbacks.append(NCCLHangHealthCallback())
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
             callbacks.append(StateManagerCallback(datasets=self.datasets))

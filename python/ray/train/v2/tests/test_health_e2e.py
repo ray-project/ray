@@ -1,3 +1,5 @@
+import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -21,10 +23,16 @@ from ray.train.health import (
     WorkerProbe,
 )
 from ray.train.torch import TorchTrainer
-from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2._internal.constants import (
+    ENABLE_NCCL_HANG_DETECTOR_ENV_VAR,
+    HEALTH_CHECK_INTERVAL_S_ENV_VAR,
+    NCCL_RAS_ACTION_ENV_VAR,
+    NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
+    NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
+)
 from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.exceptions import HealthCheckError
+from ray.train.v2.api.exceptions import HealthCheckError, NCCLHangError
 
 
 @pytest.fixture
@@ -441,6 +449,100 @@ def test_preflight_all_reduce_then_a_diagnosis_that_reattempts(cluster):
         ("decision", "Diagnose"),
         ("decision", "Reattempt"),
     ]
+
+
+# A communicator whose two ranks launched different numbers of AllReduce, and
+# never progress: what `ncclras -f json` reports for a hung job.
+_FROZEN_RAS_REPORT = {
+    "timestamp": "2026-06-19 00:00:00",
+    "communicators": [
+        {
+            "hash": "0x2b9ffd12ea17b069",
+            "ranks": [
+                {
+                    "rank": rank,
+                    "host": "10.255.255.255",
+                    "pid": rank,
+                    "status": {
+                        "init_state": 0,
+                        "async_error": 0,
+                        "finalize_called": False,
+                        "destroy_flag": False,
+                        "abort_flag": False,
+                    },
+                    "collective_counts": {"AllReduce": count},
+                }
+                for rank, count in ((0, 5), (1, 4))
+            ],
+        }
+    ],
+}
+
+
+@pytest.fixture
+def fake_ncclras(tmp_path, monkeypatch):
+    """A local cluster whose `ncclras` reports a hung communicator, with the
+    NCCL hang detector on, in fail mode, confirming a hang in 2 seconds."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ncclras = bin_dir / "ncclras"
+    ncclras.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "if sys.argv[sys.argv.index('-f') + 1] == 'text':\n"
+        "    print('fake ncclras text report')\n"
+        "else:\n"
+        f"    print({json.dumps(json.dumps(_FROZEN_RAS_REPORT))})\n"
+    )
+    ncclras.chmod(0o755)
+
+    # Read on the driver, by the trainer.
+    monkeypatch.setenv(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, "1")
+    monkeypatch.setenv(NCCL_RAS_ACTION_ENV_VAR, "fail")
+    monkeypatch.setenv(NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR, "1")
+    monkeypatch.setenv(NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR, "2")
+    ray.init(
+        num_cpus=2,
+        runtime_env={
+            "env_vars": {
+                "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                HEALTH_CHECK_INTERVAL_S_ENV_VAR: "0.5",
+            }
+        },
+    )
+    yield
+    ray.shutdown()
+
+
+def test_the_nccl_hang_detector_reattempts_a_hung_run(fake_ncclras, tmp_path):
+    """RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1 detects the hang that `ncclras`
+    reports, uploads its diagnostics, and reattempts; with max_failures=0 the
+    run fails."""
+    trainer = DataParallelTrainer(
+        lambda: time.sleep(300),
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            name="hung",
+            storage_path=str(tmp_path / "storage"),
+            failure_config=ray.train.FailureConfig(max_failures=0),
+        ),
+    )
+    with pytest.raises(NCCLHangError) as error:
+        trainer.fit()
+
+    assert isinstance(error.value.decision, Reattempt)
+    message = str(error.value)
+    assert "NCCL hang detected by the Ray Train NCCL hang detector!" in message
+    hang_dir = tmp_path / "storage" / "hung" / "hang_detector"
+    for tool in ("stack_traces", "nvidia_smi", "nccl_ras"):
+        assert str(hang_dir / tool) in message
+    assert sorted(os.listdir(hang_dir / "stack_traces")) == ["rank_0.log", "rank_1.log"]
+    assert len(os.listdir(hang_dir / "nvidia_smi")) == 1
+    ras_dir = hang_dir / "nccl_ras"
+    assert (ras_dir / "ncclras_report.txt").read_text() == "fake ncclras text report\n"
+    assert (ras_dir / "ncclras_2026-06-19-00-00-00.json").exists()
+    # Without TORCH_FR_BUFFER_SIZE, there is no Flight Recorder dump.
+    assert not (hang_dir / "flight_recorder").exists()
 
 
 if __name__ == "__main__":
