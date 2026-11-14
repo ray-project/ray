@@ -9,6 +9,7 @@ import os
 import time
 import uuid
 from collections import Counter
+from contextlib import nullcontext
 from functools import partial
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
@@ -352,7 +353,7 @@ class vLLMEngineWrapper:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
             self.semaphore = asyncio.Semaphore(self.max_pending_requests)
         else:
-            self.semaphore = asyncio.NullContext()
+            self.semaphore = nullcontext()
 
     async def _maybe_get_lora_request(
         self,
@@ -721,6 +722,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             The output dict, with __inference_error__ set if an error occurred.
         """
         idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
+        # Save before generate_async pops it
+        original_prompt = row.get("prompt") or ""
         try:
             request, output, time_taken_llm = await self.llm.generate_async(row)
             return {
@@ -765,7 +768,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 error_msg,
             )
             # Include snippet of failed prompt for debuggability
-            prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
+            prompt = truncate_str(original_prompt, _MAX_PROMPT_LENGTH_IN_ERROR)
 
             # Construct default vLLMOutputData for schema consistency with success rows
             default_output = vLLMOutputData(
