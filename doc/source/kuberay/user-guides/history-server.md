@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Set up the Ray History Server with KubeRay to access logs, events, and the Ray dashboard for RayCluster, RayJob, and RayService workloads after they terminate."
+    description: "Set up the Ray History Server with KubeRay to access logs, events, and the Ray dashboard for RayCluster, RayJob, and RayService workloads, both while they run and after they terminate."
 ---
 
 (kuberay-history-server)=
@@ -18,7 +18,7 @@ The Ray History Server is in beta and ready for testing. We welcome feedback and
 
 ## What is the Ray History Server?
 
-The Ray History Server is a KubeRay component for accessing and debugging Ray workload resources after they terminate. It supports `RayCluster`, `RayJob`, and `RayService`.
+The Ray History Server is a KubeRay component for accessing and debugging Ray workload resources, both while they run and after they terminate. It supports `RayCluster`, `RayJob`, and `RayService`.
 
 The Ray History Server has two parts:
 
@@ -157,7 +157,7 @@ Configure the History Server with the following environment variables and comman
 * -
   - `--enable-live-clusters`
   - `false`
-  - Serve Ray clusters that are still running by reverse-proxying requests to their head dashboards.
+  - Serve Ray clusters that are still running by reverse-proxying requests to their head dashboards. When disabled, the History Server serves running clusters from object storage, like terminated ones. See [Access a running RayCluster](#access-a-running-raycluster).
 * - 
   - `--use-auth-token-mode`
   - `false`
@@ -295,6 +295,14 @@ Configure the collector sidecar container with the following environment variabl
   - `--events-port`
   - No
   - Event server listening port matching the Ray container export address (defaults to `8084`).
+* - `RAY_COLLECTOR_LOG_UPLOAD_INTERVAL`
+  - 
+  - No
+  - How often the collector uploads new log content while the cluster runs (defaults to `"5m"`). Shorter intervals keep running cluster data fresher but create more objects in storage.
+* - `RAY_COLLECTOR_EVENT_ROTATION_INTERVAL`
+  - `--event-rotation-interval`
+  - No
+  - How often the collector rotates its local event file and uploads it while the cluster runs (defaults to `"5m"`). The collector also rotates the file when it reaches `RAY_COLLECTOR_EVENT_MAX_FILE_SIZE_MB` (defaults to `100`). This interval controls event freshness, and `RAY_COLLECTOR_LOG_UPLOAD_INTERVAL` controls log freshness.
 :::
 
 :::{important}
@@ -341,7 +349,7 @@ The `ttlSecondsAfterFinished` setting in the manifest automatically deletes the 
 kubectl delete rayjob ${RAY_JOB} -n ${NAMESPACE}
 ```
 
-After the RayJob terminates, the collector uploads the final events and logs to object storage.
+The collector uploads logs periodically while the cluster runs, so an ungraceful shutdown loses only the log content written since the last upload. After the RayJob terminates, the collector uploads the final events and logs to object storage.
 
 ### Storage layout
 
@@ -352,7 +360,7 @@ gs://${GCS_BUCKET}/
 ├── cluster-metadata/
 │   ├── raycluster/
 │   │   └── <namespace>_<cluster_name>/
-│   │       └── <session_name>                            # Empty marker file
+│   │       └── <session_name>                            # Empty marker file, written when the head collector detects the session
 │   └── <rayjob|rayservice>/
 │       └── <namespace>_<owner_name>_<cluster_name>/
 │           └── <session_name>
@@ -363,8 +371,11 @@ gs://${GCS_BUCKET}/
     │           └── <session_name>/
     │               └── <node_id>/
     │                   ├── logs/
-    │                   │   ├── dashboard_agent.log
-    │                   │   ├── raylet.out
+    │                   │   ├── dashboard_agent.log.chunks/
+    │                   │   │   └── <offset>              # Log content uploaded in chunks while the cluster runs
+    │                   │   ├── raylet.out.chunks/
+    │                   │   │   └── <offset>
+    │                   │   ├── debug_state.txt           # Uploaded as a whole file on each pass
     │                   │   └── ...
     │                   ├── node_events/
     │                   │   └── <node_id>-<date_hour>     # Node event logs
@@ -389,14 +400,14 @@ gcloud storage ls --recursive gs://${GCS_BUCKET}
 
 ```text
 gs://BUCKET/cluster-metadata/rayjob/NAMESPACE_rayjob-historyserver-gcs_rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1
-gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/logs/dashboard_agent.log
+gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/logs/dashboard_agent.log.chunks/00000000000000000000
 gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/node_events/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-07-28-17
 gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/job_events/AQAAAA==/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-07-28-17
 ```
 
-## Access a terminated RayJob from the Ray dashboard
+## Access a RayJob from the Ray dashboard
 
-To view terminated Ray clusters, set up a local Ray dashboard that uses the History Server as its backend.
+To view Ray clusters, set up a local Ray dashboard that uses the History Server as its backend.
 
 ### Port-forward the History Server
 
@@ -474,7 +485,7 @@ The `/enter_cluster` endpoint sets session cookies so the local Ray dashboard kn
 * `{namespace}`: The Kubernetes namespace of the workload, such as `default`.
 * `{resourceType}`: The resource type. One of `raycluster`, `rayjob`, or `rayservice`.
 * `{resourceName}`: The name of the target resource. For a RayJob or RayService, this is the owner name, not the generated RayCluster name.
-* `{session}`: Optional. The session ID, such as `session_2026-07-28_17-07-51_736134_1`. Use `"latest"` for the most recent session, or `"live"` for an active cluster. Defaults to `"latest"`.
+* `{session}`: Optional. The session ID, such as `session_2026-07-28_17-07-51_736134_1`. Use `"latest"` for the most recent session, or `"live"` for a live cluster when `--enable-live-clusters` is enabled. Defaults to `"latest"`.
 
 Copy a Ray cluster session and navigate to the `/enter_cluster` endpoint in your browser:
 
@@ -509,15 +520,32 @@ Alternatively, navigate to the History Server cluster selection page:
 http://localhost:8265/select_cluster
 ```
 
-This page lists every stored cluster session with its name, namespace, status, and creation timestamp. Each row has an **Open Dashboard** button that switches the Ray dashboard to that session.
+This page lists every stored cluster session with its name, namespace, status, and creation timestamp. Each row has an **Open Dashboard** button that switches the Ray dashboard to that session. Sessions served from storage also have a reload button that re-processes the session to pick up newly uploaded data.
 
-![Cluster selection page listing stored Ray cluster sessions, each row showing a cluster name, namespace, status, creation timestamp, and an Open Dashboard button](images/kuberay-historyserver-select-cluster.png)
+![Cluster selection page listing stored Ray cluster sessions, each row showing a cluster name, namespace, session status, owner, creation timestamp, and an Open Dashboard button, with a reload button on sessions served from storage](images/kuberay-historyserver-select-cluster.png)
 
 Ray job page using Ray History Server as a backend:
 
 ![History Server RayCluster Status](images/kuberay-historyserver-raycluster-status.png)
 
 ![History Server RayCluster Logs](images/kuberay-historyserver-raycluster-logs.png)
+
+## Access a running RayCluster
+
+By default, the History Server serves a running RayCluster from the data that the collector has uploaded to object storage so far, without sending requests to the live cluster. A running cluster appears in `/clusters` and on the [cluster selection page](#cluster-selection-page) as soon as its head collector detects the session. Enter it the same way as a terminated session.
+
+The History Server caches a session after the first load, so the view doesn't update on its own. To pick up newly uploaded events and logs, click the reload button on the cluster selection page, or add `?reload=true` to the `/enter_cluster` URL:
+
+```text
+http://localhost:8265/enter_cluster/default/rayjob/rayjob-historyserver-gcs/<SESSION_ID>?reload=true
+```
+
+After the RayCluster is deleted, the History Server reloads the session automatically in the background, typically within a minute, so the dashboard shows the final data without a manual reload.
+
+Keep the following limitations in mind:
+
+* The collector uploads logs every `RAY_COLLECTOR_LOG_UPLOAD_INTERVAL` and events every `RAY_COLLECTOR_EVENT_ROTATION_INTERVAL`, so the latest log lines and events can take up to those intervals to appear. See [Environment variables in the example manifest](#environment-variables-in-the-example-manifest) for details.
+* Chunked log uploads don't support Ray log rotation. After Ray rotates a log file, the History Server can show that file with content from before and after the rotation mixed together.
 
 ## Data retention
 
