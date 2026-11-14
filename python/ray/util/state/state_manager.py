@@ -241,7 +241,7 @@ class StateDataSourceClient:
         return ReporterServiceStub(channel), channel
 
     async def get_accelerator_inventory(
-        self, node_id: str, timeout: int = None
+        self, node_id: str, timeout: Optional[float] = None
     ) -> Optional[GetAcceleratorInventoryReply]:
         """Return the accelerator inventory for the given node, or None if the
         node's agent is not registered (e.g. the node is dead/missing).

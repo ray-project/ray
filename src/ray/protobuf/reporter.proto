@@ -174,6 +174,13 @@ service ReporterService {
   // Health check to validate whether the service is running
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckReply);
   // Read-only inventory of the accelerators visible to this node's agent.
+  // Idempotent: repeated queries do not reserve devices or change scheduling
+  // state. Concurrent requests share discovery; successful results are cached
+  // for the agent's lifetime, while later queries can retry failed discovery.
+  // The Python State API bounds agent lookup and RPC with one deadline, rather
+  // than using the C++ retryable client. Timeouts and unreachable agents yield
+  // an unavailable inventory without dropping the node row. Dead nodes are not
+  // queried and retain a null inventory.
   rpc GetAcceleratorInventory(GetAcceleratorInventoryRequest)
       returns (GetAcceleratorInventoryReply);
 }
