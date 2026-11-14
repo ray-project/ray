@@ -84,6 +84,63 @@ class TestListNamespace:
         )
         assert rows_same(result, expected)
 
+    def test_list_get_negative_index(self, ray_start_regular_shared, dataset_format):
+        """Test list.get() and list[i] count negative indices from the end."""
+        data = [
+            {"items": [10, 20, 30]},
+            {"items": [40]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = (
+            ds.with_column("last", col("items").list.get(-1))
+            .with_column("last_bracket", col("items").list[-1])
+            .to_pandas()
+        )
+        expected = pd.DataFrame(
+            {
+                "items": [[10, 20, 30], [40]],
+                "last": [30, 40],
+                "last_bracket": [30, 40],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_list_get_negative_index_out_of_bounds(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """A negative index past the start of a list raises, like a positive one
+        past its end."""
+        data = [{"items": [1, 2, 3]}, {"items": [4]}]
+        ds = _create_dataset(data, dataset_format)
+        with pytest.raises(RayTaskError, match="Index -2 is out of bounds"):
+            ds.with_column("elem", col("items").list.get(-2)).materialize()
+
+    def test_list_slice(self, ray_start_regular_shared, dataset_format):
+        """Test list slicing with non-negative and negative bounds."""
+        data = [
+            {"items": [1, 2, 3, 4]},
+            {"items": [5, 6]},
+            {"items": []},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = (
+            ds.with_column("from_1", col("items").list[1:])
+            .with_column("last_2", col("items").list[-2:])
+            .with_column("drop_last", col("items").list[:-1])
+            .with_column("every_other_from_end", col("items").list.slice(-3, None, 2))
+            .to_pandas()
+        )
+        expected = pd.DataFrame(
+            {
+                "items": [[1, 2, 3, 4], [5, 6], []],
+                "from_1": [[2, 3, 4], [6], []],
+                "last_2": [[3, 4], [5, 6], []],
+                "drop_last": [[1, 2, 3], [5], []],
+                "every_other_from_end": [[2, 4], [5], []],
+            }
+        )
+        assert rows_same(result, expected)
+
     def test_list_with_arithmetic(self, ray_start_regular_shared, dataset_format):
         """Test list operations combined with arithmetic."""
         data = [{"items": [1, 2, 3]}]
