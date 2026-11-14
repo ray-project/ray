@@ -565,7 +565,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
 
 def test_gang_updating_status_message(lower_slow_startup_threshold_and_reset):
     @serve.deployment(
-        num_replicas=4,
+        num_replicas=2,
         ray_actor_options={"num_cpus": 1},
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
     )

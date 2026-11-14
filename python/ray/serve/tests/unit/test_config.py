@@ -1105,15 +1105,15 @@ class TestGangSchedulingConfig:
                 runtime_failure_policy=GangRuntimeFailurePolicy.RESTART_REPLICA,
             )
 
-    def test_gang_scheduling_config_via_decorator_error(self):
-        """Test that gang_scheduling_config validation errors are raised."""
-        with pytest.raises(
-            ValueError, match="num_replicas.*must be a multiple of gang_size"
-        ):
+    def test_gang_scheduling_config_default_num_replicas_is_one_gang(self):
+        """The default `num_replicas` is one gang."""
 
-            @serve.deployment(gang_scheduling_config=GangSchedulingConfig(gang_size=4))
-            def f():
-                return "test"
+        @serve.deployment(gang_scheduling_config=GangSchedulingConfig(gang_size=4))
+        def f():
+            return "test"
+
+        assert f._deployment_config.num_replicas == 1
+        assert f._deployment_config.gang_scheduling_config.gang_size == 4
 
     def test_gang_scheduling_config_scale_to_zero(self):
         """Test that min_replicas=0 works with gang_scheduling_config."""
@@ -1121,7 +1121,7 @@ class TestGangSchedulingConfig:
         @serve.deployment(
             num_replicas="auto",
             gang_scheduling_config=GangSchedulingConfig(gang_size=3),
-            autoscaling_config={"min_replicas": 0, "max_replicas": 9},
+            autoscaling_config={"min_replicas": 0, "max_replicas": 3},
         )
         def f():
             return "test"
@@ -1135,21 +1135,21 @@ class TestGangSchedulingConfig:
         @serve.deployment(
             num_replicas="auto",
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
-            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+            autoscaling_config={"min_replicas": 1, "max_replicas": 2},
         )
         def f():
             return "test"
 
         assert f._deployment_config.autoscaling_config is not None
         assert f._deployment_config.gang_scheduling_config.gang_size == 4
-        assert f._deployment_config.autoscaling_config.min_replicas == 4
-        assert f._deployment_config.autoscaling_config.max_replicas == 8
+        assert f._deployment_config.autoscaling_config.min_replicas == 1
+        assert f._deployment_config.autoscaling_config.max_replicas == 2
 
     def test_gang_scheduling_config_auto_num_replicas_via_options(self):
         """Test that num_replicas='auto' works via .options() with gang config."""
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=1,
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         )
         def f():
@@ -1157,19 +1157,112 @@ class TestGangSchedulingConfig:
 
         f2 = f.options(
             num_replicas="auto",
-            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+            autoscaling_config={"min_replicas": 1, "max_replicas": 2},
         )
         assert f2._deployment_config.autoscaling_config is not None
         assert f._deployment_config.gang_scheduling_config.gang_size == 4
-        assert f2._deployment_config.autoscaling_config.min_replicas == 4
-        assert f2._deployment_config.autoscaling_config.max_replicas == 8
+        assert f2._deployment_config.autoscaling_config.min_replicas == 1
+        assert f2._deployment_config.autoscaling_config.max_replicas == 2
+
+    def test_gang_scheduling_config_autoscaling_bounds_are_gangs(self):
+        """Autoscaling bounds are interpreted as gang counts, not replicas."""
+
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+            autoscaling_config={"min_replicas": 3, "max_replicas": 6},
+        )
+        def f():
+            return "test"
+
+        assert f._deployment_config.autoscaling_config.min_replicas == 3
+        assert f._deployment_config.autoscaling_config.max_replicas == 6
+
+    def test_gang_scheduling_config_accepts_autoscaling_config_instance(self):
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            autoscaling_config=AutoscalingConfig(min_replicas=3, max_replicas=8),
+        )
+        def f():
+            return "test"
+
+        assert f._deployment_config.autoscaling_config.min_replicas == 3
+        assert f._deployment_config.autoscaling_config.max_replicas == 8
+
+    def test_gang_scheduling_config_allows_default_autoscaling_bounds(self):
+        """Unset bounds keep their defaults."""
+
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+            autoscaling_config={"target_ongoing_requests": 2.0},
+        )
+        def f():
+            return "test"
+
+        assert f._deployment_config.autoscaling_config.min_replicas == 1
+        assert f._deployment_config.autoscaling_config.max_replicas == 100
+
+    def test_gang_scheduling_config_bounds_via_options(self):
+        """Bounds passed via `.options()` are kept as gang counts."""
+
+        @serve.deployment(
+            num_replicas=1,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+        )
+        def f():
+            return "test"
+
+        d = f.options(
+            num_replicas="auto",
+            autoscaling_config={"min_replicas": 3, "max_replicas": 8},
+        )
+        assert d._deployment_config.autoscaling_config.min_replicas == 3
+        assert d._deployment_config.autoscaling_config.max_replicas == 8
+
+    def test_gang_scheduling_config_change_keeps_autoscaling_bounds(self):
+        """Changing only the gang config keeps the existing gang-unit bounds."""
+
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+        )
+        def f():
+            return "test"
+
+        d = f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=3))
+        assert d._deployment_config.gang_scheduling_config.gang_size == 3
+        assert d._deployment_config.autoscaling_config.min_replicas == 4
+        assert d._deployment_config.autoscaling_config.max_replicas == 8
+
+    def test_gang_scheduling_config_options_allow_merged_default_bounds(self):
+        """Merged autoscaling defaults are treated as gang counts."""
+
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+        )
+        def f():
+            return "test"
+
+        d = f.options()
+        assert d._deployment_config.autoscaling_config.min_replicas == 1
+        assert d._deployment_config.autoscaling_config.max_replicas == 100
+
+        d = f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=2))
+        assert d._deployment_config.gang_scheduling_config.gang_size == 2
+
+        d = f.options(autoscaling_config={"min_replicas": 1})
+        assert d._deployment_config.autoscaling_config.min_replicas == 1
 
     def test_gang_scheduling_config_proto_roundtrip(self):
         """Test roundtrip serialization of GangSchedulingConfig through protobuf."""
 
         # Test with gang_scheduling_config
         config = DeploymentConfig(
-            num_replicas=8,
+            num_replicas=2,
             gang_scheduling_config=GangSchedulingConfig(
                 gang_size=4,
                 gang_placement_strategy=GangPlacementStrategy.SPREAD,
@@ -1197,7 +1290,7 @@ class TestGangSchedulingConfig:
         """Test that gang_scheduling_config can be passed via @serve.deployment decorator."""
 
         @serve.deployment(
-            num_replicas=8, gang_scheduling_config=GangSchedulingConfig(gang_size=4)
+            num_replicas=2, gang_scheduling_config=GangSchedulingConfig(gang_size=4)
         )
         def f():
             return "test"
@@ -1206,34 +1299,28 @@ class TestGangSchedulingConfig:
         assert f._deployment_config.gang_scheduling_config is not None
         assert f._deployment_config.gang_scheduling_config.gang_size == 4
 
-    def test_gang_scheduling_config_invalid_num_replicas_via_options(self):
+    def test_gang_scheduling_config_num_replicas_via_options(self):
         @serve.deployment(
-            num_replicas=4, gang_scheduling_config=GangSchedulingConfig(gang_size=2)
+            num_replicas=2, gang_scheduling_config=GangSchedulingConfig(gang_size=2)
         )
         def f():
             pass
 
-        with pytest.raises(ValueError, match="must be a multiple of gang_size"):
-            f.options(num_replicas=5)
+        d = f.options(num_replicas=5)
+        assert d.num_replicas == 5
 
-        with pytest.raises(ValueError, match="must be a multiple of gang_size"):
-            f.options(num_replicas=3)
+        d = f.options(num_replicas=3)
+        assert d.num_replicas == 3
 
-        d = f.options(num_replicas=6)
-        assert d.num_replicas == 6
-
-    def test_gang_scheduling_config_invalid_gang_size_via_options(self):
+    def test_gang_scheduling_config_change_gang_size_via_options(self):
         @serve.deployment(
-            num_replicas=4, gang_scheduling_config=GangSchedulingConfig(gang_size=2)
+            num_replicas=2, gang_scheduling_config=GangSchedulingConfig(gang_size=2)
         )
         def f():
             pass
 
-        with pytest.raises(ValueError, match="must be a multiple of gang_size"):
-            f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=3))
-
-        d = f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=4))
-        assert d._deployment_config.gang_scheduling_config.gang_size == 4
+        d = f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=3))
+        assert d._deployment_config.gang_scheduling_config.gang_size == 3
 
 
 def test_config_schemas_forward_compatible():

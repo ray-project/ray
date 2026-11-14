@@ -1370,7 +1370,9 @@ class TestGangSchedulingAutoscalingPolicy:
         policy = self._make_policy(gang_size=1, inner_result=5)
         assert policy(ctx)[0] == 5
 
-    def _create_state(self, gang_size, min_replicas, max_replicas, running=0):
+    def _create_state(
+        self, gang_size, min_replicas, max_replicas, running=0, initial_replicas=None
+    ):
         """Create a DeploymentAutoscalingState with gang config registered."""
         dep_id = DeploymentID(name="test", app_name="app")
         state = DeploymentAutoscalingState(dep_id)
@@ -1379,6 +1381,7 @@ class TestGangSchedulingAutoscalingPolicy:
         info.deployment_config.autoscaling_config = AutoscalingConfig(
             min_replicas=min_replicas,
             max_replicas=max_replicas,
+            initial_replicas=initial_replicas,
         )
         info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
             gang_size=gang_size,
@@ -1387,7 +1390,7 @@ class TestGangSchedulingAutoscalingPolicy:
         info.target_capacity_direction = None
         info.config_changed.return_value = False
 
-        state.register(info, curr_target_num_replicas=min_replicas)
+        state.register(info, curr_target_num_replicas=min_replicas * gang_size)
         state._running_replicas = list(range(running))
         return state
 
@@ -1418,8 +1421,9 @@ class TestGangSchedulingAutoscalingPolicy:
     def test_integration_scale_up_respects_max(self):
         """Gang alignment rounds up, but apply_bounds clips to max."""
         state = self._create_state(
-            gang_size=4, min_replicas=4, max_replicas=8, running=4
+            gang_size=4, min_replicas=1, max_replicas=2, running=4
         )
+        # Bounds are gangs: 1 gang -> 4 replicas, 2 gangs -> 8 replicas.
         # ceil(9/4)*4 = 12, clipped to max_replicas=8
         state._policy = GangSchedulingAutoscalingPolicy(
             lambda ctx: (9, {}), gang_size=4
@@ -1430,14 +1434,54 @@ class TestGangSchedulingAutoscalingPolicy:
     def test_integration_scale_down_respects_min(self):
         """Gang alignment rounds up, but apply_bounds clips to min."""
         state = self._create_state(
-            gang_size=4, min_replicas=4, max_replicas=16, running=8
+            gang_size=4, min_replicas=1, max_replicas=4, running=8
         )
+        # Bounds are gangs: 1 gang -> 4 replicas, 4 gangs -> 16 replicas.
         # ceil(1/4)*4 = 4, clipped to min_replicas=4
         state._policy = GangSchedulingAutoscalingPolicy(
             lambda ctx: (1, {}), gang_size=4
         )
         decision = state.get_decision_num_replicas(curr_target_num_replicas=8)
         assert decision == 4
+
+    def test_context_config_bounds_are_replica_units(self):
+        """The context exposes gang-unit bounds converted to replica counts."""
+        state = self._create_state(
+            gang_size=4,
+            min_replicas=1,
+            max_replicas=4,
+            running=8,
+            initial_replicas=2,
+        )
+        ctx = state.get_autoscaling_context(curr_target_num_replicas=8)
+        assert ctx.config.min_replicas == 4
+        assert ctx.config.max_replicas == 16
+        assert ctx.config.initial_replicas == 8
+        # The capacity-adjusted bounds use the same units as the rest of the context.
+        assert ctx.capacity_adjusted_min_replicas == 4
+        assert ctx.capacity_adjusted_max_replicas == 16
+
+    def test_register_aligns_target_after_gang_size_change(self):
+        """A target carried over from an old gang size is rounded up to a whole gang."""
+        state = self._create_state(
+            gang_size=4, min_replicas=1, max_replicas=4, running=8
+        )
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=4,
+        )
+        info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
+            gang_size=3,
+        )
+        info.target_capacity = None
+        info.target_capacity_direction = None
+        info.config_changed.return_value = True
+
+        # Bounds become gangs: 1 gang -> 3 replicas, 4 gangs -> 12 replicas.
+        # ceil(8 / 3) * 3 = 9
+        assert state.register(info, curr_target_num_replicas=8) == 9
 
 
 class TestWarmupScalingFeedbackLoop:

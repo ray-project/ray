@@ -497,18 +497,6 @@ class Deployment:
             new_deployment_config.deployment_actors = deployment_actors
 
         gc = new_deployment_config.gang_scheduling_config
-        if (
-            gc is not None
-            and isinstance(new_deployment_config.num_replicas, int)
-            and new_deployment_config.autoscaling_config is None
-        ):
-            # When autoscaling is enabled, num_replicas defaults to 1
-            if new_deployment_config.num_replicas % gc.gang_size != 0:
-                raise ValueError(
-                    f"num_replicas ({new_deployment_config.num_replicas}) must "
-                    f"be a multiple of gang_size ({gc.gang_size})."
-                )
-
         if gc is not None and max_replicas_per_node is not None:
             raise ValueError(
                 "Setting max_replicas_per_node is not allowed when "

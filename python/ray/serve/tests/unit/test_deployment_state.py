@@ -3222,7 +3222,7 @@ def test_deploy_with_gang_placement_group_failure(mock_deployment_state_manager)
     )
 
     b_info, _ = deployment_info(
-        num_replicas=4,
+        num_replicas=2,
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
     )
     assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info)
@@ -4450,7 +4450,7 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager, gang_
     num_replicas = gang_size or 1
     info1, v1 = deployment_info(
         version="1",
-        num_replicas=num_replicas,
+        num_replicas=num_replicas // (gang_size or 1),
         gang_scheduling_config=(
             GangSchedulingConfig(gang_size=gang_size) if gang_size else None
         ),
@@ -9315,7 +9315,7 @@ class TestScaleDeploymentGangReplicas:
         deployment_id = DeploymentID(name="gang_stopping_skip", app_name="app")
 
         info, version = deployment_info(
-            num_replicas=target_replicas,
+            num_replicas=target_replicas // gang_size,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -9387,7 +9387,7 @@ class TestScaleDeploymentGangReplicas:
         error_msg = "simulated gang placement reservation failure"
 
         info, version = deployment_info(
-            num_replicas=4,
+            num_replicas=2,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -9447,7 +9447,7 @@ class TestScaleDeploymentGangReplicas:
         gang_pgs = [Mock(name="pg-0"), Mock(name="pg-1")]
 
         info, version = deployment_info(
-            num_replicas=target_replicas,
+            num_replicas=num_gangs,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -9532,7 +9532,7 @@ class TestScaleDeploymentGangReplicas:
         deployment_id = DeploymentID(name="gang_sibling_cleanup", app_name="app")
 
         info, version = deployment_info(
-            num_replicas=target_replicas,
+            num_replicas=target_replicas // gang_size,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -9624,7 +9624,7 @@ class TestScaleDeploymentGangReplicas:
             "ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2
         ):
             info, _ = deployment_info(
-                num_replicas=target_replicas,
+                num_replicas=target_replicas // gang_size,
                 version="v1",
                 max_constructor_retry_count=10,
                 gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
@@ -9664,7 +9664,7 @@ class TestScaleDeploymentGangReplicas:
         dsm: DeploymentStateManager = create_dsm()
         deployment_id = DeploymentID(name="gang_terminal_failure", app_name="app")
         info, _ = deployment_info(
-            num_replicas=2,
+            num_replicas=1,
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
         dsm.deploy(deployment_id, info)
@@ -9689,7 +9689,7 @@ class TestScaleDeploymentGangReplicas:
         dsm._deployment_scheduler.schedule_gang_placement_groups.assert_not_called()
 
         recovery_info, recovery_version = deployment_info(
-            num_replicas=2,
+            num_replicas=1,
             version="v2",
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -9728,7 +9728,7 @@ class TestScaleDeploymentGangReplicas:
         deployment_id = DeploymentID(name="gang_downscale", app_name="app")
 
         info, version = deployment_info(
-            num_replicas=initial_replicas,
+            num_replicas=initial_replicas // gang_size,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -9749,7 +9749,7 @@ class TestScaleDeploymentGangReplicas:
 
         # Downscale to 2 replicas (remove 1 gang)
         new_info, new_version = deployment_info(
-            num_replicas=2,
+            num_replicas=2 // gang_size,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -9793,7 +9793,7 @@ class TestScaleDeploymentGangReplicas:
         deployment_id = DeploymentID(name="gang_downscale_pending", app_name="app")
 
         info, version = deployment_info(
-            num_replicas=initial_replicas,
+            num_replicas=initial_replicas // gang_size,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -9827,7 +9827,7 @@ class TestScaleDeploymentGangReplicas:
 
         # Downscale to 2 replicas — should prefer gang 2 (has a pending member)
         new_info, new_version = deployment_info(
-            num_replicas=2,
+            num_replicas=2 // gang_size,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -9867,7 +9867,7 @@ class TestGangHealthCheck:
         )
         b_info, v1 = deployment_info(
             version="1",
-            num_replicas=num_replicas,
+            num_replicas=num_replicas // gang_size,
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, b_info)
@@ -10087,7 +10087,7 @@ class TestGangRollingUpdate:
         )
         info, _ = deployment_info(
             version="v1",
-            num_replicas=num_replicas,
+            num_replicas=num_replicas // gang_size,
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -10103,7 +10103,7 @@ class TestGangRollingUpdate:
         """Deploy a new version and return its version tag."""
         info, v = deployment_info(
             version=version,
-            num_replicas=num_replicas,
+            num_replicas=num_replicas // gang_size,
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
             **kwargs,
         )
@@ -10552,7 +10552,7 @@ class TestGangDraining:
         )
         timer.reset(0)
         info, v = deployment_info(
-            num_replicas=num_replicas,
+            num_replicas=num_replicas // gang_size,
             version="v1",
             graceful_shutdown_timeout_s=20,
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
@@ -10769,7 +10769,7 @@ class TestGangDraining:
         )
         timer.reset(0)
         info, v1 = deployment_info(
-            num_replicas=num_replicas,
+            num_replicas=num_replicas // gang_size,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -10797,7 +10797,7 @@ class TestGangDraining:
                 replica._actor.set_ready()
             dsm.update()
             info, v1 = deployment_info(
-                num_replicas=num_replicas,
+                num_replicas=num_replicas // gang_size,
                 version="v1",
                 user_config={"updated": True},
                 gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
@@ -10875,7 +10875,7 @@ class TestGangDraining:
         )
         timer.reset(0)
         info, v1 = deployment_info(
-            num_replicas=num_replicas,
+            num_replicas=num_replicas // gang_size,
             version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         )
@@ -12287,7 +12287,7 @@ def test_compaction_does_not_split_a_gang_on_a_real_drain(
         create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
     )
     info, _ = deployment_info(
-        num_replicas=2,
+        num_replicas=1,
         version="v1",
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
     )
@@ -12463,7 +12463,7 @@ def test_recovered_deployment_reports_its_flags(mock_deployment_state_manager):
     timer.reset(0)
     dsm: DeploymentStateManager = create_dsm()
     info, _ = deployment_info(
-        num_replicas=2,
+        num_replicas=1,
         version="v1",
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
     )
@@ -13550,7 +13550,7 @@ class TestMaxSurge:
         # Round the one replica surge allowance up to a gang of two.
         info, v1 = deployment_info(
             version="v1",
-            num_replicas=num_replicas,
+            num_replicas=num_replicas // gang_size,
             gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
             max_surge_percent=25,
         )
@@ -13749,7 +13749,7 @@ class TestMaxSurge:
         )
         info, _ = deployment_info(
             version="v1",
-            num_replicas=num_replicas,
+            num_replicas=num_replicas // 2,
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
             **config,
         )

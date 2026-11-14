@@ -96,7 +96,11 @@ class AutoscalingContext:
         last_scale_down_time: Unix timestamp, in seconds, of the last scale-down,
             or None if the deployment hasn't scaled down.
         current_time: Unix timestamp, in seconds, when Serve built this context.
-        config: The deployment's autoscaling configuration.
+        config: The deployment's autoscaling configuration. For gang-scheduled
+            deployments, ``min_replicas``, ``max_replicas``, and
+            ``initial_replicas`` are converted from gang counts to replica counts
+            so that they can be compared against ``current_num_replicas`` and
+            ``target_num_replicas``.
     """
 
     def __init__(
@@ -1413,8 +1417,10 @@ class GangSchedulingConfig(BaseModel):
 
     gang_size: int = Field(
         description=(
-            "Number of replicas per gang. "
-            "num_replicas must be a multiple of gang_size."
+            "Number of replicas per gang. When gang scheduling is configured, "
+            "`num_replicas` and the autoscaling `min_replicas`, `max_replicas`, "
+            "and `initial_replicas` refer to the number of gangs, so the total "
+            "number of replicas is `num_gangs * gang_size`."
         ),
         ge=1,
     )

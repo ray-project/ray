@@ -4,7 +4,7 @@ applications:
   import_path: ray.serve.tests.test_config_files.gang_scheduling:app
   deployments:
   - name: GangApp
-    num_replicas: 4
+    num_replicas: 2
     ray_actor_options:
       num_cpus: 0.25
     gang_scheduling_config:

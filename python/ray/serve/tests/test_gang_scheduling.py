@@ -57,7 +57,7 @@ class TestGangScheduling:
         serve.start()
 
         @serve.deployment(
-            num_replicas=8,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         )
@@ -93,7 +93,7 @@ class TestGangScheduling:
                 return ray.get_runtime_context().get_node_id()
 
         app = GangDeployment.options(
-            num_replicas=8,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         ).bind()
@@ -128,7 +128,7 @@ class TestGangScheduling:
                 return ray.get_runtime_context().get_node_id()
 
         app = IncompleteGangDeployment.options(
-            num_replicas=12,
+            num_replicas=3,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         ).bind()
@@ -208,7 +208,7 @@ class TestGangScheduling:
                 return ray.get_runtime_context().get_node_id()
 
         app = AtomicGangDeployment.options(
-            num_replicas=12,
+            num_replicas=3,
             ray_actor_options={"num_cpus": 0.2},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         ).bind()
@@ -280,7 +280,7 @@ class TestGangScheduling:
 
         # 1 gang with PACK strategy - all replicas should be on same node
         app = PackDeployment.options(
-            num_replicas=4,
+            num_replicas=1,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(
                 gang_size=4,
@@ -326,7 +326,7 @@ class TestGangScheduling:
 
         # 1 gang with SPREAD strategy - replicas should be on different nodes
         app = SpreadDeployment.options(
-            num_replicas=2,
+            num_replicas=1,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(
                 gang_size=2,
@@ -362,7 +362,7 @@ class TestGangScheduling:
                 return ray.get_runtime_context().get_node_id()
 
         app = GangContextDeployment.options(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         ).bind()
@@ -426,7 +426,7 @@ class TestGangScheduling:
         serve.start()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -469,7 +469,7 @@ class TestGangScheduling:
         serve.start()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -481,7 +481,7 @@ class TestGangScheduling:
                 return "a"
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -630,7 +630,7 @@ class TestGangResourceReservation:
         serve.start()
 
         @serve.deployment(
-            num_replicas=2,
+            num_replicas=1,
             ray_actor_options={"num_cpus": 0},
             placement_group_bundles=[{"CPU": 0.25}],
             placement_group_bundle_label_selector=[{"accelerator": "tpu"}],
@@ -691,7 +691,7 @@ class TestGangConstructorFailure:
         serve.start()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -723,7 +723,7 @@ class TestGangConstructorFailure:
         failed_replica_store = FailedGangReplicaStore.remote()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -774,7 +774,7 @@ class TestGangConstructorFailure:
         failed_replica_store = FailedGangReplicaStore.remote()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -811,7 +811,7 @@ class TestGangFailureRecovery:
         recovery_signal = SignalActor.remote()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -893,7 +893,7 @@ class TestGangFailureRecovery:
         target_signal = SignalActor.remote()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.1},
             health_check_period_s=1,
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
@@ -1008,7 +1008,7 @@ class TestGangChildSpawnPlacementGroup:
         child_task_get_pg = TestGangChildSpawnPlacementGroup.child_task_get_pg
 
         @serve.deployment(
-            num_replicas=2,
+            num_replicas=1,
             ray_actor_options={"num_cpus": 0.1},
             # Extra bundle per replica so the child actor has resources
             # inside the gang PG (the first bundle is consumed by the replica).
@@ -1097,7 +1097,7 @@ class TestGangChildSpawnPlacementGroup:
         ChildActor = TestGangChildSpawnPlacementGroup.ChildActor
 
         @serve.deployment(
-            num_replicas=2,
+            num_replicas=1,
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -1144,7 +1144,7 @@ class TestGangControllerRecovery:
         serve.start()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -1153,7 +1153,7 @@ class TestGangControllerRecovery:
                 return "ok"
 
         @serve.deployment(
-            num_replicas=2,
+            num_replicas=1,
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -1254,7 +1254,7 @@ class TestGangControllerRecovery:
         serve.start()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
@@ -1309,7 +1309,7 @@ class TestGangControllerRecovery:
         serve.start()
 
         @serve.deployment(
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
             health_check_period_s=1,
@@ -1411,11 +1411,13 @@ class TestGangNodeFailure:
         ray.init(address=cluster.address)
         serve.start()
 
-        num_replicas = 4
+        # `num_replicas` counts gangs when gang scheduling is enabled.
+        num_gangs = 2
         gang_size = 2
+        num_replicas = num_gangs * gang_size
 
         @serve.deployment(
-            num_replicas=num_replicas,
+            num_replicas=num_gangs,
             ray_actor_options={"num_cpus": 0.5},
             gang_scheduling_config=GangSchedulingConfig(
                 gang_size=gang_size,
@@ -1560,7 +1562,8 @@ class TestGangScaling:
 
         @serve.deployment(
             name="D",
-            num_replicas=initial_num_replicas,
+            # `num_replicas` is the number of gangs.
+            num_replicas=initial_num_replicas // GANG_SIZE,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
         )
@@ -1600,7 +1603,7 @@ class TestGangScaling:
 
         # Scale to the final replica count.
         handle = serve.run(
-            D.options(num_replicas=final_num_replicas).bind(), name="app"
+            D.options(num_replicas=final_num_replicas // GANG_SIZE).bind(), name="app"
         )
         wait_for_condition(check_apps_running, apps=["app"], timeout=WAIT_TIMEOUT_S)
 
@@ -1646,7 +1649,8 @@ class TestGangRollingUpdate:
 
         @serve.deployment(
             name="D",
-            num_replicas=NUM_REPLICAS,
+            # `num_replicas` is the number of gangs.
+            num_replicas=NUM_REPLICAS // GANG_SIZE,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
         )
@@ -1678,7 +1682,7 @@ class TestGangRollingUpdate:
         # New code version triggers requires_actor_restart -> rolling update
         @serve.deployment(
             name="D",
-            num_replicas=NUM_REPLICAS,
+            num_replicas=NUM_REPLICAS // GANG_SIZE,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
         )
@@ -1769,7 +1773,7 @@ class TestGangAutoscaling:
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
             autoscaling_config={
                 "min_replicas": 0,
-                "max_replicas": 8,
+                "max_replicas": 4,
                 # Lower delays/windows so the test observes scaling within seconds
                 "upscale_delay_s": 0.1,
                 "downscale_delay_s": 0.1,
@@ -1865,8 +1869,8 @@ class TestGangAutoscaling:
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
             autoscaling_config={
-                "min_replicas": 3,
-                "max_replicas": 9,
+                "min_replicas": 1,
+                "max_replicas": 3,
                 "metrics_interval_s": 0.5,
                 "upscale_delay_s": 0.1,
                 "downscale_delay_s": 0.1,
@@ -1915,7 +1919,7 @@ class TestGangAutoscaling:
         for res in results:
             res.result()
 
-        # The autoscaler should scale back down to min_replicas=3.
+        # The autoscaler should scale back down to min_replicas=1 gang (3 replicas).
         wait_for_condition(
             check_num_replicas_eq,
             name="UnalignedUpscale",
@@ -1943,9 +1947,9 @@ class TestGangAutoscaling:
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
             autoscaling_config={
-                "min_replicas": 6,
-                "max_replicas": 9,
-                "initial_replicas": 9,
+                "min_replicas": 2,
+                "max_replicas": 3,
+                "initial_replicas": 3,
                 "metrics_interval_s": 0.5,
                 "upscale_delay_s": 5,
                 # Must be long enough for all 9 gang-scheduled replicas to
@@ -2013,7 +2017,7 @@ class TestGangMigration:
 
         @serve.deployment(
             name="D",
-            num_replicas=4,
+            num_replicas=2,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )

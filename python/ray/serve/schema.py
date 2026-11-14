@@ -384,7 +384,10 @@ class DeploymentSchema(BaseModel):
         description=(
             "The number of processes that handle requests to this "
             "deployment. Uses a default if null. Can also be set to "
-            "`auto` for a default autoscaling configuration."
+            "`auto` for a default autoscaling configuration. If "
+            "`gang_scheduling_config` is set, this is the number of gangs "
+            "and the total number of replicas is "
+            "`num_replicas * gang_size`."
         ),
     )
     max_ongoing_requests: int = Field(
@@ -599,41 +602,7 @@ class DeploymentSchema(BaseModel):
             return values
 
         if isinstance(gang_config, dict):
-            gang_config = GangSchedulingConfig(**gang_config)
-            values["gang_scheduling_config"] = gang_config
-
-        num_replicas = values.get("num_replicas", None)
-
-        if num_replicas == "auto":
-            # Validate autoscaling bounds are multiples of gang_size
-            autoscaling_config = values.get("autoscaling_config", None)
-            if autoscaling_config not in [None, DEFAULT.VALUE]:
-                # Since this is a "before" validator, autoscaling_config may be
-                # either a dict (from raw input) or an AutoscalingConfig instance
-                # (if already constructed). Normalize to a dict of only the
-                # user-set fields so that gang-size multiple validation is not
-                # triggered for default values the user never explicitly set.
-                # This matches how AutoscalingConfig is handled elsewhere in the
-                # codebase (see ray/serve/_private/config.py).
-                if isinstance(autoscaling_config, AutoscalingConfig):
-                    autoscaling_config = autoscaling_config.model_dump(
-                        exclude_unset=True
-                    )
-
-                for field_name in ["min_replicas", "max_replicas", "initial_replicas"]:
-                    val = autoscaling_config.get(field_name)
-                    if val is not None and val % gang_config.gang_size != 0:
-                        raise ValueError(
-                            f"autoscaling_config.{field_name} ({val}) must be a "
-                            f"multiple of gang_size ({gang_config.gang_size})."
-                        )
-            return values
-
-        if isinstance(num_replicas, int) and num_replicas % gang_config.gang_size != 0:
-            raise ValueError(
-                f"num_replicas ({num_replicas}) must be a multiple of "
-                f"gang_size ({gang_config.gang_size})."
-            )
+            values["gang_scheduling_config"] = GangSchedulingConfig(**gang_config)
 
         return values
 

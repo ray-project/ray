@@ -62,6 +62,7 @@ from ray.serve._private.config import (
     DeploymentConfig,
     GangSchedulingConfig,
     ReplicaConfig,
+    get_gang_size,
 )
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
@@ -4142,12 +4143,14 @@ class DeploymentState:
             )
         else:
             self._autoscaling_state_manager.deregister_deployment(self._id)
+            # `num_replicas` is in gangs when gang scheduling is enabled.
+            num_gangs = deployment_info.deployment_config.num_replicas
             target_num_replicas = get_capacity_adjusted_num_replicas(
                 # `num_replicas` is always set for non-autoscaling deployments.
                 # pyrefly: ignore[bad-argument-type]
-                deployment_info.deployment_config.num_replicas,  # type: ignore[arg-type]
+                num_gangs,  # type: ignore[arg-type]
                 deployment_info.target_capacity,
-            )
+            ) * get_gang_size(deployment_info.deployment_config)
 
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
