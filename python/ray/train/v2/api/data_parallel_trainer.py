@@ -200,6 +200,7 @@ class DataParallelTrainer:
         return LocalController(
             experiment_name=self.run_config.name,
             datasets=self.datasets,
+            storage_context=self.run_config.storage_context,
         )
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:

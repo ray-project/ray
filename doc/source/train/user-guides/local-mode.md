@@ -356,9 +356,9 @@ The following table summarizes how `ray.train` APIs behave differently in local 
 * - API
   - Behavior in local mode
 * - {func}`ray.train.report`
-  - Stores checkpoints in memory only and doesn't persist them to storage. Ignores the `checkpoint_upload_mode`, `checkpoint_upload_fn`, `validation`, and `delete_local_checkpoint_after_upload` parameters. Logs metrics locally instead of through the reporting pipeline. Doesn't invoke a synchronization barrier across workers.
+  - Copies checkpoints synchronously to the `RunConfig` storage path. Doesn't apply `CheckpointConfig`, so it keeps every checkpoint. Ignores the `checkpoint_upload_mode`, `checkpoint_upload_fn`, `validation`, and `delete_local_checkpoint_after_upload` parameters. Logs metrics locally instead of through the reporting pipeline. Doesn't invoke a synchronization barrier across workers.
 * - {func}`ray.train.get_checkpoint`
-  - Returns the last checkpoint from memory. Doesn't load checkpoints from persistent storage.
+  - Returns the last reported checkpoint. Doesn't restore checkpoints from a previous run.
 * - {func}`ray.train.get_all_reported_checkpoints`
   - Always returns an empty list. Doesn't track checkpoint history.
 * - {func}`ray.train.collective.barrier`

@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
     from ray.train.v2._internal.execution.preemption import PreemptionInfo
+    from ray.train.v2._internal.execution.storage import StorageContext
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -240,6 +241,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         local_rank: int = 0,
         local_world_size: int = 1,
         node_rank: int = 0,
+        storage_context: Optional["StorageContext"] = None,
     ):
         self._context = LocalTrainContext(
             experiment_name=experiment_name,
@@ -250,8 +252,11 @@ class LocalTrainFnUtils(TrainFnUtils):
             node_rank=node_rank,
         )
         self._dataset_shards = dataset_shards
+        self._storage_context = storage_context
+        self._num_reports = 0
         self._last_metrics = None
         self._last_checkpoint = None
+        self._reported_checkpoints = []
 
     def report(
         self,
@@ -265,10 +270,24 @@ class LocalTrainFnUtils(TrainFnUtils):
         ] = None,
         validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
+        self._num_reports += 1
         self._last_metrics = metrics
         if checkpoint is not None:
+            if self._storage_context is not None:
+                checkpoint = self._storage_context.persist_current_checkpoint(
+                    checkpoint,
+                    checkpoint_dir_name or self._default_checkpoint_dir_name(),
+                )
             self._last_checkpoint = checkpoint
+            self._reported_checkpoints.append((checkpoint, metrics))
         logger.info(f"Reported metrics: {metrics}")
+
+    def _default_checkpoint_dir_name(self) -> str:
+        # Ranks can't agree on a timestamp without a collective, so multi-process
+        # runs name checkpoints by report count, which matches across ranks.
+        if self._context.get_world_size() > 1:
+            return f"checkpoint_{self._num_reports:06d}"
+        return self._storage_context.make_default_checkpoint_dir_name()
 
     def get_checkpoint(self) -> Optional["Checkpoint"]:
         return self._last_checkpoint
@@ -305,6 +324,12 @@ class LocalTrainFnUtils(TrainFnUtils):
         This function should only be called by LocalController
         """
         return self._last_metrics
+
+    def _get_reported_checkpoints(self) -> List[tuple]:
+        """Return ``(checkpoint, metrics)`` for every reported checkpoint.
+        This function should only be called by LocalController
+        """
+        return self._reported_checkpoints
 
     def get_all_reported_checkpoints(
         self,
