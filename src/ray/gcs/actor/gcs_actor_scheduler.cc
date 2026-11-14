@@ -351,7 +351,10 @@ void GcsActorScheduler::RetryLeasingWorkerFromNode(
   RAY_UNUSED(execute_after(
       io_context_,
       [this, node, actor, lease_id, attempt] {
-        if (actor->GetLeaseSpecification().LeaseId() == lease_id &&
+        // A destroyed actor keeps its lease ID, and its creation task spec must
+        // not be read once it is DEAD.
+        if (actor->GetState() != rpc::ActorTableData::DEAD &&
+            actor->GetLeaseSpecification().LeaseId() == lease_id &&
             actor->GetCreationTaskSpecification().GetMessage().attempt_number() ==
                 attempt) {
           DoRetryLeasingWorkerFromNode(actor, node);

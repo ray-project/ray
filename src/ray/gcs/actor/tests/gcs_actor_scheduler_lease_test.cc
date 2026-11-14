@@ -390,6 +390,33 @@ TEST_F(GcsActorSchedulerLeaseTest, CurrentRequestStillRetries) {
   EXPECT_TRUE(raylet_->kills.empty());
 }
 
+TEST_F(GcsActorSchedulerLeaseTest, RetryTimerIgnoresDestroyedActor) {
+  const auto node_id = NodeID::FromBinary(node_->node_id());
+  const auto lease_id = raylet_->Id(0);
+  raylet_->Deliver(0, Status::IOError("transport"));  // Arms the retry timer.
+  // Mirror GcsActorManager::DestroyActor for an actor that is still leasing:
+  // CancelActorInScheduling cancels the lease, then the actor becomes DEAD.
+  // Destruction does not change the actor's lease ID.
+  scheduler_->OnActorDestruction(actor_);
+  ASSERT_TRUE(scheduler_->CancelOnWorker(node_id, actor_->GetWorkerID()).IsNil());
+  scheduler_->CancelOnLeasing(node_id, actor_->GetActorID(), lease_id);
+  scheduler_->OnActorDestruction(actor_);
+  actor_->UpdateState(rpc::ActorTableData::DEAD);
+  ASSERT_EQ(actor_->GetLeaseSpecification().LeaseId(), lease_id);
+
+  ASSERT_GT(RunUntilIdle(), 0u);  // The ready retry timer runs.
+  EXPECT_EQ(raylet_->requests.size(), 1u);
+  EXPECT_EQ(raylet_->cancellations, std::vector<LeaseID>{lease_id});
+  EXPECT_TRUE(raylet_->kills.empty());
+  EXPECT_FALSE(scheduler_->IsLeasing(node_id, actor_->GetActorID()));
+  EXPECT_EQ(actor_->GetState(), rpc::ActorTableData::DEAD);
+  EXPECT_EQ(actor_->GetLeaseSpecification().LeaseId(), lease_id);
+  EXPECT_TRUE(actor_->GetWorkerID().IsNil());
+  EXPECT_TRUE(worker_->creations.empty());
+  EXPECT_EQ(successes_, 0);
+  EXPECT_EQ(failures_, 0);
+}
+
 TEST_F(GcsActorSchedulerLeaseTest, CurrentGrantCreatesOnce) {
   raylet_->Grant(0, *node_, w1_);
   Finish(0, w1_, 0);
