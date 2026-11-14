@@ -421,14 +421,22 @@ void Publisher::ConnectToSubscriber(
                                                         clock_,
                                                         subscriber_timeout_ms_,
                                                         publish_batch_size_,
-                                                        publisher_id_))
+                                                        use_per_subscriber_publisher_id_
+                                                            ? UniqueID::FromRandom()
+                                                            : publisher_id_))
              .first;
   }
   auto &subscriber = it->second;
 
+  const bool stream_changed = use_per_subscriber_publisher_id_ &&
+                              request.publisher_id() != subscriber->GetPublisherId();
   // May flush the current long poll with an empty message, if a poll request exists.
   subscriber->ConnectToSubscriber(
       request, publisher_id, pub_messages, std::move(send_reply_callback));
+  if (stream_changed) {
+    // Report lost subscription state immediately, even when the mailbox is empty.
+    subscriber->PublishIfPossible(/*force_noop=*/true);
+  }
 }
 
 StatusSet<StatusT::InvalidArgument> Publisher::RegisterSubscription(
@@ -451,7 +459,9 @@ StatusSet<StatusT::InvalidArgument> Publisher::RegisterSubscription(
                                                         clock_,
                                                         subscriber_timeout_ms_,
                                                         publish_batch_size_,
-                                                        publisher_id_))
+                                                        use_per_subscriber_publisher_id_
+                                                            ? UniqueID::FromRandom()
+                                                            : publisher_id_))
              .first;
   }
   SubscriberState *subscriber = it->second.get();

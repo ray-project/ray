@@ -36,7 +36,9 @@ class PublisherTest : public ::testing::Test {
  public:
   PublisherTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {}
 
-  void SetUp() override {
+  void SetUp() override { ResetPublisher(); }
+
+  void ResetPublisher(bool use_per_subscriber_publisher_id = false) {
     publisher_ = std::make_shared<Publisher>(
         /*channels=*/
         std::vector<rpc::ChannelType>{
@@ -48,7 +50,9 @@ class PublisherTest : public ::testing::Test {
         /*clock=*/fake_clock_,
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
         /*batch_size*/ 100,
-        kDefaultPublisherId);
+        kDefaultPublisherId,
+        use_per_subscriber_publisher_id);
+    request_.Clear();
     request_.set_subscriber_id(subscriber_id_.Binary());
     request_.set_publisher_id(kDefaultPublisherId.Binary());
   }
@@ -127,6 +131,104 @@ class PublisherTest : public ::testing::Test {
   std::vector<std::unique_ptr<SubscriberState>> subscribers_;
   int64_t sequence_id_ = 0;
 };
+
+// Poll-first and subscribe-first creation must both invalidate the old stream.
+TEST_F(PublisherTest, TestSubscriberStreamRecovery) {
+  for (const bool subscribe_first : {false, true}) {
+    ResetPublisher(/*use_per_subscriber_publisher_id=*/true);
+    const auto oid = ObjectID::FromRandom();
+    auto subscribe = [&]() {
+      ASSERT_TRUE(
+          publisher_
+              ->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                                     subscriber_id_,
+                                     oid.Binary())
+              .ok());
+    };
+    int replies = 0;
+    auto poll = [&]() {
+      reply.Clear();
+      publisher_->ConnectToSubscriber(
+          request_,
+          reply.mutable_publisher_id(),
+          reply.mutable_pub_messages(),
+          [&replies](Status status, std::function<void()>, std::function<void()>) {
+            ASSERT_TRUE(status.ok());
+            ++replies;
+          });
+    };
+
+    subscribe();
+    poll();
+    ASSERT_EQ(replies, 1);  // Empty mailbox still reports the initial stream ID.
+    const auto first_id = reply.publisher_id();
+    ASSERT_NE(first_id, kDefaultPublisherId.Binary());
+    request_.set_publisher_id(first_id);
+    subscribe();
+    poll();
+    ASSERT_EQ(replies, 1);  // Same stream: normal long poll, no recovery loop.
+    fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
+    publisher_->CheckDeadSubscribers();
+    ASSERT_EQ(replies, 2);  // Flush the outstanding poll before eviction.
+    ASSERT_EQ(reply.publisher_id(), first_id);
+    fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
+    publisher_->CheckDeadSubscribers();
+
+    if (subscribe_first) {
+      subscribe();
+    }
+    poll();
+    ASSERT_EQ(replies, 3);
+    const auto recovered_id = reply.publisher_id();
+    ASSERT_NE(recovered_id, first_id);
+    ASSERT_TRUE(reply.pub_messages().empty());
+    // Simulate losing the first recovery reply: the next old-ID request must
+    // receive the same new ID, rather than miss a one-shot reset notification.
+    poll();
+    ASSERT_EQ(replies, 4);
+    ASSERT_EQ(reply.publisher_id(), recovered_id);
+
+    subscribe();
+    publisher_->Publish(GeneratePubMessage(oid));
+    request_.set_max_processed_sequence_id(1000);
+    poll();  // An old stream's ACK must not delete the new stream's message.
+    ASSERT_EQ(replies, 5);
+    ASSERT_EQ(reply.pub_messages_size(), 1);
+    const auto sequence = reply.pub_messages(0).sequence_id();
+    ASSERT_EQ(reply.publisher_id(), recovered_id);
+    request_.set_publisher_id(recovered_id);
+    request_.set_max_processed_sequence_id(sequence);
+    poll();
+    ASSERT_EQ(replies, 5);  // The current stream's ACK does remove the message.
+    publisher_->UnregisterSubscriber(subscriber_id_);
+    ASSERT_EQ(replies, 6);
+  }
+}
+
+TEST_F(PublisherTest, TestDefaultPublisherIdSurvivesSubscriberExpiration) {
+  int replies = 0;
+  auto poll = [&]() {
+    reply.Clear();
+    publisher_->ConnectToSubscriber(
+        request_,
+        reply.mutable_publisher_id(),
+        reply.mutable_pub_messages(),
+        [&replies](Status, std::function<void()>, std::function<void()>) { ++replies; });
+  };
+  poll();
+  ASSERT_EQ(replies, 0);
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
+  publisher_->CheckDeadSubscribers();
+  ASSERT_EQ(replies, 1);
+  ASSERT_EQ(reply.publisher_id(), kDefaultPublisherId.Binary());
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
+  publisher_->CheckDeadSubscribers();
+  poll();
+  ASSERT_EQ(replies, 1);
+  publisher_->UnregisterSubscriber(subscriber_id_);
+  ASSERT_EQ(replies, 2);
+  ASSERT_EQ(reply.publisher_id(), kDefaultPublisherId.Binary());
+}
 
 TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
   auto oid = ObjectID::FromRandom();

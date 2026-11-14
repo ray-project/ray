@@ -144,7 +144,9 @@ class SubscriberTest : public ::testing::Test {
         channel(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {}
   ~SubscriberTest() {}
 
-  void SetUp() {
+  void SetUp() override { ResetSubscriber(); }
+
+  void ResetSubscriber(std::function<void()> reset_callback = nullptr) {
     object_subscribed_.clear();
     object_failed_to_subscribe_.clear();
     subscriber_ = std::make_shared<Subscriber>(
@@ -154,7 +156,8 @@ class SubscriberTest : public ::testing::Test {
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*max_command_batch_size*/ 3,
         client_pool,
-        &callback_service_);
+        &callback_service_,
+        std::move(reset_callback));
   }
 
   const rpc::Address GenerateOwnerAddress(
@@ -319,6 +322,22 @@ TEST_F(SubscriberTest, TestPublisherFailsOver) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
   const auto object_id1 = ObjectID::FromRandom();
+  int resets = 0;
+  ResetSubscriber([&]() {
+    callback_service_.post(
+        [&]() {
+          ++resets;
+          // Recovery must run after releasing the Subscriber mutex.
+          subscriber_->Subscribe(std::make_unique<rpc::SubMessage>(),
+                                 channel,
+                                 owner_addr,
+                                 std::nullopt,
+                                 nullptr,
+                                 subscription_callback,
+                                 failure_callback);
+        },
+        "SubscriberTest.Resubscribe");
+  });
   subscriber_->Subscribe(std::make_unique<rpc::SubMessage>(),
                          channel,
                          owner_addr,
@@ -332,7 +351,12 @@ TEST_F(SubscriberTest, TestPublisherFailsOver) {
   objects_batched.push_back(object_id);
   objects_batched.push_back(object_id1);
   // Make sure the long polling batch works as expected.
-  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
+  // This can also be the first reply observed after the original state expired:
+  // no prior publisher ID is needed to trigger recovery.
+  const auto first_id = UniqueID::FromRandom().Binary();
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched, {}, Status::OK(), first_id));
+  ASSERT_EQ(resets, 1);
+  ASSERT_TRUE(owner_client->ReplyCommandBatch());
   ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
 
   for (const auto &oid : objects_batched) {
@@ -343,6 +367,7 @@ TEST_F(SubscriberTest, TestPublisherFailsOver) {
   // and the subscriber should ignore out of order message.
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched, {1, 2}));
   ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
+  ASSERT_EQ(resets, 1);
 
   auto new_publisher_id = NodeID::FromRandom().Binary();
   // if the publisher_id changes, we should reset both publisher_id and sequence_id.
@@ -350,6 +375,16 @@ TEST_F(SubscriberTest, TestPublisherFailsOver) {
       channel, std::vector<ObjectID>({object_id}), {1}, Status::OK(), new_publisher_id));
   ASSERT_EQ(1, owner_client->GetReportedMaxProcessedSequenceId());
   ASSERT_EQ(new_publisher_id, owner_client->publisher_id_);
+  ASSERT_EQ(resets, 2);
+  ASSERT_TRUE(owner_client->ReplyCommandBatch());
+  ASSERT_TRUE(ReplyLongPolling(channel, {}, {}, Status::OK(), new_publisher_id));
+  ASSERT_EQ(resets, 2);
+
+  subscriber_->Unsubscribe(channel, owner_addr, std::nullopt);
+  ASSERT_TRUE(owner_client->ReplyCommandBatch());
+  ASSERT_TRUE(
+      ReplyLongPolling(channel, {}, {}, Status::OK(), UniqueID::FromRandom().Binary()));
+  ASSERT_EQ(resets, 2);  // No remaining subscriptions: do not resurrect them.
 }
 
 TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {

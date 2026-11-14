@@ -318,6 +318,8 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     }
 
     if (queue->second.client_address_.has_value() &&
+        queue->second.num_restarts_ == num_restarts &&
+        queue->second.worker_id_ == address.worker_id() &&
         queue->second.client_address_->ip_address() == address.ip_address() &&
         queue->second.client_address_->port() == address.port()) {
       RAY_LOG(DEBUG).WithField(actor_id) << "Skip actor that has already been connected";
