@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from unittest.mock import create_autospec
 
 import pytest
@@ -1104,6 +1105,299 @@ async def test_abort_while_step_raises(monkeypatch):
     await asyncio.wait_for(run_task, timeout=5)
     assert isinstance(controller.get_state(), AbortedState)
     assert not callback.failure_decision_called
+
+
+def test_callback_label_selector_with_tpu(monkeypatch, caplog, propagate_logs):
+    """Verify TPU label_selector synthesis and callback merging in _start_worker_group.
+
+    When use_tpu=True with topology and accelerator_type (SlicePlacementGroup path),
+    worker_group_context.label_selector only carries user/callback labels (since
+    SlicePlacementGroup synthesizes the single-host or multi-host TPU labels).
+    When topology is omitted (standard placement_group path), callback labels
+    merge onto the synthesized TPU accelerator label without a false override warning.
+    """
+    contexts = []
+
+    class _CapturingWorkerGroup(DummyWorkerGroup):
+        def __init__(self, train_run_context, worker_group_context, callbacks=None):
+            contexts.append(worker_group_context)
+            super().__init__(train_run_context, worker_group_context, callbacks)
+
+    monkeypatch.setattr(TrainController, "worker_group_cls", _CapturingWorkerGroup)
+
+    def _make_controller(callbacks=None, **scaling_kwargs):
+        scaling_config = ScalingConfig(**scaling_kwargs)
+        controller = TrainController(
+            train_fn_ref=DummyObjectRefWrapper(lambda: None),
+            train_run_context=create_dummy_run_context(scaling_config=scaling_config),
+            scaling_policy=MockScalingPolicy(scaling_config=scaling_config),
+            failure_policy=MockFailurePolicy(failure_config=None),
+            callbacks=callbacks,
+        )
+        # TrainController.__init__ configures the "ray.train" logger with propagate=False.
+        monkeypatch.setattr(logging.getLogger("ray.train"), "propagate", True)
+        return controller
+
+    class _SelectorCallback(ControllerCallback):
+        def on_controller_start_worker_group(self, *, scaling_config, num_workers):
+            return {"subcluster": "mine"}
+
+    # SlicePlacementGroup path (use_tpu + topology + accelerator_type):
+    # no callback -> label_selector is None; with callback -> only callback labels.
+    controller_no_cb = _make_controller(
+        num_workers=2,
+        use_tpu=True,
+        topology="2x2x2",
+        accelerator_type="TPU-V4",
+    )
+    controller_no_cb._start_worker_group(
+        num_workers=2,
+        resources_per_worker={"CPU": 1, "TPU": 4},
+    )
+    assert contexts[-1].label_selector is None
+
+    controller_with_cb = _make_controller(
+        callbacks=[_SelectorCallback()],
+        num_workers=2,
+        use_tpu=True,
+        topology="2x2x2",
+        accelerator_type="TPU-V4",
+    )
+    controller_with_cb._start_worker_group(
+        num_workers=2,
+        resources_per_worker={"CPU": 1, "TPU": 4},
+    )
+    assert contexts[-1].label_selector == [{"subcluster": "mine"}] * 2
+
+    # Non-SlicePlacementGroup TPU path (use_tpu + accelerator_type, no topology):
+    # callback merges with synthesized ray.io/accelerator-type label.
+    caplog.clear()
+    controller_non_spg = _make_controller(
+        callbacks=[_SelectorCallback()],
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        resources_per_worker={"TPU": 1},
+    )
+    controller_non_spg._start_worker_group(
+        num_workers=1,
+        resources_per_worker={"CPU": 1, "TPU": 1},
+    )
+    assert contexts[-1].label_selector == [
+        {"ray.io/accelerator-type": "TPU-V6E", "subcluster": "mine"}
+    ]
+    assert "overriding" not in caplog.text.lower()
+
+    # Paired positive case: user-set label_selector + callback DOES log override warning.
+    caplog.clear()
+    controller_user_override = _make_controller(
+        callbacks=[_SelectorCallback()],
+        num_workers=1,
+        use_tpu=True,
+        topology="2x4",
+        accelerator_type="TPU-V6E",
+        label_selector={"market-type": "spot"},
+    )
+    controller_user_override._start_worker_group(
+        num_workers=1,
+        resources_per_worker={"CPU": 1, "TPU": 8},
+    )
+    assert "overriding" in caplog.text.lower()
+    assert contexts[-1].label_selector == [{"subcluster": "mine"}]
+
+
+def test_start_worker_group_label_selector_callback_matrix(
+    monkeypatch, caplog, propagate_logs
+):
+    """Verify callback override, multi-callback replacement, list selectors, and multi-slice forwarding."""
+    contexts = []
+
+    class _CapturingWorkerGroup(DummyWorkerGroup):
+        def __init__(self, train_run_context, worker_group_context, callbacks=None):
+            contexts.append(worker_group_context)
+            super().__init__(train_run_context, worker_group_context, callbacks)
+
+    monkeypatch.setattr(TrainController, "worker_group_cls", _CapturingWorkerGroup)
+
+    def _make_controller(callbacks=None, **scaling_kwargs):
+        scaling_config = ScalingConfig(**scaling_kwargs)
+        controller = TrainController(
+            train_fn_ref=DummyObjectRefWrapper(lambda: None),
+            train_run_context=create_dummy_run_context(scaling_config=scaling_config),
+            scaling_policy=MockScalingPolicy(scaling_config=scaling_config),
+            failure_policy=MockFailurePolicy(failure_config=None),
+            callbacks=callbacks,
+        )
+        monkeypatch.setattr(logging.getLogger("ray.train"), "propagate", True)
+        return controller
+
+    def _cb(value):
+        class _StaticCallback(ControllerCallback):
+            def on_controller_start_worker_group(self, *, scaling_config, num_workers):
+                return value
+
+        return _StaticCallback()
+
+    # 1. Non-slice TPU with accelerator_type + user label_selector: callback overrides
+    #    user selector completely while keeping ray.io/accelerator-type; warning names
+    #    ScalingConfig.label_selector and user key without ray.io/accelerator-type.
+    caplog.clear()
+    ctrl = _make_controller(
+        callbacks=[_cb({"subcluster": "mine"})],
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        label_selector={"zone": "a"},
+    )
+    ctrl._start_worker_group(num_workers=1, resources_per_worker={"CPU": 1, "TPU": 1})
+    assert contexts[-1].label_selector == [
+        {"ray.io/accelerator-type": "TPU-V6E", "subcluster": "mine"}
+    ]
+    assert "ScalingConfig.label_selector" in caplog.text
+    assert "'zone': 'a'" in caplog.text
+    assert "ray.io/accelerator-type" not in caplog.text
+
+    # 2. Non-slice TPU without accelerator_type or topology: callback replaces user selector.
+    caplog.clear()
+    ctrl = _make_controller(
+        callbacks=[_cb({"subcluster": "mine"})],
+        num_workers=1,
+        use_tpu=True,
+        label_selector={"zone": "a"},
+    )
+    ctrl._start_worker_group(num_workers=1, resources_per_worker={"CPU": 1, "TPU": 1})
+    assert contexts[-1].label_selector == [{"subcluster": "mine"}]
+    assert "ScalingConfig.label_selector" in caplog.text
+
+    # 3. Two callbacks replace (not merge) across non-TPU, non-slice TPU, and SlicePG TPU.
+    for mode, kwargs, expected in [
+        (
+            "non_tpu",
+            {"num_workers": 1, "use_tpu": False},
+            [{"b": "2"}],
+        ),
+        (
+            "non_slice_tpu",
+            {"num_workers": 1, "use_tpu": True, "accelerator_type": "TPU-V6E"},
+            [{"ray.io/accelerator-type": "TPU-V6E", "b": "2"}],
+        ),
+        (
+            "slice_pg_tpu",
+            {
+                "num_workers": 1,
+                "use_tpu": True,
+                "topology": "2x4",
+                "accelerator_type": "TPU-V6E",
+            },
+            [{"b": "2"}],
+        ),
+    ]:
+        caplog.clear()
+        ctrl = _make_controller(
+            callbacks=[_cb({"a": "1"}), _cb({"b": "2"})],
+            **kwargs,
+        )
+        ctrl._start_worker_group(
+            num_workers=1, resources_per_worker={"CPU": 1, "TPU": 1}
+        )
+        assert contexts[-1].label_selector == expected, mode
+        assert caplog.text.count("Overriding") == 1, mode
+        assert "previous callback `label_selector`" in caplog.text, mode
+
+    # 4. Callback explicitly overriding ray.io/accelerator-type takes precedence.
+    caplog.clear()
+    ctrl = _make_controller(
+        callbacks=[_cb({"ray.io/accelerator-type": "TPU-V5P", "pool": "x"})],
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+    )
+    ctrl._start_worker_group(num_workers=1, resources_per_worker={"CPU": 1, "TPU": 1})
+    assert contexts[-1].label_selector == [
+        {"ray.io/accelerator-type": "TPU-V5P", "pool": "x"}
+    ]
+    assert "Overriding" not in caplog.text
+
+    # 5. Callbacks returning None / {} preserve earlier callback selector with zero warnings,
+    #    and ScalingConfig(label_selector={}) does not emit a false override warning.
+    caplog.clear()
+    ctrl = _make_controller(
+        callbacks=[_cb({"a": "1"}), _cb(None), _cb({})],
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        label_selector={},
+    )
+    ctrl._start_worker_group(num_workers=1, resources_per_worker={"CPU": 1, "TPU": 1})
+    assert contexts[-1].label_selector == [
+        {"ray.io/accelerator-type": "TPU-V6E", "a": "1"}
+    ]
+    assert "Overriding" not in caplog.text
+
+    # 6. List-shaped callback return: valid length decoupled copies + TPU base merge,
+    #    wrong length -> ValueError, non-dict entry or invalid return type -> TypeError.
+    cb_list = [{"pool": "a"}]
+    ctrl = _make_controller(
+        callbacks=[_cb(cb_list)],
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+    )
+    ctrl._start_worker_group(num_workers=1, resources_per_worker={"CPU": 1, "TPU": 1})
+    assert contexts[-1].label_selector == [
+        {"ray.io/accelerator-type": "TPU-V6E", "pool": "a"}
+    ]
+    cb_list[0]["pool"] = "mutated"
+    assert contexts[-1].label_selector[0]["pool"] == "a"
+
+    ctrl_bad_len = _make_controller(
+        callbacks=[_cb([{"pool": "a"}])],
+        num_workers=2,
+        use_tpu=False,
+    )
+    with pytest.raises(ValueError, match="list of length 1, expected 2"):
+        ctrl_bad_len._start_worker_group(num_workers=2, resources_per_worker={"CPU": 1})
+
+    ctrl_bad_entry = _make_controller(
+        callbacks=[_cb([{"pool": "a"}, "not-a-dict"])],
+        num_workers=2,
+        use_tpu=False,
+    )
+    with pytest.raises(TypeError, match="expected list of dicts"):
+        ctrl_bad_entry._start_worker_group(
+            num_workers=2, resources_per_worker={"CPU": 1}
+        )
+
+    ctrl_bad_type = _make_controller(
+        callbacks=[_cb("invalid-selector")],
+        num_workers=1,
+        use_tpu=False,
+    )
+    with pytest.raises(TypeError, match="expected dict or list of dicts"):
+        ctrl_bad_type._start_worker_group(
+            num_workers=1, resources_per_worker={"CPU": 1}
+        )
+
+    # 7. Multi-slice TPU (num_workers=8, v6e 4x4 -> num_slices=2) with dict and list selectors.
+    for selector, expected_list in [
+        ({"pool": "a"}, [{"pool": "a"}] * 8),
+        (
+            [{"pool": "a"}] * 4 + [{"pool": "b"}] * 4,
+            [{"pool": "a"}] * 4 + [{"pool": "b"}] * 4,
+        ),
+    ]:
+        ctrl_ms = _make_controller(
+            num_workers=8,
+            use_tpu=True,
+            topology="4x4",
+            accelerator_type="TPU-V6E",
+            label_selector=selector,
+        )
+        ctrl_ms._start_worker_group(
+            num_workers=8, resources_per_worker={"CPU": 1, "TPU": 4}
+        )
+        assert contexts[-1].num_slices == 2
+        assert contexts[-1].label_selector == expected_list
 
 
 if __name__ == "__main__":

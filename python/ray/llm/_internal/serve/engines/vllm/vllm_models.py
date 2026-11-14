@@ -23,6 +23,7 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     TPUAccelerator,
     TPUConfig,
     format_ray_accelerator_resource,
+    normalize_bundle_label_selector,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     AcceleratorType,
@@ -89,6 +90,19 @@ class VLLMEngineConfig(BaseModelExtended):
         # Validate through PlacementGroupConfig, then dump back to dict
         validated = PlacementGroupConfig(**value)
         return validated.model_dump(exclude_unset=True)
+
+    placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = Field(
+        default=None,
+        description=(
+            "Optional per-bundle label selectors forwarded to deferred placement "
+            "group creation (for example, TPU SlicePlacementGroup)."
+        ),
+    )
+
+    @field_validator("placement_group_bundle_label_selector", mode="before")
+    @classmethod
+    def validate_placement_group_bundle_label_selector(cls, value):
+        return normalize_bundle_label_selector(value)
 
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
@@ -234,6 +248,9 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # placement_group_config is already validated and stored as dict in LLMConfig
         placement_group_config = llm_config.placement_group_config
+        placement_group_bundle_label_selector = llm_config.deployment_config.get(
+            "placement_group_bundle_label_selector"
+        )
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
@@ -244,6 +261,7 @@ class VLLMEngineConfig(BaseModelExtended):
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
             placement_group_config=placement_group_config,
+            placement_group_bundle_label_selector=placement_group_bundle_label_selector,
         )
 
     @property
@@ -328,6 +346,7 @@ class VLLMEngineConfig(BaseModelExtended):
                 strategy=self.placement_strategy,
                 name=name,
                 accelerator_type_str=self.accelerator_type,
+                bundle_label_selector=self.placement_group_bundle_label_selector,
             )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")

@@ -23,14 +23,14 @@ LLMConfig(
 )
 ```
 
-For a v6e `4x4` slice, this produces four host-level bundles:
+For a v6e `4x4` slice, this produces four host-level placement group bundles, with TPU generation selected through `ray.io/accelerator-type` node labels:
 
 ```python
 [
-    {"TPU": 4, "accelerator_type:TPU-V6E": 0.001},
-    {"TPU": 4, "accelerator_type:TPU-V6E": 0.001},
-    {"TPU": 4, "accelerator_type:TPU-V6E": 0.001},
-    {"TPU": 4, "accelerator_type:TPU-V6E": 0.001},
+    {"TPU": 4, "CPU": 1},
+    {"TPU": 4, "CPU": 1},
+    {"TPU": 4, "CPU": 1},
+    {"TPU": 4, "CPU": 1},
 ]
 ```
 
@@ -51,7 +51,7 @@ TPU support in Ray Serve LLM is topology-aware when you set `accelerator_config=
 
 ## `SlicePlacementGroup`
 
-For topology-aware TPU configs, Ray Serve LLM creates a {class}`~ray.util.tpu.SlicePlacementGroup` instead of a plain placement group. `SlicePlacementGroup` reserves a matching TPU slice, reads its `ray.io/tpu-slice-name` label, and creates the worker placement group with a per-bundle label selector that pins all bundles to that same physical slice.
+For topology-aware TPU configs, Ray Serve LLM creates a {class}`~ray.util.tpu.SlicePlacementGroup` instead of a plain placement group. For multi-host slices, `SlicePlacementGroup` applies a strict-pack topology strategy on `ray.io/tpu-slice-name` alongside topology, accelerator, and worker-index label selectors; for single-host slices, it packs bundles onto a single host matching the requested topology and accelerator type.
 
 This makes the TPU slice an atomic scheduling unit. A replica reserves the complete slice it needs, and the placement group doesn't span unrelated slices.
 
