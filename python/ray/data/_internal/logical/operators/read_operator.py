@@ -283,6 +283,7 @@ class ReadFiles(
     block_udf_modified_columns: Optional[Set[str]] = field(default=None, kw_only=True)
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
+
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args_fn: None = field(init=False, default=None)
     # Declared so the inherited ``AbstractMap._get_args`` can resolve it; V2
@@ -304,6 +305,18 @@ class ReadFiles(
         if self.ray_remote_args is None:
             object.__setattr__(self, "ray_remote_args", {})
         object.__setattr__(self, "_name", f"ReadFiles{self.datasource_name}")
+
+    def _get_args(self) -> Dict[str, Any]:
+        args = super()._get_args()
+        if self.datasource_name == "Hive":
+            from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
+                _HiveTableScanner,
+            )
+
+            if isinstance(self.scanner, _HiveTableScanner):
+                # Scanner dataclass fields include pushed SQL literals and the spec.
+                args["_scanner"] = "<Hive table scanner>"
+        return args
 
     def infer_schema(self) -> "pa.Schema":
         # Scanner schema reflects any applied projection pushdown
@@ -539,6 +552,22 @@ class ListFiles(LogicalOperator, SourceOperator):
 
     def __post_init__(self):
         object.__setattr__(self, "_name", self.__class__.__name__)
+
+    def _get_args(self) -> Dict[str, Any]:
+        args = super()._get_args()
+        if (
+            self.predicate is not None
+            and type(self.file_indexer).__module__
+            == "ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2"
+        ):
+            from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
+                _HiveIndexer,
+            )
+
+            if isinstance(self.file_indexer, _HiveIndexer):
+                # The table scanner's pushed predicate may contain SQL literals.
+                args["_predicate"] = "<Hive table predicate>"
+        return args
 
     def output_data(self) -> Optional[list]:
         return None

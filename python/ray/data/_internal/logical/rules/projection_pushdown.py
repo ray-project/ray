@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
@@ -6,7 +7,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Rule,
 )
-from ray.data._internal.logical.operators import Project
+from ray.data._internal.logical.operators import Filter, Limit, Project, ReadFiles
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
     _ColumnSubstitutionVisitor,
@@ -16,6 +17,7 @@ from ray.data.expressions import (
     AliasExpr,
     Expr,
     StarExpr,
+    col,
     is_rename_expr,
 )
 
@@ -348,9 +350,89 @@ class ProjectionPushdown(Rule):
         # first, so the fuse/push steps can carry the narrowed columns into the
         # read.
         new_dag = dag._apply_transform(self._prune_aggregate_input)
-        new_dag = new_dag._apply_transform(self._try_fuse_projects)
+
+        def fuse_projects(op: LogicalOperator) -> LogicalOperator:
+            if (
+                isinstance(op, Project)
+                and isinstance(op.input_dependencies[0], (Filter, Limit))
+                and self._is_hive_table_chain(op)
+            ):
+                from ray.data._internal.logical.rules.predicate_pushdown import (
+                    PredicatePushdown,
+                )
+
+                # A partially pushed predicate can retain the same truncated
+                # Filter name, so optimize this Hive branch before deriving its
+                # residual columns instead of relying on another global pass.
+                op = PredicatePushdown().apply(LogicalPlan(op, plan.context)).dag
+                op = self._push_projection_through_filter_or_limit(op)
+            return self._try_fuse_projects(op)
+
+        new_dag = new_dag._apply_transform(fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
+
+    @staticmethod
+    def _is_hive_table_chain(op: LogicalOperator) -> bool:
+        while isinstance(op, (Filter, Limit, Project)):
+            op = op.input_dependencies[0]
+        if (
+            not isinstance(op, ReadFiles)
+            or op.datasource_name != "Hive"
+            or op.block_udf is not None
+        ):
+            return False
+        from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
+            _HiveTableScanner,
+        )
+
+        return isinstance(op.scanner, _HiveTableScanner)
+
+    @classmethod
+    def _push_projection_through_filter_or_limit(
+        cls, op: LogicalOperator
+    ) -> LogicalOperator:
+        """Prune Hive table read chains while retaining filter dependencies."""
+        if not isinstance(op, Project):
+            return op
+        input_op = op.input_dependencies[0]
+        if not isinstance(input_op, (Filter, Limit)):
+            return op
+        required = _collect_referenced_columns(op.exprs)
+        if required is None:
+            return op
+        if isinstance(input_op, Filter):
+            predicate = input_op.predicate_expr
+            if predicate is None or not predicate._is_pyarrow_convertible():
+                return op  # A callable may read any input column.
+            predicate_columns = _collect_referenced_columns([predicate])
+            if predicate_columns is None:
+                return op
+            required = list(dict.fromkeys(required + predicate_columns))
+        upstream = input_op.input_dependencies[0]
+        source = upstream
+        while isinstance(source, (Filter, Limit, Project)):
+            source = source.input_dependencies[0]
+        if not cls._is_hive_table_chain(source):
+            return op
+        schema = upstream.infer_schema()
+        # A strict subset makes the rewrite idempotent and never resurrects a
+        # field removed earlier in the user's plan. Keep the outer Project for
+        # its output order, aliases, expressions, and removal of residual columns.
+        if schema is None or not hasattr(schema, "names"):
+            return op
+        if not set(required) < set(schema.names):
+            return op
+        prune = Project(
+            exprs=[col(name) for name in required], input_dependencies=[upstream]
+        )
+        # Traverse a whole Filter/Limit chain in this pass. Otherwise limit
+        # pushdown can move the inserted Project back above the Limit before
+        # the next iteration, leaving the read permanently unpruned.
+        prune = cls._push_projection_through_filter_or_limit(prune)
+        return replace(
+            op, input_dependencies=[replace(input_op, input_dependencies=[prune])]
+        )
 
     @classmethod
     def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
@@ -363,8 +445,6 @@ class ProjectionPushdown(Rule):
         the bytes shuffled. The inserted projection is fused/pushed toward the
         read by the steps in ``apply``.
         """
-        from dataclasses import replace
-
         from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
         from ray.data.aggregate import AggregateFnV2
         from ray.data.expressions import col

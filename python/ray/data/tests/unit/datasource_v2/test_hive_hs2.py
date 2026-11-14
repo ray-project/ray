@@ -592,5 +592,85 @@ def test_early_close_cancels_operation():
     assert cursor.cancelled and cursor.closed and connection.closed
 
 
+def test_table_metadata_retains_hive_types_lost_in_arrow_mapping():
+    class NativeCursor(_Cursor):
+        def get_table_schema(self, table, database):
+            return [
+                ("s", "STRING"),
+                ("c", "CHAR(8)"),
+                ("v", "VARCHAR(8)"),
+                ("t", "TIMESTAMP"),
+            ]
+
+    cursor = NativeCursor()
+    metadata = hive_hs2.infer_table_metadata(
+        HiveReadSpec(lambda: _Connection(cursor), table="analytics.events")
+    )
+    assert metadata.native_types == (
+        ("s", "STRING"),
+        ("c", "CHAR(8)"),
+        ("v", "VARCHAR(8)"),
+        ("t", "TIMESTAMP"),
+    )
+    assert metadata.schema.types == [
+        pa.string(),
+        pa.string(),
+        pa.string(),
+        pa.timestamp("us"),
+    ]
+    assert cursor.statements == []
+
+
+def test_projected_result_schema_is_validated_without_requiring_source_columns():
+    cursor = _Cursor([[("a",)], [("b",)]])
+    cursor.description = [("name", "STRING", None, None, None, None, None)]
+    spec = HiveReadSpec(lambda: _Connection(cursor), table="analytics.events")
+    schema = pa.schema([("name", pa.string())], metadata={b"source": b"hive"})
+    sql = "SELECT `name` FROM `analytics`.`events` LIMIT 2"
+    batches = list(hive_hs2.read_hs2_batches(spec, schema, statement=sql, limit=2))
+    assert pa.concat_tables(batches).to_pylist() == [{"name": "a"}, {"name": "b"}]
+    assert all(batch.schema.equals(schema, check_metadata=True) for batch in batches)
+    assert cursor.statements == [sql]
+    assert cursor.cancelled and cursor.closed
+
+
+def test_empty_projection_keeps_a_physical_stub_across_batches():
+    from ray.data.block import BlockAccessor
+
+    cursor = _Cursor([[(1,), (1,)], [(1,)]])
+    cursor.description = [
+        (hive_hs2._EMPTY_PROJECTION_COLUMN, "INT", None, None, None, None, None)
+    ]
+    spec = HiveReadSpec(lambda: _Connection(cursor), table="analytics.events")
+    batches = list(
+        hive_hs2.read_hs2_batches(
+            spec,
+            pa.schema([]),
+            statement="SELECT 1 AS `__ray_hive_row` FROM `analytics`.`events`",
+            empty_projection=True,
+        )
+    )
+    assert sum(BlockAccessor.for_block(batch).num_rows() for batch in batches) == 3
+    assert pa.concat_tables(batches).num_rows == 3
+    assert all(batch.column_names == ["__bsp_stub"] for batch in batches)
+    assert len(cursor.statements) == 1
+
+
+def test_pushed_zero_limit_does_not_open_a_connection():
+    spec = HiveReadSpec(
+        lambda: pytest.fail("zero limit must not connect"), table="events"
+    )
+    batches = list(
+        hive_hs2.read_hs2_batches(
+            spec,
+            pa.schema([("id", pa.int64())]),
+            statement="SELECT `id` FROM `events` LIMIT 0",
+            limit=0,
+        )
+    )
+    assert batches[0].num_rows == 0
+    assert batches[0].column_names == ["id"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

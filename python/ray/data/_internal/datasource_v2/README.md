@@ -31,21 +31,21 @@ each; the framework calls it.
 | Step | Object | Runs where | Does |
 | --- | --- | --- | --- |
 | 1. Plan | `DataSourceV2` | driver, in `_read_datasource_v2` | infers the schema (a `FileDataSourceV2` lists a sample of files for it; a `DataSourceWithMetadata` answers from its metadata), builds a `Scanner`, picks the `FileIndexer` and `FilePartitioner`, and emits two logical operators: `ListFiles(paths, indexer, partitioner)` feeding `ReadFiles(scanner)`. |
-| 2. Optimize | `Scanner` | driver, optimizer rules | each rule calls a `push_*` method on the scanner and gets a new scanner back; the pushdowns it accepted are copied onto `ListFiles` as a `ListFilesPushdown`. |
-| 3. Index | `FileIndexer` | `ListFiles` tasks | turns the datasource's `paths` into `FileManifest` rows, skipping pieces the pushdowns rule out by metadata. |
+| 2. Optimize | `Scanner` | driver, optimizer rules | each rule calls a `push_*` method on the scanner and gets a new scanner back; the pushdown operations it accepted are copied onto `ListFiles` as a `ListFilesPushdown`. |
+| 3. Index | `FileIndexer` | `ListFiles` tasks | turns the datasource's `paths` into `FileManifest` rows, skipping pieces ruled out by pushed-down constraints. |
 | 4. Partition | `FilePartitioner` | same tasks | regroups manifest rows into one manifest per read task. |
 | 5. Read | `Reader` | `ReadFiles` tasks, one per manifest | `scanner.create_reader().read(manifest)` yields `pyarrow.Table`s, honouring every pushdown. |
 
 Indexing skips whole pieces; the reader filters rows and is what makes the
-result correct, so a scanner must never report a pushdown its reader does not
+result correct, so a scanner must never report a pushdown its reader doesn't
 enforce. Manifests travel through the object store; the `Scanner`,
 `FileIndexer` and `FilePartitioner` are pickled into the task functions, so
 open connections belong inside `list_files` and `read`.
 
 ## Class hierarchy
 
-Arrows: solid with a hollow head is inheritance, dotted is "creates or
-returns", solid with a plain head is "holds a reference to".
+Solid arrows with a hollow head indicate inheritance. Dotted arrows indicate
+creation or return. Solid arrows with a plain head indicate a reference.
 
 ```mermaid
 classDiagram
@@ -89,8 +89,8 @@ classDiagram
     Scanner ..> Reader : create_reader() returns
 ```
 
-A pushdown mixin on a scanner is a promise the optimizer believes.
-`ArrowFileScanner` carries the three data pushdowns only because it knows
+A pushdown mix-in on a scanner is a promise the optimizer believes.
+`ArrowFileScanner` carries the three data pushdown operations only because it knows
 `FileReader` enforces them through `pyarrow.dataset`.
 
 ```mermaid
@@ -141,8 +141,8 @@ Never extend `DataSourceV2` directly.
 | --- | --- | --- |
 | `<Name>DatasourceV2` | `paths`, `filesystem`, `_get_file_indexer`, `get_file_partitioner`, `infer_schema`, `create_scanner` | `paths` (one label the indexer interprets), `_get_file_indexer`, `get_file_partitioner`, `infer_schema(None)`, `create_scanner` |
 | Indexer | `NonSamplingFileIndexer` as is | implement `FileIndexer.list_files`: ask the catalog, emit manifest rows |
-| Partitioner | `RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)` | `None` (one task per listing block) or `OnlineBinPacker` |
-| `<Name>Scanner` | `ArrowFileScanner` when `FileReader` decodes the format; otherwise `FileScanner` plus the `Supports*` mixins your reader honours | `Scanner` plus the `Supports*` mixins your reader honours |
+| `Partitioner` | `RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)` | `None` (one task per listing block) or `OnlineBinPacker` |
+| `<Name>Scanner` | `ArrowFileScanner` when `FileReader` decodes the format; otherwise `FileScanner` plus the `Supports*` mix-in classes your reader honours | `Scanner` plus the `Supports*` mix-in classes your reader honours |
 | Reader | `FileReader(format=...)` when it decodes the format; otherwise implement `Reader.read` | implement `Reader.read` |
 
 Wire it up in `read_api.py` under the `use_datasource_v2` branch of the
@@ -157,6 +157,10 @@ Every hook's docstring says when to override it and what you gain.
 
 `HiveDatasourceV2` extends `DataSourceWithMetadata`. `_HiveIndexer` emits one `hive://read` manifest entry for the complete table or query operation. `get_file_partitioner()` returns `None`, keeping this manifest as one read unit.
 
-`infer_schema(None)` resolves the table schema on the driver through HiveServer2 (HS2) metadata, or returns the explicit Arrow schema for a query. `_HiveScanner.read_schema()` reports that schema. The scanner carries the read specification, including a connection factory that Ray can serialize, and schema to the worker, where it creates a `_HiveReader`. The factory creates separate connections for driver metadata lookup and worker data reads. The reader executes at most one HS2 data query and uses `fetchmany()` to yield Arrow tables incrementally.
+`infer_schema(None)` resolves the table schema on the driver through HiveServer2 (HS2) metadata, or returns the explicit Arrow schema for a query. Table metadata retains native Hive types alongside the Arrow schema because Arrow string fields don't distinguish `STRING`, `VARCHAR`, and `CHAR` semantics. The datasource passes this snapshot into an immutable `_HiveTableScanner`. Pruning, filtering, and limits return new scanners without changing another Dataset branch. Query reads use `_HiveScanner`, which doesn't advertise SQL rewrite capabilities.
+
+`_HiveTableScanner` implements `SupportsColumnPruning`, `SupportsFilterPushdown`, and `SupportsLimitPushdown`. Its reader executes the accepted projection, `WHERE` clause, and limit in one SQL statement. Unsupported predicates stay in a Ray Filter. Projection propagation through expression Filters retains residual columns. A residual Filter blocks a later limit, and either a source limit or an accepted Dataset limit blocks subsequent filter pushdown. Ray retains the final Limit operator. Accepted predicates can use source columns absent from the SQL projection. Empty projections return Ray's physical `__bsp_stub` column to preserve row counts while `read_schema()` reports an empty logical schema.
+
+The scanner carries the read specification, including a connection factory that Ray can serialize, and its output schema to the worker, where it creates a `_HiveReader`. The factory creates separate connections for driver metadata lookup and worker data reads. The reader executes at most one HS2 data query and uses `fetchmany()` to yield Arrow tables incrementally. A safe zero limit returns an empty result without a data query. Translation and schema validation don't issue probing data queries or retry failed reads.
 
 Once the data connection is open, `read_hs2_batches()` attempts to cancel the operation and close any cursor and the connection in `finally`. This covers completion, errors, and early generator closure. Cleanup is best effort. Closing a Dataset iterator can force the streaming executor to stop the read worker while it's fetching rows. That forced stop can bypass the reader's `finally`, even when the caller closes the iterator normally. Abrupt worker termination can also prevent `finally` from running, so immediate server cancellation or explicit cursor and connection cleanup isn't guaranteed.
