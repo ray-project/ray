@@ -128,14 +128,18 @@ def message_schema(
     return pa.schema(fields)
 
 
+class InvalidJsonPayload(ValueError):
+    """A message on a JSON-encoded channel whose payload is not valid JSON."""
+
+
 def decode_payload(channel: "Channel", data: bytes, where: str) -> Any:
     """Decode a JSON payload into Python values.
 
     The reader calls this only when ``data`` was planned as decoded JSON, and
     planning calls it to type that column. Arrow has no column type for a mix of
-    bytes and decoded values, so a channel of another encoding, or a payload
-    that is not valid JSON, raises a ``ValueError`` that names ``where``: a
-    ``row_id`` or a file.
+    bytes and decoded values, so a channel of another encoding raises a
+    ``ValueError``, and a payload that is not valid JSON an
+    ``InvalidJsonPayload``. Both name ``where``: a ``row_id`` or a file.
     """
     if channel.message_encoding != "json":
         raise ValueError(
@@ -147,7 +151,7 @@ def decode_payload(channel: "Channel", data: bytes, where: str) -> Any:
     try:
         return json.loads(data.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        raise ValueError(
+        raise InvalidJsonPayload(
             f"{where}: message on JSON-encoded topic {channel.topic!r} is not valid "
             f"JSON: {e}"
         ) from e
@@ -383,7 +387,15 @@ class _MessageTableBuilder:
         )
 
     def add(self, selected: _Selected) -> None:
+        """Add one message as a row.
+
+        The payload is decoded before anything is added, so a payload that
+        raises ``InvalidJsonPayload`` leaves the builder as it was.
+        """
         schema, channel, message, row_id = selected
+        value = None
+        if self._json_values is not None:
+            value = decode_payload(channel, message.data, row_id)
         slot = self._slot(channel, schema)
         self._slot_ids.append(slot)
         self.num_rows += 1
@@ -394,7 +406,7 @@ class _MessageTableBuilder:
             self._payloads.append(message.data)
             self.estimated_bytes += len(message.data)
         elif self._json_values is not None:
-            self._json_values.append(decode_payload(channel, message.data, row_id))
+            self._json_values.append(value)
             payload_bytes = len(message.data)
             self.estimated_bytes += _DECODED_JSON_BYTES_PER_PAYLOAD_BYTE * payload_bytes
         if self._row_ids is not None:
