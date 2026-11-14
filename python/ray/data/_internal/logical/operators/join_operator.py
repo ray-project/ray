@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tupl
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.n_ary_operator import NAry
@@ -41,7 +42,11 @@ class JoinSide(Enum):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
+class Join(
+    NAry,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
+):
     """Logical operator for join."""
 
     left_input_op: InitVar[LogicalOperator]
@@ -167,6 +172,57 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         join; neither side of a FULL_OUTER, since both can generate nulls.
         """
         return self._get_pushdown_rules()[side.value]
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        """Split the required output columns by the side that produces each one
+        (via :meth:`output_to_input_columns`) and add the join keys, which the
+        join needs whether or not a consumer references them. Declines when a
+        required name is one the mirror could not place, so the consumer never
+        loses a column, and when the join's output schema can't be inferred:
+        an input schema is unknown or not Arrow, or the join is going to fail
+        (say, colliding columns and no suffixes) and has to keep failing the
+        same way whatever its consumer selects.
+
+        Both members of a colliding payload pair are kept whenever one is
+        required: pruning the other would make the physical join stop
+        suffixing the survivor, changing the output name the consumer uses.
+        """
+        output_schema = self.infer_schema()
+        side_columns = self.output_to_input_columns()
+        if output_schema is None or side_columns is None:
+            return None
+        left_map, right_map = side_columns
+        if required_output_columns is None:
+            required_output_columns = set(output_schema.names)
+
+        left_required = set(self.left_key_columns)
+        right_required = set(self.right_key_columns)
+        for output_name in required_output_columns:
+            placed = False
+            if output_name in left_map:
+                left_required.add(left_map[output_name])
+                placed = True
+            if output_name in right_map:
+                right_required.add(right_map[output_name])
+                placed = True
+            if not placed:
+                return None
+
+        if self.join_type not in (
+            JoinType.LEFT_SEMI,
+            JoinType.LEFT_ANTI,
+            JoinType.RIGHT_SEMI,
+            JoinType.RIGHT_ANTI,
+        ):
+            left_columns = set(self.input_dependencies[0].infer_schema().names)
+            right_columns = set(self.input_dependencies[1].infer_schema().names)
+            collisions = left_columns & (right_columns - set(self.right_key_columns))
+            kept_collisions = collisions & (left_required | right_required)
+            left_required |= kept_collisions
+            right_required |= kept_collisions
+        return [left_required, right_required]
 
     def _get_pushdown_rules(self) -> Tuple[bool, bool]:
         """Get pushdown rules for the current join type.
