@@ -411,6 +411,247 @@ def test_multihost_replica_config_validation():
         )
 
 
+def test_replica_config_locality_fields_and_runtime_label_keys():
+    import jsonschema
+
+    from ray.autoscaler.v2.instance_manager.config import (
+        NodeTypeConfig,
+        WorkerReplicaConfig,
+    )
+
+    # Positive round-trip: multi-host TPU with deduplication, single-host TPU,
+    # explicit JSON nulls, and omitted defaults.
+    valid_cfg = AutoscalingConfig(
+        configs={
+            "cluster_name": "test",
+            "max_workers": 16,
+            "provider": {"type": "aws", "disable_launch_config_check": True},
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 0}},
+                "tpu-mh": {
+                    "node_config": {},
+                    "resources": {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1},
+                    "min_workers": 4,
+                    "max_workers": 8,
+                    "runtime_label_keys": [
+                        "ray.io/tpu-slice-name",
+                        "ray.io/tpu-worker-id",
+                        "ray.io/tpu-slice-name",
+                    ],
+                    "replica_config": {
+                        "workers_per_replica": 4,
+                        "domain_label_key": "ray.io/tpu-slice-name",
+                        "domain_exclusive": True,
+                        "worker_index_label_key": "ray.io/tpu-worker-id",
+                        "head_resources": ["TPU-v6e-16-head", "TPU-v6e-16-head"],
+                    },
+                },
+                "tpu-sh": {
+                    "node_config": {},
+                    "resources": {"CPU": 4, "TPU": 4},
+                    "min_workers": 0,
+                    "max_workers": 4,
+                    "replica_config": {
+                        "workers_per_replica": 1,
+                        "domain_label_key": "ray.io/tpu-slice-name",
+                        "worker_index_label_key": "ray.io/tpu-worker-id",
+                        "head_resources": ["TPU-v6e-4-head"],
+                    },
+                },
+                "explicit-nulls": {
+                    "node_config": {},
+                    "resources": {"CPU": 4},
+                    "min_workers": 0,
+                    "max_workers": 2,
+                    "replica_config": {
+                        "workers_per_replica": 1,
+                        "domain_label_key": None,
+                        "domain_exclusive": False,
+                        "worker_index_label_key": None,
+                    },
+                },
+                "defaults-only": {
+                    "node_config": {},
+                    "resources": {"CPU": 2},
+                    "min_workers": 0,
+                    "max_workers": 2,
+                },
+            },
+        }
+    )
+    cfgs = valid_cfg.get_node_type_configs()
+    assert cfgs["tpu-mh"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=4,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=("TPU-v6e-16-head",),
+    )
+    assert cfgs["tpu-mh"].runtime_label_keys == (
+        "ray.io/tpu-slice-name",
+        "ray.io/tpu-worker-id",
+    )
+    assert cfgs["tpu-sh"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=1,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=("TPU-v6e-4-head",),
+    )
+    assert cfgs["tpu-sh"].runtime_label_keys == ()
+    assert cfgs["explicit-nulls"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=1,
+        domain_label_key=None,
+        domain_exclusive=False,
+        worker_index_label_key=None,
+        head_resources=(),
+    )
+    assert cfgs["defaults-only"].replica_config is None
+    assert cfgs["defaults-only"].runtime_label_keys == ()
+
+    # workers_per_replica == 1 with locality metadata works without
+    # disable_launch_config_check.
+    single_host_clique_cfg = AutoscalingConfig(
+        configs={
+            "cluster_name": "test",
+            "max_workers": 4,
+            "provider": {"type": "aws", "disable_launch_config_check": False},
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 0}},
+                "gpu-clique": {
+                    "node_config": {},
+                    "resources": {"CPU": 8, "GPU": 8},
+                    "min_workers": 0,
+                    "max_workers": 4,
+                    "runtime_label_keys": ["ray.io/gpu-domain"],
+                    "replica_config": {
+                        "workers_per_replica": 1,
+                        "domain_label_key": "ray.io/gpu-domain",
+                        "domain_exclusive": False,
+                    },
+                },
+            },
+        }
+    )
+    sh_cfgs = single_host_clique_cfg.get_node_type_configs()
+    assert sh_cfgs["gpu-clique"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=1,
+        domain_label_key="ray.io/gpu-domain",
+        domain_exclusive=False,
+    )
+    assert sh_cfgs["gpu-clique"].runtime_label_keys == ("ray.io/gpu-domain",)
+
+    # Negative Python dataclass validation.
+    for bad_excl in (1, 0, "true", "false", None):
+        with pytest.raises(ValueError, match="domain_exclusive"):
+            WorkerReplicaConfig(domain_exclusive=bad_excl)
+
+    for bad_key in ("", "   ", 123, True, []):
+        with pytest.raises(ValueError, match="domain_label_key"):
+            WorkerReplicaConfig(domain_label_key=bad_key)
+        with pytest.raises(ValueError, match="worker_index_label_key"):
+            WorkerReplicaConfig(worker_index_label_key=bad_key)
+
+    with pytest.raises(ValueError, match="must be distinct"):
+        WorkerReplicaConfig(
+            domain_label_key="ray.io/same",
+            worker_index_label_key="ray.io/same",
+        )
+
+    for bad_heads in (
+        "TPU-head",
+        None,
+        {"TPU": 1},
+        {"TPU"},
+        123,
+        [""],
+        ["  "],
+        [1],
+        [None],
+    ):
+        with pytest.raises(ValueError, match="head_resources"):
+            WorkerReplicaConfig(head_resources=bad_heads)
+
+    for bad_rt in (
+        "ray.io/x",
+        None,
+        {"a": 1},
+        {"a"},
+        123,
+        [""],
+        ["  "],
+        [123],
+        [None],
+    ):
+        with pytest.raises(ValueError, match="runtime_label_keys"):
+            NodeTypeConfig(
+                name="worker",
+                min_worker_nodes=0,
+                max_worker_nodes=2,
+                resources={"CPU": 4},
+                runtime_label_keys=bad_rt,
+            )
+
+    # Raw dict checks when schema validation is bypassed (mutated _configs).
+    for mutated_fields, match in (
+        ({"replica_config": "invalid"}, "replica_config must be a dict"),
+        ({"replica_config": {"head_resources": None}}, "head_resources"),
+        ({"replica_config": {"domain_exclusive": None}}, "domain_exclusive"),
+        ({"runtime_label_keys": None}, "runtime_label_keys"),
+    ):
+        cfg = AutoscalingConfig(
+            configs={
+                "cluster_name": "test",
+                "provider": {"type": "aws", "disable_launch_config_check": True},
+                "head_node_type": "head",
+                "available_node_types": {
+                    "head": {"node_config": {}, "resources": {"CPU": 0}},
+                    "worker": {"node_config": {}, "resources": {"CPU": 4}},
+                },
+            }
+        )
+        cfg._configs["available_node_types"]["worker"].update(mutated_fields)
+        with pytest.raises(ValueError, match=match):
+            cfg.get_node_type_configs()
+
+    # Negative JSON Schema validation.
+    def _make_schema_cfg(worker_overrides):
+        worker = {"node_config": {}, "resources": {"CPU": 4}}
+        worker.update(worker_overrides)
+        return {
+            "cluster_name": "test",
+            "provider": {"type": "aws", "disable_launch_config_check": True},
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 0}},
+                "worker": worker,
+            },
+        }
+
+    invalid_schema_cases = [
+        {"replica_config": {"domain_exclusive": 1}},
+        {"replica_config": {"domain_exclusive": "true"}},
+        {"replica_config": {"domain_exclusive": None}},
+        {"replica_config": {"domain_label_key": ""}},
+        {"replica_config": {"domain_label_key": 123}},
+        {"replica_config": {"worker_index_label_key": ""}},
+        {"replica_config": {"worker_index_label_key": 123}},
+        {"replica_config": {"head_resources": "TPU-head"}},
+        {"replica_config": {"head_resources": [""]}},
+        {"replica_config": {"head_resources": [1]}},
+        {"replica_config": {"head_resources": None}},
+        {"runtime_label_keys": "ray.io/x"},
+        {"runtime_label_keys": [""]},
+        {"runtime_label_keys": [1]},
+        {"runtime_label_keys": None},
+    ]
+    for case in invalid_schema_cases:
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            AutoscalingConfig(configs=_make_schema_cfg(case))
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

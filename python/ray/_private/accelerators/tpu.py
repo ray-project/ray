@@ -2,6 +2,7 @@ import errno
 import glob
 import itertools
 import logging
+import math
 import os
 import re
 import time
@@ -789,6 +790,36 @@ def _is_valid_gke_tpu_topology(generation: str, topology: str) -> bool:
     )
 
 
+_TPU_HEAD_RESOURCE_PREFIX = "TPU-"
+_TPU_HEAD_RESOURCE_SUFFIX = "-head"
+
+
+def _is_positive_number(val: Any) -> bool:
+    """Return True if val is a finite positive non-boolean int or float."""
+    if isinstance(val, bool):
+        return False
+    if isinstance(val, int):
+        return val > 0
+    if isinstance(val, float):
+        return math.isfinite(val) and val > 0
+    return False
+
+
+def _is_tpu_head_resource_key(key: Any) -> bool:
+    """Return True if key has the form ``TPU-<pod_type>-head`` with a non-empty,
+    whitespace-free pod type segment.
+    """
+    if (
+        not isinstance(key, str)
+        or not key.startswith(_TPU_HEAD_RESOURCE_PREFIX)
+        or not key.endswith(_TPU_HEAD_RESOURCE_SUFFIX)
+        or len(key) <= len(_TPU_HEAD_RESOURCE_PREFIX) + len(_TPU_HEAD_RESOURCE_SUFFIX)
+    ):
+        return False
+    pod_type = key[len(_TPU_HEAD_RESOURCE_PREFIX) : -len(_TPU_HEAD_RESOURCE_SUFFIX)]
+    return not any(ch.isspace() for ch in pod_type)
+
+
 def _resolve_gke_tpu_node_group(
     resources: Dict[str, Any],
     node_selector: Dict[str, str],
@@ -801,11 +832,7 @@ def _resolve_gke_tpu_node_group(
     (`cloud.google.com/gke-tpu-slice-topology` on pod annotations).
     """
     tpu_val = resources.get("TPU", 0) if isinstance(resources, dict) else 0
-    if not (
-        isinstance(tpu_val, (int, float))
-        and not isinstance(tpu_val, bool)
-        and tpu_val > 0
-    ):
+    if not _is_positive_number(tpu_val):
         return None
 
     selector = node_selector if isinstance(node_selector, dict) else {}
@@ -1347,3 +1374,31 @@ class TPUAcceleratorManager(AcceleratorManager):
             return None
         _, _, pod_type = resolved
         return {f"TPU-{pod_type}-head": 1}
+
+    @staticmethod
+    def get_node_group_replica_metadata(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Derive TPU slice domain, worker index, and worker-0 head resource
+        metadata for a GKE TPU node group.
+        """
+        resolved = _resolve_gke_tpu_node_group(resources, node_selector, annotations)
+        if not resolved:
+            return None
+        _, _, pod_type = resolved
+        derived_head = f"TPU-{pod_type}-head"
+        head_resources = {
+            key
+            for key, val in resources.items()
+            if _is_tpu_head_resource_key(key) and _is_positive_number(val)
+        }
+        if derived_head not in resources:
+            head_resources.add(derived_head)
+        return {
+            "domain_label_key": ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY,
+            "domain_exclusive": True,
+            "worker_index_label_key": ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY,
+            "head_resources": sorted(head_resources),
+        }

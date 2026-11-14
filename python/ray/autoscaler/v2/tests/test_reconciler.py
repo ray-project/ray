@@ -9591,6 +9591,216 @@ class TestReconciler:
         assert "a-term" not in insts3
         assert "b-term" in insts3
 
+    def test_scale_cluster_forwards_cloud_instance_replica_id(self):
+        """Reconciler._scale_cluster forwards CloudInstance.replica_id in memory
+        onto AutoscalerInstance.cloud_instance_replica_id and normalizes empty
+        strings and missing entries to None.
+        """
+        captured_requests = []
+        forbidden_proto_accesses = []
+
+        class _ZeroProtoInstanceProxy:
+            """Strict proxy exposing only upstream Instance proto fields.
+
+            Local generated pb2 bindings in this worktree may still expose
+            stale fields removed from src/ray/protobuf/instance_manager.proto.
+            Blocking cloud_instance_replica_id guarantees local pytest fails
+            if _scale_cluster reads im_instance.cloud_instance_replica_id
+            directly or via getattr(..., default).
+            """
+
+            def __init__(self, wrapped):
+                self._wrapped = wrapped
+
+            def __getattr__(self, name):
+                if name == "cloud_instance_replica_id":
+                    forbidden_proto_accesses.append(name)
+                    raise AttributeError(
+                        "Instance proto has no 'cloud_instance_replica_id' field"
+                    )
+                return getattr(self._wrapped, name)
+
+        class _ZeroProtoInstanceManagerProxy:
+            def __init__(self, wrapped):
+                self._wrapped = wrapped
+
+            def get_instance_manager_state(self, request=None):
+                reply = self._wrapped.get_instance_manager_state(request=request)
+                proxied_state = MagicMock(
+                    instances=[
+                        _ZeroProtoInstanceProxy(inst) for inst in reply.state.instances
+                    ],
+                    version=reply.state.version,
+                )
+                return MagicMock(status=reply.status, state=proxied_state)
+
+        class SpyScheduler(IResourceScheduler):
+            def schedule(self, request):
+                captured_requests.append(request)
+                return SchedulingReply()
+
+        store = InstanceStorage(
+            cluster_id="test",
+            storage=InMemoryStorage(),
+        )
+        im = InstanceManager(
+            instance_storage=store,
+            instance_status_update_subscribers=[],
+        )
+        im_proxy = _ZeroProtoInstanceManagerProxy(im)
+        run_node_id = b"r" * 28
+        run_node_hex = binary_to_hex(run_node_id)
+        instances = [
+            create_instance(
+                "i-rep",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-rep",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-rep-run",
+                status=Instance.RAY_RUNNING,
+                cloud_instance_id="c-rep-run",
+                ray_node_id=run_node_hex,
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-norep",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-norep",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-emptyrep",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-emptyrep",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-missing",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-missing",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-requested",
+                status=Instance.REQUESTED,
+                cloud_instance_id="",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-foreign-nt",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-foreign-nt",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-head-cloud",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-head-cloud",
+                instance_type="tpu",
+            ),
+        ]
+        for inst in instances:
+            ok, _ = store.upsert_instance(inst)
+            assert ok
+
+        cloud_instances = {
+            "c-rep": CloudInstance(
+                "c-rep", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+            ),
+            "c-rep-run": CloudInstance(
+                "c-rep-run", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+            ),
+            "c-norep": CloudInstance(
+                "c-norep", "tpu", NodeKind.WORKER, True, replica_id=None
+            ),
+            "c-emptyrep": CloudInstance(
+                "c-emptyrep", "tpu", NodeKind.WORKER, True, replica_id=""
+            ),
+            "c-foreign-nt": CloudInstance(
+                "c-foreign-nt", "other-type", NodeKind.WORKER, True, replica_id="rep-x"
+            ),
+            "c-head-cloud": CloudInstance(
+                "c-head-cloud", "tpu", NodeKind.HEAD, True, replica_id="rep-head"
+            ),
+            "": CloudInstance("", "tpu", NodeKind.WORKER, True, replica_id="bogus"),
+        }
+        cfg = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                        resources={"CPU": 4},
+                    )
+                },
+                "disable_launch_config_check": True,
+            }
+        )
+        ray_state = ClusterResourceState(
+            node_states=[NodeState(node_id=run_node_id, status=NodeStatus.RUNNING)]
+        )
+
+        # Pass 1: populated cloud_instances map.
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im_proxy,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ray_state,
+            scheduler=SpyScheduler(),
+            autoscaling_config=cfg,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=cloud_instances,
+        )
+        assert len(captured_requests) == 1
+        by_id = {
+            inst.im_instance.instance_id: inst
+            for inst in captured_requests[0].current_instances
+        }
+        assert by_id["i-rep"].cloud_instance_id == "c-rep"
+        assert by_id["i-rep"].cloud_instance_replica_id == "rep-0"
+        assert by_id["i-rep-run"].cloud_instance_id == "c-rep-run"
+        assert by_id["i-rep-run"].cloud_instance_replica_id == "rep-1"
+        assert by_id["i-rep-run"].ray_node is not None
+        assert by_id["i-norep"].cloud_instance_id == "c-norep"
+        assert by_id["i-norep"].cloud_instance_replica_id is None
+        assert by_id["i-emptyrep"].cloud_instance_id == "c-emptyrep"
+        assert by_id["i-emptyrep"].cloud_instance_replica_id is None
+        assert by_id["i-missing"].cloud_instance_id == "c-missing"
+        assert by_id["i-missing"].cloud_instance_replica_id is None
+        assert by_id["i-requested"].cloud_instance_id is None
+        assert by_id["i-requested"].cloud_instance_replica_id is None
+        assert by_id["i-foreign-nt"].cloud_instance_id == "c-foreign-nt"
+        assert by_id["i-foreign-nt"].cloud_instance_replica_id is None
+        assert by_id["i-head-cloud"].cloud_instance_id == "c-head-cloud"
+        assert by_id["i-head-cloud"].cloud_instance_replica_id is None
+        assert not forbidden_proto_accesses
+
+        # Pass 2: non_terminated_cloud_instances=None produces None everywhere.
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im_proxy,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ray_state,
+            scheduler=SpyScheduler(),
+            autoscaling_config=cfg,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=None,
+        )
+        assert len(captured_requests) == 2
+        assert len(captured_requests[1].current_instances) == 8
+        assert all(
+            inst.cloud_instance_replica_id is None
+            for inst in captured_requests[1].current_instances
+        )
+        assert not forbidden_proto_accesses
+        # Self-verify that the zero-proto proxy actually rejects the field.
+        with pytest.raises(AttributeError):
+            _ = by_id["i-rep"].im_instance.cloud_instance_replica_id
+        assert forbidden_proto_accesses == ["cloud_instance_replica_id"]
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

@@ -393,13 +393,40 @@
 							   }
 						   }
                        },
+                       "runtime_label_keys": {
+                           "type": "array",
+                           "description": "Node label keys whose values are injected at runtime by the host or accelerator environment rather than configured statically in `labels`.",
+                           "items": {
+                               "type": "string",
+                               "minLength": 1
+                           }
+                       },
                        "replica_config": {
                            "type": "object",
-                           "description": "Multi-host worker replica sizing configuration.",
+                           "description": "Worker replica sizing, locality domain, and runtime label/resource metadata.",
                            "properties": {
                                "workers_per_replica": {
                                    "type": "integer",
                                    "minimum": 1
+                               },
+                               "domain_label_key": {
+                                   "type": ["string", "null"],
+                                   "minLength": 1
+                               },
+                               "domain_exclusive": {
+                                   "type": "boolean",
+                                   "default": true
+                               },
+                               "worker_index_label_key": {
+                                   "type": ["string", "null"],
+                                   "minLength": 1
+                               },
+                               "head_resources": {
+                                   "type": "array",
+                                   "items": {
+                                       "type": "string",
+                                       "minLength": 1
+                                   }
                                }
                            },
                            "additionalProperties": false

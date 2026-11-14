@@ -1738,13 +1738,37 @@ class Reconciler:
 
         for im_instance in im_instances:
             ray_node = ray_nodes_by_id.get(im_instance.node_id)
+            cid = im_instance.cloud_instance_id or None
+            cloud_instance = cloud_instances.get(cid) if cid else None
+            cloud_instance_replica_id = (
+                (cloud_instance.replica_id or None)
+                if (
+                    cloud_instance is not None
+                    and im_instance.node_kind != NodeKind.HEAD
+                    and cloud_instance.node_kind != NodeKind.HEAD
+                    and (
+                        not cloud_instance.node_type
+                        or cloud_instance.node_type == im_instance.instance_type
+                    )
+                )
+                else None
+            )
             autoscaler_instances.append(
                 AutoscalerInstance(
                     ray_node=ray_node,
                     im_instance=im_instance,
-                    cloud_instance_id=im_instance.cloud_instance_id or None,
+                    cloud_instance_id=cid,
+                    cloud_instance_replica_id=cloud_instance_replica_id,
                 )
             )
+
+        if replica_sizes is None:
+            replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
+        pre_view = (
+            _build_multihost_replica_view(im_instances, cloud_instances, replica_sizes)
+            if replica_sizes
+            else None
+        )
 
         # TODO(rickyx): We should probably name it as "Planner" or "Scaler"
         # or "ClusterScaler"
@@ -1766,6 +1790,7 @@ class Reconciler:
             recoverable_resource_availabilities=(
                 cloud_resource_monitor.get_recoverable_resource_availabilities()
             ),
+            replica_view=pre_view,
         )
 
         if isinstance(cloud_provider, KubeRayProvider):
@@ -1800,13 +1825,6 @@ class Reconciler:
 
         # Scale the clusters if needed.
         to_launch = reply.to_launch
-        if replica_sizes is None:
-            replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
-        pre_view = (
-            _build_multihost_replica_view(im_instances, cloud_instances, replica_sizes)
-            if replica_sizes
-            else None
-        )
         to_terminate = Reconciler._filter_partial_replica_terminations(
             to_terminate=reply.to_terminate,
             im_instances=im_instances,

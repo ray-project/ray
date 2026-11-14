@@ -1,9 +1,10 @@
 import decimal
 import json
 import logging
+import re
 import time
 from itertools import chain
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
@@ -37,6 +38,38 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
 _HEAD_GROUP_NAME = "headgroup"
+
+RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION = "ray.io/multihost-topology-key"
+RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION = "ray.io/multihost-topology-exclusive"
+
+GKE_SLICE_SCHEDULER_NAME = "slice-scheduler"
+KUEUE_TOPOLOGY_SCHEDULING_GATE = "kueue.x-k8s.io/topology"
+GKE_TPU_SLICE_PREFIX = "slice.tpu.google.com/"
+GKE_NODEPOOL_LABEL_KEY = "cloud.google.com/gke-nodepool"
+GKE_TPU_SLICE_LABEL_KEY = "cloud.google.com/gke-tpu-slice"
+GKE_TPU_PARTITION_PREFIX = "cloud.google.com/gke-tpu-partition-"
+GKE_TPU_SLICE_ID_PREFIX = "cloud.google.com/gke-tpu-slice-"
+GKE_TPU_ID_SUFFIX = "-id"
+
+EXTERNAL_PLACEMENT_NONEMPTY_KEYS = (
+    "volcano.sh/network-topology-mode",
+    "kueue.x-k8s.io/podset-required-topology",
+    "kueue.x-k8s.io/podset-preferred-topology",
+    "kueue.x-k8s.io/podset-slice-required-topology",
+    "kueue.x-k8s.io/podset-slice-required-topology-constraints",
+)
+KUEUE_PODSET_UNCONSTRAINED_TOPOLOGY_ANNOTATION = (
+    "kueue.x-k8s.io/podset-unconstrained-topology"
+)
+
+_NODE_LABEL_FIELD_PATH_RE = re.compile(r"\Ametadata\.labels\['([^']+)'\]\Z")
+_K8S_DNS1123_SUBDOMAIN_MAX_LEN = 253
+_K8S_QUALIFIED_NAME_MAX_LEN = 63
+_K8S_DNS1123_LABEL_FMT = r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?"
+_K8S_DNS1123_SUBDOMAIN_RE = re.compile(
+    rf"\A{_K8S_DNS1123_LABEL_FMT}(?:\.{_K8S_DNS1123_LABEL_FMT})*\Z"
+)
+_K8S_QUALIFIED_NAME_RE = re.compile(r"\A(?:[A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]\Z")
 
 
 class AutoscalingConfigProducer:
@@ -91,7 +124,7 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     provider_config = _generate_provider_config(ray_cr["metadata"]["namespace"])
 
     available_node_types = _generate_available_node_types_from_ray_cr_spec(
-        ray_cr["spec"]
+        ray_cr["spec"], ray_cr_metadata=ray_cr.get("metadata")
     )
 
     # The autoscaler expects a global max workers field. We set it to the sum of
@@ -172,18 +205,223 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
     }
 
 
+def is_exclusive_tpu_slice_topology_key(key: str) -> bool:
+    """Return True iff `key` identifies an exclusive GKE TPU slice topology key.
+
+    Supports node-pool, TPU slice, and Dynamic Slicing partition/slice ID keys
+    for planned KubeRay multi-host topology coordination.
+    """
+    if not isinstance(key, str):
+        return False
+    if key in (GKE_NODEPOOL_LABEL_KEY, GKE_TPU_SLICE_LABEL_KEY):
+        return True
+    if not key.endswith(GKE_TPU_ID_SUFFIX):
+        return False
+    trimmed = key[: -len(GKE_TPU_ID_SUFFIX)]
+    for prefix in (GKE_TPU_PARTITION_PREFIX, GKE_TPU_SLICE_ID_PREFIX):
+        if trimmed.startswith(prefix) and len(trimmed) > len(prefix):
+            return True
+    return False
+
+
+def _is_k8s_qualified_name(value: str) -> bool:
+    """Return True iff `value` satisfies Kubernetes validation.IsQualifiedName."""
+    if not isinstance(value, str):
+        return False
+    parts = value.split("/")
+    if len(parts) == 1:
+        name = parts[0]
+    elif len(parts) == 2:
+        prefix, name = parts
+        if (
+            not prefix
+            or len(prefix) > _K8S_DNS1123_SUBDOMAIN_MAX_LEN
+            or not _K8S_DNS1123_SUBDOMAIN_RE.match(prefix)
+        ):
+            return False
+    else:
+        return False
+
+    return (
+        1 <= len(name) <= _K8S_QUALIFIED_NAME_MAX_LEN
+        and _K8S_QUALIFIED_NAME_RE.match(name) is not None
+    )
+
+
+def _parse_worker_group_label_refs(
+    group_spec: Dict[str, Any],
+) -> Tuple[List[str], Dict[str, str]]:
+    """Parse workerGroupSpecs[].labelRefs into delivered Ray keys and a lookup map.
+
+    Validates Kubernetes qualified names (`validation.IsQualifiedName`) on both
+    the Kubernetes node label key and delivered Ray label key for KubeRay
+    `labelRefs` (`kuberay#5329`, `kuberay#5501`), skipping entries with
+    malformed syntax or duplicate delivered Ray label keys.
+
+    Args:
+        group_spec: Worker group specification dictionary from the RayCluster CR.
+
+    Returns:
+        A tuple of `(delivered_keys, node_label_to_ray_key)`, where
+        `delivered_keys` is the deduplicated list of delivered Ray label keys
+        preserving first-seen order and `node_label_to_ray_key` maps each
+        Kubernetes node label key to its first delivered Ray label key.
+    """
+    raw_refs = group_spec.get("labelRefs")
+    if not isinstance(raw_refs, list):
+        return [], {}
+
+    delivered_keys: List[str] = []
+    seen_delivered: Set[str] = set()
+    node_label_to_ray_key: Dict[str, str] = {}
+
+    for ref in raw_refs:
+        if not isinstance(ref, dict):
+            continue
+        value_from = ref.get("valueFrom")
+        if not isinstance(value_from, dict):
+            continue
+        node_ref = value_from.get("nodeRef")
+        if not isinstance(node_ref, dict):
+            continue
+        field_path = node_ref.get("fieldPath")
+        if not isinstance(field_path, str):
+            continue
+        match = _NODE_LABEL_FIELD_PATH_RE.match(field_path)
+        if not match:
+            continue
+        node_label_key = match.group(1)
+        if not _is_k8s_qualified_name(node_label_key):
+            continue
+
+        raw_name = ref.get("name")
+        if raw_name is None or raw_name == "":
+            delivered_key = node_label_key
+        elif isinstance(raw_name, str) and _is_k8s_qualified_name(raw_name):
+            delivered_key = raw_name
+        else:
+            continue
+
+        if delivered_key in seen_delivered:
+            continue
+        seen_delivered.add(delivered_key)
+        delivered_keys.append(delivered_key)
+        node_label_to_ray_key.setdefault(node_label_key, delivered_key)
+
+    return delivered_keys, node_label_to_ray_key
+
+
+def _lookup_multihost_annotation(
+    ray_cr_metadata: Optional[Dict[str, Any]],
+    pod_annotations: Dict[str, Any],
+    key: str,
+) -> Tuple[Optional[str], bool]:
+    """Resolve a planned KubeRay multi-host topology annotation (pod template over RayCluster by key presence)."""
+    if isinstance(pod_annotations, dict) and key in pod_annotations:
+        val = pod_annotations[key]
+        return (val if isinstance(val, str) else ""), True
+    cluster_annotations = (
+        ray_cr_metadata.get("annotations")
+        if isinstance(ray_cr_metadata, dict)
+        else None
+    )
+    if isinstance(cluster_annotations, dict) and key in cluster_annotations:
+        val = cluster_annotations[key]
+        return (val if isinstance(val, str) else ""), True
+    return None, False
+
+
+def _has_external_multihost_placement(
+    ray_cr_metadata: Optional[Dict[str, Any]],
+    group_spec: Dict[str, Any],
+) -> bool:
+    """Return True if an external scheduler/controller manages multi-host placement.
+
+    Suppresses planned KubeRay multi-host topology domain inference when GKE
+    slice-scheduler, Kueue Topology Aware Scheduling, or Volcano network
+    topology controls pod placement.
+    """
+    template = (
+        group_spec.get("template")
+        if isinstance(group_spec.get("template"), dict)
+        else {}
+    )
+    pod_spec = template.get("spec") if isinstance(template.get("spec"), dict) else {}
+    pod_meta = (
+        template.get("metadata") if isinstance(template.get("metadata"), dict) else {}
+    )
+
+    if pod_spec.get("schedulerName") == GKE_SLICE_SCHEDULER_NAME:
+        return True
+
+    scheduling_gates = pod_spec.get("schedulingGates")
+    if isinstance(scheduling_gates, list):
+        for gate in scheduling_gates:
+            if (
+                isinstance(gate, dict)
+                and gate.get("name") == KUEUE_TOPOLOGY_SCHEDULING_GATE
+            ):
+                return True
+
+    pod_node_selector = pod_spec.get("nodeSelector")
+    pod_labels = pod_meta.get("labels")
+    pod_annotations = pod_meta.get("annotations")
+    group_labels = group_spec.get("labels")
+    for mapping in (pod_node_selector, pod_labels, pod_annotations, group_labels):
+        if not isinstance(mapping, dict):
+            continue
+        for k, v in mapping.items():
+            if (
+                isinstance(k, str)
+                and k.startswith(GKE_TPU_SLICE_PREFIX)
+                and isinstance(v, str)
+                and v != ""
+            ):
+                return True
+
+    cluster_labels = (
+        ray_cr_metadata.get("labels") if isinstance(ray_cr_metadata, dict) else None
+    )
+    cluster_annotations = (
+        ray_cr_metadata.get("annotations")
+        if isinstance(ray_cr_metadata, dict)
+        else None
+    )
+    for mapping in (
+        cluster_labels,
+        cluster_annotations,
+        pod_labels,
+        pod_annotations,
+        group_labels,
+    ):
+        if not isinstance(mapping, dict):
+            continue
+        for key in EXTERNAL_PLACEMENT_NONEMPTY_KEYS:
+            val = mapping.get(key)
+            if isinstance(val, str) and val != "":
+                return True
+        unconstrained = mapping.get(KUEUE_PODSET_UNCONSTRAINED_TOPOLOGY_ANNOTATION)
+        if isinstance(unconstrained, str) and unconstrained.lower() == "true":
+            return True
+
+    return False
+
+
 def _generate_available_node_types_from_ray_cr_spec(
     ray_cr_spec: Dict[str, Any],
+    ray_cr_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Formats autoscaler "available_node_types" field based on the Ray CR's group
     specs.
     """
     headGroupSpec = ray_cr_spec["headGroupSpec"]
     return {
-        _HEAD_GROUP_NAME: _node_type_from_group_spec(headGroupSpec, is_head=True),
+        _HEAD_GROUP_NAME: _node_type_from_group_spec(
+            headGroupSpec, is_head=True, ray_cr_metadata=ray_cr_metadata
+        ),
         **{
             worker_group_spec["groupName"]: _node_type_from_group_spec(
-                worker_group_spec, is_head=False
+                worker_group_spec, is_head=False, ray_cr_metadata=ray_cr_metadata
             )
             for worker_group_spec in ray_cr_spec["workerGroupSpecs"]
         },
@@ -191,7 +429,9 @@ def _generate_available_node_types_from_ray_cr_spec(
 
 
 def _node_type_from_group_spec(
-    group_spec: Dict[str, Any], is_head: bool
+    group_spec: Dict[str, Any],
+    is_head: bool,
+    ray_cr_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Converts CR group spec to autoscaler node type."""
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
@@ -199,11 +439,14 @@ def _node_type_from_group_spec(
     if is_head:
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
+        num_of_hosts = 1
     else:
         # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
         # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
-        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
-        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
+        raw_num_hosts = group_spec.get("numOfHosts")
+        num_of_hosts = 1 if raw_num_hosts is None else max(0, int(raw_num_hosts))
+        min_workers = group_spec["minReplicas"] * num_of_hosts
+        max_workers = group_spec["maxReplicas"] * num_of_hosts
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
     labels = _get_labels_from_group_spec(group_spec, group_name, resources)
@@ -217,6 +460,80 @@ def _node_type_from_group_spec(
         "resources": resources,
         "labels": labels,
     }
+
+    if not is_head:
+        node_selector, pod_annotations = _get_pod_scheduling_metadata(group_spec)
+        (
+            delivered_label_ref_keys,
+            node_label_to_ray_key,
+        ) = _parse_worker_group_label_refs(group_spec)
+        replica_meta: Dict[str, Any] = {}
+        if num_of_hosts > 0:
+            for accelerator_manager in get_all_accelerator_managers():
+                meta = accelerator_manager.get_node_group_replica_metadata(
+                    resources, node_selector, pod_annotations
+                )
+                if meta:
+                    replica_meta = dict(meta)
+                    if "head_resources" in replica_meta:
+                        head_resources = replica_meta["head_resources"]
+                        if head_resources is None:
+                            replica_meta.pop("head_resources")
+                        else:
+                            replica_meta["head_resources"] = list(head_resources)
+                    break
+
+            if (
+                num_of_hosts > 1
+                and not replica_meta.get("domain_label_key")
+                and not _has_external_multihost_placement(ray_cr_metadata, group_spec)
+            ):
+                topo_key, topo_found = _lookup_multihost_annotation(
+                    ray_cr_metadata,
+                    pod_annotations,
+                    RAY_MULTIHOST_TOPOLOGY_KEY_ANNOTATION,
+                )
+                if topo_found and topo_key and topo_key in node_label_to_ray_key:
+                    delivered_ray_key = node_label_to_ray_key[topo_key]
+                    excl_raw, excl_found = _lookup_multihost_annotation(
+                        ray_cr_metadata,
+                        pod_annotations,
+                        RAY_MULTIHOST_TOPOLOGY_EXCLUSIVE_ANNOTATION,
+                    )
+                    if excl_found:
+                        domain_exclusive = (
+                            isinstance(excl_raw, str) and excl_raw.lower() == "true"
+                        )
+                    else:
+                        domain_exclusive = is_exclusive_tpu_slice_topology_key(topo_key)
+                    replica_meta["domain_label_key"] = delivered_ray_key
+                    replica_meta["domain_exclusive"] = domain_exclusive
+
+            if replica_meta or num_of_hosts > 1:
+                node_type["replica_config"] = {
+                    **replica_meta,
+                    "workers_per_replica": num_of_hosts,
+                }
+
+        runtime_label_keys: List[str] = []
+        seen_runtime_keys: Set[str] = set()
+        for key in chain(
+            delivered_label_ref_keys,
+            (
+                replica_meta.get("domain_label_key"),
+                replica_meta.get("worker_index_label_key"),
+            ),
+        ):
+            if (
+                isinstance(key, str)
+                and key
+                and key not in labels
+                and key not in seen_runtime_keys
+            ):
+                seen_runtime_keys.add(key)
+                runtime_label_keys.append(key)
+        if runtime_label_keys:
+            node_type["runtime_label_keys"] = runtime_label_keys
 
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
     if idle_timeout_s is not None:

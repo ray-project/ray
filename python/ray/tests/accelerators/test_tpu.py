@@ -1316,6 +1316,10 @@ def test_invalid_topology_warning_logged_once(monkeypatch):
         TPUAcceleratorManager.get_node_group_additional_resources(resources, bad_topo)
         is None
     )
+    assert (
+        TPUAcceleratorManager.get_node_group_replica_metadata(resources, bad_topo)
+        is None
+    )
     assert len(warnings) == 1
 
     unknown_accel = {
@@ -1334,6 +1338,10 @@ def test_invalid_topology_warning_logged_once(monkeypatch):
         )
         is None
     )
+    assert (
+        TPUAcceleratorManager.get_node_group_replica_metadata(resources, unknown_accel)
+        is None
+    )
     assert len(warnings) == 2
 
     missing_topo = {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"}
@@ -1347,11 +1355,16 @@ def test_invalid_topology_warning_logged_once(monkeypatch):
         )
         is None
     )
+    assert (
+        TPUAcceleratorManager.get_node_group_replica_metadata(resources, missing_topo)
+        is None
+    )
     assert len(errors) == 1
     assert len(warnings) == 2
 
 
 def test_base_accelerator_manager_hooks_are_none():
+    from ray._private.accelerators import get_all_accelerator_managers
     from ray._private.accelerators.accelerator import AcceleratorManager
 
     assert AcceleratorManager.get_node_group_accelerator_labels({"GPU": 8}, {}) is None
@@ -1365,6 +1378,23 @@ def test_base_accelerator_manager_hooks_are_none():
         AcceleratorManager.get_node_group_additional_resources({"GPU": 8}, {}, {})
         is None
     )
+    assert AcceleratorManager.get_node_group_replica_metadata({"GPU": 8}, {}) is None
+    assert (
+        AcceleratorManager.get_node_group_replica_metadata({"GPU": 8}, {}, {}) is None
+    )
+    selector = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+        "cloud.google.com/gke-tpu-topology": "4x4",
+    }
+    ann = {"cloud.google.com/gke-tpu-slice-topology": "4x4"}
+    for manager in get_all_accelerator_managers():
+        if manager is not TPUAcceleratorManager:
+            assert (
+                manager.get_node_group_replica_metadata(
+                    {"CPU": 4, "GPU": 8, "TPU": 4}, selector, ann
+                )
+                is None
+            )
     assert tpu.GKE_TPU_SLICE_TOPOLOGY_ANNOTATION == (
         "cloud.google.com/gke-tpu-slice-topology"
     )
@@ -1426,6 +1456,541 @@ def test_static_tpu_labels_match_runtime_defaults(
         resources, selector
     )
     assert static_additional == runtime_head_resources
+
+    replica_meta = TPUAcceleratorManager.get_node_group_replica_metadata(
+        resources, selector
+    )
+    assert replica_meta is not None
+    assert replica_meta["domain_label_key"] in runtime_labels
+    assert replica_meta["worker_index_label_key"] in runtime_labels
+    assert replica_meta["domain_exclusive"] is True
+    assert isinstance(replica_meta["head_resources"], list)
+    assert replica_meta["head_resources"] == sorted(runtime_head_resources.keys())
+
+
+@pytest.mark.parametrize(
+    "resources, node_selector, annotations, expected",
+    [
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "2x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-8-head"],
+            },
+            id="single-host-v6e-2x4",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-16-head"],
+            },
+            id="multi-host-v6e-4x4",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 1},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v5-lite-device",
+                "cloud.google.com/gke-tpu-topology": "1x1",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v5litepod-1-head"],
+            },
+            id="v5e-single-host-1x1",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v5p-slice",
+                "cloud.google.com/gke-tpu-topology": "2x2x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v5p-32-head"],
+            },
+            id="v5p-3d-2x2x4",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v4-podslice",
+                "cloud.google.com/gke-tpu-topology": "12x16x16",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v4-6144-head"],
+            },
+            id="v4-3d-large-12x16x16",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 1},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "1x1x1",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v7x-2-head"],
+            },
+            id="v7x-3d-1x1x1",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v7x-16-head"],
+            },
+            id="dynamic-slicing-annotation-only",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "4x4x4",
+            },
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v7x-16-head"],
+            },
+            id="dynamic-slicing-overrides-selector",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "2x4",
+            },
+            {"cloud.google.com/gke-tpu-slice-topology": "  "},
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-8-head"],
+            },
+            id="blank-annotation-falls-back",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "4x4x4",
+            },
+            {"cloud.google.com/gke-tpu-slice-topology": "invalid"},
+            None,
+            id="invalid-annotation-no-fallback",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-slice-topology": "2x2x1",
+            },
+            None,
+            None,
+            id="slice-topo-on-selector-ignored",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 2},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-16-head"],
+            },
+            id="explicit-head-override-gt-1",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 0},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": [],
+            },
+            id="explicit-head-suppressed-zero",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": True},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": [],
+            },
+            id="explicit-head-suppressed-bool",
+        ),
+        pytest.param(
+            {
+                "CPU": 4,
+                "TPU": 4,
+                "TPU-custom-head": 1,
+                "TPU-v6e-16-head": 1,
+                "TPU-zero-head": 0,
+            },
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-custom-head", "TPU-v6e-16-head"],
+            },
+            id="custom-and-derived-head-resources",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 0},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            None,
+            id="tpu-zero",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": -4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            None,
+            id="tpu-negative",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": True},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            None,
+            id="tpu-boolean-true",
+        ),
+        pytest.param(
+            {"CPU": 4, "GPU": 8},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            None,
+            id="tpu-missing",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"},
+            None,
+            None,
+            id="missing-topology",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1},
+            {},
+            None,
+            None,
+            id="missing-selectors-non-gke",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            None,
+            id="wrong-dimensionality",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            None,
+            id="unknown-accelerator",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-head": 1},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-16-head"],
+            },
+            id="malformed-head-overlapping-hyphen",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU--head": 1},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-16-head"],
+            },
+            id="malformed-head-empty-pod-type",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-   -head": 1},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-16-head"],
+            },
+            id="malformed-head-whitespace-only-pod-type",
+        ),
+        pytest.param(
+            {
+                "CPU": 4,
+                "TPU": 4,
+                "TPU-v6e 16-head": 1,
+                "TPU- v6e-16-head": 1,
+                "TPU-v6e\t16-head": 1,
+            },
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-16-head"],
+            },
+            id="malformed-head-internal-whitespace",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-7x-16-head": 1},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-7x-16-head", "TPU-v6e-16-head"],
+            },
+            id="valid-shorthand-alias-head-resource",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": float("inf")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            None,
+            id="tpu-float-inf",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": float("-inf")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            None,
+            id="tpu-float-neg-inf",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": float("nan")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            None,
+            id="tpu-float-nan",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": float("inf")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": [],
+            },
+            id="explicit-head-suppressed-inf",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": float("-inf")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": [],
+            },
+            id="explicit-head-suppressed-neg-inf",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": float("nan")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": [],
+            },
+            id="explicit-head-suppressed-nan",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4, "TPU-custom-head": float("inf")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            {
+                "domain_label_key": "ray.io/tpu-slice-name",
+                "domain_exclusive": True,
+                "worker_index_label_key": "ray.io/tpu-worker-id",
+                "head_resources": ["TPU-v6e-16-head"],
+            },
+            id="custom-head-float-inf-ignored",
+        ),
+    ],
+)
+def test_get_node_group_replica_metadata(
+    resources, node_selector, annotations, expected
+):
+    result = TPUAcceleratorManager.get_node_group_replica_metadata(
+        resources, node_selector, annotations
+    )
+    assert result == expected
+    if expected is not None:
+        assert isinstance(result["head_resources"], list)
+        assert result["domain_exclusive"] is True
+
+
+def test_is_positive_number_and_tpu_head_resource_key():
+    for valid_num in (1, 4, 0.5, 10**400):
+        assert tpu._is_positive_number(valid_num) is True
+    for invalid_num in (
+        0,
+        -1,
+        -0.5,
+        -(10**400),
+        float("inf"),
+        float("-inf"),
+        float("nan"),
+        True,
+        False,
+        "1",
+        None,
+    ):
+        assert tpu._is_positive_number(invalid_num) is False
+
+    for valid_key in (
+        "TPU-v4-16-head",
+        "TPU-v5litepod-16-head",
+        "TPU-v6e-16-head",
+        "TPU-7x-16-head",
+        "TPU-v7x-16-head",
+        "TPU-v5p-128-head",
+        "TPU-custom-head",
+    ):
+        assert tpu._is_tpu_head_resource_key(valid_key) is True
+    for invalid_key in (
+        "TPU-head",
+        "TPU--head",
+        "TPU-   -head",
+        "TPU-v6e 16-head",
+        "TPU- v6e-16-head",
+        "TPU-\tv6e-16-head",
+        "TPU-v6e-16-head ",
+        " TPU-v6e-16-head",
+        "GPU-head",
+        "",
+        None,
+        123,
+    ):
+        assert tpu._is_tpu_head_resource_key(invalid_key) is False
 
 
 @pytest.mark.parametrize(
@@ -1529,6 +2094,39 @@ def test_static_tpu_labels_match_runtime_defaults(
             None,
             None,
             id="missing-topology-returns-none",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": float("inf")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            None,
+            None,
+            id="inf-tpu-resource-skips-labels-and-head-resource",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": float("-inf")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            None,
+            None,
+            id="neg-inf-tpu-resource-skips-labels-and-head-resource",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": float("nan")},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            None,
+            None,
+            id="nan-tpu-resource-skips-labels-and-head-resource",
         ),
     ],
 )
