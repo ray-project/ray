@@ -118,6 +118,57 @@ def test_batching_exception(serve_instance):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", [StopIteration, StopAsyncIteration])
+@pytest.mark.parametrize("stream", [False, True])
+async def test_batch_size_fn_stop_iteration(serve_instance, error_type, stream):
+    def batch_size_fn(items):
+        if "bad" in items:
+            raise error_type("Cannot size this batch")
+        return len(items)
+
+    @serve.deployment
+    class Batcher:
+        @serve.batch(
+            max_batch_size=4, batch_wait_timeout_s=0.01, batch_size_fn=batch_size_fn
+        )
+        async def unary(self, items):
+            return items
+
+        @serve.batch(
+            max_batch_size=4, batch_wait_timeout_s=0.01, batch_size_fn=batch_size_fn
+        )
+        async def streaming(self, items):
+            yield items
+
+        async def call_unary(self, item):
+            return await self.unary(item)
+
+        async def call_streaming(self, item):
+            async for result in self.streaming(item):
+                yield result
+
+    handle = serve.run(Batcher.bind())
+
+    async def call(item):
+        if stream:
+            return [
+                result
+                async for result in handle.options(stream=True).call_streaming.remote(
+                    item
+                )
+            ]
+        return await handle.call_unary.remote(item)
+
+    expected = ["ok"] if stream else "ok"
+    assert await asyncio.wait_for(call("ok"), timeout=10) == expected
+    with pytest.raises(
+        RuntimeError, match=f"batch_size_fn raised {error_type.__name__}"
+    ):
+        await asyncio.wait_for(call("bad"), timeout=10)
+    assert await asyncio.wait_for(call("ok"), timeout=10) == expected
+
+
+@pytest.mark.asyncio
 async def test_batch_generator_streaming_response_integration_test(serve_instance):
     NUM_YIELDS = 10
 
