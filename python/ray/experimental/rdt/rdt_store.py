@@ -1,8 +1,9 @@
 import logging
+import sys
 import threading
 from collections import defaultdict, deque
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
@@ -18,6 +19,66 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+# Native int64 upper bound. Per-device logical byte totals are published to the
+# core worker as int64; a total outside this range is published as -1 (unknown)
+# rather than overflowing the native conversion.
+_INT64_MAX = (1 << 63) - 1
+
+
+def _tensor_device_and_bytes(tensor: Any) -> Tuple[str, int]:
+    """Return ``(device, logical_bytes)`` for a single tensor.
+
+    The logical byte size is ``numel() * element_size()`` for ``torch.Tensor``
+    and ``nbytes`` for ``numpy.ndarray``. The tensor is only inspected if the
+    corresponding library is already imported (via ``sys.modules``), so
+    importing this module never pulls in optional third-party dependencies.
+
+    The size is an add-time snapshot: a mutable tensor resized after being
+    queued is still reported at its queued size. An unrecognized object or a
+    metadata read failure is reported as ``("unknown", -1)`` (never 0, never
+    raising), so introspection cannot fail a transfer.
+    """
+    torch = sys.modules.get("torch")
+    if torch is not None and isinstance(tensor, torch.Tensor):
+        try:
+            return str(tensor.device), int(tensor.numel()) * int(tensor.element_size())
+        except Exception:
+            return "unknown", -1
+
+    numpy = sys.modules.get("numpy")
+    if numpy is not None and isinstance(tensor, numpy.ndarray):
+        try:
+            return "cpu", int(tensor.nbytes)
+        except Exception:
+            return "unknown", -1
+
+    return "unknown", -1
+
+
+def _compute_copy_memory_info(
+    tensors: List[Any],
+) -> Tuple[Dict[str, int], Dict[str, int], int]:
+    """Compute the per-copy scalar memory contribution of a tensor list.
+
+    Returns ``(device_bytes, device_counts, num_unknown)``: ``device_bytes``
+    maps an actual local device string to summed logical bytes (a device with
+    only zero-sized tensors has value 0), ``device_counts`` maps device -> number
+    of tensors on that device (keeping zero-byte devices present), and
+    ``num_unknown`` counts tensors whose device/size could not be determined.
+    Aliases and views are counted per copy (logical, not deduplicated).
+    """
+    device_bytes: Dict[str, int] = {}
+    device_counts: Dict[str, int] = {}
+    num_unknown = 0
+    for tensor in tensors:
+        device, num_bytes = _tensor_device_and_bytes(tensor)
+        if num_bytes < 0:
+            num_unknown += 1
+        else:
+            device_bytes[device] = device_bytes.get(device, 0) + num_bytes
+            device_counts[device] = device_counts.get(device, 0) + 1
+    return device_bytes, device_counts, num_unknown
 
 
 def __ray_send__(
@@ -154,6 +215,33 @@ class _RDTObject:
     is_primary: bool
     # If a recv failed, we store the error here.
     error: Optional[Exception] = None
+    # Scalar-only memory contribution of this copy, computed once at add time
+    # from the actual tensor data, so pop never re-reads (possibly freed or
+    # resized) tensors. ``device_bytes`` may contain 0-byte devices; the
+    # matching ``device_counts`` entry keeps them present.
+    device_bytes: Optional[Dict[str, int]] = None
+    device_counts: Optional[Dict[str, int]] = None
+    # Number of tensors in this copy whose device/size could not be determined.
+    num_unknown: int = 0
+
+
+@dataclass
+class _ObjectMemoryStats:
+    """Scalar-only, per-object aggregate that mirrors the native snapshot.
+
+    Holds integers only (never tensors or ObjectRefs). ``device_counts`` tracks
+    how many tensors live on each device so a device populated only by
+    zero-sized tensors stays present (known 0 bytes) until the last such tensor
+    is popped. Device byte totals are kept as full Python ints and only clamped
+    to int64 at publish time, so popping a large copy recovers the known
+    remaining bytes.
+    """
+
+    device_bytes: Dict[str, int] = field(default_factory=dict)
+    device_counts: Dict[str, int] = field(default_factory=dict)
+    num_unknown: int = 0
+    num_copies: int = 0
+    num_errors: int = 0
 
 
 class RDTStore:
@@ -167,7 +255,7 @@ class RDTStore:
     collection callbacks that pop objects that are no longer in use.
     """
 
-    def __init__(self):
+    def __init__(self, memory_info_callback: Optional[Callable] = None):
         # A dictionary that maps from an object ID to a queue of tensor lists.
         #
         # Note: Currently, `_rdt_store` is only supported for Ray Actors.
@@ -182,6 +270,15 @@ class RDTStore:
         self._object_present_cv = threading.Condition(self._lock)
         # Signal when an object is freed from the object store.
         self._object_freed_cv = threading.Condition(self._lock)
+
+        # Optional callback that publishes scalar-only RDT residency metadata to
+        # the core worker (``CoreWorker.set_rdt_object_memory_info``). ``None``
+        # disables publishing, which keeps standalone RDTStore usage free of any
+        # core-worker dependency and skips tensor introspection entirely.
+        self._memory_info_callback = memory_info_callback
+
+        # Per-object scalar aggregates, mutated under `self._lock`.
+        self._object_memory_stats: Dict[str, _ObjectMemoryStats] = {}
 
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
@@ -219,16 +316,42 @@ class RDTStore:
                 self._rdt_store[obj_id].append(
                     _RDTObject([], is_primary, error=rdt_object)
                 )
+                if self._memory_info_callback is not None:
+                    self._ensure_stats(obj_id).num_errors += 1
             else:
                 for tensor in rdt_object:
                     self._tensor_to_object_ids[id(tensor)].add(obj_id)
+                device_bytes = device_counts = None
+                num_unknown = 0
+                if self._memory_info_callback is not None:
+                    # Compute the scalar contribution once, from the actual
+                    # tensor data, and cache it so pop never re-reads tensors.
+                    (
+                        device_bytes,
+                        device_counts,
+                        num_unknown,
+                    ) = _compute_copy_memory_info(rdt_object)
+                    stats = self._ensure_stats(obj_id)
+                    stats.num_copies += 1
+                    for device, num_bytes in device_bytes.items():
+                        stats.device_bytes[device] = (
+                            stats.device_bytes.get(device, 0) + num_bytes
+                        )
+                        stats.device_counts[device] = (
+                            stats.device_counts.get(device, 0) + device_counts[device]
+                        )
+                    stats.num_unknown += num_unknown
                 # Append to the queue instead of overwriting
                 self._rdt_store[obj_id].append(
                     _RDTObject(
                         rdt_object,
                         is_primary,
+                        device_bytes=device_bytes,
+                        device_counts=device_counts,
+                        num_unknown=num_unknown,
                     )
                 )
+            self._publish_memory_info(obj_id)
             self._object_present_cv.notify_all()
 
     def add_object_primary(
@@ -334,13 +457,89 @@ class RDTStore:
             if len(queue) == 0:
                 del self._rdt_store[obj_id]
             if rdt_object.error:
+                # Publish the removal and notify waiters before raising, so a
+                # waiter never observes a queued error as still resident.
+                self._pop_object_stats(obj_id, rdt_object)
+                self._object_freed_cv.notify_all()
                 raise rdt_object.error
             for tensor in rdt_object.data:
                 self._tensor_to_object_ids[id(tensor)].remove(obj_id)
                 if len(self._tensor_to_object_ids[id(tensor)]) == 0:
                     self._tensor_to_object_ids.pop(id(tensor))
+            self._pop_object_stats(obj_id, rdt_object)
             self._object_freed_cv.notify_all()
             return rdt_object.data
+
+    def _ensure_stats(self, obj_id: str) -> _ObjectMemoryStats:
+        stats = self._object_memory_stats.get(obj_id)
+        if stats is None:
+            stats = _ObjectMemoryStats()
+            self._object_memory_stats[obj_id] = stats
+        return stats
+
+    def _pop_object_stats(self, obj_id: str, rdt_object: _RDTObject) -> None:
+        """Decrement the per-object aggregate for a popped copy, then publish.
+
+        ``rdt_object.device_bytes`` / ``device_counts`` / ``num_unknown`` are the
+        values cached at add time, so this never re-reads (possibly freed or
+        resized) tensors. Once the last copy and last error are gone the
+        aggregate is cleared and the next publish erases the native entry.
+        """
+        if self._memory_info_callback is None:
+            return
+        stats = self._object_memory_stats.get(obj_id)
+        if stats is None:
+            return
+        if rdt_object.error:
+            stats.num_errors -= 1
+        else:
+            stats.num_copies -= 1
+            for device, num_bytes in rdt_object.device_bytes.items():
+                remaining_count = stats.device_counts.get(device, 0) - (
+                    rdt_object.device_counts[device]
+                )
+                if remaining_count <= 0:
+                    stats.device_counts.pop(device, None)
+                    stats.device_bytes.pop(device, None)
+                else:
+                    stats.device_counts[device] = remaining_count
+                    stats.device_bytes[device] -= num_bytes
+            stats.num_unknown -= rdt_object.num_unknown
+        if stats.num_copies <= 0 and stats.num_errors <= 0:
+            del self._object_memory_stats[obj_id]
+        self._publish_memory_info(obj_id)
+
+    def _publish_memory_info(self, obj_id: str) -> None:
+        """Publish the current per-object aggregate to the core worker.
+
+        Called while holding ``self._lock`` so concurrent add/pop can't reorder
+        native snapshots. The callback receives scalar values only and takes its
+        own native mutex without re-entering Python, so holding the store lock
+        here is safe. Per-device totals outside int64 range are published as -1
+        (unknown). When both counts are zero the native entry is erased.
+        """
+        if self._memory_info_callback is None:
+            return
+        stats = self._object_memory_stats.get(obj_id)
+        if stats is None:
+            device_bytes = []
+            num_copies = 0
+            num_errors = 0
+        else:
+            device_bytes = []
+            for device, total in stats.device_bytes.items():
+                if total < 0 or total > _INT64_MAX:
+                    device_bytes.append((device, -1))
+                else:
+                    device_bytes.append((device, total))
+            if stats.num_unknown > 0:
+                device_bytes.append(("unknown", -1))
+            num_copies = stats.num_copies
+            num_errors = stats.num_errors
+        object_id_bytes = bytes.fromhex(obj_id)
+        self._memory_info_callback(
+            object_id_bytes, device_bytes, num_copies, num_errors
+        )
 
     def wait_tensor_freed(self, tensor: Any, timeout: Optional[float] = None) -> None:
         """Wait for the object to be freed from the RDT store."""

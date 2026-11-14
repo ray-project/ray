@@ -521,8 +521,23 @@ class Worker:
             # it imports third-party dependencies like PyTorch.
             from ray.experimental import RDTManager
 
-            self._rdt_manager = RDTManager()
+            self._rdt_manager = RDTManager(
+                memory_info_callback=self._rdt_memory_info_callback
+            )
         return self._rdt_manager
+
+    def _rdt_memory_info_callback(
+        self, object_id_bytes, device_bytes, num_copies, num_errors
+    ):
+        """Publish RDT residency to the core worker, resolving it at call time.
+
+        A bound method on Worker rather than CoreWorker, so it never holds a
+        strong reference to the Cython CoreWorker. Teardown discards the manager
+        (and this callback) after the core worker is deleted.
+        """
+        self.core_worker.set_rdt_object_memory_info(
+            object_id_bytes, device_bytes, num_copies, num_errors
+        )
 
     @property
     def connected(self):
@@ -1162,6 +1177,11 @@ class Worker:
         return list(assigned_ids)
 
     def shutdown_rdt_manager(self):
+        # NOTE: do not reset `_rdt_manager` here. Native GC callbacks that run
+        # during the subsequent disconnect / CoreWorker teardown still index
+        # `_managed_rdt_metadata` (via `queue_or_free_object_primary_copy`), so
+        # the manager must stay alive until after `core_worker` is deleted in
+        # `ray.shutdown`. The discard happens there.
         if self._rdt_manager:
             self._rdt_manager.shutdown()
 
@@ -2130,6 +2150,10 @@ def shutdown(*, wait_for_processes: bool = False, _exiting_interpreter: bool = F
         if global_worker.mode == SCRIPT_MODE:
             global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
+    # The core worker (and its native RDT residency snapshot) is gone, so the
+    # RDT manager and its store can now be discarded without racing the GC
+    # callbacks that run during the teardown above.
+    global_worker._rdt_manager = None
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
     # Disconnect global state from GCS.

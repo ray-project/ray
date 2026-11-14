@@ -399,6 +399,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetLocalMemoryStoreBytesUsed() const
 
+        void SetRdtObjectMemoryInfo(
+            const CObjectID &object_id,
+            const c_vector[c_pair[c_string, int64_t]] &tensor_bytes,
+            int64_t num_copies,
+            int64_t num_errors)
+
         void RecordTaskLogStart(
             const CTaskID &task_id,
             int attempt_number,

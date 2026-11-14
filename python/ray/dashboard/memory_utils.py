@@ -371,6 +371,194 @@ def track_reference_size(group):
     return d
 
 
+def _format_bytes(num_bytes: int, unit_div: float, unit: str) -> str:
+    """Format a logical byte count for display, honoring the chosen unit."""
+    if num_bytes < 0:
+        return "?"
+    value = num_bytes / unit_div
+    if value == int(value):
+        value = int(value)
+    return f"{value} {unit}"
+
+
+def _render_device_bytes(tensor_bytes, unit_div, unit):
+    """Return ``(device_str, bytes_str)`` for one object's device map.
+
+    ``tensor_bytes`` maps device -> logical bytes (a value of -1 is unknown).
+    An empty map (an empty tensor list or an error-only entry) holds zero tensor
+    bytes and renders as device ``-`` with ``0`` bytes.
+    """
+    if not tensor_bytes:
+        return "-", _format_bytes(0, unit_div, unit)
+    devices = sorted(tensor_bytes)
+    device_str = ", ".join(devices)
+    bytes_str = ", ".join(
+        _format_bytes(tensor_bytes[device], unit_div, unit) for device in devices
+    )
+    return device_str, bytes_str
+
+
+def _collect_rdt_objects(core_worker_stats):
+    """Collect one row per process-local RDT object.
+
+    Returns ``(rows, returned, total)`` where ``returned`` is the number of RDT
+    object entries the core workers returned and ``total`` is the untruncated
+    ``rdtObjectsTotal`` sum across them (used to report request-limit
+    truncation). A multi-device object is a single row, so ``num_entries`` never
+    cuts one object in half.
+    """
+    rows = []
+    returned = 0
+    total = 0
+    for stats in core_worker_stats:
+        rdt_objects = stats.get("rdtObjects", []) or []
+        returned += len(rdt_objects)
+        total += int(stats.get("rdtObjectsTotal", len(rdt_objects)) or 0)
+        if not rdt_objects:
+            continue
+        pid = stats["pid"]
+        node_address = stats["ipAddress"]
+        type_str = "Driver" if stats.get("workerType") == "DRIVER" else "Worker"
+        for rdt_object in rdt_objects:
+            object_id = decode_object_ref_if_needed(rdt_object["objectId"]).hex()
+            num_copies = int(rdt_object.get("numCopies", 0) or 0)
+            num_errors = int(rdt_object.get("numErrors", 0) or 0)
+            tensor_bytes = {
+                device: int(num_bytes or 0)
+                for device, num_bytes in (
+                    rdt_object.get("tensorBytes", {}) or {}
+                ).items()
+            }
+            rows.append(
+                {
+                    "node_ip_address": node_address,
+                    "pid": pid,
+                    "type": type_str,
+                    "object_id": object_id,
+                    "tensor_bytes": tensor_bytes,
+                    "num_copies": num_copies,
+                    "num_errors": num_errors,
+                }
+            )
+    return rows, returned, total
+
+
+def _sort_rdt_rows(rows, sort_by):
+    """Sort RDT rows deterministically, honoring PID/OBJECT_SIZE sort requests.
+
+    ``OBJECT_SIZE`` orders by the sum of known logical device bytes with
+    unknown-sized objects last. ``REFERENCE_TYPE`` has no RDT analogue (RDT
+    store entries are not ObjectRefs), so it falls back to a stable object-id
+    order.
+    """
+    if sort_by == SortingType.PID:
+        rows.sort(key=lambda r: (r["pid"], r["object_id"]))
+    elif sort_by == SortingType.OBJECT_SIZE:
+
+        def size_key(row):
+            has_unknown = any(b < 0 for b in row["tensor_bytes"].values())
+            known = sum(b for b in row["tensor_bytes"].values() if b >= 0)
+            return (has_unknown, known, row["object_id"])
+
+        rows.sort(key=size_key)
+    else:
+        rows.sort(key=lambda r: r["object_id"])
+
+
+def _format_rdt_memory_summary(core_worker_stats, group_by, sort_by, unit, num_entries):
+    """Format the separate RDT store residency table.
+
+    Returns an empty string only when no RDT objects exist at all (zero total),
+    keeping non-RDT ``ray memory`` output byte-for-byte unchanged. When the
+    native request limit truncated entries to zero rows but ``rdtObjectsTotal``
+    is nonzero, a header plus truncation notice is still shown.
+    """
+    rows, returned, total = _collect_rdt_objects(core_worker_stats)
+    if not rows and total == 0:
+        return ""
+
+    units = {"B": 10**0, "KB": 10**3, "MB": 10**6, "GB": 10**9}
+    unit_div = units[unit]
+
+    rdt_mem = "\n"
+    rdt_mem += "--- RDT store objects (process-local tensor residency) ---\n"
+    rdt_mem += (
+        "RDT bytes are logical, non-deduplicated tensor bytes per local device "
+        "(views and shared pools are counted per copy, not as allocator usage).\n"
+    )
+    rdt_mem += (
+        "The ordinary serialized payload for these objects still appears in the "
+        "object reference table above.\n"
+    )
+    if group_by == GroupByType.STACK_TRACE:
+        rdt_mem += (
+            "RDT store objects have no call site, so this table groups by node "
+            "rather than stack trace.\n"
+        )
+
+    if rows:
+        _sort_rdt_rows(rows, sort_by)
+
+        labels = [
+            "IP Address",
+            "PID",
+            "Type",
+            "Object ID",
+            "Device",
+            "Bytes",
+            "Copies",
+            "Errors",
+        ]
+        # Pre-render each row and size columns from labels plus rendered values,
+        # so the 56-character ObjectID and multi-device rows stay aligned.
+        rendered_rows = []
+        for row in rows:
+            device_str, bytes_str = _render_device_bytes(
+                row["tensor_bytes"], unit_div, unit
+            )
+            cells = [
+                row["node_ip_address"],
+                str(row["pid"]),
+                row["type"],
+                row["object_id"],
+                device_str,
+                bytes_str,
+                str(row["num_copies"]),
+                str(row["num_errors"]),
+            ]
+            rendered_rows.append((row, cells))
+
+        widths = [
+            max([len(labels[i])] + [len(cells[i]) for _, cells in rendered_rows])
+            for i in range(len(labels))
+        ]
+        rdt_string = " | ".join("{{:<{}}}".format(w) for w in widths) + "\n"
+
+        # RDT residency is process-local and has no call site, so the table
+        # groups by node regardless of the requested stack-trace grouping.
+        groups = {}
+        for row, cells in rendered_rows:
+            groups.setdefault(row["node_ip_address"], []).append(cells)
+
+        for node_address, group_rows in groups.items():
+            rdt_mem += f"\n--- RDT store objects for node: {node_address} ---\n"
+            rdt_mem += rdt_string.format(*labels)
+            n = 1
+            for cells in group_rows:
+                if num_entries is not None and n > num_entries:
+                    break
+                rdt_mem += rdt_string.format(*cells)
+                n += 1
+
+    if total > returned:
+        rdt_mem += (
+            f"\n(showing {returned} of {total} RDT objects; "
+            "remaining entries truncated by the request limit)\n"
+        )
+
+    return rdt_mem
+
+
 def memory_summary(
     state,
     group_by="NODE_ADDRESS",
@@ -408,6 +596,12 @@ def memory_summary(
         core_worker_stats, group_by, sort_by
     ).as_dict()
     assert "summary" in memory_table and "group" in memory_table
+
+    # Build the separate RDT store table (rendered only when RDT objects are
+    # present). The object-reference table above is left entirely unchanged.
+    rdt_mem = _format_rdt_memory_summary(
+        core_worker_stats, group_by, sort_by, unit, num_entries
+    )
 
     # Build memory summary
     mem = ""
@@ -514,6 +708,9 @@ entries per group...\n\n\n"
                 mem += object_ref_string.format(*row)
             mem += "\n"
             n += 1
+
+    if rdt_mem:
+        mem += rdt_mem
 
     mem += (
         "To record callsite information for each ObjectRef created, set "

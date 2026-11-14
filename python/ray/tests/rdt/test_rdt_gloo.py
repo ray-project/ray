@@ -941,7 +941,7 @@ def test_wait_tensor_freed(ray_start_regular):
     """Unit test for ray.experimental.wait_tensor_freed. Check that the call
     returns when the tensor has been freed from the GPU object store."""
     rdt_store = ray.worker.global_worker.rdt_manager.rdt_store
-    obj_id = "random_id"
+    obj_id = "00" * ray.ObjectRef.size()
     tensor = torch.randn((1,))
     rdt_store.add_object_primary(obj_id, [tensor], "GLOO")
 
@@ -967,8 +967,8 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     """Unit test for ray.experimental.wait_tensor_freed when multiple objects
     contain the same tensor."""
     rdt_store = ray.worker.global_worker.rdt_manager.rdt_store
-    obj_id1 = "random_id1"
-    obj_id2 = "random_id2"
+    obj_id1 = "01" * ray.ObjectRef.size()
+    obj_id2 = "02" * ray.ObjectRef.size()
     tensor = torch.randn((1,))
     rdt_store.add_object_primary(obj_id1, [tensor], "GLOO")
     rdt_store.add_object_primary(obj_id2, [tensor], "GLOO")

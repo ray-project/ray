@@ -270,6 +270,17 @@ With RDT, Ray stores objects and passes them directly between Ray actors, using 
 For a full list of limitations, see the {ref}`limitations <limitations>` section.
 
 
+## Inspecting RDT residency with `ray memory`
+
+RDT tensors live in a per-process RDT store rather than in the Ray object store, so `ray memory` reports them in a separate `RDT store objects` table after the object reference table. Each row lists the node, the process, the object ID, the local device, the logical tensor bytes, and the number of queued copies and errors.
+
+The `RDT store objects` table reports the *logical* tensor bytes that Ray recorded when it added the tensors to the store. The value is the number of elements times the element size, not the current physical or allocator memory usage. Ray doesn't deduplicate views or tensors that share storage, so each object counts its own logical bytes.
+
+The serialized Python payload for an RDT object still appears in the object reference table, and that table's totals don't include the RDT tensor bytes. Device names are the local ordinals that the process uses, such as `cuda:0`. The same ordinal in two processes can refer to different physical GPUs. `ObjectRef` ownership alone doesn't create an `RDT store objects` row; the table tracks copies and errors held in each process's RDT store.
+
+Pass `--stats-only` to `ray memory` to show only the Plasma store statistics. The `RDT store objects` table appears in the normal `ray memory` output, not in the `--stats-only` output.
+
+
 ## Microbenchmarks
 
 :::{note}

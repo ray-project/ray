@@ -44,6 +44,7 @@
 #include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
+#include "ray/core_worker/rdt_memory_stats.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/shutdown_coordinator.h"
@@ -1400,6 +1401,21 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   int64_t GetLocalMemoryStoreBytesUsed() const;
 
+  /// Set the process-local RDT (Ray Direct Transport) memory snapshot for
+  /// `object_id`, called from the Python RDT store on each add/pop mutation.
+  /// Does not take the core worker mutex and is independent of the distributed
+  /// object reference lifetime.
+  ///
+  /// \param[in] object_id The RDT object id.
+  /// \param[in] tensor_bytes Logical element bytes per local device; -1 = unknown.
+  /// \param[in] num_copies Number of successfully queued copies.
+  /// \param[in] num_errors Number of queued failed receives with no tensors.
+  void SetRdtObjectMemoryInfo(
+      const ObjectID &object_id,
+      const std::vector<std::pair<std::string, int64_t>> &tensor_bytes,
+      int64_t num_copies,
+      int64_t num_errors);
+
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
   /// post work to the appropriate event loop.
@@ -2038,6 +2054,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+
+  // Process-local RDT (Ray Direct Transport) object memory residency snapshot,
+  // independent of the reference count table. Read at stats time without
+  // touching Python; written by the Python RDT store at add/pop time.
+  RdtMemoryStats rdt_memory_stats_;
 
   ///
   /// Fields related to storing and retrieving objects.
