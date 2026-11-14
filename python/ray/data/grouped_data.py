@@ -2,6 +2,7 @@ from collections.abc import Iterator as IteratorABC
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
+from ray.data._internal.block_batching.util import _copy_batch
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import Aggregate
@@ -162,7 +163,8 @@ class GroupedData:
                 input a batch of all records from a single group, and returns a
                 batch of zero or more records, similar to map_batches().
             zero_copy_batch: If True, each group of rows (batch) will be provided w/o
-                making an additional copy.
+                making an additional copy. If False, NumPy batches are copied so
+                the UDF can modify them in place.
             compute: The compute strategy to use for the map operation.
 
                 * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
@@ -274,14 +276,20 @@ class GroupedData:
 
                 def __call__(self, batch, *args, **kwargs):
                     yield from _apply_udf_to_groups(
-                        self.fn, batch, keys, batch_format, *args, **kwargs
+                        self.fn,
+                        batch,
+                        keys,
+                        batch_format,
+                        zero_copy_batch,
+                        *args,
+                        **kwargs,
                     )
 
         else:
 
             def wrapped_fn(batch, *args, **kwargs):
                 yield from _apply_udf_to_groups(
-                    fn, batch, keys, batch_format, *args, **kwargs
+                    fn, batch, keys, batch_format, zero_copy_batch, *args, **kwargs
                 )
 
         # Change the name of the wrapped function so that users see the name of their
@@ -619,11 +627,15 @@ def _apply_udf_to_groups(
     block: Block,
     keys: List[str],
     batch_format: Optional[str],
+    zero_copy_batch: bool,
     *args: Any,
     **kwargs: Any,
 ) -> Iterator[DataBatch]:
     """Apply UDF to groups of rows having the same set of values of the specified
     columns (keys).
+
+    Each group is a zero-copy slice of the block, so when ``zero_copy_batch`` is
+    False the formatted group is copied to give the UDF writable arrays.
 
     NOTE: This function is defined at module level to avoid capturing closures and make it serializable.
     """
@@ -638,9 +650,10 @@ def _apply_udf_to_groups(
         # Convert corresponding block of each group to batch format here,
         # because the block format here can be different from batch format
         # (e.g. block is Arrow format, and batch is NumPy format).
-        result = udf(
-            group_block_accessor.to_batch_format(batch_format), *args, **kwargs
-        )
+        group_batch = group_block_accessor.to_batch_format(batch_format)
+        if not zero_copy_batch:
+            group_batch = _copy_batch(group_batch)
+        result = udf(group_batch, *args, **kwargs)
 
         # Check if the UDF returned an iterator/generator.
         if isinstance(result, IteratorABC):
