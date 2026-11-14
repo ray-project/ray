@@ -5,18 +5,11 @@ These tests require Ray and test end-to-end comparison expression evaluation.
 
 import pandas as pd
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-pytestmark = pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="Expression integration tests require PyArrow >= 20.0.0",
-)
 
 
 class TestComparisonIntegration:

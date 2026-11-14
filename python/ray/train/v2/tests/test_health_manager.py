@@ -19,6 +19,7 @@ from ray.train.health import (
     PeriodicHealthCheck,
     ProbeResult,
     Reattempt,
+    WorkerProbe,
 )
 from ray.train.health._internal.manager import (
     HealthManager,
@@ -28,6 +29,7 @@ from ray.train.health._internal.manager import (
 from ray.train.health._internal.node_monitor import NodeMonitorStatus
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroupPollStatus
 from ray.train.health._internal.probe_utils import ScheduledProbe, merge_probes
+from ray.train.v2._internal.execution.worker_group import WorkerStatus
 
 
 class Temp(NodeProbe):
@@ -43,6 +45,11 @@ class Pid(NodeProbe):
 class Comms(ControllerProbe):
     def poll(self):
         return {"comm0": ProbeResult()}
+
+
+class StepTime(WorkerProbe):
+    def poll(self):
+        return ProbeResult(metrics={"step_time_s": 1.0})
 
 
 class Broken(ControllerProbe):
@@ -208,6 +215,83 @@ def test_every_inflight_evaluator_decides_on_every_evaluation():
         assert timestamps == [1.0, 2.0]
 
 
+def test_worker_probes_are_the_inflight_worker_probes():
+    step_time = StepTime()
+    manager = HealthManager([_check(2.0, probes=[step_time, Temp(), Comms()])])
+    assert manager.worker_probes == [ScheduledProbe(step_time, 2.0)]
+
+
+def test_worker_results_and_health_reports_reach_the_evaluators():
+    evaluator = Always(Noop())
+    manager = HealthManager(
+        [_check(probes=[StepTime(), Temp()], evaluators=[evaluator])]
+    )
+    temp = ProbeResult(timestamp_s=1.0)
+    _fake_temps(manager, [temp])
+    step_times = [ProbeResult(timestamp_s=2.0), ProbeResult(timestamp_s=3.0)]
+    report = ProbeResult(step=3)
+
+    manager.evaluate_inflight_checks(
+        {
+            0: WorkerStatus(
+                running=True,
+                probe_results={"StepTime": step_times[0]},
+                health_report=report,
+            ),
+            1: WorkerStatus(running=True, probe_results={"StepTime": step_times[1]}),
+        },
+        timeout=0,
+    )
+    (state,) = evaluator.seen
+    assert state.probe_results == {
+        "Temp": {"n1": temp},
+        "StepTime": {0: step_times[0], 1: step_times[1]},
+    }
+    assert state.health_reports == {0: report}
+
+
+def test_a_worker_whose_poll_hangs_keeps_its_last_results():
+    evaluator = Always(Noop())
+    manager = HealthManager([_check(probes=[StepTime()], evaluators=[evaluator])])
+    _fake_temps(manager, [ProbeResult(), ProbeResult(), ProbeResult()])
+    step_times = [ProbeResult(timestamp_s=1.0), ProbeResult(timestamp_s=2.0)]
+    reports = [ProbeResult(step=1), ProbeResult(step=2)]
+
+    manager.evaluate_inflight_checks(
+        {
+            0: WorkerStatus(
+                running=True,
+                probe_results={"StepTime": step_times[0]},
+                health_report=reports[0],
+            )
+        },
+        timeout=0,
+    )
+    # A hanging poll gives an empty status.
+    manager.evaluate_inflight_checks({0: WorkerStatus(running=True)}, timeout=0)
+    manager.evaluate_inflight_checks(
+        {
+            0: WorkerStatus(
+                running=True,
+                probe_results={"StepTime": step_times[1]},
+                health_report=reports[1],
+            )
+        },
+        timeout=0,
+    )
+
+    assert [state.probe_results["StepTime"] for state in evaluator.seen] == [
+        {0: step_times[0]},
+        {0: step_times[0]},
+        {0: step_times[1]},
+    ]
+    assert [state.health_reports for state in evaluator.seen] == [
+        {0: reports[0]},
+        {0: reports[0]},
+        {0: reports[1]},
+    ]
+
+
 def test_an_evaluator_decides_on_the_history_it_keeps(fake_node_id):
     evaluator = EvictHotGpu(samples=3)
     manager = HealthManager([_check(evaluators=[evaluator])])
@@ -239,11 +323,16 @@ def test_reset_drops_the_results_and_resets_the_evaluators(fake_node_id):
     evaluator = Always(Noop())
     manager = HealthManager([_check(evaluators=[evaluator])])
     _fake_temps(manager, [ProbeResult(timestamp_s=1.0)])
-    manager.evaluate_inflight_checks(timeout=0)
+    manager.evaluate_inflight_checks(
+        {0: WorkerStatus(running=True, health_report=ProbeResult(step=1))},
+        timeout=0,
+    )
     assert manager._last_node_monitor_group_status.node_monitor_statuses
+    assert manager._last_worker_statuses
 
     manager.reset([])
     assert manager._last_node_monitor_group_status.node_monitor_statuses == {}
+    assert manager._last_worker_statuses == {}
     assert evaluator.resets == 1
 
 
@@ -291,8 +380,94 @@ def test_on_demand_checks_run_apart_from_the_inflight_checks():
     )
 
 
+def test_evaluate_waits_for_the_on_demand_checks_before_another_diagnose():
+    diagnose = _diagnose("slow")
+    manager = HealthManager([_check(evaluators=[Always(diagnose)])])
+    _fake_temps(manager, [ProbeResult()] * 3)
+    evict = Evict(reason="bad NIC", target_nodes=["n1"])
+    manager.start_on_demand_checks(
+        [HealthCheck(evaluator_creator=lambda: [Always(evict)])], timeout=10
+    )
+    manager._node_monitor_group.poll_probe_results = mock.Mock(
+        side_effect=[None, NodeMonitorGroupPollStatus(node_monitor_statuses={})]
+    )
+
+    # Running: the in-flight Diagnose is dropped.
+    assert manager.evaluate(timeout=0) == Noop()
+    # Back: their Evict beats the in-flight Diagnose.
+    assert manager.evaluate(timeout=0) == evict
+    # Done: the in-flight Diagnose goes through.
+    assert manager.evaluate(timeout=0) == diagnose
+
+
+def test_evaluate_keeps_a_diagnose_that_requires_idle_workers_while_others_run():
+    diagnose = Diagnose(reason="slow", checks=[HealthCheck(requires_idle_workers=True)])
+    manager = HealthManager([_check(evaluators=[Always(diagnose)])])
+    _fake_temps(manager, [ProbeResult()])
+    manager.start_on_demand_checks(
+        [HealthCheck(evaluator_creator=lambda: [Always(Noop())])], timeout=10
+    )
+    manager._node_monitor_group.poll_probe_results = mock.Mock(return_value=None)
+
+    # It restarts the worker group rather than start more on-demand checks.
+    assert manager.evaluate(timeout=0) == diagnose
+
+
+def test_start_and_evaluate_on_demand_checks_waits_for_their_decision():
+    manager = HealthManager([])
+    _fake_temps(manager, [])
+    evict = Evict(reason="bad GPU", target_nodes=["n1"])
+    manager._node_monitor_group.poll_probe_results = mock.Mock(
+        side_effect=[None, NodeMonitorGroupPollStatus(node_monitor_statuses={})]
+    )
+
+    check = HealthCheck(evaluator_creator=lambda: [Always(evict)])
+    assert manager.start_and_evaluate_on_demand_checks([check]) == evict
+    assert manager._node_monitor_group.poll_probe_results.call_count == 2
+
+
+def test_on_demand_worker_probes_run_on_the_worker_group(fake_node_id):
+    evaluator = Always(Noop())
+    manager = HealthManager([])
+    _fake_temps(manager, [])
+    worker_group = mock.Mock()
+    step_time = ProbeResult(metrics={"step_time_s": 1.0})
+    worker_group.poll_probe_results.side_effect = [None, {"StepTime": {0: step_time}}]
+    manager.reset(["n1"], worker_group)
+    probe = StepTime()
+    manager.start_on_demand_checks(
+        [
+            HealthCheck(
+                probe_creator=lambda: [probe, Temp()],
+                evaluator_creator=lambda: [evaluator],
+            )
+        ],
+        timeout=10,
+    )
+    worker_group.poll_probes_async.assert_called_once_with([probe], timeout_s=10)
+
+    assert manager.evaluate_on_demand_checks() is None
+    assert manager.evaluate_on_demand_checks() == Noop()
+    (state,) = evaluator.seen
+    assert state.probe_results["StepTime"] == {0: step_time}
+
+
 def test_on_demand_checks_decide_noop_before_any_start():
     assert HealthManager([]).evaluate_on_demand_checks() == Noop()
+
+
+def test_on_demand_checks_decide_once(caplog, propagate_logs):
+    manager = HealthManager([])
+    _fake_temps(manager, [])
+    manager.start_on_demand_checks(
+        [HealthCheck(evaluator_creator=lambda: [Always(Noop())])], timeout=10
+    )
+    assert manager.evaluate_on_demand_checks() == Noop()
+    assert "found nothing to act on" in caplog.text
+
+    manager._node_monitor_group.poll_probe_results = mock.Mock()
+    assert manager.evaluate_on_demand_checks() == Noop()
+    manager._node_monitor_group.poll_probe_results.assert_not_called()
 
 
 def test_a_failed_monitor_gives_each_of_its_probes_its_error():
