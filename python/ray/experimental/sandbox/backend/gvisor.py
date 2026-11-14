@@ -30,7 +30,12 @@ from typing import (
 )
 
 import ray
-from ray.experimental.sandbox._internal import cdi, egress_guard, overlayfs
+from ray.experimental.sandbox._internal import (
+    cdi,
+    egress_guard,
+    orphan_reaper,
+    overlayfs,
+)
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
@@ -590,6 +595,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # The node's default resolvers (RAY_SANDBOX_DEFAULT_DNS) that a
         # sandbox of this backend has reached.
         self._reachable_node_dns: Set[Tuple[str, ...]] = set()
+        # A restored sandbox's runsc-fd-parking helper can outlive runsc and
+        # be orphaned. Adopt and reap those here, since the pod's PID 1 often
+        # doesn't.
+        orphan_reaper.start()
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
