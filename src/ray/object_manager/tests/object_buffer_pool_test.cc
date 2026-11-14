@@ -69,7 +69,8 @@ TEST_F(ObjectBufferPoolTest, TestBasic) {
   ASSERT_FALSE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
   fake_plasma_client_->ClearCallRecords();
-  object_buffer_pool_.WriteChunk(obj_id, chunk_size_, 0, 0, fake_data_);
+  object_buffer_pool_.WriteChunk(
+      obj_id, chunk_size_, 0, 0, fake_data_, /*defer_release=*/false);
   EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
   EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
 }
@@ -88,7 +89,8 @@ TEST_F(ObjectBufferPoolTest, TestMultiChunk) {
   }
   fake_plasma_client_->ClearCallRecords();
   for (int i = 0; i < 3; i++) {
-    object_buffer_pool_.WriteChunk(obj_id, 3 * chunk_size_, 0, i, fake_data_);
+    object_buffer_pool_.WriteChunk(
+        obj_id, 3 * chunk_size_, 0, i, fake_data_, /*defer_release=*/false);
   }
   EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
   EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
@@ -109,7 +111,8 @@ TEST_F(ObjectBufferPoolTest, TestAbort) {
       object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
 
   fake_plasma_client_->ClearCallRecords();
-  object_buffer_pool_.WriteChunk(obj_id, chunk_size_, 0, 0, fake_data_);
+  object_buffer_pool_.WriteChunk(
+      obj_id, chunk_size_, 0, 0, fake_data_, /*defer_release=*/false);
   EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
   EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
 }
@@ -122,26 +125,80 @@ TEST_F(ObjectBufferPoolTest, TestSizeMismatch) {
   int64_t data_size_2 = 2 * chunk_size_;
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_1, 0, 0).ok());
-  object_buffer_pool_.WriteChunk(obj_id, data_size_1, 0, 0, fake_data_);
+  object_buffer_pool_.WriteChunk(
+      obj_id, data_size_1, 0, 0, fake_data_, /*defer_release=*/false);
 
   // Object gets created again with a different size: the partial buffer is
   // released and aborted.
   fake_plasma_client_->ClearCallRecords();
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_2, 0, 1).ok());
-  object_buffer_pool_.WriteChunk(obj_id, data_size_2, 0, 1, fake_data_);
+  object_buffer_pool_.WriteChunk(
+      obj_id, data_size_2, 0, 1, fake_data_, /*defer_release=*/false);
   EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
   EXPECT_EQ(fake_plasma_client_->aborted_objects, (std::vector<ObjectID>{obj_id}));
 
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_2, 0, 0).ok());
   // Writing a chunk with a stale data size has no effect.
-  object_buffer_pool_.WriteChunk(obj_id, data_size_1, 0, 0, fake_data_);
+  object_buffer_pool_.WriteChunk(
+      obj_id, data_size_1, 0, 0, fake_data_, /*defer_release=*/false);
 
   fake_plasma_client_->ClearCallRecords();
-  object_buffer_pool_.WriteChunk(obj_id, data_size_2, 0, 0, fake_data_);
+  object_buffer_pool_.WriteChunk(
+      obj_id, data_size_2, 0, 0, fake_data_, /*defer_release=*/false);
   EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
   EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
+}
+
+TEST_F(ObjectBufferPoolTest, TestWriteChunkReportsSeal) {
+  auto obj_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+
+  for (int i = 0; i < 3; i++) {
+    ASSERT_TRUE(
+        object_buffer_pool_.CreateChunk(obj_id, owner_address, 3 * chunk_size_, 0, i)
+            .ok());
+  }
+  EXPECT_FALSE(object_buffer_pool_.WriteChunk(
+      obj_id, 3 * chunk_size_, 0, 0, fake_data_, /*defer_release=*/false));
+  EXPECT_FALSE(object_buffer_pool_.WriteChunk(
+      obj_id, 3 * chunk_size_, 0, 1, fake_data_, /*defer_release=*/false));
+  EXPECT_TRUE(object_buffer_pool_.WriteChunk(
+      obj_id, 3 * chunk_size_, 0, 2, fake_data_, /*defer_release=*/false));
+
+  // A chunk written after an abort does not seal anything.
+  ASSERT_TRUE(
+      object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
+  object_buffer_pool_.AbortCreate(obj_id);
+  EXPECT_FALSE(object_buffer_pool_.WriteChunk(
+      obj_id, chunk_size_, 0, 0, fake_data_, /*defer_release=*/false));
+}
+
+TEST_F(ObjectBufferPoolTest, TestDeferredRelease) {
+  auto obj_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+
+  ASSERT_TRUE(
+      object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
+  fake_plasma_client_->ClearCallRecords();
+  EXPECT_TRUE(object_buffer_pool_.WriteChunk(
+      obj_id, chunk_size_, 0, 0, fake_data_, /*defer_release=*/true));
+  EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
+  EXPECT_TRUE(fake_plasma_client_->released_objects.empty());
+
+  // The sealed object is neither aborted nor created again while its release is
+  // deferred.
+  object_buffer_pool_.AbortCreate(obj_id);
+  EXPECT_TRUE(fake_plasma_client_->aborted_objects.empty());
+  EXPECT_TRUE(fake_plasma_client_->released_objects.empty());
+  ASSERT_FALSE(
+      object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
+
+  object_buffer_pool_.ReleaseObject(obj_id);
+  EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
+  EXPECT_TRUE(fake_plasma_client_->aborted_objects.empty());
+  AssertNoLeaks();
 }
 
 }  // namespace ray

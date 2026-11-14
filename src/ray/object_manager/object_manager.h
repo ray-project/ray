@@ -201,10 +201,19 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
 
+  /// Record that the pull in flight for `object_id` consumes the object (the
+  /// requesting actor task's TaskArg.is_move is set). The record is erased when
+  /// the last pull that needs the object is cancelled. Called on the main service.
+  ///
+  /// \param object_id The object being pulled as a move.
   void MarkMovePull(const ObjectID &object_id) override
       ABSL_LOCKS_EXCLUDED(move_pull_mutex_);
 
-  /// Safe to call from any thread.
+  /// Whether the pull in flight for `object_id` consumes the object. Safe to call
+  /// from any thread; ReceiveObjectChunk reads it on the rpc service.
+  ///
+  /// \param object_id The object to look up.
+  /// \return True if a move record exists for the object.
   bool IsMovePull(const ObjectID &object_id) const override
       ABSL_LOCKS_EXCLUDED(move_pull_mutex_);
 
