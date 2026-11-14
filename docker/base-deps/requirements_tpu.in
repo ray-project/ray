@@ -1,8 +1,12 @@
-# Pin to satisfy both cupy (needs <2.3) and JAX (needs >2.0)
+# JAX requires numpy >= 2.0
 numpy>=2.0
 
 # Minimum version for tpu7x compatibility
-jax[tpu]>=0.8.2; python_version >= "3.11"
+jax==0.11.2; python_version >= "3.12"
+jaxlib==0.11.2; python_version >= "3.12"
+libtpu==0.0.50; python_version >= "3.12"
+requests; python_version >= "3.12"
+jax[tpu]>=0.8.2; python_version == "3.11"
 jax[tpu]; python_version < "3.11"
 
 # Standard JAX ecosystem dependencies
@@ -10,6 +14,11 @@ flax
 optax
 orbax-checkpoint
 ml-collections
+
+# PyTorch TPU runtime
+torch==2.13.0; python_version >= "3.12"
+torchvision==0.28.0; python_version >= "3.12"
+torch-tpu==0.2.0; python_version >= "3.12"
 
 # TPU profiling & telemetry
 cloud-tpu-diagnostics

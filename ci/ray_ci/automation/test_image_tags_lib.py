@@ -10,7 +10,10 @@ from ci.ray_ci.automation.image_tags_lib import (
     get_python_suffixes,
     get_variation_suffix,
 )
-from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
+from ci.ray_ci.configs import (
+    DEFAULT_PYTHON_TAG_VERSION,
+    DEFAULT_TPU_PYTHON_TAG_VERSION,
+)
 from ci.ray_ci.docker_container import GPU_PLATFORM
 
 
@@ -60,6 +63,12 @@ class TestGetPythonSuffixes:
         """Non-default python versions only get explicit suffix."""
         assert get_python_suffixes("3.10") == ["-py310"]
         assert get_python_suffixes("3.12") == ["-py312"]
+
+    def test_tpu_default_python_version_includes_empty(self):
+        """TPU uses DEFAULT_TPU_PYTHON_TAG_VERSION (3.12) for the empty suffix."""
+        assert DEFAULT_TPU_PYTHON_TAG_VERSION == "3.12"
+        assert get_python_suffixes("3.10", "tpu") == ["-py310"]
+        assert get_python_suffixes("3.12", "tpu") == ["-py312", ""]
 
 
 class TestGetPlatformSuffixes:

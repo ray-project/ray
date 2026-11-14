@@ -49,6 +49,11 @@ else
   RAY_EXTRAS="all"
 fi
 
+# Freeze Stage 1 TPU lockfile packages so Stage 2 does not downgrade them to CPU pins.
+if [[ "${PLATFORM}" == "tpu" ]]; then
+    $HOME/anaconda3/bin/pip list --format=freeze > /home/ray/requirements_compiled.txt
+fi
+
 # TODO(cu130): ray[all]'s cgraph extra hard-pins cupy-cuda12x, so this install
 # always pulls the CUDA-12 build even on cu130 images (no PEP 508 marker exists
 # to select cupy by CUDA version). Until the cgraph extra can resolve cupy per
@@ -77,6 +82,8 @@ if [[ ("${IMAGE_TYPE}" == "ray" || "${IMAGE_TYPE}" == "ray-torch") && "${PLATFOR
     fi
     $HOME/anaconda3/bin/pip --no-cache-dir uninstall -y cupy-cuda12x
     $HOME/anaconda3/bin/pip --no-cache-dir install "cupy-cuda13x==${CUPY_CUDA13X_VERSION}"
+elif [[ "${PLATFORM}" == "tpu" ]]; then
+    $HOME/anaconda3/bin/pip --no-cache-dir uninstall -y cupy-cuda12x cuda-pathfinder
 fi
 
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
