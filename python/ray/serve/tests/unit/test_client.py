@@ -1,10 +1,11 @@
 import asyncio
 import sys
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, List, Optional
 from unittest import mock
 
 import pytest
 
+import ray
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
 from ray.serve.config import HTTPOptions
@@ -13,6 +14,16 @@ from ray.serve.exceptions import RayServeException
 # Either refusal: which one a getter sees depends on whether the shutdown it
 # raced has finished by the time it checks.
 REFUSED = r"Client is shutting down\.|Client has already been shut down\."
+
+
+@pytest.fixture(autouse=True)
+def ray_not_initialized(monkeypatch):
+    """Keep `shutdown*` from calling the mock controller through Ray.
+
+    With Ray initialized (say, left running by an earlier test in the same
+    process), `shutdown` would `ray.get` the mock's `graceful_shutdown`.
+    """
+    monkeypatch.setattr(ray, "is_initialized", lambda: False)
 
 
 def _make_client(controller: Optional[mock.Mock] = None) -> ServeControllerClient:
@@ -60,26 +71,40 @@ class BlockingShutdownHandle:
     def __init__(self) -> None:
         self.shutdown_started = asyncio.Event()
         self.release = asyncio.Event()
+        self.shutdown_calls = 0
 
     async def shutdown_async(self) -> None:
+        self.shutdown_calls += 1
         self.shutdown_started.set()
         await self.release.wait()
 
 
+DEPLOYMENT_PRESENT = [DeploymentID(name="f", app_name="app")]
+DEPLOYMENT_MISSING = [DeploymentID(name="other", app_name="app")]
+
+CONTROLLER_REPLIES = pytest.mark.parametrize(
+    "deployment_ids",
+    [DEPLOYMENT_PRESENT, DEPLOYMENT_MISSING],
+    ids=["deployment_present", "deployment_missing"],
+)
+
+
 async def _get_handle_async_across_shutdown(
     shutdown: Callable[[ServeControllerClient], Awaitable[None]],
+    deployment_ids: List[DeploymentID] = DEPLOYMENT_PRESENT,
 ) -> tuple[ServeControllerClient, "asyncio.Task"]:
     """Shut `client` down while `get_handle_async` awaits the controller.
 
-    Returns the client and the finished `get_handle_async` task, so tests can
-    check what that call did once it resumed after the shutdown.
+    The controller then replies with `deployment_ids`. Returns the client and
+    the finished `get_handle_async` task, so tests can check what that call did
+    once it resumed after the shutdown.
     """
     controller_called = asyncio.Event()
-    deployment_ids = asyncio.get_running_loop().create_future()
+    controller_reply = asyncio.get_running_loop().create_future()
 
     def list_deployment_ids() -> "asyncio.Future":
         controller_called.set()
-        return deployment_ids
+        return controller_reply
 
     controller = mock.Mock()
     controller.list_deployment_ids.remote.side_effect = list_deployment_ids
@@ -89,15 +114,18 @@ async def _get_handle_async_across_shutdown(
     await controller_called.wait()
 
     await shutdown(client)
-    deployment_ids.set_result([DeploymentID(name="f", app_name="app")])
+    controller_reply.set_result(deployment_ids)
     await asyncio.wait([get_handle])
 
     return client, get_handle
 
 
 @SHUTDOWNS
-async def test_get_handle_async_raises_when_shutdown_starts_mid_call(shutdown):
-    _, get_handle = await _get_handle_async_across_shutdown(shutdown)
+@CONTROLLER_REPLIES
+async def test_get_handle_async_raises_when_shutdown_starts_mid_call(
+    shutdown, deployment_ids
+):
+    _, get_handle = await _get_handle_async_across_shutdown(shutdown, deployment_ids)
 
     with pytest.raises(RayServeException, match=REFUSED):
         get_handle.result()
@@ -153,6 +181,38 @@ async def test_handles_stay_refused_after_shutdown_fails_partway(get_handle):
 
     with pytest.raises(RayServeException, match=r"Client is shutting down\."):
         await get_handle(client)
+
+
+async def test_other_calls_are_refused_while_shutting_down():
+    controller = mock.Mock()
+    client = _make_client(controller)
+    cached = BlockingShutdownHandle()
+    client.handle_cache[("f", "app", True)] = cached
+    shutdown = asyncio.create_task(client.shutdown_async())
+    await cached.shutdown_started.wait()
+
+    try:
+        with pytest.raises(RayServeException, match=r"Client is shutting down\."):
+            client.delete_apps(["app"])
+    finally:
+        cached.release.set()
+        await shutdown
+
+    controller.delete_apps.remote.assert_not_called()
+
+
+async def test_overlapping_shutdowns_shut_each_cached_handle_down_once():
+    client = _make_client()
+    cached = BlockingShutdownHandle()
+    client.handle_cache[("f", "app", True)] = cached
+    first = asyncio.create_task(client.shutdown_async())
+    await cached.shutdown_started.wait()
+    second = asyncio.create_task(client.shutdown_async())
+
+    cached.release.set()
+    await asyncio.gather(first, second)
+
+    assert cached.shutdown_calls == 1
 
 
 if __name__ == "__main__":

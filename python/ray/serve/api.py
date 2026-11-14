@@ -184,8 +184,8 @@ def shutdown():
     try:
         client.shutdown()
     finally:
-        # Drop the client even if shutdown fails partway: it no longer hands out
-        # handles, and the next Serve call reconnects with a fresh one.
+        # Drop the client even if shutdown fails partway: it refuses every call,
+        # and the next Serve call reconnects with a fresh one.
         _disconnect()
 
 
@@ -216,8 +216,8 @@ async def shutdown_async():
     try:
         await client.shutdown_async()
     finally:
-        # Drop the client even if shutdown fails partway: it no longer hands out
-        # handles, and the next Serve call reconnects with a fresh one.
+        # Drop the client even if shutdown fails partway: it refuses every call,
+        # and the next Serve call reconnects with a fresh one.
         _disconnect()
 
 

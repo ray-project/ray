@@ -29,7 +29,11 @@ from ray.serve._private.request_router.replica_wrapper import (
 from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
-from ray.serve._private.test_utils import SharedCounter, get_application_url
+from ray.serve._private.test_utils import (
+    TEST_HTTP_PORT,
+    SharedCounter,
+    get_application_url,
+)
 from ray.serve.config import GangSchedulingConfig, RequestRouterConfig
 from ray.serve.context import _set_global_client
 from ray.serve.deployment import Application
@@ -555,7 +559,7 @@ def test_delete_application(serve_instance):
     assert httpx.get(url).text == "got f"
 
     serve.delete("app_f")
-    url = "http://localhost:8000/app_f"
+    url = f"http://localhost:{TEST_HTTP_PORT}/app_f"
     assert "Path '/app_f' not found" in httpx.get(url).text
 
     # delete again, no exception & crash expected.
@@ -1127,7 +1131,7 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    r = httpx.post("http://localhost:8000/", timeout=10)
+    r = httpx.post(f"http://localhost:{TEST_HTTP_PORT}/", timeout=10)
     assert r.status_code == 503 and "unavailable" in r.text.lower()
 
     @serve.deployment

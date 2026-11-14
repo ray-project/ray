@@ -19,6 +19,7 @@ from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import (
+    TEST_METRICS_EXPORT_PORT,
     SharedCounter,
     alive_actor_counts,
     expected_proxy_actors,
@@ -165,7 +166,8 @@ def test_replica_health_metric(ray_instance):
 
     def count_live_replica_metrics():
         resp = httpx.get(
-            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}",
+            headers=get_auth_headers_if_auth_enabled({}),
         ).text
         resp = resp.split("\n")
         count = 0

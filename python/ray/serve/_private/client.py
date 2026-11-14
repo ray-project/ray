@@ -63,7 +63,7 @@ class ClientState(Enum):
 
 
 def _ensure_connected(f: Callable) -> Callable:
-    """Raise if the client has been shut down before running `f`.
+    """Run `f` only while the client is running, and raise otherwise.
 
     Coroutine functions get a coroutine wrapper so they stay detectable with
     `inspect.iscoroutinefunction` and raise when awaited, like any other error
@@ -73,16 +73,14 @@ def _ensure_connected(f: Callable) -> Callable:
 
         @wraps(f)
         async def check_async(self, *args, **kwargs):
-            if self._state is ClientState.SHUT_DOWN:
-                raise RayServeException("Client has already been shut down.")
+            self._raise_unless_running()
             return await f(self, *args, **kwargs)
 
         return check_async
 
     @wraps(f)
     def check(self, *args, **kwargs):
-        if self._state is ClientState.SHUT_DOWN:
-            raise RayServeException("Client has already been shut down.")
+        self._raise_unless_running()
         return f(self, *args, **kwargs)
 
     return check
@@ -137,9 +135,8 @@ class ServeControllerClient:
         Remove the reference to the cached handles so that they can be
         garbage collected.
         """
-        for cache_key in list(self.handle_cache):
-            self.handle_cache[cache_key].shutdown()
-            del self.handle_cache[cache_key]
+        for handle in self._take_cached_handles():
+            handle.shutdown()
 
     async def shutdown_cached_handles_async(self):
         """Shuts down all cached handles asynchronously.
@@ -147,22 +144,27 @@ class ServeControllerClient:
         Remove the reference to the cached handles so that they can be
         garbage collected.
         """
-
-        async def shutdown_task(cache_key):
-            await self.handle_cache[cache_key].shutdown_async()
-            del self.handle_cache[cache_key]
-
         await asyncio.gather(
-            *[shutdown_task(cache_key) for cache_key in list(self.handle_cache)]
+            *[handle.shutdown_async() for handle in self._take_cached_handles()]
         )
 
+    def _take_cached_handles(self) -> List[DeploymentHandle]:
+        """Empty the handle cache and return the handles it held.
+
+        Taking them all before shutting any down means each handle is shut
+        down by exactly one caller, even when shutdowns overlap.
+        """
+        handles = list(self.handle_cache.values())
+        self.handle_cache.clear()
+        return handles
+
     def _begin_shutdown(self) -> None:
-        """Stop handing out handles.
+        """Refuse further calls on this client.
 
         Called first by `shutdown` and `shutdown_async`, before they clear the
-        handle cache, so no getter can hand out a handle to a Serve instance
-        that is going away. Leaves a finished shutdown as `SHUT_DOWN`, since the
-        lifecycle never moves backward.
+        handle cache, so nothing can deploy to or hand out a handle for a Serve
+        instance that is going away. Leaves a finished shutdown as `SHUT_DOWN`,
+        since the lifecycle never moves backward.
         """
         if self._state is ClientState.RUNNING:
             self._state = ClientState.SHUTTING_DOWN
@@ -622,12 +624,13 @@ class ServeControllerClient:
         """
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         cache_key = (deployment_name, app_name, check_exists)
-        self._raise_unless_running()
         if (cached_handle := self.handle_cache.get(cache_key)) is not None:
             return cached_handle
 
         if check_exists:
             all_deployments = ray.get(self._controller.list_deployment_ids.remote())
+            # Shutdown may have started while this waited on the controller.
+            self._raise_unless_running()
             if deployment_id not in all_deployments:
                 raise KeyError(f"{deployment_id} does not exist.")
 
@@ -656,12 +659,13 @@ class ServeControllerClient:
         """
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         cache_key = (deployment_name, app_name, check_exists)
-        self._raise_unless_running()
         if (cached_handle := self.handle_cache.get(cache_key)) is not None:
             return cached_handle
 
         if check_exists:
             all_deployments = await self._controller.list_deployment_ids.remote()
+            # Shutdown may have started while this awaited the controller.
+            self._raise_unless_running()
             if deployment_id not in all_deployments:
                 raise KeyError(f"{deployment_id} does not exist.")
 
@@ -675,13 +679,10 @@ class ServeControllerClient:
     ) -> DeploymentHandle:
         """Return the cached handle for `cache_key`, creating it on a miss.
 
-        Re-checks the client state and the cache because the getters wait on
-        the controller before this call, so a concurrent caller may have
-        started shutting down the client or cached a handle for the same key in
-        the meantime.
+        Re-checks the cache because the getters may wait on the controller
+        before this call, so a concurrent caller may have cached a handle for
+        the same key in the meantime.
         """
-        self._raise_unless_running()
-
         if (cached_handle := self.handle_cache.get(cache_key)) is not None:
             return cached_handle
 
@@ -708,10 +709,11 @@ class ServeControllerClient:
         return handle
 
     def _raise_unless_running(self) -> None:
-        """Refuse to hand out a handle once shutdown has started.
+        """Refuse to act on a Serve instance once its shutdown has started.
 
-        A handle from a client that is shutting down points at a Serve instance
-        that is going away, so it would fail on first use.
+        A deploy, delete, or handle from a client that is shutting down targets
+        a Serve instance that is going away, so it would be lost or fail on
+        first use.
         """
         if self._state is ClientState.SHUTTING_DOWN:
             raise RayServeException("Client is shutting down.")

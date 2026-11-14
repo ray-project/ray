@@ -1715,8 +1715,17 @@ def request_with_retries(timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
         raise TimeoutError from e
 
 
+# The HTTP port of the shared `serve_instance` fixtures. Override when 8000 is
+# already taken on the machine running the tests. Tests that start Serve
+# themselves, or request `localhost:8000` directly, still use 8000.
+TEST_HTTP_PORT = int(os.environ.get("RAY_SERVE_TEST_HTTP_PORT", "8000"))
+
+
 # Metrics test utilities
-TEST_METRICS_EXPORT_PORT = 9999
+# Override when 9999 is already taken on the machine running the tests.
+TEST_METRICS_EXPORT_PORT = int(
+    os.environ.get("RAY_SERVE_TEST_METRICS_EXPORT_PORT", "9999")
+)
 
 # A slow scrape burns PROMETHEUS_METRICS_TIMEOUT_S and then yields nothing, so a wait
 # needs room for several full-length attempts. A newly registered series is the slow
