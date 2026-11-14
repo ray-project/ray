@@ -578,6 +578,10 @@ def get_num_threads_env_vars() -> list[str]:
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
+# Env var through which `setup_worker.py` receives the serialized runtime env
+# context. Should be kept in sync with kEnvVarKeySerializedRuntimeEnvContext in
+# src/ray/common/constants.h
+SERIALIZED_RUNTIME_ENV_CONTEXT_ENV_VAR = "RAY_SERIALIZED_RUNTIME_ENV_CONTEXT"
 
 # Directory name where runtime_env resources will be created & cached.
 DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"

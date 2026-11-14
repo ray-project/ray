@@ -222,6 +222,7 @@ class FakeWorkerPoolForTest : public WorkerPool {
         static_cast<pid_t>(Process::PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_pid_ = pid;
     worker_commands_by_proc_[pid] = worker_command_args;
+    worker_envs_by_proc_[pid] = env;
     worker_ids_by_proc_[pid] = worker_id;
     return std::make_unique<Process>(pid);
   }
@@ -237,6 +238,10 @@ class FakeWorkerPoolForTest : public WorkerPool {
 
   const std::vector<std::string> &GetWorkerCommand(const ProcessInterface &proc) {
     return worker_commands_by_proc_[proc.GetId()];
+  }
+
+  const ProcessEnvironment &GetWorkerEnv(const ProcessInterface &proc) {
+    return worker_envs_by_proc_[proc.GetId()];
   }
 
   int NumWorkersStarting() const {
@@ -434,6 +439,7 @@ class FakeWorkerPoolForTest : public WorkerPool {
   pid_t last_worker_pid_;
   // The worker commands by process.
   absl::flat_hash_map<pid_t, std::vector<std::string>> worker_commands_by_proc_;
+  absl::flat_hash_map<pid_t, ProcessEnvironment> worker_envs_by_proc_;
   // Maps process to the WorkerID assigned when the process was started.
   absl::flat_hash_map<pid_t, WorkerID> worker_ids_by_proc_;
   absl::flat_hash_map<pid_t, std::vector<std::string>> pushedProcesses_;
@@ -806,6 +812,23 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithNodeIdArg) {
     }
   }
   ASSERT_TRUE(node_id_arg_found);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, RuntimeEnvContextNotOnCommandLine) {
+  const std::string context = R"({"env_vars":{"SECRET_KEY":"secret-value"}})";
+  PopWorkerStatus status;
+  auto [proc, worker_id] = worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                                            rpc::WorkerType::WORKER,
+                                                            JOB_ID,
+                                                            &status,
+                                                            /*dynamic_options=*/{},
+                                                            /*runtime_env_hash=*/0,
+                                                            context);
+  for (const auto &arg : worker_pool_->GetWorkerCommand(proc)) {
+    ASSERT_EQ(arg.find("secret-value"), std::string::npos) << arg;
+  }
+  ASSERT_EQ(worker_pool_->GetWorkerEnv(proc).at(kEnvVarKeySerializedRuntimeEnvContext),
+            context);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
