@@ -14,7 +14,10 @@ from ray.data._internal.datasource_v2.common.synthesized_columns import (  # noq
     # Re-exported: the legacy ``ParquetDatasource`` imports it from here.
     _compute_row_hashes,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
@@ -50,6 +53,53 @@ _ARROW_DEFAULT_BATCH_SIZE = 131_072
 _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
+
+
+def empty_projection_stub(num_rows: int) -> pa.Table:
+    """A zero-column table that keeps its row count through Arrow.
+
+    ``pa.concat_tables`` drops rows from a table with no columns, so a read
+    whose projection is empty carries this all-null column until a downstream
+    projection drops it. ``pa.nulls`` allocates no buffers, so the cost does
+    not depend on ``num_rows``. Both the real empty-projection read and the
+    footer-only stand-in below use this helper, so they cannot drift into two
+    different stub schemas.
+    """
+    return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(num_rows)})
+
+
+def split_fully_matched(
+    manifest: FileManifest,
+) -> Tuple[List[int], FileManifest]:
+    """Separate rows whose run is proven to survive the listing predicate.
+
+    Returns ``(stub_num_rows, to_read)``. A row is stubbed only when it carries
+    chunk metadata with ``fully_matched``: ``num_rows`` then equals exactly what
+    a read of that run would yield. A missing chunk entry means the indexer did
+    not chunk the file, so the whole-file row is read.
+
+    The caller owns the trust decision: ``fully_matched`` is meaningful only
+    when the indexer computed it against the same predicate, and only when no
+    caller can change the row count after reading (a limit, a row-reducing
+    block UDF). This helper does not and cannot check that.
+    """
+    stub_num_rows: List[int] = []
+    to_read: List[int] = []
+    for idx, chunk_metadata in enumerate(manifest.file_chunk_metadatas):
+        if chunk_metadata is None:
+            to_read.append(idx)
+            continue
+        chunk = FileChunk.from_metadata(chunk_metadata)
+        if chunk.fully_matched:
+            stub_num_rows.append(chunk.num_rows)
+        else:
+            to_read.append(idx)
+
+    if len(to_read) == len(manifest):
+        return stub_num_rows, manifest
+
+    read_mask = pa.array(to_read, type=pa.int64())
+    return stub_num_rows, FileManifest(manifest.as_block().take(read_mask))
 
 
 class FileFormat(str, Enum):
@@ -155,6 +205,8 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
+        # Bind once: pyrefly cannot narrow an attribute across the comprehension
+        # below, and the module is otherwise checked as `Optional`.
         schema = self._schema
         if schema is None:
             return None
@@ -337,14 +389,10 @@ class FileReader(Reader[FileManifest]):
                 table = table.select(projected)
 
             if table.num_columns == 0 and table.num_rows > 0:
-                # Guards against ``pa.concat_tables`` collapsing rows
-                # when a batch has zero columns (e.g., empty projection
-                # for a count query). The stub column is dropped by
-                # downstream projections.
-                table = table.append_column(
-                    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
-                    pa.nulls(table.num_rows),
-                )
+                # Guards against ``pa.concat_tables`` collapsing rows when a
+                # batch has zero columns (e.g., empty projection for a count
+                # query). The stub column is dropped by downstream projections.
+                table = empty_projection_stub(table.num_rows)
 
             self._on_batch_read(table)
             rows_read += len(table)

@@ -16,9 +16,15 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
 )
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicates,
+)
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     ChunkedFile,
     FooterReaderActor,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+    is_exact_count_read,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
@@ -317,6 +323,26 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         coalesce_bytes = self._coalesce_bytes
         if shuffle_row_groups:
             coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
+        # A zero size is only honest when the reader will answer a matched run
+        # from its footer instead of opening it, which is the exact-count gate.
+        # The listing carries the same predicate, projection and limit the
+        # scanner pushed, so it can make that call here; the footer must also
+        # have matched a predicate the reader applies, or ``fully_matched`` is
+        # the default rather than evidence.
+        read_predicate = combine_predicates(
+            predicate,
+            partition_pruner.predicate if partition_pruner is not None else None,
+        )
+        # A row-group shuffle clears the listing limit while the scanner keeps
+        # it, so the listing cannot prove the reader will stub. Charging real
+        # bytes there only costs extra tasks; charging zero would let every
+        # matched run fold into one oversized task that the reader still opens.
+        stub_fully_matched = not shuffle_row_groups and is_exact_count_read(
+            predicate=read_predicate,
+            limit=limit,
+            columns=projected_columns,
+            preserve_order=preserve_order,
+        )
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,
@@ -328,6 +354,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 partitioning=self._partitioning,
                 partition_pruner=partition_pruner,
                 logical_schema=self._logical_schema,
+                stub_fully_matched=stub_fully_matched,
             )
             for _ in range(self._num_actors)
         ]

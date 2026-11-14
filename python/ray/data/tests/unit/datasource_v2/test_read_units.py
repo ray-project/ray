@@ -49,6 +49,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.expressions import col
 
 ROW_GROUP_SIZE = 25
@@ -242,9 +243,104 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
             "partitioning": None,
             "partition_pruner": None,
             "logical_schema": None,
+            "stub_fully_matched": False,
         }
     ]
     assert footer_batches == [[FileInfo(path_b, size_b)]]
+
+
+@pytest.mark.parametrize(
+    "list_kwargs,expected",
+    [
+        pytest.param(
+            {"predicate": col("id") >= 0, "projected_columns": []},
+            True,
+            id="exact-count",
+        ),
+        pytest.param(
+            {"predicate": col("id") >= 0},
+            False,
+            id="projected-columns",
+        ),
+        pytest.param(
+            {"predicate": None, "projected_columns": []},
+            False,
+            id="no-predicate",
+        ),
+        pytest.param(
+            {"predicate": col("id") >= 0, "projected_columns": [], "limit": 2},
+            False,
+            id="limit",
+        ),
+        pytest.param(
+            {
+                "predicate": col("id") >= 0,
+                "projected_columns": [],
+                "preserve_order": True,
+            },
+            False,
+            id="ordered",
+        ),
+        pytest.param(
+            {
+                "predicate": col("id") >= 0,
+                "projected_columns": [],
+                "shuffle_config": FileShuffleConfig(seed=1, small_chunks_shuffle=True),
+            },
+            False,
+            id="row-group-shuffle",
+        ),
+    ],
+)
+def test_footer_indexer_stubs_only_for_an_exact_count_read(
+    tmp_path, monkeypatch, list_kwargs, expected
+):
+    """The listing charges zero bytes only when the reader will not open a run.
+
+    It sees the same predicate, projection, limit and ordering the scanner
+    pushed, so it applies the reader's own gate: an empty projection, no limit,
+    a predicate the footer was matched against, and unordered output. Without a
+    predicate ``fully_matched`` is the field's default, not evidence.
+    """
+    import ray
+
+    _write_file(tmp_path / "data.parquet")
+    actor_kwargs = []
+
+    class _FakeActor:
+        def __init__(self):
+            self.read_footers = self
+
+        def remote(self, batch, **_kwargs):
+            return []
+
+    class _FakeActorClass:
+        @staticmethod
+        def options(**_kwargs):
+            class _Builder:
+                @staticmethod
+                def remote(*_args, **kwargs):
+                    actor_kwargs.append(kwargs)
+                    return _FakeActor()
+
+            return _Builder
+
+    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
+    monkeypatch.setattr(footer_file_indexer, "FooterReaderActor", _FakeActorClass)
+    monkeypatch.setattr(ray, "kill", lambda _actor: None)
+
+    indexer = FooterFileIndexer(ignore_missing_paths=False)
+    list(
+        list_files_for_each_block(
+            [pa.table({PATH_COLUMN_NAME: [str(tmp_path)]})],
+            _task_context(),
+            indexer=indexer,
+            filesystem=LocalFileSystem(),
+            **list_kwargs,
+        )
+    )
+
+    assert actor_kwargs[0]["stub_fully_matched"] is expected
 
 
 @pytest.mark.parametrize(

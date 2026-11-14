@@ -26,6 +26,8 @@ from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
     FileReader,
+    empty_projection_stub,
+    split_fully_matched,
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
@@ -65,6 +67,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -194,8 +197,43 @@ def _estimate_batch_size_from_chunk_stats(
     )
     if estimated_in_mem_row_size == 0:
         return None
-    # Never request more rows than the chunk actually contains.
-    return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
+    # Never request more rows than the chunk actually contains. ``num_rows``
+    # comes from manifest chunk metadata, which may be a NumPy scalar; PyArrow's
+    # scanner requires a Python int.
+    return int(min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows))
+
+
+def is_exact_count_read(
+    *,
+    predicate: Optional[Expr],
+    limit: Optional[int],
+    columns: Optional[Sequence[str]],
+    preserve_order: bool,
+) -> bool:
+    """Whether a scan needs only the number of surviving rows.
+
+    ``columns`` must be an *empty projection*; ``None`` means "all columns" and
+    does not qualify. The remaining conditions make the listing's
+    ``fully_matched`` flag trustworthy rather than merely present: a pushed
+    predicate is what the flag was computed against, and ``ReadFiles`` refuses
+    predicate push-down for a row-reducing ``block_udf``, so no post-read
+    transform can change the count.
+
+    ``preserve_order`` also disqualifies the read. A stub is emitted before any
+    run that must be opened, and a file's matched and partial runs can occupy
+    separate manifest rows, so stubbing reorders that file's rows. Count does
+    not care, but a user asking for ordered output does.
+
+    Shared by :class:`ParquetFileReader` and ``FooterFileIndexer`` so the
+    listing's stub decision and the reader's gate cannot drift.
+    """
+    return (
+        predicate is not None
+        and limit is None
+        and columns is not None
+        and len(columns) == 0
+        and not preserve_order
+    )
 
 
 @DeveloperAPI
@@ -755,6 +793,45 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             "fragment_readahead": 1,
         }
         return kwargs
+
+    def _is_exact_count_read(self) -> bool:
+        """Whether this read needs only the number of surviving rows.
+
+        Delegates to :func:`is_exact_count_read`; see there for why each
+        condition is part of the trust contract of the footer-only shortcut.
+        """
+        return is_exact_count_read(
+            predicate=self._predicate,
+            limit=self._limit,
+            columns=self._columns,
+            preserve_order=DataContext.get_current().execution_options.preserve_order,
+        )
+
+    @override
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
+        """Read a manifest, answering fully matched runs from listing metadata.
+
+        ``Dataset.filter(...).count()`` reaches this reader with an empty
+        projection: it needs the number of surviving rows, not the rows. When
+        listing also proved ``FileChunk.fully_matched`` for a run, its
+        ``num_rows`` is exactly what a read would yield, so the file is never
+        opened.
+
+        Every unproven case reads, including an ordered read: stubs are
+        yielded first, so answering part of a file from its footer would move
+        those rows ahead of the runs read below. ``fully_matched`` exactness is
+        a property of the Parquet pairing: this reader is constructed by
+        ``ParquetDatasourceV2``, whose indexer is always ``FooterFileIndexer``,
+        which computes the flag against the listing predicate. An indexer that
+        leaves the flag at its default ``True`` must not feed this reader.
+        """
+        if self._is_exact_count_read():
+            stub_num_rows, input_split = split_fully_matched(input_split)
+            # ``empty_projection_stub`` allocates no buffers, so one table per
+            # run costs O(1) regardless of ``num_rows``.
+            for num_rows in stub_num_rows:
+                yield empty_projection_stub(num_rows)
+        yield from super().read(input_split)
 
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
