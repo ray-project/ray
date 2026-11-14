@@ -98,6 +98,13 @@ class TaskNode:
     # reconstruction can resubmit it. ``None`` for every non-seed task.
     seed_input: Optional["RefBundle"] = None
 
+    # Reconstruction plans whose input for this task is queued, while the
+    # reconstruction task that consumes it is not submitted yet. That reconstruction
+    # task re-produces every output the plan needs from this task.
+    plans_with_queued_reconstruction_task: Set[ReconstructionPlanId] = field(
+        default_factory=set
+    )
+
     def __repr__(self) -> str:
         parent_ids = [task.lineage_task_id for task in self.parent_tasks]
         child_ids = [task.lineage_task_id for task in self.child_tasks]
@@ -205,6 +212,14 @@ class LineageTracker:
         block_index_child_task_dependencies.remove(entry)
         if not block_index_child_task_dependencies:
             del task_node.plan_to_child_block_lineages[reconstruction_plan_id]
+        # The child now has queued input for the plan, so a reconstruction task of
+        # the child is pending for the plan.
+        child_task_node = self._lineage_task_id_to_task_node[
+            entry.child_lineage_task_id
+        ]
+        child_task_node.plans_with_queued_reconstruction_task.add(
+            reconstruction_plan_id
+        )
 
     def resolve_dependencies(
         self, block_ids: Iterable[BlockId]
@@ -266,11 +281,23 @@ class LineageTracker:
                         can be a re-execution of a reconstruction plan.
 
                         Raises if a ``reconstruction_plan_id`` was provided for the task to register,
+                        but the plan neither needs outputs from the task nor
+                        queued input for it.
+                        Invariant: a re-execution is only submitted for a plan
+                        that was traced through the task.
+
+                        Raises if a ``reconstruction_plan_id`` was provided for the task to register,
                         but a parent of the task still owes one of its input
                         blocks for the plan.
                         Invariant: a re-execution is only submitted on input
                         that its parents queued for the plan
                         (``register_block_queued``).
+
+        Note:
+            A re-execution can be submitted for a plan that no longer needs outputs
+            from the task. This happens when a re-trace queues the task's input
+            again after a running re-execution of the task already re-produced every
+            output the plan needs. Its outputs are ``OBJECT_UNRELATED`` to the plan.
         """
         logger.debug(
             "Registering task submission for task %s with dependencies %s",
@@ -288,9 +315,13 @@ class LineageTracker:
                     "attributed to this task, or the task was incorrectly removed "
                     "from the execution graph."
                 )
+            # A plan that no longer needs outputs from this task can still have
+            # queued input for it. See the note above.
             if (
                 reconstruction_plan_id
                 not in re_executed_task_node.plan_to_child_block_lineages
+                and reconstruction_plan_id
+                not in re_executed_task_node.plans_with_queued_reconstruction_task
             ):
                 raise ValueError(
                     f"Task {lineage_task_id} was submitted as a re-execution "
@@ -344,16 +375,24 @@ class LineageTracker:
                     dependency.output_index
                 )
 
+        # The queued reconstruction task is now submitted.
+        if reconstruction_plan_id is not None:
+            assert re_executed_task_node is not None
+            re_executed_task_node.plans_with_queued_reconstruction_task.discard(
+                reconstruction_plan_id
+            )
+
         # Target task case: the plan no longer claims the target once the target
-        # itself is being re-executed.
+        # itself is being re-executed. A redundant re-execution of the target finds
+        # the claim already removed.
         if (
             reconstruction_plan_id is not None
             and lineage_task_id == reconstruction_plan_id
         ):
             assert re_executed_task_node is not None
-            del re_executed_task_node.plan_to_child_block_lineages[
-                reconstruction_plan_id
-            ]
+            re_executed_task_node.plan_to_child_block_lineages.pop(
+                reconstruction_plan_id, None
+            )
 
         if re_executed_task_node is not None:
             logger.debug(
@@ -427,7 +466,10 @@ class LineageTracker:
         Returns:
             A tuple of the lineage task IDs of the seed tasks to resubmit for
             reconstruction, sorted to keep the order deterministic, and the plan
-            ID associated with this reconstruction attempt.
+            ID associated with this reconstruction attempt. The caller must
+            resubmit every returned seed task for the plan. The seed task list is
+            empty when queued reconstruction tasks of the plan already
+            re-produce every output the failed task needs.
 
         Raises:
             ValueError: If the task, or a child of a task along the failed path,
@@ -495,6 +537,21 @@ class LineageTracker:
                             output_index=output_index,
                         )
                     )
+                # A queued reconstruction task of this task re-produces the
+                # outputs added above, since it reads the plan set when it
+                # produces each output. Tracing further would queue this task's
+                # input a second time for the plan.
+                if (
+                    reconstruction_plan_id_to_attach
+                    in node.plans_with_queued_reconstruction_task
+                ):
+                    logger.debug(
+                        "Task %s has a queued reconstruction task for plan %s. "
+                        "Not tracing past it.",
+                        node.lineage_task_id,
+                        reconstruction_plan_id_to_attach,
+                    )
+                    return
             logger.debug(
                 "Task %s has the following plan: %s",
                 node.lineage_task_id,
@@ -509,6 +566,14 @@ class LineageTracker:
                     _trace_parent_for_reconstruction(parent_task_node, node)
 
         _trace_parent_for_reconstruction(task_node)
+        # The caller resubmits every returned seed task for the plan, so each one now
+        # has a queued reconstruction task.
+        for seed_task_id in seed_task_ids:
+            self._lineage_task_id_to_task_node[
+                seed_task_id
+            ].plans_with_queued_reconstruction_task.add(
+                reconstruction_plan_id_to_attach
+            )
         # Sort to keep the order of the seed task IDs deterministic.
         return sorted(seed_task_ids), reconstruction_plan_id_to_attach
 

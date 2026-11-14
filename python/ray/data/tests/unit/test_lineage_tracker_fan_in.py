@@ -1043,5 +1043,235 @@ def test_retry_does_not_release_a_queued_sibling_again():
     tracker.register_task_submission(right, right_input, plan)
 
 
+# The tests below share one graph::
+#
+#     seed --output 0--> split --output 0--> left  --\\
+#                              --output 1--> right --+--> common
+#
+# ``common`` fails, which opens the plan. Then ``left`` and ``right`` lose their
+# input while they are re-executed for that plan.
+
+_SEED_OUTPUT = [ParentBlockOutput(parent_lineage_task_id="seed", output_index=0)]
+_LEFT_INPUT = [ParentBlockOutput(parent_lineage_task_id="split", output_index=0)]
+_RIGHT_INPUT = [ParentBlockOutput(parent_lineage_task_id="split", output_index=1)]
+
+
+def _register_split_graph(tracker: LineageTracker) -> ReconstructionPlanId:
+    """Register the graph above, then fail ``common`` to open its plan."""
+    tracker.register_task_submission("seed", [])
+    tracker.register_task_submission("split", _SEED_OUTPUT)
+    tracker.register_task_submission("left", _LEFT_INPUT)
+    tracker.register_task_submission("right", _RIGHT_INPUT)
+    tracker.register_task_submission(
+        "common",
+        [
+            ParentBlockOutput(parent_lineage_task_id="left", output_index=0),
+            ParentBlockOutput(parent_lineage_task_id="right", output_index=0),
+        ],
+    )
+    seed_task_ids, plan = tracker.register_task_failed("common")
+    assert seed_task_ids == ["seed"]
+    return plan
+
+
+def _produce_output(
+    tracker: LineageTracker,
+    lineage_task_id: LineageTaskId,
+    output_index: OutputIndex,
+    plan: ReconstructionPlanId,
+) -> ObjectReuseStatus:
+    """Produce one output of a re-execution the way the operator does. The output
+    is queued for the plan only when the plan reuses it.
+    """
+    status = tracker.get_object_reuse_status(lineage_task_id, output_index, plan)
+    if status is ObjectReuseStatus.OBJECT_REUSED:
+        tracker.register_block_queued(lineage_task_id, output_index, plan)
+    return status
+
+
+def _re_execute(
+    tracker: LineageTracker,
+    lineage_task_id: LineageTaskId,
+    dependencies: List[ParentBlockOutput],
+    plan: ReconstructionPlanId,
+    num_outputs: int,
+) -> List[ObjectReuseStatus]:
+    """Submit, produce every output of, and complete one re-execution."""
+    tracker.register_task_submission(lineage_task_id, dependencies, plan)
+    statuses = [
+        _produce_output(tracker, lineage_task_id, output_index, plan)
+        for output_index in range(num_outputs)
+    ]
+    tracker.register_task_complete(lineage_task_id, plan)
+    return statuses
+
+
+def _re_execute_up_to_left_and_right(
+    tracker: LineageTracker, plan: ReconstructionPlanId
+) -> None:
+    """Re-execute ``seed`` and ``split`` for the plan, then submit ``left`` and
+    ``right`` on the input ``split`` queued for them.
+    """
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        reused,
+        reused,
+    ]
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+
+
+def test_retry_does_not_resubmit_the_seed_while_a_parent_re_execution_is_queued():
+    """``right`` loses its input while the re-execution of ``split`` for ``left``
+    is still queued. That queued re-execution re-produces ``right``'s input too, so
+    the seed is not resubmitted, and ``split`` is submitted on the input it has.
+    """
+    tracker = LineageTracker()
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+
+    assert tracker.register_task_failed("right", plan) == ([], plan)
+
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        reused,
+        reused,
+    ]
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+
+
+def test_retry_resubmits_the_seed_while_a_parent_re_execution_is_submitted():
+    """``right`` loses its input after the re-execution of ``split`` for ``left``
+    is submitted, but before it produces output 1. The seed is resubmitted. The
+    submitted re-execution still produces output 1 for ``right``, so the next
+    re-execution of ``split`` is redundant and its outputs are unrelated.
+    """
+    tracker = LineageTracker()
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+    _re_execute(tracker, "seed", [], plan, num_outputs=1)
+    tracker.register_task_submission("split", _SEED_OUTPUT, plan)
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _produce_output(tracker, "split", 0, plan) is reused
+
+    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+
+    assert _produce_output(tracker, "split", 1, plan) is reused
+    tracker.register_task_complete("split", plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    unrelated = ObjectReuseStatus.OBJECT_UNRELATED
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        unrelated,
+        unrelated,
+    ]
+
+
+def test_retry_resubmits_the_seed_after_a_parent_re_execution_produced_the_input():
+    """``right`` loses its input after the re-execution of ``split`` for ``left``
+    already produced output 1. That re-execution does not produce output 1 again,
+    so the seed is resubmitted and the next re-execution of ``split`` produces it.
+    """
+    tracker = LineageTracker()
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+    _re_execute(tracker, "seed", [], plan, num_outputs=1)
+    tracker.register_task_submission("split", _SEED_OUTPUT, plan)
+    assert _produce_output(tracker, "split", 0, plan) is ObjectReuseStatus.OBJECT_REUSED
+    # The plan has nothing left to re-produce from split, so output 1 is dropped.
+    assert (
+        _produce_output(tracker, "split", 1, plan) is ObjectReuseStatus.OBJECT_UNRELATED
+    )
+
+    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+
+    tracker.register_task_complete("split", plan)
+    _re_execute(tracker, "seed", [], plan, num_outputs=1)
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        ObjectReuseStatus.OBJECT_PRUNED,
+        ObjectReuseStatus.OBJECT_REUSED,
+    ]
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+
+
+def test_retry_does_not_resubmit_a_seed_that_is_already_queued():
+    """``left`` and ``right`` lose their input before the resubmitted seed is
+    submitted. The queued seed re-produces the input of both, so it is not
+    returned a second time.
+    """
+    tracker = LineageTracker()
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+
+    assert tracker.register_task_failed("right", plan) == ([], plan)
+
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        reused,
+        reused,
+    ]
+
+
+def test_retry_resubmits_the_seed_while_a_later_parent_re_execution_is_submitted():
+    """Two re-executions of ``split`` for the plan overlap. The first one completes
+    after the second one is submitted. ``left`` then loses its input. The seed is
+    resubmitted. The second re-execution still produces output 0 for ``left``, so
+    the third re-execution of ``split`` is redundant and its outputs are unrelated.
+    """
+    tracker = LineageTracker()
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+    _re_execute(tracker, "seed", [], plan, num_outputs=1)
+    # The first re-execution of split produces both outputs and keeps going.
+    tracker.register_task_submission("split", _SEED_OUTPUT, plan)
+    assert _produce_output(tracker, "split", 0, plan) is ObjectReuseStatus.OBJECT_REUSED
+    assert (
+        _produce_output(tracker, "split", 1, plan) is ObjectReuseStatus.OBJECT_UNRELATED
+    )
+    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+    _re_execute(tracker, "seed", [], plan, num_outputs=1)
+    # The second re-execution of split is submitted, then the first one completes.
+    tracker.register_task_submission("split", _SEED_OUTPUT, plan)
+    tracker.register_task_complete("split", plan)
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _produce_output(tracker, "split", 0, plan) is reused
+    assert _produce_output(tracker, "split", 1, plan) is reused
+    tracker.register_task_complete("split", plan)
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    unrelated = ObjectReuseStatus.OBJECT_UNRELATED
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        unrelated,
+        unrelated,
+    ]
+
+
+def test_re_execution_without_queued_input_for_a_finished_plan_raises():
+    """A re-execution is only submitted for a plan that needs outputs from the task
+    or queued input for it. After the plan is done with ``split``, submitting
+    ``split`` for the plan again raises.
+    """
+    tracker = LineageTracker()
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+
+    with pytest.raises(ValueError, match="not registered as a known reconstruction"):
+        tracker.register_task_submission("split", _SEED_OUTPUT, plan)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -819,6 +819,14 @@ def _reconstruct_lost_object(
             plans_str,
         )
 
+    if not seed_task_ids:
+        logger.warning(
+            "Reconstructing lost object for task %s via plan(s) %s from pending "
+            "reconstruction tasks. No seed task is resubmitted.",
+            task.lineage_task_id,
+            plans_str,
+        )
+        return
     logger.warning(
         "Reconstructing lost object for task %s via plan(s) %s from seed task(s) %s.",
         task.lineage_task_id,
