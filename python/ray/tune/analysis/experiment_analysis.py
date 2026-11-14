@@ -298,7 +298,14 @@ class ExperimentAnalysis:
                 "To fetch the `best_result`, pass a `metric` and `mode` "
                 "parameter to `tune.run()`."
             )
-        return self.trial_dataframes[self.best_trial.trial_id]
+        best_trial = self.best_trial
+        if not best_trial:
+            raise ValueError(
+                f"No best trial found. Please check if you specified the "
+                f"correct default metric ({self.default_metric}) and mode "
+                f"({self.default_mode})."
+            )
+        return self.trial_dataframes[best_trial.trial_id]
 
     @property
     def best_result(self) -> Dict:
@@ -317,7 +324,14 @@ class ExperimentAnalysis:
                 "`get_best_trial(metric, mode).last_result` to set "
                 "the metric and mode explicitly and fetch the last result."
             )
-        return self.best_trial.last_result
+        best_trial = self.best_trial
+        if not best_trial:
+            raise ValueError(
+                f"No best trial found. Please check if you specified the "
+                f"correct default metric ({self.default_metric}) and mode "
+                f"({self.default_mode})."
+            )
+        return best_trial.last_result
 
     def _delimiter(self):
         return os.environ.get("TUNE_RESULT_DELIM", "/")
@@ -435,7 +449,7 @@ class ExperimentAnalysis:
         # Support nested metrics given as flattened strings, e.g.
         # "info/learner/default_policy/policy_loss".
         return [
-            (checkpoint, unflattened_lookup(metric, metrics))
+            (checkpoint, unflattened_lookup(metric, metrics, default=None))
             for checkpoint, metrics in best_checkpoints
         ]
 
@@ -464,10 +478,12 @@ class ExperimentAnalysis:
 
         checkpoints_and_metrics = self._get_trial_checkpoints_with_metric(trial, metric)
 
-        # Filter out nan. Sorting nan values leads to undefined behavior.
-        checkpoints_and_metrics = list(
-            filter(lambda x: not is_nan(x[1]), checkpoints_and_metrics)
-        )
+        # Filter out missing (None) and nan metric values. Sorting nan values leads to undefined behavior.
+        checkpoints_and_metrics = [
+            x
+            for x in checkpoints_and_metrics
+            if x[1] is not None and not is_nan(x[1])
+        ]
 
         if not checkpoints_and_metrics:
             logger.error(f"No checkpoints have been found for trial {trial}.")
@@ -626,6 +642,8 @@ class ExperimentAnalysis:
             Path for last checkpoint of trial
         """
         trial = trial or self.get_best_trial(metric, mode)
+        if not trial:
+            return None
         return self.get_best_checkpoint(trial, TRAINING_ITERATION, "max")
 
     def _validate_metric(self, metric: str) -> str:
