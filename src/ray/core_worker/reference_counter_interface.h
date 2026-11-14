@@ -555,6 +555,24 @@ class ReferenceCounterInterface {
                                           const NodeID &node_id) = 0;
 
   /**
+   * @brief Record that a moved object's primary copy is now pinned at another
+   * node, and pick the previous primary's copy for the caller to free.
+   *
+   * Nothing changes when the new node is already dead: the previous primary
+   * was never freed and stays the primary. No copy is picked when there is no
+   * previous primary (recovery is in flight) or when the previous primary is
+   * the new node (a repeated update). A picked copy is
+   * left out of GetObjectLocationsForRecovery until that node reports it
+   * removed or dies, or the object goes out of scope.
+   *
+   * @param[in] object_id The moved object.
+   * @param[in] node_id The node that now pins the primary copy.
+   * @return The node whose copy the caller must free, or nullopt.
+   */
+  virtual std::optional<NodeID> UpdateObjectPrimaryMoved(const ObjectID &object_id,
+                                                         const NodeID &node_id) = 0;
+
+  /**
    * @brief Check whether the object is pinned at a remote plasma store node or
    * spilled to external storage.
    *
@@ -643,6 +661,20 @@ class ReferenceCounterInterface {
       const ObjectID &object_id) = 0;
 
   /**
+   * @brief Get the locations of the given object that recovery may pin.
+   *
+   * Same as GetObjectLocations, minus the nodes whose copy is being freed
+   * after the object's primary moved away from them: pinning such a copy can
+   * succeed just before the free deletes it.
+   *
+   * @param[in] object_id The object to get locations for.
+   * @return The nodes recovery may pin if the reference exists, empty optional
+   *         otherwise.
+   */
+  virtual std::optional<absl::flat_hash_set<NodeID>> GetObjectLocationsForRecovery(
+      const ObjectID &object_id) = 0;
+
+  /**
    * @brief Publish the snapshot of the object location for the given object id.
    * and mark the object as subscribed, so its later location publishes are not
    * skipped. Publish the empty locations if object is already evicted or not
@@ -671,11 +703,15 @@ class ReferenceCounterInterface {
    * @param[in] object_id The object that has been spilled.
    * @param[in] spilled_url The URL to which the object has been spilled.
    * @param[in] spilled_node_id The ID of the node on which the object was spilled.
+   * @param[in] reporter_node_id The node whose raylet spilled the object, set
+   * even when it spilled to external storage. A moved object's spill is
+   * recorded only when this node holds its primary copy.
    * @return True if the reference exists and is in scope, false otherwise.
    */
   virtual bool HandleObjectSpilled(const ObjectID &object_id,
                                    const std::string &spilled_url,
-                                   const NodeID &spilled_node_id) = 0;
+                                   const NodeID &spilled_node_id,
+                                   const NodeID &reporter_node_id) = 0;
 
   /**
    * @brief Get locality data for object.

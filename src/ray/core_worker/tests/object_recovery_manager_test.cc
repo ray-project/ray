@@ -679,7 +679,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionAfterSpillReportFromDeadNode
   // 4. Node A's spill report finally arrives, naming a node that is already
   //    dead. This is the first spill report the owner has processed for this
   //    object, so its stored spilled_node_id is still nil.
-  ASSERT_TRUE(ref_counter_->HandleObjectSpilled(object_id, "/tmp/spill/url", node_a));
+  ASSERT_TRUE(
+      ref_counter_->HandleObjectSpilled(object_id, "/tmp/spill/url", node_a, node_a));
 
   // 5. The stale report must not be recorded as a location. `spilled` has to
   //    stay false, and the live copy on node B has to keep its primary-copy
