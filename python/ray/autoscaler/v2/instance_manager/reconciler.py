@@ -69,6 +69,41 @@ from ray.core.generated.instance_manager_pb2 import (
 logger = logging.getLogger(__name__)
 
 
+class _ReplicaViewCache:
+    """Tick-scoped cache for read-only `_MultiHostReplicaView` projections.
+
+    Keyed by InstanceManager storage version and explicitly invalidated on
+    non-empty IM updates within a reconcile step so consecutive read-only
+    phases reuse one projection without scanning IM rows repeatedly.
+    """
+
+    def __init__(
+        self,
+        cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        replica_sizes: Dict[NodeType, int],
+    ):
+        self._cloud_instances = cloud_instances
+        self._replica_sizes = replica_sizes
+        self._version: Optional[int] = None
+        self._view: Optional[_MultiHostReplicaView] = None
+
+    def get(
+        self,
+        im_instances: List[IMInstance],
+        version: int,
+    ) -> _MultiHostReplicaView:
+        if self._view is None or self._version != version:
+            self._view = _build_multihost_replica_view(
+                im_instances, self._cloud_instances, self._replica_sizes
+            )
+            self._version = version
+        return self._view
+
+    def invalidate(self) -> None:
+        self._version = None
+        self._view = None
+
+
 class Reconciler:
     """A singleton class that reconciles the instance states of the instance manager
     for autoscaler.
@@ -329,12 +364,15 @@ class Reconciler:
             replica_sizes=replica_sizes,
         )
 
+        view_cache = _ReplicaViewCache(non_terminated_cloud_instances, replica_sizes)
+
         Reconciler._begin_cloud_provider_reconcile_step(
             instance_manager=instance_manager,
             cloud_provider=cloud_provider,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             autoscaling_config=autoscaling_config,
             replica_sizes=replica_sizes,
+            view_cache=view_cache,
         )
         try:
             Reconciler._scale_cluster(
@@ -347,6 +385,7 @@ class Reconciler:
                 cloud_provider=cloud_provider,
                 non_terminated_cloud_instances=non_terminated_cloud_instances,
                 replica_sizes=replica_sizes,
+                view_cache=view_cache,
                 _logger=_logger or logger,
             )
 
@@ -359,6 +398,7 @@ class Reconciler:
                 autoscaling_config=autoscaling_config,
                 non_terminated_cloud_instances=non_terminated_cloud_instances,
                 replica_sizes=replica_sizes,
+                view_cache=view_cache,
             )
 
             # Refresh in-flight maps after _scale_cluster / _terminate_instances
@@ -369,6 +409,7 @@ class Reconciler:
                 non_terminated_cloud_instances=non_terminated_cloud_instances,
                 autoscaling_config=autoscaling_config,
                 replica_sizes=replica_sizes,
+                view_cache=view_cache,
             )
 
             Reconciler._handle_instances_launch(
@@ -429,6 +470,9 @@ class Reconciler:
                 instance.launch_request_id
             ), "Instance in REQUESTED status should have launch_request_id set."
             instances_with_launch_requests.append(instance)
+
+        if not instances_with_launch_requests:
+            return
 
         assigned_cloud_instance_ids: Set[CloudInstanceId] = {
             instance.cloud_instance_id
@@ -1158,13 +1202,11 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
         replica_sizes: Optional[Dict[NodeType, int]] = None,
+        view_cache: Optional[_ReplicaViewCache] = None,
     ) -> None:
-        im_instances, _ = Reconciler._get_im_instances(instance_manager)
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
         if replica_sizes is None:
             replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
-        view = _build_multihost_replica_view(
-            im_instances, non_terminated_cloud_instances, replica_sizes
-        )
         known_cloud_instance_ids: Set[CloudInstanceId] = {
             inst.cloud_instance_id
             for inst in im_instances
@@ -1186,18 +1228,26 @@ class Reconciler:
             ):
                 single_host_in_flight[inst.instance_type][inst.launch_request_id] += 1
 
-        for (nt, lid), req_cnt in view.requested_by_lid.items():
-            if req_cnt <= 0 or not lid:
-                continue
-            if (nt, lid) in view.torn_down_lids:
-                continue
-            if view.claimed_reps_by_lid.get((nt, lid)):
-                continue
-            size = replica_sizes[nt]
-            vanished = len(view.vanished_cids_by_lid.get((nt, lid), ()))
-            reps = (req_cnt + vanished) // size
-            if reps > 0:
-                unclaimed_replicas_by_lid[nt][lid] = reps
+        if replica_sizes:
+            view = (
+                view_cache.get(im_instances, version)
+                if view_cache is not None
+                else _build_multihost_replica_view(
+                    im_instances, non_terminated_cloud_instances, replica_sizes
+                )
+            )
+            for (nt, lid), req_cnt in view.requested_by_lid.items():
+                if req_cnt <= 0 or not lid:
+                    continue
+                if (nt, lid) in view.torn_down_lids:
+                    continue
+                if view.claimed_reps_by_lid.get((nt, lid)):
+                    continue
+                size = replica_sizes[nt]
+                vanished = len(view.vanished_cids_by_lid.get((nt, lid), ()))
+                reps = (req_cnt + vanished) // size
+                if reps > 0:
+                    unclaimed_replicas_by_lid[nt][lid] = reps
 
         cloud_provider.begin_reconcile_step(
             known_cloud_instance_ids=known_cloud_instance_ids,
@@ -1699,6 +1749,7 @@ class Reconciler:
             Dict[CloudInstanceId, CloudInstance]
         ] = None,
         replica_sizes: Optional[Dict[NodeType, int]] = None,
+        view_cache: Optional[_ReplicaViewCache] = None,
         _logger: logging.Logger = logger,
     ) -> None:
         """Scale the cluster based on the resource state and the resource scheduler's
@@ -1721,6 +1772,7 @@ class Reconciler:
                 providing provider replica group IDs.
             replica_sizes: Optional mapping of multi-worker node types to workers
                 per replica.
+            view_cache: Optional tick-scoped replica-view cache.
             _logger: Logger for scale warnings (injectable for tests).
         """
 
@@ -1803,7 +1855,13 @@ class Reconciler:
         if replica_sizes is None:
             replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
         pre_view = (
-            _build_multihost_replica_view(im_instances, cloud_instances, replica_sizes)
+            (
+                view_cache.get(im_instances, version)
+                if view_cache is not None
+                else _build_multihost_replica_view(
+                    im_instances, cloud_instances, replica_sizes
+                )
+            )
             if replica_sizes
             else None
         )
@@ -1896,11 +1954,15 @@ class Reconciler:
             status_overrides = {
                 iid: ev.new_instance_status for iid, ev in updates.items()
             }
-            view = _build_multihost_replica_view(
-                im_instances,
-                cloud_instances,
-                replica_sizes,
-                status_overrides=status_overrides,
+            view = (
+                _build_multihost_replica_view(
+                    im_instances,
+                    cloud_instances,
+                    replica_sizes,
+                    status_overrides=status_overrides,
+                )
+                if status_overrides
+                else pre_view
             )
             active_by_type: Dict[NodeType, int] = defaultdict(int)
             active_total = 0
@@ -2003,6 +2065,8 @@ class Reconciler:
             cloud_provider.do_ippr_requests(reply.to_ippr)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
+        if updates and view_cache is not None:
+            view_cache.invalidate()
 
     @staticmethod
     def _filter_partial_replica_terminations(
@@ -2091,6 +2155,7 @@ class Reconciler:
             Dict[CloudInstanceId, CloudInstance]
         ] = None,
         replica_sizes: Optional[Dict[NodeType, int]] = None,
+        view_cache: Optional[_ReplicaViewCache] = None,
     ):
         """Terminate instances with the below statuses:
             - RAY_STOPPED: ray was stopped on the cloud instance.
@@ -2107,6 +2172,7 @@ class Reconciler:
                 which carry the provider replica id of each worker.
             replica_sizes: Optional mapping of multi-worker node types to workers
                 per replica.
+            view_cache: Optional tick-scoped replica-view cache.
         """
 
         im_instances, version = Reconciler._get_im_instances(instance_manager)
@@ -2121,8 +2187,12 @@ class Reconciler:
         if replica_sizes is None:
             replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
         cloud_instances = non_terminated_cloud_instances or {}
-        view = _build_multihost_replica_view(
-            im_instances, cloud_instances, replica_sizes
+        view = (
+            view_cache.get(im_instances, version)
+            if view_cache is not None
+            else _build_multihost_replica_view(
+                im_instances, cloud_instances, replica_sizes
+            )
         )
         # A RAY_STOPPED row can be stale after a raylet restart on the same
         # cloud instance. If another active IM row still owns that cloud
@@ -2262,6 +2332,8 @@ class Reconciler:
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
+        if updates and view_cache is not None:
+            view_cache.invalidate()
 
     @staticmethod
     def _install_ray(

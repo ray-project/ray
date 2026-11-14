@@ -9591,6 +9591,182 @@ class TestReconciler:
         assert "a-term" not in insts3
         assert "b-term" in insts3
 
+    def test_replica_view_cache_reuses_within_tick_and_invalidates_on_im_update(self):
+        """Verify Reconciler reuses one multi-host replica view per unchanged IM
+        version within a tick and invalidates immediately after IM mutations."""
+        import ray.autoscaler.v2.instance_manager.reconciler as reconciler_mod
+
+        cfg = MockAutoscalingConfig(
+            configs={
+                "max_workers": 6,
+                "node_type_configs": {
+                    "head": NodeTypeConfig(
+                        name="head",
+                        resources={"CPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=1,
+                    ),
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=6,
+                        replica_config=WorkerReplicaConfig(workers_per_replica=2),
+                    ),
+                },
+            }
+        )
+        store = InstanceStorage(
+            cluster_id="replica_view_cache_test", storage=InMemoryStorage()
+        )
+        provider = MagicMock()
+        provider.get_non_terminated.return_value = {
+            "h0": CloudInstance("h0", "head", NodeKind.HEAD, True),
+            "p0": CloudInstance("p0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"),
+            "p1": CloudInstance("p1", "tpu", NodeKind.WORKER, True, replica_id="rep-0"),
+        }
+        provider.poll_errors.return_value = []
+        im = InstanceManager(
+            store,
+            instance_status_update_subscribers=[CloudInstanceUpdater(provider)],
+        )
+        self._add_instances(
+            store,
+            [
+                create_instance(
+                    "head-0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="h0",
+                    ray_node_id=binary_to_hex(b"h0"),
+                ),
+                create_instance(
+                    "w0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="p0",
+                    launch_request_id="lid-0",
+                    ray_node_id=binary_to_hex(b"n0"),
+                ),
+                create_instance(
+                    "w1",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="p1",
+                    launch_request_id="lid-0",
+                    ray_node_id=binary_to_hex(b"n1"),
+                ),
+            ],
+        )
+        ray_state = ClusterResourceState(
+            node_states=[
+                NodeState(node_id=b"h0", status=NodeStatus.RUNNING, instance_id="h0"),
+                NodeState(node_id=b"n0", status=NodeStatus.RUNNING, instance_id="p0"),
+                NodeState(node_id=b"n1", status=NodeStatus.RUNNING, instance_id="p1"),
+            ]
+        )
+        scheduler = MagicMock()
+        scheduler.schedule.return_value = SchedulingReply()
+        monitor = CloudResourceMonitor()
+
+        call_count = 0
+        orig_build = reconciler_mod._build_multihost_replica_view
+
+        def _counting_build(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return orig_build(*args, **kwargs)
+
+        with mock.patch.object(
+            reconciler_mod, "_build_multihost_replica_view", side_effect=_counting_build
+        ):
+            # Steady-state tick: no REQUESTED rows, no scale/terminate mutations.
+            # View is built once and shared across all read-only _step_next phases.
+            Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=scheduler,
+                cloud_provider=provider,
+                ray_cluster_resource_state=ray_state,
+                non_terminated_cloud_instances=provider.get_non_terminated(),
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                ray_stop_errors=[],
+                autoscaling_config=cfg,
+                cloud_resource_monitor=monitor,
+            )
+            assert call_count == 1
+
+            # Scale-up tick (no terminations): 1 build pre-scale (shared by
+            # provider step, _scale_cluster, and launch-cap) + 1 build post-scale
+            # (shared by _terminate_instances and second provider step).
+            call_count = 0
+            scheduler.schedule.return_value = SchedulingReply(
+                to_launch=[LaunchRequest(instance_type="tpu", count=2)]
+            )
+            Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=scheduler,
+                cloud_provider=provider,
+                ray_cluster_resource_state=ray_state,
+                non_terminated_cloud_instances=provider.get_non_terminated(),
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                ray_stop_errors=[],
+                autoscaling_config=cfg,
+                cloud_resource_monitor=monitor,
+            )
+            assert call_count == 2
+
+            # Teardown tick: _terminate_instances transitions a RAY_STOPPED
+            # replica and fails its sibling REQUESTED row, invalidating the cache
+            # before the second begin_reconcile_step call.
+            call_count = 0
+            scheduler.schedule.return_value = SchedulingReply()
+            self._add_instances(
+                store,
+                [
+                    create_instance(
+                        "s0",
+                        status=Instance.RAY_STOPPED,
+                        instance_type="tpu",
+                        cloud_instance_id="p2",
+                        launch_request_id="lid-td",
+                    ),
+                    create_instance(
+                        "s1",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="lid-td",
+                    ),
+                ],
+            )
+            cloud_with_td = {
+                **provider.get_non_terminated(),
+                "p2": CloudInstance(
+                    "p2", "tpu", NodeKind.WORKER, True, replica_id="rep-td"
+                ),
+            }
+            provider.begin_reconcile_step.reset_mock()
+            Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=scheduler,
+                cloud_provider=provider,
+                ray_cluster_resource_state=ray_state,
+                non_terminated_cloud_instances=cloud_with_td,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                ray_stop_errors=[],
+                autoscaling_config=cfg,
+                cloud_resource_monitor=monitor,
+            )
+            # Final begin_reconcile_step reflects invalidated post-teardown state.
+            last_kwargs = provider.begin_reconcile_step.call_args.kwargs
+            assert "lid-td" not in last_kwargs["unclaimed_replicas_by_lid"]["tpu"]
+            insts_after, _ = store.get_instances()
+            assert insts_after["s0"].status == Instance.TERMINATING
+            assert insts_after["s1"].status == Instance.ALLOCATION_FAILED
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
