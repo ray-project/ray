@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    TargetCapacityDirection,
+    TimeStampedValue,
+)
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
@@ -1370,7 +1375,16 @@ class TestGangSchedulingAutoscalingPolicy:
         policy = self._make_policy(gang_size=1, inner_result=5)
         assert policy(ctx)[0] == 5
 
-    def _create_state(self, gang_size, min_replicas, max_replicas, running=0):
+    def _create_state(
+        self,
+        gang_size,
+        min_replicas,
+        max_replicas,
+        running=0,
+        target_capacity=None,
+        target_capacity_direction=None,
+        initial_replicas=None,
+    ):
         """Create a DeploymentAutoscalingState with gang config registered."""
         dep_id = DeploymentID(name="test", app_name="app")
         state = DeploymentAutoscalingState(dep_id)
@@ -1379,12 +1393,13 @@ class TestGangSchedulingAutoscalingPolicy:
         info.deployment_config.autoscaling_config = AutoscalingConfig(
             min_replicas=min_replicas,
             max_replicas=max_replicas,
+            initial_replicas=initial_replicas,
         )
         info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
             gang_size=gang_size,
         )
-        info.target_capacity = None
-        info.target_capacity_direction = None
+        info.target_capacity = target_capacity
+        info.target_capacity_direction = target_capacity_direction
         info.config_changed.return_value = False
 
         state.register(info, curr_target_num_replicas=min_replicas)
@@ -1438,6 +1453,127 @@ class TestGangSchedulingAutoscalingPolicy:
         )
         decision = state.get_decision_num_replicas(curr_target_num_replicas=8)
         assert decision == 4
+
+    @pytest.mark.parametrize(
+        "gang_size,min_replicas,max_replicas,target_capacity,expected_bounds",
+        [
+            # No target capacity: bounds are unchanged.
+            (4, 4, 8, None, (4, 8)),
+            (4, 4, 8, 100, (4, 8)),
+            # 2 gangs * 75% = 1.5 -> 2 gangs (upper stays at 8, not 6).
+            (4, 4, 8, 75, (4, 8)),
+            (4, 4, 8, 50, (4, 4)),
+            (4, 4, 8, 30, (4, 4)),
+            (4, 4, 16, 25, (4, 4)),
+            (4, 8, 16, 50, (4, 8)),
+            # Default bounds are not required to be gang multiples (see
+            # #67507). min_replicas=1 must still map to one gang, not zero.
+            (4, 1, 100, None, (4, 100)),
+            # Legacy unaligned max: floor to 4 so the bound is never exceeded.
+            (4, 1, 3, 50, (4, 4)),
+            # Scale-to-zero is preserved.
+            (4, 0, 8, 50, (0, 4)),
+            (4, 0, 8, 0, (0, 0)),
+        ],
+    )
+    def test_capacity_adjusted_bounds_are_gang_aligned(
+        self,
+        gang_size,
+        min_replicas,
+        max_replicas,
+        target_capacity,
+        expected_bounds,
+    ):
+        """Capacity-adjusted bounds must be multiples of gang_size.
+
+        Otherwise apply_bounds() clips a gang-aligned decision back to an
+        unaligned replica count, which the gang scheduler rejects.
+        """
+        state = self._create_state(
+            gang_size=gang_size,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            target_capacity=target_capacity,
+        )
+        lower_bound = state.get_num_replicas_lower_bound()
+        upper_bound = state.get_num_replicas_upper_bound()
+        assert (lower_bound, upper_bound) == expected_bounds
+        assert lower_bound % gang_size == 0
+        assert upper_bound % gang_size == 0
+
+    def test_capacity_adjusted_bounds_do_not_undo_gang_alignment(self):
+        """The upper bound clamp must not leave an unaligned target."""
+        state = self._create_state(
+            gang_size=4,
+            min_replicas=4,
+            max_replicas=8,
+            running=4,
+            target_capacity=75,
+        )
+        # ceil(5/4)*4 = 8. Before bounds were gang-aligned, the upper bound was
+        # 8 * 75% = 6 and apply_bounds() clipped the decision back to 6.
+        state._policy = GangSchedulingAutoscalingPolicy(
+            lambda ctx: (5, {}), gang_size=4
+        )
+        decision = state.get_decision_num_replicas(curr_target_num_replicas=4)
+        assert decision == 8
+
+    def test_capacity_up_lower_bound_matches_initial_replicas(self):
+        """An unaligned initial_replicas floor must not sit below the target.
+
+        register() rounds an unaligned initial target up to a whole gang. The
+        lower bound must be rounded up as well, otherwise autoscaling could
+        immediately scale below the target when capacity is increasing.
+        """
+        state = self._create_state(
+            gang_size=4,
+            min_replicas=4,
+            max_replicas=16,
+            target_capacity=100,
+            target_capacity_direction=TargetCapacityDirection.UP,
+            initial_replicas=6,
+        )
+        assert state.get_num_replicas_lower_bound() == 8
+        assert state.get_num_replicas_upper_bound() == 16
+
+    def test_unaligned_initial_replicas_rounds_up_to_gang(self):
+        """A legacy unaligned initial_replicas doesn't reach the scheduler."""
+        state = DeploymentAutoscalingState(DeploymentID(name="test", app_name="app"))
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=4,
+            max_replicas=16,
+            initial_replicas=6,
+        )
+        info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
+            gang_size=4,
+        )
+        info.target_capacity = None
+        info.target_capacity_direction = None
+        info.config_changed.return_value = False
+
+        target = state.register(info, curr_target_num_replicas=4)
+        assert target == 8
+
+    def test_no_gang_capacity_adjustment_unchanged(self):
+        """Without gang scheduling, bounds use the existing adjustment."""
+        dep_id = DeploymentID(name="test", app_name="app")
+        state = DeploymentAutoscalingState(dep_id)
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=2,
+            max_replicas=10,
+        )
+        info.deployment_config.gang_scheduling_config = None
+        info.target_capacity = 50
+        info.target_capacity_direction = None
+        info.config_changed.return_value = False
+
+        state.register(info, curr_target_num_replicas=5)
+        assert state.get_num_replicas_lower_bound() == 1
+        assert state.get_num_replicas_upper_bound() == 5
 
 
 class TestWarmupScalingFeedbackLoop:

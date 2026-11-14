@@ -113,7 +113,7 @@ from ray.serve._private.utils import (
     JavaActorHandleProxy,
     check_obj_ref_ready_nowait,
     get_active_placement_group_ids,
-    get_capacity_adjusted_num_replicas,
+    get_capacity_adjusted_gang_replicas,
     get_deployment_actor_name,
     get_random_string,
     msgpack_deserialize,
@@ -4142,11 +4142,17 @@ class DeploymentState:
             )
         else:
             self._autoscaling_state_manager.deregister_deployment(self._id)
-            target_num_replicas = get_capacity_adjusted_num_replicas(
+            gang_scheduling_config = (
+                deployment_info.deployment_config.gang_scheduling_config
+            )
+            target_num_replicas = get_capacity_adjusted_gang_replicas(
                 # `num_replicas` is always set for non-autoscaling deployments.
                 # pyrefly: ignore[bad-argument-type]
                 deployment_info.deployment_config.num_replicas,  # type: ignore[arg-type]
                 deployment_info.target_capacity,
+                gang_scheduling_config.gang_size
+                if gang_scheduling_config is not None
+                else None,
             )
 
         old_target_state = self._target_state

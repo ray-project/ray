@@ -45,7 +45,7 @@ from ray.serve._private.metrics_utils import (
     merge_instantaneous_total,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve._private.utils import get_capacity_adjusted_gang_replicas
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
@@ -322,6 +322,9 @@ class DeploymentAutoscalingState:
         self._cached_running_replica_strs: Set[str] = set()
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        # Gang size when gang scheduling is enabled, otherwise None. Replica
+        # counts must be multiples of this value.
+        self._gang_size: Optional[int] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
@@ -393,7 +396,10 @@ class DeploymentAutoscalingState:
             info.deployment_config.gang_scheduling_config, "gang_size", None
         )
         if gang_size is not None and gang_size > 1:
+            self._gang_size = gang_size
             self._policy = GangSchedulingAutoscalingPolicy(self._policy, gang_size)
+        else:
+            self._gang_size = None
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -407,7 +413,19 @@ class DeploymentAutoscalingState:
             # Record telemetry for custom autoscaling policy usage
             ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED.record("1")
 
-        return self.apply_bounds(target_num_replicas)
+        return self.apply_bounds(self._round_up_to_gang_size(target_num_replicas))
+
+    def _round_up_to_gang_size(self, num_replicas: int) -> int:
+        """Round `num_replicas` up to a whole number of gangs.
+
+        Autoscaling decisions are already gang-aligned by
+        `GangSchedulingAutoscalingPolicy`, but an explicitly configured
+        `initial_replicas` (or a target carried over from a pre-gang config)
+        may not be. Preserves 0 so scale-to-zero still works.
+        """
+        if self._gang_size is None or num_replicas <= 0:
+            return num_replicas
+        return math.ceil(num_replicas / self._gang_size) * self._gang_size
 
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_metrics:
@@ -418,20 +436,25 @@ class DeploymentAutoscalingState:
         if self._config.initial_replicas is not None and (
             self._target_capacity_direction == TargetCapacityDirection.UP
         ):
-            return get_capacity_adjusted_num_replicas(
+            return get_capacity_adjusted_gang_replicas(
                 self._config.initial_replicas,
                 self._target_capacity,
+                self._gang_size,
+                round_gangs_up=True,
             )
         else:
-            return get_capacity_adjusted_num_replicas(
+            return get_capacity_adjusted_gang_replicas(
                 self._config.min_replicas,
                 self._target_capacity,
+                self._gang_size,
+                round_gangs_up=True,
             )
 
     def get_num_replicas_upper_bound(self) -> int:
-        return get_capacity_adjusted_num_replicas(
+        return get_capacity_adjusted_gang_replicas(
             self._config.max_replicas,
             self._target_capacity,
+            self._gang_size,
         )
 
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
