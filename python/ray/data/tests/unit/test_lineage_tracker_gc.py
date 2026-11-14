@@ -175,7 +175,7 @@ def test_parent_waits_for_every_output_to_be_written(tracker):
             Submit("write:1", {"read:0": [1, 2]}),
             *_complete_write("write:0"),
             ExpectTaskIds(["read:0", "write:1"]),
-            ExpectNodeAttribute("read:0", "released_output_indices", {0}),
+            ExpectNodeAttribute("read:0", "durable_output_indices", {0}),
             *_complete_write("write:1"),
             ExpectTaskIds([]),
         ],

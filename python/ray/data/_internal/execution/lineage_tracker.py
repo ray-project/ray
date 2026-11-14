@@ -104,15 +104,15 @@ class TaskNode:
     # them reconstructed.
     is_durable: bool = False
     # Number of outputs the task produced, known once an attempt completes. None
-    # until then, so a node that never completed is never collected.
+    # until then, so a task node that never completed is never garbage collected.
     num_outputs: Optional[int] = None
     # Attempts submitted and not yet completed or failed, counted once per
     # reconstruction plan the attempt serves. A node is never collected while an
-    # attempt is running, since the attempt still reports outputs against it.
+    # attempt is running, since the attempt still needs the task node metadata to track the reconstruction.
     num_running_attempts: int = 0
     # Indices of this task's outputs whose consumer has been collected. The
     # consumer is gone from ``child_tasks``, but its rows are durable in a sink.
-    released_output_indices: Set[OutputIndex] = field(default_factory=set)
+    durable_output_indices: Set[OutputIndex] = field(default_factory=set)
     # IDs of this task's output blocks that have an entry in the tracker's block
     # map. The node owns those entries: resolving a block removes its entry, and
     # removing the node removes the rest (see ``LineageTracker._remove_task_node``).
@@ -845,7 +845,7 @@ class LineageTracker:
         if task_node.is_durable:
             return True
         return all(
-            output_index in task_node.released_output_indices
+            output_index in task_node.durable_output_indices
             for output_index in range(task_node.num_outputs)
         )
 
@@ -859,7 +859,7 @@ class LineageTracker:
         while pending:
             node = pending.pop()
             # A diamond can queue one parent twice; the second visit finds it gone.
-            if self._lineage_task_id_to_task_node.get(node.lineage_task_id) is not node:
+            if node.lineage_task_id not in self._lineage_task_id_to_task_node:
                 continue
             if not self._is_garbage_collectible(node):
                 continue
@@ -881,7 +881,7 @@ class LineageTracker:
         task_node.output_block_ids.clear()
 
         for parent_task_node in task_node.parent_tasks:
-            parent_task_node.released_output_indices.update(
+            parent_task_node.durable_output_indices.update(
                 parent_task_node.child_task_block_dependencies.pop(
                     task_node.lineage_task_id
                 )
