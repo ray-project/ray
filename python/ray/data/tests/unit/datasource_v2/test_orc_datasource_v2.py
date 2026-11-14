@@ -12,9 +12,6 @@ import ray.data.read_api as read_api
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
-    RoundRobinPartitioner,
-)
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
 )
@@ -113,7 +110,20 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, root_f
     partitioner = datasource.get_file_partitioner(
         hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=1)
     )
-    assert isinstance(partitioner, RoundRobinPartitioner)
+    from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
+        RoundRobinPartitioner,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+        supports_stripe_reads,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+        OrcStripePartitioner,
+    )
+
+    expected_type = (
+        OrcStripePartitioner if supports_stripe_reads() else RoundRobinPartitioner
+    )
+    assert isinstance(partitioner, expected_type)
     partitioner.add_input(sample)
     partitioner.finalize()
     assert partitioner.has_partition()
@@ -137,8 +147,9 @@ def test_list_and_read_orc_files_with_partition_columns(tmp_path):
         file_extensions=["orc"],
         include_paths=True,
     )
+    raw_indexer = datasource._get_file_indexer()
     manifests = list(
-        datasource._get_file_indexer().list_files(
+        raw_indexer.list_files(
             pa.array(datasource.paths, type=pa.string()),
             filesystem=datasource.filesystem,
             preserve_order=True,

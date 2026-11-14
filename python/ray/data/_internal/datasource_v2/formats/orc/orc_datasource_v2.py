@@ -25,7 +25,15 @@ from ray.data._internal.datasource_v2.common.size_estimators import (
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
+from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+    supports_stripe_reads,
+)
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+    ORC_TARGET_BYTES,
+    OrcStripeIndexer,
+    OrcStripePartitioner,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -110,7 +118,8 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def _get_file_indexer(self) -> FileIndexer:
-        return NonSamplingFileIndexer(ignore_missing_paths=self._ignore_missing_paths)
+        cls = OrcStripeIndexer if supports_stripe_reads() else NonSamplingFileIndexer
+        return cls(ignore_missing_paths=self._ignore_missing_paths)
 
     @override
     def get_file_partitioner(
@@ -118,6 +127,8 @@ class OrcDatasourceV2(FileDataSourceV2):
     ) -> Optional[FilePartitioner]:
         if hints is None:
             return None
+        if supports_stripe_reads():
+            return OrcStripePartitioner(ORC_TARGET_BYTES)
         reader = OrcFileReader(format=FileFormat.ORC, filesystem=self._filesystem)
         return RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)
 

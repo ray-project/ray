@@ -34,7 +34,30 @@ py_library(
 
 py_test_module_list(
     size = "small",
-    files = glob(["tests/unit/**/test_*.py"]),
+    files = glob(
+        ["tests/unit/**/test_*.py"],
+        exclude = ["tests/unit/datasource_v2/test_orc_stripe_indexer.py"],
+    ),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        ":datasource_v2_unit_conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "tests/unit/datasource_v2/test_orc_stripe_indexer",
+    size = "small",
+    srcs = ["tests/unit/datasource_v2/test_orc_stripe_indexer.py"],
+    data = [
+        "tests/unit/datasource_v2/data/empty.orc",
+        "tests/unit/datasource_v2/data/no-index.orc",
+    ],
+    main = "tests/unit/datasource_v2/test_orc_stripe_indexer.py",
     tags = [
         "exclusive",
         "team:data",
@@ -1223,7 +1246,11 @@ py_test(
 py_test(
     name = "test_orc",
     size = "medium",
-    srcs = ["tests/datasource/test_orc.py"],
+    srcs = [
+        "tests/datasource/orc_decode_trace.py",
+        "tests/datasource/test_orc.py",
+    ],
+    main = "tests/datasource/test_orc.py",
     tags = [
         "exclusive",
         "team:data",

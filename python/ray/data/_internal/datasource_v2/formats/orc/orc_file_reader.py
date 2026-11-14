@@ -1,11 +1,14 @@
 import math
-from typing import Iterator, List, Optional, Sequence
+from contextlib import ExitStack, closing
+from functools import partial
+from typing import Any, Dict, Generator, Iterator, List, Optional, Sequence, Tuple, cast
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-from pyarrow.fs import FileSystem
+from pyarrow.fs import FileSystem, LocalFileSystem
 from typing_extensions import override
 
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -17,14 +20,32 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
 from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator import (
     estimate_batch_size,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+    OrcFileMetadata,
+    OrcStripeMetadata,
+    orc_read_unit_id,
+    read_orc_file,
+    read_orc_layout,
+    require_stripe_reads,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
+from ray.data._internal.datasource_v2.interfaces.read_units import (
+    ReadUnit,
+    ReadUnitFragment,
+)
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    ReadUnitPosition,
     SynthesizedColumn,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
+from ray.data._internal.util import call_with_retry, iterate_with_retry
+from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
@@ -34,8 +55,8 @@ from ray.util.annotations import DeveloperAPI
 class OrcFileReader(FileReader):
     """Read ORC files in batches using PyArrow Dataset fragments.
 
-    Each fragment covers a whole file. PyArrow applies row filters to the
-    scanned batches; this reader does not provide ORC-native stripe pruning.
+    Manifest chunks select physical stripes. Whole files retain Arrow batch
+    streaming; selected stripes use Arrow's existing stripe decoder.
     Path-derived partition values take precedence over same-named file columns
     and are synthesized before filtering and projection.
     """
@@ -133,6 +154,161 @@ class OrcFileReader(FileReader):
             yield table
 
     @override
+    def _get_fragments_to_read(
+        self, dataset: pds.Dataset, manifest: FileManifest
+    ) -> List[ReadUnitFragment]:
+        # Stripe assignments are expanded below with their decoder already open.
+        fragments = {fragment.path: fragment for fragment in dataset.get_fragments()}
+        return [self._whole_file_fragment(fragments[path]) for path in manifest.paths]
+
+    def _whole_file_fragment(self, fragment):
+        path = fragment.path
+        rows = None
+        if any(c.requires_read_unit_boundaries for c in self._synthesized_columns):
+            rows = read_orc_file(
+                path, self._filesystem, lambda reader, size: reader.nrows
+            )
+        return ReadUnitFragment(
+            fragment, ReadUnit(id=path, source=path, count=1, num_rows=rows)
+        )
+
+    @override
+    def _read_fragment_batches(self, dataset, scanner_kwargs, manifest):
+        if self._limit is not None and self._limit <= 0:
+            return
+        if all(m is None for m in manifest.file_chunk_metadatas):
+            yield from super()._read_fragment_batches(dataset, scanner_kwargs, manifest)
+            return
+        fragments = {f.path: f for f in dataset.get_fragments()}
+        rows = 0
+        for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+            if metadata is None:
+                batches = super()._read_fragments_sequential(
+                    iter([self._whole_file_fragment(fragments[path])]), scanner_kwargs
+                )
+            else:
+                batches = self._read_stripes(path, metadata, scanner_kwargs)
+            with closing(
+                cast(Generator[Tuple[pa.Table, ReadUnitPosition], None, None], batches)
+            ):
+                for table, position in batches:
+                    yield table, position
+                    rows += table.num_rows
+                    if self._limit is not None and rows >= self._limit:
+                        return
+
+    def _read_stripes(self, path, metadata, scanner_kwargs):
+        import pyarrow.orc as orc
+
+        require_stripe_reads(path)
+        reader = layout = None
+        retry_errors = DataContext.get_current().retried_io_errors
+        with ExitStack() as inputs:
+
+            def open_reader():
+                nonlocal reader, layout
+                if reader is None:
+                    try:
+                        source = inputs.enter_context(
+                            (self._filesystem or LocalFileSystem()).open_input_file(
+                                path
+                            )
+                        )
+                        owner = orc.ORCFile(source)
+                        actual = read_orc_layout(owner, path, source.size())
+                        if layout is not None and actual != layout:
+                            raise ValueError(f"ORC layout changed for {path}")
+                        reader, layout = owner, actual
+                    except BaseException:
+                        inputs.close()
+                        raise
+                return reader
+
+            def read(stripe):
+                nonlocal reader
+                try:
+                    yield from self._iter_stripe_tables(
+                        open_reader(), path, stripe, scanner_kwargs
+                    )
+                except BaseException:
+                    inputs.close()
+                    reader = None
+                    raise
+
+            call_with_retry(
+                open_reader, description=f"open ORC {path}", match=retry_errors
+            )
+            layout = cast(OrcFileMetadata, layout)
+            stripes = layout.stripes
+            assert stripes is not None
+            run = FileChunk.from_metadata(metadata)
+            indices = run.unit_ids
+            if any(not 0 <= i < len(stripes) for i in indices):
+                raise ValueError(f"Invalid ORC stripe assignment for {path}")
+            if sum(stripes[i].num_rows for i in indices) != run.num_rows:
+                raise ValueError(f"ORC layout changed for {path}")
+            if len(set(indices)) != len(indices):
+                raise ValueError(f"Duplicate ORC stripe assignments for {path}")
+            for index in indices:
+                stripe = stripes[index]
+                unit = ReadUnit(
+                    id=orc_read_unit_id(path, index),
+                    source=path,
+                    index=index,
+                    count=len(stripes),
+                    num_rows=stripe.num_rows,
+                )
+                cursor = 0
+                with closing(
+                    iterate_with_retry(
+                        partial(read, stripe),
+                        f"read ORC unit {unit.id}",
+                        match=retry_errors,
+                    )
+                ) as batches:
+                    for table in batches:
+                        if table.num_rows:
+                            yield table, ReadUnitPosition(
+                                unit, cursor, stripe.row_offset
+                            )
+                            cursor += table.num_rows
+
+    def _iter_stripe_tables(
+        self, reader, path, stripe: OrcStripeMetadata, scanner_kwargs
+    ):
+        def scan(schema, kwargs):
+            names = schema.names if kwargs.get("columns") is None else kwargs["columns"]
+            physical_names = reader.schema.names
+            columns = [
+                name
+                for name in physical_names
+                if any(
+                    requested == name
+                    or (
+                        requested not in physical_names
+                        and requested.startswith(name + ".")
+                    )
+                    for requested in names
+                )
+            ]
+            # Empty read_stripe projections lose row counts on released Arrow.
+            # Use the validated footer count without decoding any file column.
+            table = (
+                pa.Table.from_batches(
+                    [reader.read_stripe(stripe.index, columns=columns)]
+                )
+                if columns
+                else pa.table(
+                    {_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(stripe.num_rows)}
+                )
+            )
+            raise_on_pickle_object_columns(table)
+            fragment = next(pds.dataset(table).get_fragments())
+            yield from fragment.scanner(schema=schema, **kwargs).scan_batches()
+
+        yield from self._scan_tables(path, reader.schema, scanner_kwargs, scan)
+
+    @override
     def _iter_fragment_tables(
         self, fragment: pds.Fragment, scanner_kwargs: dict
     ) -> Iterator[pa.Table]:
@@ -142,16 +318,33 @@ class OrcFileReader(FileReader):
         values are synthesized from the path, then any residual predicate is
         evaluated on the resulting table.
         """
-        if self._partition_parser is None:
-            yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
-            return
+        yield from self._scan_tables(
+            fragment.path,
+            fragment.physical_schema,
+            scanner_kwargs,
+            lambda schema, kwargs: fragment.scanner(
+                schema=schema, **kwargs
+            ).scan_batches(),
+        )
 
-        partitions = self._get_partition_values(fragment.path)
-        physical_schema = fragment.physical_schema
-        schema = self._schema
-        if schema is None:
-            schema = physical_schema
+    def _scan_tables(
+        self,
+        path: str,
+        physical_schema: pa.Schema,
+        scanner_kwargs: Dict[str, Any],
+        scan,
+    ) -> Iterator[pa.Table]:
+        partitions = self._get_partition_values(path)
         synthesized = {column.name for column in self._synthesized_columns}
+        partition_names = set(partitions)
+        if self._partition_parser is not None:
+            partition_names.update(self._partition_parser._scheme.field_names or ())
+        schema = self._schema or physical_schema
+        if not set(schema.names).difference(synthesized, partition_names):
+            # Keep logical types and nullable fields on unpartitioned paths too.
+            for field in physical_schema:
+                if schema.get_field_index(field.name) == -1:
+                    schema = schema.append(field)
         schema = pa.schema([field for field in schema if field.name not in synthesized])
 
         for name, value in partitions.items():
@@ -202,7 +395,7 @@ class OrcFileReader(FileReader):
                 )
 
         # The shared kwargs are also used by concurrent fragment reads.
-        scan_kwargs = dict(scanner_kwargs)
+        scan_kwargs: Dict[str, Any] = dict(scanner_kwargs)
 
         if not partition_matches:
             return
@@ -227,11 +420,10 @@ class OrcFileReader(FileReader):
             [field for field in physical_schema if field.name in decoded_names]
         )
         raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
-        scanner = fragment.scanner(**scan_kwargs, schema=file_schema)
         residual_filter = (
             residual_predicate.to_pyarrow() if residual_predicate is not None else None
         )
-        for tagged in scanner.scan_batches():
+        for tagged in scan(file_schema, scan_kwargs):
             table = pa.Table.from_batches([tagged.record_batch])
             table = self._apply_partition_values(
                 table, partitions, required_columns=required_names
