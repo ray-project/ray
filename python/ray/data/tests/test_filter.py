@@ -2,11 +2,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from pkg_resources import parse_version
 
 import ray
 from ray.data.expressions import col
-from ray.data.tests.conftest import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 
@@ -123,10 +121,6 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         fake_column_ds.to_pandas()
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "data_source",
     [
@@ -356,10 +350,6 @@ def test_filter_with_predicate_expressions(
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_predicate_expr_vs_function_consistency(ray_start_regular_shared):
     """Test that predicate expressions produce the same results as equivalent functions."""
     test_data = [
@@ -385,10 +375,6 @@ def test_filter_predicate_expr_vs_function_consistency(ray_start_regular_shared)
     pd.testing.assert_frame_equal(predicate_result, function_result, check_dtype=False)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_predicate_with_different_block_formats(ray_start_regular_shared):
     """Test that predicate expressions work with different block formats (pandas/arrow)."""
     test_data = [
@@ -429,10 +415,6 @@ def test_filter_predicate_with_different_block_formats(ray_start_regular_shared)
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_expression_display_names(ray_start_regular_shared):
     """Test that filter operations display meaningful expression names in plans."""
     import pyarrow.compute as pc
@@ -453,10 +435,6 @@ def test_filter_expression_display_names(ray_start_regular_shared):
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "compute,concurrency,expected_size",
     [
@@ -482,10 +460,6 @@ def test_filter_expr_compute_resolution(
     assert filter_op.compute.size == expected_size
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_expr_compute_honors_taskpoolstrategy(ray_start_regular_shared):
     """Passing a concrete TaskPoolStrategy through `compute=` must round-trip."""
     from ray.data._internal.compute import TaskPoolStrategy
@@ -497,10 +471,6 @@ def test_filter_expr_compute_honors_taskpoolstrategy(ray_start_regular_shared):
     assert filter_op.compute.size == 20
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_expr_concurrency_is_deprecated(ray_start_regular_shared, caplog):
     """The legacy `concurrency=` argument still works on `filter(expr=...)`,
     but must emit the deprecation warning like every other operator."""
@@ -523,10 +493,6 @@ def test_filter_expr_concurrency_is_deprecated(ray_start_regular_shared, caplog)
     assert "``concurrency`` is deprecated" in caplog.text
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_expr_rejects_actor_pool(ray_start_regular_shared):
     """An ActorPoolStrategy with a predicate expression is misuse — there's
     no state to maintain — and must raise a clear error."""

@@ -19,6 +19,7 @@ from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.bundle_queue import ExactMultipleSize
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     Executor,
@@ -35,6 +36,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.resource_bank import ResourceBank, ResourceBankBase
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -70,6 +72,9 @@ from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+        OpRuntimeMetrics,
+    )
     from ray.data._internal.issue_detection.issue_detector_manager import (
         IssueDetectorManager,
     )
@@ -203,6 +208,11 @@ class StreamingExecutor(Executor, threading.Thread):
         self._backpressure_policies: List[BackpressurePolicy] = []
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
         self._lineage_tracker: Optional[LineageTracker] = None
+        # Live object-store accounting. Only the actor-only backend feeds it, so
+        # it stays None (and every ResourceBank method is unreachable) otherwise.
+        self._resource_bank: Optional[ResourceBankBase] = (
+            ResourceBank() if actor_only_backend_enabled() else None
+        )
 
         self._dataset_id = dataset_id
         # Set by IssueDetectionExecutionCallback when issue detection is registered;
@@ -309,7 +319,11 @@ class StreamingExecutor(Executor, threading.Thread):
             self._lineage_tracker = LineageTracker()
         self._block_ref_counter = BlockRefCounter()
         self._topology = build_streaming_topology(
-            dag, self._options, self._block_ref_counter, self._lineage_tracker
+            dag,
+            self._options,
+            self._block_ref_counter,
+            self._lineage_tracker,
+            resource_bank=self._resource_bank,
         )
 
         self._resource_manager = ResourceManager(
@@ -800,6 +814,14 @@ class StreamingExecutor(Executor, threading.Thread):
             f"{self._get_operator_id(op, i)}" for i, op in enumerate(self._topology)
         ]
 
+    def _get_phase_metrics(self) -> Dict[str, Dict[str, "OpRuntimeMetrics"]]:
+        """Returns each multi-phase operator's phase metrics, keyed by its tag."""
+        return {
+            self._get_operator_id(op, i): phase_metrics
+            for i, op in enumerate(self._topology)
+            if (phase_metrics := op.get_phase_metrics())
+        }
+
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
         return {
@@ -836,6 +858,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 [op.metrics for op in self._topology],
                 self._get_operator_tags(),
                 self._get_state_dict(state=state),
+                phase_metrics=self._get_phase_metrics(),
             )
             self._metrics_last_updated = now
 

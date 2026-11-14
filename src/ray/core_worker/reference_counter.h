@@ -107,8 +107,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      const std::optional<std::string> &tensor_transport = std::nullopt) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+      const std::optional<std::string> &tensor_transport = std::nullopt,
+      MoveState move_state = MoveState::NOT_MOVABLE) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -260,6 +260,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences() override;
 
   std::optional<std::string> GetTensorTransport(const ObjectID &object_id) const override;
+
+  std::optional<MoveState> GetMoveState(const ObjectID &object_id) const override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  bool HasConsumeOnceObjects() const override;
 
   void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
     lineage_pinning_enabled_.store(lineage_pinning_enabled);
@@ -466,6 +471,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     LineageReconstructionEligibility lineage_eligibility_ =
         LineageReconstructionEligibility::ELIGIBLE;
 
+    /// Only set on owned objects; borrowers always see NOT_MOVABLE.
+    MoveState move_state_ = MoveState::NOT_MOVABLE;
+
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
     /// is inlined (not stored in plasma), then its lineage ref count is 0
@@ -531,8 +539,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                               LineageReconstructionEligibility lineage_eligibility,
                               bool add_local_ref,
                               const std::optional<NodeID> &pinned_at_node_id,
-                              const std::optional<std::string> &tensor_transport)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                              const std::optional<std::string> &tensor_transport,
+                              MoveState move_state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -818,6 +826,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::atomic<size_t> owned_objects_in_memory_{0};
   std::atomic<size_t> owned_objects_spilled_{0};
   std::atomic<size_t> owned_objects_in_plasma_{0};
+
+  /// Number of references whose move state isn't NOT_MOVABLE. Atomic so that
+  /// HasConsumeOnceObjects can read it without the lock.
+  std::atomic<size_t> num_consume_once_objects_{0};
 
   /// Track sizes of owned objects by state.
   /// These are atomic to allow lock-free reads via public getters.

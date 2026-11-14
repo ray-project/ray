@@ -17,13 +17,18 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     ReportsExtraResourceUsage,
     TaskContext,
+    task_resource_dict,
 )
+from ray.data._internal.execution.interfaces.task_context import RerunPolicy
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.remote_fn import (
+    _add_system_error_to_retry_exceptions,
+    cached_remote_fn,
+)
 from ray.data._internal.utils.cached_ray_internals import (
     get_local_ongoing_lineage_reconstruction_tasks,
 )
@@ -183,15 +188,16 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
+        dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
+            rerun_policy=_task_rerun_policy(dynamic_ray_remote_args),
         )
-
-        dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
+        resource_request = task_resource_dict(dynamic_ray_remote_args)
 
         if (
             "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
@@ -220,7 +226,12 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 logical_usage
             )
 
-        self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
+        self._submit_data_task(
+            gen,
+            bundle,
+            task_done_callback=task_done_callback,
+            task_resource_request=resource_request,
+        )
 
     def progress_str(self) -> str:
         return ""
@@ -325,3 +336,19 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 "to increase the number of concurrent tasks by configuring "
                 "`override_num_blocks` earlier in the pipeline."
             )
+
+
+def _task_rerun_policy(ray_remote_args: Dict[str, Any]) -> RerunPolicy:
+    """The errors on which Ray reruns a task with ``ray_remote_args``.
+
+    ``cached_remote_fn`` defaults ``max_retries`` to -1 (unlimited); with 0, Ray
+    reruns on nothing. Otherwise it also reruns on ``RaySystemError``, which
+    ``cached_remote_fn`` adds to ``retry_exceptions``.
+    """
+    if ray_remote_args.get("max_retries", -1) == 0:
+        return RerunPolicy.from_retry_exceptions(False)
+    retried = ray_remote_args.get("retry_exceptions", False)
+    # A copy, since adding ``RaySystemError`` appends to a list in place.
+    args = {"retry_exceptions": list(retried) if isinstance(retried, list) else retried}
+    _add_system_error_to_retry_exceptions(args)
+    return RerunPolicy.from_retry_exceptions(args["retry_exceptions"])

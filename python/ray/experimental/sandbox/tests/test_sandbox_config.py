@@ -76,6 +76,25 @@ def test_mounts_require_absolute_paths(mounts: dict[str, str]) -> None:
         SandboxConfig(image="busybox:latest", mounts=mounts)
 
 
+@pytest.mark.parametrize("value", [-1001, 1001, True, False, 0.0, "0"])
+def test_invalid_oom_score_adj_rejected(value):
+    with pytest.raises(ValueError, match="oom_score_adj"):
+        SandboxConfig(image="busybox:latest", oom_score_adj=value)
+
+
+@pytest.mark.parametrize("value", [None, -1000, 0, 1000])
+def test_oom_score_adj_with_mounts_and_gpus(value: int | None) -> None:
+    config = SandboxConfig(
+        image="busybox:latest",
+        mounts={"/data": "/srv/inbox"},
+        gpu_ids=[0],
+        oom_score_adj=value,
+    )
+    assert config.oom_score_adj == value
+    assert config.mounts == {"/data": "/srv/inbox"}
+    assert config.gpu_ids == ["0"]
+
+
 def test_invalid_network_mode_rejected():
     with pytest.raises(ValueError, match="network mode"):
         SandboxConfig(image="python:3.10-slim", network="bridge")
@@ -259,6 +278,25 @@ def test_parse_memory_bytes():
 
     with pytest.raises(ValueError):
         parse_memory_bytes("invalid_format")
+
+
+def test_default_public_dns_reads_the_node_override(monkeypatch):
+    from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, default_public_dns
+
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
+    assert default_public_dns() == DEFAULT_PUBLIC_DNS
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "  ")
+    assert default_public_dns() == DEFAULT_PUBLIC_DNS
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.0.0.2, 10.0.0.3")
+    assert default_public_dns() == ("10.0.0.2", "10.0.0.3")
+    # A typo, or an IPv6 resolver that a public sandbox can't reach, fails
+    # every public create rather than leaving DNS broken.
+    # So does the node's own resolver stub: a sandbox has no route to the
+    # node's loopback.
+    for entry in ("dns.internal", "fd00::53", "127.0.0.53", "0.0.0.0"):
+        monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", f"10.0.0.2,{entry}")
+        with pytest.raises(ValueError, match=entry):
+            default_public_dns()
 
 
 if __name__ == "__main__":
