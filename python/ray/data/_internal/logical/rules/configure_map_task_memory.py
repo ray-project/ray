@@ -19,7 +19,11 @@ __all__ = [
 
 class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
+        visited = set()
         for op in plan.dag.post_order_iter():
+            if op in visited:
+                continue
+            visited.add(op)
             if not isinstance(op, MapOperator):
                 continue
 
