@@ -312,6 +312,88 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
         ray.get = ray_get
 
 
+def test_push_based_shuffle_stage_iterators_and_map_partition():
+    from types import SimpleNamespace
+
+    from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
+        _MapStageIterator,
+        _MergeStageIterator,
+        _MergeTaskSchedule,
+        _PushBasedShuffleStage,
+        _ReduceStageIterator,
+    )
+    from ray.data.block import BlockMetadataWithSchema
+
+    node_id = NodeID.from_random().hex()
+    stage = _PushBasedShuffleStage(
+        output_num_blocks=6,
+        num_rounds=2,
+        num_map_tasks_per_round=2,
+        merge_task_placement=[node_id, node_id],
+    )
+
+    input_blocks = ["b0", "b1", "b2", "b3"]
+    shuffle_map = SimpleNamespace(
+        remote=lambda idx, blk, *args: [
+            f"m{idx}_0_{blk}",
+            f"m{idx}_1_{blk}",
+            f"meta_{idx}",
+        ]
+    )
+    map_iter = _MapStageIterator(input_blocks, shuffle_map, ["arg"])
+    assert input_blocks == []
+    assert [next(map_iter), next(map_iter)] == ["meta_0", "meta_1"]
+
+    class DummyMerge:
+        def options(self, **kwargs):
+            return SimpleNamespace(
+                remote=lambda *args, **kw: [
+                    f"r0_{args}",
+                    f"r1_{args}",
+                    f"r2_{args}",
+                    "merge_meta",
+                ]
+            )
+
+    merge_iter = _MergeStageIterator(map_iter, DummyMerge(), stage, ["r_arg"])
+    assert [next(merge_iter), next(merge_iter)] == ["merge_meta", "merge_meta"]
+    assert [next(map_iter), next(map_iter)] == ["meta_2", "meta_3"]
+    assert [next(merge_iter), next(merge_iter)] == ["merge_meta", "merge_meta"]
+
+    all_merge_results = merge_iter.pop_merge_results()
+
+    class DummyReduce:
+        def options(self, **kwargs):
+            return SimpleNamespace(
+                remote=lambda *args, **kw: (f"reduced_{args}", f"red_meta_{args}")
+            )
+
+    reduce_iter = _ReduceStageIterator(
+        stage, DummyReduce(), all_merge_results, {}, ["r_arg"], None
+    )
+    assert all(
+        len(merge_results) == 0
+        for merge_idx_results in all_merge_results
+        for merge_results in merge_idx_results
+    )
+    reduce_metas = list(reduce_iter)
+    assert len(reduce_metas) == 6
+    assert len(reduce_iter.pop_reduce_results()) == 6
+
+    meta_with_schema = object.__new__(BlockMetadataWithSchema)
+    schedule = _MergeTaskSchedule(output_num_blocks=6, num_merge_tasks_per_round=2)
+    parts = list(
+        PushBasedShuffleTaskScheduler._map_partition(
+            lambda idx, blk, out_n, *a: [0, 1, 2, 3, 4, 5, meta_with_schema],
+            0,
+            "blk",
+            6,
+            schedule,
+        )
+    )
+    assert parts == [[0, 1, 2], [3, 4, 5], meta_with_schema]
+
+
 if __name__ == "__main__":
     import sys
 
