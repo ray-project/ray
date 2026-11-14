@@ -78,6 +78,7 @@ struct PopWorkerRequest {
   const std::optional<bool> is_actor_worker_;
   const rpc::RuntimeEnvInfo runtime_env_info_;
   const int runtime_env_hash_;
+  const rpc::WorkerResourceLimits worker_resource_limits_;
   const std::vector<std::string> dynamic_options_;
   std::optional<absl::Duration> worker_startup_keep_alive_duration_;
 
@@ -91,6 +92,7 @@ struct PopWorkerRequest {
                    std::optional<bool> actor_worker,
                    rpc::RuntimeEnvInfo runtime_env_info,
                    int runtime_env_hash,
+                   rpc::WorkerResourceLimits worker_resource_limits,
                    std::vector<std::string> options,
                    std::optional<absl::Duration> worker_startup_keep_alive_duration,
                    PopWorkerCallback callback)
@@ -102,6 +104,7 @@ struct PopWorkerRequest {
         is_actor_worker_(actor_worker),
         runtime_env_info_(std::move(runtime_env_info)),
         runtime_env_hash_(runtime_env_hash),
+        worker_resource_limits_(std::move(worker_resource_limits)),
         dynamic_options_(std::move(options)),
         worker_startup_keep_alive_duration_(worker_startup_keep_alive_duration),
         callback_(std::move(callback)) {}
@@ -153,6 +156,12 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 2: A suitable worker registered with the raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
   virtual void PopWorker(const LeaseSpecification &lease_spec,
+                         const PopWorkerCallback &callback) = 0;
+
+  /// Pop a worker that was started with the same resource limit profile, or start a
+  /// new worker with this profile.
+  virtual void PopWorker(const LeaseSpecification &lease_spec,
+                         const rpc::WorkerResourceLimits &worker_resource_limits,
                          const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
   ///

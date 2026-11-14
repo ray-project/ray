@@ -331,6 +331,16 @@ class WorkerPool : public WorkerPoolInterface {
   void PopWorker(const LeaseSpecification &lease_spec,
                  const PopWorkerCallback &callback) override;
 
+  /**
+   * @brief Get or start a worker matching the lease and its resource limits.
+   * @param lease_spec Lease the worker must be able to execute.
+   * @param worker_resource_limits Limits required for startup and worker reuse.
+   * @param callback Callback invoked when a worker is available or startup fails.
+   */
+  void PopWorker(const LeaseSpecification &lease_spec,
+                 const rpc::WorkerResourceLimits &worker_resource_limits,
+                 const PopWorkerCallback &callback) override;
+
   /// Try to prestart a number of workers suitable the given lease spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
   /// then it means it takes a long time to scale up.
@@ -409,28 +419,25 @@ class WorkerPool : public WorkerPoolInterface {
   /// Clock for getting current time.
   ClockInterface &clock_;
 
-  /// Asynchronously start a new worker process. Once the worker process has
-  /// registered with an external server, the process should create and
-  /// register N workers, then add them to the pool.
-  /// Failure to start the worker process is a fatal error. If too many workers
-  /// are already being started, then this function will return without starting
-  /// any workers.
-  ///
-  /// \param language Which language this worker process should be.
-  /// \param worker_type The type of the worker. This worker type is internal to
-  ///                             worker pool abstraction. Outside this class, workers
-  ///                             will have rpc::WorkerType instead.
-  /// \param job_id The ID of the job to which the started worker process belongs.
-  /// \param status The output status of work process starting.
-  /// \param dynamic_options The dynamic options that we should add for worker command.
-  /// \param runtime_env_hash The hash of runtime env.
-  /// \param serialized_runtime_env_context The context of runtime env.
-  /// \param runtime_env_info The raw runtime env info.
-  /// \param worker_startup_keep_alive_duration If set, the worker will be kept alive for
-  ///   this duration even if it's idle. This is only applicable before a lease is
-  ///   assigned to the worker.
-  /// \return The process that we started and the worker ID assigned to it. If the worker
-  /// ID is nil, we didn't start a process.
+  /**
+   * @brief Asynchronously start a new worker process.
+   * Once registered with an external server, the process should create and register
+   * N workers, then add them to the pool. Failure to start the process is fatal.
+   * If too many workers are already starting, this returns without starting a process.
+   * @param language Language of the worker process.
+   * @param worker_type Internal worker pool type of the process.
+   * @param job_id Job to which the process belongs.
+   * @param[out] status Status of starting the process.
+   * @param dynamic_options Additional worker command options.
+   * @param runtime_env_hash Hash of the runtime environment.
+   * @param serialized_runtime_env_context Serialized runtime environment context.
+   * @param runtime_env_info Raw runtime environment information.
+   * @param worker_startup_keep_alive_duration If set, keep the worker alive for this
+   * duration even when idle, before a lease is assigned.
+   * @param worker_resource_limits Limits associated with the process for worker reuse
+   * matching.
+   * @return The started process and its worker ID. A nil ID means no process started.
+   */
   std::tuple<const ProcessInterface &, WorkerID> StartWorkerProcess(
       const Language &language,
       rpc::WorkerType worker_type,
@@ -440,7 +447,9 @@ class WorkerPool : public WorkerPoolInterface {
       int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo(),
-      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt,
+      const rpc::WorkerResourceLimits &worker_resource_limits =
+          rpc::WorkerResourceLimits());
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -469,6 +478,14 @@ class WorkerPool : public WorkerPoolInterface {
   const std::vector<std::string> &LookupWorkerDynamicOptions(
       const WorkerID &worker_id) const;
 
+  /**
+   * @brief Look up the resource limit profile recorded for a worker process.
+   * @param worker_id ID of the worker process to look up.
+   * @return The recorded profile, or an empty profile if the process is unknown.
+   */
+  const rpc::WorkerResourceLimits &LookupWorkerResourceLimits(
+      const WorkerID &worker_id) const;
+
   struct IOWorkerState {
     /// The pool of idle I/O workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle_io_workers;
@@ -493,6 +510,8 @@ class WorkerPool : public WorkerPoolInterface {
     SteadyTimePoint start_time;
     /// The runtime env Info.
     rpc::RuntimeEnvInfo runtime_env_info;
+    /// Operating-system resource limits used to start this worker process.
+    rpc::WorkerResourceLimits worker_resource_limits;
     /// The dynamic_options.
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
@@ -666,6 +685,20 @@ class WorkerPool : public WorkerPoolInterface {
                              const JobID &job_id,
                              const GetOrCreateRuntimeEnvCallback &callback);
 
+  /**
+   * @brief Create a runtime environment asynchronously with request-specific limits.
+   * @param serialized_runtime_env JSON-serialized runtime environment.
+   * @param runtime_env_config Runtime environment setup configuration.
+   * @param job_id Job requesting the environment.
+   * @param worker_resource_limits Limits to apply to this worker's context.
+   * @param callback Callback invoked with the setup result.
+   */
+  void GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             const JobID &job_id,
+                             const rpc::WorkerResourceLimits &worker_resource_limits,
+                             const GetOrCreateRuntimeEnvCallback &callback);
+
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
@@ -677,7 +710,8 @@ class WorkerPool : public WorkerPoolInterface {
       SteadyTimePoint start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
-      std::optional<absl::Duration> worker_startup_keep_alive_duration);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration,
+      const rpc::WorkerResourceLimits &worker_resource_limits);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
 

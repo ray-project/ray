@@ -57,6 +57,7 @@ ray_cc_library(
     hdrs = ["placement_group_util.h"],
     visibility = [
         "//src/ray/common:__pkg__",
+        "//src/ray/raylet:__pkg__",
         "//src/ray/raylet/scheduling:__pkg__",
         "//src/ray/raylet/tests:__pkg__",
     ],
@@ -73,6 +74,7 @@ ray_cc_library(
     visibility = [
         ":__subpackages__",
         "//src/ray/common:__pkg__",
+        "//src/ray/raylet:__subpackages__",
     ],
     deps = [
         ":fixed_point",
