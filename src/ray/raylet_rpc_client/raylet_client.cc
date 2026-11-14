@@ -14,6 +14,8 @@
 
 #include "ray/raylet_rpc_client/raylet_client.h"
 
+#include <algorithm>
+#include <atomic>
 #include <limits>
 #include <memory>
 #include <set>
@@ -164,6 +166,10 @@ void RayletClient::PushMutableObject(
     total_num_chunks++;
   }
 
+  // Send an empty-data chunk so metadata-only values can complete the push.
+  total_num_chunks = std::max(total_num_chunks, static_cast<uint64_t>(1));
+
+  auto callback_called = std::make_shared<std::atomic<bool>>(false);
   for (uint64_t i = 0; i < total_num_chunks; i++) {
     rpc::PushMutableObjectRequest request;
     request.set_writer_object_id(writer_object_id.Binary());
@@ -181,20 +187,25 @@ void RayletClient::PushMutableObject(
     request.set_metadata(static_cast<char *>(metadata), metadata_size);
 
     // TODO(jackhumphries): Add failure recovery, retries, and timeout.
-    INVOKE_RPC_CALL(
-        NodeManagerService,
-        PushMutableObject,
-        request,
-        [callback](const Status &status, rpc::PushMutableObjectReply &&reply) {
-          RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;
-          if (reply.done()) {
-            // The callback is only executed once the receiver node receives all chunks
-            // for the mutable object write.
-            callback(status, std::move(reply));
-          }
-        },
-        grpc_client_,
-        /*method_timeout_ms*/ -1);
+    auto rpc_callback = [callback, callback_called](const Status &status,
+                                                    rpc::PushMutableObjectReply &&reply) {
+      RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;
+      if (!status.ok() || reply.done()) {
+        bool expected = false;
+        if (!callback_called->compare_exchange_strong(expected, true)) {
+          return;
+        }
+        // The callback is only executed once the receiver node receives all chunks
+        // for the mutable object write, or when any chunk fails.
+        callback(status, std::move(reply));
+      }
+    };
+    INVOKE_RPC_CALL(NodeManagerService,
+                    PushMutableObject,
+                    request,
+                    rpc_callback,
+                    grpc_client_,
+                    /*method_timeout_ms*/ -1);
   }
 }
 
