@@ -159,7 +159,7 @@ async def test_round_robins_warm_replicas(router):
 
 
 @pytest.mark.asyncio
-async def test_shared_cursor_for_fallback(router):
+async def test_cold_model_fallback_reservations_spread_across_replicas(router):
     replicas = [
         FakeRunningReplica("r0", model_ids={"model-a"}),
         FakeRunningReplica("r1", model_ids={"model-b"}),
@@ -172,14 +172,14 @@ async def test_shared_cursor_for_fallback(router):
     router._round_robin_counter = 0
     await asyncio.sleep(0)
 
-    # Models C and D are not loaded. Both fall back to r2 and r3, the replicas
-    # with the fewest loaded models, and use the router's shared cursor.
+    # Models C and D are not loaded. Each gets a stable reservation on a
+    # different least-loaded replica while the replica state catches up.
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-c"))
-    ) == [["r2"], ["r3"]]
+    ) == [["r2"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-d"))
-    ) == [["r3"], ["r2"]]
+    ) == [["r3"]]
 
 
 @pytest.mark.asyncio
