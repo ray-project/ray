@@ -5,6 +5,7 @@ from typing import Generator
 import pytest
 
 import ray
+from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.tests.conftest import *  # noqa  # noqa
 
 
@@ -89,6 +90,177 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
     dataset = dataset.materialize()
     assert dataset.num_blocks() == num_blocks
 
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+    assert sorted(actual_values) == sorted(expected_values)
+
+
+class _ModuloProbingCursor:
+    """A DB-API2 cursor double that simulates a database's modulo support.
+
+    ``MOD()`` and the ``%`` operator are not portable across databases, so
+    these tests control which syntax the fake "database" accepts. Using an
+    unsupported syntax raises the same kind of error a real driver would, and
+    every statement is recorded so tests can assert on the generated SQL.
+    """
+
+    def __init__(self, mod_supported: bool, percent_supported: bool):
+        self._mod_supported = mod_supported
+        self._percent_supported = percent_supported
+        self.executed = []
+        self.description = [("id",)]
+
+    def execute(self, sql, params=None):
+        self.executed.append(sql)
+        if "MOD(" in sql and not self._mod_supported:
+            raise sqlite3.OperationalError("no such function: MOD")
+        if " % " in sql and not self._percent_supported:
+            raise sqlite3.OperationalError('near "%": syntax error')
+
+    def executemany(self, sql, *args):
+        pass
+
+    def fetchone(self):
+        return (0,)
+
+    def fetchall(self):
+        return []
+
+
+class _ModuloProbingConnection:
+    """A DB-API2 connection double that hands out `_ModuloProbingCursor`s."""
+
+    def __init__(self, mod_supported: bool, percent_supported: bool):
+        self._mod_supported = mod_supported
+        self._percent_supported = percent_supported
+        self.cursors = []
+
+    def cursor(self):
+        cursor = _ModuloProbingCursor(self._mod_supported, self._percent_supported)
+        self.cursors.append(cursor)
+        return cursor
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def _make_probe_datasource(mod_supported: bool, percent_supported: bool):
+    """Build a SQLDatasource backed by a fake connection with given modulo support."""
+    connection = _ModuloProbingConnection(mod_supported, percent_supported)
+    datasource = SQLDatasource(
+        sql="SELECT * FROM events",
+        connection_factory=lambda: connection,
+        shard_hash_fn="MD5",
+        shard_keys=["customer_id"],
+    )
+    return datasource, connection
+
+
+def _all_queries(connection) -> list:
+    return [sql for cursor in connection.cursors for sql in cursor.executed]
+
+
+@pytest.mark.parametrize(
+    "mod_supported, percent_supported, expected, expected_syntax",
+    [
+        # MOD() works: it wins the probe and the % operator is never reached.
+        (True, True, True, "MOD"),
+        # MOD() unavailable (SQLite without math functions, SQL Server): fall
+        # back to the % operator.
+        (False, True, True, "%"),
+        # Neither syntax works: sharding is genuinely unsupported.
+        (False, False, False, None),
+    ],
+)
+def test_supports_sharding_probes_modulo_syntaxes(
+    mod_supported: bool, percent_supported: bool, expected: bool, expected_syntax
+):
+    datasource, connection = _make_probe_datasource(mod_supported, percent_supported)
+    assert datasource.supports_sharding(4) is expected
+    assert datasource._modulo_syntax == expected_syntax
+    queries = _all_queries(connection)
+    # MOD() is always probed first.
+    assert any("MOD(" in q for q in queries)
+    # The % operator is only reached once MOD() has failed.
+    if mod_supported:
+        assert not any(" % " in q for q in queries)
+    else:
+        assert any(" % " in q for q in queries)
+
+
+def test_parallel_read_fn_uses_detected_modulo_syntax():
+    # The per-task read query must reuse the syntax that won the probe;
+    # otherwise the probe and the actual read would disagree and fail.
+    datasource, connection = _make_probe_datasource(
+        mod_supported=False, percent_supported=True
+    )
+    assert datasource.supports_sharding(4) is True
+    assert datasource._modulo_syntax == "%"
+
+    read_fn = datasource._create_parallel_read_fn(1, 4)
+    read_fn()
+
+    read_queries = [
+        q for q in _all_queries(connection) if q.startswith("SELECT * FROM (")
+    ]
+    assert read_queries, "expected a sharded read query to be executed"
+    assert all(" % " in q for q in read_queries)
+    assert not any("MOD(" in q for q in read_queries)
+
+
+def test_read_sql_falls_back_to_percent_when_mod_denied(temp_database: str):
+    """End-to-end fallback: deny MOD() via SQLite's set_authorizer and confirm
+    read_sql still shards through the % operator, reading every row exactly once.
+
+    Unlike the cursor-double tests above, this drives the full path (probe ->
+    cached syntax -> per-task reads) against a real SQLite database. Denying
+    MOD() emulates a database without it and is deterministic whether or not the
+    local SQLite build ships the math functions.
+    """
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE grade(name, id, score)")
+    base_tuple = ("xiaoming", 1, 8.2)
+    expected_values = [
+        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(500)
+    ]
+    connection.executemany("INSERT INTO grade VALUES (?, ?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    def deny_mod(action, arg1, arg2, db_name, trigger):
+        # Authorizer callback: refuse the MOD() function so the probe must fall
+        # back to the % operator. For SQLITE_FUNCTION, SQLite passes NULL as
+        # arg1 and the function name as arg2, and the name's case is arbitrary
+        # (see SQLite's "Authorizer Action Codes"), so match arg2
+        # case-insensitively.
+        if action == sqlite3.SQLITE_FUNCTION:
+            name = arg2.decode() if isinstance(arg2, bytes) else (arg2 or "")
+            if name.lower() == "mod":
+                return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    def connection_factory():
+        conn = sqlite3.connect(temp_database)
+        conn.set_authorizer(deny_mod)
+        return conn
+
+    num_blocks = 4
+    dataset = ray.data.read_sql(
+        "SELECT * FROM grade",
+        connection_factory,
+        override_num_blocks=num_blocks,
+        shard_hash_fn="unicode",
+        shard_keys=["id"],
+    )
+    dataset = dataset.materialize()
+    # Sharding actually happened (not the single-task fallback)...
+    assert dataset.num_blocks() == num_blocks
+    # ...and every row is read exactly once through the % operator.
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
     assert sorted(actual_values) == sorted(expected_values)
 
