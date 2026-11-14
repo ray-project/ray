@@ -2769,6 +2769,63 @@ def private_bundles(tmp_path, monkeypatch):
     return tmp_path
 
 
+def test_a_command_its_sandboxs_oom_kill_ended_says_so(private_bundles, monkeypatch):
+    """runsc only says that waiting for a command failed when an OOM kill
+    ends its sandbox; the command's stderr says why, or its output with
+    combine_output. A command that fails for another reason gets nothing
+    added."""
+    (private_bundles / "runsc").write_text(
+        "#!/bin/sh\necho 'waiting on pid 2: urpc method failed: EOF' >&2\nexit 128\n"
+    )
+
+    class _Cgroup:
+        reason = None
+
+        def termination_reason(self):
+            return self.reason
+
+    # Run runsc straight, without the launcher that joins a real cgroup.
+    monkeypatch.setattr(
+        GVisorSandboxBackend, "_wrap_workload", staticmethod(lambda meta, args: args)
+    )
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    cgroup = _Cgroup()
+    sandbox_id = "ray-sandbox-00000000000a"
+    backend._sandbox_metadata[sandbox_id] = {
+        "root_dir": str(private_bundles),
+        "cwd": "/",
+        "config": GVisorSandboxConfig(image="busybox:latest", memory="256Mi"),
+        "cgroup": cgroup,
+    }
+    result = backend.exec_command(sandbox_id, ["true"])
+    assert result.exit_code == 128
+    assert result.stderr == "waiting on pid 2: urpc method failed: EOF\n"
+    cgroup.reason = "Sandbox exceeded its enforced memory limit"
+    said = [
+        "waiting on pid 2: urpc method failed: EOF",
+        "Sandbox exceeded its enforced memory limit (256Mi), so the kernel "
+        "killed the sandbox and this command with it.",
+    ]
+    result = backend.exec_command(sandbox_id, ["true"])
+    assert result.stderr.splitlines() == said
+    result = backend.exec_command(sandbox_id, ["true"], combine_output=True)
+    assert result.stderr == ""
+    assert result.output.decode().splitlines() == said
+    # A file written to the sandbox's memory can be what crosses the limit.
+    with pytest.raises(SandboxError, match="memory limit .256Mi.*this write"):
+        backend.write_file(sandbox_id, "/tmp/big", b"x")
+    with pytest.raises(SandboxError, match="memory limit .256Mi.*this read"):
+        backend.read_file(sandbox_id, "/tmp/big")
+    # A limit given as a number of bytes reads as one.
+    backend._sandbox_metadata[sandbox_id]["config"] = GVisorSandboxConfig(
+        image="busybox:latest", memory=268435456
+    )
+    result = backend.exec_command(sandbox_id, ["true"])
+    assert "memory limit (256 MiB)," in result.stderr
+    assert gvisor._format_bytes(3 << 30) == "3 GiB"
+    assert gvisor._format_bytes((1 << 20) + 1) == "1048577 bytes"
+
+
 @pytest.mark.parametrize(
     "mounts",
     [
