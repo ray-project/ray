@@ -1,0 +1,30 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.4xlarge
+    resources:
+        CPU: 16
+
+worker_nodes:
+    # One Learner per GPU node. CPU is capped at the Learner plus its two
+    # AggregatorActors, so the EnvRunners land on the CPU-only nodes.
+    - instance_type: g5.4xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+      resources:
+          CPU: 3
+          GPU: 1
+    - instance_type: m5.4xlarge
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND
+      resources:
+          CPU: 16
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 500
