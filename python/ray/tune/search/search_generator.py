@@ -172,13 +172,14 @@ class SearchGenerator(SearchAlgorithm):
         search_alg_state = self.get_state()
         while hasattr(searcher, "searcher"):
             searcher_name = type(searcher).__name__
-            if searcher_name in search_alg_state:
+            state_key = f"name:{searcher_name}"
+            if state_key in search_alg_state:
                 logger.warning(
                     "There was a duplicate when saving {}. "
                     "Restore may not work properly.".format(searcher_name)
                 )
             else:
-                search_alg_state["name:" + searcher_name] = searcher.get_state()
+                search_alg_state[state_key] = searcher.get_state()
             searcher = searcher.searcher
         base_searcher = searcher
         # We save the base searcher separately for users to easily
