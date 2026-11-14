@@ -1,5 +1,6 @@
 import ipaddress
 import math
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -11,8 +12,53 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 # resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 
-# Default resolvers for network="public" (Google and Cloudflare public DNS).
+# Default resolvers for network="public" (Google and Cloudflare public DNS),
+# unless the node sets RAY_SANDBOX_DEFAULT_DNS (see default_public_dns).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
+
+_DEFAULT_DNS_ENV = "RAY_SANDBOX_DEFAULT_DNS"
+
+
+def default_public_dns() -> Tuple[str, ...]:
+    """Resolvers a network="public" sandbox uses when its config sets no dns.
+
+    ``RAY_SANDBOX_DEFAULT_DNS``, a comma-separated list of IPv4 addresses,
+    replaces ``DEFAULT_PUBLIC_DNS`` on a node. Networks that block DNS to
+    public resolvers need it, since a sandbox can't fall back to the node's
+    own resolver. A "public" sandbox has no IPv6 route, so an IPv6 resolver
+    could never answer it.
+
+    Returns:
+        The resolvers.
+
+    Raises:
+        ValueError: If an entry of ``RAY_SANDBOX_DEFAULT_DNS`` isn't an IPv4
+            address, or is one that no sandbox can reach.
+    """
+    value = os.environ.get(_DEFAULT_DNS_ENV, "")
+    servers = tuple(s.strip() for s in value.split(",") if s.strip())
+    if not servers:
+        return DEFAULT_PUBLIC_DNS
+    for server in servers:
+        try:
+            address = ipaddress.ip_address(server)
+        except ValueError:
+            address = None
+        if address is None or address.version != 4:
+            raise ValueError(
+                f"{_DEFAULT_DNS_ENV} entry {server!r} isn't an IPv4 address, "
+                'and network="public" sandboxes have no IPv6 route'
+            )
+        if address.is_loopback or address.is_unspecified:
+            # Such as 127.0.0.53, which systemd-resolved puts in the node's
+            # resolv.conf. A sandbox has no route to the node's loopback.
+            raise ValueError(
+                f"{_DEFAULT_DNS_ENV} entry {server!r} is a loopback or "
+                'unspecified address, which network="public" sandboxes '
+                "can't reach"
+            )
+    return servers
+
 
 # The egress allowlist that permits every destination outside the denylist
 # (EGRESS_ALWAYS_DENIED, the Kubernetes API service, and
@@ -256,7 +302,11 @@ class SandboxConfig:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
-        env: Environment variables to inject into the sandbox.
+        env: Environment variables to inject into the sandbox. For GPU
+            sandboxes, NVIDIA_DRIVER_CAPABILITIES also sets the driver
+            capabilities runsc allows, such as compute,utility,profiling.
+            Without it, gVisor uses compute,utility. An image's environment
+            cannot raise the allowed capabilities.
         workdir: Working directory for commands (the process cwd). None
             (default) uses the image's WORKDIR, or "/" if the image sets
             none. On a readonly rootfs, an *explicitly* passed workdir is
@@ -287,7 +337,8 @@ class SandboxConfig:
             "sandbox" uses gVisor's netstack and requires ``rootless=False``.
         dns: Nameserver IPs for a generated /etc/resolv.conf, mounted
             read-only (like ``docker --dns``); useful when public DNS is
-            blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public";
+            blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public", or
+            the node's ``RAY_SANDBOX_DEFAULT_DNS``;
             overrides the host file for "host". Only valid with those modes.
         cidr_allowlist: Egress allowlist for network="public". None
             (default) means ``DEFAULT_PUBLIC_ALLOWLIST``, the public
@@ -327,10 +378,27 @@ class SandboxConfig:
             units ``memory`` takes. Writes past it fail with ENOSPC inside
             the sandbox, and the sandbox keeps running. Zero (default) means
             no cap. Requires ``readonly=False`` or a ``workdir``: a readonly
-            rootfs with an explicit workdir runs on a private writable
-            overlay too, and a cap keeps that workdir inside the overlay
-            instead of a host directory. In-memory mounts such as /dev/shm
-            count toward the sandbox's memory instead.
+            rootfs stays read-only, so the cap applies to its explicit
+            workdir, whose writes then go to a file in the sandbox's
+            directory on the node instead of the workdir's host directory.
+            In-memory mounts such as /dev/shm count toward the sandbox's
+            memory instead.
+        gpu_ids: GPU ids or UUIDs, in the format ``ray.get_gpu_ids()`` uses,
+            to expose inside the sandbox through CDI. None (default) gives no
+            GPU access. Every id must be one Ray assigned the calling actor or
+            task, so request GPUs with ``num_gpus``. The backend checks this
+            against ``ray.get_gpu_ids()`` when it creates the sandbox. Integer
+            ids are stored as strings.
+        mounts: Host paths to show inside a gVisor sandbox, read-only, as
+            {sandbox path: host path}. Files added under a mounted host
+            directory later appear inside the sandbox too, so one sandbox can
+            be handed data after it starts; it can never write there.
+            Replaces any existing OCI mounts at the same sandbox path.
+        oom_score_adj: Linux OOM-killer score adjustment for the sandbox's
+            host processes, from -1000 (exempt) to 1000 (most likely to be
+            killed). None inherits the creating process's value. Set to 0
+            to avoid inheriting a protected manager's OOM immunity.
+            Lowering the value may require CAP_SYS_RESOURCE.
     """
 
     image: str
@@ -347,11 +415,14 @@ class SandboxConfig:
     capabilities: Optional[List[str]] = None
     shell: str = "/bin/bash"
     readonly: bool = True
+    gpu_ids: Optional[List[Union[int, str]]] = None
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
     )
     _ignore_cgroups: bool = field(default=False, repr=False, compare=False)
     disk: Union[str, int, float] = 0
+    mounts: Optional[Dict[str, str]] = None
+    oom_score_adj: Optional[int] = None
 
     def __post_init__(self):
         self.cpu = 0.0 if self.cpu is None else float(self.cpu)
@@ -364,6 +435,21 @@ class SandboxConfig:
             raise ValueError("memory must be non-negative")
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
             raise ValueError("A valid container image name must be specified.")
+        if self.mounts is not None:
+            if not isinstance(self.mounts, dict):
+                raise TypeError("mounts must be a dictionary.")
+            for target, source in self.mounts.items():
+                if not isinstance(target, str) or not isinstance(source, str):
+                    raise TypeError("mounts keys and values must be strings.")
+                if not os.path.isabs(target) or not os.path.isabs(source):
+                    raise ValueError(
+                        "mounts must map absolute paths to absolute paths."
+                    )
+        if self.oom_score_adj is not None and (
+            type(self.oom_score_adj) is not int
+            or not -1000 <= self.oom_score_adj <= 1000
+        ):
+            raise ValueError("oom_score_adj must be an integer from -1000 to 1000.")
         if self.network not in VALID_NETWORK_MODES:
             raise ValueError(
                 f"Invalid network mode '{self.network}'. "
@@ -400,6 +486,34 @@ class SandboxConfig:
                 "disk caps the writable rootfs; it requires readonly=False or "
                 "a workdir"
             )
+        self._validate_gpu_ids()
+
+    def _validate_gpu_ids(self):
+        if self.gpu_ids is None:
+            return
+        if not isinstance(self.gpu_ids, list) or not self.gpu_ids:
+            raise ValueError(
+                "gpu_ids must be a non-empty list of device ids/UUIDs, "
+                f"got {self.gpu_ids!r}."
+            )
+        if not all(_is_gpu_id(g) for g in self.gpu_ids):
+            raise ValueError(
+                "gpu_ids must contain only non-empty strings or non-negative "
+                f"integers, got {self.gpu_ids!r}."
+            )
+        self.gpu_ids = [str(g) for g in self.gpu_ids]
+        if len(set(self.gpu_ids)) != len(self.gpu_ids):
+            raise ValueError(
+                f"gpu_ids must not contain duplicates, got {self.gpu_ids!r}."
+            )
+
+
+def _is_gpu_id(gpu_id) -> bool:
+    """Whether gpu_id is a non-negative integer index or a non-empty string
+    index or UUID, the formats ray.get_gpu_ids() returns."""
+    if isinstance(gpu_id, str):
+        return bool(gpu_id)
+    return isinstance(gpu_id, int) and not isinstance(gpu_id, bool) and gpu_id >= 0
 
 
 GVisorSandboxConfig = SandboxConfig

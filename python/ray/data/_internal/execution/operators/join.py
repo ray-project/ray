@@ -4,10 +4,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
-    MIN_PYARROW_VERSION_VIEW_TYPES,
-)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -19,7 +15,6 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 )
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block, Schema
 from ray.data.context import DataContext
@@ -73,6 +68,8 @@ class JoiningAggregation(ShuffleAggregation):
         right_key_col_names: Tuple[str, ...],
         left_columns_suffix: Optional[str] = None,
         right_columns_suffix: Optional[str] = None,
+        left_condition_key_col_names: Tuple[str, ...] = (),
+        right_condition_key_col_names: Tuple[str, ...] = (),
         data_context: DataContext,
     ):
         assert (
@@ -93,6 +90,8 @@ class JoiningAggregation(ShuffleAggregation):
 
         self._left_columns_suffix: Optional[str] = left_columns_suffix
         self._right_columns_suffix: Optional[str] = right_columns_suffix
+        self._left_condition_key_col_names = left_condition_key_col_names
+        self._right_condition_key_col_names = right_condition_key_col_names
 
     def finalize(self, partition_shards_map: Dict[int, List[Block]]) -> Iterator[Block]:
         """Performs join on blocks from left (seq 0) and right (seq 1) sequences."""
@@ -115,6 +114,8 @@ class JoiningAggregation(ShuffleAggregation):
             right_key_col_names=self._right_key_col_names,
             left_columns_suffix=self._left_columns_suffix,
             right_columns_suffix=self._right_columns_suffix,
+            left_condition_key_col_names=self._left_condition_key_col_names,
+            right_condition_key_col_names=self._right_condition_key_col_names,
         )
 
 
@@ -125,11 +126,16 @@ def _make_join_reduce_fn(
     right_key_col_names: Tuple[str, ...],
     left_columns_suffix: Optional[str] = None,
     right_columns_suffix: Optional[str] = None,
+    left_condition_key_col_names: Tuple[str, ...] = (),
+    right_condition_key_col_names: Tuple[str, ...] = (),
     left_schema: Optional[Schema] = None,
     right_schema: Optional[Schema] = None,
 ) -> ReduceFn:
     """Build a V2-shuffle reduce fn that joins two co-partitioned inputs."""
     import pyarrow as pa
+
+    left_match_col_names = left_key_col_names + left_condition_key_col_names
+    right_match_col_names = right_key_col_names + right_condition_key_col_names
 
     def _side_table(
         tables: List[Block], schema: Optional[Schema]
@@ -167,14 +173,14 @@ def _make_join_reduce_fn(
         if left_table is None:
             left_table = _empty_table_with_key_schema(
                 right_table,
-                right_key_col_names,
-                left_key_col_names,
+                right_match_col_names,
+                left_match_col_names,
             )
         elif right_table is None:
             right_table = _empty_table_with_key_schema(
                 left_table,
-                left_key_col_names,
-                right_key_col_names,
+                left_match_col_names,
+                right_match_col_names,
             )
         yield from _join_tables_iter(
             left_table,
@@ -184,6 +190,8 @@ def _make_join_reduce_fn(
             right_key_col_names=right_key_col_names,
             left_columns_suffix=left_columns_suffix,
             right_columns_suffix=right_columns_suffix,
+            left_condition_key_col_names=left_condition_key_col_names,
+            right_condition_key_col_names=right_condition_key_col_names,
         )
 
     return _reduce
@@ -198,6 +206,8 @@ def join_tables(
     right_key_col_names: Tuple[str, ...],
     left_columns_suffix: Optional[str] = None,
     right_columns_suffix: Optional[str] = None,
+    left_condition_key_col_names: Tuple[str, ...] = (),
+    right_condition_key_col_names: Tuple[str, ...] = (),
 ) -> "pa.Table":
     """Join two tables and return a single Arrow table.
 
@@ -217,6 +227,8 @@ def join_tables(
             right_key_col_names=right_key_col_names,
             left_columns_suffix=left_columns_suffix,
             right_columns_suffix=right_columns_suffix,
+            left_condition_key_col_names=left_condition_key_col_names,
+            right_condition_key_col_names=right_condition_key_col_names,
         )
     )
     if len(blocks) == 1:
@@ -233,8 +245,16 @@ def _join_tables_iter(
     right_key_col_names: Tuple[str, ...],
     left_columns_suffix: Optional[str] = None,
     right_columns_suffix: Optional[str] = None,
+    left_condition_key_col_names: Tuple[str, ...] = (),
+    right_condition_key_col_names: Tuple[str, ...] = (),
 ) -> Iterator[Block]:
-    """Preprocess -> Polars streaming join -> postprocess, yielding Arrow batches."""
+    """Preprocess -> Polars streaming join -> postprocess, yielding Arrow batches.
+
+    ``left_key_col_names`` / ``right_key_col_names`` are matched and coalesced
+    into one output column per pair. The condition key pairs are only matched:
+    both columns stay in the output with their own values, as with a SQL
+    ``ON left.a = right.b``.
+    """
     pl = _require_polars()
 
     left_on = list(left_key_col_names)
@@ -276,7 +296,11 @@ def _join_tables_iter(
         )
 
     preprocess_result_l, preprocess_result_r = _preprocess(
-        left_table, right_table, left_on, right_on, join_type
+        left_table,
+        right_table,
+        left_on + list(left_condition_key_col_names),
+        right_on + list(right_condition_key_col_names),
+        join_type,
     )
 
     left_df = pl.from_arrow(
@@ -285,6 +309,30 @@ def _join_tables_iter(
     right_df = pl.from_arrow(
         preprocess_result_r.supported_projection, rechunk=False
     ).lazy()
+
+    condition_match_cols = [
+        f"__ray_join_condition_key_{i}__"
+        for i in range(len(left_condition_key_col_names))
+    ]
+    if condition_match_cols:
+        left_df = left_df.with_columns(
+            [
+                pl.col(key).alias(match_col)
+                for key, match_col in zip(
+                    left_condition_key_col_names, condition_match_cols
+                )
+            ]
+        )
+        right_df = right_df.with_columns(
+            [
+                pl.col(key).alias(match_col)
+                for key, match_col in zip(
+                    right_condition_key_col_names, condition_match_cols
+                )
+            ]
+        )
+        left_on = left_on + condition_match_cols
+        right_on = right_on + condition_match_cols
 
     target_join_type = join_type
     left_cols_suffix = left_columns_suffix
@@ -356,6 +404,9 @@ def _join_tables_iter(
         ]
         if duplicate_columns:
             joined = joined.drop(duplicate_columns)
+
+    if condition_match_cols:
+        joined = joined.drop(condition_match_cols)
 
     has_output = False
     for batch in joined.collect_batches(engine="streaming"):
@@ -520,8 +571,7 @@ def _should_index_side(
     unsupported_table: "pa.Table",
     join_type: JoinType,
 ) -> bool:
-    """
-    Determine whether to create an index column for a given side of the join.
+    """Determine whether to create an index column for a given side of the join.
 
     A column is "supported" if it is "joinable", and "unsupported" otherwise.
     A supported_table is a table with only "supported" columns. Index columns are
@@ -556,8 +606,7 @@ def _should_index_side(
 def _split_unsupported_columns(
     table: "pa.Table",
 ) -> Tuple["pa.Table", "pa.Table"]:
-    """
-    Split a PyArrow table into two tables based on column joinability.
+    """Split a PyArrow table into two tables based on column joinability.
 
     Separates columns into supported types and unsupported types that cannot be
     directly joined on but should be preserved in results.
@@ -624,6 +673,8 @@ class JoinOperator(HashShufflingOperatorBase):
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         shuffle_aggregation_type: Optional[Type[ShuffleAggregation]] = None,
+        left_condition_key_columns: Tuple[str, ...] = (),
+        right_condition_key_columns: Tuple[str, ...] = (),
     ):
         # Use new stateless JoiningAggregation factory
         def _create_joining_aggregation() -> JoiningAggregation:
@@ -642,6 +693,8 @@ class JoinOperator(HashShufflingOperatorBase):
                 right_key_col_names=right_key_columns,
                 left_columns_suffix=left_columns_suffix,
                 right_columns_suffix=right_columns_suffix,
+                left_condition_key_col_names=tuple(left_condition_key_columns),
+                right_condition_key_col_names=tuple(right_condition_key_columns),
                 data_context=data_context,
             )
 
@@ -651,7 +704,10 @@ class JoinOperator(HashShufflingOperatorBase):
             ),
             input_ops=[left_input_op, right_input_op],
             data_context=data_context,
-            key_columns=[left_key_columns, right_key_columns],
+            key_columns=[
+                tuple(left_key_columns) + tuple(left_condition_key_columns),
+                tuple(right_key_columns) + tuple(right_condition_key_columns),
+            ],
             num_input_seqs=2,
             num_partitions=num_partitions,
             partition_size_hint=partition_size_hint,
@@ -663,8 +719,7 @@ class JoinOperator(HashShufflingOperatorBase):
 
     @staticmethod
     def _is_pa_join_not_supported(dtype: "pa.DataType") -> bool:
-        """
-        The latest pyarrow versions do not support joins where the
+        """The latest pyarrow versions do not support joins where the
         tables contain the following types below (lists,
         structs, maps, unions, extension types, etc.)
 
@@ -677,10 +732,6 @@ class JoinOperator(HashShufflingOperatorBase):
         """
         import pyarrow as pa
 
-        pyarrow_version = get_pyarrow_version()
-        is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
-        is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
-
         return (
             pa.types.is_map(dtype)
             or pa.types.is_union(dtype)
@@ -689,15 +740,10 @@ class JoinOperator(HashShufflingOperatorBase):
             or pa.types.is_null(dtype)
             or pa.types.is_large_list(dtype)
             or pa.types.is_fixed_size_list(dtype)
-            or (is_v12 and pa.types.is_run_end_encoded(dtype))
-            or (
-                is_v16
-                and (
-                    pa.types.is_binary_view(dtype)
-                    or pa.types.is_string_view(dtype)
-                    or pa.types.is_list_view(dtype)
-                )
-            )
+            or pa.types.is_run_end_encoded(dtype)
+            or pa.types.is_binary_view(dtype)
+            or pa.types.is_string_view(dtype)
+            or pa.types.is_list_view(dtype)
         )
 
     def _get_operator_num_cpus_override(self) -> float:

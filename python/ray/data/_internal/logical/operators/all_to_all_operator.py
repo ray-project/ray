@@ -2,6 +2,7 @@ from dataclasses import InitVar, dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
+    ClusteredDistribution,
     LogicalOperator,
     LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
@@ -24,6 +25,7 @@ __all__ = [
     "RandomizeBlocks",
     "Repartition",
     "Sort",
+    "TopN",
 ]
 
 
@@ -216,6 +218,34 @@ class Sort(
 
 
 @dataclass(frozen=True, repr=False, eq=False)
+class TopN(
+    AbstractAllToAll,
+    LogicalOperatorPreservesSchema,
+):
+    """Logical operator for selecting the first rows of a global sort."""
+
+    sort_key: SortKey
+    limit: int
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    sub_progress_bar_names: Optional[List[str]] = None
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        object.__setattr__(self, "_name", f"limit={self.limit}")
+
+    def infer_metadata(self) -> "BlockMetadata":
+        input_metadata = self.input_dependencies[0].infer_metadata()
+        input_rows = input_metadata.num_rows
+        return BlockMetadata(
+            num_rows=min(input_rows, self.limit) if input_rows is not None else None,
+            size_bytes=None,
+            input_files=input_metadata.input_files,
+            exec_stats=None,
+        )
+
+
+@dataclass(frozen=True, repr=False, eq=False)
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
@@ -237,6 +267,14 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
+
+    @property
+    def required_input_distribution(self) -> Optional[ClusteredDistribution]:
+        """Each group in one partition; ``None`` for a global aggregation."""
+        key_columns = SortKey(self.key).get_columns()
+        if not key_columns:
+            return None
+        return ClusteredDistribution(tuple(key_columns))
 
     def infer_schema(self) -> Optional["Schema"]:
         # Output = key field(s) from input schema + one field per aggregator.

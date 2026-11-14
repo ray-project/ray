@@ -21,9 +21,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
-    """
-    Enable engine KV-cache events for a KV-aware-routed deployment.
-    """
+    """Enable engine KV-cache events for a KV-aware-routed deployment."""
     engine_kwargs = llm_config.engine_kwargs
     if engine_kwargs.get("enable_prefix_caching") is False:
         logger.warning(

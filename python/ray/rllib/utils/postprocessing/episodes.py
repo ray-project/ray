@@ -69,24 +69,20 @@ def remove_last_ts_from_data(
     ndarray. The returned corresponding value will have shape (4,), meaning
     both episodes have been shortened by exactly one timestep to 1 and 3.
 
-    ..testcode::
-
-        from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
-        import numpy as np
-
-        unpadded = PPOLearner._remove_last_ts_from_data(
-            [5, 3],
-            np.array([0, 1, 2, 3, 4,  0, 1, 2]),
-        )
-        assert (unpadded[0] == [0, 1, 2, 3, 0, 1]).all()
-
-        unpadded = PPOLearner._remove_last_ts_from_data(
-            [4, 2, 3],
-            np.array([0, 1, 2, 3,  0, 1,  0, 1, 2]),
-            np.array([4, 5, 6, 7,  2, 3,  3, 4, 5]),
-        )
-        assert (unpadded[0] == [0, 1, 2,  0,  0, 1]).all()
-        assert (unpadded[1] == [4, 5, 6,  2,  3, 4]).all()
+    Examples:
+        >>> import numpy as np
+        >>> unpadded = remove_last_ts_from_data(
+        ...     [5, 3],
+        ...     np.array([0, 1, 2, 3, 4,  0, 1, 2]),
+        ... )
+        >>> assert (unpadded == [0, 1, 2, 3, 0, 1]).all()
+        >>> unpadded = remove_last_ts_from_data(
+        ...     [4, 2, 3],
+        ...     np.array([0, 1, 2, 3,  0, 1,  0, 1, 2]),
+        ...     np.array([4, 5, 6, 7,  2, 3,  3, 4, 5]),
+        ... )
+        >>> assert (unpadded[0] == [0, 1, 2,  0,  0, 1]).all()
+        >>> assert (unpadded[1] == [4, 5, 6,  2,  3, 4]).all()
 
     Args:
         episode_lens: A list of current episode lengths. The returned
@@ -98,7 +94,8 @@ def remove_last_ts_from_data(
             episode gets shortened by one timestep).
 
     Returns:
-        A tuple of new data items shortened by one timestep.
+        A tuple of new data items shortened by one timestep, or the single
+        shortened data item if only one is given.
     """
     # Figure out the new slices to apply to each data item based on
     # the given episode_lens.

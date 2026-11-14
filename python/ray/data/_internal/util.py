@@ -23,6 +23,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -38,6 +39,7 @@ import pyarrow.fs
 
 import ray
 from ray._common.retry import call_with_retry, format_exception, matches_error
+from ray._common.utils import add_exception_note
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -73,6 +75,9 @@ logger = logging.getLogger(__name__)
 KiB = 1024  # bytes
 MiB = 1024 * KiB
 GiB = 1024 * MiB
+
+# A size in bytes, so a signature shows the unit of an ``int``.
+NumBytes = int
 
 
 SENTINEL = object()
@@ -360,7 +365,9 @@ def _resolve_custom_scheme(path: str) -> str:
 
 
 def _normalize_paths_to_strings(
-    paths: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]]
+    paths: Union[
+        str, pathlib.Path, List[str], List[pathlib.Path], List[Union[str, pathlib.Path]]
+    ]
 ) -> List[str]:
     """Normalize path input to a list of strings.
 
@@ -643,12 +650,20 @@ def get_compute_strategy(
         elif not is_callable_class and (
             compute == "actors" or isinstance(compute, ActorPoolStrategy)
         ):
-            raise ValueError(
-                f"You specified the function {fn} as your UDF with the compute "
-                f"{compute}, but Ray Data can't schedule regular functions with the actor "
-                f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
-                f"None to use the default compute strategy."
+            from ray.data._internal.execution.execution_flags import (
+                actor_only_backend_enabled,
             )
+
+            # Under the actor-only backend, all map ops run on actors regardless of
+            # UDF type, so an explicit ActorPoolStrategy must be passable downstream
+            # (e.g. to control pool size or prevent operator fusion).
+            if not actor_only_backend_enabled():
+                raise ValueError(
+                    f"You specified the function {fn} as your UDF with the compute "
+                    f"{compute}, but Ray Data can't schedule regular functions with the actor "
+                    f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
+                    f"None to use the default compute strategy."
+                )
         return compute
     elif concurrency is not None:
         # Legacy code path to support `concurrency` argument.
@@ -728,7 +743,10 @@ def get_compute_strategy_for_read_api(
     Returns:
         The `ComputeStrategy` for reading.
     """
-    from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+    from ray.data._internal.compute import (
+        ComputeStrategy,
+        TaskPoolStrategy,
+    )
 
     # ``concurrency`` parameter takes precedence over the ``compute`` parameter.
     if concurrency is not None:
@@ -931,27 +949,25 @@ def find_insertion_index(
             return left + len(column_range_view)
 
         if descending[col_idx] is True:
-            # ``np.searchsorted`` expects the array to be sorted in ascending
-            # order, so we pass ``sorter``, which is an array of integer indices
-            # that turn ``column_range_view`` into ascending order.
-            asc_indices = np.arange(len(column_range_view) - 1, -1, -1)
+            # A reversed slice view of a descending range is in ascending
+            # order, so ``np.searchsorted`` can binary search it directly
+            # without allocating an O(n) ``sorter`` index array per call.
+            ascending_view = column_range_view[::-1]
 
             # The returned index is an index into the ascending order of
             # ``column_range_view``, so we need to subtract it from
             # ``len(column_range_view)`` to get the index in the original descending
             # order of ``column_range_view``.
             left_ins_offset_asc = np.searchsorted(
-                column_range_view,
+                ascending_view,
                 cur_pivot_val,
                 side="left",
-                sorter=asc_indices,
             )
 
             right_ins_offset_asc = np.searchsorted(
-                column_range_view,
+                ascending_view,
                 cur_pivot_val,
                 side="right",
-                sorter=asc_indices,
             )
 
             # NOTE: Converting back from ascending offsets into original
@@ -1586,6 +1602,27 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         )
 
 
+def filesystem_for_sized_opens(
+    filesystem: "pyarrow.fs.FileSystem",
+) -> "pyarrow.fs.FileSystem":
+    """Return the filesystem to open files whose size is already known.
+
+    ``RetryingPyFileSystem`` opens a file by path alone, which drops a known
+    size, so S3 sends a HEAD request to look it up again. That request is all
+    the wrapper retries: the file it returns reads from S3 directly. Given the
+    size, ``S3FileSystem`` opens without any request, so it is returned
+    unwrapped. Other filesystems keep the wrapper.
+    """
+    # ``type_name``, not ``isinstance``: a pyarrow build without S3 support
+    # raises ImportError on any reference to ``pyarrow.fs.S3FileSystem``.
+    if (
+        isinstance(filesystem, RetryingPyFileSystem)
+        and filesystem.unwrap().type_name == "s3"
+    ):
+        return filesystem.unwrap()
+    return filesystem
+
+
 def _annotate_exception_with_retry_context(
     exc: BaseException,
     *,
@@ -1595,7 +1632,11 @@ def _annotate_exception_with_retry_context(
     total_backoff_s: float,
     exception_str: str,
 ) -> BaseException:
-    """Append retry context to ``exc``, preserving its type and traceback."""
+    """Attach retry context to ``exc`` as a note, leaving its type and args intact.
+
+    The exception is pickled and rebuilt in the driver by calling its
+    constructor with ``exc.args``, so rewriting ``args`` can break it.
+    """
     suffix = (
         f"Failed to {description} after {attempts}/{max_attempts} "
         f"attempts (total backoff {total_backoff_s:.1f}s)."
@@ -1613,22 +1654,17 @@ def _annotate_exception_with_retry_context(
         "for I/O; `retried_map_errors` and `max_map_retries` for any task) "
         "if you believe this to be transient."
     )
-    try:
-        if exc.args and isinstance(exc.args[0], str):
-            exc.args = (f"{exc.args[0]}\n{suffix}",) + exc.args[1:]
-        else:
-            exc.args = exc.args + (suffix,)
-        return exc
-    except Exception:
-        try:
-            new = type(exc)(f"{exc}\n{suffix}")
-            new.__traceback__ = exc.__traceback__
-            new.__cause__ = exc.__cause__
-            new.__context__ = exc.__context__
-            new.__suppress_context__ = exc.__suppress_context__
-            return new
-        except Exception:
-            return exc
+    add_exception_note(exc, suffix)
+    return exc
+
+
+def is_retryable_error(error_str: str, match: Optional[Sequence[str]]) -> bool:
+    """Whether ``iterate_with_retry`` retries an error formatted as ``error_str``.
+
+    ``match`` holds patterns, each checked as a substring, then as a regex.
+    ``None`` retries any error.
+    """
+    return match is None or any(matches_error(pattern, error_str) for pattern in match)
 
 
 def iterate_with_retry(
@@ -1681,10 +1717,7 @@ def iterate_with_retry(
             return
         except Exception as e:
             error_str = format_exception(e, include_cause=unwrap_cause)
-            is_retryable = match is None or any(
-                matches_error(pattern, error_str) for pattern in match
-            )
-            if is_retryable and attempt + 1 < max_attempts:
+            if is_retryable_error(error_str, match) and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 total_backoff_s += backoff
