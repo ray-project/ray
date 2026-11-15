@@ -22,7 +22,7 @@ This guide shows how to enable the detector, what it does during a hang, how to 
 
 NCCL ships a Reliability, Availability, and Serviceability (RAS) subsystem that runs a monitoring thread inside every NCCL process. The threads form a mesh across the ranks of a job and track, for each communicator, how many collectives of each type every rank has launched. The `ncclras` command-line client queries that mesh from any one rank and returns the state of every rank it can reach.
 
-The detector runs on the Ray Train controller and polls `ncclras` on one of the training workers every `RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S` seconds. It doesn't touch the training function and adds no work to the training step. A single poll shows a snapshot, and ranks are legitimately skewed by stragglers, data loading, and checkpointing, so the detector compares consecutive polls and only treats a communicator as hung when both of the following hold across the whole confirm window:
+The detector runs on the Ray Train controller and polls `ncclras` on each training node every `RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S` seconds. It doesn't touch the training function and adds no work to the training step. A single poll shows a snapshot, and ranks are legitimately skewed by stragglers, data loading, and checkpointing, so the detector compares consecutive polls and only treats a communicator as hung when both of the following hold across the whole confirm window:
 
 - Its ranks report different launch counts for at least one collective type, and every rank is still running.
 - No rank advanced any collective count since the previous poll.
@@ -37,7 +37,7 @@ Any progress on any rank resets that communicator. The detector tracks each comm
 
 ## Enable the detector
 
-Set `RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1` on the driver before you construct the trainer. The trainer registers the detector as a built-in callback, and the training function needs no changes:
+Set `RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1` on the driver before you construct the trainer. Ray Train adds the detector to the run as a built-in health check, and the training function needs no changes:
 
 ```{literalinclude} ../doc_code/nccl_hang_detection.py
 :language: python
@@ -49,7 +49,7 @@ By default the detector runs in `observe` mode. On a confirmed hang it logs a wa
 
 ### Fail the run on a confirmed hang
 
-Set `RAY_TRAIN_NCCL_RAS_ACTION=fail` to raise a {class}`~ray.train.NCCLHangError` on a confirmed hang instead. `NCCLHangError` is a {class}`~ray.train.WorkerGroupError`, so the {ref}`failure policy <train-worker-fault-tolerance>` treats it like any other worker failure. Each confirmed hang uses one retry from `FailureConfig(max_failures)`, and Ray Train restarts the run from the latest checkpoint. A restart helps when the hang comes from flaky hardware, such as a faulty NIC, because the new workers can land on different nodes. When the run exhausts its retries, `trainer.fit()` raises the `NCCLHangError`.
+Set `RAY_TRAIN_NCCL_RAS_ACTION=fail` to reattempt the run on a confirmed hang instead. Ray Train fails the attempt with a `HealthCheckError`, a {class}`~ray.train.WorkerGroupError` whose message includes the hang report, so the {ref}`failure policy <train-worker-fault-tolerance>` treats it like any other worker failure. Each confirmed hang uses one retry from `FailureConfig(max_failures)`, and Ray Train restarts the run from the latest checkpoint. A restart helps when the hang comes from flaky hardware, such as a faulty NIC, because the new workers can land on different nodes. When the run exhausts its retries, `trainer.fit()` raises the `HealthCheckError`.
 
 ```{literalinclude} ../doc_code/nccl_hang_detection.py
 :language: python
@@ -63,7 +63,7 @@ The detector only has value if it confirms a hang before the PyTorch watchdog ab
 
 ## Configure the detector
 
-The detector reads the `RAY_TRAIN_*` variables once on the driver, when the trainer constructs it, and validates them eagerly. An invalid value raises a `ValueError` when you construct the trainer.
+Set the variables on the driver before you construct the trainer. Ray Train propagates them to its controller, which reads and validates them when the run starts. An invalid value fails `trainer.fit()` before training starts, with an error that names the variable.
 
 ```{list-table} NCCL hang detector environment variables
 :header-rows: 1
@@ -73,16 +73,16 @@ The detector reads the `RAY_TRAIN_*` variables once on the driver, when the trai
   - Description
 * - `RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR`
   - `0`
-  - Set to `1` to register the detector. Read on the driver.
+  - Set to `1` to turn on the detector.
 * - `RAY_TRAIN_NCCL_RAS_ACTION`
   - `observe`
-  - What to do on a confirmed hang. `observe` logs the hang and captures diagnostics. `fail` also raises {class}`~ray.train.NCCLHangError`. Read on the driver.
+  - What to do on a confirmed hang. `observe` logs the hang and captures diagnostics. `fail` also reattempts the run.
 * - `RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S`
   - `15`
-  - Seconds between `ncclras` queries. Read on the driver.
+  - Seconds between `ncclras` queries.
 * - `RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S`
   - `600`
-  - Seconds a communicator must stay frozen before the detector confirms a hang. The detector rounds it up to a whole number of polls, 40 with the defaults. Read on the driver.
+  - Seconds a communicator must stay frozen before the detector confirms a hang. The detector rounds it up to a whole number of polls, 40 with the defaults.
 * - `NCCL_RAS_ADDR`
   - unset
   - NCCL's own `host:port` for the RAS listener. Only set it if you've changed it from NCCL's default. Ray Train propagates it from the driver to the workers and passes it to `ncclras`.
@@ -97,9 +97,9 @@ The time from the first frozen poll to a confirmed hang is at least the confirm 
 
 The detector escalates in three stages, all logged on the Ray Train controller:
 
-1. **Suspected.** When a communicator has been frozen for about 60 seconds, the detector logs a `WARNING` naming the communicator and, in `fail` mode, how long until it raises. It keeps monitoring, because a transient stall looks the same at this point.
+1. **Suspected.** When a communicator has been frozen for about 60 seconds, the detector logs a `WARNING` naming the communicator and, in `fail` mode, how long until it reattempts the run. It keeps monitoring, because a transient stall looks the same at this point.
 1. **Still suspected.** About every 120 seconds, it logs a `WARNING` listing every still-frozen communicator and how long each one has stalled, followed by the human-readable `ncclras` report at `INFO` level. The report lists every rank, its status, and its collective counts per communicator, so you can see which ranks fell behind.
-1. **Confirmed.** When a communicator stays frozen for the full confirm duration, the detector logs the `ncclras` report, captures the diagnostics described in the next section, and then either logs a summary in `observe` mode or raises {class}`~ray.train.NCCLHangError` in `fail` mode. The summary lists where each diagnostic was uploaded.
+1. **Confirmed.** When a communicator stays frozen for the full confirm duration, the detector logs the `ncclras` report, captures the diagnostics described in the next section, and then either logs a summary in `observe` mode or reattempts the run in `fail` mode. The summary lists where each diagnostic was uploaded.
 
 If a suspected communicator resumes progress at any stage, the detector logs that it recovered and resets its streak.
 
@@ -138,7 +138,7 @@ The detector writes the human-readable `ncclras -f text` report at confirmation 
 
 ### `nvidia-smi` snapshots
 
-The detector runs `nvidia-smi -q` on one worker per node and writes the output to `nvidia_smi/node_<ip>.log`: power, temperature, clocks, utilization, and ECC state of every GPU on that node at the moment of the hang. It needs `nvidia-smi` on the nodes, which the NVIDIA driver installs.
+The detector runs `nvidia-smi -q` on each node and writes the output to `nvidia_smi/node_<ip>.log`: power, temperature, clocks, utilization, and ECC state of every GPU on that node at the moment of the hang. It needs `nvidia-smi` on the nodes, which the NVIDIA driver installs.
 
 (train-nccl-hang-flight-recorder)=
 
@@ -169,10 +169,10 @@ The detector catches hangs where ranks disagree about launch counts. It doesn't 
 
 - **Symmetric in-collective hangs.** If every rank launches the same collective and the fabric wedges mid-operation, all counts match and the detector sees no mismatch. The PyTorch watchdog is still the only signal for these.
 - **A rank that exited early.** The detector only evaluates a communicator while all of its ranks report `RUNNING`. A rank that crashed or finalized alongside frozen peers is skipped, because Ray Train's health check fails the worker group first.
-- **Hangs in communicators that the polled rank can't reach.** RAS only knows about the ranks reachable through the communicators that each process created. If a job never creates a communicator that spans all ranks, a query on one rank reports only its own subset. Every common parallelism strategy creates a world process group, so this rarely applies in practice.
+- **Hangs in communicators that the polled rank can't reach.** RAS only knows about the ranks reachable through the communicators that each process created. If a job never creates a communicator that spans all ranks, a query on one node reports only its own subset. Every common parallelism strategy creates a world process group, so this rarely applies in practice.
 
 The detector can also report a false positive:
 
 - **A legitimately idle, skewed communicator.** A communicator that sits with mismatched counts and no progress for the whole confirm window looks like a hang. A pipeline-parallel send and receive group waiting on a slow stage can do this. In `fail` mode, that fails the run. This false-positive mode is the reason the detector defaults to `observe`. If your workload has communicators that idle for long periods, raise `RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S` above that idle time or stay in `observe` mode.
 
-The `NCCLHangError` doesn't attribute the hang to a specific rank. The `ncclras` report and the diagnostics in the preceding section are the way to find it.
+The hang report doesn't attribute the hang to a specific rank. The `ncclras` report and the diagnostics in the preceding section are the way to find it.
