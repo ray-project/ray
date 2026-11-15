@@ -24,7 +24,9 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
     for (int i = 0; i < (int)sorted_index.size(); i++) {
       sorted_nodes[sorted_index[i]] = result.selected_nodes[i];
     }
-    return SchedulingResult::Success(std::move(sorted_nodes));
+    auto sorted_result = SchedulingResult::Success(std::move(sorted_nodes));
+    sorted_result.allocation_order = sorted_index;
+    return sorted_result;
   } else {
     return result;
   }
@@ -339,13 +341,17 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
+  auto sorted_result = SortRequiredResources(resource_request_list);
+  const auto &sorted_index = sorted_result.first;
+  const auto &sorted_resource_request_list = sorted_result.second;
+
   // Try each candidate node by allocating bundles one by one (per-bundle
   // SubtractNodeAvailableResources). This avoids the aggregated-request problem
   // where per-instance CanAllocate rejects a summed demand that could be
   // satisfied by distributing across instances.
   auto try_allocate_all_bundles = [&](scheduling::NodeID node_id) -> bool {
     std::vector<ResourceAllocation> allocs;
-    for (const auto *request : resource_request_list) {
+    for (const auto *request : sorted_resource_request_list) {
       auto alloc =
           cluster_resource_manager_.SubtractNodeAvailableResources(node_id, *request);
       if (!alloc.has_value()) {
@@ -401,7 +407,9 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     return SchedulingResult::Failed();
   }
 
-  return SchedulingResult::Success(std::move(result_nodes));
+  auto result = SchedulingResult::Success(std::move(result_nodes));
+  result.allocation_order = sorted_index;
+  return result;
 }
 
 /////////////////////  BundleStrictSpreadSchedulingPolicy  //////////////////////////

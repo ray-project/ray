@@ -316,6 +316,70 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         .Double();
   }
 
+  // Best-fit allocation of fractional GPUs depends on the order bundles are placed in.
+  // On an empty 2-GPU node, bundles {0.4, 0.5, 0.5, 0.6} fit when placed largest
+  // first ([0.6, 0.4] on one GPU, [0.5, 0.5] on the other) but not in index order,
+  // where 0.4 and 0.5 share a GPU and 0.6 then finds only [0.1, 0.5] free. GCS must
+  // prepare and acquire bundles in the order the policy allocated them; otherwise the
+  // raylet rejects the prepare and the placement group retries on this node forever.
+  void TestFractionalGpuBundlesUseAllocationOrder(rpc::PlacementStrategy strategy) {
+    const std::vector<double> bundle_gpus = {0.4, 0.5, 0.5, 0.6};
+    // Best-fit places `gpus` in order on an empty 2-GPU node, like the raylet does.
+    auto place_best_fit = [](const std::vector<double> &gpus) {
+      NodeResourceInstanceSet node_gpus(
+          NodeResourceSet(absl::flat_hash_map<std::string, double>{{"GPU", 2.0}}));
+      for (double gpu : gpus) {
+        if (!node_gpus.TryAllocate(scheduling::ResourceID::GPU(), FixedPoint(gpu))) {
+          return false;
+        }
+      }
+      return true;
+    };
+    // Make sure the case actually depends on the order.
+    ASSERT_FALSE(place_best_fit(bundle_gpus));
+
+    auto node = GenNodeInfo(0);
+    (*node->mutable_resources_total())["GPU"] = 2.0;
+    gcs_node_manager_->AddNode(node);
+    gcs_resource_manager_->OnNodeAdd(*node);
+    const auto node_id = scheduling::NodeID(node->node_id());
+
+    std::vector<std::unordered_map<std::string, double>> bundles;
+    for (double gpu : bundle_gpus) {
+      bundles.push_back({{"GPU", gpu}});
+    }
+    auto pg_spec = GenPlacementGroupCreation(
+        "", bundles, strategy, JobID::FromInt(1), ActorID::Nil());
+    rpc::CreatePlacementGroupRequest request;
+    request.mutable_placement_group_spec()->CopyFrom(pg_spec.GetMessage());
+    auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+
+    ScheduleUnplacedBundles(pg);
+    WaitPendingDone(raylet_clients_[0]->lease_callbacks, 1);
+
+    // The raylet prepares bundles in the order it receives them, so that order must
+    // be one in which best-fit places them all.
+    ASSERT_EQ(raylet_clients_[0]->prepare_bundle_specs.size(), 1);
+    std::vector<double> prepared_gpus;
+    for (const auto &bundle : raylet_clients_[0]->prepare_bundle_specs[0]) {
+      prepared_gpus.push_back(
+          bundle->GetRequiredResources().Get(scheduling::ResourceID::GPU()).Double());
+    }
+    ASSERT_EQ(prepared_gpus.size(), bundle_gpus.size());
+    ASSERT_TRUE(place_best_fit(prepared_gpus));
+
+    // GCS acquired every bundle in its own view, leaving no GPU free.
+    const auto &gcs_view =
+        cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
+            node_id);
+    ASSERT_EQ(gcs_view.GetAvailableSum(scheduling::ResourceID::GPU()), FixedPoint(0));
+
+    ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+    WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+    ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+    WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+  }
+
   std::shared_ptr<GcsPlacementGroup> MakeStrictPackPlacementGroup(int bundles_count,
                                                                   double cpu_per_bundle) {
     auto request = GenCreatePlacementGroupRequest(
@@ -1650,6 +1714,15 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestPackFractionalGpuBundlesUseAllocationOrder) {
+  TestFractionalGpuBundlesUseAllocationOrder(rpc::PlacementStrategy::PACK);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest,
+       TestStrictPackFractionalGpuBundlesUseAllocationOrder) {
+  TestFractionalGpuBundlesUseAllocationOrder(rpc::PlacementStrategy::STRICT_PACK);
 }
 
 }  // namespace gcs

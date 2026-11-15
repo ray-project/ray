@@ -81,6 +81,9 @@ struct SchedulingResult {
   SchedulingResultStatus status;
   // The nodes successfully scheduled.
   std::vector<scheduling::NodeID> selected_nodes;
+  // The order these resource requests should be allocated. Each resource request is
+  // represented by its index.
+  std::vector<int> allocation_order;
   // The topology assignment selected during placement group scheduling.
   // The key is the topology label key (e.g. "ray.io/gpu-domain"),
   // the value is the topology label value (e.g. "rack-1").
