@@ -153,8 +153,8 @@ def shutdown():
                 "running on this Ray cluster."
             )
             return
-        # No cached client (fresh process). Try to discover a running
-        # controller via _connect().
+        # No usable cached client. Look the controller up by name; _connect()
+        # joins a running cluster if needed but never starts Ray.
         try:
             client = _get_global_client()
         except RayServeException:

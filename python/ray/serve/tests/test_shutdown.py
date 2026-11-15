@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import reset_ray_address
 from ray._raylet import GcsClient
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -430,6 +431,14 @@ async def test_shutdown_async_after_driver_reconnect(ray_shutdown):
         await serve.shutdown_async()
 
 
+def _controller_gone():
+    try:
+        ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+        return False
+    except ValueError:
+        return True
+
+
 def test_shutdown_after_reconnect_shuts_down_live_serve(ray_cluster):
     """serve.shutdown() must shut down a still-running Serve after the driver
     reconnects to a long-lived cluster.
@@ -463,14 +472,58 @@ def test_shutdown_after_reconnect_shuts_down_live_serve(ray_cluster):
     serve.shutdown()
 
     # The live controller must actually be gone now.
-    def controller_gone():
-        try:
-            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-            return False
-        except ValueError:
-            return True
+    wait_for_condition(_controller_gone, timeout=20)
 
-    wait_for_condition(controller_gone, timeout=20)
+
+@pytest.mark.parametrize("ray_address_env", [None, "local"])
+def test_shutdown_does_not_start_ray(ray_shutdown, monkeypatch, ray_address_env):
+    """With no cluster to join, serve.shutdown() must not start Ray.
+
+    A Ray instance it started could never have a Serve controller to shut down.
+    """
+    if ray_address_env is None:
+        monkeypatch.delenv("RAY_ADDRESS", raising=False)
+    else:
+        monkeypatch.setenv("RAY_ADDRESS", ray_address_env)
+    serve.shutdown()
+    assert not ray.is_initialized()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_async_does_not_start_ray(ray_shutdown, monkeypatch):
+    """Async variant of test_shutdown_does_not_start_ray."""
+    monkeypatch.delenv("RAY_ADDRESS", raising=False)
+    await serve.shutdown_async()
+    assert not ray.is_initialized()
+
+
+def test_shutdown_after_ray_shutdown_does_not_start_ray(ray_shutdown, monkeypatch):
+    """After ray.shutdown() there is no cluster to join, despite the cached client.
+
+    Ray Client drivers hit this: ray.init("ray://..."), serve.run(), ray.shutdown().
+    """
+    monkeypatch.delenv("RAY_ADDRESS", raising=False)
+    ray.init(num_cpus=2)
+    serve.start()
+    ray.shutdown()
+    serve.shutdown()
+    assert not ray.is_initialized()
+
+
+@pytest.mark.parametrize("discovery", ["ray_address", "address_file"])
+def test_shutdown_joins_discoverable_cluster(ray_cluster, monkeypatch, discovery):
+    """With Ray not initialized, serve.shutdown() joins the cluster ray.init() would."""
+    head_node = ray_cluster.add_node(num_cpus=2)  # Writes the address file.
+    ray.init(head_node.address, namespace=SERVE_NAMESPACE)
+    serve.start()
+    ray.shutdown()
+    if discovery == "ray_address":
+        reset_ray_address()
+        monkeypatch.setenv("RAY_ADDRESS", head_node.address)
+    else:
+        monkeypatch.delenv("RAY_ADDRESS", raising=False)
+    serve.shutdown()
+    wait_for_condition(_controller_gone, timeout=20)
 
 
 def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
