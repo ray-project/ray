@@ -216,6 +216,19 @@ class Gauge(metrics.Gauge):
         tags = _add_serve_context_tag_values(self._tag_keys, tags)
         super().set(value, tags)
 
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        """Increment the gauge by the given value, add serve context
+        tag values to the tags. ``dec()`` goes through this method too.
+
+        Args:
+            value: Amount to add to the gauge.
+            tags: Tags to set or override for this record. If the metric has a
+                ``route`` tag key and ``tags`` doesn't set it, Serve fills it in
+                from the current request.
+        """
+        tags = _add_serve_context_tag_values(self._tag_keys, tags)
+        super().inc(value, tags)
+
 
 @PublicAPI(stability="beta")
 class Histogram(metrics.Histogram):
