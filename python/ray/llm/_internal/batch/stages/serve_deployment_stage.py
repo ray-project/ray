@@ -69,7 +69,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         self.should_continue_on_error = should_continue_on_error
         self.request_timeout_s = request_timeout_s
 
-        self._dh = serve.get_deployment_handle(deployment_name, app_name)
+        self._dh = serve.get_deployment_handle(deployment_name, app_name).options(stream=self.stream)
         if self.stream:
             # LLM serve deployments return async generators.
             self._dh = self._dh.options(stream=True)
