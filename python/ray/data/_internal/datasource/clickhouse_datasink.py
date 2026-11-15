@@ -302,6 +302,10 @@ class ClickHouseDatasink(Datasink):
     def supports_distributed_writes(self) -> bool:
         return True
 
+    @property
+    def on_write_start_requires_schema(self) -> bool:
+        return False
+
     def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         client = None
         try:

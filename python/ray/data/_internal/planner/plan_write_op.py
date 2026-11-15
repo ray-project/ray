@@ -1,6 +1,5 @@
 import itertools
 import uuid
-from types import MethodType
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import pyarrow as pa
@@ -114,8 +113,6 @@ def _plan_write_op_internal(
     Returns:
         The physical operator for the write operation.
     """
-    from ray.data.datasource.file_datasink import _FileDatasink
-
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
@@ -134,37 +131,18 @@ def _plan_write_op_internal(
     map_transformer = MapTransformer(transform_fns)
 
     # Set up on_start callback for datasinks.
-    # Initialize before writing (e.g., Iceberg schema evolution), using the inferred
-    # input schema when available, or the first input bundle's schema otherwise.
+    # Keep the runtime schema for standalone writes. The fusion rule substitutes
+    # the inferred input schema only when Write is fused with an upstream map.
     on_start = None
     if isinstance(datasink, Datasink):
         on_start = datasink.on_write_start
 
-    start_func = on_start.__func__ if type(on_start) is MethodType else None
-
-    # No callback is needed for the base class's empty implementation.
-    if start_func is Datasink.on_write_start:
-        on_start = None
-
-    # The default file hook only handles file setup and doesn't use the schema.
-    is_default_file_hook = (
-        isinstance(datasink, _FileDatasink)
-        and start_func is _FileDatasink.on_write_start
+    needs_input_schema = (
+        isinstance(datasink, Datasink) and datasink.on_write_start_requires_schema
     )
-    needs_input_schema = on_start is not None and not is_default_file_hook
-    inferred_schema = None
-    if needs_input_schema:
-        inferred_schema = op.input_dependencies[0].infer_schema()
-        if isinstance(inferred_schema, pa.Schema):
-            # Use the write's schema, not the fused operator's input schema.
-            write_start = on_start
-
-            def on_start(_schema):
-                write_start(inferred_schema)
-
-        else:
-            # Other schema types need runtime Arrow schema extraction from blocks.
-            inferred_schema = None
+    supports_fusion = not needs_input_schema or isinstance(
+        op.input_dependencies[0].infer_schema(), pa.Schema
+    )
 
     min_bytes_per_bundle = (
         datasink.min_bytes_per_write if isinstance(datasink, Datasink) else None
@@ -172,10 +150,7 @@ def _plan_write_op_internal(
     ref_bundler = None
     if min_bytes_per_bundle is not None:
         ref_bundler = RebundleQueue(EstimateBytes(min_bytes_per_bundle))
-
-    supports_fusion = (
-        not needs_input_schema or inferred_schema is not None
-    ) and min_bytes_per_bundle is None
+        supports_fusion = False
 
     map_op = MapOperator.create(
         map_transformer,

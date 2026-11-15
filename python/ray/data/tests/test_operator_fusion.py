@@ -807,7 +807,7 @@ def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):
 
 @pytest.mark.parametrize(
     "input_type",
-    ["materialized", "read", "filter", "project", "batches", "pandas"],
+    ["from_items", "read", "filter", "project", "project_chain", "batches", "pandas"],
 )
 def test_write_start_receives_transformed_schema(
     ray_start_regular_shared_2_cpus, restore_data_context, input_type
@@ -853,15 +853,17 @@ def test_write_start_receives_transformed_schema(
         # Row-based filtering preserves Arrow types, including int32.
         ds = ray.data.from_arrow(pa.table({"id": pa.array(range(8), type=pa.int32())}))
         ds = ds.filter(lambda row: row["id"] >= 0)
-    elif input_type in ("materialized", "project", "batches"):
+    elif input_type in ("from_items", "project", "project_chain", "batches"):
         ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
     else:
         ds = ray.data.range(8, override_num_blocks=2)
 
-    if input_type == "project":
+    if input_type in ("project", "project_chain"):
         from ray.data.expressions import col
 
         ds = ds.with_column("added", col("id") + 1)
+        if input_type == "project_chain":
+            ds = ds.filter(lambda row: row["added"] >= 0)
         assert ds._logical_plan.dag.infer_schema() == expected_schema
     elif input_type == "batches":
         ds = ds.map_batches(
@@ -877,15 +879,58 @@ def test_write_start_receives_transformed_schema(
     assert sink.rows_written == 8
     if input_type == "project":
         assert "Project->Write" in ds._write_ds.stats()
+    elif input_type == "project_chain":
+        assert "Project->Filter(<lambda>)->Write" in ds._write_ds.stats()
     elif input_type == "filter":
         assert "Filter(<lambda>)->Write" in ds._write_ds.stats()
     elif input_type == "batches":
         assert "MapBatches(<lambda>)->Write" not in ds._write_ds.stats()
 
 
-@pytest.mark.parametrize("instance_hook", [False, True])
-def test_write_fusion_with_default_start_hook(
-    ray_start_regular_shared_2_cpus, instance_hook
+@pytest.mark.parametrize("boundary", ["input", "sort", "min_bytes", "resources"])
+def test_unfused_write_start_uses_runtime_schema(
+    ray_start_regular_shared_2_cpus, monkeypatch, boundary
+):
+    import pyarrow as pa
+
+    from ray.data.datasource.datasink import Datasink
+
+    expected_schema = pa.schema([("id", pa.int64())])
+    received_schemas = []
+
+    class SchemaCheckingDatasink(Datasink):
+        @property
+        def min_bytes_per_write(self):
+            return 1 if boundary == "min_bytes" else None
+
+        def on_write_start(self, schema=None):
+            received_schemas.append(schema)
+
+        def write(self, blocks, ctx):
+            pass
+
+    ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
+    if boundary == "sort":
+        ds = ds.sort("id")
+    elif boundary in ("min_bytes", "resources"):
+        ds = ds.filter(lambda row: True, num_cpus=0.5 if boundary == "resources" else 1)
+
+    # Distinguish static inference from the actual first-bundle schema.
+    inferred_schema = expected_schema.with_metadata({b"source": b"inferred"})
+    monkeypatch.setattr(
+        type(ds._logical_plan.dag), "infer_schema", lambda self: inferred_schema
+    )
+    sink = SchemaCheckingDatasink()
+    ds.write_datasink(sink, ray_remote_args={"num_cpus": 1})
+
+    assert len(received_schemas) == 1
+    assert received_schemas[0].equals(expected_schema, check_metadata=True)
+    assert "->Write" not in ds._write_ds.stats()
+
+
+@pytest.mark.parametrize("requires_schema", [False, True])
+def test_write_fusion_with_schema_requirement(
+    ray_start_regular_shared_2_cpus, requires_schema
 ):
     from ray.data.block import BlockAccessor
     from ray.data.datasource.datasink import Datasink
@@ -893,28 +938,34 @@ def test_write_fusion_with_default_start_hook(
     class CountingDatasink(Datasink):
         def __init__(self):
             self.rows_written = 0
+            self.start_calls = 0
+
+        @property
+        def on_write_start_requires_schema(self):
+            return requires_schema
+
+        def on_write_start(self, schema=None):
+            self.start_calls += 1
+            if requires_schema:
+                assert schema.names == ["id", "added"]
 
         def write(self, blocks, ctx):
+            # Schema-independent hooks must still initialize worker-side state.
+            assert self.start_calls == 1
             return sum(BlockAccessor.for_block(block).num_rows() for block in blocks)
 
         def on_write_complete(self, result):
             self.rows_written = sum(result.write_returns)
 
     sink = CountingDatasink()
-    schemas = []
-    if instance_hook:
-        # An instance override must not be mistaken for the base no-op method.
-        sink.on_write_start = lambda schema: schemas.append(schema)
-
     ds = ray.data.range(8, override_num_blocks=2).map(
         lambda row: dict(row, added=row["id"] + 1)
     )
     ds.write_datasink(sink)
 
     assert sink.rows_written == 8
-    if instance_hook:
-        assert len(schemas) == 1
-        assert schemas[0].names == ["id", "added"]
+    assert sink.start_calls == 1
+    if requires_schema:
         assert "Map(<lambda>)->Write" not in ds._write_ds.stats()
     else:
         assert "ReadRange->Map(<lambda>)->Write" in ds._write_ds.stats()
@@ -929,6 +980,11 @@ def test_write_fusion_with_custom_file_start_hook(
     from ray.data._internal.datasource.csv_datasink import CSVDatasink
 
     class SchemaCheckingCSVDatasink(CSVDatasink):
+        @property
+        def on_write_start_requires_schema(self):
+            # Override the file sink's schema-independent default.
+            return True
+
         def __init__(self, path):
             super().__init__(path)
             self.start_schemas = []
@@ -968,47 +1024,6 @@ def test_write_fusion_with_custom_file_start_hook(
     assert sorted(rows, key=lambda row: row["id"]) == [
         {"id": i, "added": i + 1} for i in range(8)
     ]
-
-
-def test_write_fusion_with_wrapped_start_hook(ray_start_regular_shared_2_cpus):
-    from ray.data.block import BlockAccessor
-    from ray.data.datasource.datasink import Datasink
-
-    class HookProxy:
-        def __init__(self, wrapped):
-            self.wrapped = wrapped
-
-        def __getattr__(self, name):
-            return getattr(object.__getattribute__(self, "wrapped"), name)
-
-        def __call__(self, schema=None):
-            self.wrapped.__self__.schema = schema
-            return self.wrapped(schema)
-
-    class CountingDatasink(Datasink):
-        def __init__(self):
-            self.schema = None
-            self.rows_written = 0
-
-        def write(self, blocks, ctx):
-            assert self.schema is not None
-            assert self.schema.names == ["id", "added"]
-            return sum(BlockAccessor.for_block(block).num_rows() for block in blocks)
-
-        def on_write_complete(self, result):
-            self.rows_written = sum(result.write_returns)
-
-    sink = CountingDatasink()
-    # Forwarding __func__ does not make a callable wrapper a no-op hook.
-    sink.on_write_start = HookProxy(sink.on_write_start)
-    ds = ray.data.range(8, override_num_blocks=2).map(
-        lambda row: dict(row, added=row["id"] + 1)
-    )
-    ds.write_datasink(sink)
-
-    assert sink.schema.names == ["id", "added"]
-    assert sink.rows_written == 8
-    assert "Map(<lambda>)->Write" not in ds._write_ds.stats()
 
 
 @pytest.mark.parametrize(

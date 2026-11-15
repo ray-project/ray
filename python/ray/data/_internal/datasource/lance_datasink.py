@@ -331,6 +331,10 @@ class _BaseLanceDatasink(Datasink):
         except Exception:
             return False
 
+    @property
+    def on_write_start_requires_schema(self) -> bool:
+        return False
+
     def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         _check_import(self, module="lance", package="pylance")
 
