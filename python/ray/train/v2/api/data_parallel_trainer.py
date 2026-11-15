@@ -2,6 +2,7 @@ import logging
 import signal
 import sys
 import threading
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
@@ -56,6 +57,7 @@ from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
 from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
+from ray.train.v2._internal.util import date_str
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.validation_config import ValidationConfig
@@ -196,11 +198,22 @@ class DataParallelTrainer:
 
             return result
 
-    def _get_local_controller(self) -> LocalController:
-        return LocalController(
-            experiment_name=self.run_config.name,
+    def _get_local_controller_kwargs(self) -> Dict[str, Any]:
+        storage_path = self.run_config.storage_path
+        if storage_path is not None and isinstance(storage_path, Path):
+            storage_path = storage_path.as_posix()
+        experiment_name = self.run_config.name
+        if storage_path is not None and not experiment_name:
+            experiment_name = f"ray_train_run-{date_str()}"
+        return dict(
+            experiment_name=experiment_name,
             datasets=self.datasets,
+            storage_path=storage_path,
+            storage_filesystem=self.run_config.storage_filesystem,
         )
+
+    def _get_local_controller(self) -> LocalController:
+        return LocalController(**self._get_local_controller_kwargs())
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable

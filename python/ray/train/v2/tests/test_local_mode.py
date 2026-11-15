@@ -1,5 +1,6 @@
 import math
 import os
+import pickle
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -15,7 +16,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, Trainer, TrainingArgu
 import ray
 from ray.data.preprocessors import Concatenator
 from ray.tests.conftest import _ray_start_cluster
-from ray.train import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
@@ -103,12 +104,49 @@ def test_local_mode_metrics_only_report_keeps_checkpoint():
         with create_dict_checkpoint({}) as checkpoint:
             ray.train.report(metrics={"epoch": 0}, checkpoint=checkpoint)
             ray.train.report(metrics={"epoch": 1})
-            assert ray.train.get_checkpoint() == checkpoint
+            # A metrics-only report must not clear the last reported
+            # checkpoint. The returned checkpoint is the copy persisted to
+            # the run's storage path, so compare contents instead of identity.
+            latest_checkpoint = ray.train.get_checkpoint()
+            assert latest_checkpoint is not None
+            with latest_checkpoint.as_directory() as checkpoint_dir:
+                assert os.path.exists(os.path.join(checkpoint_dir, "data.pkl"))
 
     trainer = DataParallelTrainer(train_fn, scaling_config=ScalingConfig(num_workers=0))
     result = trainer.fit()
     assert result.metrics == {"epoch": 1}
     assert result.checkpoint
+
+
+def test_local_mode_report_persists_checkpoint_to_storage_path(tmp_path):
+    """Checkpoints reported in local mode are persisted to `RunConfig(storage_path)`
+    so they outlive the temporary directory they were created in (#60552)."""
+    storage_path = tmp_path / "results"
+
+    def train_fn():
+        with create_dict_checkpoint({"epoch": 1}) as checkpoint:
+            ray.train.report(metrics={"epoch": 1}, checkpoint=checkpoint)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=0),
+        run_config=RunConfig(storage_path=str(storage_path)),
+    )
+    result = trainer.fit()
+
+    assert result.path is not None
+    assert result.checkpoint is not None
+    # The returned checkpoint points into the storage path, not the original
+    # (now deleted) temporary directory.
+    assert os.path.normpath(str(storage_path)) in os.path.normpath(
+        result.checkpoint.path
+    )
+
+    # The checkpoint contents were copied to storage.
+    with result.checkpoint.as_directory() as checkpoint_dir:
+        assert os.path.exists(os.path.join(checkpoint_dir, "data.pkl"))
+        with open(os.path.join(checkpoint_dir, "data.pkl"), "rb") as f:
+            assert pickle.load(f) == {"epoch": 1}
 
 
 def test_jax_trainer_local_mode(ray_tpu_single_host, monkeypatch):

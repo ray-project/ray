@@ -73,6 +73,7 @@ class LocalTorchController(LocalController):
                 local_world_size=nproc_per_node,
                 node_rank=node_rank,
                 dataset_shards=self.datasets,
+                storage_context=self.storage_context,
             )
         )
 
@@ -84,7 +85,11 @@ class LocalTorchController(LocalController):
         result = Result(
             metrics=train_fn_utils._get_last_metrics(),
             checkpoint=train_fn_utils.get_checkpoint(),
-            path=None,
+            path=(
+                self.storage_context.experiment_fs_path
+                if self.storage_context is not None
+                else None
+            ),
             error=None,
             return_value=train_result,
         )

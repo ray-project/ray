@@ -200,7 +200,4 @@ class TorchTrainer(DataParallelTrainer):
         )
 
     def _get_local_controller(self) -> LocalTorchController:
-        return LocalTorchController(
-            experiment_name=self.run_config.name,
-            datasets=self.datasets,
-        )
+        return LocalTorchController(**self._get_local_controller_kwargs())

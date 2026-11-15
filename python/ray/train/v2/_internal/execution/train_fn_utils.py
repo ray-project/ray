@@ -8,6 +8,7 @@ from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2.api.context import (
     DistributedTrainContext,
     LocalTrainContext,
@@ -240,6 +241,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         local_rank: int = 0,
         local_world_size: int = 1,
         node_rank: int = 0,
+        storage_context: Optional["StorageContext"] = None,
     ):
         self._context = LocalTrainContext(
             experiment_name=experiment_name,
@@ -250,6 +252,7 @@ class LocalTrainFnUtils(TrainFnUtils):
             node_rank=node_rank,
         )
         self._dataset_shards = dataset_shards
+        self._storage_context = storage_context
         self._last_metrics = None
         self._last_checkpoint = None
 
@@ -267,7 +270,21 @@ class LocalTrainFnUtils(TrainFnUtils):
     ) -> None:
         self._last_metrics = metrics
         if checkpoint is not None:
-            self._last_checkpoint = checkpoint
+            if self._storage_context is not None:
+                # Persist the checkpoint to the configured storage path so it
+                # survives the local (often temporary) checkpoint directory,
+                # mirroring the distributed mode behavior.
+                checkpoint_dir_name = (
+                    checkpoint_dir_name
+                    or StorageContext.make_default_checkpoint_dir_name()
+                )
+                self._last_checkpoint = (
+                    self._storage_context.persist_current_checkpoint(
+                        checkpoint, checkpoint_dir_name
+                    )
+                )
+            else:
+                self._last_checkpoint = checkpoint
         logger.info(f"Reported metrics: {metrics}")
 
     def get_checkpoint(self) -> Optional["Checkpoint"]:
