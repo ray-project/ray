@@ -125,6 +125,52 @@ class TestListNamespace:
         )
         assert rows_same(result, expected)
 
+    def test_list_sort_null_slot_spanning_values(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Null list slots that still span child values (e.g. extracted from a
+        null struct row) must not break sort() (#68082)."""
+        items = pa.array([[3, 1], [9, 8], [7]])
+        nested = pa.array([[[1, 2]], [[0]], [[4, 5, 6]]])
+        arrow_table = pa.table(
+            {
+                "s": pa.StructArray.from_arrays(
+                    [items, nested],
+                    ["items", "nested"],
+                    mask=pa.array([False, True, False]),
+                )
+            }
+        )
+        ds = _create_dataset(None, dataset_format, arrow_table=arrow_table)
+        result = ds.with_column(
+            "sorted", col("s").struct["items"].list.sort()
+        ).to_pandas()
+        expected = pd.DataFrame({"sorted": [[1, 3], None, [7]]})
+        assert rows_same(result, expected)
+
+    def test_list_flatten_null_slot_spanning_values(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """list.flatten() must keep null rows null and not shift later rows
+        when a null list slot spans child values (#68082)."""
+        items = pa.array([[3, 1], [9, 8], [7]])
+        nested = pa.array([[[1, 2]], [[0]], [[4, 5, 6]]])
+        arrow_table = pa.table(
+            {
+                "s": pa.StructArray.from_arrays(
+                    [items, nested],
+                    ["items", "nested"],
+                    mask=pa.array([False, True, False]),
+                )
+            }
+        )
+        ds = _create_dataset(None, dataset_format, arrow_table=arrow_table)
+        result = ds.with_column(
+            "flattened", col("s").struct["nested"].list.flatten()
+        ).to_pandas()
+        expected = pd.DataFrame({"flattened": [[1, 2], None, [4, 5, 6]]})
+        assert rows_same(result, expected)
+
     def test_list_flatten_requires_nested_lists(
         self, ray_start_regular_shared, dataset_format
     ):
