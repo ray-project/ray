@@ -5318,7 +5318,12 @@ cdef class CoreWorker:
             c_device_bytes.push_back(entry)
 
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().SetRdtObjectMemoryInfo(
+            # Use the safe process-level setter instead of GetCoreWorker(): this
+            # is a best-effort scalar metadata write that may run on a GC
+            # callback thread after shutdown, and GetCoreWorker() would
+            # QuickExit once the core worker is gone. The safe setter no-ops
+            # when the process has been torn down.
+            CCoreWorkerProcess.SetRdtObjectMemoryInfo(
                 c_object_id, c_device_bytes, c_num_copies, c_num_errors)
 
     def record_task_log_start(

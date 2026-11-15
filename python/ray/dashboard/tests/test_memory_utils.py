@@ -532,16 +532,31 @@ def test_rdt_memory_summary_num_entries_counts_objects():
 
 
 def test_rdt_memory_summary_sort_by_object_size():
-    # OBJECT_SIZE sorts by known logical bytes, unknown last.
+    # OBJECT_SIZE sorts ascending (smallest known logical bytes first) to match
+    # the main object-reference table, whose MemoryTable._sort_by sorts
+    # object_size ascending. Unknown-sized objects sort last.
     objects = [
-        _build_rdt_object(object_id=RDT_HEX_1, tensor_bytes={"cpu": 8}),
         _build_rdt_object(object_id=RDT_HEX_2, tensor_bytes={"cpu": 64}),
+        _build_rdt_object(object_id=RDT_HEX_1, tensor_bytes={"cpu": 8}),
+        _build_rdt_object(
+            object_id="02" * ray.ObjectRef.size(), tensor_bytes={"unknown": -1}
+        ),
     ]
-    stats = [_build_worker_stats(rdt_objects=objects, rdt_objects_total=2)]
+    stats = [_build_worker_stats(rdt_objects=objects, rdt_objects_total=3)]
     out = _format_rdt_memory_summary(
         stats, GroupByType.NODE_ADDRESS, SortingType.OBJECT_SIZE, "B", None
     )
-    assert out.index(RDT_HEX_1) < out.index(RDT_HEX_2)
+    unknown_hex = "02" * ray.ObjectRef.size()
+    assert out.index(RDT_HEX_1) < out.index(RDT_HEX_2) < out.index(unknown_hex)
+
+    # num_entries truncation drops from the end of the sorted rows, so the
+    # unknown-last object is dropped first and the ascending known rows remain.
+    truncated = _format_rdt_memory_summary(
+        stats, GroupByType.NODE_ADDRESS, SortingType.OBJECT_SIZE, "B", 2
+    )
+    assert RDT_HEX_1 in truncated
+    assert RDT_HEX_2 in truncated
+    assert unknown_hex not in truncated
 
 
 def test_rdt_memory_summary_sort_by_pid():

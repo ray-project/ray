@@ -38,18 +38,29 @@ def _tensor_device_and_bytes(tensor: Any) -> Tuple[str, int]:
     queued is still reported at its queued size. An unrecognized object or a
     metadata read failure is reported as ``("unknown", -1)`` (never 0, never
     raising), so introspection cannot fail a transfer.
+
+    ``sys.modules`` may contain a mocked or partially-initialized ``torch`` or
+    ``numpy`` whose ``Tensor``/``ndarray`` attribute is missing, is not a type,
+    or raises on access. The whole lookup is therefore guarded so that neither
+    attribute access nor ``isinstance`` can escape. Optional dependencies are
+    never imported here.
     """
     torch = sys.modules.get("torch")
-    if torch is not None and isinstance(tensor, torch.Tensor):
+    if torch is not None:
         try:
-            return str(tensor.device), int(tensor.numel()) * int(tensor.element_size())
+            torch_tensor = getattr(torch, "Tensor", None)
+            if torch_tensor is not None and isinstance(tensor, torch_tensor):
+                num_bytes = int(tensor.numel()) * int(tensor.element_size())
+                return str(tensor.device), num_bytes
         except Exception:
             return "unknown", -1
 
     numpy = sys.modules.get("numpy")
-    if numpy is not None and isinstance(tensor, numpy.ndarray):
+    if numpy is not None:
         try:
-            return "cpu", int(tensor.nbytes)
+            ndarray = getattr(numpy, "ndarray", None)
+            if ndarray is not None and isinstance(tensor, ndarray):
+                return "cpu", int(tensor.nbytes)
         except Exception:
             return "unknown", -1
 
@@ -280,6 +291,22 @@ class RDTStore:
         # Per-object scalar aggregates, mutated under `self._lock`.
         self._object_memory_stats: Dict[str, _ObjectMemoryStats] = {}
 
+    def disable_memory_info_callback(self) -> None:
+        """Irrevocably disable memory-info publishing and drop the aggregate.
+
+        Called by ``RDTManager.shutdown`` to detach the publisher from the core
+        worker before the core worker is torn down. After this returns, add/pop
+        still mutate the store (so native GC callbacks can drain held objects)
+        but never call the callback again, and a lazily-created store after
+        shutdown starts with no callback so it cannot re-enable publishing.
+
+        Takes ``self._lock`` so it synchronizes with any in-flight add/pop: a
+        callback that is mid-publish finishes before the callback is cleared.
+        """
+        with self._lock:
+            self._memory_info_callback = None
+            self._object_memory_stats.clear()
+
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
             existed = obj_id in self._rdt_store
@@ -484,6 +511,13 @@ class RDTStore:
         values cached at add time, so this never re-reads (possibly freed or
         resized) tensors. Once the last copy and last error are gone the
         aggregate is cleared and the next publish erases the native entry.
+
+        ``rdt_object.device_bytes`` / ``device_counts`` may be ``None`` only when
+        publishing was disabled at add time. The callback is constructor-injected
+        and the lifecycle only ever disables it (one-way shutdown, never
+        re-enables), so the ``callback is None`` early return above runs first in
+        that state and the fields are never accessed; no per-field ``None`` guard
+        is needed.
         """
         if self._memory_info_callback is None:
             return
@@ -517,6 +551,11 @@ class RDTStore:
         own native mutex without re-entering Python, so holding the store lock
         here is safe. Per-device totals outside int64 range are published as -1
         (unknown). When both counts are zero the native entry is erased.
+
+        Publishing is best-effort local metadata: a failing callback is logged
+        and swallowed so it can neither fail a store mutation that already
+        succeeded nor block the condition-variable notification that follows.
+        The aggregate is left intact so a later add/pop retries the publish.
         """
         if self._memory_info_callback is None:
             return
@@ -537,9 +576,12 @@ class RDTStore:
             num_copies = stats.num_copies
             num_errors = stats.num_errors
         object_id_bytes = bytes.fromhex(obj_id)
-        self._memory_info_callback(
-            object_id_bytes, device_bytes, num_copies, num_errors
-        )
+        try:
+            self._memory_info_callback(
+                object_id_bytes, device_bytes, num_copies, num_errors
+            )
+        except Exception:
+            logger.exception("Failed to publish RDT memory info for object %s.", obj_id)
 
     def wait_tensor_freed(self, tensor: Any, timeout: Optional[float] = None) -> None:
         """Wait for the object to be freed from the RDT store."""

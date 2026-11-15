@@ -272,6 +272,15 @@ class RDTManager:
                 self._monitor_failures_shutdown_event.clear()
                 self._monitor_failures_thread = None
 
+            # Detach the publisher from the core worker before the core worker
+            # is torn down. Clearing the manager callback first means a store
+            # lazily created after shutdown starts with no callback, and
+            # disabling the existing store (under its own lock) synchronizes
+            # with any in-flight add/pop so no publish races the teardown.
+            self._memory_info_callback = None
+            if self._rdt_store is not None:
+                self._rdt_store.disable_memory_info_callback()
+
     def start_monitor_thread_if_needed(self):
         with self._init_lock:
             # To make sure _monitor_failures_thread is started only once

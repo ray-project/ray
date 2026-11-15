@@ -61,6 +61,22 @@ def test_rdt_memory_publisher_does_not_retain_core_worker():
     assert callback is not None
 
 
+def test_rdt_memory_publisher_noops_when_core_worker_missing():
+    worker = Worker()
+    # A fresh Worker has no `core_worker` attribute; the callback must no-op
+    # instead of raising AttributeError out of a `cdef void` GC callback.
+    worker._rdt_memory_info_callback(b"id", [("cpu", 8)], 1, 0)
+
+
+def test_rdt_memory_publisher_noops_after_core_worker_deleted():
+    worker = Worker()
+    worker.core_worker = _FakeCoreWorker()
+    del worker.core_worker
+    # Teardown deletes the attribute before the manager is discarded; the
+    # publisher must tolerate that window without raising.
+    worker._rdt_memory_info_callback(b"id", [], 0, 0)
+
+
 def test_shutdown_rdt_manager_shuts_down_without_reset():
     # The reset happens after CoreWorker deletion in `ray.shutdown`, not here:
     # native GC callbacks still need the manager during teardown.
@@ -85,6 +101,34 @@ def test_rdt_manager_standalone_defaults_no_callback():
 
     manager = RDTManager()
     assert manager._memory_info_callback is None
+
+
+def test_shutdown_detaches_existing_and_lazy_store_callback():
+    import ray
+    from ray.experimental.rdt.rdt_manager import RDTManager
+
+    calls = []
+
+    def callback(object_id_bytes, device_bytes, num_copies, num_errors):
+        calls.append((num_copies, num_errors))
+
+    obj_id = "00" * ray.ObjectRef.size()
+
+    # The store is retained for GC but publishing is disabled on shutdown.
+    manager = RDTManager(memory_info_callback=callback)
+    store = manager.rdt_store
+    store.add_object(obj_id, [object()])
+    assert calls[-1] == (1, 0)
+
+    manager.shutdown()
+    store.pop_object(obj_id)
+    assert calls[-1] == (1, 0)  # no publish after shutdown
+
+    # A store lazily created after shutdown must start with no callback, so it
+    # cannot re-enable publishing.
+    manager2 = RDTManager(memory_info_callback=callback)
+    manager2.shutdown()  # shutdown before the store exists
+    assert manager2.rdt_store._memory_info_callback is None
 
 
 if __name__ == "__main__":

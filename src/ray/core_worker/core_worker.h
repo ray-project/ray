@@ -1401,15 +1401,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   int64_t GetLocalMemoryStoreBytesUsed() const;
 
-  /// Set the process-local RDT (Ray Direct Transport) memory snapshot for
-  /// `object_id`, called from the Python RDT store on each add/pop mutation.
-  /// Does not take the core worker mutex and is independent of the distributed
-  /// object reference lifetime.
-  ///
-  /// \param[in] object_id The RDT object id.
-  /// \param[in] tensor_bytes Logical element bytes per local device; -1 = unknown.
-  /// \param[in] num_copies Number of successfully queued copies.
-  /// \param[in] num_errors Number of queued failed receives with no tensors.
+  /**
+   * @brief Set the process-local RDT (Ray Direct Transport) memory snapshot.
+   *
+   * Called from the Python RDT store on each add/pop mutation. Does not take
+   * the core worker mutex and is independent of the distributed object
+   * reference lifetime.
+   *
+   * @param object_id The RDT object id.
+   * @param tensor_bytes Logical element bytes per local device; -1 is unknown.
+   * @param num_copies Number of successfully queued copies.
+   * @param num_errors Number of queued failed receives with no tensors.
+   */
   void SetRdtObjectMemoryInfo(
       const ObjectID &object_id,
       const std::vector<std::pair<std::string, int64_t>> &tensor_bytes,

@@ -514,6 +514,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         optional[c_bool] ShouldInterruptTaskForCancellation()
 
         @staticmethod
+        void SetRdtObjectMemoryInfo(
+            const CObjectID &object_id,
+            const c_vector[c_pair[c_string, int64_t]] &tensor_bytes,
+            int64_t num_copies,
+            int64_t num_errors)
+
+        @staticmethod
         void Shutdown()
 
         @staticmethod

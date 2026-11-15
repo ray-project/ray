@@ -249,5 +249,91 @@ def test_rdt_memory_shutdown_reinit_cycles():
         del ref
 
 
+def test_rdt_memory_retained_store_does_not_erase_new_runtime():
+    # Shutting down with a retained RDT store (but not the native core worker
+    # wrapper) must detach its publisher so popping that old store cannot write
+    # into — or erase — the freshly initialized runtime's row. The Worker object
+    # is reused across sessions, so a stale callback would resolve to the new
+    # core worker and clobber it.
+    obj_id = ray.ObjectRef.from_random().hex()
+
+    def _driver_tensor_bytes():
+        cw = _worker_stats_by_pid(os.getpid())
+        if cw is None:
+            return None
+        entry = _rdt_object(cw, obj_id)
+        return None if entry is None else entry["tensorBytes"]
+
+    # Session 1: publish a row, then shutdown retaining only the store object.
+    ray.init(
+        "local",
+        num_cpus=1,
+        object_store_memory=150 * 1024 * 1024,
+        include_dashboard=False,
+    )
+    try:
+        store1 = ray._private.worker.global_worker.rdt_manager.rdt_store
+        store1.add_object(obj_id, [torch.ones(8, dtype=torch.float32)])
+        wait_for_condition(
+            lambda: _driver_tensor_bytes() == {"cpu": 32},
+            timeout=10,
+            retry_interval_ms=100,
+        )
+    finally:
+        ray.shutdown()
+
+    # Session 2: the reused Worker's fresh store publishes a different size for
+    # the same object id.
+    ray.init(
+        "local",
+        num_cpus=1,
+        object_store_memory=150 * 1024 * 1024,
+        include_dashboard=False,
+    )
+    try:
+        store2 = ray._private.worker.global_worker.rdt_manager.rdt_store
+        store2.add_object(obj_id, [torch.ones(16, dtype=torch.float32)])
+        wait_for_condition(
+            lambda: _driver_tensor_bytes() == {"cpu": 64},
+            timeout=10,
+            retry_interval_ms=100,
+        )
+
+        # Popping the old retained store must leave the live new row untouched.
+        store1.pop_object(obj_id)
+        assert _driver_tensor_bytes() == {"cpu": 64}
+
+        store2.pop_object(obj_id)
+    finally:
+        ray.shutdown()
+
+
+def test_rdt_memory_held_core_worker_after_shutdown_is_safe(tmp_path):
+    # The native setter must no-op (not QuickExit) when invoked on a CoreWorker
+    # wrapper held across ray.shutdown(). Run in a subprocess because the old
+    # path exits the process before printing the sentinel.
+    script = tmp_path / "held_core_worker.py"
+    script.write_text(
+        "import ray\n"
+        "\n"
+        "ray.init('local', num_cpus=1, object_store_memory=150 * 1024 * 1024, "
+        "include_dashboard=False)\n"
+        "obj_id = bytes(ray.ObjectRef.size())\n"
+        "core_worker = ray._private.worker.global_worker.core_worker\n"
+        "ray.shutdown()\n"
+        "# Held wrapper across shutdown: the old path QuickExits before the sentinel.\n"
+        "core_worker.set_rdt_object_memory_info(obj_id, [('cpu', 8)], 1, 0)\n"
+        "print('SENTINEL_OK', flush=True)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "SENTINEL_OK" in result.stdout
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

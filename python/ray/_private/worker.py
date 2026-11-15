@@ -534,8 +534,16 @@ class Worker:
         A bound method on Worker rather than CoreWorker, so it never holds a
         strong reference to the Cython CoreWorker. Teardown discards the manager
         (and this callback) after the core worker is deleted.
+
+        The core worker attribute is read defensively so a GC callback that
+        fires after ``del core_worker`` no-ops instead of raising AttributeError
+        out of a ``cdef void`` callback. The Cython setter itself is a safe
+        no-op once the native core worker process is gone (it never QuickExits).
         """
-        self.core_worker.set_rdt_object_memory_info(
+        core_worker = getattr(self, "core_worker", None)
+        if core_worker is None:
+            return
+        core_worker.set_rdt_object_memory_info(
             object_id_bytes, device_bytes, num_copies, num_errors
         )
 

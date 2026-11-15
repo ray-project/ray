@@ -28,25 +28,41 @@
 namespace ray {
 namespace core {
 
-/// Process-local snapshot of RDT (Ray Direct Transport) object residency.
-///
-/// The Python RDT store publishes a scalar-only snapshot (object id -> device /
-/// byte / copy / error counts) on each add/pop mutation. GetCoreWorkerStats reads
-/// the snapshot without touching Python. The map never owns tensors or
-/// ObjectRefs; it stores an ObjectID key and scalar counters only.
+/**
+ * @brief Process-local snapshot of RDT (Ray Direct Transport) object residency.
+ *
+ * The Python RDT store publishes a scalar-only snapshot (object id -> device /
+ * byte / copy / error counts) on each add/pop mutation. GetCoreWorkerStats reads
+ * the snapshot without touching Python. The map never owns tensors or
+ * ObjectRefs; it stores an ObjectID key and scalar counters only.
+ */
 class RdtMemoryStats {
  public:
   RdtMemoryStats() = default;
 
-  /// Replace the snapshot for `object_id`. Passing `num_copies == 0 &&
-  /// num_errors == 0` erases the entry.
+  /**
+   * @brief Replace the snapshot for `object_id`.
+   *
+   * Passing `num_copies == 0 && num_errors == 0` erases the entry.
+   *
+   * @param object_id The RDT object id to set or erase.
+   * @param tensor_bytes Logical element bytes per local device; -1 is unknown.
+   * @param num_copies Number of successfully queued copies.
+   * @param num_errors Number of queued failed receives with no tensors.
+   */
   void Set(const ObjectID &object_id,
            const std::vector<std::pair<std::string, int64_t>> &tensor_bytes,
            int64_t num_copies,
            int64_t num_errors);
 
-  /// Append up to `limit` entries (-1 means unlimited) to `stats`, and always
-  /// set `rdt_objects_total` independently of `limit`.
+  /**
+   * @brief Append up to `limit` entries to `stats` and set `rdt_objects_total`.
+   *
+   * `rdt_objects_total` is always set independently of `limit`.
+   *
+   * @param stats Destination CoreWorkerStats message.
+   * @param limit Maximum number of entries to append; -1 means unlimited.
+   */
   void AddToStats(rpc::CoreWorkerStats *stats, int64_t limit) const;
 
  private:
