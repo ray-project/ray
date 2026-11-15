@@ -1,14 +1,12 @@
+.. meta::
+   :description: API reference index for Ray Tune, covering Tuner execution, results, trainables, search spaces, search algorithms, schedulers, stoppers, reporters, loggers, callbacks, integrations, and the Tune CLI.
+
 .. _tune-api-ref:
 
 Ray Tune API
 ============
 
-.. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
-
-This section contains a reference for the Tune API. If there is anything missing, please open an issue
-on `GitHub`_.
-
-.. _`GitHub`: https://github.com/ray-project/ray/issues
+The Ray Tune API reference documents Tune's public Python API and CLI. Each page below covers one group of APIs.
 
 .. toctree::
     :maxdepth: 2

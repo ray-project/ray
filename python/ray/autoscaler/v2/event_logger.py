@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class AutoscalerEventLogger:
-    """
-    Logs events related to the autoscaler.
+    """Logs events related to the autoscaler.
 
     # TODO:
     - Add more logging for other events.
@@ -39,8 +38,7 @@ class AutoscalerEventLogger:
             List[ClusterResourceConstraint]
         ] = None,
     ) -> None:
-        """
-        Log updates to the autoscaler scheduling state.
+        """Log updates to the autoscaler scheduling state.
 
         Emits:
         - info logs for node launches and terminations (counts grouped by node type).

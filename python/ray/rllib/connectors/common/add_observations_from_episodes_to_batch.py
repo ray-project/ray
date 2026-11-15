@@ -49,55 +49,51 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
     - Does NOT alter any observations (or other data) in the given episodes.
     - Can be used in EnvToModule and Learner connector pipelines.
 
-    .. testcode::
-
-        import gymnasium as gym
-        import numpy as np
-
-        from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch
-        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-        from ray.rllib.utils.test_utils import check
-
-        # Create two dummy SingleAgentEpisodes, each containing 2 observations,
-        # 1 action and 1 reward (both are length=1).
-        obs_space = gym.spaces.Box(-1.0, 1.0, (2,), np.float32)
-        act_space = gym.spaces.Discrete(2)
-
-        episodes = [SingleAgentEpisode(
-            observations=[obs_space.sample(), obs_space.sample()],
-            actions=[act_space.sample()],
-            rewards=[1.0],
-            len_lookback_buffer=0,
-        ) for _ in range(2)]
-        eps_1_last_obs = episodes[0].get_observations(-1)
-        eps_2_last_obs = episodes[1].get_observations(-1)
-        print(f"1st Episode's last obs is {eps_1_last_obs}")
-        print(f"2nd Episode's last obs is {eps_2_last_obs}")
-
-        # Create an instance of this class.
-        connector = AddObservationsFromEpisodesToBatch()
-
-        # Call the connector with the two created episodes.
-        # Note that this particular connector works without an RLModule, so we
-        # simplify here for the sake of this example.
-        output_batch = connector(
-            rl_module=None,
-            batch={},
-            episodes=episodes,
-            explore=True,
-            shared_data={},
-        )
-        # The output data should now contain the last observations of both episodes,
-        # in a "per-episode organized" fashion.
-        check(
-            output_batch,
-            {
-                "obs": {
-                    (episodes[0].id_,): [eps_1_last_obs],
-                    (episodes[1].id_,): [eps_2_last_obs],
-                },
-            },
-        )
+    Examples:
+        >>> import gymnasium as gym
+        >>> import numpy as np
+        >>> from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch
+        >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+        >>> from ray.rllib.utils.test_utils import check
+        >>> # Create two dummy SingleAgentEpisodes, each containing 2 observations,
+        >>> # 1 action and 1 reward (both are length=1).
+        >>> obs_space = gym.spaces.Box(-1.0, 1.0, (2,), np.float32)
+        >>> act_space = gym.spaces.Discrete(2)
+        >>> episodes = [SingleAgentEpisode(
+        ...     observations=[obs_space.sample(), obs_space.sample()],
+        ...     actions=[act_space.sample()],
+        ...     rewards=[1.0],
+        ...     len_lookback_buffer=0,
+        ... ) for _ in range(2)]
+        >>> eps_1_last_obs = episodes[0].get_observations(-1)
+        >>> eps_2_last_obs = episodes[1].get_observations(-1)
+        >>> print(f"1st Episode's last obs is {eps_1_last_obs}")
+        1st Episode's last obs is [...]
+        >>> print(f"2nd Episode's last obs is {eps_2_last_obs}")
+        2nd Episode's last obs is [...]
+        >>> # Create an instance of this class.
+        >>> connector = AddObservationsFromEpisodesToBatch()
+        >>> # Call the connector with the two created episodes.
+        >>> # Note that this particular connector works without an RLModule, so we
+        >>> # simplify here for the sake of this example.
+        >>> output_batch = connector(
+        ...     rl_module=None,
+        ...     batch={},
+        ...     episodes=episodes,
+        ...     explore=True,
+        ...     shared_data={},
+        ... )
+        >>> # The output data should now contain the last observations of both episodes,
+        >>> # in a "per-episode organized" fashion.
+        >>> check(
+        ...     output_batch,
+        ...     {
+        ...         "obs": {
+        ...             (episodes[0].id_,): [eps_1_last_obs],
+        ...             (episodes[1].id_,): [eps_2_last_obs],
+        ...         },
+        ...     },
+        ... )
     """
 
     def __init__(
@@ -111,10 +107,18 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         """Initializes a AddObservationsFromEpisodesToBatch instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             as_learner_connector: Whether this connector is part of a Learner connector
                 pipeline, as opposed to a env-to-module pipeline. As a Learner
                 connector, it will add an entire Episode's observations (each timestep)
                 to the batch.
+            **kwargs: Forward API-compatibility kwargs.
         """
         super().__init__(
             input_observation_space=input_observation_space,

@@ -23,12 +23,12 @@ class FifoReplayBuffer(ReplayBuffer):
     This is to avoid any additional load when this replay buffer is used.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         """Initializes a FifoReplayBuffer.
 
         Args:
-            ``*args``   : Forward compatibility args.
-            ``**kwargs``: Forward compatibility kwargs.
+            *args: Forward compatibility args.
+            **kwargs: Forward compatibility kwargs.
         """
         # Completely by-passing underlying ReplayBuffer by setting its
         # capacity to 1 (lowest allowed capacity).
@@ -43,12 +43,12 @@ class FifoReplayBuffer(ReplayBuffer):
 
     @DeveloperAPI
     @override(ReplayBuffer)
-    def sample(self, *args, **kwargs) -> Optional[SampleBatchType]:
+    def sample(self, *args: Any, **kwargs: Any) -> Optional[SampleBatchType]:
         """Sample a saved training batch from this buffer.
 
         Args:
-            ``*args``   : Forward compatibility args.
-            ``**kwargs``: Forward compatibility kwargs.
+            *args: Forward compatibility args.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             A single training batch from the queue.
@@ -62,14 +62,14 @@ class FifoReplayBuffer(ReplayBuffer):
         return batch
 
     @DeveloperAPI
-    def update_priorities(self, *args, **kwargs) -> None:
+    def update_priorities(self, *args: Any, **kwargs: Any) -> None:
         """Update priorities of items at given indices.
 
         No-op for this replay buffer.
 
         Args:
-            ``*args``   : Forward compatibility args.
-            ``**kwargs``: Forward compatibility kwargs.
+            *args: Forward compatibility args.
+            **kwargs: Forward compatibility kwargs.
         """
         pass
 

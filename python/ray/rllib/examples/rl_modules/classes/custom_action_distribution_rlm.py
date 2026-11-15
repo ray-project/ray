@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.distribution.torch.torch_distribution import TorchCategorical
@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-def _make_categorical_with_temperature(temp):
+def _make_categorical_with_temperature(temp: float) -> Type[TorchCategorical]:
     """Helper function to create a new action distribution class.
 
     The returned class takes a temperature parameter in its constructor with the default
@@ -19,10 +19,19 @@ def _make_categorical_with_temperature(temp):
 
     Args:
         temp: The default temperature to use for the generated distribution class.
+
+    Returns:
+        A new `TorchCategorical` subclass whose constructor defaults its
+        `temperature` argument to `temp`.
     """
 
     class TorchCategoricalWithTemp(TorchCategorical):
-        def __init__(self, logits=None, probs=None, temperature: float = temp):
+        def __init__(
+            self,
+            logits: Optional[TensorType] = None,
+            probs: Optional[TensorType] = None,
+            temperature: float = temp,
+        ):
             """Initializes a TorchCategoricalWithTemp instance.
 
             Args:

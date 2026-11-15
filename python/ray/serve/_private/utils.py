@@ -104,6 +104,23 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     return False
 
 
+# Set by `serve._router_application`.
+ROUTER_APPLICATION_MARKER_ATTR = "_serve_router_application"
+
+
+def _is_router_application_class(obj: Any) -> bool:
+    """Whether `obj` is a class marked with `@serve._router_application`."""
+    if not isinstance(obj, type):
+        return False
+    # Walks the MRO, so the marker survives `@serve.ingress`'s wrapper subclass.
+    try:
+        return (
+            inspect.getattr_static(obj, ROUTER_APPLICATION_MARKER_ATTR, False) is True
+        )
+    except Exception:
+        return False
+
+
 def asyncio_grpc_exception_handler(loop, context):
     """Exception handler to filter out false positive BlockingIOErrors from gRPC."""
     exc = context.get("exception")
@@ -317,6 +334,47 @@ def _register_thread_lock_serializer(serialization_context):
         )
 
 
+def _register_pydantic_mock_serializer(serialization_context):
+    """Restore pydantic's MockValSer (an unbuilt model's placeholder) from its slots.
+
+    Its __getattr__ reads a slot that is still unset mid-unpickle, so unpickling recursed.
+    """
+    try:
+        from pydantic import BaseModel
+        from pydantic._internal._mock_val_ser import MockValSer
+    except ImportError:
+        return
+
+    # Nested so cloudpickle ships it by value and loading never imports ray.serve.
+    def restore(mock, state):
+        for name, value in state.items():
+            object.__setattr__(mock, name, value)
+        # cloudpickle restores a by-value model onto a built, field-less skeleton and
+        # omits its `__pydantic_complete__ = False` (BaseModel's object); undo both.
+        for cell in getattr(state["_attempt_rebuild"], "__closure__", None) or ():
+            owner = cell.cell_contents
+            if isinstance(owner, type) and issubclass(owner, BaseModel):
+                owner.__pydantic_complete__ = False
+                if "__pydantic_core_schema__" in owner.__dict__:
+                    del owner.__pydantic_core_schema__
+
+    serialization_context._register_cloudpickle_reducer(
+        MockValSer,
+        lambda mock: (
+            object.__new__,
+            (MockValSer,),
+            {name: getattr(mock, name) for name in MockValSer.__slots__},
+            None,
+            None,
+            restore,
+        ),
+    )
+
+
+# Serve pickles user code in many places, some before Ray starts, so register on import.
+_register_pydantic_mock_serializer(StandaloneSerializationContext())
+
+
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
@@ -355,8 +413,7 @@ def merge_dict(dict1, dict2):
 
 
 def parse_import_path(import_path: str):
-    """
-    Takes in an import_path of form:
+    """Takes in an import_path of form:
 
     [subdirectory 1].[subdir 2]...[subdir n].[file name].[attribute name]
 
@@ -643,8 +700,7 @@ def get_all_live_placement_group_names() -> List[str]:
 
 
 def get_active_placement_group_ids() -> Set[str]:
-    """
-    Retrieve the set of placement group IDs referenced by alive Serve actors.
+    """Retrieve the set of placement group IDs referenced by alive Serve actors.
 
     Returns:
         The set of placement group IDs referenced by alive Serve actors.

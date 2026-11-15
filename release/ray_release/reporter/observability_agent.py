@@ -79,6 +79,10 @@ ANNOTATION_STYLE = "info"
 # build page rather than the job it is about.
 ANNOTATION_SCOPE = "job"
 
+# Separate from TRIGGER_OBSERVABILITY_AGENT so that a release branch can run the
+# agent without commenting on an issue the state machine owns.
+GITHUB_COMMENT_ENV = "OBS_AGENT_COMMENT_ON_GITHUB_ISSUE"
+
 # Github rejects a longer comment body. The summary is the only part this
 # reporter does not control the length of, so it is what gets trimmed.
 GITHUB_COMMENT_LIMIT = 65536
@@ -251,6 +255,15 @@ class ObservabilityAgentReporter(Reporter):
         refreshes the test from S3 first. An unreachable github is
         indistinguishable from no open issue -- see Test.get_open_github_issue.
         """
+        # First, for the same reason as the check below.
+        if os.environ.get(GITHUB_COMMENT_ENV) != "1":
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; github comments are not enabled for this "
+                f"build"
+            )
+            return
+
         # Before the repo handle, which costs an AWS Secrets Manager fetch that
         # most failing tests have no issue to justify. `not`, as
         # state_machine.py guards it: an empty number would reach /issues/.

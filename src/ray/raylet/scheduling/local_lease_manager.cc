@@ -43,6 +43,13 @@ void ReplyCancelled(const std::shared_ptr<internal::Work> &work,
     reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
   }
 }
+
+// A lease pinned to specific nodes that gets no node must fail rather than wait for
+// resources, whether its node is infeasible or full with fail_on_unavailable set.
+bool MustFailWithoutNode(const LeaseSpecification &spec,
+                         const NodeSchedulingResult &result) {
+  return result.IsInfeasible() || (!result.IsScheduled() && spec.HasHardNodeAffinity());
+}
 }  // namespace
 
 LocalLeaseManager::LocalLeaseManager(
@@ -265,7 +272,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
     /// deeper/other functions that should be run. We need to apply back
     /// pressure to limit the number of worker processes started in scenarios
     /// with nested tasks.
-    bool is_infeasible = false;
+    bool must_fail = false;
     for (auto work_it = leases_to_grant_queue.begin();
          work_it != leases_to_grant_queue.end();) {
       auto &work = *work_it;
@@ -306,12 +313,13 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
 
           // While we're over capacity and cannot grant the lease,
           // try to spill to a node that can.
-          bool did_spill = TrySpillback(work, is_infeasible);
-          if (did_spill) {
+          const auto result = TrySpillback(work);
+          if (PickedOtherNode(result)) {
             work_it = leases_to_grant_queue.erase(work_it);
             continue;
           }
 
+          must_fail = MustFailWithoutNode(spec, result);
           break;
         }
       }
@@ -365,11 +373,12 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         ReleaseLeaseArgs(lease_id);
         // The local node currently does not have the resources to grant the lease, so we
         // should try spilling to another node.
-        bool did_spill = TrySpillback(work, is_infeasible);
-        if (!did_spill) {
+        const auto result = TrySpillback(work);
+        if (!PickedOtherNode(result)) {
           // There must not be any other available nodes in the cluster, so the lease
           // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
+          must_fail = MustFailWithoutNode(spec, result);
           work->SetStateWaiting(
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
@@ -416,7 +425,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
     if (sched_cls_info.granted_leases.size() == 0) {
       info_by_sched_cls_.erase(scheduling_class);
     }
-    if (is_infeasible) {
+    if (must_fail) {
       const auto &front_lease =
           leases_to_grant_queue.front()->lease_.GetLeaseSpecification();
       RAY_LOG(ERROR) << "A lease got granted to a node even though it was infeasible. "
@@ -469,18 +478,18 @@ void LocalLeaseManager::SpillWaitingLeases() {
     RAY_LOG(DEBUG) << "Attempting to spill back waiting lease " << lease_id
                    << " to remote node. Dependencies blocked? "
                    << lease_dependencies_blocked;
-    bool is_infeasible;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
     scheduling::NodeID scheduling_node_id;
     if (!lease_spec.IsSpreadSchedulingStrategy()) {
-      scheduling_node_id = cluster_resource_scheduler_.GetBestSchedulableNode(
-          lease_spec,
-          /*preferred_node_id*/ self_node_id_.Binary(),
-          /*exclude_local_node*/ lease_dependencies_blocked,
-          /*requires_object_store_memory*/ true,
-          &is_infeasible);
+      scheduling_node_id =
+          cluster_resource_scheduler_
+              .GetBestSchedulableNode(lease_spec,
+                                      /*preferred_node_id*/ self_node_id_.Binary(),
+                                      /*exclude_local_node*/ lease_dependencies_blocked,
+                                      /*requires_object_store_memory*/ true)
+              .node_id;
     } else {
       // If scheduling strategy is spread, we prefer honoring spread decision
       // and waiting for lease dependencies to be pulled
@@ -517,31 +526,32 @@ void LocalLeaseManager::SpillWaitingLeases() {
   }
 }
 
-bool LocalLeaseManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
-                                     bool &is_infeasible) {
+bool LocalLeaseManager::PickedOtherNode(const NodeSchedulingResult &result) const {
+  return result.IsScheduled() && result.node_id != self_scheduling_node_id_;
+}
+
+NodeSchedulingResult LocalLeaseManager::TrySpillback(
+    const std::shared_ptr<internal::Work> &work) {
   const auto &spec = work->lease_.GetLeaseSpecification();
-  auto scheduling_node_id = cluster_resource_scheduler_.GetBestSchedulableNode(
+  const auto result = cluster_resource_scheduler_.GetBestSchedulableNode(
       spec,
       // We should prefer to stay local if possible
       // to avoid unnecessary spillback
       // since this node is already selected by the cluster scheduler.
       /*preferred_node_id=*/self_node_id_.Binary(),
       /*exclude_local_node=*/false,
-      /*requires_object_store_memory=*/false,
-      &is_infeasible);
-
-  if (is_infeasible || scheduling_node_id.IsNil() ||
-      scheduling_node_id == self_scheduling_node_id_) {
-    return false;
+      /*requires_object_store_memory=*/false);
+  if (!PickedOtherNode(result)) {
+    return result;
   }
 
-  NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
+  NodeID node_id = NodeID::FromBinary(result.node_id.Binary());
   Spillback(node_id, work);
   num_unschedulable_lease_spilled_++;
   if (!spec.GetDependencies().empty()) {
     lease_dependency_manager_.RemoveLeaseDependencies(spec.LeaseId());
   }
-  return true;
+  return result;
 }
 
 bool LocalLeaseManager::PoppedWorkerHandler(

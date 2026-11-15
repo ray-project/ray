@@ -44,12 +44,20 @@ class FrameStacking(ConnectorV2):
         """Initializes a FrameStackingConnector instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             num_frames: The number of observation frames to stack up (into a single
                 observation) for the RLModule's forward pass.
             multi_agent: Whether this is a connector operating on a multi-agent
                 observation space mapping AgentIDs to individual agents' observations.
             as_learner_connector: Whether this connector is part of a Learner connector
                 pipeline, as opposed to an env-to-module pipeline.
+            **kwargs: Forward API-compatibility kwargs.
         """
         super().__init__(
             input_observation_space=input_observation_space,

@@ -5,6 +5,12 @@ import sys
 import pytest
 import requests
 
+import ray
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import reset_autoscaler_v2_enabled_cache
+from ray.autoscaler.v2.utils import is_autoscaler_v2
+from ray.experimental.internal_kv import _internal_kv_get
+
 
 def test_dashboard_request_requires_auth_with_valid_token(
     setup_cluster_with_token_auth,
@@ -148,6 +154,100 @@ def test_authentication_mode_endpoint_is_public(setup_cluster_with_token_auth):
     # Should succeed even with token auth enabled
     assert response.status_code == 200
     assert response.json() == {"authentication_mode": "token"}
+
+
+def _metrics_endpoints():
+    """Return the node, autoscaler and dashboard metrics URLs once all three are up."""
+    node = ray.nodes()[0]
+    urls = {"node": f"http://{node['NodeManagerAddress']}:{node['MetricsExportPort']}"}
+    for name, key in (
+        ("autoscaler", "AutoscalerMetricsAddress"),
+        ("dashboard", "DashboardMetricsAddress"),
+    ):
+        wait_for_condition(lambda: _internal_kv_get(key) is not None)
+        urls[name] = f"http://{_internal_kv_get(key).decode()}"
+    for url in urls.values():
+        wait_for_condition(lambda: _metrics_reachable(url))
+    return urls
+
+
+def _metrics_reachable(url):
+    try:
+        requests.get(f"{url}/metrics", timeout=5)
+        return True
+    except requests.RequestException:
+        return False
+
+
+@pytest.fixture(params=["v1", "v2"])
+def autoscaler_version(request, monkeypatch):
+    """Run before the cluster fixture so the monitor starts in the chosen version."""
+    monkeypatch.setenv(
+        "RAY_enable_autoscaler_v2", "1" if request.param == "v2" else "0"
+    )
+    yield request.param
+    # The head built in this process caches the version for later tests.
+    reset_autoscaler_v2_enabled_cache()
+
+
+def test_metrics_endpoints_require_token(
+    autoscaler_version, setup_cluster_with_token_auth
+):
+    assert is_autoscaler_v2(fetch_from_server=True) == (autoscaler_version == "v2")
+    token = setup_cluster_with_token_auth["token"]
+    accepted_forms = [
+        {"headers": {"Authorization": f"Bearer {token}"}},
+        {"headers": {"X-Ray-Authorization": f"Bearer {token}"}},
+        {"cookies": {"ray-authentication-token": token}},
+    ]
+
+    for name, url in _metrics_endpoints().items():
+        missing = requests.get(f"{url}/metrics", timeout=5)
+        assert missing.status_code == 401, name
+        assert missing.headers["WWW-Authenticate"] == "Bearer", name
+
+        malformed_cookie = requests.get(
+            f"{url}/metrics", headers={"Cookie": "a(b=1"}, timeout=5
+        )
+        assert malformed_cookie.status_code == 401, name
+
+        wrong = requests.get(
+            f"{url}/metrics",
+            headers={"Authorization": "Bearer " + "0" * 64},
+            timeout=5,
+        )
+        assert wrong.status_code == 403, name
+
+        for form in accepted_forms:
+            response = requests.get(f"{url}/metrics", timeout=5, **form)
+            assert response.status_code == 200, (name, form)
+
+
+@pytest.fixture
+def skip_metrics_auth(monkeypatch):
+    """Run before the cluster fixture so every Ray process inherits the setting."""
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+
+
+def test_skip_metrics_opens_only_metrics_endpoints(
+    autoscaler_version, skip_metrics_auth, setup_cluster_with_token_auth
+):
+    assert is_autoscaler_v2(fetch_from_server=True) == (autoscaler_version == "v2")
+    for name, url in _metrics_endpoints().items():
+        response = requests.get(f"{url}/metrics", timeout=5)
+        assert response.status_code == 200, name
+
+    dashboard_api = requests.get(
+        f"{setup_cluster_with_token_auth['dashboard_url']}/api/component_activities",
+        timeout=5,
+    )
+    assert dashboard_api.status_code == 401
+
+
+def test_metrics_endpoints_open_when_auth_disabled(setup_cluster_without_token_auth):
+    for name, url in _metrics_endpoints().items():
+        response = requests.get(f"{url}/metrics", timeout=5)
+        assert response.status_code == 200, name
 
 
 if __name__ == "__main__":

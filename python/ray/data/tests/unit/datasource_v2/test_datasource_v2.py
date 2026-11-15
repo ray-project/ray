@@ -97,7 +97,7 @@ class _BareSource(_Members, DataSourceV2):
 
 def test_table_source_has_no_filesystem_members():
     source = _MetadataSource()
-    for member in ("filesystem", "file_extensions", "shuffle"):
+    for member in ("filesystem", "file_extensions", "shuffle", "source_paths"):
         assert not hasattr(source, member), member
     assert source.schema_needs_file_sample is False
 
@@ -120,6 +120,7 @@ def test_file_source_defaults():
     assert isinstance(source, DataSourceV2)
     assert source.file_extensions is None
     assert source.shuffle is None
+    assert source.source_paths == source.paths
 
 
 def test_parquet_is_a_file_source():

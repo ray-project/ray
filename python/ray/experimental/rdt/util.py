@@ -50,8 +50,7 @@ def register_tensor_transport(
     transport_manager_class: type[TensorTransportManager],
     data_type: type,
 ):
-    """
-    Register a new tensor transport for use in Ray. Note that this needs to be called
+    """Register a new tensor transport for use in Ray. Note that this needs to be called
     before you create the actors that will use the transport. The actors also
     need to be created in the same process from which you call this function.
 
@@ -154,8 +153,7 @@ def get_tensor_transport_manager(
 def register_custom_tensor_transports_on_actor(
     actor: "ray.actor.ActorHandle",
 ) -> Optional[ObjectRef]:
-    """
-    If there's no custom transports to register, returns None.
+    """If there's no custom transports to register, returns None.
     Otherwise returns an ObjectRef for a task on the actor that will register the custom transports.
     """
     global transport_manager_info
@@ -225,6 +223,10 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
     if the same tensor is re-used in multiple RDT objects.
 
     If called on a tensor that is already registered with NIXL, we still prevent the tensor's memory from being deregistered.
+
+    The registration covers the tensor's whole underlying storage and is not resized afterwards. If a registered storage is freed without
+    calling :func:`ray.experimental.deregister_nixl_memory` and a larger storage is later allocated at the same address, a ``ValueError``
+    is raised. Resizing a pre-registered buffer is also not free, so allocate it at its full intended size up front.
 
     Args:
         tensor: A PyTorch tensor whose memory should be registered with NIXL.

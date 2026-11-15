@@ -7,12 +7,7 @@ myst:
 
 # FAQ
 
-```{toctree}
-:maxdepth: 1
-:caption: Frequently Asked Questions
-
-./../tune/faq
-```
+- {doc}`/tune/faq`
 
 
 ## Further Questions or Issues?

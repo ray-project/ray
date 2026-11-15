@@ -2,7 +2,7 @@ import gc
 import os
 import platform
 import tracemalloc
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import gymnasium as gym
 
@@ -62,7 +62,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
             algorithm: Reference to the Algorithm instance.
             metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
                 used to log custom metrics after algo initialization.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -83,7 +83,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 used to log custom metrics after traing results are available.
             result: Dict of results returned from Algorithm.train() call.
                 You can mutate this object to add additional metrics.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -103,7 +103,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
             algorithm: Reference to the algorithm instance.
             metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
                 used to log custom metrics before running the next round of evaluation.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -124,7 +124,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
             metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
                 used to log custom metrics before running the next round of offline
                 evaluation.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -147,7 +147,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 used to log custom metrics after the most recent evaluation round.
             evaluation_metrics: Results dict to be returned from algorithm.evaluate().
                 You can mutate this object to add additional metrics.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -172,7 +172,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
             evaluation_metrics: Results dict to be returned from
                 Algorithm.evaluate_offline(). You can mutate this object to add
                 additional metrics.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -191,37 +191,36 @@ class RLlibCallback(metaclass=_CallbackMeta):
         You can access and change the EnvRunners in question through the following code
         snippet inside your custom override of this method:
 
-        .. testcode::
-            from ray.rllib.callbacks.callbacks import RLlibCallback
-
-            class MyCallbacks(RLlibCallback):
-                def on_env_runners_recreated(
-                    self,
-                    *,
-                    algorithm,
-                    env_runner_group,
-                    env_runner_indices,
-                    is_evaluation,
-                    **kwargs,
-                ):
-                    # Define what you would like to do on the recreated EnvRunner:
-                    def func(env_runner):
-                        # Here, we just set some arbitrary property to 1.
-                        if is_evaluation:
-                            env_runner._custom_property_for_evaluation = 1
-                        else:
-                            env_runner._custom_property_for_training = 1
-
-                    # Use the `foreach_env_runner` method of the worker set and
-                    # only loop through those worker IDs that have been restarted.
-                    # Note that we set `local_worker=False` to NOT include it (local
-                    # workers are never recreated; if they fail, the entire Algorithm
-                    # fails).
-                    env_runner_group.foreach_env_runner(
-                        func,
-                        remote_worker_ids=env_runner_indices,
-                        local_env_runner=False,
-                    )
+        Examples:
+            >>> from ray.rllib.callbacks.callbacks import RLlibCallback
+            >>> class MyCallbacks(RLlibCallback):
+            ...     def on_env_runners_recreated(
+            ...         self,
+            ...         *,
+            ...         algorithm,
+            ...         env_runner_group,
+            ...         env_runner_indices,
+            ...         is_evaluation,
+            ...         **kwargs,
+            ...     ):
+            ...         # Define what you would like to do on the recreated EnvRunner:
+            ...         def func(env_runner):
+            ...             # Here, we just set some arbitrary property to 1.
+            ...             if is_evaluation:
+            ...                 env_runner._custom_property_for_evaluation = 1
+            ...             else:
+            ...                 env_runner._custom_property_for_training = 1
+            ...
+            ...         # Use the `foreach_env_runner` method of the worker set and
+            ...         # only loop through those worker IDs that have been restarted.
+            ...         # Note that we set `local_env_runner=False` to NOT include it (local
+            ...         # workers are never recreated; if they fail, the entire Algorithm
+            ...         # fails).
+            ...         env_runner_group.foreach_env_runner(
+            ...             func,
+            ...             remote_worker_ids=env_runner_indices,
+            ...             local_env_runner=False,
+            ...         )
 
         Args:
             algorithm: Reference to the Algorithm instance.
@@ -235,6 +234,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
                 (located in `Algorithm.eval_env_runner_group`) or not.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -252,35 +252,32 @@ class RLlibCallback(metaclass=_CallbackMeta):
         You can access and change the OfflineEvaluationRunners in question through the following code
         snippet inside your custom override of this method:
 
-        .. testcode::
-            from ray.rllib.callbacks.callbacks import RLlibCallback
-
-            class MyCallbacks(RLlibCallback):
-                def on_offline_eval_runners_recreated(
-                    self,
-                    *,
-                    algorithm,
-                    offline_eval_runner_group,
-                    offline_eval_runner_indices,
-                    **kwargs,
-                ):
-                    # Define what you would like to do on the recreated EnvRunner:
-                    def func(offline_eval_runner):
-                        # Here, we just set some arbitrary property to 1.
-                        if is_evaluation:
-                            offline_eval_runner._custom_property_for_evaluation = 1
-                        else:
-                            offline_eval_runner._custom_property_for_training = 1
-
-                    # Use the `foreach_runner` method of the worker set and
-                    # only loop through those worker IDs that have been restarted.
-                    # Note that `local_runner=False` as long as there are remote
-                    # runners.
-                    offline_eval_runner_group.foreach_runner(
-                        func,
-                        remote_runner_ids=offline_eval_runner_indices,
-                        local_runner=False,
-                    )
+        Examples:
+            >>> from ray.rllib.callbacks.callbacks import RLlibCallback
+            >>> class MyCallbacks(RLlibCallback):
+            ...     def on_offline_eval_runners_recreated(
+            ...         self,
+            ...         *,
+            ...         algorithm,
+            ...         offline_eval_runner_group,
+            ...         offline_eval_runner_indices,
+            ...         **kwargs,
+            ...     ):
+            ...         # Define what you would like to do on the recreated
+            ...         # OfflineEvaluationRunner:
+            ...         def func(offline_eval_runner):
+            ...             # Here, we just set some arbitrary property to 1.
+            ...             offline_eval_runner._custom_property_for_evaluation = 1
+            ...
+            ...         # Use the `foreach_runner` method of the worker set and
+            ...         # only loop through those worker IDs that have been restarted.
+            ...         # Note that `local_runner=False` as long as there are remote
+            ...         # runners.
+            ...         offline_eval_runner_group.foreach_runner(
+            ...             func,
+            ...             remote_worker_ids=offline_eval_runner_indices,
+            ...             local_runner=False,
+            ...         )
 
         Args:
             algorithm: Reference to the Algorithm instance.
@@ -290,6 +287,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 custom code on the recreated (remote) workers.
             offline_eval_runner_indices: The list of (remote) worker IDs that have been
                 recreated.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -306,7 +304,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
 
         Args:
             algorithm: Reference to the Algorithm instance.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -336,7 +334,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 have all the config key/value pairs in it as well as the
                 EnvContext-typical properties: `worker_index`, `num_workers`, and
                 `remote`.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -375,15 +373,21 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 This is the episode that is about to be started with an upcoming
                 `env.reset()`. Only after this reset call, the `on_episode_start`
                 callback will be called.
+            worker: Old API stack only. Reference to the RolloutWorker running the
+                episode. Deprecated in favor of `env_runner`.
             env_runner: Reference to the current EnvRunner.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics after Episode creation.
+            base_env: Old API stack only. The BaseEnv running the episode. Deprecated
+                in favor of `env`.
             env: The gym.Env running the episode.
+            policies: Old API stack only. Mapping from PolicyID to Policy object used
+                to compute actions. Deprecated in favor of `rl_module`.
             rl_module: The RLModule used to compute actions for stepping the env. In
                 single-agent mode, this is a simple RLModule, in multi-agent mode, this
                 is a MultiRLModule.
             env_index: The index of the sub-environment that is about to be reset.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -425,7 +429,13 @@ class RLlibCallback(metaclass=_CallbackMeta):
             rl_module: The RLModule used to compute actions for stepping the env. In
                 single-agent mode, this is a simple RLModule, in multi-agent mode, this
                 is a MultiRLModule.
-            kwargs: Forward compatibility placeholder.
+            worker: Old API stack only. Reference to the RolloutWorker running the
+                episode. Deprecated in favor of `env_runner`.
+            base_env: Old API stack only. The BaseEnv running the episode. Deprecated
+                in favor of `env`.
+            policies: Old API stack only. Mapping from PolicyID to Policy object used
+                to compute actions. Deprecated in favor of `rl_module`.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -468,7 +478,13 @@ class RLlibCallback(metaclass=_CallbackMeta):
             rl_module: The RLModule used to compute actions for stepping the env. In
                 single-agent mode, this is a simple RLModule, in multi-agent mode, this
                 is a MultiRLModule.
-            kwargs: Forward compatibility placeholder.
+            worker: Old API stack only. Reference to the RolloutWorker running the
+                episode. Deprecated in favor of `env_runner`.
+            base_env: Old API stack only. The BaseEnv running the episode. Deprecated
+                in favor of `env`.
+            policies: Old API stack only. Mapping from PolicyID to Policy object used
+                to compute actions. Deprecated in favor of `rl_module`.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -534,7 +550,13 @@ class RLlibCallback(metaclass=_CallbackMeta):
             rl_module: The RLModule used to compute actions for stepping the env. In
                 single-agent mode, this is a simple RLModule, in multi-agent mode, this
                 is a MultiRLModule.
-            kwargs: Forward compatibility placeholder.
+            worker: Old API stack only. Reference to the RolloutWorker running the
+                episode. Deprecated in favor of `env_runner`.
+            base_env: Old API stack only. The BaseEnv running the episode. Deprecated
+                in favor of `env`.
+            policies: Old API stack only. Mapping from PolicyID to Policy object used
+                to compute actions. Deprecated in favor of `rl_module`.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -558,7 +580,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
             samples: Lists of SingleAgentEpisode or MultiAgentEpisode instances to be
                 returned. You can mutate the episodes to modify the returned training
                 data.
-            kwargs: Forward compatibility placeholder.
+            worker: Old API stack only. Reference to the RolloutWorker that produced
+                `samples`. Deprecated in favor of `env_runner`.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -587,7 +611,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 the env's constructor.
             env_index: The index of the sub-environment that has been created
                 (within the vector of sub-environments of the gym.vector.Env).
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -596,7 +620,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
         self,
         *,
         worker: "EnvRunner",
-        episode,
+        episode: EpisodeV2,
         agent_id: AgentID,
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
@@ -622,7 +646,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 trajectory postprocessing.
             original_batches: Dict mapping agent IDs to their unpostprocessed
                 trajectory data. You should not mutate this object.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -656,7 +680,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
             train_batch: SampleBatch to be trained on. You can
                 mutate this object to modify the samples generated.
             result: A results dict to add custom metrics to.
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -664,12 +688,24 @@ class RLlibCallback(metaclass=_CallbackMeta):
     def on_workers_recreated(
         self,
         *,
-        algorithm,
-        worker_set,
-        worker_ids,
-        is_evaluation,
-        **kwargs,
+        algorithm: "Algorithm",
+        worker_set: "EnvRunnerGroup",
+        worker_ids: List[int],
+        is_evaluation: bool,
+        **kwargs: Any,
     ) -> None:
+        """Deprecated. Use `on_env_runners_recreated()` instead.
+
+        RLlib still calls this callback right after `on_env_runners_recreated()`,
+        with the same values under the old argument names.
+
+        Args:
+            algorithm: The Algorithm to which the EnvRunnerGroup belongs.
+            worker_set: The EnvRunnerGroup whose EnvRunners were recreated.
+            worker_ids: The indices of the recreated EnvRunners.
+            is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup.
+            **kwargs: Forward compatibility placeholder.
+        """
         pass
 
 

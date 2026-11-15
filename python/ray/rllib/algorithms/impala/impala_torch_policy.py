@@ -9,6 +9,7 @@ from ray.rllib.evaluation.postprocessing import compute_bootstrap_value
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
@@ -25,7 +26,7 @@ from ray.rllib.utils.torch_utils import (
     global_norm,
     sequence_mask,
 )
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType
 
 torch, nn = try_import_torch()
 
@@ -35,25 +36,25 @@ logger = logging.getLogger(__name__)
 class VTraceLoss:
     def __init__(
         self,
-        actions,
-        actions_logp,
-        actions_entropy,
-        dones,
-        behaviour_action_logp,
-        behaviour_logits,
-        target_logits,
-        discount,
-        rewards,
-        values,
-        bootstrap_value,
-        dist_class,
-        model,
-        valid_mask,
-        config,
-        vf_loss_coeff=0.5,
-        entropy_coeff=0.01,
-        clip_rho_threshold=1.0,
-        clip_pg_rho_threshold=1.0,
+        actions: TensorType,
+        actions_logp: TensorType,
+        actions_entropy: TensorType,
+        dones: TensorType,
+        behaviour_action_logp: TensorType,
+        behaviour_logits: List[TensorType],
+        target_logits: List[TensorType],
+        discount: float,
+        rewards: TensorType,
+        values: TensorType,
+        bootstrap_value: TensorType,
+        dist_class: Type[ActionDistribution],
+        model: ModelV2,
+        valid_mask: Optional[TensorType],
+        config: AlgorithmConfigDict,
+        vf_loss_coeff: float = 0.5,
+        entropy_coeff: float = 0.01,
+        clip_rho_threshold: float = 1.0,
+        clip_pg_rho_threshold: float = 1.0,
     ):
         """Policy gradient loss with vtrace importance weighting.
 
@@ -82,8 +83,19 @@ class VTraceLoss:
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
             dist_class: action distribution class for logits.
-            valid_mask: A bool tensor of valid RNN input elements (#2992).
+            model: The ModelV2 instance used to compute the target logits; passed
+                on to the vtrace calculation for action-distribution creation.
+            valid_mask: A bool tensor of valid RNN input elements (#2992). If None,
+                all elements are considered valid.
             config: Algorithm config dict.
+            vf_loss_coeff: Coefficient with which to weigh the value function loss
+                term inside the total loss.
+            entropy_coeff: Coefficient with which to weigh the entropy bonus term
+                inside the total loss.
+            clip_rho_threshold: A float32 scalar with which to clip the importance
+                weights (rho) used to compute the vtrace value targets.
+            clip_pg_rho_threshold: A float32 scalar with which to clip the importance
+                weights (rho) used to compute the vtrace policy gradient advantages.
         """
         import ray.rllib.algorithms.impala.vtrace_torch as vtrace
 
@@ -133,7 +145,11 @@ class VTraceLoss:
             self.total_loss += self.vf_loss * vf_loss_coeff
 
 
-def make_time_major(policy, seq_lens, tensor):
+def make_time_major(
+    policy: Policy,
+    seq_lens: Optional[TensorType],
+    tensor: Union[TensorType, List[TensorType]],
+) -> Union[TensorType, List[TensorType]]:
     """Swaps batch and trajectory axis.
 
     Args:

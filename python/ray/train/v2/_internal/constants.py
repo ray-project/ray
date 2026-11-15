@@ -120,6 +120,9 @@ TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
 # NCCL RAS listen address (``host:port``)
 NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
 
+# PyTorch Flight Recorder ring size
+TORCH_FR_BUFFER_SIZE_ENV_VAR = "TORCH_FR_BUFFER_SIZE"
+
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
 ENV_VARS_TO_PROPAGATE = {
@@ -140,6 +143,7 @@ ENV_VARS_TO_PROPAGATE = {
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     PREEMPTION_POLL_INTERVAL_S_ENV_VAR,
     NCCL_RAS_ADDR_ENV_VAR,
+    TORCH_FR_BUFFER_SIZE_ENV_VAR,
 }
 
 
@@ -188,3 +192,12 @@ def get_env_vars_to_propagate() -> Dict[str, str]:
         if env_set_by_user(env_var):
             env_vars[env_var] = os.environ[env_var]
     return env_vars
+
+
+# ---------------------------------
+# Ray Train Annotation constants
+# ---------------------------------
+TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
+TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE = "controller_state_change"
+TRAIN_ANNOTATION_RAY_TRAIN_REPORT = "ray.train.report"
+TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE = "ray.train.annotate"

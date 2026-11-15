@@ -32,7 +32,7 @@ def cleanup_dirs():
 
 
 @pytest.fixture()
-def ray_start_cli_tracing(scope="function"):
+def ray_start_cli_tracing(create_auth_token, scope="function"):
     """Start ray with tracing-startup-hook, and clean up at end of test."""
     check_call_ray(
         ["stop", "--force"],
@@ -46,7 +46,7 @@ def ray_start_cli_tracing(scope="function"):
 
 
 @pytest.fixture()
-def ray_start_cli_predefined_actor_tracing(scope="function"):
+def ray_start_cli_predefined_actor_tracing(create_auth_token, scope="function"):
     """Start ray with tracing-startup-hook, and clean up at end of test."""
     check_call_ray(
         ["stop", "--force"],
@@ -60,7 +60,7 @@ def ray_start_cli_predefined_actor_tracing(scope="function"):
 
 
 @pytest.fixture()
-def ray_start_cli_tracing_with_client(scope="function"):
+def ray_start_cli_tracing_with_client(create_auth_token, scope="function"):
     """Start ray with tracing startup hook and Ray Client server."""
     check_call_ray(["stop", "--force"])
     check_call_ray(

@@ -14,6 +14,16 @@ class GridPos:
     h: int
 
 
+# Inside a Kubernetes pod, the reporter agent returns placeholder disk values
+# (total=1, used=0) unless RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE=1 is set.
+# See reporter_agent._get_disk_usage.
+K8S_DISK_USAGE_NOTE = (
+    "NOTE: On Kubernetes without KubeRay, Ray reports placeholder disk values (0 used out of 1 byte) by default. "
+    "To report real values, set RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE=1 in the Ray container's environment (KubeRay sets it automatically). "
+    "With it set, each pod reports the disk of the whole Kubernetes node it runs on, not its own usage: "
+    "pods on the same node show the same values, and a pod's usage can come from other pods on that node."
+)
+
 GRAPH_TARGET_TEMPLATE = {
     "exemplar": True,
     "expr": "0",
@@ -595,6 +605,38 @@ class Row:
 
 @DeveloperAPI
 @dataclass
+class GrafanaAnnotation:
+    """A Grafana annotation layer over Ray's annotation log lines.
+
+    Only the event-specific query stages are declared here. The common preamble,
+    which selects this ``source``'s lines and pins them to the current session,
+    is added by ``generate_annotation``.
+
+    Attributes:
+        name: Display name in the dashboard's annotation toggle.
+        source: The ``annotation_source`` written by the emitter.
+        expr: Event-specific LogQL stages, starting with ``|``.
+        icon_color: Marker color.
+        ref_id: Grafana refId for the query.
+        tag_keys: Comma-separated labels shown as tooltip tags.
+        query_type: Datasource query type.
+        enable: Whether the layer is on by default.
+        hide: Whether the toggle is hidden by default.
+    """
+
+    name: str
+    source: str
+    expr: str
+    icon_color: str
+    ref_id: str
+    tag_keys: str = ""
+    query_type: str = "range"
+    enable: bool = True
+    hide: bool = False
+
+
+@DeveloperAPI
+@dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars
     # to check for customization
@@ -609,6 +651,8 @@ class DashboardConfig:
     # If both are specified, panels will be rendered before rows.
     panels: List[Panel] = field(default_factory=list)
     rows: List[Row] = field(default_factory=list)
+    # Dashboard annotations, appended to the base JSON's built-in annotation list.
+    annotations: List[GrafanaAnnotation] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.panels and not self.rows:

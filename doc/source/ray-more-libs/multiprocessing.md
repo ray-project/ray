@@ -9,7 +9,7 @@ myst:
 # Distributed multiprocessing.Pool
 
 
-Ray supports running distributed Python programs with the [multiprocessing.Pool API](https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool) using {doc}`Ray Actors </ray-core/actors>` instead of local processes. This makes it easy to scale existing applications that use `multiprocessing.Pool` from a single node to a cluster.
+Ray supports running distributed Python programs with the [multiprocessing.Pool API](https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool) using {doc}`Ray Actors </core/actors/index>` instead of local processes. This makes it easy to scale existing applications that use `multiprocessing.Pool` from a single node to a cluster.
 
 
 ## Quickstart

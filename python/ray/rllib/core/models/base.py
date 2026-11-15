@@ -173,7 +173,9 @@ class Model(abc.ABC):
         """Returns a tuple of (num trainable params, num non-trainable params)."""
 
     @abc.abstractmethod
-    def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)) -> None:
+    def _set_to_dummy_weights(
+        self, value_sequence: Tuple[float, ...] = (-0.02, -0.01, 0.01, 0.02)
+    ) -> None:
         """Helper method to set all weights to deterministic dummy values.
 
         Calling this method on two `Models` that have the same architecture using
@@ -439,6 +441,7 @@ def tokenize(tokenizer: Encoder, inputs: dict, framework: str) -> dict:
     Args:
         tokenizer: The tokenizer to use.
         inputs: The input dict.
+        framework: The DL framework to use ("torch").
 
     Returns:
         The output dict.

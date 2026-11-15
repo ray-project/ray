@@ -29,10 +29,10 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Install a RayService with GCS fault tolerance
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml
 ```
 
-The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) file has several Kubernetes objects:
+The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) file has several Kubernetes objects:
 
 * Redis: Redis is necessary to make GCS fault tolerant. See {ref}`GCS fault tolerance <kuberay-gcs-ft>` for more details.
 * RayService: This RayService custom resource includes a 3-node RayCluster and a simple [Ray Serve application](https://github.com/ray-project/test_dag).
@@ -63,7 +63,7 @@ kubectl describe svc rayservice-ha-serve-svc
 
 ### Step 5: Verify the Serve applications
 
-In the [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) file, the `serveConfigV2` parameter specifies `num_replicas: 2` and `max_replicas_per_node: 1` for each Ray Serve deployment. In addition, the YAML sets the `rayStartParams` parameter to `num-cpus: "0"` to ensure that the system doesn't schedule any Ray Serve replicas on the Ray head Pod.
+In the [ray-service.high-availability.yaml](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) file, the `serveConfigV2` parameter specifies `num_replicas: 2` and `max_replicas_per_node: 1` for each Ray Serve deployment. In addition, the YAML sets the `rayStartParams` parameter to `num-cpus: "0"` to ensure that the system doesn't schedule any Ray Serve replicas on the Ray head Pod.
 
 In total, each Ray Serve deployment has two replicas, and each Ray node can have at most one of those two Ray Serve replicas. Additionally, Ray Serve replicas can't schedule on the Ray head Pod. As a result, each worker node should have exactly one Ray Serve replica for each Ray Serve deployment.
 
@@ -126,7 +126,7 @@ kind delete cluster
 (kuberay-rayservice-ha-upgrades)=
 ## GCS fault tolerance and zero-downtime upgrades
 
-GCS fault tolerance and zero-downtime upgrades work together with no extra configuration. Don't set `gcsFaultToleranceOptions.externalStorageNamespace`. The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) sample leaves it unset.
+GCS fault tolerance and zero-downtime upgrades work together with no extra configuration. Don't set `gcsFaultToleranceOptions.externalStorageNamespace`. The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) sample leaves it unset.
 
 KubeRay then derives the Redis storage namespace from `metadata.uid`, the unique identifier that Kubernetes assigns to the RayCluster. That single default produces both behaviors:
 

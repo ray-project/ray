@@ -57,7 +57,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Install a RayCluster with GCS FT enabled
 
 ```sh
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cluster.external-redis.yaml
+curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cluster.external-redis.yaml
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
@@ -85,7 +85,7 @@ kubectl get configmaps
 # redis-config          1      5m45s
 ```
 
-The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml) file defines Kubernetes resources for RayCluster, Redis, and ConfigMaps. There are two ConfigMaps in this example: `ray-example` and `redis-config`. The `ray-example` ConfigMap houses two Python scripts: `detached_actor.py` and `increment_counter.py`.
+The [ray-cluster.external-redis.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml) file defines Kubernetes resources for RayCluster, Redis, and ConfigMaps. There are two ConfigMaps in this example: `ray-example` and `redis-config`. The `ray-example` ConfigMap houses two Python scripts: `detached_actor.py` and `increment_counter.py`.
 
 * `detached_actor.py` is a Python script that creates a detached actor with the name, `counter_actor`.
     ```python
@@ -174,7 +174,7 @@ kubectl exec -it $REDIS_POD -- env REDISCLI_AUTH="5241590000000000" redis-cli HG
 # HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
 ```
 
-In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `gcsFaultToleranceOptions.externalStorageNamespace` option isn't set for the RayCluster. Therefore, KubeRay automatically injects the environment variable `RAY_external_storage_namespace` into the head Pod with the RayCluster's UID as the external storage namespace by default. See [this section](kuberay-external-storage-namespace) to learn more about the option.
+In [ray-cluster.external-redis.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `gcsFaultToleranceOptions.externalStorageNamespace` option isn't set for the RayCluster. Therefore, KubeRay automatically injects the environment variable `RAY_external_storage_namespace` into the head Pod with the RayCluster's UID as the external storage namespace by default. See [this section](kuberay-external-storage-namespace) to learn more about the option.
 
 ### Step 7: Kill the GCS process in the head Pod
 
@@ -209,7 +209,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 # raycluster-external-redis-worker-small-group-yyyyy   1/1     Running   0             xxm
 ```
 
-In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable isn't set in the specifications for either the head Pod or the worker Pod within the RayCluster. Therefore, KubeRay automatically injects the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable with the value **600** to the worker Pod and uses the default value **60** for the head Pod. The timeout value for worker Pods must be longer than the timeout value for the head Pod so that the worker Pods don't terminate before the head Pod restarts from a failure.
+In [ray-cluster.external-redis.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable isn't set in the specifications for either the head Pod or the worker Pod within the RayCluster. Therefore, KubeRay automatically injects the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable with the value **600** to the worker Pod and uses the default value **60** for the head Pod. The timeout value for worker Pods must be longer than the timeout value for the head Pod so that the worker Pods don't terminate before the head Pod restarts from a failure.
 
 ### Step 8: Access the detached actor again
 
@@ -282,7 +282,7 @@ kind delete cluster
 
 ## KubeRay GCS fault tolerance configurations
 
-The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml) used in the quickstart example contains detailed comments about the configuration options. ***Read this section in conjunction with the YAML file.***
+The [ray-cluster.external-redis.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml) used in the quickstart example contains detailed comments about the configuration options. ***Read this section in conjunction with the YAML file.***
 
 ```{admonition} These configurations require KubeRay 1.3.0+
 The following section uses the new `gcsFaultToleranceOptions` field introduced in KubeRay 1.3.0.
@@ -301,7 +301,7 @@ For the old GCS fault tolerance configurations, including the `ray.io/ft-enabled
 
 ### 2. Connect to an external Redis
 
-* **`redisAddress`**: Add `redisAddress` to the `gcsFaultToleranceOptions` field. Use this option to specify the address for the Redis service, thus allowing the Ray head to connect to it. In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource uses the `redis` Kubernetes ClusterIP service name as the connection point to the Redis server. The ClusterIP service is also created by the YAML file.
+* **`redisAddress`**: Add `redisAddress` to the `gcsFaultToleranceOptions` field. Use this option to specify the address for the Redis service, thus allowing the Ray head to connect to it. In the [ray-cluster.external-redis.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource uses the `redis` Kubernetes ClusterIP service name as the connection point to the Redis server. The ClusterIP service is also created by the YAML file.
     ```yaml
     kind: RayCluster
     metadata:
@@ -310,7 +310,7 @@ For the old GCS fault tolerance configurations, including the `ray.io/ft-enabled
         redisAddress: "redis:6379" # <- Add redis address here.
     ```
 
-* **`redisPassword`**: Add `redisPassword` to the `gcsFaultToleranceOptions` field. Use this option to specify the password for the Redis service, thus allowing the Ray head to connect to it. In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource loads the password from a Kubernetes secret.
+* **`redisPassword`**: Add `redisPassword` to the `gcsFaultToleranceOptions` field. Use this option to specify the password for the Redis service, thus allowing the Ray head to connect to it. In the [ray-cluster.external-redis.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource loads the password from a Kubernetes secret.
     ```yaml
     kind: RayCluster
     metadata:
@@ -340,7 +340,7 @@ For the old GCS fault tolerance configurations, including the `ray.io/ft-enabled
 (kuberay-redis-cleanup-gate)=
 ### 4. Turn off Redis cleanup
 
-* `ENABLE_GCS_FT_REDIS_CLEANUP`: True by default. You can turn this feature off by setting the environment variable in the [KubeRay operator's Helm chart](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml).
+* `ENABLE_GCS_FT_REDIS_CLEANUP`: True by default. You can turn this feature off by setting the environment variable in the [KubeRay operator's Helm chart](https://github.com/kuberay-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml).
 
 ```{admonition} Key eviction setup on Redis
 If you disable `ENABLE_GCS_FT_REDIS_CLEANUP` but want Redis to remove GCS metadata automatically,
@@ -354,6 +354,52 @@ See [Key eviction](https://redis.io/docs/reference/eviction/) from Redis for mor
 
 Note that Redis does this eviction and it doesn't guarantee that
 Ray won't use the deleted keys.
+```
+
+### 5. Tune TCP keepalive for the Redis connection
+
+The GCS enables TCP keepalive on its connections to external Redis to detect
+unresponsive idle connections. Probes can also preserve idle flows through
+network devices that count TCP keepalive as activity. Set these environment
+variables on the head Pod to tune it:
+
+* `RAY_redis_tcp_keepalive_interval_seconds`: 30 by default. How long a
+  connection may sit idle before a keepalive probe, and the gap between probes.
+  Keep it **below the shortest idle timeout on the network path** to Redis
+  (cloud load balancers commonly use 60-350 seconds). An interval above that
+  timeout can't preserve the flow; whether probes prevent removal also depends
+  on the device's policy. Set it to `0` to
+  disable keepalive entirely and restore the previous socket behavior. Valid
+  values are `0` through `32767`.
+
+* `RAY_redis_tcp_keepalive_probes`: 3 by default. How many unanswered probes
+  declare an idle, unresponsive connection dead. On Linux, when all settings
+  succeed, detection takes about `interval * (1 + probes)` — roughly 2 minutes
+  with the defaults. This isn't a timeout for commands with data awaiting
+  acknowledgment; TCP retransmission behavior also matters. Valid values are
+  `1` through `127` when TCP keepalive is enabled.
+
+```{note}
+Linux, including musl-based builds, applies idle time, probe interval, and probe
+count when the TCP socket options are available. On macOS only idle time is
+applied. Windows applies idle time and probe interval, with an OS-controlled
+probe count. Other platforms use OS timing defaults.
+
+Invalid configuration and failure to enable keepalive fail the connection
+attempt without retries. On POSIX, failure to tune a timing option instead logs
+a warning and continues with keepalive enabled. Successful options remain
+applied; rejected options retain their previous values. In that case, the
+requested detection window may not apply. Windows uses a combined enable/tune
+operation and any failure still fails the connection attempt.
+```
+
+```{warning}
+In Ray versions without in-place Redis reconnect support, a connection declared
+dead causes the pending Redis operation to exhaust its retry budget and the GCS
+process to exit. Lowering `RAY_redis_tcp_keepalive_probes` or the interval shortens the
+window before that happens, so a transient network stall that the connection
+would otherwise have survived can terminate the GCS instead. Keep the detection
+window comfortably longer than any stall you expect to recover from.
 ```
 
 ## Next steps

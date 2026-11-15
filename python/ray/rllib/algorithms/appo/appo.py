@@ -3,7 +3,7 @@
 The algorithm is described in [1] (under the name of "IMPACT"):
 
 Detailed documentation:
-https://docs.ray.io/en/master/rllib-algorithms.html#appo
+https://docs.ray.io/en/latest/rllib/algorithms.html#appo
 
 [1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
 Luo et al. 2020
@@ -44,47 +44,39 @@ LEARNER_RESULTS_VAR_IS_KEY = "var_IS"
 class APPOConfig(IMPALAConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
-    .. testcode::
+    Examples:
+        >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> config = (
+        ...     APPOConfig()
+        ...     .training(lr=0.01, grad_clip=30.0, train_batch_size_per_learner=50)
+        ... )
+        >>> config = config.learners(num_learners=1)
+        >>> config = config.env_runners(num_env_runners=1)
+        >>> config = config.environment("CartPole-v1")
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
+        >>> del algo
 
-        from ray.rllib.algorithms.appo import APPOConfig
-        config = (
-            APPOConfig()
-            .training(lr=0.01, grad_clip=30.0, train_batch_size_per_learner=50)
-        )
-        config = config.learners(num_learners=1)
-        config = config.env_runners(num_env_runners=1)
-        config = config.environment("CartPole-v1")
-
-        # Build an Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
-        del algo
-
-    .. testcode::
-
-        from ray.rllib.algorithms.appo import APPOConfig
-        from ray import tune
-
-        config = APPOConfig()
-        # Update the config object.
-        config = config.training(lr=tune.grid_search([0.001,]))
-        # Set the config object's env.
-        config = config.environment(env="CartPole-v1")
-        # Use to_dict() to get the old-style python config dict when running with tune.
-        tune.Tuner(
-            "APPO",
-            run_config=tune.RunConfig(
-                stop={"training_iteration": 1},
-                verbose=0,
-            ),
-            param_space=config.to_dict(),
-
-        ).fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+        >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> from ray import tune
+        >>> config = APPOConfig()
+        >>> # Update the config object.
+        >>> config = config.training(lr=tune.grid_search([0.001,]))
+        >>> # Set the config object's env.
+        >>> config = config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict when running with tune.
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "APPO",
+        ...     run_config=tune.RunConfig(
+        ...         stop={"training_iteration": 1},
+        ...         verbose=0,
+        ...     ),
+        ...     param_space=config.to_dict(),
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):
@@ -181,8 +173,8 @@ class APPOConfig(IMPALAConfig):
         circular_buffer_iterations_per_batch: Optional[int] = NotProvided,
         simple_queue_size: Optional[int] = NotProvided,
         # Deprecated keys.
-        target_update_frequency=DEPRECATED_VALUE,
-        use_critic=DEPRECATED_VALUE,
+        target_update_frequency: Optional[int] = DEPRECATED_VALUE,
+        use_critic: Optional[bool] = DEPRECATED_VALUE,
         **kwargs,
     ) -> Self:
         """Sets the training related configuration.
@@ -211,13 +203,11 @@ class APPOConfig(IMPALAConfig):
                 learner).
                 The authors in [1] suggests that this setting is robust to a range of
                 choices (try values between 0.125 and 4).
-            target_network_update_freq: The frequency to update the target policy and
-                tune the kl loss coefficients that are used during training. After
-                setting this parameter, the algorithm waits for at least
-                `target_network_update_freq` number of environment samples to be trained
-                on before updating the target networks and tune the kl loss
-                coefficients. NOTE: This parameter is only applicable when using the
-                Learner API (enable_rl_module_and_learner=True).
+                This setting also controls how often the kl loss coefficients are
+                tuned: The algorithm waits for at least
+                `target_network_update_freq` number of environment samples to be
+                trained on before updating the target networks and tuning the kl
+                loss coefficients.
             tau: The factor by which to update the target policy network towards
                 the current policy network. Can range between 0 and 1.
                 e.g. updated_param = tau * current_param + (1 - tau) * target_param
@@ -237,6 +227,11 @@ class APPOConfig(IMPALAConfig):
                 being sampled.
             simple_queue_size: The size of the simple queue (if `use_circular_buffer`
                 is False) for storing training batches.
+            target_update_frequency: Deprecated. Use `target_network_update_freq`
+                instead.
+            use_critic: Deprecated. APPO always uses a value function (critic).
+            **kwargs: Additional config settings, forwarded to the parent
+                `IMPALAConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.

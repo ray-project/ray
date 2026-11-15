@@ -3,8 +3,7 @@ load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 ray_cc_library(
     name = "util",
     hdrs = ["util.h"],
-    # NOTE(edoakes): scheduling/ tests use this; the dependency should be broken.
-    visibility = ["//visibility:public"],
+    visibility = ["//src/ray/raylet/scheduling/tests:__pkg__"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:lease",
@@ -162,6 +161,7 @@ ray_cc_test(
     name = "node_manager_test",
     size = "small",
     srcs = ["node_manager_test.cc"],
+    auth_token = True,
     features = select({
         "@platforms//os:windows": ["compiler_param_file"],
         "//conditions:default": [],

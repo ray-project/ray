@@ -340,7 +340,7 @@ See the [end-to-end example with the Connect-4 env](https://github.com/ray-proje
 If all agents use the same algorithm class to train their policies, configure multi-agent training as follows:
 
 ```python
-from ray.rllib.algorithm.ppo import PPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 

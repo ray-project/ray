@@ -24,7 +24,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/asio/periodical_runner_interface.h"
-#include "ray/common/bundle_location_index.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/observability/metric_interface.h"
@@ -92,7 +91,7 @@ class ClusterResourceManager {
   bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
                                       const ResourceRequest &resource_request);
 
-  /// Check if we have available resources to fullfill resource request for an given node.
+  /// Check if we have available resources to fulfill a resource request for a given node.
   ///
   /// \param node_id: the id of the node.
   /// \param resource_request: the request we want to check.
@@ -139,8 +138,6 @@ class ClusterResourceManager {
 
   /// Record metrics for the cluster resource manager.
   void RecordMetrics() const;
-
-  BundleLocationIndex &GetBundleLocationIndex();
 
   void SetNodeLabels(const scheduling::NodeID &node_id,
                      absl::flat_hash_map<std::string, std::string> labels);
@@ -197,8 +194,6 @@ class ClusterResourceManager {
   /// Resource message updated
   absl::flat_hash_map<scheduling::NodeID, NodeResources> received_node_resources_;
 
-  BundleLocationIndex bundle_location_index_;
-
   /// Timer to revert local changes to the resources periodically.
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
@@ -227,11 +222,10 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
   FRIEND_TEST(ClusterLeaseManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
-  FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
-  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithInfeasibleNodesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest,
               FallbackSchedulesAvailableNodeOverUnavailablePrimary);
   FRIEND_TEST(ClusterResourceSchedulerTest, FallbackWaitsOnUnavailableHighestPriority);

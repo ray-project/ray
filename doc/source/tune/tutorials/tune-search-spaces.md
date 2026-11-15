@@ -6,11 +6,11 @@ myst:
 
 (tune-search-space-tutorial)=
 
-# Working with Tune Search Spaces
+# Working with Tune search spaces
 
-Tune has a native interface for specifying search spaces. You can specify the search space via `Tuner(param_space=...)`.
+Ray Tune has a native interface for specifying search spaces. Specify the search space through `Tuner(param_space=...)`.
 
-Thereby, you can either use the `tune.grid_search` primitive to use grid search:
+To run a grid search, use the `tune.grid_search` primitive:
 
 ```python
 tuner = tune.Tuner(
@@ -19,8 +19,7 @@ tuner = tune.Tuner(
 results = tuner.fit()
 ```
 
-
-Or you can use one of the random sampling primitives to specify distributions ({doc}`/tune/api/search_space`):
+To specify distributions instead, use the random sampling primitives that {doc}`/tune/api/search_space` describes:
 
 ```python
 tuner = tune.Tuner(
@@ -35,11 +34,10 @@ results = tuner.fit()
 ```
 
 :::{caution}
-If you use a SearchAlgorithm, you may not be able to specify lambdas or grid search with this interface, as some search algorithms may not be compatible.
+If you use a search algorithm, you might not be able to specify lambdas or grid search with this interface, because some search algorithms might not be compatible with them.
 :::
 
-
-To sample multiple times/run multiple trials, specify `tune.RunConfig(num_samples=N`. If `grid_search` is provided as an argument, the *same* grid will be repeated `N` times.
+To sample multiple times or run multiple trials, set `num_samples=N` in `tune.TuneConfig`. If you provide `grid_search` as an argument, Tune repeats the *same* grid `N` times, as the following examples show:
 
 ```python
 # 13 different configs.
@@ -52,7 +50,7 @@ tuner.fit()
 # 13 different configs.
 tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=13), param_space={
     "x": tune.choice([0, 1, 2]),
-    "y": tune.randn([0, 1, 2]),
+    "y": tune.randn(0, 1),
     }
 )
 tuner.fit()
@@ -91,9 +89,7 @@ tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=5), param_
 tuner.fit()
 ```
 
-
-
-Note that grid search and random search primitives are inter-operable. Each can be used independently or in combination with each other.
+Grid search and random search primitives are interoperable. You can use each one on its own or combine them, as in the following example:
 
 ```python
 # 6 different configs.
@@ -105,7 +101,7 @@ tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=2), param_
 tuner.fit()
 ```
 
-In the below example, `num_samples=10` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of `alpha` and `beta`.
+The following example uses `num_samples=10` to repeat the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of `alpha` and `beta`:
 
 ```{code-block} python
 :emphasize-lines: 12
@@ -131,16 +127,16 @@ In the below example, `num_samples=10` repeats the 3x3 grid search 10 times, for
 ```
 
 :::{tip}
-Avoid passing large objects as values in the search space, as that will incur a performance overhead. Use {func}`tune.with_parameters <ray.tune.with_parameters>` to pass large objects in or load them inside your trainable from disk (making sure that all nodes have access to the files) or cloud storage. See {ref}`tune-bottlenecks` for more information.
+Avoid passing large objects as values in the search space, because that incurs a performance overhead. Use {func}`tune.with_parameters <ray.tune.with_parameters>` to pass large objects in, or load them inside your trainable from disk or cloud storage. If you load them from disk, make sure that all nodes can access the files. See {ref}`tune-bottlenecks` for more information.
 :::
 
 (tune_custom-search)=
 
-## How to use Custom and Conditional Search Spaces in Tune?
+## Use custom and conditional search spaces
 
-You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another). Use `tune.sample_from(func)` to provide a **custom** callable function for generating a search space.
+You often run into awkward search spaces, such as when one hyperparameter depends on another. Use `tune.sample_from(func)` to provide a custom callable function that generates a search space.
 
-The parameter `func` should take in a `config` dict, which contains the values already sampled for the trial, letting you access other hyperparameters. This is useful for conditional distributions:
+The `func` parameter should take a `config` dictionary, which contains the values already sampled for the trial. Through `config`, the function reads other hyperparameters, which is useful for conditional distributions:
 
 ```python
 tuner = tune.Tuner(
@@ -155,7 +151,7 @@ tuner = tune.Tuner(
 tuner.fit()
 ```
 
-Here's an example showing a grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of `beta` depends on the value of `alpha`, which is represented by referencing `config["alpha"]` in the lambda function. This lets you specify conditional parameter distributions.
+To specify a conditional parameter distribution, reference another hyperparameter through `config` in the lambda function. The following example makes the value of `beta` depend on the value of `alpha` by referencing `config["alpha"]`. It combines a grid search over two nested parameters with random sampling from two lambda functions, generating nine different trials:
 
 ```{code-block} python
 :emphasize-lines: 4-11
@@ -175,7 +171,7 @@ Here's an example showing a grid search over two nested parameters combined with
 ```
 
 :::{note}
-This format is not supported by every SearchAlgorithm, and only some SearchAlgorithms, like {ref}`HyperOpt <tune-hyperopt>` and {ref}`Optuna <tune-optuna>`, handle conditional search spaces at all.
+Not every search algorithm supports this format. Only some search algorithms, such as {ref}`Hyperopt <tune-hyperopt>` and {ref}`Optuna <tune-optuna>`, handle conditional search spaces at all.
 
-In order to use conditional search spaces with {ref}`HyperOpt <tune-hyperopt>`, a [Hyperopt search space](http://hyperopt.github.io/hyperopt/getting-started/search_spaces/) isnecessary. {ref}`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run interface ({doc}`/tune/examples/optuna_example`).
+To use conditional search spaces with {ref}`Hyperopt <tune-hyperopt>`, you need a [Hyperopt search space](http://hyperopt.github.io/hyperopt/getting-started/search_spaces/). {ref}`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run interface. See {doc}`/tune/examples/optuna-example`.
 :::

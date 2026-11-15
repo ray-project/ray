@@ -21,7 +21,7 @@ class OfflineEvaluator(abc.ABC):
 
         Args:
             policy: Policy to evaluate.
-            kwargs: forward compatibility placeholder.
+            **kwargs: forward compatibility placeholder.
         """
         self.policy = policy
 
@@ -32,7 +32,7 @@ class OfflineEvaluator(abc.ABC):
 
         Args:
             batch: The batch to evaluate.
-            kwargs: forward compatibility placeholder.
+            **kwargs: forward compatibility placeholder.
 
         Returns:
             The evaluation done on the given batch. The returned
@@ -47,7 +47,7 @@ class OfflineEvaluator(abc.ABC):
 
         Args:
             batch: SampleBatch to train on
-            kwargs: forward compatibility placeholder.
+            **kwargs: forward compatibility placeholder.
 
         Returns:
             Any optional metrics to return from the evaluator

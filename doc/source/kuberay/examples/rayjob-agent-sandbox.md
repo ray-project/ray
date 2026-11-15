@@ -133,7 +133,7 @@ kubectl apply -f rbac.yaml
 The suspend and resume path needs additional permissions. The SDK snapshot extension patches the `spec.operatingMode` field on `Sandbox` resources, reads Pods across the suspend and resume cycle, and manages `podsnapshot.gke.io` triggers and snapshots. Apply the additional permissions below, or skip them if you don't plan to use suspend and resume:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/rbac.yaml
 ```
 
 ### Step 5: Deploy sandbox infrastructure
@@ -141,7 +141,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 Run the following command to create sandbox infrastructure using Agent Sandbox:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/sandbox.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/agent-sandbox/sandbox.yaml
 ```
 
 The command creates the following resources:
@@ -196,7 +196,7 @@ gcloud projects add-iam-policy-binding "<PROJECT_ID>" \
     --condition='expression=resource.name.startsWith("projects/_/buckets/<BUCKET_NAME>"),title=restrict_to_bucket'
 ```
 
-Then download [`sandbox-snapshot.yaml`](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/sandbox-snapshot.yaml), replace `SNAPSHOT_BUCKET_NAME` with your bucket name, and apply it. It creates:
+Then download [`sandbox-snapshot.yaml`](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/sandbox-snapshot.yaml), replace `SNAPSHOT_BUCKET_NAME` with your bucket name, and apply it. It creates:
 
 - `ServiceAccount` (`sandbox-snapshot-ksa`): the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it, and the egress policy below closes the metadata-server path to the pool's cloud credentials.
 - `PodSnapshotStorageConfig`: points Pod Snapshots at your bucket.
@@ -213,7 +213,7 @@ kubectl get pods -l app=python-snapshot-pool
 Run the following command to create a RayJob resource:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/ray-cluster.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/agent-sandbox/ray-cluster.yaml
 ```
 
 The RayJob is configured to do the following:
@@ -294,7 +294,7 @@ The suspend and resume calls come from the Agent Sandbox Python SDK's snapshot e
 Run the suspend and resume RayJob and stream its logs:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/ray-job.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/ray-job.yaml
 kubectl logs -f -l job-name=agent-sandbox-snapshot-demo
 ```
 

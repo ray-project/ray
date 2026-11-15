@@ -72,40 +72,38 @@ LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 class IMPALAConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
-    .. testcode::
+    Examples:
+        >>> from ray.rllib.algorithms.impala import IMPALAConfig
+        >>> config = (
+        ...     IMPALAConfig()
+        ...     .environment("CartPole-v1")
+        ...     .env_runners(num_env_runners=1)
+        ...     .training(lr=0.0003, train_batch_size_per_learner=512)
+        ...     .learners(num_learners=1)
+        ... )
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
+        >>> del algo
 
-        from ray.rllib.algorithms.impala import IMPALAConfig
-
-        config = (
-            IMPALAConfig()
-            .environment("CartPole-v1")
-            .env_runners(num_env_runners=1)
-            .training(lr=0.0003, train_batch_size_per_learner=512)
-            .learners(num_learners=1)
-        )
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
-        del algo
-
-    .. testcode::
-
-        from ray.rllib.algorithms.impala import IMPALAConfig
-        from ray import tune
-
-        config = (
-            IMPALAConfig()
-            .environment("CartPole-v1")
-            .env_runners(num_env_runners=1)
-            .training(lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0)
-            .learners(num_learners=1)
-        )
-        # Run with tune.
-        tune.Tuner(
-            "IMPALA",
-            param_space=config,
-            run_config=tune.RunConfig(stop={"training_iteration": 1}),
-        ).fit()
+        >>> from ray.rllib.algorithms.impala import IMPALAConfig
+        >>> from ray import tune
+        >>> config = (
+        ...     IMPALAConfig()
+        ...     .environment("CartPole-v1")
+        ...     .env_runners(num_env_runners=1)
+        ...     .training(lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0)
+        ...     .learners(num_learners=1)
+        ... )
+        >>> # Run with tune.
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "IMPALA",
+        ...     param_space=config,
+        ...     run_config=tune.RunConfig(stop={"training_iteration": 1}),
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):
@@ -215,8 +213,8 @@ class IMPALAConfig(AlgorithmConfig):
         _separate_vf_optimizer: Optional[bool] = NotProvided,
         _lr_vf: Optional[float] = NotProvided,
         # Deprecated args.
-        num_aggregation_workers=DEPRECATED_VALUE,
-        max_requests_in_flight_per_aggregator_worker=DEPRECATED_VALUE,
+        num_aggregation_workers: Optional[int] = DEPRECATED_VALUE,
+        max_requests_in_flight_per_aggregator_worker: Optional[int] = DEPRECATED_VALUE,
         **kwargs,
     ) -> Self:
         """Sets the training related configuration.
@@ -283,6 +281,14 @@ class IMPALAConfig(AlgorithmConfig):
                 algorithms (APPO, IMPALA) on the old API stack.
             _lr_vf: If _separate_vf_optimizer is True, define separate learning rate
                 for the value network.
+            num_aggregation_workers: Deprecated. Use
+                `config.learners(num_aggregator_actors_per_learner=..)` on the new API
+                stack instead.
+            max_requests_in_flight_per_aggregator_worker: Deprecated. Use
+                `config.learners(max_requests_in_flight_per_aggregator_actor=..)` on
+                the new API stack instead.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -379,6 +385,11 @@ class IMPALAConfig(AlgorithmConfig):
             _skip_learners: If True, no `update` requests are sent to the LearnerGroup
                 and Learner actors. Only EnvRunners and aggregator actors (if
                 applicable) are used.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.debugging()` method.
+
+        Returns:
+            This updated AlgorithmConfig object.
         """
         super().debugging(**kwargs)
 

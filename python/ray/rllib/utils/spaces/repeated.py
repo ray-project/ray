@@ -1,3 +1,5 @@
+from typing import Any
+
 import gymnasium as gym
 import numpy as np
 
@@ -17,17 +19,34 @@ class Repeated(gym.Space):
     """
 
     def __init__(self, child_space: gym.Space, max_len: int):
+        """Initializes a Repeated instance.
+
+        Args:
+            child_space: The space of the individual items in the (variable-length)
+                list represented by this space.
+            max_len: The maximum number of items the list may contain.
+        """
         super().__init__()
         self.child_space = child_space
         self.max_len = max_len
 
     def sample(self):
+        """Returns a list of 1 to `max_len` random samples from the child space."""
         return [
             self.child_space.sample()
             for _ in range(self.np_random.integers(1, self.max_len + 1))
         ]
 
-    def contains(self, x):
+    def contains(self, x: Any) -> bool:
+        """Returns whether `x` is a valid member of this space.
+
+        Args:
+            x: The value to check.
+
+        Returns:
+            True if `x` is a list or numpy array of at most `max_len` items, each a
+            member of the child space.
+        """
         return (
             isinstance(x, (list, np.ndarray))
             and len(x) <= self.max_len

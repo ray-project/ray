@@ -40,7 +40,7 @@ myst:
         env-runners
     rllib-examples
     new-api-stack-migration-guide
-    package_ref/index
+    api/index
 -->
 
 ```{toctree}

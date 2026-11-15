@@ -29,10 +29,11 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
 
         Args:
             action_space: The gym action space used by the environment.
+            framework: One of None, "tf", "torch".
             num_workers: The overall number of workers used.
             worker_index: The index of the Worker using this
                 Exploration.
-            framework: One of None, "tf", "torch".
+            **kwargs: Forwarded to the parent `EpsilonGreedy` constructor.
         """
         epsilon_schedule = None
         # Use a fixed, different epsilon per worker. See: Ape-X paper.

@@ -10,6 +10,10 @@ myst:
 
 This document describes a couple high-level steps to run Ray clusters on [Spark Standalone cluster](https://spark.apache.org/docs/latest/spark-standalone.html).
 
+:::{note}
+Ray enables token authentication by default, but Ray on Spark doesn't create a token for you. Before you call `setup_ray_cluster`, generate a token on the Spark driver machine and copy it to every Spark worker machine. See {ref}`Token authentication for Ray on Spark <ray-on-spark-token-auth>`.
+:::
+
 ## Running a basic example
 
 This is a spark application example code that starts Ray cluster on spark, and then execute ray application code, then shut down initiated ray cluster.
@@ -96,14 +100,8 @@ spark-submit \
 
 ## Ray on Spark APIs
 
-```{eval-rst}
-.. autofunction:: ray.util.spark.setup_ray_cluster
-```
+See the {ref}`Ray on Spark API reference <ray-on-spark-api-ref>` for the following functions:
 
-```{eval-rst}
-.. autofunction:: ray.util.spark.shutdown_ray_cluster
-```
-
-```{eval-rst}
-.. autofunction:: ray.util.spark.setup_global_ray_cluster
-```
+- {py:func}`ray.util.spark.setup_ray_cluster`
+- {py:func}`ray.util.spark.shutdown_ray_cluster`
+- {py:func}`ray.util.spark.setup_global_ray_cluster`

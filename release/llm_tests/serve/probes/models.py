@@ -15,8 +15,7 @@ def ids(models: list["openai.types.model.Model"]) -> list[str]:
 
 # These models are used in release tests.
 RELEASE_TEST_MODELS = [
-    # Fine tuned version of Meta Llama-3 8b.
-    "meta-llama/Meta-Llama-3.1-8B-Instruct-Fine-Tuned",
+    "qwen3.5-0.8b-lora-test",
 ]
 
 

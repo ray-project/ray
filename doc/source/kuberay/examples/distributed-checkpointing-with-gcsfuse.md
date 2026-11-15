@@ -8,13 +8,13 @@ myst:
 
 # Distributed checkpointing with KubeRay and GCSFuse
 
-This example orchestrates distributed checkpointing with KubeRay, using the GCSFuse CSI driver and Google Cloud Storage as the remote storage system. To illustrate the concepts, this guide uses the [Finetuning a Pytorch Image Classifier with Ray Train](https://docs.ray.io/en/latest/train/examples/pytorch/pytorch_resnet_finetune.html) example.
+This example orchestrates distributed checkpointing with KubeRay, using the GCSFuse CSI driver and Google Cloud Storage as the remote storage system. To illustrate the concepts, this guide uses the [Finetuning a Pytorch Image Classifier with Ray Train](../../train/examples/pytorch/pytorch-resnet-finetune.ipynb) example.
 
 ## Why distributed checkpointing with GCSFuse?
 
 In large-scale, high-performance machine learning, distributed checkpointing is crucial for fault tolerance, ensuring that if a node fails during training, Ray can resume the process from the latest saved checkpoint instead of starting from scratch. While it's possible to directly reference remote storage paths (e.g., `gs://my-checkpoint-bucket`), using Google Cloud Storage FUSE (GCSFuse) has distinct advantages for distributed applications. GCSFuse allows you to mount Cloud Storage buckets like local file systems, making checkpoint management more intuitive for distributed applications that rely on these semantics. Furthermore, GCSFuse is designed for high-performance workloads, delivering the performance and scalability you need for distributed checkpointing of large models.
 
-[Distributed checkpointing](https://docs.ray.io/en/latest/train/user-guides/checkpoints.html), in combination with [GCSFuse](https://cloud.google.com/storage/docs/gcs-fuse), allows for larger-scale model training with increased availability and efficiency.
+[Distributed checkpointing](../../train/user-guides/checkpoints.md), in combination with [GCSFuse](https://cloud.google.com/storage/docs/gcs-fuse), allows for larger-scale model training with increased availability and efficiency.
 
 ## Create a Kubernetes cluster on GKE
 
@@ -70,10 +70,10 @@ See [Access Cloud Storage buckets with the Cloud Storage FUSE CSI driver](https:
 
 ## Deploy the RayJob
 
-Download the RayJob that executes all the steps documented in [Finetuning a Pytorch Image Classifier with Ray Train](https://docs.ray.io/en/latest/train/examples/pytorch/pytorch_resnet_finetune.html). The [source code](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/pytorch-resnet-image-classifier) is also in the KubeRay repository.
+Download the RayJob that executes all the steps documented in [Finetuning a Pytorch Image Classifier with Ray Train](../../train/examples/pytorch/pytorch-resnet-finetune.ipynb). The [source code](https://github.com/kuberay-project/kuberay/tree/master/ray-operator/config/samples/pytorch-resnet-image-classifier) is also in the KubeRay repository.
 
 ```
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/pytorch-resnet-image-classifier/ray-job.pytorch-image-classifier.yaml
+curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/pytorch-resnet-image-classifier/ray-job.pytorch-image-classifier.yaml
 ```
 
 Modify the RayJob by replacing all instances of the `GCS_BUCKET` placeholder with the Google Cloud Storage bucket you created earlier. Alternatively you can use `sed`:

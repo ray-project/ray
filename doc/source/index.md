@@ -13,9 +13,9 @@ Installation <ray-overview/installation>
 Use Cases <ray-overview/use-cases>
 Examples <ray-overview/examples/index>
 KubeRay <kuberay/index>
-Ray Core <ray-core/walkthrough>
+Ray Core <core/index>
 Ray Data <data/index>
-Ray Train <train/train>
+Ray Train <train/index>
 Ray Tune <tune/index>
 Ray Serve <serve/index>
 Ray RLlib <rllib/index>

@@ -177,6 +177,32 @@ class TestDeploymentStatusInfo:
         assert result.status == DeploymentStatus.UNHEALTHY
         assert result.status_trigger == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
 
+    @pytest.mark.parametrize(
+        "status",
+        [
+            DeploymentStatus.HEALTHY,
+            DeploymentStatus.UPSCALING,
+            DeploymentStatus.DOWNSCALING,
+            DeploymentStatus.UNHEALTHY,
+        ],
+    )
+    def test_deployment_actor_failure_outside_update_is_unhealthy(self, status):
+        info = DeploymentStatusInfo(
+            name="test",
+            status=status,
+            status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+            message="old message",
+        )
+
+        result = info.handle_transition(
+            trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message="Deployment actor failed to start.",
+        )
+
+        assert result.status == DeploymentStatus.UNHEALTHY
+        assert result.status_trigger == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        assert result.message == "Deployment actor failed to start."
+
     def test_handle_transition_deployment_actor_failed_when_already_deploy_failed(
         self,
     ):

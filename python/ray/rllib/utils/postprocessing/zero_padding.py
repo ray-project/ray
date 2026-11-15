@@ -13,7 +13,7 @@ def create_mask_and_seq_lens(episode_len: int, T: int) -> Tuple[List, List]:
     """Creates loss mask and a seq_lens array, given an episode length and T.
 
     Args:
-        episode_lens: A list of episode lengths to infer the loss mask and seq_lens
+        episode_len: The episode length to infer the loss mask and seq_lens
             array from.
         T: The maximum number of timesteps in each "row", also known as the maximum
             sequence length (max_seq_len). Episodes are split into chunks that are at
@@ -61,30 +61,27 @@ def split_and_zero_pad(
     items), these will be split accordingly along their axis=0 to yield the returned
     structure described above.
 
-    .. testcode::
-
-        from ray.rllib.utils.postprocessing.zero_padding import (
-            BatchedNdArray,
-            split_and_zero_pad,
-        )
-        from ray.rllib.utils.test_utils import check
-
-        # Simple case: `item_list` contains individual floats.
-        check(
-            split_and_zero_pad([0, 1, 2, 3, 4, 5, 6, 7], 5),
-            [[0, 1, 2, 3, 4], [5, 6, 7, 0, 0]],
-        )
-
-        # `item_list` contains BatchedNdArray (ndarrays that explicitly declare they
-        # have a batch axis=0).
-        check(
-            split_and_zero_pad([
-                BatchedNdArray([0, 1]),
-                BatchedNdArray([2, 3, 4, 5]),
-                BatchedNdArray([6, 7, 8]),
-            ], 5),
-            [[0, 1, 2, 3, 4], [5, 6, 7, 8, 0]],
-        )
+    Examples:
+        >>> from ray.rllib.utils.postprocessing.zero_padding import (
+        ...     BatchedNdArray,
+        ...     split_and_zero_pad,
+        ... )
+        >>> from ray.rllib.utils.test_utils import check
+        >>> # Simple case: `item_list` contains individual floats.
+        >>> check(
+        ...     split_and_zero_pad([0, 1, 2, 3, 4, 5, 6, 7], 5),
+        ...     [[0, 1, 2, 3, 4], [5, 6, 7, 0, 0]],
+        ... )
+        >>> # `item_list` contains BatchedNdArray (ndarrays that explicitly declare they
+        >>> # have a batch axis=0).
+        >>> check(
+        ...     split_and_zero_pad([
+        ...         BatchedNdArray([0, 1]),
+        ...         BatchedNdArray([2, 3, 4, 5]),
+        ...         BatchedNdArray([6, 7, 8]),
+        ...     ], 5),
+        ...     [[0, 1, 2, 3, 4], [5, 6, 7, 8, 0]],
+        ... )
 
     Args:
         item_list: A list of individual items or BatchedNdArrays to be split into
@@ -185,7 +182,8 @@ def split_and_zero_pad_n_episodes(
             given `nd_array`.
         max_seq_len: The maximum sequence length to split at (and zero-pad).
 
-    Returns: A list of n np.ndarrays, resulting from splitting and zero-padding the
+    Returns:
+        A list of n np.ndarrays, resulting from splitting and zero-padding the
         given `nd_array`.
     """
     ret = []
@@ -206,28 +204,25 @@ def unpad_data_if_necessary(
 ) -> np._typing.NDArray:
     """Removes right-side zero-padding from data based on `episode_lens`.
 
-    ..testcode::
-
-        from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
-        import numpy as np
-
-        unpadded = unpad_data_if_necessary(
-            episode_lens=[4, 2],
-            data=np.array([
-                [2, 4, 5, 3, 0, 0, 0, 0],
-                [-1, 3, 0, 0, 0, 0, 0, 0],
-            ]),
-        )
-        assert (unpadded == [2, 4, 5, 3, -1, 3]).all()
-
-        unpadded = unpad_data_if_necessary(
-            episode_lens=[1, 5],
-            data=np.array([
-                [2, 0, 0, 0, 0],
-                [-1, -2, -3, -4, -5],
-            ]),
-        )
-        assert (unpadded == [2, -1, -2, -3, -4, -5]).all()
+    Examples:
+        >>> from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
+        >>> import numpy as np
+        >>> unpadded = unpad_data_if_necessary(
+        ...     episode_lens=[4, 2],
+        ...     data=np.array([
+        ...         [2, 4, 5, 3, 0, 0, 0, 0],
+        ...         [-1, 3, 0, 0, 0, 0, 0, 0],
+        ...     ]),
+        ... )
+        >>> assert (unpadded == [2, 4, 5, 3, -1, 3]).all()
+        >>> unpadded = unpad_data_if_necessary(
+        ...     episode_lens=[1, 5],
+        ...     data=np.array([
+        ...         [2, 0, 0, 0, 0],
+        ...         [-1, -2, -3, -4, -5],
+        ...     ]),
+        ... )
+        >>> assert (unpadded == [2, -1, -2, -3, -4, -5]).all()
 
     Args:
         episode_lens: A list of actual episode lengths.

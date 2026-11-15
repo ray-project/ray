@@ -1,6 +1,6 @@
 """Common pre-checks for all RLlib experiments."""
 import logging
-from typing import TYPE_CHECKING, Set
+from typing import TYPE_CHECKING, Any, Set
 
 import gymnasium as gym
 import numpy as np
@@ -240,7 +240,7 @@ def _check_if_element_multi_agent_dict(
         raise ValueError(error)
 
 
-def _find_offending_sub_space(space, value):
+def _find_offending_sub_space(space: gym.Space, value: Any):
     """Returns error, value, and space when offending `space.contains(value)` fails.
 
     Returns only the offending sub-value/sub-space in case `space` is a complex Tuple
@@ -256,14 +256,15 @@ def _find_offending_sub_space(space, value):
         3) the offending sub-space's dtype, 4) the offending sub-value, 5) the offending
         sub-value's dtype.
 
-    .. testcode::
-        :skipif: True
-
-        path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
-            gym.spaces.Dict({
-           -2.0, 1.5, (2, ), np.int8), np.array([-1.5, 3.0])
-        )
-
+    Examples:
+        >>> import gymnasium as gym
+        >>> import numpy as np
+        >>> path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
+        ...     gym.spaces.Dict({"a": gym.spaces.Box(-2.0, 1.5, (2, ), np.int8)}),
+        ...     {"a": np.array([-1.5, 3.0])},
+        ... )
+        >>> print(path, space, value_dtype)
+        a Box(-2, 1, (2,), int8) float64
     """
     if not isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
         return None, space, space.dtype, value, _get_type(value)

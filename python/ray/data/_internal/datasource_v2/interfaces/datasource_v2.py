@@ -1,5 +1,4 @@
-"""
-DataSourceV2 API - Unified Abstraction for Reading Data Sources
+"""DataSourceV2 API - Unified Abstraction for Reading Data Sources
 
 This module defines a unified, extensible API for reading data from diverse sources
 in Ray Data. The API provides a common abstraction layer that enables datasources to
@@ -161,9 +160,12 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         ``FileManifest`` blocks.
 
         Abstract rather than defaulted, because a default would commit a new
-        format to per-file listing without anyone choosing it. Formats without
-        usable file metadata return ``NonSamplingFileIndexer``; Parquet returns
-        ``FooterFileIndexer``.
+        format to per-file listing without anyone choosing it.
+
+        Returns:
+            ``NonSamplingFileIndexer(...)`` for a format without per-piece
+            metadata. For a format with row groups or stripes, a subclass of
+            it that overrides ``list_files``, like ``FooterFileIndexer``.
         """
         ...
 
@@ -176,10 +178,10 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         Each listing task holds its own pickled copy of the partitioner, so
         anything it carries (such as an ``InMemorySizeEstimator``) must pickle
         cheaply; any I/O the estimator does runs once per listing task.
-        ``RoundRobinPartitioner(estimator, hints=hints)`` fits most formats;
-        return something else when the listing rows carry metadata worth
-        grouping on (Parquet row-group stats), and ``None`` to emit each
-        listing block as one read unit.
+        ``RoundRobinPartitioner(estimator, hints=hints)`` fits most formats.
+        Return ``OnlineBinPacker`` when the decoded size of every listing row
+        is known up front, as from Parquet footers, so tasks land close to
+        the cap. Return ``None`` to emit each listing block as one read task.
 
         Args:
             hints: Sizing hints derived from ``DataContext`` and
@@ -235,6 +237,10 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     ) -> Scanner[InputSplit]:
         """Create a Scanner for reading data.
 
+        Pass ``partitioning=`` to the scanner, and from it to the reader,
+        when partition values live in the path, such as ``year=2024/``.
+        Nothing is parsed from paths without it.
+
         Args:
             schema: Schema for the data to read.
             filesystem: :attr:`FileDataSourceV2.filesystem`, or ``None`` for
@@ -242,7 +248,8 @@ class DataSourceV2(ABC, Generic[InputSplit]):
             **options: Additional datasource-specific options.
 
         Returns:
-            Configured Scanner instance.
+            Configured Scanner that carries only the ``Supports*`` pushdown
+            mixins its reader enforces.
         """
         ...
 
@@ -282,8 +289,23 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         ...
 
     @property
+    def source_paths(self) -> List[str]:
+        """The paths as the caller passed them, recorded on ``ListFiles`` for
+        lineage tracking.
+
+        Defaults to :attr:`paths`. Override this when :attr:`paths` holds
+        resolved paths: ``_resolve_paths_and_filesystem`` strips the URI scheme,
+        so ``s3://bucket/a`` becomes ``bucket/a``.
+        """
+        return self.paths
+
+    @property
     def file_extensions(self) -> Optional[List[str]]:
-        """File extensions to keep while listing; ``None`` keeps every file."""
+        """File extensions to keep while listing; ``None`` keeps every file.
+
+        Override this when the format's directories mix in files it cannot
+        read, such as ``_SUCCESS`` markers or sidecar files.
+        """
         return None
 
     @property
@@ -291,7 +313,8 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         """File-level shuffle the user asked for; ``None`` means no shuffle.
 
         ``"files"`` shuffles with a seed drawn per execution; a
-        :class:`FileShuffleConfig` pins the seed.
+        :class:`FileShuffleConfig` pins the seed. Override this to forward
+        the ``shuffle`` argument of your ``read_*`` function.
         """
         return None
 

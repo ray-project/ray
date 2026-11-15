@@ -712,6 +712,18 @@ def raise_sys_exit_with_custom_error_message(
     raise e
 
 
+cdef CRayStatus check_no_consume_once_args(args):
+    """Return InvalidArgument if any ObjectRef arg was created with _consume_once=True.
+
+    Other args are serialized into new objects, which are never consume-once.
+    """
+    cdef c_vector[CObjectID] arg_ids
+    for arg in args:
+        if isinstance(arg, ObjectRef):
+            arg_ids.push_back((<ObjectRef>arg).native())
+    return CCoreWorkerProcess.GetCoreWorker().CheckNoConsumeOnceArgs(arg_ids)
+
+
 cdef prepare_args_and_increment_put_refs(
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
@@ -2472,15 +2484,16 @@ cdef execute_task_with_cancellation_handler(
     title = f"ray::{task_name}"
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
-    # runtime_ids, OMP_NUM_THREADS to restrict availability to this task.
+    # runtime_ids, and the num threads env vars such as OMP_NUM_THREADS, to restrict
+    # availability to this task.
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
         original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
-        omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+        num_threads_env_vars_set = ray._private.utils.set_num_threads_env_vars_if_unset()
     else:
         original_visible_accelerator_env_vars = None
-        omp_num_threads_overriden = False
+        num_threads_env_vars_set = []
 
     # Initialize the actor if this is an actor creation task. We do this here
     # before setting the current task ID so that we can get the execution info,
@@ -2587,9 +2600,18 @@ cdef execute_task_with_cancellation_handler(
             if original_visible_accelerator_env_vars:
                 # Reset the visible accelerator env vars for normal tasks, since they may be reused.
                 ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
-            if omp_num_threads_overriden:
-                # Reset the OMP_NUM_THREADS environ if it was set.
-                os.environ.pop("OMP_NUM_THREADS", None)
+            # Reset the num threads env vars if they were set.
+            for env_var in num_threads_env_vars_set:
+                os.environ.pop(env_var, None)
+            if "OMP_NUM_THREADS" in num_threads_env_vars_set:
+                # Restore default single-thread fallback (set_num_threads_env_vars_if_unset()
+                # sets OMP_NUM_THREADS when unset) if modules were imported pre-fork.
+                for module_name in ray_constants.THREAD_POOL_MODULES:
+                    if module_name in sys.modules:
+                        try:
+                            sys.modules[module_name].set_num_threads(1)
+                        except Exception:
+                            pass
 
 
     if execution_info.max_calls != 0:
@@ -2670,126 +2692,131 @@ cdef CRayStatus task_execution_handler(
         int64_t generator_backpressure_num_objects,
         int64_t num_objects_per_yield,
         optional[c_string] c_tensor_transport) nogil:
-    with gil, disable_client_hook():
+    with gil:
         # Async actor tasks run on a boost fiber stack; re-anchor CPython's
         # stack protection to it. The handler entry is close to the top of the
         # fiber stack, so a small used-stack upper bound suffices. Actor
         # creation tasks are excluded: they run on the regular task-execution
         # pthread, not a fiber, even for async actors.
+        #
+        # The reanchor must occur before any python call is made on this fiber.
+        # Otherwise, the new fiber stack address may trigger a py_Check due to
+        # stack depth since 3.14.
         if (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
                 and CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync()):
             RayReanchorStackProtectionToCurrentFiberStack(32 * 1024)
 
-        # Initialize job_config if it hasn't already.
-        # Setup system paths configured in job_config.
-        maybe_initialize_job_config()
+        with disable_client_hook():
+            # Initialize job_config if it hasn't already.
+            # Setup system paths configured in job_config.
+            maybe_initialize_job_config()
 
-        try:
             try:
-                # Exceptions, including task cancellation, should be handled
-                # internal to this call. If it does raise an exception, that
-                # indicates that there was an internal error.
-                execute_task_with_cancellation_handler(
-                        caller_address,
-                        task_type, task_name,
-                        ray_function, c_resources,
-                        c_args, c_arg_refs,
-                        debugger_breakpoint,
-                        serialized_retry_exception_allowlist,
-                        returns,
-                        dynamic_returns,
-                        streaming_generator_returns,
-                        is_retryable_error,
-                        actor_repr_name,
-                        application_error,
-                        defined_concurrency_groups,
-                        name_of_concurrency_group_to_execute,
-                        is_reattempt,
-                        is_streaming_generator,
-                        should_retry_exceptions,
-                        generator_backpressure_num_objects,
-                        num_objects_per_yield,
-                        c_tensor_transport)
-            except Exception as e:
-                sys_exit = SystemExit()
-                if isinstance(e, RayActorError) and \
-                   e.actor_init_failed:
-                    traceback_str = str(e)
-                    logger.error("Exception raised "
-                                 f"in creation task: {traceback_str}")
-                    creation_task_exception_pb_bytes = ray_error_to_memory_buf(e)
-                    sys_exit.is_creation_task_error = True
-                    sys_exit.init_error_message = (
-                        "Exception raised from an actor init method. "
-                        f"Traceback: {str(e)}")
+                try:
+                    # Exceptions, including task cancellation, should be handled
+                    # internal to this call. If it does raise an exception, that
+                    # indicates that there was an internal error.
+                    execute_task_with_cancellation_handler(
+                            caller_address,
+                            task_type, task_name,
+                            ray_function, c_resources,
+                            c_args, c_arg_refs,
+                            debugger_breakpoint,
+                            serialized_retry_exception_allowlist,
+                            returns,
+                            dynamic_returns,
+                            streaming_generator_returns,
+                            is_retryable_error,
+                            actor_repr_name,
+                            application_error,
+                            defined_concurrency_groups,
+                            name_of_concurrency_group_to_execute,
+                            is_reattempt,
+                            is_streaming_generator,
+                            should_retry_exceptions,
+                            generator_backpressure_num_objects,
+                            num_objects_per_yield,
+                            c_tensor_transport)
+                except Exception as e:
+                    sys_exit = SystemExit()
+                    if isinstance(e, RayActorError) and \
+                       e.actor_init_failed:
+                        traceback_str = str(e)
+                        logger.error("Exception raised "
+                                     f"in creation task: {traceback_str}")
+                        creation_task_exception_pb_bytes = ray_error_to_memory_buf(e)
+                        sys_exit.is_creation_task_error = True
+                        sys_exit.init_error_message = (
+                            "Exception raised from an actor init method. "
+                            f"Traceback: {str(e)}")
+                    else:
+                        traceback_str = traceback.format_exc() + (
+                            "An unexpected internal error "
+                            "occurred while the worker "
+                            "was executing a task.")
+                        ray._private.utils.push_error_to_driver(
+                            ray._private.worker.global_worker,
+                            "worker_crash",
+                            traceback_str,
+                            job_id=None)
+                        sys_exit.unexpected_error_traceback = traceback_str
+                    raise sys_exit
+            except SystemExit as e:
+                # Tell the core worker to exit as soon as the result objects
+                # are processed.
+                if hasattr(e, "is_creation_task_error"):
+                    return CRayStatus.CreationTaskError(e.init_error_message)
+                elif e.code is not None and e.code == 0:
+                    # This means the system exit was
+                    # normal based on the python convention.
+                    # https://docs.python.org/3/library/sys.html#sys.exit
+                    msg = f"Worker exits with an exit code {e.code}."
+                    if hasattr(e, "ray_terminate_msg"):
+                        msg += (f" {e.ray_terminate_msg}")
+                    return CRayStatus.IntentionalSystemExit(msg)
                 else:
-                    traceback_str = traceback.format_exc() + (
-                        "An unexpected internal error "
-                        "occurred while the worker "
-                        "was executing a task.")
-                    ray._private.utils.push_error_to_driver(
-                        ray._private.worker.global_worker,
-                        "worker_crash",
-                        traceback_str,
-                        job_id=None)
-                    sys_exit.unexpected_error_traceback = traceback_str
-                raise sys_exit
-        except SystemExit as e:
-            # Tell the core worker to exit as soon as the result objects
-            # are processed.
-            if hasattr(e, "is_creation_task_error"):
-                return CRayStatus.CreationTaskError(e.init_error_message)
-            elif e.code is not None and e.code == 0:
-                # This means the system exit was
-                # normal based on the python convention.
-                # https://docs.python.org/3/library/sys.html#sys.exit
-                msg = f"Worker exits with an exit code {e.code}."
-                if hasattr(e, "ray_terminate_msg"):
-                    msg += (f" {e.ray_terminate_msg}")
-                return CRayStatus.IntentionalSystemExit(msg)
-            else:
-                msg = f"Worker exits with an exit code {e.code}."
-                # In K8s, SIGTERM likely means we hit memory limits, so print
-                # a more informative message there.
-                if "KUBERNETES_SERVICE_HOST" in os.environ:
-                    msg += (
-                        " The worker may have exceeded K8s pod memory limits.")
-                if hasattr(e, "ray_terminate_msg"):
-                    msg += (f" {e.ray_terminate_msg}")
-                if hasattr(e, "unexpected_error_traceback"):
-                    msg += (f" {e.unexpected_error_traceback}")
+                    msg = f"Worker exits with an exit code {e.code}."
+                    # In K8s, SIGTERM likely means we hit memory limits, so print
+                    # a more informative message there.
+                    if "KUBERNETES_SERVICE_HOST" in os.environ:
+                        msg += (
+                            " The worker may have exceeded K8s pod memory limits.")
+                    if hasattr(e, "ray_terminate_msg"):
+                        msg += (f" {e.ray_terminate_msg}")
+                    if hasattr(e, "unexpected_error_traceback"):
+                        msg += (f" {e.unexpected_error_traceback}")
+                    return CRayStatus.UnexpectedSystemExit(msg)
+            except Exception as e:
+                msg = "Unexpected exception raised in task execution handler: {}".format(e)
+                logger.error(msg)
                 return CRayStatus.UnexpectedSystemExit(msg)
-        except Exception as e:
-            msg = "Unexpected exception raised in task execution handler: {}".format(e)
-            logger.error(msg)
-            return CRayStatus.UnexpectedSystemExit(msg)
-        except BaseException as e:
-            # Safety net: any BaseException that is not Exception or SystemExit
-            # (e.g. KeyboardInterrupt, GeneratorExit) would otherwise escape this
-            # cdef function. Without this, Cython silently returns
-            # CRayStatus.OK() for unhandled non-Exception/non-SystemExit
-            # exceptions, causing a CHECK failure in HandleTaskExecutionResult
-            # when return objects are not populated.
-            # Convert to UnexpectedSystemExit so the C++ side
-            # treats this as a clean worker-exiting task failure.
-            #
-            # The motivating case is a rapid double `ray.cancel()`. The first
-            # cancel raises a KeyboardInterrupt that is caught by
-            # `execute_task_with_cancellation_handler`'s
-            # `except KeyboardInterrupt` clause, which calls
-            # `store_task_errors`. If a second cancel arrives while
-            # `store_task_errors` is running, it queues another SIGINT that
-            # fires inside the error-storage path. That KeyboardInterrupt
-            # cannot be re-caught (we are already inside `except
-            # KeyboardInterrupt`), so it escapes all the way out to this
-            # handler.
-            msg = (
-                "BaseException escaped task execution handlers: "
-                f"{type(e).__name__}: {e}"
-            )
-            logger.error(msg)
-            return CRayStatus.UnexpectedSystemExit(msg)
+            except BaseException as e:
+                # Safety net: any BaseException that is not Exception or SystemExit
+                # (e.g. KeyboardInterrupt, GeneratorExit) would otherwise escape this
+                # cdef function. Without this, Cython silently returns
+                # CRayStatus.OK() for unhandled non-Exception/non-SystemExit
+                # exceptions, causing a CHECK failure in HandleTaskExecutionResult
+                # when return objects are not populated.
+                # Convert to UnexpectedSystemExit so the C++ side
+                # treats this as a clean worker-exiting task failure.
+                #
+                # The motivating case is a rapid double `ray.cancel()`. The first
+                # cancel raises a KeyboardInterrupt that is caught by
+                # `execute_task_with_cancellation_handler`'s
+                # `except KeyboardInterrupt` clause, which calls
+                # `store_task_errors`. If a second cancel arrives while
+                # `store_task_errors` is running, it queues another SIGINT that
+                # fires inside the error-storage path. That KeyboardInterrupt
+                # cannot be re-caught (we are already inside `except
+                # KeyboardInterrupt`), so it escapes all the way out to this
+                # handler.
+                msg = (
+                    "BaseException escaped task execution handlers: "
+                    f"{type(e).__name__}: {e}"
+                )
+                logger.error(msg)
+                return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
 
@@ -2853,21 +2880,35 @@ cdef CRayStatus check_signals() nogil:
 
 
 cdef void gc_collect() nogil:
-     with gil:
-        if RayConfig.instance().start_python_gc_manager_thread():
-            start = time.perf_counter()
-            worker = ray._private.worker.global_worker
-            worker.core_worker.trigger_gc()
-            end = time.perf_counter()
-            logger.debug("GC event triggered in {} seconds".format(end - start))
-        else:
-            start = time.perf_counter()
-            num_freed = gc.collect()
-            end = time.perf_counter()
-            if num_freed > 0:
-                logger.debug(
-                    "gc.collect() freed {} refs in {} seconds".format(
-                        num_freed, end - start))
+    with gil:
+        try:
+            if RayConfig.instance().start_python_gc_manager_thread():
+                worker = ray._private.worker.global_worker
+                core_worker = getattr(worker, "core_worker", None)
+                # LocalGC can arrive after the worker announces its port to the
+                # raylet but before worker.core_worker is assigned. Skipping is
+                # safe: no task has run yet, so there are no ObjectRefs or actor
+                # handles for a Ray-triggered GC to free.
+                if core_worker is None:
+                    return
+                start = time.perf_counter()
+                core_worker.trigger_gc()
+                end = time.perf_counter()
+                logger.debug("GC event triggered in {} seconds".format(end - start))
+            else:
+                start = time.perf_counter()
+                num_freed = gc.collect()
+                end = time.perf_counter()
+                if num_freed > 0:
+                    logger.debug(
+                        "gc.collect() freed {} refs in {} seconds".format(
+                            num_freed, end - start))
+        except BaseException:
+            # This is here for defensive measure. No known path raises here.
+            # This callback runs on a C++ thread with no Python caller, so any
+            # escaping exception (including SystemExit and KeyboardInterrupt)
+            # crashes the process.
+            logger.exception("Error during garbage collection")
 
 
 cdef c_vector[c_string] spill_objects_handler(
@@ -3968,6 +4009,12 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string call_site
 
+        status = check_no_consume_once_args(args)
+        if not status.ok():
+            raise ValueError(
+                f"{status.message().decode()} "
+                "It can't be passed as an argument to a task.")
+
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
@@ -4070,6 +4117,12 @@ cdef class CoreWorker:
             CLabelSelector c_label_selector
             c_vector[CFallbackOption] c_fallback_strategy
             c_string call_site
+
+        status = check_no_consume_once_args(args)
+        if not status.ok():
+            raise ValueError(
+                f"{status.message().decode()} "
+                "It can't be passed as an argument to an actor constructor.")
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -4230,7 +4283,8 @@ cdef class CoreWorker:
                           int64_t num_objects_per_yield,
                           c_bool enable_task_events,
                           tensor_transport: Optional[str],
-                          dict labels=None):
+                          dict labels=None,
+                          c_bool consume_once=False):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -4249,6 +4303,7 @@ cdef class CoreWorker:
             c_vector[CFallbackOption] c_fallback_strategy
             optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
             c_string c_tensor_transport_str
+            CTaskOptions task_options
 
         if tensor_transport is not None:
             c_tensor_transport_str = tensor_transport.encode("utf-8")
@@ -4273,24 +4328,27 @@ cdef class CoreWorker:
 
             current_c_task_id = current_task.native()
 
+            task_options = CTaskOptions(
+                name,
+                num_returns,
+                c_resources,
+                concurrency_group_name,
+                generator_backpressure_num_objects,
+                num_objects_per_yield,
+                serialized_runtime_env,
+                enable_task_events,
+                c_labels,
+                c_label_selector,
+                c_tensor_transport,
+                c_fallback_strategy,
+                consume_once)
+
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                     c_actor_id,
                     ray_function,
                     args_vector,
-                    CTaskOptions(
-                        name,
-                        num_returns,
-                        c_resources,
-                        concurrency_group_name,
-                        generator_backpressure_num_objects,
-                        num_objects_per_yield,
-                        serialized_runtime_env,
-                        enable_task_events,
-                        c_labels,
-                        c_label_selector,
-                        c_tensor_transport,
-                        c_fallback_strategy),
+                    task_options,
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

@@ -70,13 +70,7 @@ Each replica in a gang has access to a `GangContext` through the replica context
 :language: python
 ```
 
-Here's the interface of `GangContext`:
-
-```{eval-rst}
-.. autoclass:: ray.serve.context.GangContext
-   :members:
-   :no-index:
-```
+For the full interface, see {py:class}`~ray.serve.context.GangContext`.
 
 Replicas can use `rank` and `world_size` to set up distributed communication, e.g. initializing NCCL process groups, and `member_replica_ids` to discover and connect to their peers.
 

@@ -154,6 +154,7 @@ def get_marwil_tf_policy(name: str, base: type) -> type:
     """Construct a MARWILTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
+        name: The `__qualname__` to assign to the returned policy class.
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:

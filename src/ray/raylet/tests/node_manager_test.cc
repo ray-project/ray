@@ -58,6 +58,19 @@ namespace {
 constexpr double kTestTotalCpuResource = 10.0;
 constexpr double kTestObjectStoreMemory = 1024 * 1024 * 1024;  // 1 GiB
 
+// Counts scheduling passes, including the one QueueAndScheduleLease runs internally.
+class CountingClusterLeaseManager : public ClusterLeaseManager {
+ public:
+  using ClusterLeaseManager::ClusterLeaseManager;
+
+  void ScheduleAndGrantLeases() override {
+    ++num_schedule_and_grant_leases;
+    ClusterLeaseManager::ScheduleAndGrantLeases();
+  }
+
+  int num_schedule_and_grant_leases = 0;
+};
+
 class FakeLocalObjectManager : public LocalObjectManagerInterface {
  public:
   FakeLocalObjectManager(
@@ -404,7 +417,7 @@ class NodeManagerTest : public ::testing::Test {
         scheduler_metrics,
         clock_);
 
-    cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
+    cluster_lease_manager_ = std::make_unique<CountingClusterLeaseManager>(
         raylet_node_id_,
         *cluster_resource_scheduler_,
         get_node_info_func,
@@ -454,6 +467,51 @@ class NodeManagerTest : public ::testing::Test {
     EXPECT_EQ(fake_worker_pool_.start_calls, 1);
   }
 
+  // Grant a lease that carries one plasma dependency of `arg_bytes` so the
+  // LocalLeaseManager pins it as a lease argument. Returns (lease_id, worker).
+  std::pair<LeaseID, std::shared_ptr<MockWorker>> GrantLeaseWithPinnedArg(
+      size_t arg_bytes) {
+    auto lease_spec = BuildLeaseSpec({});
+    ObjectID object_dep = ObjectID::FromRandom();
+    lease_spec.GetMutableMessage().add_dependencies()->set_object_id(object_dep.Binary());
+
+    rpc::Address owner_addr;
+    RAY_UNUSED(fake_store_client_->TryCreateImmediately(
+        object_dep,
+        owner_addr,
+        arg_bytes,
+        nullptr,
+        arg_bytes,
+        nullptr,
+        plasma::flatbuf::ObjectSource::CreatedByWorker,
+        0));
+
+    LeaseID lease_id = LeaseID::FromRandom();
+    lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+    rpc::RequestWorkerLeaseRequest request;
+    rpc::RequestWorkerLeaseReply reply;
+    request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+    request.set_backlog_size(1);
+    request.set_grant_or_reject(true);
+    request.set_is_selected_based_on_locality(true);
+
+    std::shared_ptr<MockWorker> worker =
+        std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+    PopWorkerCallback pop_cb;
+    fake_worker_pool_.pop_worker_hook = [&](const LeaseSpecification &,
+                                            const PopWorkerCallback &cb) { pop_cb = cb; };
+    node_manager_->HandleRequestWorkerLease(
+        request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
+          ASSERT_TRUE(s.ok());
+        });
+    std::vector<LeaseID> ready = lease_dependency_manager_->HandleObjectLocal(object_dep);
+    local_lease_manager_->LeasesUnblocked(ready);
+    RAY_CHECK(pop_cb);
+    pop_cb(worker, PopWorkerStatus::OK, "");
+    fake_worker_pool_.pop_worker_hook = nullptr;
+    return {lease_id, worker};
+  }
+
   instrumented_io_context io_service_;
   rpc::ClientCallManager client_call_manager_;
   rpc::CoreWorkerClientPool worker_rpc_pool_;
@@ -465,7 +523,7 @@ class NodeManagerTest : public ::testing::Test {
   ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
-  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  std::unique_ptr<CountingClusterLeaseManager> cluster_lease_manager_;
   std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
   std::shared_ptr<FakeLocalObjectManager> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
@@ -752,7 +810,7 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
   EXPECT_FALSE(failed_pin_reply.successes(0));
 }
 
-TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
+TEST_F(NodeManagerTest, TestConsumeSyncMessages) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
@@ -768,7 +826,8 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   msg.set_message_type(syncer::MessageType::RESOURCE_VIEW);
   msg.set_sync_message(serialized);
 
-  node_manager_->ConsumeSyncMessage(std::make_shared<syncer::RaySyncMessage>(msg));
+  node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW,
+                                     {std::make_shared<syncer::RaySyncMessage>(msg)});
 
   // Verify node resources and labels were updated.
   const auto &node_resources =
@@ -780,6 +839,116 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU")).Double(),
             kTestTotalCpuResource);
 }
+
+// Tests that a batch of resource views is applied in full with one scheduling pass.
+TEST_F(NodeManagerTest, TestConsumeSyncMessagesSchedulesOncePerBatch) {
+  auto make_resource_view = [](const NodeID &node_id) {
+    syncer::ResourceViewSyncMessage payload;
+    payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
+    payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
+    payload.mutable_labels()->insert({"label1", "value1"});
+    std::string serialized;
+    RAY_CHECK(payload.SerializeToString(&serialized));
+    auto msg = std::make_shared<syncer::RaySyncMessage>();
+    msg->set_node_id(node_id.Binary());
+    msg->set_message_type(syncer::MessageType::RESOURCE_VIEW);
+    msg->set_version(1);
+    msg->set_sync_message(serialized);
+    return msg;
+  };
+  const std::vector<NodeID> node_ids = {
+      NodeID::FromRandom(), NodeID::FromRandom(), NodeID::FromRandom()};
+
+  const int passes_before = cluster_lease_manager_->num_schedule_and_grant_leases;
+  node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW,
+                                     {make_resource_view(node_ids[0]),
+                                      make_resource_view(node_ids[1]),
+                                      make_resource_view(node_ids[2])});
+
+  for (const auto &node_id : node_ids) {
+    const auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
+    ASSERT_TRUE(cluster_resource_manager.HasNode(scheduling::NodeID(node_id.Binary())));
+    const auto &node_resources =
+        cluster_resource_manager.GetNodeResources(scheduling::NodeID(node_id.Binary()));
+    EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(),
+              kTestTotalCpuResource);
+    EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU")).Double(),
+              kTestTotalCpuResource);
+    EXPECT_EQ(node_resources.labels.at("label1"), "value1");
+  }
+  EXPECT_EQ(passes_before + 1, cluster_lease_manager_->num_schedule_and_grant_leases);
+}
+
+class NodeManagerDeadResourceSyncTest : public NodeManagerTest,
+                                        public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerDeadResourceSyncTest, IgnoreResourceViewsAfterNodeDeath) {
+  node_manager_->RegisterGcs();
+  auto &on_node_change =
+      fake_gcs_client_->fake_node_accessor->node_address_and_liveness_subscribe;
+  ASSERT_TRUE(on_node_change);
+  EXPECT_EQ(fake_gcs_client_->fake_node_accessor
+                ->async_subscribe_to_node_address_and_liveness_change_call_count,
+            1);
+  EXPECT_EQ(fake_gcs_client_->fake_worker_accessor
+                ->async_subscribe_to_worker_failures_call_count,
+            1);
+  EXPECT_EQ(fake_gcs_client_->fake_job_accessor->async_subscribe_all_call_count, 1);
+
+  auto &resources = cluster_resource_scheduler_->GetClusterResourceManager();
+  const auto initial_node_count = resources.NumNodes();
+  const auto node_id = NodeID::FromRandom();
+  const scheduling::NodeID scheduling_id(node_id.Binary());
+  syncer::ResourceViewSyncMessage payload;
+  (*payload.mutable_resources_total())["CPU"] = kTestTotalCpuResource;
+  (*payload.mutable_resources_available())["CPU"] = kTestTotalCpuResource;
+  (*payload.mutable_resources_total())["GPU"] = 1;
+  (*payload.mutable_resources_available())["GPU"] = 1;
+  (*payload.mutable_labels())["ray.io/accelerator-type"] = "H20";
+  auto msg = std::make_shared<syncer::RaySyncMessage>();
+  msg->set_node_id(node_id.Binary());
+  msg->set_message_type(syncer::MessageType::RESOURCE_VIEW);
+  ASSERT_TRUE(payload.SerializeToString(msg->mutable_sync_message()));
+
+  // Cover both an existing resource view and DEAD arriving before the first view.
+  if (GetParam()) {
+    node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW, {msg});
+    ASSERT_EQ(resources.NumNodes(), initial_node_count + 1);
+  }
+  rpc::GcsNodeAddressAndLiveness dead_node;
+  dead_node.set_node_id(node_id.Binary());
+  dead_node.set_state(GcsNodeInfo::DEAD);
+  on_node_change(node_id, dead_node);
+  ASSERT_EQ(fake_object_directory_->handle_node_removed_calls.size(), 1);
+  EXPECT_EQ(fake_object_directory_->handle_node_removed_calls.front(), node_id);
+  ASSERT_EQ(fake_object_manager_->handle_node_removed_calls.size(), 1);
+  EXPECT_EQ(fake_object_manager_->handle_node_removed_calls.front(), node_id);
+  ASSERT_EQ(resources.NumNodes(), initial_node_count);
+
+  for (int64_t version = 1; version <= 3; ++version) {
+    msg->set_version(version);
+    node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW, {msg});
+    EXPECT_EQ(resources.NumNodes(), initial_node_count);
+    EXPECT_FALSE(resources.GetResourceView().contains(scheduling_id));
+  }
+
+  // A restarted/new node has a new NodeID. Even without an ALIVE notification,
+  // its resource view must still be accepted (unlike the old dead NodeID).
+  const auto new_node_id = NodeID::FromRandom();
+  msg->set_node_id(new_node_id.Binary());
+  node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW, {msg});
+  EXPECT_EQ(resources.NumNodes(), initial_node_count + 1);
+  const scheduling::NodeID new_scheduling_id(new_node_id.Binary());
+  ASSERT_TRUE(resources.GetResourceView().contains(new_scheduling_id));
+  const auto &node_resources = resources.GetNodeResources(new_scheduling_id);
+  EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU")).Double(), 1);
+  EXPECT_EQ(node_resources.labels.at("ray.io/accelerator-type"), "H20");
+}
+
+INSTANTIATE_TEST_SUITE_P(ResourceViewOrdering,
+                         NodeManagerDeadResourceSyncTest,
+                         ::testing::Bool());
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   // Test 1: Up scaling (increasing resource capacity)
@@ -966,8 +1135,15 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
   bool worker_exiting = std::get<1>(params);
 
   LeaseID lease_id = LeaseID::FromRandom();
-  leased_workers_[lease_id] =
+  std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  // A worker in leased_workers_ always carries its granted lease (see
+  // LocalLeaseManager::Grant), and HandleReturnWorkerLease checks for it.
+  rpc::LeaseSpec lease_spec_msg;
+  lease_spec_msg.set_lease_id(lease_id.Binary());
+  lease_spec_msg.set_type(rpc::TaskType::NORMAL_TASK);
+  worker->GrantLease(RayLease(std::move(lease_spec_msg)));
+  leased_workers_[lease_id] = worker;
   rpc::ReturnWorkerLeaseRequest request;
   rpc::ReturnWorkerLeaseReply reply1;
   rpc::ReturnWorkerLeaseReply reply2;
@@ -1625,5 +1801,26 @@ TEST_P(ReleaseUnusedBundlesRetriesTest, TestHandleReleaseUnusedBundlesRetries) {
 INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
                          ReleaseUnusedBundlesRetriesTest,
                          ::testing::Bool());
+
+// Regression: HandleReturnWorkerLease with worker_exiting=true must release
+// pinned lease args without waiting on DisconnectClient.
+TEST_F(NodeManagerTest, TestExitingWorkerReleasesPinnedLeaseArgs) {
+  auto [lease_id, worker] = GrantLeaseWithPinnedArg(/*arg_bytes=*/1024);
+  ASSERT_GT(local_lease_manager_->GetPinnedLeaseArgumentsBytes(), 0);
+  ASSERT_EQ(leased_workers_.size(), 1u);
+
+  rpc::ReturnWorkerLeaseRequest request;
+  rpc::ReturnWorkerLeaseReply reply;
+  request.set_lease_id(lease_id.Binary());
+  request.set_worker_exiting(true);
+  request.set_disconnect_worker(false);
+  node_manager_->HandleReturnWorkerLease(
+      request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  EXPECT_EQ(leased_workers_.size(), 0u);
+  EXPECT_EQ(local_lease_manager_->GetPinnedLeaseArgumentsBytes(), 0);
+}
 
 }  // namespace ray::raylet

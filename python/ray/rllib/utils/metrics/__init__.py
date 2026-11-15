@@ -127,6 +127,9 @@ LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME = "learner_update_skipped_for_peer_life
 LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME = (
     "learner_module_steps_dropped_on_skip_lifetime"
 )
+LEARNER_MODULE_STEPS_DROPPED_FOR_PEER_LIFETIME = (
+    "learner_module_steps_dropped_for_peer_lifetime"
+)
 
 # Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...
 STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"

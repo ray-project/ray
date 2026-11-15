@@ -19,7 +19,7 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID NodeLabelSchedulingPolicy::Schedule(
+NodeSchedulingResult NodeLabelSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type_ == SchedulingType::NODE_LABEL);
   auto context =
@@ -31,14 +31,14 @@ scheduling::NodeID NodeLabelSchedulingPolicy::Schedule(
   // 1. Select feasible nodes
   auto hard_match_nodes = SelectFeasibleNodes(resource_request);
   if (hard_match_nodes.empty()) {
-    return scheduling::NodeID::Nil();
+    return NodeSchedulingResult::Infeasible();
   }
   // 2. Filter by hard expressions.
   if (node_label_scheduling_strategy.hard().expressions().size() > 0) {
     hard_match_nodes = FilterNodesByLabelMatchExpressions(
         hard_match_nodes, node_label_scheduling_strategy.hard());
     if (hard_match_nodes.empty()) {
-      return scheduling::NodeID::Nil();
+      return NodeSchedulingResult::Infeasible();
     }
   }
 
@@ -50,7 +50,8 @@ scheduling::NodeID NodeLabelSchedulingPolicy::Schedule(
         FilterNodesByLabelMatchExpressions(hard_match_nodes, soft_expressions);
   }
 
-  return SelectBestNode(hard_match_nodes, hard_and_soft_match_nodes, resource_request);
+  return NodeSchedulingResult::Scheduled(
+      SelectBestNode(hard_match_nodes, hard_and_soft_match_nodes, resource_request));
 }
 
 scheduling::NodeID NodeLabelSchedulingPolicy::SelectBestNode(
