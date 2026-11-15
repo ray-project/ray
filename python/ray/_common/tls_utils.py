@@ -50,7 +50,7 @@ def generate_self_signed_tls_certs() -> Tuple[str, str]:
             x509.DNSName("localhost"),
         ]
     )
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)

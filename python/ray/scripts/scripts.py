@@ -11,7 +11,7 @@ import urllib
 import urllib.parse
 import warnings
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Set, Tuple
 
 import click
@@ -403,7 +403,7 @@ def debug(address: str, verbose: bool):
                 ]
             ]
             for i, data in enumerate(sessions_data):
-                date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
+                date = datetime.fromtimestamp(data["timestamp"], timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S"
                 )
                 table.append(
@@ -422,7 +422,7 @@ def debug(address: str, verbose: bool):
             # Non verbose mode: no IDs.
             table = [["index", "timestamp", "Ray task", "filename:lineno"]]
             for i, data in enumerate(sessions_data):
-                date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
+                date = datetime.fromtimestamp(data["timestamp"], timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S"
                 )
                 table.append(
