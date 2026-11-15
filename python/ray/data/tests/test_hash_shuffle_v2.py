@@ -627,6 +627,47 @@ def test_shuffle_reduce_task_uses_operator_name():
     assert shuffle_reduce_task.options.call_args.kwargs["name"] == name
 
 
+@pytest.mark.parametrize(
+    "map_op_cls,task_path,returns_multiple_refs",
+    [
+        pytest.param(
+            ShuffleMapOp,
+            "ray.data._internal.execution.operators.shuffle_operators."
+            "shuffle_map_operator._shuffle_map_task",
+            True,
+            id="object_store",
+        ),
+        # The disk writer is a plain map op; see
+        # test_disk_shuffle_map_is_plain_map_operator.
+    ],
+)
+def test_shuffle_map_task_uses_context_label_selector(
+    restore_data_context, map_op_cls, task_path, returns_multiple_refs
+):
+    restore_data_context.execution_options.label_selector = {
+        "subcluster": "train",
+        "zone": "us-west",
+    }
+    op = map_op_cls(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(task_path) as shuffle_map_task:
+        shuffle_map_task.options.return_value.remote.return_value = (
+            [MagicMock(), MagicMock()] if returns_multiple_refs else MagicMock()
+        )
+        op._submit_shuffle_map_task([], [])
+
+    assert shuffle_map_task.options.call_args.kwargs["label_selector"] == {
+        "subcluster": "train",
+        "zone": "us-west",
+    }
+
+
 def test_disk_shuffle_map_is_plain_map_operator(restore_data_context):
     """The disk-shuffle map stage is a task-pool map feeding the reduce, and
     its tasks pick up the execution options' label selector like any map."""
@@ -655,18 +696,39 @@ def test_disk_shuffle_map_is_plain_map_operator(restore_data_context):
     assert remote_args["runtime_env"] == _SHUFFLE_MAP_RUNTIME_ENV
 
 
-def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
+@pytest.mark.parametrize(
+    "map_op_cls,reduce_op_cls,task_path",
+    [
+        pytest.param(
+            ShuffleMapOp,
+            ShuffleReduceOp,
+            "ray.data._internal.execution.operators.shuffle_operators."
+            "shuffle_reduce_operator._shuffle_reduce_task",
+            id="object_store",
+        ),
+        pytest.param(
+            plan_disk_hash_shuffle_map,
+            plan_disk_hash_shuffle_reduce,
+            "ray.data._internal.execution.operators.shuffle_operators."
+            "disk_shuffle_reduce_operator._disk_shuffle_reduce_task",
+            id="disk",
+        ),
+    ],
+)
+def test_shuffle_reduce_task_merges_label_selector(
+    restore_data_context, map_op_cls, reduce_op_cls, task_path
+):
     restore_data_context.execution_options.label_selector = {
         "subcluster": "train",
         "zone": "us-west",
     }
-    map_op = plan_disk_hash_shuffle_map(
+    map_op = map_op_cls(
         InputDataBuffer(restore_data_context, []),
         restore_data_context,
         num_partitions=1,
         partition_fn=lambda table: {},
     )
-    op = plan_disk_hash_shuffle_reduce(
+    op = reduce_op_cls(
         map_op,
         restore_data_context,
         num_partitions=1,
@@ -677,12 +739,14 @@ def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
     )
     op.start(ExecutionOptions(), noop_counter())
 
-    with patch(
-        "ray.data._internal.execution.operators.shuffle_operators."
-        "disk_shuffle_reduce_operator._disk_shuffle_reduce_task"
-    ) as shuffle_reduce_task:
+    bundle = RefBundle((), schema=None, owns_blocks=True)
+    with patch(task_path) as shuffle_reduce_task:
         shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
-        op._submit_reduce_task(0, RefBundle((), schema=None, owns_blocks=True))
+        if isinstance(op, DiskHashShuffleReduceOp):
+            # The regroup hands the disk reduce one bundle per partition.
+            op._submit_reduce_task(0, bundle)
+        else:
+            op._submit_reduce_task(0, [bundle])
 
     assert shuffle_reduce_task.options.call_args.kwargs["label_selector"] == {
         "subcluster": "validation",

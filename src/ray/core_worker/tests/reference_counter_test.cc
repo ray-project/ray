@@ -633,6 +633,46 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   ASSERT_TRUE(*out_of_scope);
 }
 
+TEST_F(ReferenceCountTest, TestMoveState) {
+  ObjectID default_id = ObjectID::FromRandom();
+  ObjectID movable_id = ObjectID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  ASSERT_FALSE(rc->HasConsumeOnceObjects());
+  rc->AddOwnedObject(default_id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true);
+  rc->AddOwnedObject(movable_id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true,
+                     /*pinned_at_node_id=*/std::nullopt,
+                     /*tensor_transport=*/std::nullopt,
+                     MoveState::MOVABLE);
+  ASSERT_TRUE(rc->HasConsumeOnceObjects());
+
+  ASSERT_EQ(rc->GetMoveState(default_id), MoveState::NOT_MOVABLE);
+  ASSERT_EQ(rc->GetMoveState(movable_id), MoveState::MOVABLE);
+  ASSERT_EQ(rc->GetMoveState(ObjectID::FromRandom()), std::nullopt);
+  ASSERT_EQ(rc->GetMoveState(ObjectID::Nil()), std::nullopt);
+
+  std::vector<ObjectID> out;
+  rc->RemoveLocalReference(movable_id, &out);
+  ASSERT_FALSE(rc->HasConsumeOnceObjects());
+  rc->RemoveLocalReference(default_id, &out);
+  ASSERT_FALSE(rc->HasReference(movable_id));
+  ASSERT_FALSE(rc->HasReference(default_id));
+  ASSERT_EQ(rc->GetMoveState(movable_id), std::nullopt);
+}
+
 // Tests call site tracking and ability to update object size.
 TEST_F(ReferenceCountTest, TestReferenceStats) {
   ObjectID id1 = ObjectID::FromRandom();
