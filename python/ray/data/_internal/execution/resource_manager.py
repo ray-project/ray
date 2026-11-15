@@ -760,9 +760,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # starved of its minimum resources, or None if it currently has them.
         self._op_starved_since: Dict[PhysicalOperator, Optional[float]] = {}
 
-    def _update_reservation(self, limits: ExecutionResources):
-        eligible_ops = self._get_eligible_ops()
-
+    def _update_reservation(
+        self, limits: ExecutionResources, eligible_ops: List[PhysicalOperator]
+    ) -> None:
+        """Update reservations using this budget update's eligible-operator snapshot."""
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
@@ -1011,11 +1012,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
-        # Remaining resources to be distributed across operators
-        remaining_shared = self._update_reservation(limits)
+        eligible_ops = self._get_eligible_ops()
+        self._update_reservation(limits, eligible_ops)
 
         self._op_budgets.clear()
-        eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 
