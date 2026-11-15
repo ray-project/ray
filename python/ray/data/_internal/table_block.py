@@ -220,7 +220,8 @@ class TableBlockAccessor(BlockAccessor):
                 acc, TableBlockAccessor
             ):
                 # If block types are different, but still both of TableBlock type, try
-                # converting both to default block type before zipping.
+                # converting both to the majority block type before zipping. With
+                # two blocks that is always a tie, which the first block's type wins.
                 self_norm, other_norm = TableBlockAccessor.normalize_block_types(
                     [self._table, other],
                 )
@@ -599,7 +600,7 @@ class TableBlockAccessor(BlockAccessor):
 
         # Pick the most prevalent block-type
         if target_block_type is None:
-            _, target_block_type = sorted(
+            target_block_type, _ = sorted(
                 seen_types.items(),
                 key=lambda x: x[1],
                 reverse=True,
