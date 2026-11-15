@@ -61,6 +61,50 @@ class _FakeTransportManager:
         return TensorTransportMetadata(tensor_meta=[], tensor_device="cpu")
 
 
+class _FakeTimer:
+    """Deterministic stand-in for ``threading.Timer``.
+
+    ``start()`` records the timer; tests drive it by calling ``fire()``, which
+    invokes the timer's target exactly as the real Timer thread would.
+    ``cancel()`` prevents a not-yet-fired timer from firing; ``fire(force=True)``
+    simulates a timer whose interval already elapsed (its thread is already past
+    ``cancel``). ``start_raises`` lets a test inject the ``RuntimeError`` a real
+    ``Thread.start`` can raise.
+    """
+
+    created = []
+    start_raises = False
+
+    def __init__(self, interval, function, args=None, kwargs=None):
+        self.interval = interval
+        self.function = function
+        self.args = list(args or ())
+        self.kwargs = dict(kwargs or {})
+        self.daemon = False
+        self.cancelled = False
+        _FakeTimer.created.append(self)
+
+    def start(self):
+        if _FakeTimer.start_raises:
+            raise RuntimeError("can't start new thread")
+
+    def cancel(self):
+        self.cancelled = True
+
+    def fire(self, force=False):
+        if self.cancelled and not force:
+            return
+        self.function(*self.args, **self.kwargs)
+
+
+@pytest.fixture
+def fake_timer(monkeypatch):
+    _FakeTimer.created = []
+    _FakeTimer.start_raises = False
+    monkeypatch.setattr(threading, "Timer", _FakeTimer)
+    return _FakeTimer
+
+
 def _inject_fake_torch(monkeypatch):
     fake_torch = types.ModuleType("torch")
     fake_torch.Tensor = _FakeTorchTensor
@@ -367,6 +411,8 @@ def test_failing_callback_on_pop_still_frees_and_notifies(monkeypatch):
 
     assert freed.is_set()
     assert not store.has_tensor(tensor)
+    # Cancel the pending retry timer so it can't fire into later tests.
+    store.disable_memory_info_callback()
 
 
 def test_failing_callback_on_pop_preserves_original_receive_error():
@@ -378,6 +424,7 @@ def test_failing_callback_on_pop_preserves_original_receive_error():
     # The queued receive error must surface, not the publisher's failure.
     with pytest.raises(ValueError, match="original receive error"):
         store.pop_object(OBJ_ID)
+    store.disable_memory_info_callback()
 
 
 def test_failing_callback_on_add_still_notifies_waiter(monkeypatch):
@@ -416,6 +463,8 @@ def test_failing_callback_on_add_still_notifies_waiter(monkeypatch):
         assert len(results) == 1
     finally:
         t.join(timeout=11)
+    # Cancel the pending retry timer so it can't fire into later tests.
+    store.disable_memory_info_callback()
 
 
 def test_disable_callback_waits_for_inflight_publish():
@@ -560,6 +609,321 @@ def test_concurrent_add_pop_publishes_final_erase_last():
     assert not errors
     assert all(not t.is_alive() for t in threads)
     assert recorded[-1] == (bytes.fromhex(OBJ_ID), [], 0, 0)
+
+
+@pytest.mark.parametrize("error_case", [False, True])
+def test_failed_erase_recovers_while_idle(monkeypatch, error_case):
+    # A callback acting as the native map: it accepts the add publish, fails the
+    # final erase (data or error), then succeeds. The store must erase the stale
+    # native row on its own (no further mutation) via the retry timer.
+    import ray.experimental.rdt.rdt_store as rdt_store_module
+
+    monkeypatch.setattr(rdt_store_module, "_RETRY_INTERVAL_SECONDS", 0.05)
+
+    native = {}
+    fail_erase = {"on": True}
+    erased = threading.Event()
+
+    def callback(object_id_bytes, device_bytes, num_copies, num_errors):
+        if num_copies == 0 and num_errors == 0:
+            if fail_erase["on"]:
+                raise RuntimeError("native erase failed")
+            native.pop(object_id_bytes, None)
+            erased.set()
+        else:
+            native[object_id_bytes] = (list(device_bytes), num_copies, num_errors)
+
+    store = RDTStore(memory_info_callback=callback)
+    if error_case:
+        store.add_object(OBJ_ID, ValueError("original receive error"))
+        assert native[bytes.fromhex(OBJ_ID)] == ([], 0, 1)
+        # The queued receive error still surfaces, not the publish failure.
+        with pytest.raises(ValueError, match="original receive error"):
+            store.pop_object(OBJ_ID)
+    else:
+        tensor = _Weakrefable()
+        ref = weakref.ref(tensor)
+        store.add_object(OBJ_ID, [tensor])
+        assert native[bytes.fromhex(OBJ_ID)] == ([("unknown", -1)], 1, 0)
+        assert store.pop_object(OBJ_ID) == [tensor]
+        del tensor
+        gc.collect()
+        # The popped tensor is GC-able while the erase is still pending.
+        assert ref() is None
+
+    # No further store mutations; the row must disappear on its own.
+    fail_erase["on"] = False
+    assert erased.wait(timeout=5), "native row never erased while idle"
+    assert bytes.fromhex(OBJ_ID) not in native
+    store.disable_memory_info_callback()
+
+
+def test_multiple_transient_failures_retain_tombstone_until_success(monkeypatch):
+    # More than one transient failure must not drop the tombstone: the retry
+    # keeps trying until the callback finally succeeds.
+    import ray.experimental.rdt.rdt_store as rdt_store_module
+
+    monkeypatch.setattr(rdt_store_module, "_RETRY_INTERVAL_SECONDS", 0.05)
+
+    native = {}
+    failures_left = {"n": 3}
+    erased = threading.Event()
+
+    def callback(object_id_bytes, device_bytes, num_copies, num_errors):
+        if num_copies == 0 and num_errors == 0:
+            if failures_left["n"] > 0:
+                failures_left["n"] -= 1
+                raise RuntimeError("native erase failed")
+            native.pop(object_id_bytes, None)
+            erased.set()
+        else:
+            native[object_id_bytes] = (list(device_bytes), num_copies, num_errors)
+
+    store = RDTStore(memory_info_callback=callback)
+    store.add_object(OBJ_ID, [object()])
+    assert native[bytes.fromhex(OBJ_ID)] == ([("unknown", -1)], 1, 0)
+    store.pop_object(OBJ_ID)  # erase failure #1
+
+    assert erased.wait(timeout=5)
+    assert failures_left["n"] == 0  # all three failures were consumed
+    assert bytes.fromhex(OBJ_ID) not in native
+    store.disable_memory_info_callback()
+
+
+def test_reuse_object_id_while_erase_pending_republishes_live(fake_timer):
+    native = {}
+    fail = {"on": True}
+
+    def callback(object_id_bytes, device_bytes, num_copies, num_errors):
+        if fail["on"]:
+            raise RuntimeError("boom")
+        if num_copies == 0 and num_errors == 0:
+            native.pop(object_id_bytes, None)
+        else:
+            native[object_id_bytes] = (list(device_bytes), num_copies, num_errors)
+
+    store = RDTStore(memory_info_callback=callback)
+    # Add and pop the first copy; the erase publish fails, leaving a tombstone.
+    store.add_object(OBJ_ID, [object()])
+    store.pop_object(OBJ_ID)
+    assert OBJ_ID in store._pending_publish_ids
+    assert store._object_memory_stats[OBJ_ID].num_copies == 0  # tombstone
+
+    # Reuse the same ID; the add publish also fails, but the aggregate is now
+    # the new live copy (num_copies == 1), not the stale tombstone.
+    store.add_object(OBJ_ID, [object()])
+    assert store._object_memory_stats[OBJ_ID].num_copies == 1
+
+    # Recover and retry: the retry must publish the live aggregate, not erase.
+    fail["on"] = False
+    [t for t in _FakeTimer.created if not t.cancelled][0].fire()
+    assert native[bytes.fromhex(OBJ_ID)] == ([("unknown", -1)], 1, 0)
+
+    # A normal final pop clears the row.
+    store.pop_object(OBJ_ID)
+    assert bytes.fromhex(OBJ_ID) not in native
+
+
+def test_disable_cancels_pending_retry(fake_timer):
+    attempts = []
+
+    def callback(*args):
+        attempts.append(args)
+        raise RuntimeError("native setter failed")
+
+    store = RDTStore(memory_info_callback=callback)
+    store.add_object(OBJ_ID, [object()])  # fails -> timer scheduled
+    timer = _FakeTimer.created[-1]
+    assert not timer.cancelled
+    assert len(attempts) == 1  # the add's publish attempt
+
+    store.disable_memory_info_callback()
+    assert timer.cancelled
+    assert store._pending_publish_ids == set()
+    assert store._object_memory_stats == {}
+
+    # Force the cancelled timer's callback to run (as if its interval already
+    # elapsed past cancel()): the teardown guard must prevent any late publish
+    # attempt and must not reschedule.
+    timer.fire(force=True)
+    assert len(attempts) == 1  # no late attempt
+    assert len(_FakeTimer.created) == 1  # no reschedule
+
+
+def test_persistent_failure_schedules_one_timer_one_attempt_per_tick(fake_timer):
+    calls = []
+
+    def callback(object_id_bytes, device_bytes, num_copies, num_errors):
+        calls.append(object_id_bytes)
+        raise RuntimeError("native setter failed")
+
+    store = RDTStore(memory_info_callback=callback)
+    store.add_object(OBJ_ID, [object()])
+    store.add_object(OBJ_ID_2, [object()])
+    # Two failures coalesce onto a single timer.
+    assert len(calls) == 2
+    assert len(_FakeTimer.created) == 1
+
+    # One tick retries each pending object exactly once, then schedules exactly
+    # one successor (no spinning).
+    _FakeTimer.created[-1].fire()
+    assert len(calls) == 4
+    assert len(_FakeTimer.created) == 2
+
+    _FakeTimer.created[-1].fire()
+    assert len(calls) == 6
+    assert len(_FakeTimer.created) == 3
+    store.disable_memory_info_callback()
+
+
+def test_successful_mutation_cancels_timer(fake_timer):
+    fail = {"on": True}
+
+    def callback(*args):
+        if fail["on"]:
+            raise RuntimeError("native setter failed")
+
+    store = RDTStore(memory_info_callback=callback)
+    store.add_object(OBJ_ID, [object()])  # fails -> timer scheduled
+    timer = _FakeTimer.created[-1]
+    assert not timer.cancelled
+
+    fail["on"] = False
+    store.pop_object(OBJ_ID)  # erase succeeds -> pending empty -> timer cancelled
+    assert timer.cancelled
+    assert store._retry_timer is None
+    assert len(_FakeTimer.created) == 1
+
+
+def test_stale_cancelled_timer_does_not_clobber_new_timer(fake_timer):
+    attempts = []
+    fail = {"on": True}
+
+    def callback(object_id_bytes, device_bytes, num_copies, num_errors):
+        attempts.append((object_id_bytes, num_copies, num_errors))
+        if fail["on"]:
+            raise RuntimeError("boom")
+
+    store = RDTStore(memory_info_callback=callback)
+    store.add_object(OBJ_ID, [object()])  # fails -> old timer (gen 1)
+    old = _FakeTimer.created[-1]
+
+    # A successful mutation clears the pending entry and cancels the old timer.
+    fail["on"] = False
+    store.pop_object(OBJ_ID)
+    assert old.cancelled
+
+    # A new failure schedules a newer timer (gen 2).
+    fail["on"] = True
+    store.add_object(OBJ_ID_2, [object()])
+    new = _FakeTimer.created[-1]
+    assert new is not old
+    assert store._retry_timer is new
+
+    # A stale, already-in-flight old timer firing now must no-op: it cannot
+    # publish (successfully or not), nor replace/cancel the newer timer, and no
+    # third timer appears.
+    before = list(attempts)
+    old.fire(force=True)
+    assert store._retry_timer is new
+    assert len(_FakeTimer.created) == 2
+    assert attempts == before
+    store.disable_memory_info_callback()
+
+
+def test_timer_start_failure_is_nonfatal(fake_timer):
+    def callback(*args):
+        raise RuntimeError("native setter failed")
+
+    store = RDTStore(memory_info_callback=callback)
+
+    # A failing publish whose retry timer can't start must not fail the
+    # already-successful add or pop, and must keep the pending entry.
+    _FakeTimer.start_raises = True
+    try:
+        tensor = _Weakrefable()
+        store.add_object(OBJ_ID, [tensor])
+        assert store.get_num_objects() == 1
+        assert store.pop_object(OBJ_ID) == [tensor]
+        assert store.get_num_objects() == 0
+        assert store._retry_timer is None
+        assert OBJ_ID in store._pending_publish_ids
+    finally:
+        _FakeTimer.start_raises = False
+
+    # The original receive error must still surface, not the timer-start error.
+    _FakeTimer.start_raises = True
+    try:
+        store.add_object(OBJ_ID_2, ValueError("original receive error"))
+        with pytest.raises(ValueError, match="original receive error"):
+            store.pop_object(OBJ_ID_2)
+    finally:
+        _FakeTimer.start_raises = False
+    store.disable_memory_info_callback()
+
+
+def test_recover_reschedules_after_timer_start_failure(fake_timer):
+    # A timer-start failure leaves pending IDs with no timer. Once the callback
+    # (and Timer.start) recover, a successful mutation of an *unrelated* object
+    # must re-arm the retry timer for the still-pending ghost.
+    native = {}
+    fail_erase = {"on": True}
+    _FakeTimer.start_raises = True
+
+    def callback(object_id_bytes, device_bytes, num_copies, num_errors):
+        if num_copies == 0 and num_errors == 0:
+            if fail_erase["on"]:
+                raise RuntimeError("native erase failed")
+            native.pop(object_id_bytes, None)
+        else:
+            native[object_id_bytes] = (list(device_bytes), num_copies, num_errors)
+
+    store = RDTStore(memory_info_callback=callback)
+    # Initial live row publishes successfully.
+    store.add_object(OBJ_ID, [object()])
+    assert native[bytes.fromhex(OBJ_ID)] == ([("unknown", -1)], 1, 0)
+
+    # Final pop: the erase publish fails AND the timer can't start, so the ghost
+    # remains with no timer armed (the one timer that was constructed is dead).
+    store.pop_object(OBJ_ID)
+    assert bytes.fromhex(OBJ_ID) in native  # ghost still present
+    assert OBJ_ID in store._pending_publish_ids
+    assert store._retry_timer is None
+    assert len(_FakeTimer.created) == 1  # the dead timer only
+
+    # Callback and Timer.start recover; an unrelated object's successful add
+    # must now re-arm the retry timer for the pending ghost.
+    fail_erase["on"] = False
+    _FakeTimer.start_raises = False
+    store.add_object(OBJ_ID_2, [object()])
+    assert native[bytes.fromhex(OBJ_ID_2)] == ([("unknown", -1)], 1, 0)
+    assert store._retry_timer is not None  # re-armed
+    assert len(_FakeTimer.created) == 2  # dead + re-armed
+
+    # Fire the re-armed timer: the ghost is erased while the new live row stays.
+    _FakeTimer.created[-1].fire()
+    assert bytes.fromhex(OBJ_ID) not in native
+    assert native[bytes.fromhex(OBJ_ID_2)] == ([("unknown", -1)], 1, 0)
+    store.disable_memory_info_callback()
+
+
+def test_store_gc_with_pending_timer(fake_timer):
+    def callback(*args):
+        raise RuntimeError("native setter failed")
+
+    store = RDTStore(memory_info_callback=callback)
+    store.add_object(OBJ_ID, [object()])  # fails -> timer scheduled
+    ref = weakref.ref(store)
+    timer = _FakeTimer.created[-1]
+
+    del store
+    gc.collect()
+    assert ref() is None  # standalone store is collectable despite the timer
+
+    # Force-firing the orphaned timer (its target holds only a weak reference)
+    # is a no-op and must not schedule a new timer.
+    timer.fire(force=True)
+    assert len(_FakeTimer.created) == 1
 
 
 if __name__ == "__main__":

@@ -28,6 +28,9 @@ from ray.experimental.collective import create_collective_group
 
 @ray.remote
 class RdtMemorySender:
+    def __init__(self):
+        self._injected_erase_failure_seen = False
+
     @ray.method(tensor_transport="gloo")
     def produce(self, x):
         return x
@@ -37,6 +40,30 @@ class RdtMemorySender:
 
     def num_rdt_objects(self):
         return ray._private.worker.global_worker.rdt_manager.rdt_store.get_num_objects()
+
+    def arm_transient_erase_failure(self):
+        """Wrap this worker's real publish callback to fail the next erase once.
+
+        The wrapper delegates every non-failing call to the actual
+        ``Worker._rdt_memory_info_callback`` (which reaches the native
+        ``CoreWorker.set_rdt_object_memory_info``), so native stats are never
+        fabricated — only the erase publication is made to fail once.
+        """
+        store = ray._private.worker.global_worker.rdt_manager.rdt_store
+        original = store._memory_info_callback
+        armed = {"value": True}
+
+        def wrapped(object_id_bytes, device_bytes, num_copies, num_errors):
+            if armed["value"] and num_copies == 0 and num_errors == 0:
+                armed["value"] = False
+                self._injected_erase_failure_seen = True
+                raise RuntimeError("injected native erase publication failure")
+            return original(object_id_bytes, device_bytes, num_copies, num_errors)
+
+        store._memory_info_callback = wrapped
+
+    def injected_erase_failure_seen(self):
+        return self._injected_erase_failure_seen
 
 
 @ray.remote(enable_tensor_transport=True)
@@ -171,6 +198,59 @@ def test_rdt_memory_lifecycle(ray_start_regular, tmp_path):
         timeout=10,
         retry_interval_ms=100,
     )
+
+
+def test_rdt_memory_transient_erase_failure_recovers_idle(ray_start_regular):
+    # A transient native erase-publication failure must not leave a ghost row:
+    # the producer's RDTStore retains a zero-state tombstone and a lazily
+    # scheduled timer republishes the erase while the worker is otherwise idle.
+    sender = RdtMemorySender.remote()
+    create_collective_group([sender], backend="gloo")
+
+    tensor = torch.ones(8, dtype=torch.float32)  # 8 * 4 = 32 logical bytes
+    ref = sender.produce.remote(tensor)
+    obj_id = ref.hex()
+    sender_pid = ray.get(sender.pid.remote())
+
+    # A successful nonzero row is published before the fault is armed.
+    wait_for_condition(
+        lambda: ray.get(sender.num_rdt_objects.remote(), timeout=5) == 1,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    def _producer_row_ok():
+        cw = _worker_stats_by_pid(sender_pid)
+        if cw is None:
+            return False
+        entry = _rdt_object(cw, obj_id)
+        return entry is not None and entry.get("tensorBytes") == {"cpu": 32}
+
+    wait_for_condition(_producer_row_ok, timeout=10, retry_interval_ms=100)
+
+    # Inject a one-shot failure on the real worker erase callback.
+    ray.get(sender.arm_transient_erase_failure.remote(), timeout=10)
+
+    # Drop the ref: the native GC pops the primary copy and the erase publish
+    # fails once. No further add/pop is needed to recover.
+    del ref
+    wait_for_condition(
+        lambda: ray.get(sender.num_rdt_objects.remote(), timeout=5) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    # The native row must disappear while the worker is otherwise idle.
+    wait_for_condition(
+        lambda: _stats_present_rdt_gone(sender_pid, obj_id),
+        timeout=15,
+        retry_interval_ms=100,
+    )
+
+    # The fault genuinely fired (the erase callback failed once), and the worker
+    # remains alive afterward.
+    assert ray.get(sender.injected_erase_failure_seen.remote(), timeout=5)
+    assert ray.get(sender.num_rdt_objects.remote(), timeout=5) == 0
 
 
 def test_rdt_memory_receiver_residency(ray_start_regular):

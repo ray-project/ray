@@ -1,6 +1,7 @@
 import logging
 import sys
 import threading
+import weakref
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -24,6 +25,25 @@ logger = logging.getLogger(__name__)
 # core worker as int64; a total outside this range is published as -1 (unknown)
 # rather than overflowing the native conversion.
 _INT64_MAX = (1 << 63) - 1
+
+# Interval between retries of failed memory-info publishes. A single lazily
+# scheduled daemon ``threading.Timer`` is started only while at least one
+# publish failure is pending; it retries each pending object once per tick.
+# Retries are best-effort: a row is eventually recovered only if the callback
+# starts succeeding again (there is no deadline or success guarantee).
+_RETRY_INTERVAL_SECONDS = 1.0
+
+
+def _retry_pending_publishes(store_ref, generation):
+    """Weakref trampoline for the retry timer.
+
+    The timer holds only a weak reference to the store (so a standalone store
+    with a pending failing publish can still be garbage-collected) and a
+    generation token that lets the tick ignore a stale, already-replaced timer.
+    """
+    store = store_ref()
+    if store is not None:
+        store._retry_publish_tick(generation)
 
 
 def _tensor_device_and_bytes(tensor: Any) -> Tuple[str, int]:
@@ -264,6 +284,8 @@ class RDTStore:
     thread may get and put objects.
     3. The background CoreWorker server thread, which executes garbage
     collection callbacks that pop objects that are no longer in use.
+    4. A lazily-scheduled daemon retry timer thread, which exists only while a
+    memory-info publish failure is pending and republishes those objects.
     """
 
     def __init__(self, memory_info_callback: Optional[Callable] = None):
@@ -288,8 +310,24 @@ class RDTStore:
         # core-worker dependency and skips tensor introspection entirely.
         self._memory_info_callback = memory_info_callback
 
-        # Per-object scalar aggregates, mutated under `self._lock`.
+        # Per-object scalar aggregates, mutated under `self._lock`. A zero-copy/
+        # zero-error aggregate is a "tombstone" retained until the native erase
+        # publish succeeds, so a failed final erase can be retried.
         self._object_memory_stats: Dict[str, _ObjectMemoryStats] = {}
+
+        # Object IDs whose most recent publish failed and whose aggregate (live
+        # or tombstone) must be republished once the callback recovers. Only
+        # scalar object-ID strings are retained here — never tensor data or
+        # ObjectRefs. Mutated under `self._lock`.
+        self._pending_publish_ids: Set[str] = set()
+
+        # The single lazily-scheduled retry timer, or None when idle. Guarded by
+        # `self._lock`; its callback holds only a weak reference to this store.
+        self._retry_timer: Optional[threading.Timer] = None
+        # Monotonic token identifying the currently scheduled timer generation.
+        # A timer tick that fires after it was cancelled and replaced observes a
+        # stale token and becomes a no-op (guarded by `self._lock`).
+        self._retry_generation: int = 0
 
     def disable_memory_info_callback(self) -> None:
         """Irrevocably disable memory-info publishing and drop the aggregate.
@@ -302,10 +340,15 @@ class RDTStore:
 
         Takes ``self._lock`` so it synchronizes with any in-flight add/pop: a
         callback that is mid-publish finishes before the callback is cleared.
+        Also cancels the outstanding retry timer and clears pending/tombstone
+        state so no late publish can write into a torn-down (or reinitialized)
+        runtime. The timer is cancelled, not joined, while holding the lock.
         """
         with self._lock:
             self._memory_info_callback = None
             self._object_memory_stats.clear()
+            self._pending_publish_ids.clear()
+            self._cancel_retry_timer_locked()
 
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
@@ -510,7 +553,10 @@ class RDTStore:
         ``rdt_object.device_bytes`` / ``device_counts`` / ``num_unknown`` are the
         values cached at add time, so this never re-reads (possibly freed or
         resized) tensors. Once the last copy and last error are gone the
-        aggregate is cleared and the next publish erases the native entry.
+        aggregate reaches its zero-copy/zero-error state, which the next publish
+        erases from the native snapshot. That zero-state tombstone is retained
+        here (not deleted) so a failed final erase can be retried; it is dropped
+        by :meth:`_publish_memory_info` once the erase succeeds.
 
         ``rdt_object.device_bytes`` / ``device_counts`` may be ``None`` only when
         publishing was disabled at add time. The callback is constructor-injected
@@ -539,25 +585,29 @@ class RDTStore:
                     stats.device_counts[device] = remaining_count
                     stats.device_bytes[device] -= num_bytes
             stats.num_unknown -= rdt_object.num_unknown
-        if stats.num_copies <= 0 and stats.num_errors <= 0:
-            del self._object_memory_stats[obj_id]
         self._publish_memory_info(obj_id)
 
     def _publish_memory_info(self, obj_id: str) -> None:
         """Publish the current per-object aggregate to the core worker.
 
-        Called while holding ``self._lock`` so concurrent add/pop can't reorder
-        native snapshots. The callback receives scalar values only and takes its
-        own native mutex without re-entering Python, so holding the store lock
-        here is safe. Per-device totals outside int64 range are published as -1
-        (unknown). When both counts are zero the native entry is erased.
+        Called while holding ``self._lock`` so concurrent add/pop (and the retry
+        timer) can't reorder native snapshots. The callback receives scalar
+        values only and takes its own native mutex without re-entering Python,
+        so holding the store lock here is safe. Per-device totals outside int64
+        range are published as -1 (unknown). When both counts are zero the
+        native entry is erased.
 
         Publishing is best-effort local metadata: a failing callback is logged
-        and swallowed so it can neither fail a store mutation that already
-        succeeded nor block the condition-variable notification that follows.
-        The aggregate is left intact so a later add/pop retries the publish.
+        (once, on the transition into the failed state) and swallowed so it can
+        neither fail a store mutation that already succeeded nor block the
+        condition-variable notification that follows. On failure the aggregate
+        is retained and ``obj_id`` is marked pending so the lazily-scheduled
+        retry timer republishes it (eventual consistency only if the callback
+        recovers). A successful zero-state publish drops the tombstone.
         """
         if self._memory_info_callback is None:
+            # Publishing is disabled: nothing to retry.
+            self._pending_publish_ids.discard(obj_id)
             return
         stats = self._object_memory_stats.get(obj_id)
         if stats is None:
@@ -580,8 +630,98 @@ class RDTStore:
             self._memory_info_callback(
                 object_id_bytes, device_bytes, num_copies, num_errors
             )
-        except Exception:
-            logger.exception("Failed to publish RDT memory info for object %s.", obj_id)
+        except Exception as exc:
+            # Retain the aggregate (live or tombstone) and mark the object for
+            # retry. Log only on the transition into the failed state so a
+            # persistently failing callback doesn't spam one line per tick. Log
+            # the message, not the traceback, so a retained log record can't
+            # keep caller frames (and any tensor data) alive via ``f_back``.
+            if obj_id not in self._pending_publish_ids:
+                logger.error(
+                    "Failed to publish RDT memory info for object %s: %s; "
+                    "will retry while the store is alive.",
+                    obj_id,
+                    str(exc),
+                )
+            self._pending_publish_ids.add(obj_id)
+            self._schedule_retry_locked()
+            return
+        # Publish succeeded.
+        if obj_id in self._pending_publish_ids:
+            self._pending_publish_ids.discard(obj_id)
+            logger.debug("Recovered RDT memory info publish for object %s.", obj_id)
+        if num_copies == 0 and num_errors == 0:
+            # A successful zero-state (erase) publish drops the tombstone; a
+            # live aggregate is retained for future add/pop.
+            self._object_memory_stats.pop(obj_id, None)
+        if not self._pending_publish_ids:
+            # No failures remain: the timer (if any) is no longer needed.
+            self._cancel_retry_timer_locked()
+        else:
+            # Other failures may still be pending with no timer armed (e.g. an
+            # earlier timer start failed): re-arm it. No-ops if one is active.
+            self._schedule_retry_locked()
+
+    def _schedule_retry_locked(self) -> None:
+        """Schedule the single retry timer if one is needed.
+
+        Caller holds ``self._lock``. At most one timer exists at a time; it is a
+        daemon so it never blocks interpreter shutdown, and it holds only a weak
+        reference to this store. Starting the thread can fail (e.g. interpreter
+        shutdown); that failure is non-fatal: the scalar pending state is kept so
+        a later mutation retries scheduling.
+        """
+        if self._retry_timer is not None or not self._pending_publish_ids:
+            return
+        self._retry_generation += 1
+        generation = self._retry_generation
+        try:
+            timer = threading.Timer(
+                _RETRY_INTERVAL_SECONDS,
+                _retry_pending_publishes,
+                args=(weakref.ref(self), generation),
+            )
+            timer.daemon = True
+            self._retry_timer = timer
+            timer.start()
+        except RuntimeError as exc:
+            self._retry_timer = None
+            logger.error(
+                "Failed to start the RDT memory-info retry timer: %s", str(exc)
+            )
+
+    def _cancel_retry_timer_locked(self) -> None:
+        """Cancel and drop the retry timer without joining it.
+
+        Caller holds ``self._lock``. If the timer is already past its interval it
+        may still run one final tick, but that tick is a stale generation (or
+        sees empty pending / a cleared callback) and becomes a no-op.
+        """
+        if self._retry_timer is not None:
+            self._retry_timer.cancel()
+            self._retry_timer = None
+
+    def _retry_publish_tick(self, generation: int) -> None:
+        """Run one retry tick on the timer thread.
+
+        Holds ``self._lock`` for the whole tick so pending/timer state stays
+        serialized with normal mutations. A tick whose generation token no
+        longer matches the active timer, or that fires after its timer was
+        cancelled without replacement, is stale and no-ops. Otherwise each
+        pending object is republished once, re-reading its current aggregate
+        under the lock (so a reused object ID publishes its latest live state,
+        never a stale erase); a successor timer is scheduled only after this
+        tick finishes.
+        """
+        with self._lock:
+            if generation != self._retry_generation or self._retry_timer is None:
+                return
+            for obj_id in list(self._pending_publish_ids):
+                self._publish_memory_info(obj_id)
+            # This tick's timer has now fired; schedule a successor only if
+            # pending IDs remain.
+            self._retry_timer = None
+            self._schedule_retry_locked()
 
     def wait_tensor_freed(self, tensor: Any, timeout: Optional[float] = None) -> None:
         """Wait for the object to be freed from the RDT store."""
