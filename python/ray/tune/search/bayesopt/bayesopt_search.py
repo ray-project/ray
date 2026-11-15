@@ -386,28 +386,37 @@ class BayesOptSearch(Searcher):
         # We try to get the parameters used for this trial
         params = self._live_trial_mapping.pop(trial_id, None)
 
+        # The parameters may be None if they were already processed;
+        # we interrupt the following procedure in that case.
+        if params is None:
+            return
+
         # The results may be None if some exception is raised during the trial.
-        # Also, if the parameters are None (were already processed)
-        # we interrupt the following procedure.
-        # Additionally, if somehow the error is True but
-        # the remaining values are not we also block the method
-        if result is None or params is None or error:
+        if result is None and not error:
             return
 
         # If we don't have to execute some random search steps
         if len(self._buffered_trial_results) >= self.random_search_trials:
-            #  we simply register the obtained result
-            self._register_result(params, result)
+            if result is not None:
+                #  we simply register the obtained result
+                self._register_result(params, result)
             return
 
-        # We store the results into a temporary cache
-        self._buffered_trial_results.append((params, result))
+        if error:
+            # A failed warm-up trial still counts as a completed random
+            # search attempt so that warm-up can finish, but no score is
+            # registered for it. The result is None when error is True.
+            self._buffered_trial_results.append((params, None))
+        else:
+            # We store the results into a temporary cache
+            self._buffered_trial_results.append((params, result))
 
         # If the random search finished,
-        # we update the BO with all the computer points.
+        # we update the BO with all the computed points.
         if len(self._buffered_trial_results) == self.random_search_trials:
-            for params, result in self._buffered_trial_results:
-                self._register_result(params, result)
+            for buffered_params, buffered_result in self._buffered_trial_results:
+                if buffered_result is not None:
+                    self._register_result(buffered_params, buffered_result)
 
     def _register_result(self, params: Tuple[str], result: Dict):
         """Register given tuple of params and results."""

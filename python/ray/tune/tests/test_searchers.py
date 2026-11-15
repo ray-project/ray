@@ -871,6 +871,49 @@ class BayesOptConvergenceWarningTest(unittest.TestCase):
         )
 
 
+class BayesOptFailedWarmupTest(unittest.TestCase):
+    """Regression tests for failed trials during BayesOpt warm-up (#67583)."""
+
+    def test_failed_warmup_trial_does_not_block_search(self):
+        pytest.importorskip("bayes_opt")
+        from ray.tune.search.bayesopt import BayesOptSearch
+
+        search = BayesOptSearch(
+            space={"x": (0.0, 1.0)},
+            metric="loss",
+            mode="min",
+            random_search_steps=2,
+            points_to_evaluate=[{"x": i / 20} for i in range(1, 11)],
+        )
+        self.assertEqual(search.suggest("good"), {"x": 0.05})
+        self.assertEqual(search.suggest("bad"), {"x": 0.1})
+        search.on_trial_complete("good", result={"loss": 1.0})
+        search.on_trial_complete("bad", error=True)
+
+        # Warm-up must finish: the remaining initial configurations are
+        # issued, and only the successful observation is registered.
+        suggestions = [search.suggest(f"next-{i}") for i in range(8)]
+        self.assertEqual(suggestions, [{"x": i / 20} for i in range(3, 11)])
+        self.assertEqual(len(search.optimizer.space), 1)
+
+    def test_error_after_warmup_is_not_registered(self):
+        pytest.importorskip("bayes_opt")
+        from ray.tune.search.bayesopt import BayesOptSearch
+
+        search = BayesOptSearch(
+            space={"x": (0.0, 1.0)},
+            metric="loss",
+            mode="min",
+            random_search_steps=1,
+            points_to_evaluate=[{"x": 0.05}, {"x": 0.1}],
+        )
+        self.assertEqual(search.suggest("warmup"), {"x": 0.05})
+        search.on_trial_complete("warmup", result={"loss": 1.0})
+        self.assertEqual(search.suggest("later"), {"x": 0.1})
+        search.on_trial_complete("later", error=True)
+        self.assertEqual(len(search.optimizer.space), 1)
+
+
 if __name__ == "__main__":
     import sys
 
