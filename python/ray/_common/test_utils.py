@@ -513,10 +513,20 @@ def fetch_raw_prometheus(prom_addresses, timeout=None):
     # Local import so minimal dependency tests can run without requests
     import requests
 
+    from ray._private.authentication.http_token_authentication import (
+        get_auth_headers_if_auth_enabled,
+    )
+
+    headers = get_auth_headers_if_auth_enabled({})
     for address in prom_addresses:
         try:
             kwargs = {} if timeout is None else {"timeout": timeout}
-            response = requests.get(f"http://{address}/metrics", **kwargs)
+            response = requests.get(
+                f"http://{address}/metrics", headers=headers, **kwargs
+            )
+            # Surface a rejected token as an HTTPError instead of an empty scrape.
+            if response.status_code in (401, 403):
+                response.raise_for_status()
             yield address, response.text
         except requests.exceptions.ConnectionError:
             continue

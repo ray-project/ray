@@ -127,7 +127,7 @@ deployment_config=dict(
 )
 ```
 
-Set `num_replicas="auto"` to let Serve autoscale. Use `request_router_config` to plug in a custom router, for example for {doc}`prefix-aware routing <prefix-aware-routing>`. For the meaning of each option, see the [Ray Serve deployment configuration](https://docs.ray.io/en/latest/serve/configure-serve-deployment.html) docs.
+Set `num_replicas="auto"` to let Serve autoscale. Use `request_router_config` to plug in a custom router, for example for {doc}`prefix-aware routing <prefix-aware-routing>`. For the meaning of each option, see the [Ray Serve deployment configuration](../../configure-serve-deployment.md) docs.
 
 ## LoRA
 

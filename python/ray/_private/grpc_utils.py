@@ -98,10 +98,11 @@ def create_grpc_server_with_interceptors(
     options: Optional[Sequence[Tuple[str, Any]]] = None,
     asynchronous: bool = False,
 ):
-    """Create a gRPC server with authentication interceptors if token auth is enabled.
+    """Create a gRPC server with the authentication interceptor.
 
     This function handles:
-    - Authentication interceptors when token auth is enabled
+    - The authentication interceptor, which also rejects tokens when auth is disabled
+      and Kubernetes token auth is off
     - Both synchronous and asynchronous servers
     - Thread pool configuration for sync servers
 
@@ -117,25 +118,21 @@ def create_grpc_server_with_interceptors(
     grpc_module = aiogrpc if asynchronous else grpc
 
     # Build interceptors list
-    interceptors = []
-    if authentication_utils.is_token_auth_enabled():
-        if asynchronous:
-            from ray._private.authentication.grpc_authentication_server_interceptor import (
-                AsyncAuthenticationServerInterceptor,
-            )
+    from ray._private.authentication.grpc_authentication_server_interceptor import (
+        AsyncAuthenticationServerInterceptor,
+        SyncAuthenticationServerInterceptor,
+    )
 
-            interceptors.append(AsyncAuthenticationServerInterceptor())
-        else:
-            from ray._private.authentication.grpc_authentication_server_interceptor import (
-                SyncAuthenticationServerInterceptor,
-            )
-
-            interceptors.append(SyncAuthenticationServerInterceptor())
+    interceptors = [
+        AsyncAuthenticationServerInterceptor()
+        if asynchronous
+        else SyncAuthenticationServerInterceptor()
+    ]
 
     # Create server
     if asynchronous:
         server = grpc_module.server(
-            interceptors=interceptors if interceptors else None,
+            interceptors=interceptors,
             options=options,
         )
     else:
@@ -148,7 +145,7 @@ def create_grpc_server_with_interceptors(
         )
         server = grpc_module.server(
             executor,
-            interceptors=interceptors if interceptors else None,
+            interceptors=interceptors,
             options=options,
         )
 

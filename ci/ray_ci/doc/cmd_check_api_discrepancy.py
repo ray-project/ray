@@ -191,6 +191,26 @@ TEAM_API_CONFIGS = {
             "ray.train.context.TrainContext",
             "ray.train.context.get_context",
         },
+        "tracked_doc_debt": {
+            # The alpha ray.train.health surface, reached through Ray Train's
+            # internals; pending Ray Train API docs.
+            "ray.train.health.check.HealthCheck",
+            "ray.train.health.check.HealthConfig",
+            "ray.train.health.check.PeriodicHealthCheck",
+            "ray.train.health.decision.Diagnose",
+            "ray.train.health.decision.Evict",
+            "ray.train.health.decision.HealthDecision",
+            "ray.train.health.decision.Noop",
+            "ray.train.health.decision.Reattempt",
+            "ray.train.health.evaluator.Evaluator",
+            "ray.train.health.report",
+            "ray.train.health.probe.ControllerProbe",
+            "ray.train.health.probe.NodeProbe",
+            "ray.train.health.probe.Probe",
+            "ray.train.health.probe.ProbeResult",
+            "ray.train.health.probe.WorkerProbe",
+            "ray.train.health.state.HealthState",
+        },
     },
     "tune": {
         "head_modules": {"ray.tune"},

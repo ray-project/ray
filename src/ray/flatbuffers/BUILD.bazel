@@ -12,7 +12,11 @@ flatbuffer_cc_library(
 ray_cc_library(
     name = "node_manager_generated",
     hdrs = ["node_manager_generated.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/common:__pkg__",
+        "//src/ray/raylet:__pkg__",
+        "//src/ray/raylet_ipc_client:__pkg__",
+    ],
     deps = [
         ":node_manager_fbs",
         "@com_github_google_flatbuffers//:flatbuffers",

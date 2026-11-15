@@ -2,11 +2,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
-from pkg_resources import parse_version
 
 import ray
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -15,10 +13,6 @@ from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "column_name, expr, expected_value",
     [
@@ -59,10 +53,6 @@ def test_with_column(
     assert result[column_name] == expected_value
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_nonexistent_column(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -75,10 +65,6 @@ def test_with_column_nonexistent_column(
         ds.with_column("result", col("nonexistent_column") + 1).materialize()
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_multiple_expressions(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -99,10 +85,6 @@ def test_with_column_multiple_expressions(
     assert set(ds.schema().names) == {"id", "plus_one", "times_two", "ten_minus_id"}
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "udf_function, column_name, expected_result",
     [
@@ -162,10 +144,6 @@ def test_with_column_udf_single_column(
     assert result[column_name] == expected_result
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "test_scenario",
     [
@@ -236,10 +214,6 @@ def test_with_column_udf_multi_column(
     assert results[1][column_name] == expected_second
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "expression_scenario",
     [
@@ -306,10 +280,6 @@ def test_with_column_udf_in_complex_expressions(
     assert result[column_name] == expected
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_udf_multiple_udfs(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -356,10 +326,6 @@ def test_with_column_udf_multiple_udfs(
     pd.testing.assert_frame_equal(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_mixed_udf_and_regular_expressions(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -400,10 +366,6 @@ def test_with_column_mixed_udf_and_regular_expressions(
     pd.testing.assert_frame_equal(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_udf_invalid_return_type_validation(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -443,10 +405,6 @@ def test_with_column_udf_invalid_return_type_validation(
         assert "pandas.Series" in error_message and "numpy.ndarray" in error_message
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "scenario",
     [
@@ -530,10 +488,6 @@ def test_with_column_string_concat_combinations(
     assert out[column_name].tolist() == scenario["expected"]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_string_concat_type_mismatch_raises(
     ray_start_regular_shared,
 ):
@@ -629,10 +583,6 @@ def test_with_column_alias_expressions(
     pd.testing.assert_frame_equal(result_df, non_aliased_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_callable_class_udf_actor_semantics(ray_start_regular_shared):
     """Test that callable class UDFs maintain state across batches using actor semantics."""
     import pyarrow.compute as pc
@@ -669,10 +619,6 @@ def test_with_column_callable_class_udf_actor_semantics(ray_start_regular_shared
         assert result["result"] >= result["id"] + 100 + 1
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_callable_class_udf_with_constructor_args(
     ray_start_regular_shared,
 ):
@@ -705,10 +651,6 @@ def test_with_column_callable_class_udf_with_constructor_args(
     assert rows_same(result_10, expected_10)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_multiple_callable_class_udfs(ray_start_regular_shared):
     """Test that multiple callable class UDFs can be used in the same projection."""
     import pyarrow.compute as pc
@@ -752,10 +694,6 @@ def test_with_column_multiple_callable_class_udfs(ray_start_regular_shared):
     assert rows_same(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_same_callable_class_different_constructor_args(
     ray_start_regular_shared,
 ):
@@ -802,10 +740,6 @@ def test_with_column_same_callable_class_different_constructor_args(
     assert rows_same(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_callable_class_udf_with_compute_strategy(
     ray_start_regular_shared,
 ):
@@ -837,10 +771,6 @@ def test_with_column_callable_class_udf_with_compute_strategy(
     assert rows_same(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_async_callable_class_udf(ray_start_regular_shared):
     """Test that async callable class UDFs work correctly with actor semantics."""
     import asyncio
@@ -873,10 +803,6 @@ def test_with_column_async_callable_class_udf(ray_start_regular_shared):
     assert rows_same(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_async_callable_class_udf_with_state(ray_start_regular_shared):
     """Test that async callable class UDFs maintain state across batches."""
     import asyncio
@@ -913,10 +839,6 @@ def test_with_column_async_callable_class_udf_with_state(ray_start_regular_share
         assert result["running_total"] >= result["id"]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_multiple_async_callable_class_udfs(ray_start_regular_shared):
     """Test that multiple async callable class UDFs can work together."""
     import asyncio
@@ -964,10 +886,6 @@ def test_with_column_multiple_async_callable_class_udfs(ray_start_regular_shared
     assert rows_same(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 def test_with_column_async_generator_udf_multiple_yields(ray_start_regular_shared):
     """Test that async generator UDFs correctly handle multiple yields.
 
@@ -1017,10 +935,6 @@ def test_with_column_async_generator_udf_multiple_yields(ray_start_regular_share
     assert rows_same(result_df, expected_after_fix)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_columns requires PyArrow >= 20.0.0",
-)
 def test_with_columns_multiple(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -1043,10 +957,6 @@ def test_with_columns_multiple(
     assert rows_same(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_columns requires PyArrow >= 20.0.0",
-)
 def test_with_columns_preserves_order(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -1061,10 +971,6 @@ def test_with_columns_preserves_order(
     assert ds.schema().names == ["id", "c", "a", "b"]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_columns requires PyArrow >= 20.0.0",
-)
 def test_with_columns_overwrite_existing(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -1076,10 +982,6 @@ def test_with_columns_overwrite_existing(
     assert rows_same(result_df, expected_df)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_columns requires PyArrow >= 20.0.0",
-)
 def test_with_column_delegates_to_with_columns(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):

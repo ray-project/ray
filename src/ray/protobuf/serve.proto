@@ -255,6 +255,10 @@ message DeploymentConfig {
   // older controller during a rolling upgrade) falls back to the Python-side
   // defaults.
   BackpressureConfig backpressure_config = 24;
+
+  // Extra replicas allowed during a rolling restart, as a percentage of the
+  // target count. Defaults to 0, which stops old replicas before starting new ones.
+  int32 max_surge_percent = 25;
 }
 
 // Configuration of the HTTP response returned when a request is rejected due
@@ -373,6 +377,7 @@ message DeploymentInfo {
   double target_capacity = 8;
   TargetCapacityDirection target_capacity_direction = 9;
   bool ingress_request_router = 10;
+  bool router_application = 11;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
@@ -534,6 +539,7 @@ message DeploymentArgs {
   optional string docs_path = 7;
   bool ingress_request_router = 8;
   bool uses_multiplexing = 9;
+  bool router_application = 10;
 }
 
 message ApplicationArgs {

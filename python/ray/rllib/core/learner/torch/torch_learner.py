@@ -539,19 +539,25 @@ class TorchLearner(Learner):
             or not torch.distributed.is_initialized()
         ):
             return plan
-        # All three parts of the plan reduce with MAX: skip if ANY Learner wants to,
-        # abort if ANY Learner must, and step through the largest proposed number of
-        # minibatches, which completes every Learner's `num_epochs` passes over its
-        # own batch (see `test_minibatch_coverage_across_unequal_shards`).
+        # MAX: skip or abort if ANY Learner says so, the largest minibatch count (see
+        # `test_minibatch_coverage_across_unequal_shards`), and per module whether ANY
+        # Learner has or lacks data for it.
+        num_modules = len(plan.modules_with_data)
         plan_tensor = torch.tensor(
-            [int(plan.skip), plan.num_minibatches, int(plan.abort)],
+            [int(plan.skip), plan.num_minibatches, int(plan.abort)]
+            + [int(flag) for flag in plan.modules_with_data]
+            + [int(flag) for flag in plan.modules_without_data],
             dtype=torch.int64,
             device=self._device,
         )
         torch.distributed.all_reduce(plan_tensor, op=torch.distributed.ReduceOp.MAX)
-        skip, num_minibatches, abort = plan_tensor.tolist()
+        skip, num_minibatches, abort, *module_flags = plan_tensor.tolist()
         return UpdatePlan(
-            skip=bool(skip), num_minibatches=num_minibatches, abort=bool(abort)
+            skip=bool(skip),
+            num_minibatches=num_minibatches,
+            abort=bool(abort),
+            modules_with_data=tuple(bool(f) for f in module_flags[:num_modules]),
+            modules_without_data=tuple(bool(f) for f in module_flags[num_modules:]),
         )
 
     @OverrideToImplementCustomLogic

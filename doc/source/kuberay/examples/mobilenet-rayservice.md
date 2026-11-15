@@ -24,7 +24,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ```sh
 # Create a RayService
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.mobilenet.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.mobilenet.yaml
 ```
 
 * The [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) file needs `tensorflow` as a dependency, so the YAML file includes `tensorflow` in the runtime environment.

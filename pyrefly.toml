@@ -25,6 +25,7 @@ ignore-missing-imports = [
     "fsspec.*",
     "google.cloud.*",
     "hudi.*",
+    "impala.*",
     "ipywidgets.*",
     "kafka.*",
     "lance.*",

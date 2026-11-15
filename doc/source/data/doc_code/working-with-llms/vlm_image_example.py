@@ -204,12 +204,23 @@ def run_vlm_example():
 
 # __vlm_image_example_end__
 
+# Number of rows to run in CI. The full coco2017_cap_val split (500 rows at
+# batch_size=1) takes ~15 minutes, which runs into the test timeout.
+_CI_NUM_ROWS = 8
+
 if __name__ == "__main__":
     # Run the example VLM workflow only if GPU is available
     try:
         import torch
 
         if torch.cuda.is_available():
+            # Limit the dataset in CI without changing the docs snippets above.
+            _load_full_dataset = load_vision_dataset
+
+            def load_vision_dataset():
+                ds = _load_full_dataset()
+                return ds.limit(_CI_NUM_ROWS) if ds is not None else None
+
             run_vlm_example()
         else:
             print("Skipping VLM example run (no GPU available)")

@@ -62,7 +62,11 @@ By default, Ray Serve measures batch size as the number of items in the batch (`
 - **Natural Language Processing (NLP)**: Transformer models batch by total token count, not the number of sequences
 - **Variable-resolution images**: Memory usage depends on total pixels, not the number of images
 
-Use the `batch_size_fn` parameter to define a custom metric for batch size:
+Use the `batch_size_fn` parameter to define a custom metric for batch size. Serve calls `batch_size_fn` with a list that holds each request's value for the method's first parameter after `self`. Pass that value as the first argument of each call, either positionally or by keyword. For example, with `async def predict(self, items, *, tag)`, both `await self.predict(text, tag="t")` and `await self.predict(items=text, tag="t")` pass `text` to `batch_size_fn`.
+
+:::{note}
+Serve raises a `TypeError` for a call that leaves out the method's first parameter or passes another keyword argument before it. It raises the same error when that parameter is `**kwargs`, or is `*args` and the call passes more than one value.
+:::
 
 ### Graph Neural Network example
 
@@ -127,4 +131,3 @@ When using `batch_size_fn`, set `max_batch_size` based on your custom metric rat
 Set `batch_wait_timeout_s` considering the end-to-end latency SLO (Service Level Objective). For example, if your latency target is 150ms, and the model takes 100ms to evaluate the batch, set the `batch_wait_timeout_s` to a value much lower than 150ms - 100ms = 50ms.
 
 When using batching in a Serve Deployment Graph, the relationship between an upstream node and a downstream node might affect the performance as well. Consider a chain of two models where first model sets `max_batch_size=8` and second model sets `max_batch_size=6`. In this scenario, when the first model finishes a full batch of 8, the second model finishes one batch of 6 and then to fill the next batch, which Serve initially only partially fills with 8 - 6 = 2 requests, leads to incurring latency costs. The batch size of downstream models should ideally be multiples or divisors of the upstream models to ensure the batches work optimally together.
-

@@ -49,6 +49,7 @@ def test_as_dict_contains_all_fields():
 
     d = tracker.as_dict()
     assert set(d.keys()) == {
+        "sum",
         "num_samples",
         "mean",
         "variance",

@@ -25,8 +25,7 @@ NSIGHT_DEFAULT_CONFIG = {
 
 
 def parse_nsight_config(nsight_config: Dict[str, str]) -> List[str]:
-    """
-    Function to convert dictionary of nsight options into
+    """Function to convert dictionary of nsight options into
     nsight command line
 
     The function returns:
@@ -57,8 +56,7 @@ class NsightPlugin(RuntimeEnvPlugin):
     async def _check_nsight_script(
         self, nsight_config: Dict[str, str]
     ) -> Tuple[bool, str]:
-        """
-        Function to validate if nsight_config is a valid nsight profile options
+        """Function to validate if nsight_config is a valid nsight profile options
         Args:
             nsight_config: dictionary mapping nsight option to it's value
         Returns:

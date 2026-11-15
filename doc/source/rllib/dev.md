@@ -8,19 +8,18 @@ myst:
 
 Develop RLlib locally without compiling Ray by using the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py). The script sets up symlinks between the `ray/rllib` directory in your local git clone and the matching directory bundled with the pip-installed `ray` package. Every change you make in your clone's source files then appears immediately in your installed `ray`.
 
-If you installed Ray from source using [these instructions](https://docs.ray.io/en/master/ray-overview/installation.html), don't use the script. Those steps should already have created the necessary symlinks.
+If you installed Ray from source using [these instructions](../ray-overview/installation.md), don't use the script. Those steps should already have created the necessary symlinks.
 
-When you use the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py), keep your git branch in sync with the installed Ray binaries. Stay up to date on [master](https://github.com/ray-project/ray) and install the latest [wheel](https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies).
+When you use the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py), keep your git branch in sync with the installed Ray binaries. Stay up to date on [master](https://github.com/ray-project/ray) and install the latest [wheel](../ray-overview/installation.md#daily-releases-nightlies).
 
 ```bash
 # Clone your fork onto your local machine, e.g.:
 git clone https://github.com/[your username]/ray.git
 cd ray
-# Only enter 'Y' at the first question on linking RLlib.
-# This leads to the most stable behavior and you won't have to re-install ray as often.
-# If you anticipate making changes to e.g. Tune or Train quite often, consider also symlinking Ray Tune or Train here
-# (say 'Y' when asked by the script about creating the Tune or Train symlinks).
-python python/ray/setup-dev.py
+# Link only RLlib. This leads to the most stable behavior and you won't have to re-install Ray as often.
+python python/ray/setup-dev.py --allow rllib
+# If you anticipate making changes to Tune or Train often, link them too:
+# python python/ray/setup-dev.py --allow rllib tune train
 ```
 
 ## Contributing to RLlib

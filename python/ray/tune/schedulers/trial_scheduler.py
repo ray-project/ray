@@ -70,14 +70,24 @@ class TrialScheduler:
         return True
 
     def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
-        """Called when a new trial is added to the trial runner."""
+        """Called when a new trial is added to the trial runner.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that was added.
+        """
 
         raise NotImplementedError
 
     def on_trial_error(self, tune_controller: "TuneController", trial: Trial):
         """Notification for the error of trial.
 
-        This will only be called when the trial is in the RUNNING state."""
+        This will only be called when the trial is in the RUNNING state.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that errored.
+        """
 
         raise NotImplementedError
 
@@ -88,7 +98,19 @@ class TrialScheduler:
 
         At this point, the trial scheduler can make a decision by returning
         one of CONTINUE, PAUSE, and STOP. This will only be called when the
-        trial is in the RUNNING state."""
+        trial is in the RUNNING state.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that reported the result.
+            result: The result the trial reported.
+
+        Returns:
+            The scheduling decision for the trial: ``TrialScheduler.CONTINUE``,
+            ``TrialScheduler.PAUSE``, or ``TrialScheduler.STOP``. A scheduler
+            that has already changed the trial's state itself returns
+            ``TrialScheduler.NOOP``.
+        """
 
         raise NotImplementedError
 
@@ -98,7 +120,13 @@ class TrialScheduler:
         """Notification for the completion of trial.
 
         This will only be called when the trial is in the RUNNING state and
-        either completes naturally or by manual termination."""
+        either completes naturally or by manual termination.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that completed.
+            result: The last result the trial reported.
+        """
 
         raise NotImplementedError
 
@@ -106,7 +134,12 @@ class TrialScheduler:
         """Called to remove trial.
 
         This is called when the trial is in PAUSED or PENDING state. Otherwise,
-        call `on_trial_complete`."""
+        call `on_trial_complete`.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial to remove.
+        """
 
         raise NotImplementedError
 
@@ -116,21 +149,40 @@ class TrialScheduler:
         This should return one of the trials in tune_controller that is in
         the PENDING or PAUSED state. This function must be idempotent.
 
-        If no trial is ready, return None."""
+        If no trial is ready, return None.
+
+        Args:
+            tune_controller: The controller running the experiment.
+
+        Returns:
+            The trial to run next, or ``None`` if no trial is ready.
+        """
 
         raise NotImplementedError
 
     def debug_string(self) -> str:
-        """Returns a human readable message for printing to the console."""
+        """Returns a human readable message for printing to the console.
+
+        Returns:
+            The message describing the scheduler's state.
+        """
 
         raise NotImplementedError
 
     def save(self, checkpoint_path: str):
-        """Save trial scheduler to a checkpoint"""
+        """Save trial scheduler to a checkpoint
+
+        Args:
+            checkpoint_path: Path of the file to write the scheduler state to.
+        """
         raise NotImplementedError
 
     def restore(self, checkpoint_path: str):
-        """Restore trial scheduler from checkpoint."""
+        """Restore trial scheduler from checkpoint.
+
+        Args:
+            checkpoint_path: Path of the file to read the scheduler state from.
+        """
         raise NotImplementedError
 
 

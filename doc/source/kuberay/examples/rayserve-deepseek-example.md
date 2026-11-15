@@ -66,7 +66,7 @@ Install the most recent stable KubeRay operator from the Helm repository by foll
 Deploy DeepSeek-R1 as a RayService custom resource by running the following command:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
 ```
 
 This step sets up a custom Ray Serve application to serve the `deepseek-ai/DeepSeek-R1` model on two worker nodes. You can inspect and modify the `serveConfigV2` section in the YAML file to learn more about the Serve application:

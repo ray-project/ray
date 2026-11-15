@@ -71,6 +71,25 @@ ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 :::
 ::::
 
+Each Dockerfile downloads the source code for its application. The Whisper application transcribes an audio file at a given URL, and the ResNet application classifies an image at a given URL:
+
+::::{tab-set}
+:::{tab-item} whisper_example.py
+```{literalinclude} ../doc_code/whisper_example.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+:::
+:::{tab-item} resnet50_example.py
+```{literalinclude} ../doc_code/resnet50_example.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+:::
+::::
+
 Then, build the corresponding images and push it to your choice of container registry. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
 
 ::::{tab-set}
@@ -118,13 +137,18 @@ applications:
 
 ### Send queries
 
-
+Query each application through its route prefix:
 
 ```python
->>> import requests
->>> audio_file = "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
->>> resp = requests.post("http://localhost:8000/whisper", json={"filepath": audio_file}) # doctest: +SKIP
->>> resp.json() # doctest: +SKIP
+import json
+import requests
+
+audio_file = "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
+resp = requests.post("http://localhost:8000/whisper", json={"filepath": audio_file})
+print(json.dumps(resp.json(), indent=4))
+```
+
+```text
 {
     "language": "en",
     "language_probability": 1,
@@ -140,10 +164,15 @@ applications:
         ...
     ]
 }
+```
 
->>> link_to_image = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
->>> resp = requests.post("http://localhost:8000/resnet", json={"uri": link_to_image}) # doctest: +SKIP
->>> resp.text # doctest: +SKIP
+```python
+link_to_image = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
+resp = requests.post("http://localhost:8000/resnet", json={"uri": link_to_image})
+print(resp.text)
+```
+
+```text
 ox
 ```
 

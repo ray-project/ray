@@ -39,8 +39,7 @@ def _is_filter_string_safe(filter_str: str) -> bool:
 
 @DeveloperAPI
 class ClickHouseDatasource(Datasource):
-    """
-    A Ray datasource for reading from ClickHouse.
+    """A Ray datasource for reading from ClickHouse.
 
     Args:
         table: Fully qualified table or view identifier (e.g.,
@@ -252,8 +251,7 @@ class ClickHouseDatasource(Datasource):
         return table
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        """
-        Estimate the in-memory data size for the query.
+        """Estimate the in-memory data size for the query.
 
         Returns:
             Estimated in-memory data size in bytes, or
@@ -267,8 +265,7 @@ class ClickHouseDatasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        """
-        Create read tasks for the ClickHouse query.
+        """Create read tasks for the ClickHouse query.
 
         Args:
             parallelism: The desired number of partitions to read the data into.

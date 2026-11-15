@@ -20,7 +20,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError, field_validator
 from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.common.cli_args import FrontendArgs
 from vllm.entrypoints.serve.engine.protocol import ErrorResponse as VLLMErrorResponse
 from vllm.exceptions import VLLMClientError
 
@@ -54,6 +54,11 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.engines.vllm.model_express import (
+    is_model_express,
+    mark_engine_ready,
+    setup_model_express,
+)
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware import (
@@ -68,6 +73,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     get_kv_event_routing_stats,
     get_prompt_token_routing_stats,
     get_token_channel_endpoints,
+    resolve_kv_event_block_size,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
     install_prompt_token_forwarding,
@@ -399,6 +405,9 @@ class VLLMEngine(LLMEngine):
 
         from vllm.entrypoints.openai.api_server import init_app_state
 
+        if is_model_express(self.llm_config):
+            await setup_model_express(self.llm_config)
+
         callback = self.llm_config.get_or_create_callback()
         await callback.run_callback("on_before_node_init")
         if callback.ctx.run_init_node:
@@ -472,14 +481,18 @@ class VLLMEngine(LLMEngine):
                     self._prompt_token_zmq_advertised_endpoint
                 )
 
+        # Read the engine client's config: the engine core syncs its resolved
+        # KV block sizes back to it after initialization.
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
-            vllm_engine_config.cache_config.block_size,
+            resolve_kv_event_block_size(self._engine_client.vllm_config),
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
         self._routing_stats.update(prompt_token_stats)
 
         self._running = True
+        if is_model_express(self.llm_config):
+            mark_engine_ready()
 
         logger.info("Started vLLM engine.")
 

@@ -1,23 +1,102 @@
+import asyncio
 import json
 import time
+from unittest import mock
 
 import pytest
 
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.controller import (
+    ROUTING_CONFIG_GENERATION_KEY,
+    ServeController,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.long_poll import LongPollNamespace
+from ray.serve._private.routing_config import RoutingConfigVersion
+from ray.serve._private.test_utils import MockKVStore
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.schema import ApplicationStatus, ServeDeploySchema
+from ray.serve.schema import (
+    ApplicationStatus,
+    ServeDeploySchema,
+    TargetGroup,
+)
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
+
+
+def test_routing_config_version_advances_only_when_target_groups_change():
+    controller = ServeController.__new__(ServeController)
+    controller._last_broadcasted_target_groups = None
+    controller._routing_config_generation = 1
+    controller._routing_config_sequence = 0
+    controller._routing_config_version = RoutingConfigVersion(generation=1, sequence=0)
+    controller.long_poll_host = mock.Mock()
+
+    target_groups = [
+        TargetGroup(
+            targets=[],
+            route_prefix="/",
+            protocol=RequestProtocol.HTTP,
+            app_name="app",
+        )
+    ]
+    controller.get_target_groups = mock.Mock(
+        side_effect=[target_groups, list(target_groups), []]
+    )
+
+    first_version = controller.broadcast_target_groups_if_changed()
+    same_version = controller.broadcast_target_groups_if_changed()
+    next_version = controller.broadcast_target_groups_if_changed()
+
+    assert first_version == RoutingConfigVersion(generation=1, sequence=1)
+    assert same_version == first_version
+    assert next_version == RoutingConfigVersion(generation=1, sequence=2)
+    assert controller.long_poll_host.notify_changed.call_count == 2
+
+    first_update = controller.long_poll_host.notify_changed.call_args_list[0].args[0][
+        LongPollNamespace.TARGET_GROUPS
+    ]
+    assert first_update.target_groups is target_groups
+    assert first_update.version == first_version
+
+
+def test_routing_config_generation_persists_across_controller_restarts():
+    kv_store = MockKVStore()
+    controller = ServeController.__new__(ServeController)
+    controller.kv_store = kv_store
+    restarted_controller = ServeController.__new__(ServeController)
+    restarted_controller.kv_store = kv_store
+
+    assert controller._get_next_routing_config_generation() == 1
+    assert restarted_controller._get_next_routing_config_generation() == 2
+    assert kv_store.get(ROUTING_CONFIG_GENERATION_KEY) == b"2"
+
+
+@pytest.mark.asyncio
+async def test_get_routing_config_version_waits_for_controller_recovery():
+    controller = ServeController.__new__(ServeController)
+    controller.done_recovering_event = asyncio.Event()
+    version = RoutingConfigVersion(generation=1, sequence=1)
+    controller.broadcast_target_groups_if_changed = mock.Mock(return_value=version)
+
+    get_version_task = asyncio.create_task(controller.get_routing_config_version())
+    await asyncio.sleep(0)
+
+    assert not get_version_task.done()
+    controller.broadcast_target_groups_if_changed.assert_not_called()
+
+    controller.done_recovering_event.set()
+    assert await get_version_task == version
+    controller.broadcast_target_groups_if_changed.assert_called_once_with()
 
 
 def test_redeploy_start_time(serve_instance):
@@ -216,9 +295,11 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "max_backoff_s": 0.5,
                                 },
                                 "rolling_update_percentage": 0.2,
+                                "max_surge_percent": 0,
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},
+                            "target_version": replica.version,
                             "replicas": [
                                 {
                                     "node_id": node_id,
@@ -232,6 +313,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "state": "RUNNING",
                                     "pid": replica.pid,
                                     "start_time_s": replica.start_time_s,
+                                    "version": replica.version,
                                 }
                             ],
                             "recent_dead_replicas": [],
@@ -256,6 +338,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
             # Set by the controller: this version restores a deployment option
             # that a re-applied config stops setting.
             "restores_unset_config_options": True,
+            "applied_config_id": None,
             "target_groups": [
                 {
                     "targets": [

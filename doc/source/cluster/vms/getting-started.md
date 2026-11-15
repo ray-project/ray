@@ -118,7 +118,7 @@ Make sure to grant the necessary permissions to the RAM user and set the AccessK
 
 :::{tab-item} vSphere
 :sync: vSphere
-Make sure Ray supervisor service is up and running as per [the Ray-on-VCF docs](https://github-vcf.devops.broadcom.net/vcf/vmray)
+Make sure the Ray supervisor service is up and running, as described in [Installing supervisor service for Ray on vSphere](user-guides/launching-clusters/vsphere.md#installing-supervisor-service-for-ray-on-vsphere).
 :::
 ::::
 :::::
@@ -229,37 +229,15 @@ A minimal sample cluster configuration file looks as follows:
 
 :::{tab-item} Azure
 :sync: Azure
-```yaml
-# An unique identifier for the head node and workers of this cluster.
-cluster_name: minimal
-
-# Cloud-provider specific configuration.
-provider:
-    type: azure
-    location: westus2
-    resource_group: ray-cluster
-
-# How Ray will authenticate with newly launched nodes.
-auth:
-    ssh_user: ubuntu
-    # you must specify paths to matching private and public key pair files
-    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
-    ssh_private_key: ~/.ssh/id_rsa
-    # changes to this should match what is specified in file_mounts
-    ssh_public_key: ~/.ssh/id_rsa.pub
+```{literalinclude} ../../../../python/ray/autoscaler/azure/example-minimal.yaml
+:language: yaml
 ```
 :::
 
 :::{tab-item} GCP
 :sync: GCP
-```yaml
-# A unique identifier for the head node and workers of this cluster.
-cluster_name: minimal
-
-# Cloud-provider specific configuration.
-provider:
-    type: gcp
-    region: us-west1
+```{literalinclude} ../../../../python/ray/autoscaler/gcp/example-minimal.yaml
+:language: yaml
 ```
 :::
 ::::
@@ -294,6 +272,24 @@ After defining our configuration, we will use the Ray cluster launcher to start 
 $ ray up -y config.yaml
 ```
 
+(vm-cluster-token-auth)=
+
+### Token authentication with the cluster launcher
+
+Starting in Ray 2.61, {ref}`token authentication <token-auth>` is on by default, and `ray up` needs no token steps. It uses this machine's token, creates `~/.ray/auth_token` if no token exists, and ships the token to the head node as a file. The head node ships it to every worker node it launches, including worker nodes the autoscaler adds later. Clients on this machine already have the token.
+
+To launch a cluster without authentication, set the `auth_mode` key in the cluster YAML:
+
+```yaml
+auth_mode: disabled
+```
+
+`ray up` then sets `RAY_AUTH_MODE=disabled` in the start commands of every node. Set the mode with the `auth_mode` key, not with `RAY_AUTH_MODE` in start commands or Docker `run_options`. Every client of the cluster still needs `RAY_AUTH_MODE=disabled`.
+
+:::{warning}
+Ray 2.61 mounts the token file on every node. After you upgrade an existing `ray up` cluster to Ray 2.61, the first `ray up` updates every node once, including the head node. Each node reruns its setup commands and restarts Ray, and in Docker mode its container restarts. The cluster doesn't relaunch instances. Run this first `ray up` without `--no-restart`, because `--no-restart` doesn't work on a cluster until one full `ray up` has shipped the token.
+:::
+
 ## Running applications on a Ray Cluster
 
 We are now ready to execute an application on our Ray Cluster. `ray.init()` will now automatically connect to the newly created cluster.
@@ -327,3 +323,10 @@ To shut down your cluster, run the following command:
 ```shell
 $ ray down -y config.yaml
 ```
+
+## Next steps
+
+Ray doesn't provide native storage for logs or metrics, so you need to collect them yourself to keep them after the cluster shuts down. See the following pages:
+
+- {ref}`vm-logging` to collect logs from the cluster's nodes.
+- {ref}`collect-metrics` to scrape metrics with Prometheus and view them in Grafana.

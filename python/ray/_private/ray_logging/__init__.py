@@ -102,8 +102,7 @@ def setup_component_logger(
 
 
 def run_callback_on_events_in_ipython(event: str, cb: Callable):
-    """
-    Register a callback to be run after each cell completes in IPython.
+    """Register a callback to be run after each cell completes in IPython.
     E.g.:
         This is used to flush the logs after each cell completes.
 

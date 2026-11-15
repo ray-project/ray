@@ -82,6 +82,7 @@ def test_upload_wheels_to_pypi(mock_subprocess, mock_get_pypi_url, mock_get_pypi
                 "-m",
                 "twine",
                 "upload",
+                "--skip-existing",
                 "--repository-url",
                 "test_pypi_url",
                 "--username",

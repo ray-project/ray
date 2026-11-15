@@ -70,3 +70,4 @@ PyArrow
 Tekken
 torchtext
 torchvision
+Qdrant

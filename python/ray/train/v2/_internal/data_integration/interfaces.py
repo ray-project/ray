@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Protocol, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Protocol, Union
 
 if TYPE_CHECKING:
     from ray.data import DataIterator, Dataset
@@ -15,6 +15,9 @@ class DatasetShardMetadata:
 
     dataset_name: str
     world_rank: int
+    # The data iterator state to restore from, which was saved with
+    # `DataIterator.state_dict()`.
+    state_dict: Optional[Dict[str, Any]] = None
 
 
 class DatasetShardProvider(Protocol):

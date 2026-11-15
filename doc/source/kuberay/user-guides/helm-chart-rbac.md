@@ -16,7 +16,7 @@ KubeRay utilizes [Kubernetes Role-Based Access Control (RBAC) resources](https:/
 
 ## Parameters
 
-You can configure the KubeRay Helm chart to create RBAC resources for different use cases by modifying the following parameters in the [values.yaml](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml). Then, you can install the KubeRay Helm chart with the modified **values.yaml**.
+You can configure the KubeRay Helm chart to create RBAC resources for different use cases by modifying the following parameters in the [values.yaml](https://github.com/kuberay-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml). Then, you can install the KubeRay Helm chart with the modified **values.yaml**.
 
 ```shell
 # Step 1: Clone the KubeRay repository
@@ -35,12 +35,12 @@ helm install kuberay-operator .
   * A list of namespaces in which the KubeRay operator's informer watches the custom resources.
 
 * **`crNamespacedRbacEnable`**
-  * Set to `true` in most cases. Set to `false` in the uncommon case of using a Kubernetes cluster managed by GitOps tools such as ArgoCD. For additional details, refer to [ray-project/kuberay#1162](https://github.com/ray-project/kuberay/pull/1162). Default: true.
+  * Set to `true` in most cases. Set to `false` in the uncommon case of using a Kubernetes cluster managed by GitOps tools such as ArgoCD. For additional details, refer to [kuberay-project/kuberay#1162](https://github.com/kuberay-project/kuberay/pull/1162). Default: true.
 
-The [values.yaml](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml) file contains detailed descriptions of the parameters. See these pull requests for more context on parameters:
-* [ray-project/kuberay#1106](https://github.com/ray-project/kuberay/pull/1106)
-* [ray-project/kuberay#1162](https://github.com/ray-project/kuberay/pull/1162)
-* [ray-project/kuberay#1190](https://github.com/ray-project/kuberay/pull/1190)
+The [values.yaml](https://github.com/kuberay-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml) file contains detailed descriptions of the parameters. See these pull requests for more context on parameters:
+* [kuberay-project/kuberay#1106](https://github.com/kuberay-project/kuberay/pull/1106)
+* [kuberay-project/kuberay#1162](https://github.com/kuberay-project/kuberay/pull/1162)
+* [kuberay-project/kuberay#1190](https://github.com/kuberay-project/kuberay/pull/1190)
 
 (case1-watch-all-namespaces)=
 ## Case 1: Watch all namespaces in the Kubernetes cluster
