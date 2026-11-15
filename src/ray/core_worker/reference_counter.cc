@@ -912,15 +912,12 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
 void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
-    const auto &object_id = it->first;
     if (it->second.pinned_at_node_id_.value_or(NodeID::Nil()) == node_id ||
         it->second.spilled_node_id == node_id) {
       UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
       UnsetObjectPrimaryCopy(it);
       UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
-      if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
-        objects_to_recover_.push_back(object_id);
-      }
+      MarkObjectForRecoveryInternal(it);
     }
     RemoveObjectLocationInternal(it, node_id);
   }
@@ -960,7 +957,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
         it->second.pinned_at_node_id_ = node_id;
       } else {
         UnsetObjectPrimaryCopy(it);
-        objects_to_recover_.push_back(object_id);
+        MarkObjectForRecoveryInternal(it);
       }
       // Increment counter for new state
       UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
@@ -1589,7 +1586,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
         it->second.pinned_at_node_id_.value() == spilled_node_id) {
       UnsetObjectPrimaryCopy(it);
     }
-    objects_to_recover_.push_back(object_id);
+    MarkObjectForRecoveryInternal(it);
   }
 
   // Increment counter for new state
@@ -1877,9 +1874,19 @@ std::optional<std::string> ReferenceCounter::GetTensorTransport(
 void ReferenceCounter::MarkObjectForRecovery(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
-  if (it != object_id_refs_.end() && !it->second.OutOfScope(lineage_pinning_enabled_)) {
-    objects_to_recover_.push_back(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING).WithField(object_id)
+        << "Tried to mark object for recovery, but it was not in the reference table";
+    return;
+  }
+  MarkObjectForRecoveryInternal(it);
+}
+
+void ReferenceCounter::MarkObjectForRecoveryInternal(ReferenceTable::iterator it) {
+  if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+    objects_to_recover_.push_back(it->first);
   }
 }
+
 }  // namespace core
 }  // namespace ray

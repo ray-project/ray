@@ -549,6 +549,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Queues the object for recovery if it is still in scope.
+  void MarkObjectForRecoveryInternal(ReferenceTable::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// This should be called whenever the object is out of scope or manually freed.
   void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
