@@ -301,18 +301,15 @@ pytest_custom_serialization_arrays = [
     (lazy_fixture("pickled_objects_array"), 0.1),
 ]
 
-if get_pyarrow_version() >= parse_version("19.0.0"):
-    # View types were added in Arrow 16.0.0, but pa.Array.from_buffers only
-    # accepts their variadic buffers from 19.0.0 on; older versions fall back to
-    # Arrow IPC. Variadic data buffers can't be
-    # truncated when slicing (views hold absolute offsets into them), so the
-    # serialized-size cap is looser than for regular string/binary arrays.
-    pytest_custom_serialization_arrays += [
-        # String view array
-        (lazy_fixture("string_view_array"), 1.0),
-        # Binary view array
-        (lazy_fixture("binary_view_array"), 1.0),
-    ]
+# Variadic data buffers of view arrays can't be truncated when slicing (views
+# hold absolute offsets into them), so the serialized-size cap is looser than
+# for regular string/binary arrays.
+pytest_custom_serialization_arrays += [
+    # String view array
+    (lazy_fixture("string_view_array"), 1.0),
+    # Binary view array
+    (lazy_fixture("binary_view_array"), 1.0),
+]
 
 
 @pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_arrays)
