@@ -1656,9 +1656,10 @@ TEST_F(GcsPlacementGroupSchedulerTest,
 // availability is all below 0.5 even though its aggregate appears sufficient.
 //
 // Scenario:
-//   node0 (port 0): 2 GPUs, each with 0.4 free  → aggregate 0.8 >= 0.5, but no
-//                   single instance can fit 0.5. Should NOT be chosen.
-//   node1 (port 1): 2 GPUs, each with 1.0 free  → trivially fits. Should be chosen.
+//   node0 (port 0): GPUs [0.4, 0.4] → aggregate 0.8 >= 0.5, but no single instance
+//                   can fit 0.5. Should NOT be chosen.
+//   node1 (port 1): GPUs [0.6, 0.0] → aggregate 0.6, and GPU 0 fits 0.5. Should be
+//                   chosen.
 //
 // Before the fix the scheduler used aggregate scalars, so it picked node0, the raylet
 // rejected the allocation, and the PG was stuck in an infinite spill-back loop.
@@ -1683,18 +1684,28 @@ TEST_F(GcsPlacementGroupSchedulerTest,
     gcs_resource_manager_->UpdateFromResourceView(node0_id, msg);
   }
 
-  // --- Set up node1: both GPU instances fully free [1.0, 1.0]. ---
+  // --- Set up node1: GPUs [0.6, 0.0]. ---
   auto node1 = GenNodeInfo(1);
   (*node1->mutable_resources_total())["GPU"] = 2.0;
   gcs_node_manager_->AddNode(node1);
   gcs_resource_manager_->OnNodeAdd(*node1);
-  // node1's GPU instances default to [1.0, 1.0] (initialized from total).
+  const NodeID node1_id = NodeID::FromBinary(node1->node_id());
+
+  // Simulate 0.4 GPU consumed from GPU 0 and all of GPU 1.
+  {
+    rpc::syncer::ResourceViewSyncMessage msg;
+    rpc::syncer::ResourceInstances gpu_inst;
+    gpu_inst.add_values(0.6);
+    gpu_inst.add_values(0.0);
+    (*msg.mutable_resources_available_instances())["GPU"] = gpu_inst;
+    (*msg.mutable_resources_total())["GPU"] = 2.0;
+    gcs_resource_manager_->UpdateFromResourceView(node1_id, msg);
+  }
 
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   // --- Create a PG with one bundle requesting 0.5 GPU. ---
-  // PACK strategy is the hard case: it prefers the more-utilized node (node0),
-  // so without the per-instance fix the scheduler would pick node0 first.
+  // With aggregate scalars the PACK scorer would rank node0 above node1 (see above).
   std::vector<std::unordered_map<std::string, double>> bundles = {{{"GPU", 0.5}}};
   auto pg_spec = GenPlacementGroupCreation(
       "", bundles, rpc::PlacementStrategy::PACK, JobID::FromInt(1), ActorID::Nil());

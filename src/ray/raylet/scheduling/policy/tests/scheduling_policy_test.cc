@@ -415,6 +415,25 @@ TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
   ASSERT_EQ(to_schedule, local_node);
 }
 
+TEST_F(SchedulingPolicyTest, HybridSkipsLocalNodeWithFragmentedGpus) {
+  // The local node has GPUs [0.4, 0.4]: the aggregate 0.8 covers a 0.6 GPU request,
+  // but no single GPU does. The remote node has GPUs [1.0, 1.0]. CPU utilization is
+  // the same on both, so the local node would be preferred if it looked available.
+  ResourceRequest req = ResourceMapToResourceRequest({{"GPU", 0.6}}, false);
+  NodeResources local_resources = CreateNodeResources(4, 4, 0, 0, 0, 2);
+  local_resources.SetAvailableResource(ResourceID::GPU(),
+                                       {FixedPoint(0.4), FixedPoint(0.4)});
+  nodes.emplace(local_node, local_resources);
+  nodes.emplace(remote_node, CreateNodeResources(4, 4, 0, 0, 2, 2));
+
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
+                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         .Schedule(req, HybridOptions(0.5, false, false))
+                         .node_id;
+  ASSERT_EQ(to_schedule, remote_node);
+}
+
 TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
   // The local node is better, but we force spillback, so we'll schedule on a non-local
   // node anyways.
@@ -628,6 +647,52 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
       req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
+}
+
+TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingFragmentedGpuTest) {
+  // Two bundles of 0.5 GPU each.
+  //   local_node:  GPUs [0.4, 0.4, 0.4, 0.4]. The aggregate 1.6 covers the summed
+  //                1.0, but no single GPU fits a 0.5 bundle.
+  //   remote_node: GPUs [0.5, 0.5]. Each bundle fits on its own GPU, but the summed
+  //                1.0 doesn't fit on any single GPU.
+  // Scored on aggregates local_node wins ((1.6 - 1.0) / 1.6 vs 0), so this checks
+  // that STRICT_PACK places the bundles one by one on per-instance availability.
+  NodeResources local_resources = CreateNodeResources(0, 0, 0, 0, 0, 4);
+  local_resources.SetAvailableResource(
+      ResourceID::GPU(),
+      {FixedPoint(0.4), FixedPoint(0.4), FixedPoint(0.4), FixedPoint(0.4)});
+  nodes.emplace(local_node, local_resources);
+  NodeResources remote_resources = CreateNodeResources(0, 0, 0, 0, 0, 2);
+  remote_resources.SetAvailableResource(ResourceID::GPU(),
+                                        {FixedPoint(0.5), FixedPoint(0.5)});
+  nodes.emplace(remote_node, remote_resources);
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"GPU", 0.5}}, false);
+  std::vector<const ResourceRequest *> req_list = {&req, &req};
+
+  raylet_scheduling_policy::BundleStrictPackSchedulingPolicy policy(
+      *cluster_resource_manager);
+
+  auto to_schedule =
+      policy.Schedule(req_list,
+                      SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil()),
+                      GetCandidateNodes(*cluster_resource_manager));
+  ASSERT_TRUE(to_schedule.status.IsSuccess());
+  ASSERT_EQ(to_schedule.selected_nodes[0], remote_node);
+  ASSERT_EQ(to_schedule.selected_nodes[1], remote_node);
+
+  // The soft target is skipped when its GPUs are fragmented.
+  to_schedule = policy.Schedule(req_list,
+                                SchedulingOptions::BundleStrictPack(local_node),
+                                GetCandidateNodes(*cluster_resource_manager));
+  ASSERT_TRUE(to_schedule.status.IsSuccess());
+  ASSERT_EQ(to_schedule.selected_nodes[0], remote_node);
+
+  // Scheduling must not leave the temporary deductions behind.
+  ASSERT_EQ(cluster_resource_manager->GetNodeResources(remote_node)
+                .GetAvailableSum(ResourceID::GPU()),
+            FixedPoint(1.0));
 }
 
 TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorSuccessTest) {

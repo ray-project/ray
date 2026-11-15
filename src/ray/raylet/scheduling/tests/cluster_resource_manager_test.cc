@@ -91,6 +91,33 @@ TEST_F(ClusterResourceManagerTest, UpdateNode) {
   ASSERT_TRUE(node_resources.last_resource_update_time.has_value());
 }
 
+TEST_F(ClusterResourceManagerTest, UpdateNodeKeepsGpuInstances) {
+  // A raylet reporting GPUs [0.4, 0.4] must not look like it can fit a 0.6 GPU
+  // request, even though the aggregate is 0.8.
+  syncer::ResourceViewSyncMessage payload;
+  payload.mutable_resources_total()->insert({"CPU", 1.0});
+  payload.mutable_resources_total()->insert({"GPU", 2.0});
+  rpc::syncer::ResourceInstances cpu_instances;
+  cpu_instances.add_values(1.0);
+  (*payload.mutable_resources_available_instances())["CPU"] = cpu_instances;
+  rpc::syncer::ResourceInstances gpu_instances;
+  gpu_instances.add_values(0.4);
+  gpu_instances.add_values(0.4);
+  (*payload.mutable_resources_available_instances())["GPU"] = gpu_instances;
+  ASSERT_TRUE(manager->UpdateNode(node0, payload));
+
+  ASSERT_EQ(manager->GetNodeResources(node0).GetAvailableSum(ResourceID::GPU()),
+            FixedPoint(0.8));
+  ASSERT_FALSE(
+      manager->HasAvailableResources(node0,
+                                     ResourceMapToResourceRequest({{"GPU", 0.6}}, false),
+                                     /*ignore_object_store_memory_requirement=*/false));
+  ASSERT_TRUE(
+      manager->HasAvailableResources(node0,
+                                     ResourceMapToResourceRequest({{"GPU", 0.4}}, false),
+                                     /*ignore_object_store_memory_requirement=*/false));
+}
+
 TEST_F(ClusterResourceManagerTest, DebugStringTest) {
   // Test max_num_nodes_to_include parameter is working.
   ASSERT_EQ(std::vector<std::string>(absl::StrSplit(manager->DebugString(), "node id:"))

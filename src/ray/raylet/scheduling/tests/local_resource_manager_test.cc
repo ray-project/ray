@@ -432,6 +432,29 @@ TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {
   ASSERT_EQ(msg.labels().at("label2"), "value2");
 }
 
+TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessageReportsGpuInstances) {
+  // Two 0.6 GPU tasks on a 2-GPU node land on different GPUs, leaving [0.4, 0.4].
+  // The sync message must carry both instances, not the 0.8 aggregate, so remote
+  // schedulers can tell a 0.6 GPU request no longer fits here.
+  CreateManagerWithFakeClock({{ResourceID::CPU(), 2.0}, {ResourceID::GPU(), 2.0}});
+  for (int i = 0; i < 2; i++) {
+    auto allocation = std::make_shared<TaskResourceInstances>();
+    ASSERT_TRUE(manager->AllocateLocalTaskResources({{"GPU", 0.6}}, allocation));
+  }
+
+  syncer::ResourceViewSyncMessage msg;
+  manager->PopulateResourceViewSyncMessage(msg);
+
+  ASSERT_EQ(msg.resources_total().at("GPU"), 2.0);
+  const auto &gpu_instances = msg.resources_available_instances().at("GPU").values();
+  ASSERT_EQ(gpu_instances.size(), 2);
+  ASSERT_DOUBLE_EQ(gpu_instances[0], 0.4);
+  ASSERT_DOUBLE_EQ(gpu_instances[1], 0.4);
+  const auto &cpu_instances = msg.resources_available_instances().at("CPU").values();
+  ASSERT_EQ(cpu_instances.size(), 1);
+  ASSERT_EQ(cpu_instances[0], 2.0);
+}
+
 TEST_F(LocalResourceManagerTest, MaybeMarkFootprintAsBusyPreservesIdleTime) {
   // Test that MaybeMarkFootprintAsBusy saves the idle time and restores it
   // when MarkFootprintAsIdle is called, preserving the original idle duration.
