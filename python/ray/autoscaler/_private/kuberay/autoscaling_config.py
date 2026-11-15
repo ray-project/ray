@@ -30,9 +30,10 @@ UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 UPSCALING_VALUE_DEFAULT = "Default"
 UPSCALING_VALUE_CONSERVATIVE = "Conservative"
-# While the RayCluster has this annotation set to "true", pending worker Pods aren't
-# terminated for not being needed. For example, KubeRay's RayJob controller sets it
-# until the RayCluster is ready for the first time, before the job is submitted.
+# While the RayCluster has this annotation set to "true" (case-insensitive), pending
+# worker Pods aren't terminated for not being needed. For example, KubeRay's RayJob
+# controller sets it until the RayCluster is ready for the first time, before the
+# job is submitted.
 PENDING_NODE_IDLE_TERMINATION_GATE_ANNOTATION = (
     "ray.io/pending-node-idle-termination-gate"
 )
@@ -99,7 +100,8 @@ class AutoscalingConfigProducer:
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
     provider_config = _generate_provider_config(ray_cr["metadata"]["namespace"])
     annotations = ray_cr["metadata"].get("annotations") or {}
-    if annotations.get(PENDING_NODE_IDLE_TERMINATION_GATE_ANNOTATION, "").lower() == "true":
+    gate = annotations.get(PENDING_NODE_IDLE_TERMINATION_GATE_ANNOTATION, "")
+    if gate.lower() == "true":
         provider_config[PENDING_NODE_IDLE_TERMINATION_GATED_KEY] = True
 
     available_node_types = _generate_available_node_types_from_ray_cr_spec(

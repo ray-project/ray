@@ -531,6 +531,14 @@ TEST_DATA = (
             id="pending-node-idle-termination-gated",
         ),
         pytest.param(
+            _get_ray_cr_with_pending_node_idle_termination_gate("True"),
+            _get_autoscaling_config_with_pending_node_idle_termination_gated(),
+            None,
+            None,
+            None,
+            id="pending-node-idle-termination-gated-case-insensitive",
+        ),
+        pytest.param(
             _get_ray_cr_with_pending_node_idle_termination_gate("false"),
             _get_basic_autoscaling_config(),
             None,
