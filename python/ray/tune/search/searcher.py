@@ -262,7 +262,10 @@ class Searcher:
                 any_trial_had_metric = (
                     metric in trial.last_result and has_trial_finished
                 )
-            if Trial.TERMINATED and metric not in trial.last_result:
+            # Skip trials without the metric, but always forward ERROR trials
+            # so the searcher records the failure (``add_evaluated_point``
+            # receives ``error=True`` and ``value=None``).
+            if trial.status != Trial.ERROR and metric not in trial.last_result:
                 return None
             return dict(
                 parameters=trial.config,

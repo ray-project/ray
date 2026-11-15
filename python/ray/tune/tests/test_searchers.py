@@ -4,6 +4,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import warnings
 from copy import deepcopy
 from unittest.mock import patch
 
@@ -868,6 +869,84 @@ class BayesOptConvergenceWarningTest(unittest.TestCase):
         self.assertTrue(
             any("stopping early" in msg for msg in cm.output),
             f"Expected a convergence warning, got: {cm.output}",
+        )
+
+
+class AddEvaluatedTrialsErrorTrialsTest(unittest.TestCase):
+    """Regression tests for `Searcher.add_evaluated_trials` (#67653)."""
+
+    def test_error_trial_without_metric_is_forwarded(self):
+        from ray.tune.experiment import Trial
+        from ray.tune.result import DONE
+        from ray.tune.search import Searcher
+
+        class _RecordingSearcher(Searcher):
+            def __init__(self):
+                self.points = []
+
+            def suggest(self, trial_id):
+                return None
+
+            def add_evaluated_point(
+                self,
+                parameters,
+                value,
+                error=False,
+                pruned=False,
+                intermediate_values=None,
+            ):
+                self.points.append(
+                    dict(
+                        parameters=parameters,
+                        value=value,
+                        error=error,
+                        pruned=pruned,
+                    )
+                )
+
+        completed_trial = Trial("", config={"x": 1}, stub=True)
+        completed_trial.status = Trial.TERMINATED
+        completed_trial.run_metadata.last_result = {"metric": 1.0, DONE: True}
+
+        errored_trial = Trial("", config={"x": 2}, stub=True)
+        errored_trial.status = Trial.ERROR
+        errored_trial.run_metadata.last_result = {TRAINING_ITERATION: 3}
+
+        searcher = _RecordingSearcher()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            searcher.add_evaluated_trials([completed_trial, errored_trial], "metric")
+
+        # The completed trial is imported, and the ERROR trial is forwarded
+        # once even though its last result lacks the metric.
+        self.assertEqual(len(searcher.points), 2)
+        self.assertEqual(searcher.points[0]["parameters"], {"x": 1})
+        self.assertEqual(searcher.points[0]["value"], 1.0)
+        self.assertFalse(searcher.points[0]["error"])
+        self.assertEqual(searcher.points[1]["parameters"], {"x": 2})
+        self.assertIsNone(searcher.points[1]["value"])
+        self.assertTrue(searcher.points[1]["error"])
+        self.assertFalse(searcher.points[1]["pruned"])
+
+        # Non-ERROR trials without the metric are still skipped silently,
+        # and the existing warning for missing metrics still fires when no
+        # completed trial returned the metric.
+        pending_trial = Trial("", config={"x": 3}, stub=True)
+        pending_trial.status = Trial.PENDING
+        pending_trial.run_metadata.last_result = {TRAINING_ITERATION: 1}
+
+        searcher = _RecordingSearcher()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            searcher.add_evaluated_trials([pending_trial, errored_trial], "metric")
+
+        self.assertEqual(len(searcher.points), 1)
+        self.assertTrue(searcher.points[0]["error"])
+        self.assertTrue(
+            any(
+                "No completed trial returned the specified metric" in str(w.message)
+                for w in caught
+            ),
         )
 
 
