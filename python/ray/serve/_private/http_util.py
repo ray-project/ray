@@ -667,6 +667,13 @@ class ASGIAppReplicaWrapper:
         send: Send,
     ) -> None:
         """Calls into the wrapped ASGI app."""
+        if scope["type"] in ("http", "websocket"):
+            # Each request gets a shallow copy of the lifespan state. The proxy
+            # doesn't send it, because this replica ran the lifespan.
+            scope["state"] = {
+                **self._serve_asgi_lifespan.state,
+                **scope.get("state", {}),
+            }
         await self._asgi_app(
             scope,
             receive,

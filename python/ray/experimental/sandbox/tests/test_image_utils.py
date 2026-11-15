@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray.experimental.sandbox._internal import image_utils
+from ray.experimental.sandbox._internal import image_utils, layer_cache
 from ray.experimental.sandbox._internal.image_utils import (
     ROOTFS_IMAGE,
     _owner_filter,
@@ -34,6 +34,11 @@ from ray.experimental.sandbox._internal.image_utils import (
     sanitize_image_name,
 )
 from ray.experimental.sandbox.exceptions import SandboxCreationError
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_runsc() -> None:
+    """Image utility tests use fake mkfs.erofs and never start gVisor."""
 
 
 @pytest.fixture(autouse=True)
@@ -1298,9 +1303,8 @@ def test_old_format_cache_repulls_once(tmp_path):
     assert os.path.getmtime(os.path.join(image_dir, ROOTFS_IMAGE)) == built_at
 
 
-def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
-    """Sandboxes running on an old extracted-directory entry keep their pins
-    and their tree across the rebuild; the tree goes once none is left."""
+@pytest.mark.parametrize("old_format", [False, True])
+def test_repull_rejects_images_in_use(tmp_path, monkeypatch, old_format: bool) -> None:
     from ray.experimental.sandbox._internal.image_utils import _release_image_use
 
     local_tar = tmp_path / "sample.tar"
@@ -1309,24 +1313,38 @@ def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
     image_dir = pull_and_extract_container_image(
         str(local_tar), images_dir=str(images_dir), instance_id="sb-old"
     )
-    _forge_old_directory_cache(image_dir)
+    lower = os.path.join(image_dir, f"{ROOTFS_IMAGE}.rootfs")
+    os.makedirs(lower)
+    with open(os.path.join(lower, "hello.txt"), "w") as f:
+        f.write("live sandbox data")
+    if old_format:
+        _forge_old_directory_cache(image_dir)
+    else:
+        stale = os.path.getmtime(local_tar) - 10
+        os.utime(os.path.join(image_dir, ".extracted"), (stale, stale))
 
-    again = pull_and_extract_container_image(
-        str(local_tar), images_dir=str(images_dir), instance_id="sb-new"
-    )
-    assert again == image_dir
-    assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
-    # The old tree moved over intact for sb-old's gofer.
-    assert os.path.isfile(os.path.join(image_dir, "rootfs", "bin", "sh"))
-    assert set(os.listdir(os.path.join(image_dir, ".users"))) == {"sb-old", "sb-new"}
+    with monkeypatch.context() as m:
+        m.setattr(
+            image_utils,
+            "require_mkfs_erofs",
+            lambda: pytest.fail("Refresh must be rejected before preparing a download"),
+        )
+        with pytest.raises(SandboxCreationError, match="Stop those sandboxes"):
+            pull_and_extract_container_image(
+                str(local_tar), images_dir=str(images_dir), instance_id="sb-new"
+            )
 
-    # Still in use: a further hit leaves the tree alone.
-    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
-    assert os.path.isdir(os.path.join(image_dir, "rootfs"))
+    assert open(os.path.join(lower, "hello.txt")).read() == "live sandbox data"
+    assert os.listdir(os.path.join(image_dir, ".users")) == ["sb-old"]
 
     _release_image_use(image_dir, "sb-old")
-    _release_image_use(image_dir, "sb-new")
-    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert (
+        pull_and_extract_container_image(
+            str(local_tar), images_dir=str(images_dir), instance_id="sb-new"
+        )
+        == image_dir
+    )
+    assert not os.path.exists(lower)
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
 
@@ -1412,35 +1430,26 @@ def _serve_image(monkeypatch, layers, serve_blob=None):
         server.server_close()
 
 
-def test_layers_download_in_parallel_and_apply_in_order(tmp_path, monkeypatch):
-    """Three layers download at once, and the layers apply in manifest order
-    even when later ones arrive first."""
-    layers = [
-        _gz_layer(("f", b"1"), ("g", b"g")),
-        _gz_layer(("f", b"2")),
-        _gz_layer((".wh.g", b"")),
-        _gz_layer(("h", b"h")),
-        _gz_layer(("f", b"5")),
-    ]
-    first_three = threading.Barrier(3, timeout=5)
+def test_layer_extraction_overlaps_later_downloads(tmp_path, monkeypatch):
+    applied = threading.Event()
+    extract = image_utils.extract_tar_layer
+
+    def extract_and_signal(*args, **kwargs):
+        extract(*args, **kwargs)
+        applied.set()
 
     def serve_blob(index, handler, blob):
-        if index < 3:
-            # Breaks, and fails the pull, unless all three run at once.
-            first_three.wait()
-        if index == 0:
-            time.sleep(0.5)
+        if index == 1 and not applied.wait(5):
+            handler.send_error(500)
+            return
         _send(handler, blob)
 
-    rootfs = tmp_path / "rootfs"
-    rootfs.mkdir()
+    monkeypatch.setattr(image_utils, "extract_tar_layer", extract_and_signal)
+    layers = [_gz_layer(("a", b"a")), _gz_layer(("b", b"b"))]
     with _serve_image(monkeypatch, layers, serve_blob) as image:
-        image_utils._extract_image_layers(
-            image, str(rootfs), str(tmp_path), 30, str(tmp_path)
-        )
-    assert (rootfs / "f").read_bytes() == b"5"
-    assert not (rootfs / "g").exists()
-    assert (rootfs / "h").read_bytes() == b"h"
+        image_dir = pull_and_extract_container_image(image, str(tmp_path))
+    assert _image_file(image_dir, "a") == b"a"
+    assert _image_file(image_dir, "b") == b"b"
 
 
 def test_failed_layer_fails_the_pull_and_stops_other_downloads(tmp_path, monkeypatch):
@@ -1508,6 +1517,182 @@ def test_a_layer_cut_short_fails_the_pull(tmp_path, monkeypatch):
             image_utils._extract_image_layers(
                 image, str(rootfs), str(tmp_path), 30, str(tmp_path)
             )
+
+
+def test_layer_cache_reuses_layers_across_images_and_rebuilds(tmp_path, monkeypatch):
+    layers = [_gz_layer(("a", b"a")), _gz_layer(("b", b"b"))]
+    layers.append(layers[0])
+    requests = []
+
+    def serve_blob(index, handler, blob):
+        requests.append(index)
+        _send(handler, blob)
+
+    references = ("busybox:one", "busybox:two", "other:latest")
+    with _serve_image(monkeypatch, layers, serve_blob):
+        for image in references:
+            image_dir = pull_and_extract_container_image(image, str(tmp_path))
+            assert _image_file(image_dir, "a") == b"a"
+            assert _image_file(image_dir, "b") == b"b"
+        shutil.rmtree(image_dir)
+        pull_and_extract_container_image(references[-1], str(tmp_path))
+    assert sorted(requests) == [0, 1]
+
+
+@pytest.mark.parametrize("error_type", [PermissionError, OSError])
+def test_layer_cache_reuses_blob_when_timestamp_update_fails(tmp_path, error_type):
+    payload = b"cached layer"
+    digest = f"sha256:{hashlib.sha256(payload).hexdigest()}"
+    path = layer_cache.blob_path(str(tmp_path), digest)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as blob:
+        blob.write(payload)
+
+    with patch.object(
+        layer_cache.os, "utime", side_effect=error_type("timestamp denied")
+    ):
+        with layer_cache.fetch_blob(
+            str(tmp_path),
+            digest,
+            urllib.request.Request("http://unused.invalid"),
+            30,
+            threading.Event(),
+        ) as blob:
+            assert blob.read() == payload
+
+
+def test_layer_cache_cleanup_preserves_download_error(tmp_path):
+    error = OSError("download failed")
+    with patch.object(layer_cache.urllib.request, "urlopen", side_effect=error):
+        with patch.object(
+            layer_cache.os, "unlink", side_effect=PermissionError("cleanup denied")
+        ):
+            with pytest.raises(OSError, match="download failed") as raised:
+                layer_cache.fetch_blob(
+                    str(tmp_path),
+                    f"sha256:{'0' * 64}",
+                    urllib.request.Request("http://unused.invalid"),
+                    30,
+                    threading.Event(),
+                )
+    assert raised.value is error
+
+
+@pytest.mark.parametrize("operation", ["listdir", "stat", "partial"])
+def test_layer_cache_scan_handles_filesystem_errors(tmp_path, operation):
+    paths = _write_cached_layers(str(tmp_path), 2)
+    if operation == "partial":
+        partial = os.path.join(os.path.dirname(paths[0]), f".partial-{'0' * 64}-stale")
+        with open(partial, "wb") as blob:
+            blob.write(b"partial")
+        denied_path = partial
+    else:
+        denied_path = paths[0]
+    stat = os.stat
+
+    def stat_or_deny(path, *args, **kwargs):
+        if path == denied_path:
+            raise PermissionError("stat denied")
+        return stat(path, *args, **kwargs)
+
+    with patch.object(
+        layer_cache.os,
+        "listdir" if operation == "listdir" else "stat",
+        side_effect=PermissionError("listing denied")
+        if operation == "listdir"
+        else stat_or_deny,
+    ):
+        entries = list(layer_cache.cached_blobs(str(tmp_path)))
+    expected = paths
+    if operation == "listdir":
+        expected = []
+    elif operation == "stat":
+        expected = paths[1:]
+    assert (
+        sorted(os.path.join(str(tmp_path), name) for _, name, _ in entries) == expected
+    )
+
+
+def test_layer_cache_rejects_wrong_digest_and_cleans_partial(tmp_path, monkeypatch):
+    layer = _gz_layer(("a", b"a"))
+
+    def serve_blob(index, handler, blob):
+        _send(handler, _gz_layer(("a", b"wrong")))
+
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    with _serve_image(monkeypatch, [layer], serve_blob) as image:
+        with pytest.raises(SandboxCreationError, match="failed verification"):
+            image_utils._extract_image_layers(
+                image, str(rootfs), str(tmp_path), 30, str(tmp_path)
+            )
+    directory = tmp_path / layer_cache.BLOBS_SUBDIR / "sha256"
+    assert not list(directory.glob(".partial-*"))
+    assert all(path.name.endswith(".lock") for path in directory.iterdir())
+    assert not list(rootfs.iterdir())
+
+
+def _write_cached_layers(images_dir: str, count: int) -> list[str]:
+    paths = []
+    digests = [f"sha256:{i:064x}" for i in range(count)]
+    for i, digest in enumerate(digests):
+        path = layer_cache.blob_path(images_dir, digest)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as blob:
+            blob.write(bytes([i]) * 10)
+        os.utime(path, (i + 1, i + 1))
+        paths.append(path)
+    return paths
+
+
+@pytest.mark.parametrize("change", ["reuse", "remove"])
+def test_layer_cache_eviction_rechecks_scanned_blobs(tmp_path, monkeypatch, change):
+    paths = _write_cached_layers(str(tmp_path), 2)
+    scan = layer_cache.cached_blobs
+
+    def changed_blobs(images_dir):
+        entries = list(scan(images_dir))
+        if change == "reuse":
+            os.utime(paths[0], (3, 3))
+        else:
+            os.unlink(paths[0])
+        yield from entries
+
+    monkeypatch.setattr(layer_cache, "cached_blobs", changed_blobs)
+    image_utils.evict_least_recently_used_images(str(tmp_path), 10)
+    assert [os.path.exists(path) for path in paths] == [
+        change == "reuse",
+        change == "remove",
+    ]
+
+
+@pytest.mark.parametrize("pressure", ["size", "free"])
+def test_layer_cache_reclaimed_before_images(tmp_path, monkeypatch, pressure):
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = str(tmp_path / "images")
+    image_dir = pull_and_extract_container_image(str(local_tar), images_dir)
+    image_size = image_utils._dir_size_bytes(image_dir)
+    paths = _write_cached_layers(images_dir, 2)
+    for i, path in enumerate(paths):
+        newer = time.time() + i + 10
+        os.utime(path, (newer, newer))
+    monkeypatch.setenv(
+        "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES",
+        str(image_size + 10) if pressure == "size" else "0",
+    )
+    monkeypatch.setenv(
+        "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "90" if pressure == "free" else "0"
+    )
+    monkeypatch.setattr(
+        image_utils,
+        "_free_bytes",
+        lambda _: 100 - sum(10 for path in paths if os.path.exists(path)),
+    )
+
+    assert pull_and_extract_container_image(str(local_tar), images_dir) == image_dir
+    assert [os.path.exists(path) for path in paths] == [False, True]
+    assert _image_file(image_dir, "hello.txt") == b"hello"
 
 
 def test_extract_tar_layer_reads_a_layer_once(tmp_path):

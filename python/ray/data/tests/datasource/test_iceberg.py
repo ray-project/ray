@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from pkg_resources import parse_version
 from pyiceberg import (
     catalog as pyi_catalog,
     expressions as pyi_expr,
@@ -36,7 +35,6 @@ from ray.data._internal.logical.operators import Filter, Project, Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
 from ray.data.tests.test_util import (
     get_operator_types as _get_operator_types,
@@ -152,10 +150,6 @@ def fast_retry_config():
     ctx.retried_io_errors = original_errors
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_get_catalog():
 
     iceberg_ds = IcebergDatasource(
@@ -166,10 +160,6 @@ def test_get_catalog():
     assert catalog.name == _CATALOG_NAME
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_plan_files():
 
     iceberg_ds = IcebergDatasource(
@@ -180,10 +170,6 @@ def test_plan_files():
     assert len(plan_files) == 10
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_chunk_plan_files():
 
     iceberg_ds = IcebergDatasource(
@@ -201,10 +187,6 @@ def test_chunk_plan_files():
     ), chunks
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_get_read_tasks():
 
     iceberg_ds = IcebergDatasource(
@@ -449,10 +431,6 @@ def test_estimate_inmemory_file_size(
     assert _estimate_inmemory_file_size(data_file, projected_field_ids) == expected_size
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_size_estimate_matches_read_task_metadata():
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -470,10 +448,6 @@ def test_size_estimate_matches_read_task_metadata():
     assert sum(task.metadata.size_bytes for task in read_tasks) == expected_size
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_default_size_estimate_uses_full_parquet_file_size():
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -486,10 +460,6 @@ def test_default_size_estimate_uses_full_parquet_file_size():
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_projection_pushdown_updates_planner_size_estimate(monkeypatch):
     from ray._private import auto_init_hook
 
@@ -512,10 +482,6 @@ def test_projection_pushdown_updates_planner_size_estimate(monkeypatch):
     assert read_op.infer_metadata().size_bytes == expected_size
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_empty_projection_has_zero_size_estimate():
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -527,10 +493,6 @@ def test_empty_projection_has_zero_size_estimate():
     assert all(task.metadata.size_bytes == 0 for task in iceberg_ds.get_read_tasks(3))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_read_task_remains_compact_with_large_table_metadata():
     shared_metadata = "x" * (1024 * 1024)
     catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
@@ -553,10 +515,6 @@ def test_read_task_remains_compact_with_large_table_metadata():
     assert sum(block.num_rows for block in read_task()) == 101
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_filtered_read():
 
     iceberg_ds = IcebergDatasource(
@@ -626,10 +584,6 @@ _COUNT_CASES = {
 }
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize("case", list(_COUNT_CASES), ids=list(_COUNT_CASES))
 def test_count_matches_rows_actually_produced(case):
     """``count()`` must agree with the number of rows the query yields.
@@ -642,10 +596,6 @@ def test_count_matches_rows_actually_produced(case):
     assert make_ds().count() == expected
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_empty_projection_preserves_row_count():
     """Selecting zero columns must yield N rows of no columns, not zero rows.
 
@@ -668,10 +618,6 @@ def test_empty_projection_preserves_row_count():
     assert rows_read == expected
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_empty_projection_reads_only_the_stub_column():
     """An empty projection must read no real column, only the stub.
 
@@ -696,10 +642,6 @@ def test_empty_projection_reads_only_the_stub_column():
         assert block.schema.equals(expected_schema), block.schema
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize(
     ("row_filter", "count_must_be_exact"),
     [
@@ -742,10 +684,6 @@ def test_reported_num_rows_matches_rows_read(row_filter, count_must_be_exact):
         assert sum(claimed) == actual
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_reported_num_rows_is_unknown_when_scan_stops_early():
     """A ``limit`` makes the read stop early, so no manifest count describes it.
 
@@ -771,10 +709,6 @@ def test_reported_num_rows_is_unknown_when_scan_stops_early():
     ), f"row counts cannot be exact under a limit, got {claimed}"
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_empty_projection_survives_schema_evolution_on_pinned_snapshot():
     """An empty projection must not depend on the table's current schema.
 
@@ -804,10 +738,6 @@ def test_empty_projection_survives_schema_evolution_on_pinned_snapshot():
     assert actual == expected_rows
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize(
     "push_down",
     [
@@ -856,10 +786,6 @@ def test_pushdown_does_not_inherit_stale_plan_files(push_down):
         ), "reported row count came from plan files that predate the predicate"
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_read_iceberg_does_not_mutate_caller_kwargs():
     """The caller's dicts belong to the caller.
 
@@ -897,10 +823,6 @@ def test_read_iceberg_does_not_mutate_caller_kwargs():
     assert second.count() == first.count()
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_read_basic():
 
     row_filter = pyi_expr.In("col_c", {1, 2, 3, 4, 5, 6, 7, 8})
@@ -934,10 +856,6 @@ def test_read_basic():
     pd.testing.assert_frame_equal(orig_table_p, table_p)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_write_basic():
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
@@ -965,10 +883,6 @@ def test_write_basic():
     assert rows_same(table_p, orig_table_p)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_write_concurrency():
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
@@ -997,10 +911,6 @@ def test_write_concurrency():
     assert df["col_a"].tolist() == [1, 2, 3, 4]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_predicate_pushdown():
     """Test that predicate pushdown works correctly with Iceberg datasource."""
     # Read the table and apply filters using Ray Data expressions
@@ -1039,10 +949,6 @@ def test_predicate_pushdown():
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_predicate_pushdown_with_initial_filter():
     """Test that predicate pushdown works when combined with initial row_filter."""
     # Read with an initial PyIceberg filter
@@ -1088,10 +994,6 @@ def test_predicate_pushdown_with_initial_filter():
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_projection_pushdown():
     """Test that projection pushdown works correctly with Iceberg datasource."""
     # Read the table and apply projection using select
@@ -1132,10 +1034,6 @@ def test_projection_pushdown():
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize(
     "selected_cols,filter_expr,pyi_filter,expected_cols",
     [
@@ -1218,10 +1116,6 @@ def test_projection_and_predicate_pushdown(
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize(
     "rename_map,select_cols,filter_expr,pyi_filter,expected_cols",
     [
@@ -1394,10 +1288,6 @@ def test_rename_select_filter_combinations(
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_predicate_pushdown_complex_expression():
     """Test predicate pushdown with complex expressions."""
     # Apply a complex filter expression
@@ -1529,10 +1419,6 @@ def _verify_schema(expected_fields: Dict[str, Type[pyi_types.IcebergType]]) -> N
         )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestSchemaEvolution:
     """Test schema evolution during writes."""
 
@@ -1728,10 +1614,6 @@ def _append_files(table: Table, rows: List[Dict[str, Any]]) -> None:
     table.append(pa.Table.from_pylist([dict(row) for row in rows], schema=arrow_schema))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestOverwriteMode:
     """Test overwrite mode functionality."""
 
@@ -2131,10 +2013,6 @@ class TestOverwriteMode:
         assert rows_same(result, expected)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestUpsertMode:
     """Test upsert mode functionality."""
 
@@ -2284,10 +2162,6 @@ class TestUpsertMode:
         assert rows_same(result, expected)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestUpsertScanMerge:
     """Test the scan-merge upsert algorithm for correctness.
 
@@ -2851,10 +2725,6 @@ def table_with_identifier_fields() -> Generator[Tuple[Catalog, Table], None, Non
         sql_catalog.drop_table(f"{_DB_NAME}.{identifier_table_name}")
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestUpsertWithIdentifierFields:
     """Test upsert using table's identifier fields."""
 
@@ -2950,10 +2820,6 @@ class TestUpsertWithIdentifierFields:
         assert rows_same(result, expected)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestUpsertAndOverwriteMissingJoinCols:
     """Test error handling for upsert without join columns."""
 
@@ -2976,10 +2842,6 @@ class TestUpsertAndOverwriteMissingJoinCols:
             _write_to_iceberg(upsert_data, mode=SaveMode.UPSERT)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestSchemaEvolutionWithModes:
     """Test schema evolution with different write modes."""
 
@@ -3104,10 +2966,6 @@ class TestSchemaEvolutionWithModes:
         assert rows_same(result, expected)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     """Test that transient errors during file writes trigger retries."""
     from unittest.mock import patch

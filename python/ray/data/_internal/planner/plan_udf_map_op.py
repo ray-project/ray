@@ -173,6 +173,13 @@ def plan_project_op(
         ],
         init_fn=init_fn,
     )
+
+    # Keep the partitioning only if its columns pass through unchanged.
+    partitioning = input_physical_dag.output_partitioning
+    output_partitioning = None
+    if partitioning is not None and op.preserves_columns(partitioning.columns):
+        output_partitioning = partitioning
+
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -181,6 +188,7 @@ def plan_project_op(
         compute_strategy=compute,
         ray_remote_args=op.ray_remote_args,
         ray_remote_args_fn=op.ray_remote_args_fn,
+        output_partitioning=output_partitioning,
     )
 
 
@@ -294,6 +302,8 @@ def plan_filter_op(
         compute_strategy=compute,
         ray_remote_args=op.ray_remote_args,
         ray_remote_args_fn=op.ray_remote_args_fn,
+        # A filter only drops rows, so its input's partitioning still holds.
+        output_partitioning=input_physical_dag.output_partitioning,
     )
 
 

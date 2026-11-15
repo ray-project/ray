@@ -998,7 +998,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
 RAY_CONFIG(std::string,
            custom_unit_instance_resources,
-           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU,MBLT")
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU,MBLT,MLU")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -1300,3 +1300,11 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+/// If true, Python workers are forked from a warm fork server process
+/// instead of starting a new Python interpreter from scratch.
+RAY_CONFIG(bool, enable_worker_fork_server, false)
+
+/// Timeout in milliseconds for a fork server socket request before falling back to
+/// starting a fresh worker process.
+RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 500)

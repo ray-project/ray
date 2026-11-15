@@ -28,7 +28,12 @@ doctest(
     name = "py_doctest[train-gpu]",
     size = "large",
     # TODO: [V2] Migrate
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    # RAY_LOG_TO_DRIVER=0: see _TRAIN_V2_DOCTEST_ENV in v2/BUILD.bazel. The
+    # get_dataset_shard example in _internal/session.py runs trainer.fit().
+    env = {
+        "RAY_LOG_TO_DRIVER": "0",
+        "RAY_TRAIN_V2_ENABLED": "0",
+    },
     files = [
         "_internal/session.py",
         "context.py",
