@@ -385,12 +385,13 @@ class ThreadedMetadataFetcher(MetadataFetcher):
         try:
             self._run_inner()
         except Exception as exc:  # noqa: BLE001
+            with self._thread_failure_lock:
+                self._thread_failure = exc
+
             # Propagate unexpected thread failures to the executor.
             logger.exception(
                 "Ray Data metadata prefetch thread terminated unexpectedly."
             )
-            with self._thread_failure_lock:
-                self._thread_failure = exc
 
     def _run_inner(self) -> None:
         # Fetch-thread loop: accumulate requested meta_refs into a pending set
