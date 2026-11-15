@@ -99,7 +99,7 @@ class AutoscalingConfigProducer:
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
     provider_config = _generate_provider_config(ray_cr["metadata"]["namespace"])
     annotations = ray_cr["metadata"].get("annotations") or {}
-    if annotations.get(PENDING_NODE_IDLE_TERMINATION_GATE_ANNOTATION) == "true":
+    if annotations.get(PENDING_NODE_IDLE_TERMINATION_GATE_ANNOTATION, "").lower() == "true":
         provider_config[PENDING_NODE_IDLE_TERMINATION_GATED_KEY] = True
 
     available_node_types = _generate_available_node_types_from_ray_cr_spec(
