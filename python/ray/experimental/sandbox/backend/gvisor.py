@@ -595,8 +595,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # The node's default resolvers (RAY_SANDBOX_DEFAULT_DNS) that a
         # sandbox of this backend has reached.
         self._reachable_node_dns: Set[Tuple[str, ...]] = set()
-        # A restored sandbox's runsc-fd-parking helper can outlive runsc and
-        # be orphaned. Adopt and reap those here, since the pod's PID 1 often
+        # runsc's fd-parking helper and gofer can outlive runsc and be
+        # orphaned. Adopt and reap those here, since the pod's PID 1 often
         # doesn't.
         orphan_reaper.start()
 

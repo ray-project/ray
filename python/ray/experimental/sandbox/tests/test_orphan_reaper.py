@@ -112,6 +112,37 @@ def test_reaps_orphaned_fd_parking_helper(tmp_path):
     )
 
 
+def test_reaps_orphaned_gofer(tmp_path):
+    # runsc starts its gofer through /proc/self/exe, so its comm is "exe".
+    _run_child(
+        tmp_path,
+        """
+        assert r._enable_subreaper()
+        orphan(tmp, "exe", 0.2)
+        wait_for_zombie("exe")
+        assert r.reap_orphans() == 1
+        assert "exe" not in zombies().values()
+        """,
+    )
+
+
+def test_keeps_exit_status_of_a_popen_child_named_exe(tmp_path):
+    # Programs that re-execute themselves are also named "exe"; a child this
+    # process started and still waits for must keep its exit status.
+    _run_child(
+        tmp_path,
+        """
+        assert r._enable_subreaper()
+        path = os.path.join(tmp, "exe")
+        shutil.copy("/bin/false", path)
+        proc = subprocess.Popen([path])
+        wait_for_zombie("exe")
+        assert r.reap_orphans() == 0
+        assert proc.wait() == 1
+        """,
+    )
+
+
 def test_leaves_other_orphans_alone(tmp_path):
     _run_child(
         tmp_path,
