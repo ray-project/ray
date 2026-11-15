@@ -610,9 +610,19 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
     if len(args) > 0:
         method = getattr(args[0], func.__name__, False)
         if method:
-            wrapped = getattr(method, "__wrapped__", False)
-            if wrapped and wrapped == func:
-                return args[0]
+            # Follow the full ``__wrapped__`` chain set by ``functools.wraps``.
+            # The chain can be longer than one hop when ``@serve.batch`` is
+            # combined with other wrapping decorators, e.g.
+            # ``@other_decorator @serve.batch(...)``. See #47449.
+            wrapped = method
+            seen = set()
+            while id(wrapped) not in seen:
+                seen.add(id(wrapped))
+                if wrapped == func:
+                    return args[0]
+                wrapped = getattr(wrapped, "__wrapped__", None)
+                if wrapped is None:
+                    break
 
     return None
 
