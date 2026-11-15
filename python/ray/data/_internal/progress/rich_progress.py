@@ -59,8 +59,7 @@ class RichSubProgressBar(BaseProgressBar):
         tid: TaskID = None,
         max_name_length: int = 100,
     ):
-        """
-        Initialize sub-progress bar
+        """Initialize sub-progress bar
 
         Args:
             name: name of sub-progress bar
@@ -101,7 +100,10 @@ class RichSubProgressBar(BaseProgressBar):
         )
 
     def update(self, increment: int = 0, total: Optional[int] = None) -> None:
-        if self._enabled and increment != 0:
+        # Like ProgressBar.update: a new total is worth redrawing even when
+        # nothing was completed since the last call.
+        total_changed = total is not None and total != self._total
+        if self._enabled and (increment != 0 or total_changed):
             if total is not None:
                 self._total = total
             self._completed += increment
@@ -280,8 +282,8 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                         pg.complete()
                 if self._start_time is None:
                     self._start_time = time.time()
-                for tid, progress, _ in self._op_display.values():
-                    completed = progress.tasks[tid].completed or 0
+                for op_state, (tid, progress, _) in self._op_display.items():
+                    completed = op_state.op.metrics.row_outputs_taken
                     metrics = _get_progress_metrics(
                         self._start_time, completed, completed
                     )
@@ -376,8 +378,7 @@ class _ProgressMetrics:
 def _get_progress_metrics(
     start_time: float, completed_rows: int, total_rows: Optional[int]
 ) -> _ProgressMetrics:
-    """
-    Args:
+    """Args:
         start_time: time when progress tracking started
         completed_rows: cumulative rows outputted
         total_rows: total rows expected (can be unknown)

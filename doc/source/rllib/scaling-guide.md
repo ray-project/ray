@@ -8,7 +8,7 @@ myst:
 
 # RLlib scaling guide
 
-RLlib is a distributed and scalable RL library, based on [Ray](https://www.ray.io/). An RLlib {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` uses [Ray actors](https://docs.ray.io/en/latest/ray-core/actors.html) wherever parallelization of its sub-components can speed up sample and learning throughput.
+RLlib is a distributed and scalable RL library, based on [Ray](https://www.ray.io/). An RLlib {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` uses [Ray actors](../core/actors/index.md) wherever parallelization of its sub-components can speed up sample and learning throughput.
 
 ```{figure} images/scaling_axes_overview.svg
 :width: 600

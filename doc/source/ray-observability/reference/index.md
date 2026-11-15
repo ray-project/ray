@@ -11,7 +11,7 @@ myst:
 ```{toctree}
 :hidden:
 
-api
+../../core/api/state
 cli
 system-metrics
 ```

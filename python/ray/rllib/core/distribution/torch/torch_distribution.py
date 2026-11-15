@@ -111,11 +111,6 @@ class TorchCategorical(TorchDistribution):
     Args:
         logits: Event log probabilities (unnormalized)
         probs: The probabilities of each event.
-        temperature: In case of using logits, this parameter can be used to determine
-            the sharpness of the distribution. i.e.
-            ``probs = softmax(logits / temperature)``. The temperature must be strictly
-            positive. A low value (e.g. 1e-10) will result in argmax sampling while a
-            larger value will result in uniform sampling.
     """
 
     @override(TorchDistribution)
@@ -515,6 +510,10 @@ class TorchMultiCategorical(Distribution):
             temperatures: A list of floats representing the temperature to use for
                 each Categorical distribution. If not provided, 1.0 is used for all.
             **kwargs: Forward compatibility kwargs.
+
+        Returns:
+            A new `TorchMultiCategorical` instance holding one `TorchCategorical`
+            child distribution per entry in `input_lens`.
         """
         if not temperatures:
             # If temperatures are not provided, use 1.0 for all actions.

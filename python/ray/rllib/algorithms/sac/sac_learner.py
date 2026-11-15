@@ -97,7 +97,7 @@ class SACLearner(DQNLearner):
             self._get_target_entropy(module_id)
         )
 
-    def _get_target_entropy(self, module_id):
+    def _get_target_entropy(self, module_id: ModuleID) -> TensorType:
         """Returns the target entropy to use for the loss.
 
         Args:

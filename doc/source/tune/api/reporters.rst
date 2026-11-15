@@ -105,7 +105,6 @@ Reporter Interface (tune.ProgressReporter)
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ProgressReporter.report
     ProgressReporter.should_report

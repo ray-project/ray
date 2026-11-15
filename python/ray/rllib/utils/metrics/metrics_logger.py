@@ -136,7 +136,7 @@ class MetricsLogger:
 
     def __init__(
         self,
-        root=False,
+        root: bool = False,
         stats_cls_lookup: Optional[
             Dict[str, Type[StatsBase]]
         ] = DEFAULT_STATS_CLS_LOOKUP,
@@ -177,7 +177,7 @@ class MetricsLogger:
     def peek(
         self,
         key: Union[str, Tuple[str, ...], None] = None,
-        default=None,
+        default: Any = None,
         compile: bool = True,
         throughput: bool = False,
         latest_merged_only: bool = False,
@@ -402,6 +402,8 @@ class MetricsLogger:
                 but calculate once per MetricsLogger.reduce() call.
             reduce_per_index_on_aggregate: Deprecated argument. Aggregation now happens over all values
                 of incoming stats objects once per MetricsLogger.reduce() call, treating each incoming value with equal weight.
+            **kwargs: Additional keyword arguments. Currently unused; accepted for
+                backward compatibility.
         """
         # Some compatibility logic to support the legacy usage of MetricsLogger:
         # 1. If no reduce method is provided and a window is provided, use mean reduction.
@@ -437,7 +439,7 @@ class MetricsLogger:
 
     def log_dict(
         self,
-        value_dict,
+        value_dict: Dict[str, Any],
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
         reduce: Optional[str] = "mean",
@@ -462,6 +464,22 @@ class MetricsLogger:
         have been reduced by other, parallel components.
 
         See MetricsLogger.log_value for more details on the arguments.
+
+        Args:
+            value_dict: The possibly nested dict of values or Stats objects to log.
+            key: An optional key, or nested key tuple, to prefix the path of each leaf
+                with.
+            reduce: The reduction method. Passed to `log_value()` for each leaf.
+            window: An optional window size. Passed to `log_value()` for each leaf.
+            ema_coeff: An optional EMA coefficient. Passed to `log_value()` for each
+                leaf.
+            percentiles: The percentiles to compute. Passed to `log_value()` for
+                each leaf.
+            clear_on_reduce: Deprecated. Use `reduce="lifetime_sum"` instead.
+            with_throughput: Whether to track a throughput estimate. Passed to
+                `log_value()` for each leaf.
+            throughput_ema_coeff: Deprecated.
+            reduce_per_index_on_aggregate: Deprecated.
         """
         assert isinstance(
             value_dict, dict
@@ -634,6 +652,10 @@ class MetricsLogger:
                 but calculate once per MetricsLogger.reduce() call.
             reduce_per_index_on_aggregate: Deprecated argument. Aggregation now happens over all values
                 of incoming stats objects once per MetricsLogger.reduce() call, treating each incoming value with equal weight.
+
+        Returns:
+            The Stats object stored under `key`, which can be used as a context
+            manager (with-block) to measure and log the time spent inside the block.
         """
         # Prepare the kwargs for the stats object and create it if it doesn't exist
         self._maybe_create_stats_object(
@@ -692,7 +714,7 @@ class MetricsLogger:
         """Deletes the given `key` from this metrics logger's stats.
 
         Args:
-            key: The key or key sequence (for nested location within self.stats),
+            *key: The key or key sequence (for nested location within self.stats),
                 to delete from this MetricsLogger's stats.
             key_error: Whether to throw a KeyError if `key` cannot be found in `self`.
 
@@ -706,6 +728,10 @@ class MetricsLogger:
 
         Note that the state is merely the combination of all states of the individual
         `Stats` objects stored under `self.stats`.
+
+        Returns:
+            A dict with a single `"stats"` key. Its value maps each stats key path,
+            joined with `"--"`, to the state of the `Stats` object at that path.
         """
         stats_dict = {}
 
@@ -801,7 +827,7 @@ class MetricsLogger:
                     raise e
 
     def _get_throughputs(
-        self, key: Optional[Union[str, Tuple[str, ...]]] = None, default=None
+        self, key: Optional[Union[str, Tuple[str, ...]]] = None, default: Any = None
     ) -> Union[Dict, float]:
         """Returns throughput values for Stats that have throughput tracking enabled.
 

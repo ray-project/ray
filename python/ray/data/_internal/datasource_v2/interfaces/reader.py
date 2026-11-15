@@ -25,6 +25,14 @@ class Reader(ABC, Generic[InputSplit]):
         This method is called on workers to perform the actual read operation.
         It should respect all pushdowns configured on this reader.
 
+        Implement this directly when ``FileReader`` does not decode your
+        format or the source is not files at all. Your implementation should:
+
+            1. Open each entry of ``input_split`` and decode it.
+            2. Apply every pushdown this reader was configured with.
+            3. Call ``raise_on_pickle_object_columns`` on each table built
+               from external input, then yield it.
+
         Args:
             input_split: Work unit describing what data to read.
 

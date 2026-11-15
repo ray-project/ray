@@ -1,5 +1,4 @@
-"""
-[1] Mastering Diverse Domains through World Models - 2023
+"""[1] Mastering Diverse Domains through World Models - 2023
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
@@ -102,7 +101,13 @@ class CriticNetwork(nn.Module):
             upper_bound=upper_bound,
         )
 
-    def forward(self, h, z, return_logits=False, use_ema=False):
+    def forward(
+        self,
+        h: "torch.Tensor",
+        z: "torch.Tensor",
+        return_logits: bool = False,
+        use_ema: bool = False,
+    ):
         """Performs a forward pass through the critic network.
 
         Args:
@@ -113,6 +118,11 @@ class CriticNetwork(nn.Module):
                 computed by the binned return layer (instead of only the value itself).
             use_ema: Whether to use the EMA-copy of the critic instead of the actual
                 critic to perform this computation.
+
+        Returns:
+            The expected (symlog'd) values of shape (B,). If `return_logits` is True,
+            a tuple of these values and the logits over the `num_buckets` return
+            buckets.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3

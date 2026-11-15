@@ -19,21 +19,19 @@
 #include <string>
 
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_node_manager.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/fake_gcs_node_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
-
-using ::testing::_;
 
 class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest()
       : cluster_resource_manager_(PeriodicalRunner::Create(io_service_)),
-        gcs_node_manager_(std::make_unique<gcs::MockGcsNodeManager>()) {
+        gcs_node_manager_(std::make_unique<gcs::FakeGcsNodeManager>()) {
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
   }

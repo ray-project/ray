@@ -6,7 +6,7 @@ It supports both traced and non-traced eager execution modes.
 import logging
 import os
 import threading
-from typing import Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -193,6 +193,8 @@ class EagerTFPolicyV2(Policy):
 
         Args:
             train_batch: The SampleBatch (already) used for training.
+            grads: The gradients (as a list of (gradient, variable) tuples)
+                computed for `train_batch`.
 
         Returns:
             The stats dict.
@@ -271,6 +273,7 @@ class EagerTFPolicyV2(Policy):
             model: Underlying model.
             obs_batch: Observation tensor batch.
             state_batches: Action sampling state batch.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             Sampled action
@@ -295,6 +298,7 @@ class EagerTFPolicyV2(Policy):
             model: Underlying model.
             obs_batch: Observation tensor batch.
             state_batches: Action sampling state batch.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             Distribution input.
@@ -338,8 +342,8 @@ class EagerTFPolicyV2(Policy):
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[SampleBatch] = None,
-        episode=None,
-    ):
+        episode: Optional[Any] = None,
+    ) -> SampleBatch:
         """Post process trajectory in the format of a SampleBatch.
 
         Args:

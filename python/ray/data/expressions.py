@@ -782,6 +782,22 @@ class Expr(ABC):
         """
         return _create_pyarrow_compute_udf(pc.abs_checked)(self)
 
+    # NULL Handling
+    def is_nan(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_nan, return_dtype=DataType.bool())(
+            self
+        )
+
+    def is_finite(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_finite, return_dtype=DataType.bool())(
+            self
+        )
+
+    def is_inf(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_inf, return_dtype=DataType.bool())(
+            self
+        )
+
     def cast(self, target_type: DataType, *, safe: bool = True) -> "UDFExpr":
         """Cast the expression to a specified type.
 
@@ -1533,8 +1549,7 @@ def _create_udf_callable(
 
 @PublicAPI(stability="alpha")
 def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
-    """
-    Decorator to convert a UDF into an expression-compatible function.
+    """Decorator to convert a UDF into an expression-compatible function.
 
     This decorator allows UDFs to be used seamlessly within the expression system,
     enabling schema inference and integration with other expressions.
@@ -1683,13 +1698,11 @@ def _create_pyarrow_wrapper(
         # Convert inputs to PyArrow and track pandas flags
         args_results = [to_arrow(arg) for arg in args]
         kwargs_results = {k: to_arrow(v) for k, v in kwargs.items()}
-
         converted_args = [v[0] for v in args_results]
         converted_kwargs = {k: v[0] for k, v in kwargs_results.items()}
         input_was_pandas = any(v[1] for v in args_results) or any(
             v[1] for v in kwargs_results.values()
         )
-
         # Call function with converted inputs
         result = fn(*converted_args, **converted_kwargs)
 
@@ -2228,8 +2241,7 @@ def exprlist_to_fields(
 
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
-    """
-    Reference an existing column by name.
+    """Reference an existing column by name.
 
     This is the primary way to reference columns in expressions.
     The returned expression will extract values from the specified
@@ -2256,8 +2268,7 @@ def col(name: str) -> ColumnExpr:
 
 @PublicAPI(stability="beta")
 def lit(value: Any) -> LiteralExpr:
-    """
-    Create a literal expression from a constant value.
+    """Create a literal expression from a constant value.
 
     This creates an expression that represents a constant scalar value.
     The value will be broadcast to all rows when the expression is evaluated.
@@ -2291,8 +2302,7 @@ def lit(value: Any) -> LiteralExpr:
 # TODO remove
 @DeveloperAPI(stability="alpha")
 def star() -> StarExpr:
-    """
-    References all input columns from the input.
+    """References all input columns from the input.
 
     This is a special expression used in projections to preserve all
     existing columns. It's typically used with operations that want to
@@ -2306,8 +2316,7 @@ def star() -> StarExpr:
 
 @PublicAPI(stability="alpha")
 def unnest(expr: Expr) -> UnnestExpr:
-    """
-    Expand a struct-typed expression into one output column per struct field.
+    """Expand a struct-typed expression into one output column per struct field.
 
     Use this with :meth:`Dataset.with_columns
     <ray.data.Dataset.with_columns>` to let a single expression — typically
@@ -2371,12 +2380,33 @@ def download(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
 ) -> DownloadExpr:
-    """
-    Create a download expression that downloads content from URIs.
+    """Create a download expression that downloads content from URIs.
 
     This creates an expression that will download bytes from URIs stored in
     a specified column. When evaluated, it will fetch the content from each URI
     and return the downloaded bytes.
+
+    A missing object (404), an access-denied object (403) or an invalid URI
+    yields ``None`` for that row, and each block logs one warning counting
+    such rows. Transient failures (5xx, throttling, timeouts, dropped
+    connections) are retried with backoff inside the storage client and then
+    re-fetched up to ``RAY_DATA_DOWNLOAD_MAX_ATTEMPTS`` times per task
+    (default 2); if they still fail, the task raises ``DownloadError`` instead
+    of yielding ``None``, so no row is silently lost. With the default
+    settings a URI that never recovers holds its task for about four minutes
+    before the error is raised: each attempt spends up to
+    ``RAY_DATA_OBSTORE_RETRY_TIMEOUT_S`` (120 seconds) in client retries,
+    plus the ``RAY_DATA_DOWNLOAD_RETRY_BACKOFF_MS`` pause between attempts,
+    and ``DataContext.max_map_retries`` multiplies that again. Bad
+    credentials raise too rather than producing a column of nulls: a 403
+    whose S3 error code says so (for example ``InvalidAccessKeyId`` or
+    ``SignatureDoesNotMatch``) on the obstore backend, and on either backend
+    a block in which every URI is denied, which is the only signal available
+    to the PyArrow backend because its HEAD requests carry no error code.
+    Tune the client retry budget with the ``RAY_DATA_OBSTORE_RETRY_*``
+    environment variables, retry the task with
+    ``DataContext.retried_map_errors`` and ``max_map_retries``, or tolerate
+    the failure with ``DataContext.max_errored_blocks``.
 
     Args:
         uri_column_name: The name of the column containing URIs to download from
@@ -2401,12 +2431,12 @@ def download(
 
 @PublicAPI(stability="alpha")
 def monotonically_increasing_id() -> MonotonicallyIncreasingIdExpr:
-    """
-    Create an expression that generates monotonically increasing IDs.
+    """Create an expression that generates monotonically increasing IDs.
 
     The generated IDs are guaranteed to be monotonically increasing and unique,
-    but not consecutive. The current implementation puts the task ID in the upper
-    31 bits, and the record number within each task in the lower 33 bits. Records
+    but not consecutive. The current implementation puts the record number within
+    each task in the lower 33 bits, and the task ID in the 30 bits above them. The
+    sign bit of the 64-bit ID is unused. Records
     within the block(s) assigned to a task receive consecutive IDs. Note that IDs
     are not globally ordered across tasks.
 
@@ -2436,8 +2466,7 @@ def random(
     seed: int | None = None,
     reseed_after_execution: bool = DEFAULT_RESEED_AFTER_EXECUTION,
 ) -> RandomExpr:
-    """
-    Create an expression that generates random numbers.
+    """Create an expression that generates random numbers.
 
     This creates an expression that generates random floating-point numbers
     between 0 (inclusive) and 1 (exclusive) for each row. The generator can
@@ -2504,8 +2533,7 @@ def random(
 
 @PublicAPI(stability="alpha")
 def uuid() -> UUIDExpr:
-    """
-    Create a UUID expression that generates unique identifiers.
+    """Create a UUID expression that generates unique identifiers.
 
     This creates an expression that generates unique identifiers (strings) for each row.
     The identifiers are generated using the UUID4 algorithm.

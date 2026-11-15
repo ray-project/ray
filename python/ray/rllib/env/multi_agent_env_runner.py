@@ -80,6 +80,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         Args:
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
+            **kwargs: Forwarded to the `EnvRunner` base class constructor. Also used
+                to read this EnvRunner's `spaces` dict.
         """
         super().__init__(config=config, **kwargs)
 

@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
 
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import RolloutWorker
@@ -6,6 +6,9 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import TensorType
 from ray.rllib.utils.typing import AgentID, PolicyID
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation.episode_v2 import EpisodeV2
 
 
 @OldAPIStack
@@ -28,7 +31,7 @@ class ObservationFunction:
         worker: RolloutWorker,
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
-        episode,
+        episode: "EpisodeV2",
         **kw
     ) -> Dict[AgentID, TensorType]:
         """Callback run on each environment step to observe the environment.
@@ -53,7 +56,7 @@ class ObservationFunction:
             policies: Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
             episode: Episode state object.
-            kwargs: Forward compatibility placeholder.
+            **kw: Forward compatibility placeholder.
 
         Returns:
             new_agent_obs: copy of agent obs with updates. You can
@@ -61,26 +64,15 @@ class ObservationFunction:
                 can have a dummy "global" observation, and the observer can
                 merge the global state into individual observations.
 
-        .. testcode::
-            :skipif: True
-
-            # Observer that merges global state into individual obs. It is
-            # rewriting the discrete obs into a tuple with global state.
-            example_obs_fn1({"a": 1, "b": 2, "global_state": 101}, ...)
-
-        .. testoutput::
-
+        Examples:
+            >>> # Observer that merges global state into individual obs. It is
+            >>> # rewriting the discrete obs into a tuple with global state.
+            >>> example_obs_fn1({"a": 1, "b": 2, "global_state": 101}, ...)  # doctest: +SKIP_EXAMPLE
             {"a": [1, 101], "b": [2, 101]}
 
-        .. testcode::
-            :skipif: True
-
-            # Observer for e.g., custom centralized critic model. It is
-            # rewriting the discrete obs into a dict with more data.
-            example_obs_fn2({"a": 1, "b": 2}, ...)
-
-        .. testoutput::
-
+            >>> # Observer for e.g., custom centralized critic model. It is
+            >>> # rewriting the discrete obs into a dict with more data.
+            >>> example_obs_fn2({"a": 1, "b": 2}, ...)
             {"a": {"self": 1, "other": 2}, "b": {"self": 2, "other": 1}}
         """
 

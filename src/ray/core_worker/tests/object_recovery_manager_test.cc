@@ -21,15 +21,14 @@
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/task_manager_interface.h"
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/fake_task_manager_interface.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
@@ -43,9 +42,9 @@ namespace core {
 // overhead for the very simple timeout logic we currently have.
 int64_t kLongTimeout = 1024 * 1024 * 1024;
 
-class MockTaskManager : public MockTaskManagerInterface {
+class FakeTaskManager : public FakeTaskManagerInterface {
  public:
-  MockTaskManager() {}
+  FakeTaskManager() {}
 
   void AddTask(const TaskID &task_id, std::vector<ObjectID> task_deps) {
     task_specs[task_id] = task_deps;
@@ -74,7 +73,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_tasks_resubmitted = 0;
 };
 
-class MockRayletClient : public rpc::FakeRayletClient {
+class FakeRayletClientForTest : public rpc::FakeRayletClient {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address,
@@ -100,7 +99,7 @@ class MockRayletClient : public rpc::FakeRayletClient {
   std::list<rpc::ClientCallback<rpc::PinObjectIDsReply>> callbacks = {};
 };
 
-class MockObjectDirectory {
+class FakeObjectDirectory {
  public:
   void AsyncGetLocations(const ObjectID &object_id,
                          const ObjectLookupCallback &callback) {
@@ -132,15 +131,15 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   explicit ObjectRecoveryManagerTestBase(bool lineage_enabled)
       : local_node_id_(NodeID::FromRandom()),
         io_context_("TestOnly.ObjectRecoveryManagerTestBase"),
-        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        publisher_(std::make_shared<pubsub::FakePublisher>()),
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
-        object_directory_(std::make_shared<MockObjectDirectory>()),
+        object_directory_(std::make_shared<FakeObjectDirectory>()),
         memory_store_(
             std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_)),
         raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
             [&](const rpc::Address &) { return raylet_client_; })),
-        raylet_client_(std::make_shared<MockRayletClient>()),
-        task_manager_(std::make_shared<MockTaskManager>()),
+        raylet_client_(std::make_shared<FakeRayletClientForTest>()),
+        task_manager_(std::make_shared<FakeTaskManager>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(),
             publisher_.get(),
@@ -174,7 +173,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
               memory_store_->Put(data, object_id, ref_counter_->HasReference(object_id));
-            }) {
+            },
+            object_recovery_attempts_counter_) {
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
@@ -254,15 +254,22 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   // Used by memory_store_.
   InstrumentedIOContextWithThread io_context_;
   Clock clock_;
-  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::FakePublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
-  std::shared_ptr<MockObjectDirectory> object_directory_;
+  std::shared_ptr<FakeObjectDirectory> object_directory_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
-  std::shared_ptr<MockRayletClient> raylet_client_;
-  std::shared_ptr<MockTaskManager> task_manager_;
+  std::shared_ptr<FakeRayletClientForTest> raylet_client_;
+  std::shared_ptr<FakeTaskManager> task_manager_;
   std::shared_ptr<ReferenceCounterInterface> ref_counter_;
+  ray::observability::FakeCounter object_recovery_attempts_counter_;
   ObjectRecoveryManager manager_;
+
+  double RecordedAttempts(const std::string &type) const {
+    const auto tag_to_value = object_recovery_attempts_counter_.GetTagToValue();
+    auto it = tag_to_value.find({{"Type", type}});
+    return it == tag_to_value.end() ? 0 : it->second;
+  }
 };
 
 class ObjectRecoveryLineageDisabledTest : public ObjectRecoveryManagerTestBase {
@@ -351,6 +358,8 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   ASSERT_EQ(raylet_client_->Flush(true), 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
+  ASSERT_EQ(RecordedAttempts("Pin"), 2);
+  ASSERT_EQ(RecordedAttempts("Reconstruct"), 0);
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
@@ -370,6 +379,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 1);
+  ASSERT_EQ(RecordedAttempts("Pin"), 0);
+  ASSERT_EQ(RecordedAttempts("Reconstruct"), 1);
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {

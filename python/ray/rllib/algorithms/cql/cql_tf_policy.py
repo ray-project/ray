@@ -1,6 +1,4 @@
-"""
-TensorFlow policy class used for CQL.
-"""
+"""TensorFlow policy class used for CQL."""
 import logging
 from functools import partial
 from typing import Dict, List, Type, Union
@@ -322,8 +320,8 @@ def setup_early_mixins(
 
     Args:
         policy: The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
+        obs_space: The Policy's observation space.
+        action_space: The Policy's action space.
         config: The Policy's config.
     """
     policy.cur_iter = 0

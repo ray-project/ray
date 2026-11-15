@@ -98,14 +98,17 @@ class FeatureHasher(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to apply the hashing trick to."""
         return self._columns
 
     @property
     def num_features(self) -> int:
+        """The number of features used to represent the vocabulary."""
         return self._num_features
 
     @property
     def output_column(self) -> str:
+        """The name of the column that contains the hashed features."""
         return self._output_column
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -141,9 +144,19 @@ class FeatureHasher(SerializablePreprocessorBase):
         return df
 
     def get_input_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor reads.
+
+        Returns:
+            The columns to apply the hashing trick to.
+        """
         return self._columns
 
     def get_output_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor writes.
+
+        Returns:
+            A list that contains ``output_column``.
+        """
         return [self._output_column]
 
     def __repr__(self):

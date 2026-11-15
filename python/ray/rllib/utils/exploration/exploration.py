@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from gymnasium.spaces import Space
 
@@ -38,7 +38,8 @@ class Exploration:
         num_workers: int,
         worker_index: int
     ):
-        """
+        """Initializes an Exploration instance.
+
         Args:
             action_space: The action space in which to explore.
             framework: One of "tf" or "torch".
@@ -86,7 +87,8 @@ class Exploration:
                                *,
                                action_distribution: ActionDistribution,
                                timestep: Union[TensorType, int],
-                               explore: bool = True):
+                               explore: bool = True
+                               ) -> Tuple[TensorType, TensorType]:
         """Returns a (possibly) exploratory action and its log-likelihood.
 
         Given the Model's logits outputs and action distribution, returns an
@@ -163,6 +165,9 @@ class Exploration:
             policy: The owning policy object.
             sample_batch: The SampleBatch object to post-process.
             tf_sess: An optional tf.Session object.
+
+        Returns:
+            The post-processed SampleBatch object.
         """
         return sample_batch
 

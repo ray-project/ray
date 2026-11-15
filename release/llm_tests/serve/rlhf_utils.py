@@ -2,7 +2,7 @@ import torch
 import ray
 import requests
 from typing import Optional
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForImageTextToText
 
 
 def stateless_init_process_group(master_address, master_port, rank, world_size, device):
@@ -76,7 +76,7 @@ class TrainerActor:
         self.model_id = model_id
         self._base_url = base_url
         self.weight_sync_group = None
-        self.model = AutoModelForCausalLM.from_pretrained(model_id)
+        self.model = AutoModelForImageTextToText.from_pretrained(model_id)
         self.model.to("cuda:0")
 
     def setup_weight_sync_group(

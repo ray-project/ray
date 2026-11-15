@@ -19,17 +19,16 @@
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/object_manager/fake_object_manager.h"
 #include "ray/observability/fake_metric.h"
 
 namespace ray {
 
 namespace raylet {
 
-class CustomMockObjectManager : public MockObjectManager {
+class CustomFakeObjectManager : public FakeObjectManager {
  public:
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
                 BundlePriority prio,
@@ -65,9 +64,9 @@ class CustomMockObjectManager : public MockObjectManager {
 class LeaseDependencyManagerTest : public ::testing::Test {
  public:
   LeaseDependencyManagerTest()
-      : object_manager_mock_(),
+      : object_manager_fake_(),
         fake_task_by_state_counter_(),
-        lease_dependency_manager_(object_manager_mock_, fake_task_by_state_counter_) {}
+        lease_dependency_manager_(object_manager_fake_, fake_task_by_state_counter_) {}
 
   int64_t NumWaiting(const std::string &lease_name) {
     return lease_dependency_manager_.waiting_leases_counter_.Get({lease_name, false});
@@ -84,12 +83,12 @@ class LeaseDependencyManagerTest : public ::testing::Test {
     ASSERT_TRUE(lease_dependency_manager_.wait_requests_.empty());
     ASSERT_EQ(lease_dependency_manager_.waiting_leases_counter_.Total(), 0);
     // All pull requests are canceled.
-    ASSERT_TRUE(object_manager_mock_.active_lease_requests.empty());
-    ASSERT_TRUE(object_manager_mock_.active_get_requests.empty());
-    ASSERT_TRUE(object_manager_mock_.active_wait_requests.empty());
+    ASSERT_TRUE(object_manager_fake_.active_lease_requests.empty());
+    ASSERT_TRUE(object_manager_fake_.active_get_requests.empty());
+    ASSERT_TRUE(object_manager_fake_.active_wait_requests.empty());
   }
 
-  CustomMockObjectManager object_manager_mock_;
+  CustomFakeObjectManager object_manager_fake_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
   LeaseDependencyManager lease_dependency_manager_;
 };
@@ -199,7 +198,7 @@ TEST_F(LeaseDependencyManagerTest, TestMultipleLeases) {
         lease_id, ObjectIdsToRefs({argument_id}), {"foo", false});
     ASSERT_FALSE(ready);
     // The object should be requested from the object manager once for each lease.
-    ASSERT_EQ(object_manager_mock_.active_lease_requests.size(), i + 1);
+    ASSERT_EQ(object_manager_fake_.active_lease_requests.size(), i + 1);
   }
   ASSERT_EQ(NumWaiting("bar"), 0);
   ASSERT_EQ(NumWaiting("foo"), 3);
@@ -291,10 +290,10 @@ TEST_F(LeaseDependencyManagerTest, TestCancelingSingleGetRequestForWorker) {
     lease_dependency_manager_.StartGetRequest(
         worker_id, ObjectIdsToRefs({argument_id}), i);
   }
-  ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests);
+  ASSERT_EQ(object_manager_fake_.active_get_requests.size(), num_requests);
   for (int64_t i = 0; i < num_requests; i++) {
     lease_dependency_manager_.CancelGetRequest(worker_id, i);
-    ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests - (i + 1));
+    ASSERT_EQ(object_manager_fake_.active_get_requests.size(), num_requests - (i + 1));
   }
   AssertNoLeaks();
 }
@@ -308,10 +307,10 @@ TEST_F(LeaseDependencyManagerTest,
     lease_dependency_manager_.StartGetRequest(
         worker_id, ObjectIdsToRefs({argument_id}), i);
   }
-  ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests);
+  ASSERT_EQ(object_manager_fake_.active_get_requests.size(), num_requests);
   for (int64_t i = 0; i < num_requests; i++) {
     lease_dependency_manager_.CancelGetRequest(worker_id, i);
-    ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests - (i + 1));
+    ASSERT_EQ(object_manager_fake_.active_get_requests.size(), num_requests - (i + 1));
   }
   AssertNoLeaks();
 }
@@ -324,9 +323,9 @@ TEST_F(LeaseDependencyManagerTest, TestCancelingAllGetRequestsForWorker) {
     lease_dependency_manager_.StartGetRequest(
         worker_id, ObjectIdsToRefs({argument_id}), i);
   }
-  ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests);
+  ASSERT_EQ(object_manager_fake_.active_get_requests.size(), num_requests);
   lease_dependency_manager_.CancelGetRequest(worker_id);
-  ASSERT_EQ(object_manager_mock_.active_get_requests.size(), 0);
+  ASSERT_EQ(object_manager_fake_.active_get_requests.size(), 0);
   AssertNoLeaks();
 }
 
@@ -341,7 +340,7 @@ TEST_F(LeaseDependencyManagerTest, TestWait) {
     oids.push_back(ObjectID::FromRandom());
   }
   lease_dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
-  ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects);
+  ASSERT_EQ(object_manager_fake_.active_wait_requests.size(), num_objects);
 
   for (int i = 0; i < num_objects; i++) {
     // Object is local.
@@ -351,7 +350,7 @@ TEST_F(LeaseDependencyManagerTest, TestWait) {
     // reactivated.
     auto waiting_lease_ids = lease_dependency_manager_.HandleObjectMissing(oids[i]);
     ASSERT_TRUE(waiting_lease_ids.empty());
-    ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects - i - 1);
+    ASSERT_EQ(object_manager_fake_.active_wait_requests.size(), num_objects - i - 1);
   }
   AssertNoLeaks();
 }
@@ -369,11 +368,11 @@ TEST_F(LeaseDependencyManagerTest, TestWaitThenCancel) {
   }
   // Simulate a worker calling `ray.wait` on some objects.
   lease_dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
-  ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects);
+  ASSERT_EQ(object_manager_fake_.active_wait_requests.size(), num_objects);
   // Check that it's okay to call `ray.wait` on the same objects again. No new
   // calls should be made to try and make the objects local.
   lease_dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
-  ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects);
+  ASSERT_EQ(object_manager_fake_.active_wait_requests.size(), num_objects);
   // Cancel the worker's `ray.wait`.
   lease_dependency_manager_.CancelWaitRequest(worker_id);
   AssertNoLeaks();
@@ -396,12 +395,12 @@ TEST_F(LeaseDependencyManagerTest, TestWaitObjectLocal) {
   auto ready_lease_ids = lease_dependency_manager_.HandleObjectLocal(local_object_id);
   ASSERT_TRUE(ready_lease_ids.empty());
   lease_dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
-  ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects - 1);
+  ASSERT_EQ(object_manager_fake_.active_wait_requests.size(), num_objects - 1);
   // Simulate the local object getting evicted. The `ray.wait` call should not
   // be reactivated.
   auto waiting_lease_ids = lease_dependency_manager_.HandleObjectMissing(local_object_id);
   ASSERT_TRUE(waiting_lease_ids.empty());
-  ASSERT_EQ(object_manager_mock_.active_wait_requests.size(), num_objects - 1);
+  ASSERT_EQ(object_manager_fake_.active_wait_requests.size(), num_objects - 1);
   // Cancel the worker's `ray.wait`.
   lease_dependency_manager_.CancelWaitRequest(worker_id);
   AssertNoLeaks();
@@ -421,7 +420,7 @@ TEST_F(LeaseDependencyManagerTest, TestDuplicateLeaseArgs) {
   bool ready = lease_dependency_manager_.RequestLeaseDependencies(
       lease_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
-  ASSERT_EQ(object_manager_mock_.active_lease_requests.size(), 1);
+  ASSERT_EQ(object_manager_fake_.active_lease_requests.size(), 1);
 
   auto ready_lease_ids = lease_dependency_manager_.HandleObjectLocal(obj_id);
   ASSERT_EQ(ready_lease_ids.size(), 1);
@@ -432,7 +431,7 @@ TEST_F(LeaseDependencyManagerTest, TestDuplicateLeaseArgs) {
   ready = lease_dependency_manager_.RequestLeaseDependencies(
       lease_id2, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_TRUE(ready);
-  ASSERT_EQ(object_manager_mock_.active_lease_requests.size(), 1);
+  ASSERT_EQ(object_manager_fake_.active_lease_requests.size(), 1);
   lease_dependency_manager_.RemoveLeaseDependencies(lease_id2);
 
   AssertNoLeaks();

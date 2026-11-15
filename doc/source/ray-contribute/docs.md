@@ -17,7 +17,7 @@ This document walks you through everything you need to do to get started.
 
 The Ray documentation follows a house style guide that covers voice, word choice, sentence structure, headings, lists, links, and formatting. Read it before you write or edit a page. See {ref}`documentation-style`.
 
-The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale enforces an automated subset of the Google guide in CI. For more information, see [How to use Vale](vale).
+The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale checks an automated subset of the Google guide. Its CI check is temporarily off, so run Vale locally. For more information, see [How to use Vale](vale).
 
 (build-ray-docs)=
 
@@ -138,26 +138,26 @@ The Ray documentation is built with the [`sphinx`](https://www.sphinx-doc.org/) 
 
 We use [`myst-parser`](https://myst-parser.readthedocs.io/en/latest/) so Ray documentation supports both Sphinx's native [reStructuredText (rST)](https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html) and [Markedly Structured Text (MyST)](https://myst-parser.readthedocs.io/en/latest/). New pages must be MyST Markdown (`.md`). A lint check rejects newly added `.rst` files, though edits to existing `.rst` files are fine. MyST is [CommonMark-compliant](https://myst-parser.readthedocs.io/en/latest/syntax/reference.html#commonmark-block-tokens), and you can convert between the two formats, so existing rST pages are straightforward to work with.
 
-The Ray documentation also fully supports executable formats such as [Jupyter Notebooks](https://jupyter.org/). Many of our examples are notebooks with [MyST markdown cells](https://myst-nb.readthedocs.io/en/latest/index.html).
+Some older examples are [Jupyter notebooks](https://jupyter.org/) (`.ipynb`), which the build renders with [MyST-NB](https://myst-nb.readthedocs.io/en/latest/index.html). Don't add new notebooks. Write new examples as MyST Markdown pages. See {ref}`writing-e2e-guide`.
 
 ## What to contribute?
 
 If you take Ray Tune as an example, you can see that our documentation consists of several types of documentation, all of which you can contribute to:
 
-- [a project landing page](https://docs.ray.io/en/latest/tune/index.html),
-- [a getting started guide](https://docs.ray.io/en/latest/tune/getting-started.html),
-- [a key concepts page](https://docs.ray.io/en/latest/tune/key-concepts.html),
-- [user guides for key features](https://docs.ray.io/en/latest/tune/tutorials/overview.html),
-- [practical examples](https://docs.ray.io/en/latest/tune/examples/index.html),
-- [a detailed FAQ](https://docs.ray.io/en/latest/tune/faq.html),
-- [and API references](https://docs.ray.io/en/latest/tune/api/api.html).
+- [a project landing page](../tune/index.md),
+- [a getting started guide](../tune/getting-started.md),
+- [a key concepts page](../tune/key-concepts.md),
+- [user guides for key features](../tune/tutorials/index.md),
+- [practical examples](../tune/examples/index.md),
+- [a detailed FAQ](../tune/faq.md),
+- {doc}`and API references </tune/api/api>`.
 
 This structure is reflected in the [Ray documentation source code](https://github.com/ray-project/ray/tree/master/doc/source/tune) as well, so you should have no problem finding what you're looking for. All other Ray projects share a similar structure, but depending on the project there might be minor differences.
 
 Each type of documentation listed above has its own purpose, but ultimately our documentation comes down to _two types_ of documents:
 
-- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as [tabbed content blocks](https://docs.ray.io/en/latest/ray-core/walkthrough.html#starting-ray), this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.md) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
-- Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in the browser like `.md` or `.rst` files, but have the added benefit that users can run the code themselves.
+- Markup documents, written in MyST or rST. Every new page uses this format, including examples. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.md) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
+- Notebooks, written in `.ipynb` format. Some existing examples, such as many of the Tune examples, are notebooks. Don't add new ones.
 
 ## Fixing typos and improving explanations
 
@@ -179,7 +179,7 @@ These directives appear throughout the API reference, such as the [Tune API docu
 
 If you want to change the content of the API documentation, you must edit the function or class signatures directly in the source code. For example, in the above `autofunction` call, to change the API reference for `ray.tune.register_env`, you would edit its docstring in the [source file](https://github.com/ray-project/ray/blob/master/python/ray/tune/registry.py).
 
-To show the usage of APIs, it's important to have small usage examples embedded in the API documentation. These should be self-contained and run out of the box, so a user can copy and paste them into a Python interpreter and play around with them. For example, if applicable, they should point to example data. Users often rely on these examples to build their applications. To learn more about writing examples, read [How to write code snippets](writing-code-snippets).
+To show the usage of APIs, it's important to have small usage examples embedded in the API documentation. These should be self-contained and run out of the box, so a user can copy and paste them into a Python interpreter and play around with them. For example, if applicable, they should point to example data. Users often rely on these examples to build their applications. To learn more about writing examples, read [How to write code snippets](writing-code-snippets.md).
 
 (api-ref-build-behavior)=
 
@@ -193,7 +193,7 @@ The API reference is generated from your source code: autodoc imports the module
 
 ## Adding code to an `.rST` or `.md` file
 
-Modifying text in an existing documentation file is easy, but you need to be careful when it comes to adding code. The reason is that we want to ensure every code snippet in our documentation is tested. This requires us to have a process for including and testing code snippets in documents. To learn how to write testable code snippets, read [How to write code snippets](writing-code-snippets).
+Modifying text in an existing documentation file is easy, but adding code takes more care. To show code that Ray CI tests, use a `testcode` block or include a script that CI runs. Use these only for code that runs as written. To learn how to write tested code snippets, read [How to write code snippets](writing-code-snippets.md).
 
 ```python
 from ray import train
@@ -211,9 +211,9 @@ def trainable(config):  # Pass a "config" dictionary into your trainable.
         train.report({"score": score})  # Send the score to Tune.
 ```
 
-This code is imported by `literalinclude` from a file called `doc_code/key_concepts.py`. Every Python file in the `doc_code` directory is automatically tested by our CI system, but make sure to run scripts that you change (or new scripts) locally first. You don't need to run the testing framework locally.
+This code is imported by `literalinclude` from a file called `doc_code/key_concepts.py`. CI runs the `doc_code` scripts that the targets in `doc/BUILD.bazel` select, which excludes some files and some directories. Check that a target covers your script, and run scripts that you change or add locally first. You don't need to run the testing framework locally.
 
-In rare situations, when you're adding _obvious_ pseudo-code to demonstrate a concept, it's OK to add it literally into your `.rst` or `.md` file, for example, using a `.. code-cell:: python` directive. But if your code is supposed to run, it needs to be tested.
+When CI can't run your code, such as pseudo-code that demonstrates a concept or a step that needs a cluster or credentials, put it in a plain fenced code block with a language, such as `` ```python ``. CI doesn't run plain code blocks, so run the code yourself before you open a pull request. For a full guide that CI doesn't test, see {ref}`writing-e2e-guide`.
 
 ## Creating a new document from scratch
 
@@ -221,126 +221,36 @@ Sometimes you might want to add a completely new document to the Ray documentati
 
 For this to work, you must add the new document explicitly to a parent document's toctree, which determines the structure of the Ray documentation. See [the Sphinx documentation](https://www.sphinx-doc.org/en/master/usage/restructuredtext/directives.html#directive-toctree) for more information.
 
-Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](https://docs.ray.io/en/latest/tune/tutorials/overview.html) as a panel, and the same goes for [all Tune examples](https://docs.ray.io/en/latest/tune/examples/index.html). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
+Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](../tune/tutorials/index.md) as a panel, and the same goes for [all Tune examples](../tune/examples/index.md). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
 
-(creating-notebook-example)=
+(writing-e2e-guide)=
 
-## Creating a notebook example
+## Writing an end-to-end guide
 
-This section covers authoring a notebook. To publish a finished example and set up CI so it keeps working, see {ref}`publishing-examples`.
+An _end-to-end guide_ walks the reader through a complete task, from installing dependencies to a working result. Write it as a MyST Markdown page, like any other page in the Ray documentation.
 
-To add a new executable example to the Ray documentation, you can start from our [MyST notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) or [Jupyter notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.ipynb). You could also download the document you're reading right now and start modifying it. Click the download button at the top of this page to get the `.ipynb` file. All the example notebooks in Ray Tune are automatically tested by our CI system, provided you place them in the [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples). If you have questions about how to test your notebook when contributing to other Ray sub-projects, ask in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub when opening your pull request.
+To start, copy the [end-to-end guide template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) into the directory of the library your guide covers. The template shows the page structure and the syntax Ray uses for admonitions, tabs, dropdowns, and cross-references. Then add the page to a toctree. Ray Data, Ray Serve, and Ray Train also have an `examples.yml` gallery, and for those libraries you can list the page there instead.
 
-To work from an existing example, look at the [Ray Tune Hyperopt example (`.ipynb`)](https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/hyperopt_example.ipynb) or the [Ray Serve guide for text classification (`.md`)](https://github.com/ray-project/ray/blob/master/doc/source/serve/tutorials/text-classification.md). We recommend that you start with an `.md` file and convert it to an `.ipynb` notebook at the end of the process. We'll walk you through this process below.
+Ray CI doesn't run the code in a guide like this, so the guide is only as current as the last time someone ran it. Run every step yourself before you open a pull request, and record the Ray version you used in the HTML comment that the template puts under the title. The comment is for maintainers and doesn't render on the page. When you update the guide later, run it again and update the version.
 
-What makes these notebooks different from other documents is that they combine code and text in one document, and you can launch them in the browser. We also make sure our CI system tests them before we add them to our documentation. To make this work, notebooks need to define a _kernel specification_ to tell a notebook server how to interpret and run the code. For instance, here's the kernel specification of a Python notebook:
+To publish an example that Ray tests and keeps current, use the template-collections flow instead. See {ref}`publishing-examples`.
 
-```markdown
----
-jupytext:
-    text_representation:
-        extension: .md
-        format_name: myst
-kernelspec:
-    display_name: Python 3
-    language: python
-    name: python3
----
+Don't write the guide as a notebook. Leave out Jupyter front matter such as `jupytext` and `kernelspec`, `{code-cell}` blocks, and companion `.ipynb` files. The docs build doesn't execute them, and the Ray documentation is retiring in-tree notebooks. To turn an existing notebook into a guide, convert it to Markdown, then edit the result to match the template:
+
+```bash
+jupyter nbconvert your-example.ipynb --to markdown
 ```
 
-If you write a notebook in `.md` format, you need this YAML front matter at the top of the file. To add code to your notebook, you can use the `code-cell` directive. Here's an example:
+The converted file shows cell outputs as indented blocks and writes images to a `your-example_files/` directory. Move any images you keep to an `images/` directory next to your guide.
 
-````markdown
-```python
-from ray.rllib.algorithms.ppo import PPOConfig
-
-# Configure PPO on the CartPole environment.
-config = PPOConfig().environment("CartPole-v1")
-
-# Build the algorithm and train it for one iteration.
-algo = config.build_algo()
-algo.train()
-```
-````
-
-Putting this markdown block into your document renders as follows in the browser:
-
-```python
-from ray.rllib.algorithms.ppo import PPOConfig
-
-# Configure PPO on the CartPole environment.
-config = PPOConfig().environment("CartPole-v1")
-
-# Build the algorithm and train it for one iteration.
-algo = config.build_algo()
-algo.train()
-```
-
-### Tags for your notebook
-
-What makes this work is the `:tags: [hide-cell]` directive in the `code-cell`. The reason we suggest starting with `.md` files is that it's much easier to add tags to them, as you've seen. You can also add tags to `.ipynb` files, but you'll need to start a notebook server for that first, which you may not want to do to contribute a piece of documentation.
-
-Apart from `hide-cell`, you also have `hide-input` and `hide-output` tags that hide the input and output of a cell. Also, if you need code that runs in the notebook but you don't want to show it in the documentation, you can use the `remove-cell`, `remove-input`, and `remove-output` tags in the same way.
-
-### Reference section labels
-
-[Reference section labels](https://jupyterbook.org/en/stable/content/references.html#reference-section-labels) are a way to link to specific parts of the documentation from within a notebook. Creating one inside a markdown cell is simple:
-
-```markdown
-(my-label)=
-# The thing to label
-```
-
-Then, you can link it in .rst files with the following syntax:
-
-```rst
-See {ref}`the thing that I labeled <my-label>` for more information.
-```
-
-### Testing notebooks
-
-Removing cells can be particularly interesting for compute-intensive notebooks. We want you to contribute notebooks that use _realistic_ values, not just toy examples. At the same time, we want our CI system to test our notebooks, and running them shouldn't take too long. To address this, use notebook cells with the parameters you want the users to see first:
-
-````markdown
-```{code-cell} python3
-num_workers = 8
-num_gpus = 2
-```
-````
-
-which will render as follows in the browser:
-
-```python
-num_workers = 8
-num_gpus = 2
-```
-
-But then in your notebook, you follow that up with a _removed_ cell that won't render, but has much smaller values and makes the notebook run faster:
-
-````markdown
-```{code-cell} python3
-:tags: [remove-cell]
-num_workers = 0
-num_gpus = 0
-```
-````
-
-### Converting markdown notebooks to ipynb
-
-Once you're finished writing your example, you can convert it to an `.ipynb` notebook using `jupytext`:
-
-```shell
-jupytext your-example.md --to ipynb
-```
-
-In the same way, you can convert `.ipynb` notebooks to `.md` notebooks with `--to myst`. And if you want to convert your notebook to a Python file, for example, to test whether your whole script runs without errors, you can use `--to py` instead.
+If you have questions about your guide, ask in [the Ray community Slack](https://www.ray.io/join-slack) or on your pull request.
 
 (vale)=
 
 ## How to use Vale
 ### What is Vale?
 
-[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). CI enforces it on the Ray Data documentation and the example gallery.
+[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). The CI check that runs Vale on the Ray Data documentation and the example gallery is temporarily off.
 
 Vale catches typos and grammatical errors. It also enforces stylistic rules such as "use contractions" and "use second person." For the full list of rules, see the [configuration in the Ray repository](https://github.com/ray-project/ray/tree/master/.vale/styles/Google).
 

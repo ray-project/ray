@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_SESSION_AFFINITY_TTL_S,
     REQUEST_TOKEN_IDS_KWARG,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
@@ -13,7 +14,10 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
-from ray.serve._private.request_router.request_router import RequestRouter
+from ray.serve._private.request_router.request_router import (
+    MultiplexMixin,
+    RequestRouter,
+)
 from ray.serve.config import RequestRouterConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -31,7 +35,7 @@ def _get_expected_output_tokens(pending_request: PendingRequest) -> Optional[int
     return None
 
 
-class KVAwareRouter(RequestRouter):
+class KVAwareRouter(MultiplexMixin, RequestRouter):
     """Routes each request to the candidate that best balances expected KV-cache
     overlap against the worker's current prefill/decode load.
 
@@ -39,12 +43,25 @@ class KVAwareRouter(RequestRouter):
     Dynamo selection service and the global KV index) built by the LLMRouter in
     this same ingress process; this per-handle router stays thin and simply maps
     candidate replicas to/from Dynamo worker ids.
+
+    Send the same ``x-session-id`` header on each conversation turn to keep
+    requests on the same replica. The first turn uses token-load scoring and
+    KV-cache overlap. Later turns stay on that replica until the session's idle
+    timeout expires or the replica becomes unavailable or ineligible.
     """
 
-    def initialize_state(self):
+    def initialize_state(
+        self,
+        session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
+    ):
         """Bind to the ``KVTokenTracker`` the LLMRouter registered in this
         process. When absent (e.g. the proxy's fallback router), KV-aware
         routing degrades to load-balanced selection instead of erroring.
+
+        Args:
+            session_affinity_ttl_s: How long to keep an idle session on the same
+                replica, in seconds. Defaults to 1800 (30 minutes).
+                ``0`` disables session pinning.
         """
         self._kv_token_tracker = get_kv_token_tracker()
         if self._kv_token_tracker is None:
@@ -70,6 +87,9 @@ class KVAwareRouter(RequestRouter):
         route to a random candidate (batch prompts, truncated or unparseable
         bodies).
 
+        A LoRA request is narrowed to the replicas already holding the adapter
+        before it is scored, and carries the adapter name into scoring.
+
         Args:
             candidate_replicas: The replicas eligible to serve the request.
             pending_request: The request being routed.
@@ -77,6 +97,24 @@ class KVAwareRouter(RequestRouter):
         Returns:
             Ranked groups of replicas.
         """
+        if (
+            pending_request is not None
+            and pending_request.metadata.multiplexed_model_id
+        ):
+            # Score within the multiplex candidates
+            candidate_replica_ids = self.apply_multiplex_routing(
+                pending_request=pending_request
+            )
+            candidate_replicas = [
+                replica
+                for replica in candidate_replicas
+                if replica.replica_id in candidate_replica_ids
+            ]
+            if not candidate_replicas:
+                # No multiplex candidates yet (e.g. the adapter's location is
+                # still propagating). Return no ranks so the caller backs off.
+                return []
+
         token_ids = (
             pending_request.kwargs.get(REQUEST_TOKEN_IDS_KWARG)
             if pending_request is not None
@@ -96,6 +134,11 @@ class KVAwareRouter(RequestRouter):
             token_ids,
             list(worker_id_to_replica),
             _get_expected_output_tokens(pending_request),
+            # vLLM stamps this adapter name on the request's KV-cache events and
+            # the selection service salts its KV hashes with it, so each adapter
+            # gets its own KV namespace. Empty means the base model.
+            lora_name=pending_request.metadata.multiplexed_model_id or None,
+            session_id=pending_request.metadata.session_id or None,
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
 

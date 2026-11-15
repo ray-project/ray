@@ -2,11 +2,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from pkg_resources import parse_version
 
 import ray
 from ray.data.expressions import col
-from ray.data.tests.conftest import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 
@@ -123,10 +121,6 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         fake_column_ds.to_pandas()
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "data_source",
     [
@@ -356,10 +350,6 @@ def test_filter_with_predicate_expressions(
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_predicate_expr_vs_function_consistency(ray_start_regular_shared):
     """Test that predicate expressions produce the same results as equivalent functions."""
     test_data = [
@@ -385,10 +375,6 @@ def test_filter_predicate_expr_vs_function_consistency(ray_start_regular_shared)
     pd.testing.assert_frame_equal(predicate_result, function_result, check_dtype=False)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_predicate_with_different_block_formats(ray_start_regular_shared):
     """Test that predicate expressions work with different block formats (pandas/arrow)."""
     test_data = [
@@ -429,10 +415,6 @@ def test_filter_predicate_with_different_block_formats(ray_start_regular_shared)
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_expression_display_names(ray_start_regular_shared):
     """Test that filter operations display meaningful expression names in plans."""
     import pyarrow.compute as pc
@@ -453,10 +435,6 @@ def test_filter_expression_display_names(ray_start_regular_shared):
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
     "compute,concurrency,expected_size",
     [
@@ -482,10 +460,6 @@ def test_filter_expr_compute_resolution(
     assert filter_op.compute.size == expected_size
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_expr_compute_honors_taskpoolstrategy(ray_start_regular_shared):
     """Passing a concrete TaskPoolStrategy through `compute=` must round-trip."""
     from ray.data._internal.compute import TaskPoolStrategy
@@ -497,10 +471,6 @@ def test_filter_expr_compute_honors_taskpoolstrategy(ray_start_regular_shared):
     assert filter_op.compute.size == 20
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_expr_concurrency_is_deprecated(ray_start_regular_shared, caplog):
     """The legacy `concurrency=` argument still works on `filter(expr=...)`,
     but must emit the deprecation warning like every other operator."""
@@ -523,10 +493,6 @@ def test_filter_expr_concurrency_is_deprecated(ray_start_regular_shared, caplog)
     assert "``concurrency`` is deprecated" in caplog.text
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 def test_filter_expr_rejects_actor_pool(ray_start_regular_shared):
     """An ActorPoolStrategy with a predicate expression is misuse — there's
     no state to maintain — and must raise a clear error."""
@@ -535,6 +501,46 @@ def test_filter_expr_rejects_actor_pool(ray_start_regular_shared):
     ds = ray.data.range(10)
     with pytest.raises(ValueError):
         ds.filter(expr=col("id") > 5, compute=ActorPoolStrategy(size=2))
+
+
+# https://github.com/ray-project/ray/issues/51217
+def test_filter_udf_preserves_dictionary_encoded_column_type(
+    ray_start_regular_shared, tmp_path
+):
+    """Filtering with a UDF (``fn=``) was silently converting Arrow
+    ``dictionary``-encoded columns to plain ``string``, changing the column's
+    on-disk type even though the values themselves were unchanged.
+
+    NOTE: ``Dataset.schema()`` doesn't catch this: ``Filter`` is tagged
+    ``LogicalOperatorPreservesSchema``, so ``schema()`` just echoes the input
+    schema instead of reflecting the materialized block. That makes ``schema()``
+    report the *original* (correct) type even if the physical block's type
+    has changed, so this test reads the actual output block's Arrow type
+    instead.
+    """
+    table = pa.table(
+        {
+            "id": pa.array([1, 2, 3], type=pa.int64()),
+            "category": pa.array(["a", "b", "a"]).dictionary_encode(),
+        }
+    )
+    parquet_file = tmp_path / "dictionary_data.parquet"
+    pq.write_table(table, parquet_file)
+
+    ds = ray.data.read_parquet(str(parquet_file))
+    original_type = ray.get(ds.to_arrow_refs()[0]).schema.field("category").type
+    assert pa.types.is_dictionary(original_type)
+
+    filtered_ds = ds.filter(lambda row: row["id"] != 2)
+    filtered_table = pa.concat_tables(ray.get(filtered_ds.to_arrow_refs()))
+    filtered_type = filtered_table.schema.field("category").type
+
+    assert filtered_type == original_type, (
+        f"filter() changed the on-disk type of 'category' from {original_type} "
+        f"to {filtered_type}"
+    )
+    assert filtered_table.column("id").to_pylist() == [1, 3]
+    assert filtered_table.column("category").to_pylist() == ["a", "a"]
 
 
 if __name__ == "__main__":

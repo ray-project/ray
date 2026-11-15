@@ -178,6 +178,7 @@ class RE3(Exploration):
             sub_exploration: The config dict for the underlying Exploration
                 to use (e.g. epsilon-greedy for DQN). If None, uses the
                 FromSpecDict provided in the Policy's default config.
+            **kwargs: Forwarded to the parent `Exploration` constructor.
 
         Raises:
             ValueError: If the input framework is Torch.

@@ -57,6 +57,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.connectors.connector_v2 import ConnectorV2
 
 tf1, tf, tfv = try_import_tf()
 
@@ -87,8 +88,8 @@ class EnvRunnerGroup:
         pg_offset: int = 0,
         # Deprecated args.
         num_env_runners: Optional[int] = None,
-        num_workers=DEPRECATED_VALUE,
-        local_worker=DEPRECATED_VALUE,
+        num_workers: Any = DEPRECATED_VALUE,
+        local_worker: Any = DEPRECATED_VALUE,
     ):
         """Initializes a EnvRunnerGroup instance.
 
@@ -110,6 +111,12 @@ class EnvRunnerGroup:
             _setup: Whether to actually set up workers. This is only for testing.
             tune_trial_id: The Ray Tune trial ID, if this EnvRunnerGroup is part of
                 an Algorithm run as a Tune trial. None, otherwise.
+            pg_offset: The offset into the placement group bundles to use for the
+                remote EnvRunner actors of this group.
+            num_env_runners: The number of remote EnvRunner actors to create. If None,
+                use `config.num_env_runners`.
+            num_workers: Deprecated. Use `num_env_runners` instead.
+            local_worker: Deprecated. Use `local_env_runner` instead.
         """
         if num_workers != DEPRECATED_VALUE or local_worker != DEPRECATED_VALUE:
             deprecation_warning(
@@ -523,8 +530,8 @@ class EnvRunnerGroup:
         connector_states: Optional[List[Dict[str, Any]]] = None,
         rl_module_state: Optional[Dict[str, Any]] = None,
         env_runner_indices_to_update: Optional[List[int]] = None,
-        env_to_module=None,
-        module_to_env=None,
+        env_to_module: Optional["ConnectorV2"] = None,
+        module_to_env: Optional["ConnectorV2"] = None,
     ) -> None:
         """Synchronizes the connectors of this EnvRunnerGroup's EnvRunners.
 
@@ -544,9 +551,20 @@ class EnvRunnerGroup:
             env_steps_sampled: The total number of env steps taken thus far by all
                 workers combined. Used to broadcast this number to all remote workers
                 if `update_worker_filter_stats` is True in `config`.
+            connector_states: An optional list of already gathered ConnectorV2 states
+                (one per EnvRunner) to merge. If None, gather these states from the
+                remote EnvRunners.
+            rl_module_state: An optional RLModule state dict (weights and
+                `WEIGHTS_SEQ_NO`) to broadcast along with the merged connector states.
             env_runner_indices_to_update: The indices of those EnvRunners to update
                 with the merged state. Use None (default) to update all remote
                 EnvRunners.
+            env_to_module: An optional env-to-module ConnectorV2 pipeline to merge the
+                gathered env-to-module states into. If None, use the local EnvRunner's
+                own env-to-module pipeline.
+            module_to_env: An optional module-to-env ConnectorV2 pipeline to merge the
+                gathered module-to-env states into. If None, use the local EnvRunner's
+                own module-to-env pipeline.
         """
         if env_steps_sampled is not None:
             env_steps_sampled = int(env_steps_sampled)
@@ -916,7 +934,7 @@ class EnvRunnerGroup:
             Callable[[EnvRunner], T], List[Callable[[EnvRunner], T]], str, List[str]
         ],
         *,
-        kwargs=None,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         local_env_runner: bool = True,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
@@ -929,6 +947,9 @@ class EnvRunnerGroup:
         Args:
             func: The function to call for each EnvRunners. The only call argument is
                 the respective EnvRunner instance.
+            kwargs: An optional kwargs dict (or list of such dicts, one per remote
+                EnvRunner) to be passed to the remote function calls. Must be None if
+                `local_env_runner` is True.
             local_env_runner: Whether to apply `func` to local EnvRunner, too.
                 Default is True.
             healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
@@ -1012,7 +1033,7 @@ class EnvRunnerGroup:
         ],
         tag: Optional[str] = None,
         *,
-        kwargs=None,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
     ) -> int:

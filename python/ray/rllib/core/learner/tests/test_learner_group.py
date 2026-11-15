@@ -8,6 +8,7 @@ import pytest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import (
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
@@ -23,8 +24,18 @@ from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_CONNECTOR
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LEARNER_CONNECTOR,
+    LEARNER_MODULE_STEPS_DROPPED_FOR_PEER_LIFETIME,
+    LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+)
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
 
@@ -119,6 +130,33 @@ FAKE_MA_EPISODES_WO_P1 = [
     ),
 ]
 FAKE_MA_EPISODES_WO_P1[0].to_numpy()
+
+# We use this to emulate situations where some learners receive empty batches.
+NO_DATA = MultiAgentBatch(policy_batches={}, env_steps=0)
+
+
+def fake_batch(num_timesteps, *, env_steps=None, seq_lens=None):
+    rng = np.random.default_rng(0)
+    columns = {
+        Columns.OBS: rng.standard_normal((num_timesteps, 4), dtype=np.float32),
+        Columns.ACTIONS: rng.integers(0, 2, size=(num_timesteps,)),
+    }
+    if seq_lens is not None:
+        # Cut the timesteps into sequences, as for a recurrent module. The Learner
+        # then slices the batch, and counts its minibatches, in sequences.
+        columns[SampleBatch.SEQ_LENS] = np.array(seq_lens)
+    return MultiAgentBatch(
+        {DEFAULT_MODULE_ID: SampleBatch(columns)},
+        env_steps=num_timesteps if env_steps is None else env_steps,
+    )
+
+
+def fake_batch_with_p1(num_timesteps):
+    """A `fake_batch` that also holds `num_timesteps` rows for a module "p1"."""
+    rows = fake_batch(num_timesteps).policy_batches[DEFAULT_MODULE_ID]
+    return MultiAgentBatch(
+        {DEFAULT_MODULE_ID: rows, "p1": rows.copy()}, env_steps=num_timesteps
+    )
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):
@@ -255,6 +293,340 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             # autoscale
             learner_group.shutdown()
             del learner_group
+
+
+class TestLearnerGroupUpdatePlan(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_learners_agree_on_the_update_plan(self):
+        """Tests that the Learners of a group carry out every update the same way.
+
+        Learners in a DDP group run one all-reduce per minibatch, so one of them
+        skipping an update that its peer takes, or stepping through a different
+        number of minibatches, makes their collectives mismatch. This test would
+        therefore hang rather than fail if the Learners stopped agreeing.
+        """
+        config = BaseTestingAlgorithmConfig().update_from_dict(
+            REMOTE_CONFIGS["multi-cpu-ddp"]
+        )
+        learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
+
+        def weights():
+            """The module weights of each Learner in the group."""
+            return [
+                result.get()
+                for result in learner_group.foreach_learner(
+                    lambda learner: convert_to_numpy(
+                        learner.module[DEFAULT_MODULE_ID].get_state()
+                    )
+                )
+            ]
+
+        try:
+            # Act as if the EnvRunners feeding the second Learner were lost, so it is handed a
+            # batch without any data while its peer has a full one. Both must skip:
+            # nobody trains, and each Learner reports why it skipped.
+            before = weights()
+            with_data, starved = MetricsLogger.peek_results(
+                learner_group.update(batches=[fake_batch(128, env_steps=1), NO_DATA])
+            )
+            check(before, weights())
+            self.assertEqual(
+                1, starved[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
+            )
+            self.assertEqual(
+                1, with_data[ALL_MODULES][LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME]
+            )
+            # Module steps, not env steps: a shard from `ShardBatchIterator` carries
+            # the row count of whichever module it sliced last (`env_steps=1` here),
+            # so counting env steps would report 1 instead of the 128 rows dropped.
+            self.assertEqual(
+                128,
+                with_data[ALL_MODULES][LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME],
+            )
+
+            # An empty batch handed to the group as a whole is sharded into empty
+            # shards, one per Learner, and every Learner skips it as its own.
+            before = weights()
+            results = MetricsLogger.peek_results(learner_group.update(batch=NO_DATA))
+            check(before, weights())
+            self.assertEqual(
+                [1, 1],
+                [
+                    result[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
+                    for result in results
+                ],
+            )
+
+            # The same, but with `minibatch_size` set and the starved Learner handed a
+            # batch that still carries its ModuleIDs with no rows under them -- what
+            # `ShardBatchIterator` produces when there is not enough data to give every
+            # Learner a row.
+            before = weights()
+            with_data, starved = MetricsLogger.peek_results(
+                learner_group.update(
+                    batches=[fake_batch(128), fake_batch(0)],
+                    minibatch_size=32,
+                    num_epochs=1,
+                )
+            )
+            check(before, weights())
+            self.assertEqual(
+                1, starved[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
+            )
+            self.assertEqual(
+                1, with_data[ALL_MODULES][LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME]
+            )
+
+            # Both Learners have data, but unequal amounts of it. On their own they
+            # would step through ceil(256/32) = 8 and ceil(64/32) = 2 minibatches.
+            # The group settles on the LARGER of the two, 8, not on their average, 5:
+            # 5 would leave the bigger shard short of the epochs it was configured
+            # for (see `test_minibatch_coverage_across_unequal_shards`). Both
+            # Learners step 8 times and stay in sync.
+            results = MetricsLogger.peek_results(
+                learner_group.update(
+                    batches=[fake_batch(256), fake_batch(64)],
+                    minibatch_size=32,
+                    num_epochs=1,
+                )
+            )
+            self.assertEqual(
+                [8 * 32, 8 * 32],
+                [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
+            )
+            learner_0_weights, learner_1_weights = weights()
+            check(learner_0_weights, learner_1_weights)
+
+            # A minibatch count passed in by the caller is used by both as-is.
+            results = MetricsLogger.peek_results(
+                learner_group.update(
+                    batches=[fake_batch(256), fake_batch(64)],
+                    minibatch_size=32,
+                    num_epochs=1,
+                    num_total_minibatches=3,
+                )
+            )
+            self.assertEqual(
+                [3 * 32, 3 * 32],
+                [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
+            )
+        finally:
+            learner_group.shutdown()
+
+    def test_learners_drop_modules_only_some_of_them_have_data_for(self):
+        """A module only some Learners have data for is dropped (hangs if not)."""
+        env = gym.make("CartPole-v1")
+        config = BaseTestingAlgorithmConfig().update_from_dict(
+            REMOTE_CONFIGS["multi-cpu-ddp"]
+        )
+        learner_group = config.build_learner_group(env=env)
+        learner_group.add_module(
+            module_id="p1", module_spec=config.get_rl_module_spec(env=env)
+        )
+
+        def weights(module_id):
+            return [
+                result.get()
+                for result in learner_group.foreach_learner(
+                    lambda learner: convert_to_numpy(
+                        learner.module[module_id].get_state()
+                    )
+                )
+            ]
+
+        try:
+            p1_before = weights("p1")
+            with_p1, without_p1 = MetricsLogger.peek_results(
+                learner_group.update(batches=[fake_batch_with_p1(64), fake_batch(64)])
+            )
+            # p1 isn't trained, its dropped rows are logged, and p0 trains in sync.
+            check(p1_before, weights("p1"))
+            self.assertEqual(
+                64, with_p1["p1"][LEARNER_MODULE_STEPS_DROPPED_FOR_PEER_LIFETIME]
+            )
+            self.assertEqual(
+                [64, 64],
+                [
+                    result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED]
+                    for result in (with_p1, without_p1)
+                ],
+            )
+            learner_0_weights, learner_1_weights = weights(DEFAULT_MODULE_ID)
+            check(learner_0_weights, learner_1_weights)
+        finally:
+            learner_group.shutdown()
+
+    def test_learners_update_on_a_multi_agent_episode_cut_between_them(self):
+        """A cut that leaves an agent without timesteps still updates (hangs if not)."""
+        space = gym.spaces.Box(-1.0, 1.0, (4,), np.float32)
+        obs = np.zeros(4, np.float32)
+        episode = MultiAgentEpisode(
+            observation_space={0: space, 1: space},
+            action_space={0: gym.spaces.Discrete(2), 1: gym.spaces.Discrete(2)},
+            agent_module_ids={0: "p0", 1: "p1"},
+        )
+        episode.add_env_reset(observations={0: obs, 1: obs})
+        # Agent 1 ends at env step 3, where the episode gets cut.
+        for t in range(6):
+            agents = [0, 1] if t < 3 else [0]
+            episode.add_env_step(
+                observations={a: obs for a in agents},
+                actions={a: 0 for a in agents},
+                rewards={a: 1.0 for a in agents},
+                terminateds={1: True} if t == 2 else {},
+                extra_model_outputs={
+                    a: {
+                        Columns.ACTION_LOGP: np.float32(np.log(0.5)),
+                        Columns.ACTION_DIST_INPUTS: np.zeros(2, np.float32),
+                    }
+                    for a in agents
+                },
+            )
+        episode.to_numpy()
+        config = (
+            PPOConfig()
+            .update_from_dict(REMOTE_CONFIGS["multi-cpu-ddp"])
+            .multi_agent(
+                policies={"p0", "p1"},
+                policy_mapping_fn=lambda aid, *args, **kwargs: f"p{aid}",
+            )
+            .rl_module(
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={"p0": RLModuleSpec(), "p1": RLModuleSpec()}
+                )
+            )
+        )
+        learner_group = config.build_learner_group(
+            env=MultiAgentCartPole({"num_agents": 2})
+        )
+        try:
+            results = MetricsLogger.peek_results(
+                learner_group.update(episodes=[episode])
+            )
+            with_p1 = results[0]
+            # p0 trains on both Learners, p1 (data on one only) on neither.
+            self.assertEqual(
+                [True, True],
+                [result["p0"][NUM_MODULE_STEPS_TRAINED] > 0 for result in results],
+            )
+            for result in results:
+                self.assertNotIn(NUM_MODULE_STEPS_TRAINED, result["p1"])
+            self.assertGreater(
+                with_p1["p1"][LEARNER_MODULE_STEPS_DROPPED_FOR_PEER_LIFETIME], 0
+            )
+        finally:
+            learner_group.shutdown()
+
+    def test_never_skip_update_in_a_group(self):
+        """`never_skip_update` turns a skip into an error, raised on every Learner.
+
+        The Learners must still settle on one number of minibatches: on their own,
+        shards of 256 and 64 rows would step 8 and 2 times over 32-row minibatches,
+        and the group takes the larger, 8.
+        And a Learner handed no data must not raise before the group agreement, or
+        its peer waits in that collective forever. Either way the group would hang
+        -- as this test then does, rather than fail.
+        """
+        config = (
+            BaseTestingAlgorithmConfig()
+            .update_from_dict(REMOTE_CONFIGS["multi-cpu-ddp"])
+            .learners(never_skip_update=True)
+        )
+        learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
+        try:
+            results = MetricsLogger.peek_results(
+                learner_group.update(
+                    batches=[fake_batch(256), fake_batch(64)],
+                    minibatch_size=32,
+                    num_epochs=1,
+                )
+            )
+            self.assertEqual(
+                [8 * 32, 8 * 32],
+                [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
+            )
+
+            # A Learner without data raises, and so does its peer: both leave
+            # `update()` right after the agreement, ...
+            with self.assertRaisesRegex(Exception, "never_skip_update"):
+                learner_group.update(batches=[fake_batch(128), NO_DATA])
+            # ... so their collectives still line up, and the next update trains. (The
+            # actor manager takes a Learner that raised out of service, as for any
+            # error; put both back first.)
+            learner_group.foreach_learner(
+                lambda learner: None, healthy_only=False, mark_healthy=True
+            )
+            learner_group.update(batches=[fake_batch(64), fake_batch(64)])
+            learner_0_weights, learner_1_weights = [
+                result.get()
+                for result in learner_group.foreach_learner(
+                    lambda learner: convert_to_numpy(
+                        learner.module[DEFAULT_MODULE_ID].get_state()
+                    )
+                )
+            ]
+            check(learner_0_weights, learner_1_weights)
+
+            # A module only one Learner has data for raises, too.
+            learner_group.add_module(
+                module_id="p1",
+                module_spec=config.get_rl_module_spec(env=gym.make("CartPole-v1")),
+            )
+            with self.assertRaisesRegex(Exception, "never_skip_update"):
+                learner_group.update(batches=[fake_batch_with_p1(64), fake_batch(64)])
+        finally:
+            learner_group.shutdown()
+
+    def test_a_learner_that_cannot_form_minibatches_fails_the_group(self):
+        """A batch that cannot be split into minibatches fails every Learner.
+
+        A minibatch of a sequence batch must hold at least one sequence, so a
+        `minibatch_size` below the batch's average sequence length is an error.
+        That can hold for one shard and not for another: here, sequences of 20
+        timesteps against 5. The first Learner must not raise before the group
+        agreement, or its peer waits in that collective forever -- as this test
+        then does, rather than fail.
+        """
+        config = BaseTestingAlgorithmConfig().update_from_dict(
+            REMOTE_CONFIGS["multi-cpu-ddp"]
+        )
+        learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
+        try:
+            with self.assertRaisesRegex(Exception, "minibatch"):
+                learner_group.update(
+                    batches=[
+                        fake_batch(40, seq_lens=[20, 20]),
+                        fake_batch(20, seq_lens=[5, 5, 5, 5]),
+                    ],
+                    minibatch_size=10,
+                    num_epochs=1,
+                )
+            # Both Learners left `update()` right after the agreement, so their
+            # collectives still line up, and the next update trains. (The actor
+            # manager takes a Learner that raised out of service, as for any error;
+            # put both back first.)
+            learner_group.foreach_learner(
+                lambda learner: None, healthy_only=False, mark_healthy=True
+            )
+            learner_group.update(batches=[fake_batch(64), fake_batch(64)])
+            learner_0_weights, learner_1_weights = [
+                result.get()
+                for result in learner_group.foreach_learner(
+                    lambda learner: convert_to_numpy(
+                        learner.module[DEFAULT_MODULE_ID].get_state()
+                    )
+                )
+            ]
+            check(learner_0_weights, learner_1_weights)
+        finally:
+            learner_group.shutdown()
 
 
 class TestLearnerGroupCheckpointRestore(unittest.TestCase):

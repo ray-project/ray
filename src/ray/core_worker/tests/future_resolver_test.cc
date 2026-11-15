@@ -20,13 +20,13 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/asio_util.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/util/clock.h"
 
@@ -37,7 +37,7 @@ class FutureResolverTest : public ::testing::Test {
  public:
   FutureResolverTest()
       : io_context_("TestOnly.FutureResolverTest"),
-        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        publisher_(std::make_shared<pubsub::FakePublisher>()),
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         memory_store_(
             std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_)),
@@ -87,7 +87,7 @@ class FutureResolverTest : public ::testing::Test {
   InstrumentedIOContextWithThread io_context_;
   ray::observability::FakeGauge owned_object_count_by_state_;
   ray::observability::FakeGauge owned_object_sizes_by_state_;
-  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::FakePublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   std::shared_ptr<ReferenceCounter> ref_counter_;

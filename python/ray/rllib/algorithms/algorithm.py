@@ -313,7 +313,7 @@ class Algorithm(Checkpointable, Trainable):
             ]
         ] = None,
         # deprecated args
-        checkpoint=DEPRECATED_VALUE,
+        checkpoint: Any = DEPRECATED_VALUE,
         **kwargs,
     ) -> "Algorithm":
         """Creates a new algorithm instance from a given checkpoint.
@@ -333,6 +333,11 @@ class Algorithm(Checkpointable, Trainable):
                 (trainable or not?). If None, will keep the existing setup in place.
                 Policies, whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
+            checkpoint: Deprecated. Use `path` instead.
+            **kwargs: Forward compatibility kwargs. These are passed on to
+                `Checkpointable.from_checkpoint()` (and from there to each
+                subcomponent's `from_checkpoint()` call) for new API stack
+                checkpoints.
 
         Returns:
             The instantiated Algorithm.
@@ -405,13 +410,14 @@ class Algorithm(Checkpointable, Trainable):
     def __init__(
         self,
         config: Optional[AlgorithmConfig] = None,
-        env=None,  # deprecated arg
+        env: Optional[Union[str, EnvType]] = None,  # deprecated arg
         **kwargs,
     ):
         """Initializes an Algorithm instance.
 
         Args:
             config: Algorithm-specific configuration object.
+            env: Deprecated. Use `AlgorithmConfig.environment(env=...)` instead.
             **kwargs: Arguments passed to the Trainable base class.
         """
         # Translate possible dict into an AlgorithmConfig object, as well as,
@@ -704,6 +710,14 @@ class Algorithm(Checkpointable, Trainable):
     @OverrideToImplementCustomLogic
     @classmethod
     def get_default_config(cls) -> AlgorithmConfig:
+        """Returns the default config for this Algorithm class.
+
+        Algorithm subclasses override this to return their own config class, for
+        example `PPO.get_default_config()` returns a `PPOConfig`.
+
+        Returns:
+            A new instance of this Algorithm's default config class.
+        """
         return AlgorithmConfig()
 
     @OverrideToImplementCustomLogic
@@ -1172,6 +1186,13 @@ class Algorithm(Checkpointable, Trainable):
         multi-agent PolicySpec.
 
         Note: This method is ignored when the RLModule API is enabled.
+
+        Args:
+            config: The AlgorithmConfig to pick the Policy class for.
+
+        Returns:
+            The default Policy class, or None if this Algorithm has none. The base
+            implementation returns None.
         """
         return None
 
@@ -2381,6 +2402,20 @@ class Algorithm(Checkpointable, Trainable):
 
     @OverrideToImplementCustomLogic
     def restore_offline_eval_runners(self, runner_group: RunnerGroup) -> List[int]:
+        """Try bringing back unhealthy offline evaluation runners and sync them.
+
+        The offline evaluation counterpart of `restore_env_runners()`. Syncs each
+        restored runner with the state of the first healthy runner and gives it
+        back its data iterator. Algorithms may override this method to create
+        custom restoration logic.
+
+        Args:
+            runner_group: The RunnerGroup of offline evaluation runners to restore.
+
+        Returns:
+            A list of the IDs of the runners restored during this call. Empty if
+            `runner_group` is None or has no local runner.
+        """
         if not runner_group or not runner_group.local_runner:
             return []
 
@@ -2777,6 +2812,9 @@ class Algorithm(Checkpointable, Trainable):
 
         Args:
             policy_id: ID of the policy to return.
+
+        Returns:
+            The Policy object under the given `policy_id` or None if not found.
         """
         return self.env_runner.get_policy(policy_id)
 
@@ -2787,6 +2825,9 @@ class Algorithm(Checkpointable, Trainable):
         Args:
             policies: Optional list of policies to return weights for,
                 or None for all policies.
+
+        Returns:
+            A dict mapping ModuleID/PolicyID to the respective weights.
         """
         # New API stack (get weights from LearnerGroup).
         if self.learner_group is not None:
@@ -2836,8 +2877,8 @@ class Algorithm(Checkpointable, Trainable):
         add_to_eval_env_runners: bool = True,
         module_spec: Optional[RLModuleSpec] = None,
         # Deprecated arg.
-        evaluation_workers=DEPRECATED_VALUE,
-        add_to_learners=DEPRECATED_VALUE,
+        evaluation_workers: Any = DEPRECATED_VALUE,
+        add_to_learners: Any = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -2877,6 +2918,9 @@ class Algorithm(Checkpointable, Trainable):
             module_spec: In the new RLModule API we need to pass in the module_spec for
                 the new module that is supposed to be added. Knowing the policy spec is
                 not sufficient.
+            evaluation_workers: Deprecated. Use `add_to_eval_env_runners` instead.
+            add_to_learners: Deprecated. The hybrid API stack is no longer
+                supported by RLlib.
 
         Returns:
             The newly added policy (the copy that got added to the local
@@ -2955,8 +2999,8 @@ class Algorithm(Checkpointable, Trainable):
         remove_from_env_runners: bool = True,
         remove_from_eval_env_runners: bool = True,
         # Deprecated args.
-        evaluation_workers=DEPRECATED_VALUE,
-        remove_from_learners=DEPRECATED_VALUE,
+        evaluation_workers: Any = DEPRECATED_VALUE,
+        remove_from_learners: Any = DEPRECATED_VALUE,
     ) -> None:
         """Removes a policy from this Algorithm.
 
@@ -2976,6 +3020,10 @@ class Algorithm(Checkpointable, Trainable):
                 EnvRunnerGroup (with its m EnvRunners plus the local one).
             remove_from_eval_env_runners: Whether to remove the RLModule from the eval
                 EnvRunnerGroup (with its o EnvRunners plus the local one).
+            evaluation_workers: Deprecated. Use `remove_from_eval_env_runners`
+                instead.
+            remove_from_learners: Deprecated. The hybrid API stack is no longer
+                supported by RLlib.
         """
         if evaluation_workers != DEPRECATED_VALUE:
             deprecation_warning(
@@ -3177,6 +3225,14 @@ class Algorithm(Checkpointable, Trainable):
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint_dir: str) -> None:
+        """Restores this Algorithm's state from a checkpoint directory.
+
+        On the new API stack, this delegates to `restore_from_path()`. Afterwards,
+        it calls the `on_checkpoint_loaded` callback.
+
+        Args:
+            checkpoint_dir: The local directory that holds the checkpoint.
+        """
         with TimerAndPrometheusLogger(self._metrics_load_checkpoint_time):
             # New API stack: Delegate to the `Checkpointable` implementation of
             # `restore_from_path()`.
@@ -3869,8 +3925,8 @@ class Algorithm(Checkpointable, Trainable):
                         ),
                         kwargs=dict(
                             algorithm=self,
-                            env_runner_group=self.offline_eval_runner_group,
-                            env_runner_indices=restored,
+                            offline_eval_runner_group=self.offline_eval_runner_group,
+                            offline_eval_runner_indices=restored,
                         ),
                     )
 
@@ -4156,7 +4212,7 @@ class Algorithm(Checkpointable, Trainable):
             return self.eval_env_runner_group.local_env_runner
         return None
 
-    def _record_usage(self, config):
+    def _record_usage(self, config: AlgorithmConfig) -> None:
         """Record the framework and algorithm used.
 
         Args:
@@ -4237,7 +4293,7 @@ class Algorithm(Checkpointable, Trainable):
         return state
 
     @OldAPIStack
-    def __setstate__(self, state) -> None:
+    def __setstate__(self, state: Dict) -> None:
         """Sets the algorithm to the provided state.
 
         Args:

@@ -6,8 +6,8 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "Llama-3.1-8B-Instruct",
-        "model_source": "unsloth/Llama-3.1-8B-Instruct",
+        "model_id": "qwen3.5-0.8b",
+        "model_source": "Qwen/Qwen3.5-0.8B",
     },
     deployment_config={
         "autoscaling_config": {
@@ -18,7 +18,7 @@ llm_config = LLMConfig(
     server_cls=SGLangServer,
     engine_kwargs={
         "trust_remote_code": True,
-        "model_path": "unsloth/Llama-3.1-8B-Instruct",
+        "model_path": "Qwen/Qwen3.5-0.8B",
         "tp_size": 1,
         "mem_fraction_static": 0.8,
     },

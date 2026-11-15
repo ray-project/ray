@@ -250,5 +250,85 @@ async def test_cancelled_request_skips_probe(monkeypatch):
         await asyncio.gather(*routing_tasks, return_exceptions=True)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failures_per_assignment", [0, 2])
+async def test_fifo_resets_backoff_after_successful_assignment(
+    monkeypatch, failures_per_assignment
+):
+    """Successful FIFO assignments reset retries while retaining request ownership."""
+    selection_started = asyncio.Event()
+    release_selection = asyncio.Event()
+    requests = [fake_pending_request() for _ in range(3)]
+    for i, request in enumerate(requests):
+        request.created_at = i
+    owned_request = requests[-1]
+
+    class Router(FIFOMixin, RequestRouter):
+        async def choose_replicas(self, candidate_replicas, pending_request=None):
+            if not selection_started.is_set():
+                selection_started.set()
+                await release_selection.wait()
+            pending_request.routing_context.should_backoff = True
+            return [candidate_replicas]
+
+    router = Router(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        use_replica_queue_len_cache=True,
+    )
+    router.max_num_routing_tasks_cap = 1
+    replica = FakeRunningReplica("replica")
+    replica.set_queue_len_response(0)
+    router.update_replicas([replica])
+    selections = 0
+    probe_backoff_indices = []
+
+    async def select(candidates, backoff_index):
+        nonlocal selections
+        selections += 1
+        probe_backoff_indices.append(backoff_index)
+        if selections % (failures_per_assignment + 1) == 0:
+            return replica
+        return None
+
+    monkeypatch.setattr(router, "_select_from_candidate_replicas", select)
+    backoff = AsyncMock()
+    monkeypatch.setattr(router, "_backoff", backoff)
+    tasks = [asyncio.create_task(router._choose_replica_for_request(owned_request))]
+    try:
+        await asyncio.wait_for(selection_started.wait(), timeout=2)
+        # Older requests are retried while the only routing task owns a newer one.
+        # Its successful selections will fulfill these older requests first.
+        tasks.extend(
+            asyncio.create_task(
+                router._choose_replica_for_request(request, is_retry=True)
+            )
+            for request in requests[:-1]
+        )
+        await asyncio.sleep(0)
+        release_selection.set()
+        assert (
+            await asyncio.wait_for(asyncio.gather(*tasks), timeout=2) == [replica] * 3
+        )
+        assert selections == 3 * (failures_per_assignment + 1)
+        assert probe_backoff_indices == list(range(failures_per_assignment + 1)) * 3
+        # Each success starts a new retry cycle; only failed selections back off.
+        assert [call.args[0] for call in backoff.await_args_list] == (
+            [0] * 3 if failures_per_assignment else []
+        )
+        assert router.curr_num_routing_tasks == 0
+    finally:
+        release_selection.set()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        routing_tasks = list(router._routing_tasks)
+        for task in routing_tasks:
+            task.cancel()
+        await asyncio.gather(*routing_tasks, return_exceptions=True)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

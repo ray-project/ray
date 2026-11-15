@@ -11,6 +11,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import Timer, run_background_task
+from ray._private.accelerators.mlu import NOSET_CN_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
@@ -68,11 +69,17 @@ class JobManager:
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(
-        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+        self,
+        gcs_client: GcsClient,
+        logs_dir: str,
+        timeout_check_timer: Timer = None,
+        session_name: str = "",
     ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
-        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
+        self._job_info_client = JobInfoStorageClient(
+            gcs_client, logs_dir, session_name=session_name
+        )
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self._timeout_check_timer = timeout_check_timer or Timer()
@@ -403,6 +410,7 @@ class JobManager:
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+            env_vars[NOSET_CN_VISIBLE_DEVICES_ENV_VAR] = "1"
             env_vars[NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
 
         runtime_env["env_vars"] = env_vars
@@ -474,8 +482,7 @@ class JobManager:
         entrypoint_label_selector: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
-        """
-        Job execution happens asynchronously.
+        """Job execution happens asynchronously.
 
         1) Generate a new unique id for this job submission, each call of this
             method assumes they're independent submission with its own new

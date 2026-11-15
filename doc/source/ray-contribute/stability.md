@@ -44,18 +44,18 @@ A *stable* component **must** be fully-supported over the lifetime of the major 
 
 ### Docstrings
 
-```{eval-rst}
-.. _public-api-def:
+Each annotation's docstring defines its guarantees:
 
-.. autofunction:: ray.util.annotations.PublicAPI
+(public-api-def)=
 
-.. _developer-api-def:
+- {py:func}`ray.util.annotations.PublicAPI`
 
-.. autofunction:: ray.util.annotations.DeveloperAPI
+(developer-api-def)=
 
-.. _deprecated-api-def:
+- {py:func}`ray.util.annotations.DeveloperAPI`
 
-.. autofunction:: ray.util.annotations.Deprecated
-```
+(deprecated-api-def)=
+
+- {py:func}`ray.util.annotations.Deprecated`
 
 Undecorated functions can be generally assumed to not be part of the Ray public API.

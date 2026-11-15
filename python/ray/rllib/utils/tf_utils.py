@@ -134,30 +134,28 @@ def flatten_inputs_to_1d_tensor(
         flattened/one-hot'd input components. Depending on the time_axis flag,
         the shape is (B, n) or (B, T, n).
 
-    .. testcode::
-        :skipif: True
-
-        # B=2
-        from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        from gymnasium.spaces import Discrete, Box
-        out = flatten_inputs_to_1d_tensor(
-            {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
-            spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
-        )
-        print(out)
-
-        # B=2; T=2
-        out = flatten_inputs_to_1d_tensor(
-            ([[1, 0], [0, 1]],
-             [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
-            spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
-            time_axis=True
-        )
-        print(out)
-
-    .. testoutput::
-
+    Examples:
+        >>> # B=2
+        >>> import numpy as np  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
+        >>> from gymnasium.spaces import Discrete, Box
+        >>> out = flatten_inputs_to_1d_tensor(
+        ...     {
+        ...         "a": np.array([1, 0]),
+        ...         "b": np.array([[[0.0], [0.1]], [[1.0], [1.1]]]),
+        ...     },
+        ...     spaces_struct=dict(a=Discrete(2), b=Box(-1.0, 1.0, shape=(2, 1)))
+        ... )
+        >>> print(out)
         [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        >>> # B=2; T=2
+        >>> out = flatten_inputs_to_1d_tensor(
+        ...     (np.array([[1, 0], [0, 1]]),
+        ...      np.array([[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]])),
+        ...     spaces_struct=tuple([Discrete(2), Box(-1.0, 1.0, shape=(2, ))]),
+        ...     time_axis=True
+        ... )
+        >>> print(out)
         [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
         [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
@@ -532,32 +530,21 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     Raises:
         ValueError: If the given space is not a discrete one.
 
-    .. testcode::
-        :skipif: True
-
-        import gymnasium as gym
-        import tensorflow as tf
-        from ray.rllib.utils.tf_utils import one_hot
-        x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
-        # Discrete space with 4 (one-hot) slots per batch item.
-        s = gym.spaces.Discrete(4)
-        one_hot(x, s)
-
-    .. testoutput::
-
+    Examples:
+        >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+        >>> import tensorflow as tf
+        >>> from ray.rllib.utils.tf_utils import one_hot
+        >>> x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
+        >>> # Discrete space with 4 (one-hot) slots per batch item.
+        >>> s = gym.spaces.Discrete(4)
+        >>> one_hot(x, s)
         <tf.Tensor 'one_hot:0' shape=(2, 4) dtype=float32>
 
-    .. testcode::
-        :skipif: True
-
-        x = tf.Variable([[0, 1, 2, 3]], dtype=tf.int32)  # batch-dim=1
-        # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
-        # per batch item.
-        s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
-        one_hot(x, s)
-
-    .. testoutput::
-
+        >>> x = tf.Variable([[0, 1, 2, 3]], dtype=tf.int32)  # batch-dim=1
+        >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
+        >>> # per batch item.
+        >>> s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
+        >>> one_hot(x, s)
         <tf.Tensor 'concat:0' shape=(1, 20) dtype=float32>
     """
     if isinstance(space, Discrete):
@@ -623,6 +610,12 @@ def symlog(x: "tf.Tensor") -> "tf.Tensor":
     [1] Mastering Diverse Domains through World Models - 2023
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        `sign(x) * log(abs(x) + 1)`, computed element-wise.
     """
     return tf.math.sign(x) * tf.math.log(tf.math.abs(x) + 1)
 
@@ -634,6 +627,12 @@ def inverse_symlog(y: "tf.Tensor") -> "tf.Tensor":
     [1] Mastering Diverse Domains through World Models - 2023
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Args:
+        y: The input tensor, in symlog space.
+
+    Returns:
+        The tensor `x` for which `symlog(x)` equals `y`, computed element-wise.
     """
     # To get to symlog inverse, we solve the symlog equation for x:
     #     y = sign(x) * log(|x| + 1)
@@ -656,7 +655,7 @@ def two_hot(
     num_buckets: int = 255,
     lower_bound: float = -20.0,
     upper_bound: float = 20.0,
-    dtype=None,
+    dtype: Optional["tf.DType"] = None,
 ):
     """Returns a two-hot vector of dim=num_buckets with two entries that are non-zero.
 
@@ -694,6 +693,8 @@ def two_hot(
             lower than this boundary, they will be encoded as `lower_bound`.
         upper_bound: The upper bound value used for the encoding. If input values are
             higher than this boundary, they will be encoded as `upper_bound`.
+        dtype: The dtype to use for the tensor of batch indices. If None, use
+            `tf.float32`.
 
     Returns:
         The two-hot encoded tensor of shape (B, num_buckets).
@@ -838,7 +839,12 @@ class TensorFlowVariables:
         assignment_nodes (Dict[str, tf.Tensor]): Nodes that assign weights.
     """
 
-    def __init__(self, output, sess=None, input_variables=None):
+    def __init__(
+        self,
+        output: Union["tf.Operation", List["tf.Operation"]],
+        sess: Optional["tf1.Session"] = None,
+        input_variables: Optional[List["tf.Variable"]] = None,
+    ):
         """Creates TensorFlowVariables containing extracted variables.
 
         The variables are extracted by performing a BFS search on the
@@ -848,13 +854,10 @@ class TensorFlowVariables:
         variable has a placeholder and assignment operation created for it.
 
         Args:
-            output (tf.Operation, List[tf.Operation]): The tensorflow
-                operation to extract all variables from.
-            sess (Optional[tf.Session]): Optional tf.Session used for running
-                the get and set methods in tf graph mode.
-                Use None for tf eager.
-            input_variables (List[tf.Variables]): Variables to include in the
-                list.
+            output: The tensorflow operation to extract all variables from.
+            sess: Optional tf.Session used for running the get and set methods
+                in tf graph mode. Use None for tf eager.
+            input_variables: Variables to include in the list.
         """
         self.sess = sess
         output = force_list(output)
@@ -948,7 +951,7 @@ class TensorFlowVariables:
             [v.eval(session=self.sess).flatten() for v in self.variables.values()]
         )
 
-    def set_flat(self, new_weights):
+    def set_flat(self, new_weights: np.ndarray) -> None:
         """Sets the weights to new_weights, converting from a flat array.
 
         Note:
@@ -956,7 +959,7 @@ class TensorFlowVariables:
             i.e., the length of the array must match get_flat_size.
 
         Args:
-            new_weights (np.ndarray): Flat array containing weights.
+            new_weights: Flat array containing weights.
         """
         shapes = [v.get_shape().as_list() for v in self.variables.values()]
         arrays = _unflatten(new_weights, shapes)
@@ -1000,7 +1003,7 @@ class TensorFlowVariables:
             assign_list, feed_dict = self._assign_weights(new_weights)
             self.sess.run(assign_list, feed_dict=feed_dict)
 
-    def _assign_weights(self, weights):
+    def _assign_weights(self, weights: dict):
         """Sets weigths using exact or closest assignable variable name
 
         Args:

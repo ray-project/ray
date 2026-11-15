@@ -29,6 +29,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 from ray.serve._private.test_utils import wait_for_haproxy_routing_to_replica
+from transformers import AutoTokenizer
 
 from utils import shutdown_serve_and_wait_for_controller
 
@@ -56,7 +57,7 @@ async def test_engine_metrics():
     """
 
     engine_args = AsyncEngineArgs(
-        model="Qwen/Qwen2.5-0.5B-Instruct",
+        model="Qwen/Qwen3.5-0.8B",
         dtype="auto",
         disable_log_stats=False,
         enforce_eager=True,
@@ -85,7 +86,7 @@ async def test_engine_metrics_with_lora():
     """
 
     engine_args = AsyncEngineArgs(
-        model="Qwen/Qwen2.5-0.5B-Instruct",  # Using smaller model for testing
+        model="Qwen/Qwen3.5-0.8B",  # Using smaller model for testing
         disable_log_stats=False,
         enforce_eager=True,
         enable_prefix_caching=True,
@@ -119,7 +120,7 @@ async def test_engine_metrics_with_spec_decode():
     """
 
     engine_args = AsyncEngineArgs(
-        model="Qwen/Qwen2.5-0.5B-Instruct",
+        model="Qwen/Qwen3.5-0.8B",
         dtype="auto",
         disable_log_stats=False,
         enforce_eager=True,
@@ -228,6 +229,7 @@ def test_lora_requests():
 
 
 @direct_streaming_only
+@pytest.mark.requires_2GPU
 def test_pd_lora_requests():
     """Serve cold and cached LoRA requests through direct-streaming P/D."""
     model_id = "llama-test"
@@ -327,6 +329,7 @@ def is_default_app_running():
 
 
 @pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V2-Lite"])
+@pytest.mark.requires_4GPU
 def test_deepseek_model(model_name):
     """
     Test that the deepseek model can be loaded successfully.
@@ -527,6 +530,84 @@ def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
     time.sleep(1)
 
 
+@direct_streaming_only
+@pytest.mark.timeout(900)
+@pytest.mark.requires_4GPU
+def test_diffusion_gemma_structured_read():
+    """DiffusionGemma structured reads (vllm-project/vllm#57250) are driven by
+    per-request vllm_xargs, which vLLM's native app passes to the engine in
+    direct-streaming mode."""
+    model_name = "google/diffusiongemma-26B-A4B-it"
+    canvas_length = 16
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=model_name),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(
+            tensor_parallel_size=4,
+            max_model_len=1024,
+            diffusion_config=dict(canvas_length=canvas_length),
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=600)
+
+    # Seed the canvas with the answer template, turn close, and padding.
+    # Pin every position except the answer slot, so the template stays fixed
+    # and only the slot is free for the model to fill.
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    template = tokenizer.encode("Answer:", add_special_tokens=False)
+    answer_slot = len(template)
+    seed_canvas = template + [tokenizer.pad_token_id]
+    seed_canvas.append(tokenizer.convert_tokens_to_ids("<turn|>"))
+    seed_canvas += [tokenizer.pad_token_id] * (canvas_length - len(seed_canvas))
+
+    def read(question: str, seed: list) -> requests.Response:
+        return requests.post(
+            "http://localhost:8000/v1/chat/completions",
+            json={
+                "model": model_name,
+                "messages": [{"role": "user", "content": question}],
+                "max_tokens": canvas_length,
+                "logprobs": True,
+                "top_logprobs": 5,
+                "vllm_xargs": {
+                    "diffusion_seed_canvas": seed,
+                    "diffusion_pinned": [
+                        p for p in range(canvas_length) if p != answer_slot
+                    ],
+                    "diffusion_max_steps": 4,
+                    "diffusion_read_only": True,
+                },
+            },
+            timeout=120,
+        )
+
+    # Ask one question whose answer is yes and one whose answer is no, so a
+    # slot that always reads the same token fails.
+    for question, expected in [
+        ("Is the sky blue on a clear day? Answer yes or no.", "yes"),
+        ("Is ice hotter than boiling water? Answer yes or no.", "no"),
+    ]:
+        response = read(question, seed_canvas)
+        assert response.status_code == 200, response.text
+        # A read-only request emits the whole canvas once, with temperature-1
+        # logprobs at every position.
+        content = response.json()["choices"][0]["logprobs"]["content"]
+        assert len(content) == canvas_length
+        assert all(position["top_logprobs"] for position in content)
+        slot = content[answer_slot]
+        assert slot["token"].strip().lower() == expected, (question, slot)
+
+    # The engine validates the xargs, so a seed canvas of the wrong width is rejected.
+    response = read("Is the sky blue on a clear day?", seed_canvas[:-1])
+    assert response.status_code == 400, response.text
+    assert "diffusion_seed_canvas" in response.text
+
+    shutdown_serve_and_wait_for_controller()
+    time.sleep(1)
+
+
 @pytest.fixture
 def remote_model_app(request):
     """
@@ -613,7 +694,7 @@ def test_nested_engine_kwargs_structured_outputs():
     """Regression test for https://github.com/ray-project/ray/pull/60380"""
     llm_config = LLMConfig(
         model_loading_config=dict(
-            model_id="Qwen/Qwen2.5-0.5B-Instruct",
+            model_id="Qwen/Qwen3.5-0.8B",
         ),
         deployment_config=dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
@@ -717,6 +798,7 @@ def _prefix_group_text(group_id: str) -> str:
 
 
 @direct_streaming_only
+@pytest.mark.requires_4GPU
 class TestPrefixAffinityDirectStreaming:
     """Regression tests for https://github.com/ray-project/ray/pull/66489: on
     the pick-only path, ``on_request_routed`` never ran, so the
@@ -828,6 +910,7 @@ class TestPrefixAffinityDirectStreaming:
     ],
     ids=["image", "audio"],
 )
+@pytest.mark.requires_2GPU
 def test_pd_multimodal_with_tokenize_once(model, modality):
     """Multimodal P/D chat must work with pd_tokenize_once enabled."""
     if modality == "image":

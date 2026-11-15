@@ -24,6 +24,8 @@ import "google/protobuf/timestamp.proto";
 //
 // For static information associated with this event, see SubmissionJobDefinitionEvent.
 message SubmissionJobLifecycleEvent {
+  // NOTE: keep in sync with JobStatus in
+  // python/ray/dashboard/modules/job/common.py.
   enum State {
     UNSPECIFIED = 0;
     // The job has not started yet, likely waiting for the runtime_env to be set up.

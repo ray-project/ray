@@ -10,6 +10,9 @@ import pandas as pd
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
+from ray.train.health import Diagnose, Evict, HealthDecision, Noop, Reattempt
+from ray.train.health._internal.manager import HealthManager
+from ray.train.v2._internal.callbacks.health_callback import HealthCallback
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
@@ -19,7 +22,6 @@ from ray.train.v2._internal.constants import (
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
-from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     ReportCallback,
@@ -76,6 +78,7 @@ from ray.train.v2._internal.util import (
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    HealthCheckError,
     PreemptionError,
     TrainingFailedError,
 )
@@ -222,6 +225,16 @@ class TrainController:
 
             self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
 
+        self._health_manager = None
+        self._health_callback = None
+        health_config = self._run_config.health_config
+        if health_config is not None:
+            self._health_manager = HealthManager(health_config.inflight_checks)
+            self._health_callback = HealthCallback(
+                self._health_manager, health_config.preflight_checks
+            )
+            self._worker_group_callbacks_to_propagate.append(self._health_callback)
+
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
         self._return_value: Optional[Any] = None
@@ -312,10 +325,17 @@ class TrainController:
             # Standard: full restart.
             if self._worker_group:
                 self._shutdown_worker_group()
-            self._start_worker_group(
-                num_workers=decision.num_workers,
-                resources_per_worker=decision.resources_per_worker,
-            )
+            try:
+                self._start_worker_group(
+                    num_workers=decision.num_workers,
+                    resources_per_worker=decision.resources_per_worker,
+                )
+            except HealthCheckError as e:
+                # Only HealthCallback.after_worker_group_start raises this: a
+                # pre-flight check that requires idle workers decided to
+                # Reattempt or Evict. WorkerGroup._start() shut down the
+                # started workers before re-raising it.
+                return self._execute_health_decision(e.decision)
 
         return TrainControllerLoopIterationResult(
             run_attempt_id=self._get_run_attempt_id(),
@@ -447,8 +467,6 @@ class TrainController:
 
         Raises:
             Exception: If the worker group failed to start.
-            WorkerGroupStartupTimeoutError: If coordinator reservations are
-                not ready yet for positive-resource workers (controller retries).
         """
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
@@ -466,39 +484,6 @@ class TrainController:
                         f"with label_selector returned by user-specified callback {selector}"
                     )
                 label_selector = [selector.copy() for _ in range(num_workers)]
-
-        # Pin workers to AutoscalingCoordinator reservations, so that two
-        # concurrent runs aren't both scheduled onto the same capacity.
-        # Skipped when:
-        # - Workers request no resources: nothing to reserve, and they fit
-        #   anywhere, so there is nothing to wait for.
-        # - TPU: `SlicePlacementGroup` does its own reservation below and
-        #   ignores `label_selector`, so pins would only add latency.
-        # - A `label_selector` is set: the coordinator picks nodes by resource
-        #   fit and never matches `label_selectors` against node labels, so its
-        #   pins can name a node that violates the selector. Combining the two
-        #   would produce an unsatisfiable selector and a placement group that
-        #   never becomes ready, so the user's selector wins and placement is
-        #   left to the placement group.
-        #   TODO: Reconcile w/ ray core later
-        can_pin_to_reservation = (
-            not scaling_config.use_tpu
-            and sum(resources_per_worker.values()) > 0
-            and not label_selector
-        )
-        if can_pin_to_reservation:
-            reserved_node_label_selectors = (
-                self._scaling_policy.get_reserved_bundle_label_selectors(num_workers)
-            )
-            if reserved_node_label_selectors is None:
-                # Waited for reserved capacity (same idea as pg.wait()) and it
-                # still isn't ready. Retry via SCHEDULING -> RESCHEDULING.
-                raise WorkerGroupStartupTimeoutError(num_workers=num_workers)
-            # `placement_strategy` is deliberately left alone: the pins already
-            # determine the layout, and keeping the strategy lets the placement
-            # group reject a layout that contradicts it rather than silently
-            # downgrading e.g. STRICT_SPREAD to co-located workers.
-            label_selector = reserved_node_label_selectors
 
         # Calculate num_slices for the worker group if using TPU.
         num_slices = 1
@@ -680,9 +665,17 @@ class TrainController:
         if isinstance(
             controller_state, (InitializingState, RestartingState, ReschedulingState)
         ):
-            return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state
+            result = (
+                self._make_and_handle_scaling_decision_for_non_running_worker_group(
+                    controller_state
+                )
             )
+            if result.next_state is controller_state:
+                # Nothing to start yet (e.g. an elastic run waiting for
+                # `min_workers` to fit). Sleep before asking again, which also
+                # yields the event loop so calls like `abort()` can reach this actor.
+                await asyncio.sleep(self._health_check_interval_s)
+            return result
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
@@ -722,6 +715,15 @@ class TrainController:
                     failure_decision, training_failed_error=worker_group_error
                 )
 
+            if self._health_manager is not None:
+                health_decision = self._health_manager.evaluate(
+                    worker_group_status.worker_statuses
+                )
+                if not isinstance(health_decision, Noop):
+                    health_result = self._execute_health_decision(health_decision)
+                    if health_result:
+                        return health_result
+
             scaling_decision = (
                 self._scaling_policy.make_decision_for_running_worker_group(
                     worker_group_state=self.get_worker_group().get_worker_group_state(),
@@ -757,6 +759,68 @@ class TrainController:
             return await self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
+
+    def _execute_health_decision(
+        self, decision: HealthDecision
+    ) -> Optional[TrainControllerLoopIterationResult]:
+        """Act on a health decision: from the pre-flight checks before
+        training, or from the in-flight checks or a ``Diagnose`` during
+        training.
+
+        A ``Reattempt`` restarts the worker group through the failure policy,
+        like a worker error. An ``Evict`` restarts it outside the failure
+        policy. A ``Diagnose`` starts its checks while training continues, and
+        a later ``HealthManager.evaluate()`` decides on their results. If a
+        check requires idle workers, the ``Diagnose`` restarts the worker group
+        outside the failure policy instead, and the checks run at the start of
+        the next attempt, like pre-flight checks.
+
+        Args:
+            decision: The health decision, other than a ``Noop``.
+
+        Returns:
+            The result of the iteration, or ``None`` to keep running.
+        """
+        failure_result = self._run_controller_hook("after_health_decision", decision)
+        if failure_result:
+            return failure_result
+
+        error = HealthCheckError(decision)
+        if isinstance(decision, Diagnose):
+            if not any(check.requires_idle_workers for check in decision.checks):
+                logger.info("Diagnosing while training continues: %s", decision.reason)
+                self._health_manager.start_on_demand_checks(decision.checks)
+                return None
+            logger.warning(
+                "Restarting the worker group to diagnose: %s", decision.reason
+            )
+            self._health_callback.run_at_next_start(decision.checks)
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self.get_state(),
+                next_state=self._get_retry_state(self.get_state(), error),
+            )
+
+        if isinstance(decision, Reattempt):
+            logger.warning("Reattempting: %s", decision.reason)
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=error
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=error
+            )
+        if isinstance(decision, Evict):
+            logger.warning(
+                "Evicting nodes %s and restarting the worker group: %s",
+                decision.target_nodes,
+                decision.reason,
+            )
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self.get_state(),
+                next_state=self._get_retry_state(self.get_state(), error),
+            )
+        return None
 
     @staticmethod
     def _is_training_succeeded(
@@ -951,6 +1015,10 @@ class TrainController:
         except AsyncioActorExit:
             raise
         except Exception as e:
+            if self.get_state().is_terminal():
+                # `abort()` ran while `_step` was awaiting, so this error comes
+                # from the aborted worker group and isn't a training failure.
+                return
             # Preserve the original error type if it is already a
             # TrainingFailedError (e.g. WorkerGroupError); otherwise
             # wrap it in a ControllerError.
@@ -976,6 +1044,10 @@ class TrainController:
                 self._state = ErroredState(training_failed_error=training_error)
                 return
 
+        if self.get_state().is_terminal():
+            # `abort()` ran while `_step` was awaiting. Don't overwrite its
+            # terminal state with the state this iteration computed.
+            return
         self._set_state(result.next_state)
 
     async def run(self):

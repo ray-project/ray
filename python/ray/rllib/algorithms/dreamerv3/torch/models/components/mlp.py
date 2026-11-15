@@ -1,5 +1,4 @@
-"""
-[1] Mastering Diverse Domains through World Models - 2023
+"""[1] Mastering Diverse Domains through World Models - 2023
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 
@@ -36,7 +35,7 @@ class MLP(nn.Module):
         model_size: str = "XS",
         num_dense_layers: Optional[int] = None,
         dense_hidden_units: Optional[int] = None,
-        output_layer_size=None,
+        output_layer_size: Optional[int] = None,
     ):
         """Initializes an MLP instance.
 
@@ -84,10 +83,14 @@ class MLP(nn.Module):
 
         self._net = nn.Sequential(*layers)
 
-    def forward(self, input_):
+    def forward(self, input_: "torch.Tensor") -> "torch.Tensor":
         """Performs a forward pass through this MLP.
 
         Args:
             input_: The input tensor for the MLP dense stack.
+
+        Returns:
+            The output tensor of the dense stack (and of the optional linear output
+            layer, if `output_layer_size` was provided).
         """
         return self._net(input_)

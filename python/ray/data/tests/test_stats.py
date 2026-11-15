@@ -61,7 +61,7 @@ from ray.data._internal.stats import (
 )
 from ray.data._internal.util import MemoryProfiler
 from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.datasource import Datasink
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
@@ -364,7 +364,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
             "'average_rows_outputs_per_task': N",
-            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'sum': N, 'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -437,6 +437,8 @@ def gen_expected_metrics(
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
             "'obj_store_mem_used': A",
+            "'bytes_remote_inputs_read': Z",
+            "'num_remote_blocks_read': Z",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
             "'memory_usage': Z",
@@ -460,7 +462,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
             "'average_rows_outputs_per_task': None",
-            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'sum': Z, 'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -762,7 +764,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
         "task_output_backpressure_time",
         "task_output_backpressure_time_s",
     )
-    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT
     for key in backpressure_keys:
         extra_metrics_1 = extra_metrics_1.replace(
             f"'{key}': Z", f"'{key}': {not_asserted}"
@@ -858,7 +860,7 @@ def test_dataset_stats_basic(
                 f"    * Total output num rows: N rows\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single task throughput: N rows/s\n"
-                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
+                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT, verbose_stats_logs)}"  # noqa: E501
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
@@ -974,7 +976,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'sum': N, 'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -1002,14 +1004,14 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
-        "      task_scheduling_time_task_locality_hit_s: Z,\n"
-        "      task_scheduling_time_task_locality_miss_s: N,\n"
-        "      bytes_inputs_of_task_locality_hit_tasks: Z,\n"
-        "      bytes_inputs_of_task_locality_miss_tasks: N,\n"
-        "      task_completion_time_task_locality_hit_s: Z,\n"
-        "      task_completion_time_task_locality_miss_s: N,\n"
-        "      num_tasks_task_locality_hit: Z,\n"
-        "      num_tasks_task_locality_miss: N,\n"
+        "      task_scheduling_time_task_locality_hit_s: N,\n"
+        "      task_scheduling_time_task_locality_miss_s: Z,\n"
+        "      bytes_inputs_of_task_locality_hit_tasks: N,\n"
+        "      bytes_inputs_of_task_locality_miss_tasks: Z,\n"
+        "      task_completion_time_task_locality_hit_s: N,\n"
+        "      task_completion_time_task_locality_miss_s: Z,\n"
+        "      num_tasks_task_locality_hit: N,\n"
+        "      num_tasks_task_locality_miss: Z,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
         # The block transform time breakdown, exported per map operator.
@@ -1040,6 +1042,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
         "      obj_store_mem_used: A,\n"
+        "      bytes_remote_inputs_read: Z,\n"
+        "      num_remote_blocks_read: Z,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      memory_usage: Z,\n"
@@ -1144,7 +1148,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'sum': N, 'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -1210,6 +1214,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
         "      obj_store_mem_used: A,\n"
+        "      bytes_remote_inputs_read: Z,\n"
+        "      num_remote_blocks_read: Z,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      memory_usage: Z,\n"
@@ -1267,7 +1273,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
         "            average_rows_outputs_per_task: N,\n"
-        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "            op_task_duration_stats: {'sum': N, 'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
@@ -1295,14 +1301,14 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_have_outputs: N,\n"
         "            num_tasks_finished: N,\n"
         "            num_tasks_failed: Z,\n"
-        "            task_scheduling_time_task_locality_hit_s: Z,\n"
-        "            task_scheduling_time_task_locality_miss_s: N,\n"
-        "            bytes_inputs_of_task_locality_hit_tasks: Z,\n"
-        "            bytes_inputs_of_task_locality_miss_tasks: N,\n"
-        "            task_completion_time_task_locality_hit_s: Z,\n"
-        "            task_completion_time_task_locality_miss_s: N,\n"
-        "            num_tasks_task_locality_hit: Z,\n"
-        "            num_tasks_task_locality_miss: N,\n"
+        "            task_scheduling_time_task_locality_hit_s: N,\n"
+        "            task_scheduling_time_task_locality_miss_s: Z,\n"
+        "            bytes_inputs_of_task_locality_hit_tasks: N,\n"
+        "            bytes_inputs_of_task_locality_miss_tasks: Z,\n"
+        "            task_completion_time_task_locality_hit_s: N,\n"
+        "            task_completion_time_task_locality_miss_s: Z,\n"
+        "            num_tasks_task_locality_hit: N,\n"
+        "            num_tasks_task_locality_miss: Z,\n"
         "            block_generation_time: N,\n"
         "            block_serialization_time_s: N,\n"
         # The block transform time breakdown, exported per map operator.
@@ -1333,6 +1339,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_freed: N,\n"
         "            obj_store_mem_spilled: Z,\n"
         "            obj_store_mem_used: A,\n"
+        "            bytes_remote_inputs_read: Z,\n"
+        "            num_remote_blocks_read: Z,\n"
         "            cpu_usage: Z,\n"
         "            gpu_usage: Z,\n"
         "            memory_usage: Z,\n"
@@ -1410,7 +1418,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
     )
 
 
-def test_dataset_stats_shuffle(ray_start_regular_shared):
+def test_dataset_stats_shuffle(ray_start_regular_shared, restore_data_context):
+    context = DataContext.get_current()
+    context.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
     mds = ds.materialize()
@@ -2366,23 +2377,42 @@ def test_per_node_metrics_toggle(
             assert per_node_metrics is None
 
 
-def test_dataset_throughput_calculation(ray_start_regular_shared):
-    """Test throughput calculations using mock block stats."""
+def _mock_block_stats(
+    start_time,
+    end_time,
+    num_rows=100,
+    task_idx=None,
+    node_id="node",
+    unix_start=None,
+):
+    """A ``BlockStats`` shaped the way a worker reports one.
 
-    def create_block_stats(start_time, end_time, num_rows):
-        wall_time_s = end_time - start_time
-        exec_stats = BlockExecStats(
+    ``unix_start`` defaults to ``start_time``; pass it separately to model
+    blocks produced on nodes whose monotonic clocks have different origins,
+    which is the case an operator's span has to survive.
+    """
+    wall_time_s = end_time - start_time
+    return BlockStats(
+        num_rows=num_rows,
+        size_bytes=None,
+        exec_stats=BlockExecStats(
             start_time_s=start_time,
             end_time_s=end_time,
+            start_unix_time_s=start_time if unix_start is None else unix_start,
             wall_time_s=wall_time_s,
             cpu_time_s=wall_time_s,
-        )
-        return BlockStats(num_rows=num_rows, size_bytes=None, exec_stats=exec_stats)
+            task_idx=task_idx,
+        ),
+        node_id=node_id,
+    )
 
+
+def test_dataset_throughput_calculation(ray_start_regular_shared):
+    """Test throughput calculations using mock block stats."""
     blocks_stats = [
-        create_block_stats(0.0, 2.0, 100),
-        create_block_stats(0.5, 2.5, 100),
-        create_block_stats(1.0, 3.0, 100),
+        _mock_block_stats(0.0, 2.0),
+        _mock_block_stats(0.5, 2.5),
+        _mock_block_stats(1.0, 3.0),
     ]
 
     stats = DatasetStats(metadata={"Map": blocks_stats}, parent=None)
@@ -2397,21 +2427,9 @@ def test_dataset_throughput_calculation(ray_start_regular_shared):
 
 def test_operator_throughput_calculation(ray_start_regular_shared):
     """Test operator throughput calculations using mock BlockStats."""
-
-    def create_block_stats(start_time, end_time, num_rows, task_idx):
-        wall_time_s = end_time - start_time
-        exec_stats = BlockExecStats(
-            start_time_s=start_time,
-            end_time_s=end_time,
-            wall_time_s=wall_time_s,
-            cpu_time_s=wall_time_s,
-            task_idx=task_idx,
-        )
-        return BlockStats(num_rows=num_rows, size_bytes=None, exec_stats=exec_stats)
-
     blocks_stats = [
-        create_block_stats(0.0, 2.0, 100, 1),
-        create_block_stats(0.0, 2.0, 100, 2),
+        _mock_block_stats(0.0, 2.0, task_idx=1),
+        _mock_block_stats(0.0, 2.0, task_idx=2),
     ]
 
     summary = OperatorStatsSummary.from_block_metadata(
@@ -2428,6 +2446,32 @@ def test_operator_throughput_calculation(ray_start_regular_shared):
 
     # Estimated single task throughput: Total rows / Sum of individual task wall times｀
     assert summary.num_rows_per_task_s == 200 / (2.0 + 2.0)
+
+
+def test_operator_wall_time_multi_node():
+    blocks = [
+        _mock_block_stats(10800.0, 10810.0, node_id="A", unix_start=1000.0, task_idx=0),
+        _mock_block_stats(120.0, 130.0, node_id="B", unix_start=1002.0, task_idx=0),
+    ]
+
+    summary = OperatorStatsSummary.from_block_metadata(
+        operator_name="MockOperator", block_stats=blocks, is_sub_operator=False
+    )
+
+    assert summary.earliest_start_time == 1000.0
+    assert summary.latest_end_time == 1012.0
+    assert summary.time_total_s == 12.0
+    assert summary.num_rows_per_s == 200 / 12.0
+
+
+def test_block_exec_stats_builder_records_unix_anchor(ray_start_regular_shared):
+    before = time.time()
+    builder = BlockExecStats.builder()
+    stats = builder.build()
+    after = time.time()
+
+    assert before <= stats.start_unix_time_s <= after
+    assert stats.wall_time_s >= 0
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

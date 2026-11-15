@@ -16,24 +16,26 @@
 
 #include <gtest/gtest.h>
 
+#include <deque>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
+#include "absl/container/flat_hash_map.h"
+#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 namespace rpc {
 
-using ::testing::_;
-using ::testing::Invoke;
-using ::testing::Return;
-
-class MockRayletClient : public FakeRayletClient {
+class FakeRayletClientForTest : public FakeRayletClient {
  public:
-  explicit MockRayletClient(std::function<void()> unavailable_timeout_callback = nullptr)
+  explicit FakeRayletClientForTest(
+      std::function<void()> unavailable_timeout_callback = nullptr)
       : unavailable_timeout_callback_(std::move(unavailable_timeout_callback)) {}
 
   std::function<void()> unavailable_timeout_callback_;
@@ -51,41 +53,76 @@ Address CreateRandomAddress(const std::string &addr) {
 
 }  // namespace
 
-class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
+// Hand-written fake node accessor. GetNodeAddressAndLiveness and
+// AsyncGetAllNodeAddressAndLiveness serve queued responses (keyed by node id) in
+// call order and record the calls for tests to assert on.
+class FakeGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
  public:
-  explicit MockGcsClientNodeAccessor(bool is_subscribed_to_node_change)
+  explicit FakeGcsClientNodeAccessor(bool is_subscribed_to_node_change)
       : gcs::NodeInfoAccessor(nullptr),
         is_subscribed_to_node_change_(is_subscribed_to_node_change) {}
 
   bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
-  MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
-              GetNodeAddressAndLiveness,
-              (const NodeID &, bool),
-              (const, override));
+  std::optional<rpc::GcsNodeAddressAndLiveness> GetNodeAddressAndLiveness(
+      const NodeID &node_id, bool filter_dead_nodes) const override {
+    get_node_address_and_liveness_calls.push_back(node_id);
+    auto it = get_node_address_and_liveness_responses.find(node_id);
+    RAY_CHECK(it != get_node_address_and_liveness_responses.end() && !it->second.empty());
+    auto response = it->second.front();
+    it->second.pop_front();
+    return response;
+  }
 
-  MOCK_METHOD(void,
-              AsyncGetAllNodeAddressAndLiveness,
-              (const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &,
-               int64_t,
-               const std::vector<NodeID> &),
-              (override));
+  void AsyncGetAllNodeAddressAndLiveness(
+      const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+      int64_t timeout_ms,
+      const std::vector<NodeID> &node_ids) override {
+    async_get_all_calls.push_back(node_ids);
+    RAY_CHECK_EQ(node_ids.size(), static_cast<size_t>(1));
+    auto it = async_get_all_responses.find(node_ids[0]);
+    RAY_CHECK(it != async_get_all_responses.end() && !it->second.empty());
+    auto response = it->second.front();
+    it->second.pop_front();
+    callback(Status::OK(), std::move(response));
+  }
 
- private:
+  // Returns true when every queued response has been consumed.
+  bool AllResponsesConsumed() const {
+    for (const auto &entry : get_node_address_and_liveness_responses) {
+      if (!entry.second.empty()) {
+        return false;
+      }
+    }
+    for (const auto &entry : async_get_all_responses) {
+      if (!entry.second.empty()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   bool is_subscribed_to_node_change_;
+  mutable absl::flat_hash_map<NodeID,
+                              std::deque<std::optional<rpc::GcsNodeAddressAndLiveness>>>
+      get_node_address_and_liveness_responses;
+  mutable std::vector<NodeID> get_node_address_and_liveness_calls;
+  absl::flat_hash_map<NodeID, std::deque<std::vector<rpc::GcsNodeAddressAndLiveness>>>
+      async_get_all_responses;
+  std::vector<std::vector<NodeID>> async_get_all_calls;
 };
 
-class MockGcsClient : public gcs::GcsClient {
+class FakeGcsClient : public gcs::GcsClient {
  public:
-  explicit MockGcsClient(bool is_subscribed_to_node_change,
+  explicit FakeGcsClient(bool is_subscribed_to_node_change,
                          gcs::GcsClientOptions &options)
       : GcsClient(options) {
     this->node_accessor_ =
-        std::make_unique<MockGcsClientNodeAccessor>(is_subscribed_to_node_change);
+        std::make_unique<FakeGcsClientNodeAccessor>(is_subscribed_to_node_change);
   }
 
-  MockGcsClientNodeAccessor &MockNodeAccessor() {
-    return dynamic_cast<MockGcsClientNodeAccessor &>(*this->node_accessor_);
+  FakeGcsClientNodeAccessor &FakeNodeAccessor() {
+    return static_cast<FakeGcsClientNodeAccessor &>(*this->node_accessor_);
   }
 };
 
@@ -101,14 +138,14 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
         gcs_client_(is_subscribed_to_node_change_, options),
         raylet_client_pool_(
             std::make_unique<RayletClientPool>([this](const Address &addr) {
-              return std::make_shared<MockRayletClient>(
+              return std::make_shared<FakeRayletClientForTest>(
                   RayletClientPool::GetDefaultUnavailableTimeoutCallback(
                       &this->gcs_client_, this->raylet_client_pool_.get(), addr));
             })) {}
 
   bool is_subscribed_to_node_change_;
   gcs::GcsClientOptions options;
-  MockGcsClient gcs_client_;
+  FakeGcsClient gcs_client_;
   std::unique_ptr<RayletClientPool> raylet_client_pool_;
 };
 
@@ -128,28 +165,18 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   // 1. Subscriber cache and GCS don't know about node. Means the node is dead and the GCS
   //    had to discard to keep its cache size in check, should disconnect.
 
-  auto &mock_node_accessor = gcs_client_.MockNodeAccessor();
-  auto invoke_with_node_info_vector =
-      [](std::vector<GcsNodeAddressAndLiveness> node_info_vector) {
-        return Invoke(
-            [node_info_vector](
-                const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
-                int64_t,
-                const std::vector<NodeID> &) {
-              callback(Status::OK(), node_info_vector);
-            });
-      };
+  auto &fake_node_accessor = gcs_client_.FakeNodeAccessor();
 
   auto raylet_client_1_address = CreateRandomAddress("1");
   auto raylet_client_2_address = CreateRandomAddress("2");
   auto raylet_client_1_node_id = NodeID::FromBinary(raylet_client_1_address.node_id());
   auto raylet_client_2_node_id = NodeID::FromBinary(raylet_client_2_address.node_id());
 
-  auto raylet_client_1 = dynamic_cast<MockRayletClient *>(
+  auto raylet_client_1 = dynamic_cast<FakeRayletClientForTest *>(
       raylet_client_pool_->GetOrConnectByAddress(raylet_client_1_address).get());
   ASSERT_TRUE(
       CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_1_node_id));
-  auto raylet_client_2 = dynamic_cast<MockRayletClient *>(
+  auto raylet_client_2 = dynamic_cast<FakeRayletClientForTest *>(
       raylet_client_pool_->GetOrConnectByAddress(raylet_client_2_address).get());
   ASSERT_TRUE(
       CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_2_node_id));
@@ -159,35 +186,17 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   GcsNodeAddressAndLiveness node_info_dead;
   node_info_dead.set_state(GcsNodeInfo::DEAD);
   if (is_subscribed_to_node_change_) {
-    EXPECT_CALL(
-        mock_node_accessor,
-        GetNodeAddressAndLiveness(raylet_client_1_node_id, /*filter_dead_nodes=*/false))
-        .WillOnce(Return(std::nullopt))
-        .WillOnce(Return(node_info_alive))
-        .WillOnce(Return(node_info_dead));
-    EXPECT_CALL(mock_node_accessor,
-                AsyncGetAllNodeAddressAndLiveness(
-                    _, _, std::vector<NodeID>{raylet_client_1_node_id}))
-        .WillOnce(invoke_with_node_info_vector({node_info_alive}));
-    EXPECT_CALL(
-        mock_node_accessor,
-        GetNodeAddressAndLiveness(raylet_client_2_node_id, /*filter_dead_nodes=*/false))
-        .WillOnce(Return(std::nullopt));
-    EXPECT_CALL(mock_node_accessor,
-                AsyncGetAllNodeAddressAndLiveness(
-                    _, _, std::vector<NodeID>{raylet_client_2_node_id}))
-        .WillOnce(invoke_with_node_info_vector({}));
+    fake_node_accessor.get_node_address_and_liveness_responses[raylet_client_1_node_id] =
+        {std::nullopt, node_info_alive, node_info_dead};
+    fake_node_accessor.async_get_all_responses[raylet_client_1_node_id] = {
+        {node_info_alive}};
+    fake_node_accessor.get_node_address_and_liveness_responses[raylet_client_2_node_id] =
+        {std::nullopt};
+    fake_node_accessor.async_get_all_responses[raylet_client_2_node_id] = {{}};
   } else {
-    EXPECT_CALL(mock_node_accessor,
-                AsyncGetAllNodeAddressAndLiveness(
-                    _, _, std::vector<NodeID>{raylet_client_1_node_id}))
-        .WillOnce(invoke_with_node_info_vector({node_info_alive}))
-        .WillOnce(invoke_with_node_info_vector({node_info_alive}))
-        .WillOnce(invoke_with_node_info_vector({node_info_dead}));
-    EXPECT_CALL(mock_node_accessor,
-                AsyncGetAllNodeAddressAndLiveness(
-                    _, _, std::vector<NodeID>{raylet_client_2_node_id}))
-        .WillOnce(invoke_with_node_info_vector({}));
+    fake_node_accessor.async_get_all_responses[raylet_client_1_node_id] = {
+        {node_info_alive}, {node_info_alive}, {node_info_dead}};
+    fake_node_accessor.async_get_all_responses[raylet_client_2_node_id] = {{}};
   }
 
   raylet_client_1->unavailable_timeout_callback_();
@@ -202,6 +211,8 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   raylet_client_2->unavailable_timeout_callback_();
   ASSERT_FALSE(
       CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_2_node_id));
+
+  EXPECT_TRUE(fake_node_accessor.AllResponsesConsumed());
 }
 
 INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,

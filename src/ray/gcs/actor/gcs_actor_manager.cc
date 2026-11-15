@@ -1869,14 +1869,13 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         gcs_table_storage_->ActorTable().Put(
             actor_id,
             observability_data,
-            {[this, actor_id = actor_id, observability_data = observability_data](
-                 Status status) {
+            {[this, id = actor_id, observability_data](Status status) {
                gcs_publisher_->PublishActor(
-                   actor_id, GenActorDataOnlyWithStates(observability_data));
+                   id, GenActorDataOnlyWithStates(observability_data));
                // Delete the task spec only after the DEAD row is persisted, so a
                // crash in between cannot resurrect the missing-spec landmine.
                gcs_table_storage_->ActorTaskSpecTable().Delete(
-                   actor_id, {[](auto) {}, io_context_});
+                   id, {[](auto) {}, io_context_});
              },
              io_context_});
       } else {
@@ -1996,8 +1995,12 @@ void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &a
       [node_id = actor->GetNodeID(), actor_id = actor->GetActorID()](
           const ray::Status &status, rpc::KillLocalActorReply &&reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO).WithField(actor_id).WithField(node_id)
-              << "Node with actor is already dead, return status: " << status.ToString();
+          RAY_LOG(INFO).WithField(actor_id).WithField(node_id) << absl::StrFormat(
+              "Failed to kill actor due to return status: %s. "
+              "Was the actor's node already dead? "
+              "Was the actor already killed? "
+              "Was the actor successfully created?",
+              status.ToString());
         } else {
           RAY_LOG(INFO).WithField(actor_id) << "Killed actor successfully.";
         }

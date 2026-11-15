@@ -1,5 +1,4 @@
-"""
-[1] - Attention Is All You Need - Vaswani, Jones, Shazeer, Parmar,
+"""[1] - Attention Is All You Need - Vaswani, Jones, Shazeer, Parmar,
       Uszkoreit, Gomez, Kaiser - Google Brain/Research, U Toronto - 2017.
       https://arxiv.org/pdf/1706.03762.pdf
 [2] - Stabilizing Transformers for Reinforcement Learning - E. Parisotto
@@ -79,6 +78,11 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         """Initializes a GTrXLNet.
 
         Args:
+            observation_space: The observation space of the environment.
+            action_space: The action space of the environment.
+            num_outputs: The size of the output vector of this model.
+            model_config: The model config dict of the containing Algorithm.
+            name: The name of this model (scope).
             num_transformer_units: The number of Transformer repeats to
                 use (denoted L in [2]).
             attention_dim: The input and output dimensions of one

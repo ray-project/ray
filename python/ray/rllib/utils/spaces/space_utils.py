@@ -5,6 +5,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.typing import SpaceStruct, TensorStructType
 
 
 @DeveloperAPI
@@ -101,7 +102,7 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
 
 
 @DeveloperAPI
-def get_base_struct_from_space(space):
+def get_base_struct_from_space(space: gym.Space) -> SpaceStruct:
     """Returns a Tuple/Dict Space as native (equally structured) py tuple/dict.
 
     Args:
@@ -112,17 +113,13 @@ def get_base_struct_from_space(space):
             Note that the returned struct still contains all original
             "primitive" Spaces (e.g. Box, Discrete).
 
-    .. testcode::
-        :skipif: True
-
-        get_base_struct_from_space(Dict({
-            "a": Box(),
-            "b": Tuple([Discrete(2), Discrete(3)])
-        }))
-
-    .. testoutput::
-
-        dict(a=Box(), b=tuple(Discrete(2), Discrete(3)))
+    Examples:
+        >>> from gymnasium.spaces import Box, Dict, Discrete, Tuple
+        >>> get_base_struct_from_space(Dict({
+        ...     "a": Box(-1.0, 1.0, (2,)),
+        ...     "b": Tuple([Discrete(2), Discrete(3)])
+        ... }))
+        {'a': Box(-1.0, 1.0, (2,), float32), 'b': (Discrete(2), Discrete(3))}
     """
 
     def _helper_struct(space_):
@@ -240,29 +237,23 @@ def get_dummy_batch_for_space(
 
 
 @DeveloperAPI
-def flatten_to_single_ndarray(input_):
+def flatten_to_single_ndarray(
+    input_: Union[List[np.ndarray], np.ndarray],
+) -> np.ndarray:
     """Returns a single np.ndarray given a list/tuple of np.ndarrays.
 
     Args:
-        input_ (Union[List[np.ndarray], np.ndarray]): The list of ndarrays or
-            a single ndarray.
+        input_: The list of ndarrays or a single ndarray.
 
     Returns:
         np.ndarray: The result after concatenating all single arrays in input_.
 
-    .. testcode::
-        :skipif: True
-
-        flatten_to_single_ndarray([
-            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-            np.array([7, 8, 9]),
-        ])
-
-    .. testoutput::
-
-        np.array([
-            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0
-        ])
+    Examples:
+        >>> flatten_to_single_ndarray([
+        ...     np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        ...     np.array([7, 8, 9]),
+        ... ])
+        array([1., 2., 3., 4., 5., 6., 7., 8., 9.])
     """
     # Concatenate complex inputs.
     if isinstance(input_, (list, tuple, dict)):
@@ -362,7 +353,7 @@ def batch(
 
 
 @DeveloperAPI
-def unbatch(batches_struct):
+def unbatch(batches_struct: TensorStructType) -> List[TensorStructType]:
     """Converts input from (nested) struct of batches to batch of structs.
 
     Input: Struct of different batches (each batch has size=3):
@@ -403,7 +394,7 @@ def unbatch(batches_struct):
 
 
 @DeveloperAPI
-def clip_action(action, action_space):
+def clip_action(action: TensorStructType, action_space: SpaceStruct) -> Any:
     """Clips all components in `action` according to the given Space.
 
     Only applies to Box components within the action space.
@@ -428,7 +419,7 @@ def clip_action(action, action_space):
 
 
 @DeveloperAPI
-def unsquash_action(action, action_space_struct):
+def unsquash_action(action: TensorStructType, action_space_struct: SpaceStruct) -> Any:
     """Unsquashes all components in `action` according to the given Space.
 
     Inverse of `normalize_action()`. Useful for mapping policy action
@@ -472,7 +463,7 @@ def unsquash_action(action, action_space_struct):
 
 
 @DeveloperAPI
-def normalize_action(action, action_space_struct):
+def normalize_action(action: TensorStructType, action_space_struct: SpaceStruct) -> Any:
     """Normalizes all (Box) components in `action` to be in [-1.0, 1.0].
 
     Inverse of `unsquash_action()`. Useful for mapping an env's action

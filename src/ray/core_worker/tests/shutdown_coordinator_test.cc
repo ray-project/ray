@@ -31,7 +31,7 @@
 namespace ray {
 namespace core {
 
-// Simple fake executor for tests without gmock.
+// Simple fake executor for tests.
 class FakeShutdownExecutor : public ShutdownExecutorInterface {
  public:
   std::atomic<int> graceful_calls{0};

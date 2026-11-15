@@ -92,7 +92,15 @@ class RLModuleSpec:
             )
 
     def build(self) -> "RLModule":
-        """Builds the RLModule from this spec."""
+        """Builds the RLModule from this spec.
+
+        Returns:
+            A new instance of `module_class`, built from this spec's spaces, model
+            config, and catalog class.
+
+        Raises:
+            ValueError: If `module_class` or `observation_space` isn't set.
+        """
         if self.module_class is None:
             raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
@@ -115,6 +123,18 @@ class RLModuleSpec:
 
     @classmethod
     def from_module(cls, module: "RLModule") -> "RLModuleSpec":
+        """Creates an RLModuleSpec from an existing RLModule.
+
+        Args:
+            module: The RLModule to create a spec for. Must not be a MultiRLModule.
+
+        Returns:
+            An RLModuleSpec with `module`'s class, spaces, `inference_only` and
+            `learner_only` flags, model config, and catalog class.
+
+        Raises:
+            ValueError: If `module` is a MultiRLModule.
+        """
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
         if isinstance(module, MultiRLModule):
@@ -163,8 +183,15 @@ class RLModuleSpec:
         }
 
     @classmethod
-    def from_dict(cls, d):
-        """Returns a single agent RLModule spec from a serialized representation."""
+    def from_dict(cls, d: Dict[str, Any]) -> "RLModuleSpec":
+        """Returns a single agent RLModule spec from a serialized representation.
+
+        Args:
+            d: The serialized spec, as `to_dict()` returns it.
+
+        Returns:
+            The RLModuleSpec rebuilt from `d`.
+        """
         module_class = deserialize_type(d["module_class"])
         try:
             spec = RLModuleSpec(
@@ -193,7 +220,7 @@ class RLModuleSpec:
             )
         return spec
 
-    def update(self, other, override: bool = True) -> None:
+    def update(self, other: "RLModuleSpec", override: bool = True) -> None:
         """Updates this spec with the given other spec. Works like dict.update().
 
         Args:
@@ -226,7 +253,11 @@ class RLModuleSpec:
             self.load_state_path = self.load_state_path or other.load_state_path
 
     def as_multi_rl_module_spec(self) -> "MultiRLModuleSpec":
-        """Returns a MultiRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
+        """Returns a MultiRLModuleSpec (`self` under DEFAULT_MODULE_ID key).
+
+        Returns:
+            A new MultiRLModuleSpec holding this spec under `DEFAULT_MODULE_ID`.
+        """
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
         return MultiRLModuleSpec(
@@ -375,6 +406,8 @@ class RLModule(Checkpointable, abc.ABC):
 
 
     Args:
+        config: Deprecated. Use the individual keyword arguments instead. Passing
+            anything but the default value here raises an error.
         observation_space: The observation space of the model. Note that in multi-agent
             setups, this is typically the observation space of an agent that maps to
             this RLModule.
@@ -387,6 +420,9 @@ class RLModule(Checkpointable, abc.ABC):
         learner_only: If True, RLlib won't built this RLModule on EnvRunner actors.
             False by default.
         model_config: A config dict to specify features of this RLModule.
+        catalog_class: An optional `Catalog` subclass used to build the RLModule's
+            sub-components (encoder, heads, action distribution classes). Deprecated.
+        **kwargs: Unused. Accepted for forward compatibility.
 
     Attributes:
         action_dist_cls: An optional ray.rllib.core.distribution.distribution.
@@ -407,14 +443,14 @@ class RLModule(Checkpointable, abc.ABC):
 
     def __init__(
         self,
-        config=DEPRECATED_VALUE,
+        config: Any = DEPRECATED_VALUE,
         *,
         observation_space: Optional[gym.Space] = None,
         action_space: Optional[gym.Space] = None,
         inference_only: Optional[bool] = None,
         learner_only: bool = False,
         model_config: Optional[Union[dict, DefaultModelConfig]] = None,
-        catalog_class=None,
+        catalog_class: Optional[Type["Catalog"]] = None,
         **kwargs,
     ):
         # TODO (sven): Deprecate Catalog and replace with utility functions to create
@@ -520,6 +556,10 @@ class RLModule(Checkpointable, abc.ABC):
         `Distribution.to_deterministic()`. See the documentation of the
         :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
         more details.
+
+        Returns:
+            The action distribution class, or None if no action distribution class
+            is needed. The base implementation raises `NotImplementedError`.
         """
         raise NotImplementedError
 
@@ -536,6 +576,10 @@ class RLModule(Checkpointable, abc.ABC):
         `Distribution.to_deterministic()`. See the documentation of the
         :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
         more details.
+
+        Returns:
+            The action distribution class, or None if no action distribution class
+            is needed. The base implementation raises `NotImplementedError`.
         """
         raise NotImplementedError
 
@@ -552,6 +596,10 @@ class RLModule(Checkpointable, abc.ABC):
         `Distribution.to_deterministic()`. See the documentation of the
         :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
         more details.
+
+        Returns:
+            The action distribution class, or None if no action distribution class
+            is needed. The base implementation raises `NotImplementedError`.
         """
         raise NotImplementedError
 
@@ -683,6 +731,9 @@ class RLModule(Checkpointable, abc.ABC):
         By default, RLlib assumes that the module is non-recurrent, if the initial
         state is an empty dict and recurrent otherwise.
         This behavior can be customized by overriding this method.
+
+        Returns:
+            Whether this RLModule is stateful.
         """
         if self._is_stateful is None:
             initial_state = self.get_initial_state()
@@ -706,11 +757,20 @@ class RLModule(Checkpointable, abc.ABC):
         """Returns the state dict of the module.
 
         Args:
+            components: Ignored by the default `RLModule` and `TorchRLModule`
+                implementations. Subclasses that have sub-components, such as
+                `MultiRLModule`, use this to select which sub-components to include
+                in the returned state.
+            not_components: Ignored by the default `RLModule` and `TorchRLModule`
+                implementations. Subclasses that have sub-components, such as
+                `MultiRLModule`, use this to exclude sub-components from the
+                returned state.
             inference_only: Whether the returned state should be an inference-only
                 state (w/o those model components that are not needed for action
                 computations, such as a value function or a target network).
                 Note that setting this to `False` might raise an error if
                 `self.inference_only` is True.
+            **kwargs: Forward compatible kwargs.
 
         Returns:
             This RLModule's state dict.
@@ -739,7 +799,13 @@ class RLModule(Checkpointable, abc.ABC):
         )
 
     def as_multi_rl_module(self) -> "MultiRLModule":
-        """Returns a multi-agent wrapper around this module."""
+        """Returns a multi-agent wrapper around this module.
+
+        Returns:
+            A new MultiRLModule built from this module's spec, under
+            `DEFAULT_MODULE_ID`. The MultiRLModule holds a newly built module, not
+            this module instance.
+        """
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
         multi_rl_module = MultiRLModule(

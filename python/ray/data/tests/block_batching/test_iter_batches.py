@@ -111,6 +111,148 @@ def test_prefetch_batches_locally(
     assert prefetched_blocks == expected_blocks
 
 
+class _StopRecordingPrefetcher(BlockPrefetcher):
+    def __init__(self):
+        self.num_stops = 0
+
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
+        pass
+
+    def stop(self):
+        self.num_stops += 1
+
+
+@pytest.mark.parametrize("num_batches_to_prefetch", [0, 2])
+def test_prefetch_batches_locally_stops_prefetcher_on_close(
+    ray_start_regular_shared, num_batches_to_prefetch
+):
+    """Abandoning the block iterator, as a consumer that stops early does, must
+    stop the prefetcher. Otherwise its thread keeps the prefetched blocks alive."""
+    prefetcher = _StopRecordingPrefetcher()
+    block_iter = prefetch_batches_locally(
+        ref_bundle_generator(num_blocks=10, num_rows=1),
+        prefetcher=prefetcher,
+        num_batches_to_prefetch=num_batches_to_prefetch,
+        batch_size=None,
+    )
+
+    next(block_iter)
+    block_iter.close()
+
+    assert prefetcher.num_stops == 1
+
+
+@pytest.mark.parametrize("num_batches_to_prefetch", [0, 2])
+def test_prefetch_batches_locally_stops_prefetcher_on_error(
+    ray_start_regular_shared, num_batches_to_prefetch
+):
+    def failing_ref_bundles():
+        yield from ref_bundle_generator(num_blocks=3, num_rows=1)
+        raise ValueError("upstream failure")
+
+    prefetcher = _StopRecordingPrefetcher()
+    block_iter = prefetch_batches_locally(
+        failing_ref_bundles(),
+        prefetcher=prefetcher,
+        num_batches_to_prefetch=num_batches_to_prefetch,
+        batch_size=None,
+    )
+
+    with pytest.raises(ValueError, match="upstream failure"):
+        list(block_iter)
+
+    assert prefetcher.num_stops == 1
+
+
+def _live_prefetcher_threads() -> List[threading.Thread]:
+    return [t for t in threading.enumerate() if t.name == "Prefetcher" and t.is_alive()]
+
+
+def _new_prefetcher_threads_still_alive(
+    baseline: List[threading.Thread], timeout_s: float = 5
+) -> List[threading.Thread]:
+    """Prefetcher threads started since ``baseline`` that are still alive
+    after up to ``timeout_s``."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        new_threads = [t for t in _live_prefetcher_threads() if t not in baseline]
+        if not new_threads or time.monotonic() > deadline:
+            return new_threads
+        time.sleep(0.05)
+
+
+def test_batch_iterator_stops_prefetcher_when_consumer_stops_early(
+    ray_start_regular_shared,
+):
+    """Stopping early (``break``, ``close()``, or dropping the iterator) must
+    stop the prefetcher immediately, on the consumer's thread, rather than
+    when the background pipeline thread happens to be garbage collected."""
+    baseline = _live_prefetcher_threads()
+    batch_iterator = BatchIterator(
+        ref_bundle_generator(num_blocks=100, num_rows=1),
+        batch_size=1,
+        prefetch_batches=2,
+    )
+    batches = iter(batch_iterator)
+    next(batches)
+
+    batches.close()
+
+    assert batch_iterator._prefetcher._stopped
+    assert _new_prefetcher_threads_still_alive(baseline) == []
+
+
+@pytest.mark.parametrize("stop_early", [False, True])
+def test_batch_iterator_starts_no_prefetcher_thread_without_prefetching(
+    ray_start_regular_shared, stop_early
+):
+    baseline = _live_prefetcher_threads()
+    batch_iterator = BatchIterator(
+        ref_bundle_generator(num_blocks=10, num_rows=1),
+        batch_size=1,
+        prefetch_batches=0,
+    )
+
+    for i, _ in enumerate(batch_iterator):
+        if stop_early and i == 2:
+            break
+
+    assert _new_prefetcher_threads_still_alive(baseline) == []
+
+
+def test_streaming_split_consumers_stopping_early_leave_no_prefetchers(
+    ray_start_regular_shared,
+):
+    """Training loops that cap the batches per epoch (for example PyTorch
+    Lightning's ``limit_train_batches``) abandon each epoch's
+    ``streaming_split`` iterator. That must not leave a parked prefetcher
+    thread holding blocks."""
+    baseline = _live_prefetcher_threads()
+    splits = ray.data.range(10_000, override_num_blocks=500).streaming_split(
+        2, equal=True
+    )
+
+    def consume_part_of_epoch(split):
+        for i, _ in enumerate(split.iter_batches(batch_size=10, prefetch_batches=2)):
+            # A consumer slower than its input lets the pipeline fill its
+            # buffers before the epoch is abandoned.
+            time.sleep(0.05)
+            if i == 3:
+                break
+
+    for _ in range(3):
+        threads = [
+            threading.Thread(target=consume_part_of_epoch, args=(split,))
+            for split in splits
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+    assert _new_prefetcher_threads_still_alive(baseline) == []
+
+
 def test_restore_from_original_order():
     base_iterator = [
         Batch(BatchMetadata(batch_idx=1), None),

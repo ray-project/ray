@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 
 from ray.util.annotations import DeveloperAPI
@@ -55,7 +57,11 @@ def compute_value_targets(
     return (advantages + values).astype(np.float32)
 
 
-def extract_bootstrapped_values(vf_preds, episode_lengths, T):
+def extract_bootstrapped_values(
+    vf_preds: np.ndarray,
+    episode_lengths: List[int],
+    T: int,
+) -> np.ndarray:
     """Returns a bootstrapped value batch given value predictions.
 
     Note that the incoming value predictions must have happened over (artificially)

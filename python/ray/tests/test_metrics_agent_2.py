@@ -95,7 +95,7 @@ def generate_protobuf_metric(
 
 
 @pytest.fixture
-def get_agent(request, monkeypatch):
+def get_agent(request, monkeypatch, create_auth_token):
     with monkeypatch.context() as m:
         if hasattr(request, "param"):
             delay = request.param

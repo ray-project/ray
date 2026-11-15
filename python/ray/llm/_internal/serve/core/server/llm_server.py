@@ -589,8 +589,7 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def check_health(self) -> None:
-        """
-        Check the health of the replica. Does not return anything. Raise error when
+        """Check the health of the replica. Does not return anything. Raise error when
         the engine is dead and needs to be restarted.
         """
         if self.engine is None:
@@ -781,6 +780,25 @@ class LLMServer(LLMServerProtocol):
         if engine is not None:
             await engine.shutdown()
 
+    @staticmethod
+    def _maybe_update_with_engine_env_vars(engine_config, ray_actor_options: dict):
+        """Seed replica env_vars with engine-derived vars (e.g. fractional-GPU
+        VLLM_RAY_PER_WORKER_GPUS) so the engine subprocess inherits them.
+
+        Explicit user-provided env vars win over derived ones.
+        """
+        engine_env_vars = engine_config.get_runtime_env_with_local_env_vars().get(
+            "env_vars", {}
+        )
+        if not engine_env_vars:
+            return
+        runtime_env = ray_actor_options["runtime_env"]
+        # ``or {}`` guards an explicit ``env_vars: None`` in the user config.
+        runtime_env["env_vars"] = {
+            **engine_env_vars,
+            **(runtime_env.get("env_vars") or {}),
+        }
+
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
         engine_config = llm_config.get_engine_config()
@@ -834,6 +852,10 @@ class LLMServer(LLMServerProtocol):
             **ray_actor_options.get("runtime_env", {}),
             **(llm_config.runtime_env if llm_config.runtime_env else {}),
         }
+
+        # Engine-derived vars before the replica defaults, so the precedence is
+        # user config > engine-derived > replica defaults.
+        cls._maybe_update_with_engine_env_vars(engine_config, ray_actor_options)
         ray_actor_options["runtime_env"] = get_llm_serve_runtime_env(
             ray_actor_options["runtime_env"]
         )

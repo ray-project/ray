@@ -11,6 +11,7 @@ import ray
 from ray import serve
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import get_app_code_version
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
     AutoscalingConfig,
@@ -24,13 +25,16 @@ from ray.serve.config import (
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     ControllerHealthMetrics,
+    DeploymentDetails,
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
+    ReplicaDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
     TracingConfig,
+    _deployment_info_to_schema,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -1175,10 +1179,19 @@ def test_deployment_to_schema_to_deployment():
 
     deployment = schema_to_deployment(deployment_to_schema(f))
     deployment = deployment.options(
-        func_or_class="ray.serve.tests.test_schema.global_f"
+        func_or_class="ray.serve.tests.test_schema.global_f",
+        max_surge_percent=40,
     )
 
     assert deployment.num_replicas == 3
+    assert deployment._deployment_config.max_surge_percent == 40
+    assert deployment_to_schema(deployment).max_surge_percent == 40
+    assert (
+        schema_to_deployment(
+            deployment_to_schema(deployment)
+        )._deployment_config.max_surge_percent
+        == 40
+    )
     assert (
         deployment.ray_actor_options["runtime_env"]["working_dir"]
         == TEST_MODULE_PINNED_URI
@@ -1541,6 +1554,47 @@ def test_serve_instance_details_restores_unset_config_options_is_opt_in():
     assert reported["restores_unset_config_options"] is True
 
 
+def test_deploy_schema_config_id_is_optional_and_echoed():
+    """`config_id` is metadata: optional on the way in, reported back as applied."""
+    assert ServeDeploySchema.model_validate({"applications": []}).config_id is None
+    cfg = ServeDeploySchema.model_validate({"applications": [], "config_id": "c1"})
+    assert cfg.config_id == "c1"
+    assert cfg.model_dump(exclude_unset=True)["config_id"] == "c1"
+
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+    )
+    assert details.applied_config_id is None
+    reported = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+        applied_config_id="c1",
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+    assert reported["applied_config_id"] == "c1"
+
+
+def test_replica_and_deployment_versions_default_to_none():
+    """Versions are optional so older payloads still parse."""
+    replica = ReplicaDetails(replica_id="r", state="RUNNING", start_time_s=0)
+    assert replica.version is None
+    deployment = DeploymentDetails(
+        name="d",
+        status="HEALTHY",
+        status_trigger="CONFIG_UPDATE_COMPLETED",
+        message="",
+        deployment_config={"name": "d"},
+        target_num_replicas=1,
+        required_resources={},
+        replicas=[replica],
+    )
+    assert deployment.target_version is None
+
+
 def test_serve_instance_details_includes_controller_health_metrics():
     """When controller_health_metrics is explicitly set, it should appear in the
     user-facing JSON-serializable representation."""
@@ -1574,9 +1628,6 @@ def test_serve_instance_details_includes_controller_health_metrics():
 def test_deployment_info_to_schema_includes_max_replicas_per_node():
     """_deployment_info_to_schema should propagate max_replicas_per_node
     from ReplicaConfig into the resulting DeploymentSchema."""
-    from ray.serve._private.deployment_info import DeploymentInfo
-    from ray.serve.schema import _deployment_info_to_schema
-
     rc = ReplicaConfig.create(
         deployment_def="",
         init_args=(),
@@ -1595,12 +1646,27 @@ def test_deployment_info_to_schema_includes_max_replicas_per_node():
     assert schema.max_replicas_per_node == 3
 
 
+@pytest.mark.parametrize("user_config", ["updated", ["updated"]])
+def test_deployment_info_user_config_schema_roundtrip(user_config):
+    info = DeploymentInfo(
+        deployment_config=DeploymentConfig.from_default(user_config=user_config),
+        replica_config=ReplicaConfig.create(
+            deployment_def="",
+            init_args=(),
+            init_kwargs={},
+        ),
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.user_config == user_config
+    assert schema_to_deployment(schema).user_config == user_config
+
+
 def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
     """When max_replicas_per_node is None (default), the schema field should
     remain at its default (DEFAULT.VALUE), i.e. unset."""
-    from ray.serve._private.deployment_info import DeploymentInfo
-    from ray.serve.schema import _deployment_info_to_schema
-
     rc = ReplicaConfig.create(
         deployment_def="",
         init_args=(),

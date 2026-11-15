@@ -1,6 +1,6 @@
 """This is the next version of action distribution base class."""
 import abc
-from typing import Tuple
+from typing import Any, Tuple
 
 import gymnasium as gym
 
@@ -106,7 +106,7 @@ class Distribution(abc.ABC):
         """
 
     @abc.abstractmethod
-    def entropy(self, **kwargs) -> TensorType:
+    def entropy(self, **kwargs: Any) -> TensorType:
         """The entropy of the distribution.
 
         Args:

@@ -228,14 +228,13 @@ def concat_multi_gpu_td_errors(
 
 @PublicAPI
 def convert_to_torch_tensor(
-    x,
+    x: TensorStructType,
     device: Optional[str] = None,
     pin_memory: bool = False,
     use_stream: bool = False,
     stream: Optional[Union["torch.cuda.Stream", "torch.cuda.classes.Stream"]] = None,
 ):
-    """
-    Converts any (possibly nested) structure to torch.Tensors.
+    """Converts any (possibly nested) structure to torch.Tensors.
 
     Args:
         x: The input structure whose leaves will be converted.
@@ -332,8 +331,8 @@ def copy_torch_tensors(x: TensorStructType, device: Optional[str] = None):
     Note if an object in x is not a torch.Tensor, it will be shallow-copied.
 
     Args:
-        x : Any (possibly nested) struct possibly containing torch.Tensors.
-        device : The device to move the tensors to.
+        x: Any (possibly nested) struct possibly containing torch.Tensors.
+        device: The device to move the tensors to.
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
@@ -408,40 +407,36 @@ def flatten_inputs_to_1d_tensor(
         flattened/one-hot'd input components. Depending on the time_axis flag,
         the shape is (B, n) or (B, T, n).
 
-    .. testcode::
-
-        from gymnasium.spaces import Discrete, Box
-        from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor
-        import torch
-        struct = {
-            "a": np.array([1, 3]),
-            "b": (
-                np.array([[1.0, 2.0], [4.0, 5.0]]),
-                np.array(
-                    [[[8.0], [7.0]], [[5.0], [4.0]]]
-                ),
-            ),
-                "c": {
-                    "cb": np.array([1.0, 2.0]),
-                },
-        }
-        struct_torch = tree.map_structure(lambda s: torch.from_numpy(s), struct)
-        spaces = dict(
-            {
-                "a": gym.spaces.Discrete(4),
-                "b": (gym.spaces.Box(-1.0, 10.0, (2,)), gym.spaces.Box(-1.0, 1.0, (2,
-                        1))),
-                "c": dict(
-                    {
-                        "cb": gym.spaces.Box(-1.0, 1.0, ()),
-                    }
-                ),
-            }
-        )
-        print(flatten_inputs_to_1d_tensor(struct_torch, spaces_struct=spaces))
-
-    .. testoutput::
-
+    Examples:
+        >>> from gymnasium.spaces import Discrete, Box
+        >>> from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor
+        >>> import torch
+        >>> struct = {
+        ...     "a": np.array([1, 3]),
+        ...     "b": (
+        ...         np.array([[1.0, 2.0], [4.0, 5.0]]),
+        ...         np.array(
+        ...             [[[8.0], [7.0]], [[5.0], [4.0]]]
+        ...         ),
+        ...     ),
+        ...     "c": {
+        ...         "cb": np.array([1.0, 2.0]),
+        ...     },
+        ... }
+        >>> struct_torch = tree.map_structure(lambda s: torch.from_numpy(s), struct)
+        >>> spaces = dict(
+        ...     {
+        ...         "a": gym.spaces.Discrete(4),
+        ...         "b": (gym.spaces.Box(-1.0, 10.0, (2,)), gym.spaces.Box(-1.0, 1.0, (2,
+        ...                 1))),
+        ...         "c": dict(
+        ...             {
+        ...                 "cb": gym.spaces.Box(-1.0, 1.0, ()),
+        ...             }
+        ...         ),
+        ...     }
+        ... )
+        >>> print(flatten_inputs_to_1d_tensor(struct_torch, spaces_struct=spaces))
         tensor([[0., 1., 0., 0., 1., 2., 8., 7., 1.],
                 [0., 0., 0., 1., 4., 5., 5., 4., 2.]])
 
@@ -565,25 +560,21 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     Raises:
         ValueError: If the given space is not a discrete one.
 
-    .. testcode::
-
-        import torch
-        import gymnasium as gym
-        from ray.rllib.utils.torch_utils import one_hot
-        x = torch.IntTensor([0, 3])  # batch-dim=2
-        # Discrete space with 4 (one-hot) slots per batch item.
-        s = gym.spaces.Discrete(4)
-        print(one_hot(x, s))
-        x = torch.IntTensor([[0, 1, 2, 3]])  # batch-dim=1
-        # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
-        # per batch item.
-        s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
-        print(one_hot(x, s))
-
-    .. testoutput::
-
+    Examples:
+        >>> import torch
+        >>> import gymnasium as gym
+        >>> from ray.rllib.utils.torch_utils import one_hot
+        >>> x = torch.IntTensor([0, 3])  # batch-dim=2
+        >>> # Discrete space with 4 (one-hot) slots per batch item.
+        >>> s = gym.spaces.Discrete(4)
+        >>> print(one_hot(x, s))
         tensor([[1, 0, 0, 0],
                 [0, 0, 0, 1]])
+        >>> x = torch.IntTensor([[0, 1, 2, 3]])  # batch-dim=1
+        >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
+        >>> # per batch item.
+        >>> s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
+        >>> print(one_hot(x, s))
         tensor([[1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0]])
     """
     if isinstance(space, Discrete):
@@ -622,7 +613,7 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
 def sequence_mask(
     lengths: TensorType,
     maxlen: Optional[int] = None,
-    dtype=None,
+    dtype: Optional["torch.dtype"] = None,
     time_major: bool = False,
 ) -> TensorType:
     """Offers same behavior as tf.sequence_mask for torch.
@@ -743,8 +734,8 @@ def softmax_cross_entropy_with_logits(
     """Same behavior as tf.nn.softmax_cross_entropy_with_logits.
 
     Args:
-        x: The input predictions.
-        labels: The labels corresponding to `x`.
+        logits: The input predictions.
+        labels: The labels corresponding to `logits`.
 
     Returns:
         The resulting softmax cross-entropy given predictions and labels.
@@ -759,6 +750,12 @@ def symlog(x: "torch.Tensor") -> "torch.Tensor":
     [1] Mastering Diverse Domains through World Models - 2023
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        `sign(x) * log(abs(x) + 1)`, computed element-wise.
     """
     return torch.sign(x) * torch.log(torch.abs(x) + 1)
 
@@ -770,6 +767,12 @@ def inverse_symlog(y: "torch.Tensor") -> "torch.Tensor":
     [1] Mastering Diverse Domains through World Models - 2023
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Args:
+        y: The input tensor, in symlog space.
+
+    Returns:
+        The tensor `x` for which `symlog(x)` equals `y`, computed element-wise.
     """
     # To get to symlog inverse, we solve the symlog equation for x:
     #     y = sign(x) * log(|x| + 1)
@@ -830,6 +833,8 @@ def two_hot(
             lower than this boundary, they will be encoded as `lower_bound`.
         upper_bound: The upper bound value used for the encoding. If input values are
             higher than this boundary, they will be encoded as `upper_bound`.
+        device: The device on which to create the returned tensor. If None, use
+            the default device.
 
     Returns:
         The two-hot encoded tensor of shape (B, num_buckets).

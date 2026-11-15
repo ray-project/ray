@@ -33,13 +33,12 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
     `AddObservationsToTrainBatch` in the same pipeline.
     Infos can be added manually by the user through setting this in the config:
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         from ray.rllib.connectors.learner import AddInfosFromEpisodesToTrainBatch
-        config.training(
+        config.learners(
             learner_connector=lambda obs_sp, act_sp: AddInfosFromEpisodesToTrainBatch()
-        )`
+        )
 
     If provided with `episodes` data, this connector piece makes sure that the final
     train batch going into the RLModule for updating (`forward_train()` call) contains

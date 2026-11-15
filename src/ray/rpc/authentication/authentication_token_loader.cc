@@ -14,6 +14,7 @@
 
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -23,6 +24,9 @@
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
+#include "openssl/rand.h"
+#include "ray/common/constants.h"
+#include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
@@ -30,19 +34,100 @@
 #ifdef _WIN32
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
 #else
+#include <fcntl.h>
 #include <pwd.h>
+#include <sys/stat.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
 #endif
 
 namespace ray {
 namespace rpc {
 
-constexpr const char *kNoTokenErrorMessage =
-    "Token authentication is enabled but Ray couldn't find an "
-    "authentication token. "
-    "Create a token file at ~/.ray/auth_token, "
-    "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
-    "or set the RAY_AUTH_TOKEN environment variable.";
+namespace {
+
+#ifndef _WIN32
+// fchmod on the opened fd, not chmod on the path, so a swapped path can't redirect it.
+// Leaves alone a path owned by another user, e.g. a root-owned home in a container.
+void RestrictToOwner(int fd,
+                     const std::string &path,
+                     mode_t owner_mode,
+                     const std::string &consequence) {
+  struct stat path_stat;
+  if (fstat(fd, &path_stat) != 0 || path_stat.st_uid != getuid() ||
+      (path_stat.st_mode & 0077) == 0) {
+    return;
+  }
+  char old_mode[8];
+  std::snprintf(old_mode,
+                sizeof(old_mode),
+                "%04o",
+                static_cast<unsigned int>(path_stat.st_mode & 0777));
+  char new_mode[8];
+  std::snprintf(
+      new_mode, sizeof(new_mode), "%04o", static_cast<unsigned int>(owner_mode));
+  std::string failure;
+  if (fchmod(fd, owner_mode) != 0) {
+    failure = std::strerror(errno);
+  } else if (fstat(fd, &path_stat) != 0 || (path_stat.st_mode & 0077) != 0) {
+    // Some filesystems (WSL /mnt/c, CIFS, FAT mounted with `quiet`) accept fchmod
+    // without changing the mode.
+    failure = "the filesystem kept the old mode";
+  }
+  if (failure.empty()) {
+    RAY_LOG(WARNING) << "Changed the mode of " << path << " from " << old_mode << " to "
+                     << new_mode << " because other users could access it."
+                     << consequence;
+  } else {
+    RAY_LOG(WARNING) << path << " has mode " << old_mode
+                     << ", so other users can access it, and changing it failed: "
+                     << failure << ". Run `chmod " << new_mode << " " << path << "`."
+                     << consequence;
+  }
+}
+#endif
+
+// Ray 2.59.0 and earlier left ~/.ray and ~/.ray/auth_token with the umask's modes
+// (often 0755/0644), and an upgrade keeps them. Only the default path: a
+// RAY_AUTH_TOKEN_PATH file may be shared on purpose, and a Kubernetes projected token
+// is read-only.
+void RestrictDefaultTokenPathToOwner(const std::string &token_path) {
+#ifndef _WIN32
+  const int token_fd = open(token_path.c_str(), O_RDONLY | O_CLOEXEC);
+  if (token_fd < 0) {
+    return;
+  }
+  const std::string token_dir = std::filesystem::path(token_path).parent_path().string();
+  const int dir_fd = open(token_dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (dir_fd >= 0) {
+    RestrictToOwner(dir_fd, token_dir, 0700, "");
+    close(dir_fd);
+  }
+  RestrictToOwner(
+      token_fd,
+      token_path,
+      0600,
+      " Other users may have read the Ray authentication token in it. To rotate "
+      "it, stop Ray, delete " +
+          token_path +
+          ", run `ray get-auth-token --generate`, and copy the new token "
+          "to every node and client that used the old one before starting "
+          "Ray again.");
+  close(token_fd);
+#endif
+}
+
+}  // namespace
+
+// Keep in sync with K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE in
+// python/ray/_private/authentication/authentication_constants.py.
+constexpr const char *kK8sTokenAuthRequiresTokenModeErrorMessage =
+    "Kubernetes token authentication (ENABLE_K8S_TOKEN_AUTH) requires "
+    "RAY_AUTH_MODE=token. Set RAY_AUTH_MODE=token, or turn off "
+    "ENABLE_K8S_TOKEN_AUTH to run with auth disabled.";
 
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
@@ -80,6 +165,11 @@ AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
 
 std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
     bool ignore_auth_mode) {
+  // Every Ray process loads its token at startup, so this fails each one. A user
+  // config error, so no RAY_CHECK, whose message calls it a bug in Ray.
+  if (IsK8sTokenAuthEnabled() && GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+    RAY_LOG(FATAL) << kK8sTokenAuthRequiresTokenModeErrorMessage;
+  }
   absl::MutexLock lock(&token_mutex_);
 
   // If k8s token auth is enabled, revoke cached token as Kubelet
@@ -110,7 +200,7 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
 
   // If no token found and auth is enabled, fail with RAY_CHECK
   bool has_token = result.token.has_value() && !result.token->empty();
-  RAY_CHECK(has_token || ignore_auth_mode) << kNoTokenErrorMessage;
+  RAY_CHECK(has_token || ignore_auth_mode) << kTokenAuthErrorMessage;
 
   // Cache and return the loaded token
   if (has_token) {
@@ -159,7 +249,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
     result.token = std::nullopt;
     return result;
   } else if (!has_token) {
-    result.error_message = kNoTokenErrorMessage;
+    result.error_message = kTokenAuthErrorMessage;
     return result;
   }
   // Cache and return success
@@ -224,6 +314,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
 
   // Precedence 4: Default token path ~/.ray/auth_token
   std::string default_path = GetDefaultTokenPath();
+  RestrictDefaultTokenPathToOwner(default_path);
   std::string token_str = TrimWhitespace(ReadTokenFromFile(default_path));
   if (!token_str.empty()) {
     RAY_LOG(DEBUG) << "Loaded authentication token from default path: " << default_path;
@@ -237,18 +328,98 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
   return result;
 }
 
-// Read token from the first line of the file. trim whitespace.
-// Returns empty string if file cannot be opened or is empty.
+// Read the token from the first non-blank line of the file.
+// Returns empty string if the file cannot be opened or has no non-blank line.
 std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file_path) {
   std::ifstream token_file(file_path);
   if (!token_file.is_open()) {
     return "";
   }
 
-  std::string token;
-  std::getline(token_file, token);
+  std::string line;
+  while (std::getline(token_file, line)) {
+    if (!TrimWhitespace(line).empty()) {
+      return line;
+    }
+  }
+  return "";
+}
+
+std::string AuthenticationTokenLoader::CreateTokenIfMissing() {
+  TokenLoadResult existing = TryLoadToken(/*ignore_auth_mode=*/true);
+  if (existing.hasError()) {
+    return existing.error_message;
+  }
+  if (existing.token.has_value() && !existing.token->empty()) {
+    return "";
+  }
+
+  const std::string token_path = GetDefaultTokenPath();
+  if (token_path.empty()) {
+    return "Cannot determine the home directory to store the authentication token in.";
+  }
+  const std::filesystem::path token_dir = std::filesystem::path(token_path).parent_path();
+  std::error_code ec;
+  const bool created_dir = std::filesystem::create_directories(token_dir, ec);
+  if (ec) {
+    return "Failed to create " + token_dir.string() + ": " + ec.message();
+  }
+  if (created_dir) {
+    std::filesystem::permissions(token_dir, std::filesystem::perms::owner_all, ec);
+    if (ec) {
+      // Some filesystems (FAT, some network mounts) don't support Unix modes; the
+      // token file itself is still created with mode 0600.
+      RAY_LOG(WARNING) << "Failed to restrict " << token_dir.string()
+                       << " to its owner: " << ec.message();
+    }
+  }
+
+  // 256 bits of entropy, hex-encoded: the same format `ray get-auth-token --generate`
+  // has always produced.
+  unsigned char random_bytes[32];
+  if (RAND_bytes(random_bytes, sizeof(random_bytes)) != 1) {
+    return "Failed to generate a random authentication token.";
+  }
+  const std::string token = absl::BytesToHexString(absl::string_view(
+      reinterpret_cast<const char *>(random_bytes), sizeof(random_bytes)));
+
+  // Written in place, so a symlinked token file keeps its link. The token is the
+  // cluster credential, so the file is owner-only; fchmod covers a file that existed
+  // before with a wider mode. Windows has no POSIX modes.
+#ifdef _WIN32
+  std::ofstream token_file(std::filesystem::path(token_path),
+                           std::ios::out | std::ios::trunc);
+  token_file << token;
   token_file.close();
-  return token;
+  if (!token_file) {
+    return "Failed to write the authentication token to " + token_path;
+  }
+#else
+  const int fd = open(token_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) {
+    return "Failed to open " + token_path + ": " + std::strerror(errno);
+  }
+  std::string write_error;
+  if (fchmod(fd, 0600) != 0) {
+    write_error = std::strerror(errno);
+  } else {
+    const ssize_t written = write(fd, token.data(), token.size());
+    if (written < 0) {
+      write_error = std::strerror(errno);
+    } else if (static_cast<size_t>(written) != token.size()) {
+      write_error = "short write";
+    }
+  }
+  close(fd);
+  if (!write_error.empty()) {
+    return "Failed to write the authentication token to " + token_path + ": " +
+           write_error;
+  }
+#endif
+
+  ResetCache();
+  RAY_LOG(INFO) << "Generated new authentication token and saved to " << token_path;
+  return "";
 }
 
 std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
@@ -310,6 +481,13 @@ std::string AuthenticationTokenLoader::TrimWhitespace(const std::string &str) {
 
   trimmed_str.erase(trimmed_str.find_last_not_of(whitespace) + 1);
   return trimmed_str;
+}
+
+std::string CreateTokenIfMissingForOwnCluster() {
+  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+    return "";
+  }
+  return AuthenticationTokenLoader::instance().CreateTokenIfMissing();
 }
 
 }  // namespace rpc

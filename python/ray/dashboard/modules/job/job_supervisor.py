@@ -15,6 +15,7 @@ import ray._private.ray_constants as ray_constants
 from ray._common.filters import CoreContextFilter
 from ray._common.formatters import JSONFormatter, TextFormatter
 from ray._common.network_utils import build_address
+from ray._private.accelerators.mlu import NOSET_CN_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -24,6 +25,8 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
     JobInfoStorageClient,
+    shutdown_event_recorder,
+    submission_job_events_enabled,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobErrorType, JobStatus
@@ -55,8 +58,7 @@ if sys.platform == "win32":
 
 
 class JobSupervisor:
-    """
-    Ray actor created by JobManager for each submitted job, responsible to
+    """Ray actor created by JobManager for each submitted job, responsible to
     setup runtime_env, execute given shell command in subprocess, update job
     status, persist job logs and manage subprocess group cleaning.
 
@@ -81,7 +83,11 @@ class JobSupervisor:
         # built from the creating head's address stays pinned to that address and
         # cannot reconnect after the head is replaced.
         gcs_client = ray._private.worker.global_worker.gcs_client
-        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
+        self._job_info_client = JobInfoStorageClient(
+            gcs_client,
+            logs_dir,
+            session_name=ray._private.worker.global_worker.node.session_name,
+        )
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 
@@ -126,8 +132,7 @@ class JobSupervisor:
         self._configure_logger()
 
     def _configure_logger(self) -> None:
-        """
-        Configure self._logger object to write logs to file based on job
+        """Configure self._logger object to write logs to file based on job
         submission ID and to console.
         """
         supervisor_log_file_name = os.path.join(
@@ -170,6 +175,7 @@ class JobSupervisor:
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        env_vars.pop(NOSET_CN_VISIBLE_DEVICES_ENV_VAR)
         env_vars.pop(NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR)
         env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
@@ -180,8 +186,7 @@ class JobSupervisor:
         pass
 
     def _exec_entrypoint(self, env: dict, logs_path: str) -> subprocess.Popen:
-        """
-        Runs the entrypoint command as a child process, streaming stderr &
+        """Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
 
         Unix systems:
@@ -476,8 +481,7 @@ class JobSupervisor:
         _start_signal_actor: Optional[ActorHandle] = None,
         resources_specified: bool = False,
     ):
-        """
-        Stop and start both happen asynchronously, coordinated by asyncio event
+        """Stop and start both happen asynchronously, coordinated by asyncio event
         and coroutine, respectively.
 
         1) Sets job status as running
@@ -655,6 +659,14 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
+            # Flush any remaining events before the actor exits.
+            if submission_job_events_enabled():
+                try:
+                    shutdown_event_recorder()
+                except Exception:
+                    self._logger.debug(
+                        "Failed to shutdown event recorder.", exc_info=True
+                    )
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 

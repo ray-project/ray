@@ -183,7 +183,7 @@ reported in the paper.
 ## Running Action Inference after Training
 
 To run action inference on a DreamerV3 Algorithm object, you can use
-[this simple environment loop script](https://github.com/ray-project/ray/tree/master/doc/source/rllib/doc_code/dreamerv3_inference.py).
+[this simple environment loop script](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/dreamerv3_inference.py).
 
 Note the slight complexity caused by the fact that DreamerV3 a) uses a recurrent model,
 b) uses the new RLModule-based API stack (no Policy class), and c) outputs actions in a one-hot

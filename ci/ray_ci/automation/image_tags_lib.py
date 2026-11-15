@@ -57,12 +57,12 @@ def get_python_suffixes(python_version: str) -> List[str]:
     """
     Get python version suffixes (includes empty for default version).
 
-    For DEFAULT_PYTHON_TAG_VERSION (3.10), returns both the explicit
+    For DEFAULT_PYTHON_TAG_VERSION (3.11), returns both the explicit
     suffix and an empty suffix for backward compatibility.
 
     Examples:
-        3.10 -> ["-py310", ""]
-        3.11 -> ["-py311"]
+        3.11 -> ["-py311", ""]
+        3.12 -> ["-py312"]
     """
     suffixes = [format_python_tag(python_version)]
     if python_version == DEFAULT_PYTHON_TAG_VERSION:

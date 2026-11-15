@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
@@ -53,8 +52,8 @@ class GcsNodeManagerTest : public ::testing::Test {
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
           return raylet_client;
         });
-    gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ =
+        std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
         std::make_shared<gcs::InMemoryStoreClient>());
     io_context_ = std::make_unique<instrumented_io_context>("GcsNodeManagerTest");

@@ -25,6 +25,34 @@ py_binary(
     ],
 )
 
+# Maps changed doc files to the doc example tests that name them directly, for
+# the `docs-example-test` opt-in steps. Kept out of `:doc` so the binary needs
+# no Sphinx or boto3 wheels.
+py_library(
+    name = "doc_example_targets",
+    srcs = ["doc_example_targets.py"],
+)
+
+py_binary(
+    name = "cmd_doc_example_targets",
+    srcs = ["cmd_doc_example_targets.py"],
+    deps = [":doc_example_targets"],
+)
+
+# Scope guard for the `docstring-only` label. Standard library only, so it
+# runs in the lint step without a Bazel build.
+py_library(
+    name = "check_docstring_only",
+    srcs = ["check_docstring_only.py"],
+)
+
+# Runs the >>> docstring examples in changed modules for the `docstring-only`
+# label. Standard library only; the CI step runs it in the library's image.
+py_library(
+    name = "run_docstring_examples",
+    srcs = ["run_docstring_examples.py"],
+)
+
 py_library(
     name = "doc",
     srcs = glob(
@@ -32,6 +60,9 @@ py_library(
         exclude = [
             "test_*.py",
             "cmd_*.py",
+            "check_docstring_only.py",
+            "run_docstring_examples.py",
+            "doc_example_targets.py",
         ],
     ),
     deps = [
@@ -155,6 +186,51 @@ py_test(
     ],
     deps = [
         ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_doc_example_targets",
+    size = "small",
+    srcs = ["test_doc_example_targets.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc_example_targets",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_check_docstring_only",
+    size = "small",
+    srcs = ["test_check_docstring_only.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":check_docstring_only",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_run_docstring_examples",
+    size = "small",
+    srcs = ["test_run_docstring_examples.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":run_docstring_examples",
         ci_require("pytest"),
     ],
 )

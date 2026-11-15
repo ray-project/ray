@@ -173,6 +173,13 @@ def plan_project_op(
         ],
         init_fn=init_fn,
     )
+
+    # Keep the partitioning only if its columns pass through unchanged.
+    partitioning = input_physical_dag.output_partitioning
+    output_partitioning = None
+    if partitioning is not None and op.preserves_columns(partitioning.columns):
+        output_partitioning = partitioning
+
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -181,6 +188,7 @@ def plan_project_op(
         compute_strategy=compute,
         ray_remote_args=op.ray_remote_args,
         ray_remote_args_fn=op.ray_remote_args_fn,
+        output_partitioning=output_partitioning,
     )
 
 
@@ -259,8 +267,28 @@ def plan_filter_op(
             compute=compute,
         )
 
-        transform_fn = RowMapTransformFn(
-            _generate_transform_fn_for_filter(filter_fn),
+        def filter_udf_block_fn(
+            blocks: Iterable[Block], ctx: TaskContext
+        ) -> Iterable[Block]:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+                rows = block_accessor.iter_rows(public_row_format=True)
+                matching_indices = [i for i, row in enumerate(rows) if filter_fn(row)]
+                # Select the matching rows directly from the original block so
+                # column types (e.g. Arrow dictionary encoding) are preserved,
+                # rather than rebuilding a block from row values, which loses them.
+                if len(matching_indices) == block_accessor.num_rows():
+                    yield block
+                elif matching_indices:
+                    yield block_accessor.take(matching_indices)
+                else:
+                    # `take([])` breaks because indices with no elements are
+                    # inferred as an untyped Arrow array; slicing keeps the
+                    # schema without hitting that path.
+                    yield block_accessor.slice(0, 0)
+
+        transform_fn = BlockMapTransformFn(
+            filter_udf_block_fn,
             output_block_size_option=output_block_size_option,
         )
 
@@ -274,6 +302,8 @@ def plan_filter_op(
         compute_strategy=compute,
         ray_remote_args=op.ray_remote_args,
         ray_remote_args_fn=op.ray_remote_args_fn,
+        # A filter only drops rows, so its input's partitioning still holds.
+        output_partitioning=input_physical_dag.output_partitioning,
     )
 
 
@@ -736,17 +766,6 @@ def _generate_transform_fn_for_flat_map(
                 for out_row in fn(row):
                     _validate_row_output(out_row)
                     yield out_row
-
-    return transform_fn
-
-
-def _generate_transform_fn_for_filter(
-    fn: UserDefinedFunction,
-) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        for row in rows:
-            if fn(row):
-                yield row
 
     return transform_fn
 
