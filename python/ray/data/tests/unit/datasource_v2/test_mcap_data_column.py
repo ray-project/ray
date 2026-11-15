@@ -27,6 +27,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     MCAPSelection,
     TimeRange,
 )
+from ray.data._internal.untrusted_unpickling import forbid_untrusted_unpickling
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     BASE_TIME,
     STEP,
@@ -740,7 +741,8 @@ def test_json_past_the_sample_with_a_clashing_type_fails_where_combined(tmp_path
 
 def test_mixed_json_types_in_one_task_are_refused(tmp_path):
     """JSON values Arrow cannot type together fall back to pickled objects, which
-    the reader refuses."""
+    the reader refuses. Read tasks run with unpickling forbidden, so mirror that.
+    """
     path = os.path.join(tmp_path, "mixed.mcap")
     write_mcap(
         path,
@@ -749,7 +751,9 @@ def test_mixed_json_types_in_one_task_are_refused(tmp_path):
     )
     datasource = MCAPDatasourceV2([path])
 
-    with pytest.raises(ValueError, match="arrow_pickled_object"):
+    with forbid_untrusted_unpickling(), pytest.raises(
+        ValueError, match="arrow_pickled_object"
+    ):
         read_all(datasource, list_manifests(datasource)[0])
 
 

@@ -26,7 +26,6 @@ from ray.data._internal.untrusted_unpickling import (
     guard_iterator,
     is_unpickling_forbidden,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.datasource import Reader
@@ -112,7 +111,7 @@ def test_pickled_column_in_ipc_stream_refused_inside_read(shape):
 
 
 @pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
+    parse_version(pa.__version__) < parse_version("14.0.0"),
     reason="Arrow PyCapsule interface requires pyarrow>=14",
 )
 @pytest.mark.parametrize("shape", SHAPES)
