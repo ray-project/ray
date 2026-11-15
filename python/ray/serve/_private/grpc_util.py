@@ -208,7 +208,10 @@ async def start_grpc_server(
 
     server = gRPCGenericServer(
         service_handler_factory,
-        extra_options=[("grpc.so_reuseport", str(int(enable_so_reuseport)))],
+        # gRPC parses `grpc.so_reuseport` as an integer channel arg; passing a
+        # string like "0" is ignored, leaving SO_REUSEPORT on (gRPC's default)
+        # and silently allowing two servers to bind the same port.
+        extra_options=[("grpc.so_reuseport", int(enable_so_reuseport))],
     )
     add_grpc_address(server, f"[::]:{grpc_options.port}")
 
