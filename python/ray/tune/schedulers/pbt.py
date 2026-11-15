@@ -37,6 +37,10 @@ class _PBTTrialState:
         self.orig_tag = trial.experiment_tag
         self.last_score: Union[float, None] = None  # Set on _save_trial_state
         self.last_checkpoint: Union[TrainCheckpoint, _FutureTrainingResult, None] = None
+        # Metrics of the result that ``last_checkpoint`` was saved with, so the
+        # checkpoint's iteration stays available even after the trial keeps
+        # training past it.
+        self.last_checkpoint_metrics: Optional[dict] = None
         self.last_perturbation_time: int = 0
         self.last_train_time: int = 0  # Used for synchronous mode
         self.last_result: Optional[
@@ -706,11 +710,17 @@ class PopulationBasedTraining(FIFOScheduler):
                         f"checkpoint {trial.checkpoint}."
                     )
                     state.last_checkpoint = trial.checkpoint
+                    latest_checkpoint_result = (
+                        trial.run_metadata.checkpoint_manager._latest_checkpoint_result
+                    )
+                    if latest_checkpoint_result is not None:
+                        state.last_checkpoint_metrics = latest_checkpoint_result.metrics
             else:
                 logger.debug(f"Instructing {trial} to save.")
                 state.last_checkpoint = tune_controller._schedule_trial_save(
                     trial, result=state.last_result
                 )
+                state.last_checkpoint_metrics = state.last_result
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
@@ -732,6 +742,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 if training_result:
                     clone_state.last_result = training_result.metrics
                     clone_state.last_checkpoint = training_result.checkpoint
+                    clone_state.last_checkpoint_metrics = training_result.metrics
                     last_checkpoint = clone_state.last_checkpoint
                 else:
                     logger.debug(
@@ -771,11 +782,23 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_to_clone_path = os.path.join(
             trial_to_clone.local_dir, "pbt_policy_" + trial_to_clone_id + ".txt"
         )
+        # Log the iterations the replay needs to reproduce the same
+        # configuration schedule: the target's current iteration (its
+        # ``trial.last_result`` is only committed after this callback
+        # returns) and the iteration of the clone checkpoint that is
+        # actually restored (the clone may have trained past it).
+        target_result = trial_state.last_result or trial.last_result or {}
+        clone_checkpoint_metrics = (
+            new_state.last_checkpoint_metrics
+            or new_state.last_result
+            or trial_to_clone.last_result
+            or {}
+        )
         policy = [
             trial_name,
             trial_to_clone_name,
-            trial.last_result.get(TRAINING_ITERATION, 0),
-            trial_to_clone.last_result.get(TRAINING_ITERATION, 0),
+            target_result.get(TRAINING_ITERATION, 0),
+            clone_checkpoint_metrics.get(TRAINING_ITERATION, 0),
             trial_to_clone.config,
             new_config,
         ]
