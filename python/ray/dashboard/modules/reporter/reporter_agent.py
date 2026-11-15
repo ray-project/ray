@@ -1548,7 +1548,9 @@ class ReporterAgent(
                 elif hasattr(memory_info, "private"):
                     # Windows: private IS USS
                     total_uss_bytes += float(memory_info.private)
-            total_num_fds += int(stat.get("num_fds", 0))
+            # `num_fds` can be None when psutil raises AccessDenied for another
+            # user's process (e.g. /proc/<pid>/fd on Linux), so fall back to 0.
+            total_num_fds += int(stat.get("num_fds") or 0)
 
         tags = {"ip": self._ip, "Component": component_name}
         if pid:
