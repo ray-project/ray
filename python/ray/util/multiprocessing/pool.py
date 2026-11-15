@@ -273,12 +273,15 @@ class ResultThread(threading.Thread):
 
             # The exception callback is called only once on the first result
             # that errors. If no result errors, it is never called.
+            # NOTE: Only PoolTaskError (returned by the pool actor when a task
+            # raised) marks a failed task. An Exception *returned* by the task
+            # is a regular result, matching multiprocessing.Pool semantics.
             if not self._got_error:
                 for result in batch:
-                    if isinstance(result, Exception):
+                    if isinstance(result, PoolTaskError):
                         self._got_error = True
                         if self._error_callback is not None:
-                            self._error_callback(result)
+                            self._error_callback(result.underlying)
                         break
                     else:
                         aggregated_batch_results.append(result)
@@ -358,8 +361,6 @@ class AsyncResult:
             for result in batch:
                 if isinstance(result, PoolTaskError):
                     raise result.underlying
-                elif isinstance(result, Exception):
-                    raise result
             results.extend(batch)
 
         if self._single_result:

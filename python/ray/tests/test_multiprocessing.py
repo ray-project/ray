@@ -17,7 +17,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import SignalActor
-from ray.util.multiprocessing import JoinableQueue, Pool, TimeoutError
+from ray.util.multiprocessing import JoinableQueue, Pool, PoolTaskError, TimeoutError
 
 
 @pytest.fixture(scope="module")
@@ -337,6 +337,57 @@ def callback_test_helper(args):
     if index in err_indices:
         raise Exception("intentional failure")
     return index
+
+
+def test_returned_exception_is_a_regular_result(pool_4_processes):
+    """A task *returning* an exception instance is a regular result, matching
+    multiprocessing.Pool semantics (#68086)."""
+
+    def return_exc(x):
+        return ValueError(x) if x == 1 else x
+
+    results = pool_4_processes.map(return_exc, range(3))
+    assert results[0] == 0
+    assert isinstance(results[1], ValueError)
+    assert results[1].args == (1,)
+    assert results[2] == 2
+
+    callback_results = queue.Queue()
+    error_results = queue.Queue()
+    result = pool_4_processes.apply_async(
+        return_exc,
+        (1,),
+        callback=callback_results.put,
+        error_callback=error_results.put,
+    )
+    result.wait(30)
+    returned = callback_results.get(timeout=10)
+    assert isinstance(returned, ValueError)
+    assert returned.args == (1,)
+    assert error_results.qsize() == 0
+    assert result.successful()
+
+
+def test_error_callback_receives_underlying_exception(pool_4_processes):
+    """error_callback gets the task's exception, not the internal
+    PoolTaskError wrapper (#68086)."""
+
+    def check(x):
+        if x == 2:
+            raise ValueError("bad input")
+        return x
+
+    errors = []
+    result = pool_4_processes.apply_async(check, (2,), error_callback=errors.append)
+    result.wait(30)
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], ValueError)
+    assert "bad input" in str(errors[0])
+    assert not isinstance(errors[0], PoolTaskError)
+    with pytest.raises(ValueError, match="bad input"):
+        result.get()
+    assert not result.successful()
 
 
 @pytest.mark.parametrize("use_iter", [True, False])
