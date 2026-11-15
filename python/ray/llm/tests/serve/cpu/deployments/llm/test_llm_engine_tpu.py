@@ -1406,6 +1406,27 @@ def test_resolve_bundle_label_selector_non_positive_num_bundles():
     for non_empty_sel in ([{"a": "1"}], ({"a": "1"},), [{"a": "1"}, {"b": "2"}]):
         with pytest.raises(ValueError, match="bundle_label_selector length"):
             _resolve_bundle_label_selector(0, non_empty_sel, None)
+        with pytest.raises(
+            ValueError, match="placement_group_bundle_label_selector length"
+        ):
+            _resolve_bundle_label_selector(
+                0,
+                non_empty_sel,
+                None,
+                selector_name="placement_group_bundle_label_selector",
+            )
+
+    # Custom selector_name is also reflected in mismatched-length errors.
+    with pytest.raises(
+        ValueError,
+        match=r"placement_group_bundle_label_selector length \(2\) must be 1 or match the number of bundles \(3\)\.",
+    ):
+        _resolve_bundle_label_selector(
+            3,
+            [{"a": "1"}, {"b": "2"}],
+            [{"ray.io/accelerator-type": "TPU-V6E"}] * 3,
+            selector_name="placement_group_bundle_label_selector",
+        )
 
     # Negative num_bundles always raises ValueError.
     for user_sel in (None, [], [{"a": "1"}], [{"a": "1"}, {"b": "2"}]):

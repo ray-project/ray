@@ -266,6 +266,78 @@ def test_scaling_config_tpu_multi_host_and_multi_slice_label_selector():
     }
 
 
+def test_scaling_config_resolve_worker_group_label_selector(caplog, propagate_logs):
+    """Verify _uses_slice_placement_group and _resolve_worker_group_label_selector."""
+    slice_cfg = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        label_selector={"pool": "base"},
+    )
+    non_slice_tpu_cfg = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        label_selector={"pool": "base"},
+    )
+    cpu_cfg = ScalingConfig(num_workers=2, use_tpu=False)
+
+    assert slice_cfg._uses_slice_placement_group is True
+    assert non_slice_tpu_cfg._uses_slice_placement_group is False
+    assert cpu_cfg._uses_slice_placement_group is False
+
+    # SlicePlacementGroup path delegates TPU hardware labels to SlicePlacementGroup.
+    assert slice_cfg._resolve_worker_group_label_selector(4) == [{"pool": "base"}] * 4
+    assert cpu_cfg._resolve_worker_group_label_selector(2) is None
+
+    # Empty/None callback selectors are ignored; non-empty callback overrides prior selector.
+    with caplog.at_level("WARNING", logger="ray.train.v2.api.config"):
+        resolved = slice_cfg._resolve_worker_group_label_selector(
+            4,
+            callback_selectors=[
+                ("NoOpCallback", None),
+                ("EmptyCallback", {}),
+                ("FirstCallback", {"zone": "us-central1"}),
+                ("SecondCallback", {"zone": "us-east1"}),
+            ],
+        )
+    assert resolved == [{"zone": "us-east1"}] * 4
+    assert len({id(d) for d in resolved}) == 4
+    assert "Overriding `ScalingConfig.label_selector`" in caplog.text
+    assert "Overriding previous callback `label_selector`" in caplog.text
+
+    # Non-SlicePlacementGroup TPU path keeps generated TPU hardware labels merged under callback.
+    merged = non_slice_tpu_cfg._resolve_worker_group_label_selector(
+        1,
+        callback_selectors=[("ZoneCallback", {"zone": "us-west1"})],
+    )
+    assert merged == [
+        {"ray.io/accelerator-type": "TPU-V6E", "zone": "us-west1"},
+    ]
+
+    # Lazy callback iteration stops immediately on invalid callback output.
+    visited = []
+
+    def bad_len_callbacks():
+        visited.append("bad")
+        yield ("BadLenCallback", [{"zone": "a"}])
+        visited.append("unreached")
+        yield ("UnreachedCallback", {"zone": "b"})
+
+    with pytest.raises(ValueError, match="BadLenCallback.*length 1, expected 4"):
+        slice_cfg._resolve_worker_group_label_selector(4, bad_len_callbacks())
+    assert visited == ["bad"]
+
+    with pytest.raises(TypeError, match="BadEntryCallback.*list of dicts"):
+        slice_cfg._resolve_worker_group_label_selector(
+            2, [("BadEntryCallback", [{"a": "1"}, "not-a-dict"])]
+        )
+
+    with pytest.raises(TypeError, match="BadTypeCallback.*type int"):
+        slice_cfg._resolve_worker_group_label_selector(2, [("BadTypeCallback", 123)])
+
+
 def test_storage_filesystem_repr():
     """Test for https://github.com/ray-project/ray/pull/40851"""
     config = RunConfig(storage_filesystem=pyarrow.fs.S3FileSystem())

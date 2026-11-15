@@ -2,7 +2,17 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import pyarrow.fs
 
@@ -172,6 +182,11 @@ class ScalingConfig(ScalingConfigV1):
             else self.num_workers[1]
         )
 
+    @property
+    def _uses_slice_placement_group(self) -> bool:
+        """Return True when TPU reservation uses SlicePlacementGroup."""
+        return bool(self.use_tpu and self.topology and self.accelerator_type)
+
     def _tpu_label_selector(self) -> Dict[str, str]:
         """Return generated TPU node labels for this ScalingConfig."""
         tpu_selector: Dict[str, str] = {}
@@ -215,6 +230,70 @@ class ScalingConfig(ScalingConfigV1):
         if tpu_selector:
             return [tpu_selector.copy() for _ in range(num_workers)]
         return None
+
+    def _resolve_worker_group_label_selector(
+        self,
+        num_workers: int,
+        callback_selectors: Iterable[Tuple[str, Any]] = (),
+    ) -> Optional[List[Dict[str, str]]]:
+        """Resolve per-worker label selectors across config, callbacks, and TPU labels.
+
+        Keeps user and callback selectors separate from generated TPU hardware
+        labels so callbacks cleanly override ``ScalingConfig.label_selector``
+        and earlier callbacks without dropping TPU hardware labels on the
+        non-SlicePlacementGroup TPU path. When ``SlicePlacementGroup`` is used,
+        it generates the single-host or multi-host TPU labels directly.
+        """
+        tpu_base_selector = (
+            {} if self._uses_slice_placement_group else self._tpu_label_selector()
+        )
+        user_label_selector = self._label_selector_per_worker(
+            num_workers, include_tpu_labels=False
+        )
+        has_callback_selector = False
+        for callback_name, selector in callback_selectors:
+            if not selector:
+                continue
+            if isinstance(selector, list):
+                if len(selector) != num_workers:
+                    raise ValueError(
+                        f"Callback {callback_name} returned a "
+                        f"`label_selector` list of length {len(selector)}, "
+                        f"expected {num_workers}."
+                    )
+                if not all(isinstance(s, dict) for s in selector):
+                    raise TypeError(
+                        f"Callback {callback_name} returned invalid "
+                        "`label_selector` list entries; expected list of dicts."
+                    )
+                normalized_selector = [s.copy() for s in selector]
+            elif isinstance(selector, dict):
+                normalized_selector = [selector.copy() for _ in range(num_workers)]
+            else:
+                raise TypeError(
+                    f"Callback {callback_name} returned invalid "
+                    f"`label_selector` of type {type(selector).__name__}; "
+                    "expected dict or list of dicts."
+                )
+
+            if user_label_selector and any(user_label_selector):
+                source = (
+                    "previous callback `label_selector`"
+                    if has_callback_selector
+                    else "`ScalingConfig.label_selector`"
+                )
+                logger.warning(
+                    f"Overriding {source} {user_label_selector} "
+                    f"with label_selector returned by user-specified callback {selector}"
+                )
+            user_label_selector = normalized_selector
+            has_callback_selector = True
+
+        if tpu_base_selector:
+            if user_label_selector is not None:
+                return [{**tpu_base_selector, **s} for s in user_label_selector]
+            return [tpu_base_selector.copy() for _ in range(num_workers)]
+        return user_label_selector
 
     @property
     def total_resources(self):

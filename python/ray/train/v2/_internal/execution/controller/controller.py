@@ -471,73 +471,21 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
 
-        # Check for `label_selector` to influence WorkerGroup scheduling.
-        # Keep user and callback selectors separate from generated TPU hardware
-        # labels so callbacks cleanly override `ScalingConfig.label_selector`
-        # and earlier callbacks without dropping TPU hardware labels on the
-        # non-SlicePlacementGroup TPU path. When `SlicePlacementGroup` is used,
-        # it generates the single-host or multi-host TPU labels directly.
-        uses_slice_pg = bool(
-            scaling_config.use_tpu
-            and scaling_config.topology
-            and scaling_config.accelerator_type
-        )
-        tpu_base_selector = (
-            {} if uses_slice_pg else scaling_config._tpu_label_selector()
-        )
-        user_label_selector = scaling_config._label_selector_per_worker(
-            num_workers, include_tpu_labels=False
-        )
-        has_callback_selector = False
-        for callback in self._controller_callbacks:
-            selector = callback.on_controller_start_worker_group(
-                scaling_config=scaling_config, num_workers=num_workers
+        # Resolve worker group label_selector across ScalingConfig, callbacks,
+        # and generated TPU hardware labels.
+        callback_selectors = (
+            (
+                type(callback).__name__,
+                callback.on_controller_start_worker_group(
+                    scaling_config=scaling_config, num_workers=num_workers
+                ),
             )
-            if selector:
-                if isinstance(selector, list):
-                    if len(selector) != num_workers:
-                        raise ValueError(
-                            f"Callback {type(callback).__name__} returned a "
-                            f"`label_selector` list of length {len(selector)}, "
-                            f"expected {num_workers}."
-                        )
-                    if not all(isinstance(s, dict) for s in selector):
-                        raise TypeError(
-                            f"Callback {type(callback).__name__} returned invalid "
-                            "`label_selector` list entries; expected list of dicts."
-                        )
-                    normalized_selector = [s.copy() for s in selector]
-                elif isinstance(selector, dict):
-                    normalized_selector = [selector.copy() for _ in range(num_workers)]
-                else:
-                    raise TypeError(
-                        f"Callback {type(callback).__name__} returned invalid "
-                        f"`label_selector` of type {type(selector).__name__}; "
-                        "expected dict or list of dicts."
-                    )
-
-                if user_label_selector and any(user_label_selector):
-                    source = (
-                        "previous callback `label_selector`"
-                        if has_callback_selector
-                        else "`ScalingConfig.label_selector`"
-                    )
-                    logger.warning(
-                        f"Overriding {source} {user_label_selector} "
-                        f"with label_selector returned by user-specified callback {selector}"
-                    )
-                user_label_selector = normalized_selector
-                has_callback_selector = True
-
-        if tpu_base_selector:
-            if user_label_selector is not None:
-                label_selector = [
-                    {**tpu_base_selector, **s} for s in user_label_selector
-                ]
-            else:
-                label_selector = [tpu_base_selector.copy() for _ in range(num_workers)]
-        else:
-            label_selector = user_label_selector
+            for callback in self._controller_callbacks
+        )
+        label_selector = scaling_config._resolve_worker_group_label_selector(
+            num_workers=num_workers,
+            callback_selectors=callback_selectors,
+        )
 
         # Calculate num_slices for the worker group if using TPU.
         num_slices = 1

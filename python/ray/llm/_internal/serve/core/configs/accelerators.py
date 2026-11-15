@@ -124,6 +124,8 @@ def _resolve_bundle_label_selector(
     num_bundles: int,
     user_selectors: Optional[Sequence[Dict[str, str]]] = None,
     base_selectors: Optional[List[Dict[str, str]]] = None,
+    *,
+    selector_name: str = "bundle_label_selector",
 ) -> Optional[List[Dict[str, str]]]:
     """Normalize, broadcast, and merge user bundle_label_selector with base selectors.
 
@@ -151,7 +153,7 @@ def _resolve_bundle_label_selector(
 
     if num_bundles == 0:
         raise ValueError(
-            f"bundle_label_selector length ({len(normalized_user)}) cannot match "
+            f"{selector_name} length ({len(normalized_user)}) cannot match "
             "0 bundles."
         )
 
@@ -161,7 +163,7 @@ def _resolve_bundle_label_selector(
         expanded_user = normalized_user
     else:
         raise ValueError(
-            f"bundle_label_selector length ({len(normalized_user)}) must be 1 or "
+            f"{selector_name} length ({len(normalized_user)}) must be 1 or "
             f"match the number of bundles ({num_bundles})."
         )
 

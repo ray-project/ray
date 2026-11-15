@@ -640,11 +640,7 @@ class WorkerGroup(ExecutionGroup):
         resources. Otherwise, it creates a standard placement group.
         """
 
-        if (
-            scaling_config.use_tpu
-            and scaling_config.topology
-            and scaling_config.accelerator_type
-        ):
+        if scaling_config._uses_slice_placement_group:
             # TPU specific SlicePlacementGroup reservation.
             logger.info(
                 f"Using SlicePlacementGroup utility to reserve {worker_group_context.num_slices} "

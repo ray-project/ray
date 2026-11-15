@@ -30,6 +30,7 @@ from ray.llm._internal.serve.constants import (
     get_llm_serve_runtime_env,
 )
 from ray.llm._internal.serve.core.configs.accelerators import (
+    _resolve_bundle_label_selector,
     normalize_bundle_label_selector,
     prepare_tpu_bundles_and_label_selector,
 )
@@ -854,26 +855,16 @@ class LLMServer(LLMServerProtocol):
                     pg_bundles, llm_config.accelerator_type
                 )
                 if label_selector is not None:
-                    user_selectors = deployment_options.get(
+                    deployment_options[
                         "placement_group_bundle_label_selector"
-                    )
-                    if user_selectors is None:
-                        deployment_options[
+                    ] = _resolve_bundle_label_selector(
+                        num_bundles=len(label_selector),
+                        user_selectors=deployment_options.get(
                             "placement_group_bundle_label_selector"
-                        ] = label_selector
-                    else:
-                        if len(user_selectors) == 1:
-                            user_selectors = user_selectors * len(label_selector)
-                        if len(user_selectors) != len(label_selector):
-                            raise ValueError(
-                                f"placement_group_bundle_label_selector length "
-                                f"({len(user_selectors)}) must be 1 or match the "
-                                f"number of bundles ({len(label_selector)})."
-                            )
-                        deployment_options["placement_group_bundle_label_selector"] = [
-                            {**tpu_sel, **user_sel}
-                            for tpu_sel, user_sel in zip(label_selector, user_selectors)
-                        ]
+                        ),
+                        base_selectors=label_selector,
+                        selector_name="placement_group_bundle_label_selector",
+                    )
 
             deployment_options.update(
                 {
