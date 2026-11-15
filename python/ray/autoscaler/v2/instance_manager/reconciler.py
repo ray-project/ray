@@ -526,9 +526,7 @@ class Reconciler:
             is_partial_vanished = (
                 replica_view is not None
                 and size > 1
-                and not replica_view.claimed_reps_by_lid[(nt, lid)]
-                and bool(replica_view.vanished_cids_by_lid[(nt, lid)])
-                and replica_view.requested_by_lid[(nt, lid)] < size
+                and replica_view.is_partial_vanished_batch(nt, lid, size)
             )
             return (
                 1 if is_partial_vanished else 0,
@@ -608,9 +606,7 @@ class Reconciler:
         lid = im_instance.launch_request_id
         if size > 1 and replica_view is not None and lid:
             if (nt, lid) in replica_view.torn_down_lids:
-                replica_view.requested_by_lid[(nt, lid)] = max(
-                    0, replica_view.requested_by_lid[(nt, lid)] - 1
-                )
+                replica_view.consume_requested_slot(nt, lid)
                 return IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=IMInstance.ALLOCATION_FAILED,
@@ -619,19 +615,8 @@ class Reconciler:
                         "sibling worker in multi-worker replica entered teardown"
                     ),
                 )
-            claimed_rids = replica_view.claimed_reps_by_lid[(nt, lid)]
-            if (
-                claimed_rids
-                and replica_view.requested_by_lid[(nt, lid)] < size
-                and all(
-                    (nt, r) not in replica_view.non_fillable_reps
-                    and replica_view.owed_batch_slots(nt, r, lid, size) == 0
-                    for r in claimed_rids
-                )
-            ):
-                replica_view.requested_by_lid[(nt, lid)] = max(
-                    0, replica_view.requested_by_lid[(nt, lid)] - 1
-                )
+            if replica_view.is_surplus_batch(nt, lid, size):
+                replica_view.consume_requested_slot(nt, lid)
                 return IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=IMInstance.ALLOCATION_FAILED,
@@ -699,30 +684,14 @@ class Reconciler:
                             break
                 if match_idx is not None:
                     unassigned_cloud_instance = candidates.pop(match_idx)
-                    replica_view.requested_by_lid[(nt, lid)] = max(
-                        0, replica_view.requested_by_lid[(nt, lid)] - 1
-                    )
+                    replica_view.consume_requested_slot(nt, lid)
                     if unassigned_cloud_instance.replica_id:
-                        rk = (nt, unassigned_cloud_instance.replica_id)
-                        replica_view.assigned_reps.add(rk)
-                        replica_view.rep_assigned_cids[rk].add(
-                            unassigned_cloud_instance.cloud_instance_id
+                        replica_view.claim_replica_slot(
+                            nt,
+                            unassigned_cloud_instance.replica_id,
+                            lid,
+                            unassigned_cloud_instance.cloud_instance_id,
                         )
-                        if lid:
-                            replica_view.rep_lids[rk].add(lid)
-                            vanished = replica_view.vanished_cids_by_lid.pop(
-                                (nt, lid), None
-                            )
-                            if vanished:
-                                replica_view.rep_bound_cids_by_lid[(rk, lid)].update(
-                                    vanished
-                                )
-                            replica_view.rep_bound_cids_by_lid[(rk, lid)].add(
-                                unassigned_cloud_instance.cloud_instance_id
-                            )
-                            replica_view.claimed_reps_by_lid[(nt, lid)].add(
-                                unassigned_cloud_instance.replica_id
-                            )
             else:
                 unassigned_cloud_instance = candidates.pop()
 
@@ -745,9 +714,7 @@ class Reconciler:
         if remaining_launch_failures.get(launch_error_key, 0) > 0:
             remaining_launch_failures[launch_error_key] -= 1
             if replica_view is not None and size > 1:
-                replica_view.requested_by_lid[(nt, lid)] = max(
-                    0, replica_view.requested_by_lid[(nt, lid)] - 1
-                )
+                replica_view.consume_requested_slot(nt, lid)
             launch_error = launch_errors[launch_error_key]
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
@@ -1217,9 +1184,6 @@ class Reconciler:
         single_host_in_flight: Dict[NodeType, Dict[str, int]] = defaultdict(
             lambda: defaultdict(int)
         )
-        unclaimed_replicas_by_lid: Dict[NodeType, Dict[str, int]] = {
-            nt: {} for nt in replica_sizes
-        }
         for inst in im_instances:
             if inst.node_kind == NodeKind.HEAD or inst.instance_type in replica_sizes:
                 continue
@@ -1228,6 +1192,7 @@ class Reconciler:
             ):
                 single_host_in_flight[inst.instance_type][inst.launch_request_id] += 1
 
+        unclaimed_replicas_by_lid: Dict[NodeType, Dict[str, int]] = {}
         if replica_sizes:
             view = (
                 view_cache.get(im_instances, version)
@@ -1236,18 +1201,7 @@ class Reconciler:
                     im_instances, non_terminated_cloud_instances, replica_sizes
                 )
             )
-            for (nt, lid), req_cnt in view.requested_by_lid.items():
-                if req_cnt <= 0 or not lid:
-                    continue
-                if (nt, lid) in view.torn_down_lids:
-                    continue
-                if view.claimed_reps_by_lid.get((nt, lid)):
-                    continue
-                size = replica_sizes[nt]
-                vanished = len(view.vanished_cids_by_lid.get((nt, lid), ()))
-                reps = (req_cnt + vanished) // size
-                if reps > 0:
-                    unclaimed_replicas_by_lid[nt][lid] = reps
+            unclaimed_replicas_by_lid = view.unclaimed_replicas_by_lid(replica_sizes)
 
         cloud_provider.begin_reconcile_step(
             known_cloud_instance_ids=known_cloud_instance_ids,
@@ -1993,11 +1947,8 @@ class Reconciler:
                 view.rep_occupying,
                 key=lambda r: (
                     0
-                    if any(
-                        requested_by_lid[(r[0], lid)] > 0
-                        and view.owed_batch_slots(r[0], r[1], lid, replica_sizes[r[0]])
-                        > 0
-                        for lid in view.rep_lids[r]
+                    if view.has_pending_backfill_for_replica(
+                        r[0], r[1], replica_sizes[r[0]]
                     )
                     else 1,
                     r,
@@ -2127,12 +2078,7 @@ class Reconciler:
                     (nt, c) in term_cids or (nt, c) in done_cids for c in rep_cids
                 ) or (
                     len(rep_cids) < size
-                    and rep_key not in view.non_fillable_reps
-                    and any(
-                        view.requested_by_lid[(nt, lid)] > 0
-                        and view.owed_batch_slots(nt, rid, lid, size) > 0
-                        for lid in view.rep_lids[rep_key]
-                    )
+                    and view.has_pending_backfill_for_replica(nt, rid, size)
                 ):
                     skipped_by_rep[rid].append(req.instance_id)
                     continue
@@ -2234,20 +2180,8 @@ class Reconciler:
                 continue
 
             rep_key = _get_replica_key(instance, cloud_instances, replica_sizes)
-            hist = instance.status_history
-            solicited_stop = instance.status == IMInstance.RAY_STOPPED and (
-                (
-                    len(hist) >= 2
-                    and hist[-2].instance_status == IMInstance.RAY_STOP_REQUESTED
-                )
-                or (
-                    len(hist) >= 3
-                    and hist[-2].instance_status == IMInstance.RAY_STOPPING
-                    and hist[-3].instance_status == IMInstance.RAY_STOP_REQUESTED
-                )
-            )
             if (
-                solicited_stop
+                InstanceUtil.is_solicited_stop(instance)
                 and rep_key in ray_running_reps
                 and rep_key not in terminating_reps
             ):

@@ -221,6 +221,20 @@ class InstanceUtil:
         return True
 
     @staticmethod
+    def is_solicited_stop(instance: Instance) -> bool:
+        """Returns True if the instance reached RAY_STOPPED via RAY_STOP_REQUESTED."""
+        if instance.status != Instance.RAY_STOPPED:
+            return False
+        hist = instance.status_history
+        return (
+            len(hist) >= 2 and hist[-2].instance_status == Instance.RAY_STOP_REQUESTED
+        ) or (
+            len(hist) >= 3
+            and hist[-2].instance_status == Instance.RAY_STOPPING
+            and hist[-3].instance_status == Instance.RAY_STOP_REQUESTED
+        )
+
+    @staticmethod
     def get_valid_transitions() -> Dict[
         "Instance.InstanceStatus", Set["Instance.InstanceStatus"]
     ]:
@@ -586,6 +600,33 @@ _TEARDOWN_HISTORY_STATUSES = frozenset(
 
 
 @dataclass
+class _ReplicaViewBuildState:
+    """Transient per-build accumulators used while projecting IM rows."""
+
+    active_nt_cids: Set[Tuple[NodeType, CloudInstanceId]] = field(default_factory=set)
+    live_term_rows_by_rep_lid: Dict[
+        Tuple[Tuple[NodeType, str], str], List[Instance]
+    ] = field(default_factory=lambda: defaultdict(list))
+    missing_rows_by_lid: Dict[Tuple[NodeType, str], List[Instance]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    untagged_active_cids: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
+    teardown_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    tagged_rows_by_cid: Dict[Tuple[NodeType, str], List[Tuple[int, str]]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    term_untagged_td_by_cid: Dict[Tuple[NodeType, str], List[int]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    live_untagged_td_cids: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    term_tagged_rows: List[Tuple[NodeType, str, str, str, bool, int, Instance]] = field(
+        default_factory=list
+    )
+
+
+@dataclass
 class _MultiHostReplicaView:
     """Canonical multi-host replica state projection shared across allocation,
     scaling clamps, partial-replica drain filtering, instance termination, and
@@ -633,6 +674,357 @@ class _MultiHostReplicaView:
             max(0, size - len(bound)),
         )
 
+    def consume_requested_slot(self, nt: NodeType, lid: str) -> None:
+        """Decrement one pending REQUESTED slot for batch `(nt, lid)`."""
+        key = (nt, lid)
+        self.requested_by_lid[key] = max(0, self.requested_by_lid[key] - 1)
+
+    def claim_replica_slot(
+        self,
+        nt: NodeType,
+        rid: str,
+        lid: str,
+        cid: CloudInstanceId,
+    ) -> None:
+        """Bind allocated pod `cid` in replica `(nt, rid)` to batch `lid`."""
+        rk = (nt, rid)
+        self.assigned_reps.add(rk)
+        self.rep_assigned_cids[rk].add(cid)
+        if lid:
+            self.rep_lids[rk].add(lid)
+            vanished = self.vanished_cids_by_lid.pop((nt, lid), None)
+            if vanished:
+                self.rep_bound_cids_by_lid[(rk, lid)].update(vanished)
+            self.rep_bound_cids_by_lid[(rk, lid)].add(cid)
+            self.claimed_reps_by_lid[(nt, lid)].add(rid)
+
+    def is_partial_vanished_batch(self, nt: NodeType, lid: str, size: int) -> bool:
+        """Return True if batch `(nt, lid)` lost pods mid-boot and has fewer
+        than `size` REQUESTED slots remaining without a live claimed replica."""
+        key = (nt, lid)
+        return (
+            not self.claimed_reps_by_lid.get(key)
+            and bool(self.vanished_cids_by_lid.get(key))
+            and self.requested_by_lid.get(key, 0) < size
+        )
+
+    def is_surplus_batch(self, nt: NodeType, lid: str, size: int) -> bool:
+        """Return True if batch `(nt, lid)` only has surplus REQUESTED slots
+        leftover after filling its live claimed replica(s)."""
+        key = (nt, lid)
+        claimed_rids = self.claimed_reps_by_lid.get(key)
+        return (
+            bool(claimed_rids)
+            and self.requested_by_lid.get(key, 0) < size
+            and all(
+                (nt, r) not in self.non_fillable_reps
+                and self.owed_batch_slots(nt, r, lid, size) == 0
+                for r in claimed_rids
+            )
+        )
+
+    def has_pending_backfill_for_replica(
+        self, nt: NodeType, rid: str, size: int
+    ) -> bool:
+        """Return True if any live batch still has REQUESTED pods owed to `(nt, rid)`."""
+        rk = (nt, rid)
+        if rk in self.non_fillable_reps:
+            return False
+        return any(
+            self.requested_by_lid.get((nt, lid), 0) > 0
+            and self.owed_batch_slots(nt, rid, lid, size) > 0
+            for lid in self.rep_lids.get(rk, ())
+        )
+
+    def unclaimed_replicas_by_lid(
+        self, replica_sizes: Dict[NodeType, int]
+    ) -> Dict[NodeType, Dict[str, int]]:
+        """Count whole unclaimed in-flight replicas per `(node_type, launch_request_id)`."""
+        result: Dict[NodeType, Dict[str, int]] = {nt: {} for nt in replica_sizes}
+        for (nt, lid), req_cnt in self.requested_by_lid.items():
+            if req_cnt <= 0 or not lid:
+                continue
+            if (nt, lid) in self.torn_down_lids:
+                continue
+            if self.claimed_reps_by_lid.get((nt, lid)):
+                continue
+            size = replica_sizes[nt]
+            vanished = len(self.vanished_cids_by_lid.get((nt, lid), ()))
+            reps = (req_cnt + vanished) // size
+            if reps > 0:
+                result[nt][lid] = reps
+        return result
+
+    @classmethod
+    def build(
+        cls,
+        im_instances: List[Instance],
+        cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        replica_sizes: Dict[NodeType, int],
+        status_overrides: Optional[Dict[str, "Instance.InstanceStatus"]] = None,
+    ) -> "_MultiHostReplicaView":
+        """Project per-instance IM rows and cloud replica IDs into one canonical view."""
+        view = cls()
+        overrides = status_overrides or {}
+        state = _ReplicaViewBuildState(
+            active_nt_cids=view._index_cloud_ids(im_instances, overrides)
+        )
+        if not replica_sizes:
+            return view
+
+        for inst in im_instances:
+            if (
+                inst.node_kind == NodeKind.HEAD
+                or inst.instance_type not in replica_sizes
+            ):
+                continue
+            st = overrides.get(inst.instance_id, inst.status)
+            if not inst.cloud_instance_id:
+                if st == Instance.REQUESTED:
+                    view.requested_by_lid[
+                        (inst.instance_type, inst.launch_request_id or "")
+                    ] += 1
+                continue
+
+            c_inst = _match_worker_cloud_instance(
+                inst, cloud_instances.get(inst.cloud_instance_id)
+            )
+            rid = c_inst.replica_id if c_inst is not None and c_inst.replica_id else ""
+            if st in _TERMINAL_INSTANCE_STATUSES:
+                view._record_terminal_row(inst, rid, c_inst is not None, state)
+            else:
+                view._record_live_row(inst, st, rid, c_inst, state)
+
+        view._propagate_terminated_untagged_teardowns(state)
+        cls._classify_terminated_tagged_rows(state)
+        view._reattach_live_terminal_rows(state)
+        view._propagate_live_teardowns(state)
+        view._reattach_missing_rows(state, replica_sizes)
+        return view
+
+    def _index_cloud_ids(
+        self,
+        im_instances: List[Instance],
+        overrides: Dict[str, "Instance.InstanceStatus"],
+    ) -> Set[Tuple[NodeType, CloudInstanceId]]:
+        active_nt_cids: Set[Tuple[NodeType, CloudInstanceId]] = set()
+        for inst in im_instances:
+            st = overrides.get(inst.instance_id, inst.status)
+            if not inst.cloud_instance_id:
+                continue
+            if st in _ACTIVE_CID_STATUSES:
+                self.active_cids.add(inst.cloud_instance_id)
+                active_nt_cids.add((inst.instance_type, inst.cloud_instance_id))
+            if st in _LIVE_CID_STATUSES:
+                self.live_cids.add((inst.instance_type, inst.cloud_instance_id))
+        return active_nt_cids
+
+    def _record_terminal_row(
+        self,
+        inst: Instance,
+        rid: str,
+        has_c_inst: bool,
+        state: _ReplicaViewBuildState,
+    ) -> None:
+        nt = inst.instance_type
+        lid = inst.launch_request_id
+        ck = (nt, inst.cloud_instance_id)
+        if not lid:
+            if _has_teardown_history(inst):
+                end_ns = max((h.timestamp_ns for h in inst.status_history), default=0)
+                state.term_untagged_td_by_cid[ck].append(end_ns)
+            return
+        start_ns = _instance_cloud_start_ns(inst)
+        state.tagged_rows_by_cid[ck].append((start_ns, lid))
+        if _has_teardown_history(inst):
+            self.torn_down_lids.add((nt, lid))
+        state.term_tagged_rows.append(
+            (nt, inst.cloud_instance_id, rid, lid, has_c_inst, start_ns, inst)
+        )
+
+    def _record_live_row(
+        self,
+        inst: Instance,
+        st: "Instance.InstanceStatus",
+        rid: str,
+        c_inst: Optional[CloudInstance],
+        state: _ReplicaViewBuildState,
+    ) -> None:
+        nt = inst.instance_type
+        lid = inst.launch_request_id
+        ck = (nt, inst.cloud_instance_id)
+        is_shadowed_stopped = st == Instance.RAY_STOPPED and ck in state.active_nt_cids
+        in_teardown = not is_shadowed_stopped and st in (
+            _TEARDOWN_INSTANCE_STATUSES | {Instance.RAY_STOPPING}
+        )
+        if lid:
+            state.tagged_rows_by_cid[ck].append((_instance_cloud_start_ns(inst), lid))
+            if in_teardown:
+                self.torn_down_lids.add((nt, lid))
+        elif in_teardown:
+            state.live_untagged_td_cids.add(ck)
+
+        if c_inst is None:
+            if lid and not is_shadowed_stopped:
+                state.missing_rows_by_lid[(nt, lid)].append(inst)
+            return
+
+        if not rid:
+            return
+
+        rk = (nt, rid)
+        self.assigned_reps.add(rk)
+        if lid:
+            self.claimed_reps_by_lid[(nt, lid)].add(rid)
+            self.rep_bound_cids_by_lid[(rk, lid)].add(inst.cloud_instance_id)
+            self.rep_lids[rk].add(lid)
+
+        # Ignore stale RAY_STOPPED rows shadowed by an active IM row on the
+        # same cloud instance (e.g. after a raylet restart).
+        if is_shadowed_stopped:
+            return
+
+        if not lid:
+            state.untagged_active_cids[rk].add(inst.cloud_instance_id)
+
+        if in_teardown:
+            state.teardown_reps.add(rk)
+        if st in _DRAINING_INSTANCE_STATUSES | _TEARDOWN_INSTANCE_STATUSES:
+            self.non_fillable_reps.add(rk)
+
+        self.rep_assigned_cids[rk].add(inst.cloud_instance_id)
+        if st in _OCCUPYING_CLOUD_STATUSES:
+            self.rep_occupying[rk] += 1
+        if st in _DRAINING_INSTANCE_STATUSES:
+            self.draining_reps.add(rk)
+            self.ray_running_reps.add(rk)
+        elif st == Instance.RAY_RUNNING:
+            self.ray_running_reps.add(rk)
+
+    def _propagate_terminated_untagged_teardowns(
+        self,
+        state: _ReplicaViewBuildState,
+    ) -> None:
+        # Propagate teardown from already-TERMINATED untagged rows (e.g. after a
+        # mid-boot raylet restart on an unlabeled pod or post-delete reconcile)
+        # before reattaching live terminal rows, bounded by incarnation timestamps
+        # so stale records cannot poison a newer reused cloud_instance_id.
+        for ck, td_end_times in state.term_untagged_td_by_cid.items():
+            tagged_rows = state.tagged_rows_by_cid.get(ck)
+            if not tagged_rows:
+                continue
+            for td_end_ns in td_end_times:
+                _propagate_cid_teardown_lids(
+                    ck[0], tagged_rows, self.torn_down_lids, max_start_ns=td_end_ns
+                )
+
+    @staticmethod
+    def _classify_terminated_tagged_rows(state: _ReplicaViewBuildState) -> None:
+        # Classify terminal tagged rows after all incarnations on (nt, cid) are
+        # known so a stale row on a reused cloud_instance_id cannot hijack a
+        # newer replica or lose its vanished-slot accounting on its original
+        # replica.
+        latest_start_by_cid = {
+            ck: max(start_ns for start_ns, _ in rows)
+            for ck, rows in state.tagged_rows_by_cid.items()
+        }
+        for nt, cid, rid, lid, has_c_inst, start_ns, inst in state.term_tagged_rows:
+            if start_ns < latest_start_by_cid[(nt, cid)] or not has_c_inst:
+                state.missing_rows_by_lid[(nt, lid)].append(inst)
+            elif rid:
+                state.live_term_rows_by_rep_lid[((nt, rid), lid)].append(inst)
+
+    def _reattach_live_terminal_rows(self, state: _ReplicaViewBuildState) -> None:
+        # Reattach terminal rows whose cloud pod is still alive (e.g. a raylet
+        # restart mid-replica-boot where an untagged RAY_RUNNING row adopted
+        # the pod).
+        for (rk, lid), rows in state.live_term_rows_by_rep_lid.items():
+            nt, rid = rk
+            term_cids = {r.cloud_instance_id for r in rows}
+            is_td = (nt, lid) in self.torn_down_lids
+            if rk in self.assigned_reps and (
+                lid in self.rep_lids[rk]
+                or (not is_td and bool(term_cids & state.untagged_active_cids[rk]))
+            ):
+                self.claimed_reps_by_lid[(nt, lid)].add(rid)
+                self.rep_bound_cids_by_lid[(rk, lid)].update(term_cids)
+                self.rep_lids[rk].add(lid)
+                if is_td:
+                    self.non_fillable_reps.add(rk)
+
+    def _propagate_live_teardowns(self, state: _ReplicaViewBuildState) -> None:
+        # Propagate teardown of any live pod on a replica (including untagged
+        # rows from raylet restarts or ray-node adoption) to all launch batches
+        # bound to that replica so sibling REQUESTED slots fail instead of
+        # leaking.
+        for rk in state.teardown_reps:
+            for bound_lid in self.rep_lids[rk]:
+                self.torn_down_lids.add((rk[0], bound_lid))
+
+        # Propagate teardown of live untagged rows by (node_type,
+        # cloud_instance_id) so unlabeled legacy pods and pods whose cloud
+        # instance already vanished before _handle_cloud_instance_terminated
+        # still mark their launch batch.
+        for ck in state.live_untagged_td_cids:
+            tagged_rows = state.tagged_rows_by_cid.get(ck)
+            if tagged_rows:
+                _propagate_cid_teardown_lids(ck[0], tagged_rows, self.torn_down_lids)
+
+    def _reattach_missing_rows(
+        self,
+        state: _ReplicaViewBuildState,
+        replica_sizes: Dict[NodeType, int],
+    ) -> None:
+        # Reattach pods that disappeared from cloud_instances to their
+        # per-replica launch batch: onto its live replica if any pod remains
+        # alive, or into vanished_cids_by_lid if all bound pods of a
+        # non-torn-down batch vanished mid-boot before all `size` slots
+        # allocated.
+        for (nt, lid), rows in state.missing_rows_by_lid.items():
+            missing_cids = {r.cloud_instance_id for r in rows}
+            is_td = (nt, lid) in self.torn_down_lids
+            claimed_rids = self.claimed_reps_by_lid.get((nt, lid), set())
+            if claimed_rids:
+                for rid in claimed_rids:
+                    rk = (nt, rid)
+                    self.rep_bound_cids_by_lid[(rk, lid)].update(missing_cids)
+                    if is_td:
+                        self.non_fillable_reps.add(rk)
+            elif (
+                not is_td
+                and self.requested_by_lid[(nt, lid)] > 0
+                and len(missing_cids) < replica_sizes[nt]
+            ):
+                self.vanished_cids_by_lid[(nt, lid)].update(missing_cids)
+
+
+def _match_worker_cloud_instance(
+    im_instance: Optional[Instance],
+    cloud_instance: Optional[CloudInstance],
+) -> Optional[CloudInstance]:
+    """Return `cloud_instance` if it belongs to worker `im_instance`."""
+    if (
+        im_instance is None
+        or cloud_instance is None
+        or im_instance.node_kind == NodeKind.HEAD
+        or cloud_instance.node_kind == NodeKind.HEAD
+    ):
+        return None
+    if cloud_instance.node_type and (
+        cloud_instance.node_type != im_instance.instance_type
+    ):
+        return None
+    return cloud_instance
+
+
+def _get_worker_replica_id(
+    im_instance: Optional[Instance],
+    cloud_instance: Optional[CloudInstance],
+) -> Optional[str]:
+    """Return the cloud replica ID for a matching worker instance, if any."""
+    matched = _match_worker_cloud_instance(im_instance, cloud_instance)
+    return matched.replica_id if matched is not None and matched.replica_id else None
+
 
 def _get_replica_key(
     inst: Optional[Instance],
@@ -646,15 +1038,8 @@ def _get_replica_key(
         or inst.instance_type not in replica_sizes
     ):
         return None
-    c_inst = cloud_instances.get(inst.cloud_instance_id)
-    if (
-        c_inst is not None
-        and c_inst.replica_id
-        and c_inst.node_kind != NodeKind.HEAD
-        and (not c_inst.node_type or c_inst.node_type == inst.instance_type)
-    ):
-        return (inst.instance_type, c_inst.replica_id)
-    return None
+    rid = _get_worker_replica_id(inst, cloud_instances.get(inst.cloud_instance_id))
+    return (inst.instance_type, rid) if rid else None
 
 
 def _has_teardown_history(inst: Instance) -> bool:
@@ -717,206 +1102,9 @@ def _build_multihost_replica_view(
     status_overrides: Optional[Dict[str, "Instance.InstanceStatus"]] = None,
 ) -> _MultiHostReplicaView:
     """Project per-instance IM rows and cloud replica IDs into one canonical view."""
-    view = _MultiHostReplicaView()
-    overrides = status_overrides or {}
-
-    active_nt_cids: Set[Tuple[NodeType, CloudInstanceId]] = set()
-    for inst in im_instances:
-        st = overrides.get(inst.instance_id, inst.status)
-        if not inst.cloud_instance_id:
-            continue
-        if st in _ACTIVE_CID_STATUSES:
-            view.active_cids.add(inst.cloud_instance_id)
-            active_nt_cids.add((inst.instance_type, inst.cloud_instance_id))
-        if st in _LIVE_CID_STATUSES:
-            view.live_cids.add((inst.instance_type, inst.cloud_instance_id))
-
-    if not replica_sizes:
-        return view
-
-    live_term_rows_by_rep_lid: Dict[
-        Tuple[Tuple[NodeType, str], str], List[Instance]
-    ] = defaultdict(list)
-    missing_rows_by_lid: Dict[Tuple[NodeType, str], List[Instance]] = defaultdict(list)
-    untagged_active_cids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
-    teardown_reps: Set[Tuple[NodeType, str]] = set()
-    tagged_rows_by_cid: Dict[Tuple[NodeType, str], List[Tuple[int, str]]] = defaultdict(
-        list
+    return _MultiHostReplicaView.build(
+        im_instances,
+        cloud_instances,
+        replica_sizes,
+        status_overrides=status_overrides,
     )
-    term_untagged_td_by_cid: Dict[Tuple[NodeType, str], List[int]] = defaultdict(list)
-    live_untagged_td_cids: Set[Tuple[NodeType, str]] = set()
-    term_tagged_rows: List[Tuple[NodeType, str, str, str, bool, int, Instance]] = []
-
-    for inst in im_instances:
-        if inst.node_kind == NodeKind.HEAD or inst.instance_type not in replica_sizes:
-            continue
-        nt = inst.instance_type
-        st = overrides.get(inst.instance_id, inst.status)
-        lid = inst.launch_request_id
-
-        if inst.cloud_instance_id:
-            c_inst = cloud_instances.get(inst.cloud_instance_id)
-            if c_inst is not None and (
-                c_inst.node_kind == NodeKind.HEAD
-                or (c_inst.node_type and c_inst.node_type != nt)
-            ):
-                c_inst = None
-            rid = c_inst.replica_id if c_inst is not None and c_inst.replica_id else ""
-            ck = (nt, inst.cloud_instance_id)
-            if st in _TERMINAL_INSTANCE_STATUSES:
-                if not lid:
-                    if _has_teardown_history(inst):
-                        end_ns = max(
-                            (h.timestamp_ns for h in inst.status_history), default=0
-                        )
-                        term_untagged_td_by_cid[ck].append(end_ns)
-                    continue
-                start_ns = _instance_cloud_start_ns(inst)
-                tagged_rows_by_cid[ck].append((start_ns, lid))
-                if _has_teardown_history(inst):
-                    view.torn_down_lids.add((nt, lid))
-                term_tagged_rows.append(
-                    (
-                        nt,
-                        inst.cloud_instance_id,
-                        rid,
-                        lid,
-                        c_inst is not None,
-                        start_ns,
-                        inst,
-                    )
-                )
-                continue
-
-            is_shadowed_stopped = (
-                st == Instance.RAY_STOPPED
-                and (nt, inst.cloud_instance_id) in active_nt_cids
-            )
-            in_teardown = not is_shadowed_stopped and st in (
-                _TEARDOWN_INSTANCE_STATUSES | {Instance.RAY_STOPPING}
-            )
-            if lid:
-                tagged_rows_by_cid[ck].append((_instance_cloud_start_ns(inst), lid))
-                if in_teardown:
-                    view.torn_down_lids.add((nt, lid))
-            elif in_teardown:
-                live_untagged_td_cids.add(ck)
-
-            if c_inst is None:
-                if lid and not is_shadowed_stopped:
-                    missing_rows_by_lid[(nt, lid)].append(inst)
-                continue
-
-            if not rid:
-                continue
-
-            rk = (nt, rid)
-            view.assigned_reps.add(rk)
-            if lid:
-                view.claimed_reps_by_lid[(nt, lid)].add(rid)
-                view.rep_bound_cids_by_lid[(rk, lid)].add(inst.cloud_instance_id)
-                view.rep_lids[rk].add(lid)
-
-            # Ignore stale RAY_STOPPED rows shadowed by an active IM row on the
-            # same cloud instance (e.g. after a raylet restart).
-            if is_shadowed_stopped:
-                continue
-
-            if not lid:
-                untagged_active_cids[rk].add(inst.cloud_instance_id)
-
-            if in_teardown:
-                teardown_reps.add(rk)
-            if st in _DRAINING_INSTANCE_STATUSES | _TEARDOWN_INSTANCE_STATUSES:
-                view.non_fillable_reps.add(rk)
-
-            view.rep_assigned_cids[rk].add(inst.cloud_instance_id)
-            if st in _OCCUPYING_CLOUD_STATUSES:
-                view.rep_occupying[rk] += 1
-            if st in _DRAINING_INSTANCE_STATUSES:
-                view.draining_reps.add(rk)
-                view.ray_running_reps.add(rk)
-            elif st == Instance.RAY_RUNNING:
-                view.ray_running_reps.add(rk)
-        elif st == Instance.REQUESTED:
-            view.requested_by_lid[(nt, lid or "")] += 1
-
-    # Propagate teardown from already-TERMINATED untagged rows (e.g. after a
-    # mid-boot raylet restart on an unlabeled pod or post-delete reconcile)
-    # before reattaching live terminal rows, bounded by incarnation timestamps
-    # so stale records cannot poison a newer reused cloud_instance_id.
-    for ck, td_end_times in term_untagged_td_by_cid.items():
-        tagged_rows = tagged_rows_by_cid.get(ck)
-        if not tagged_rows:
-            continue
-        for td_end_ns in td_end_times:
-            _propagate_cid_teardown_lids(
-                ck[0], tagged_rows, view.torn_down_lids, max_start_ns=td_end_ns
-            )
-
-    # Classify terminal tagged rows after all incarnations on (nt, cid) are known
-    # so a stale row on a reused cloud_instance_id cannot hijack a newer replica
-    # or lose its vanished-slot accounting on its original replica.
-    latest_start_by_cid = {
-        ck: max(start_ns for start_ns, _ in rows)
-        for ck, rows in tagged_rows_by_cid.items()
-    }
-    for nt, cid, rid, lid, has_c_inst, start_ns, inst in term_tagged_rows:
-        if start_ns < latest_start_by_cid[(nt, cid)] or not has_c_inst:
-            missing_rows_by_lid[(nt, lid)].append(inst)
-        elif rid:
-            live_term_rows_by_rep_lid[((nt, rid), lid)].append(inst)
-
-    # Reattach terminal rows whose cloud pod is still alive (e.g. a raylet
-    # restart mid-replica-boot where an untagged RAY_RUNNING row adopted the pod).
-    for (rk, lid), rows in live_term_rows_by_rep_lid.items():
-        nt, rid = rk
-        term_cids = {r.cloud_instance_id for r in rows}
-        is_td = (nt, lid) in view.torn_down_lids
-        if rk in view.assigned_reps and (
-            lid in view.rep_lids[rk]
-            or (not is_td and bool(term_cids & untagged_active_cids[rk]))
-        ):
-            view.claimed_reps_by_lid[(nt, lid)].add(rid)
-            view.rep_bound_cids_by_lid[(rk, lid)].update(term_cids)
-            view.rep_lids[rk].add(lid)
-            if is_td:
-                view.non_fillable_reps.add(rk)
-
-    # Propagate teardown of any live pod on a replica (including untagged rows
-    # from raylet restarts or ray-node adoption) to all launch batches bound to
-    # that replica so sibling REQUESTED slots fail instead of leaking.
-    for rk in teardown_reps:
-        for bound_lid in view.rep_lids[rk]:
-            view.torn_down_lids.add((rk[0], bound_lid))
-
-    # Propagate teardown of live untagged rows by (node_type, cloud_instance_id)
-    # so unlabeled legacy pods and pods whose cloud instance already vanished
-    # before _handle_cloud_instance_terminated still mark their launch batch.
-    for ck in live_untagged_td_cids:
-        tagged_rows = tagged_rows_by_cid.get(ck)
-        if tagged_rows:
-            _propagate_cid_teardown_lids(ck[0], tagged_rows, view.torn_down_lids)
-
-    # Reattach pods that disappeared from cloud_instances to their per-replica
-    # launch batch: onto its live replica if any pod remains alive, or into
-    # vanished_cids_by_lid if all bound pods of a non-torn-down batch vanished
-    # mid-boot before all `size` slots allocated.
-    for (nt, lid), rows in missing_rows_by_lid.items():
-        missing_cids = {r.cloud_instance_id for r in rows}
-        is_td = (nt, lid) in view.torn_down_lids
-        claimed_rids = view.claimed_reps_by_lid.get((nt, lid), set())
-        if claimed_rids:
-            for rid in claimed_rids:
-                rk = (nt, rid)
-                view.rep_bound_cids_by_lid[(rk, lid)].update(missing_cids)
-                if is_td:
-                    view.non_fillable_reps.add(rk)
-        elif (
-            not is_td
-            and view.requested_by_lid[(nt, lid)] > 0
-            and len(missing_cids) < replica_sizes[nt]
-        ):
-            view.vanished_cids_by_lid[(nt, lid)].update(missing_cids)
-
-    return view

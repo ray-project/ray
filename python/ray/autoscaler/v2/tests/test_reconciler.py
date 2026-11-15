@@ -9767,6 +9767,80 @@ class TestReconciler:
             assert insts_after["s0"].status == Instance.TERMINATING
             assert insts_after["s1"].status == Instance.ALLOCATION_FAILED
 
+    def test_worker_replica_id_and_replica_view_domain_methods(self):
+        """Verify _get_worker_replica_id guards and _MultiHostReplicaView
+        domain mutation/query helpers."""
+        from ray.autoscaler.v2.instance_manager.common import (
+            _get_worker_replica_id,
+            _MultiHostReplicaView,
+        )
+
+        worker_inst = create_instance(
+            "w0",
+            status=Instance.RAY_RUNNING,
+            instance_type="tpu-a",
+            cloud_instance_id="p0",
+            node_kind=NodeKind.WORKER,
+        )
+        head_inst = create_instance(
+            "h0",
+            status=Instance.RAY_RUNNING,
+            instance_type="tpu-a",
+            cloud_instance_id="p0",
+            node_kind=NodeKind.HEAD,
+        )
+        matching_cloud = CloudInstance(
+            "p0", "tpu-a", NodeKind.WORKER, True, replica_id="rep-0"
+        )
+        foreign_cloud = CloudInstance(
+            "p0", "tpu-b", NodeKind.WORKER, True, replica_id="rep-0"
+        )
+        head_cloud = CloudInstance(
+            "p0", "tpu-a", NodeKind.HEAD, True, replica_id="rep-0"
+        )
+        unlabeled_cloud = CloudInstance("p0", "tpu-a", NodeKind.WORKER, True)
+
+        assert _get_worker_replica_id(worker_inst, matching_cloud) == "rep-0"
+        assert _get_worker_replica_id(head_inst, matching_cloud) is None
+        assert _get_worker_replica_id(worker_inst, foreign_cloud) is None
+        assert _get_worker_replica_id(worker_inst, head_cloud) is None
+        assert _get_worker_replica_id(worker_inst, unlabeled_cloud) is None
+        assert _get_worker_replica_id(None, matching_cloud) is None
+        assert _get_worker_replica_id(worker_inst, None) is None
+
+        # Domain methods on _MultiHostReplicaView.
+        view = _MultiHostReplicaView()
+        view.requested_by_lid[("tpu-a", "lid-1")] = 2
+        view.vanished_cids_by_lid[("tpu-a", "lid-1")] = {"p-old"}
+        assert view.is_partial_vanished_batch("tpu-a", "lid-1", size=4)
+        assert not view.is_surplus_batch("tpu-a", "lid-1", size=4)
+        assert view.unclaimed_replicas_by_lid({"tpu-a": 4}) == {"tpu-a": {}}
+
+        view.requested_by_lid[("tpu-a", "lid-1")] = 3
+        assert view.unclaimed_replicas_by_lid({"tpu-a": 4}) == {"tpu-a": {"lid-1": 1}}
+
+        view.consume_requested_slot("tpu-a", "lid-1")
+        assert view.requested_by_lid[("tpu-a", "lid-1")] == 2
+        view.claim_replica_slot("tpu-a", "rep-1", "lid-1", "p-live")
+        assert ("tpu-a", "rep-1") in view.assigned_reps
+        assert view.rep_bound_cids_by_lid[(("tpu-a", "rep-1"), "lid-1")] == {
+            "p-old",
+            "p-live",
+        }
+        assert not view.is_partial_vanished_batch("tpu-a", "lid-1", size=4)
+        assert view.has_pending_backfill_for_replica("tpu-a", "rep-1", size=4)
+        assert not view.is_surplus_batch("tpu-a", "lid-1", size=4)
+
+        # Filling the remaining 2 slots clears pending backfill and marks surplus.
+        view.claim_replica_slot("tpu-a", "rep-1", "lid-1", "p-live-2")
+        view.claim_replica_slot("tpu-a", "rep-1", "lid-1", "p-live-3")
+        assert not view.has_pending_backfill_for_replica("tpu-a", "rep-1", size=4)
+        assert view.is_surplus_batch("tpu-a", "lid-1", size=4)
+        view.consume_requested_slot("tpu-a", "lid-1")
+        view.consume_requested_slot("tpu-a", "lid-1")
+        view.consume_requested_slot("tpu-a", "lid-1")
+        assert view.requested_by_lid[("tpu-a", "lid-1")] == 0
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

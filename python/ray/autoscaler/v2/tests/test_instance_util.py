@@ -328,6 +328,42 @@ class InstanceUtilTest(unittest.TestCase):
                 f"!= {expected}"
             )
 
+    def test_is_solicited_stop(self):
+        # Positive 1: RAY_STOP_REQUESTED -> RAY_STOPPED.
+        inst_direct = InstanceUtil.new_instance("i-1", "tpu", Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_direct, Instance.RAY_STOP_REQUESTED)
+        assert InstanceUtil.set_status(inst_direct, Instance.RAY_STOPPED)
+        assert InstanceUtil.is_solicited_stop(inst_direct)
+
+        # Positive 2: RAY_STOP_REQUESTED -> RAY_STOPPING -> RAY_STOPPED.
+        inst_draining = InstanceUtil.new_instance("i-2", "tpu", Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_draining, Instance.RAY_STOP_REQUESTED)
+        assert InstanceUtil.set_status(inst_draining, Instance.RAY_STOPPING)
+        assert InstanceUtil.set_status(inst_draining, Instance.RAY_STOPPED)
+        assert InstanceUtil.is_solicited_stop(inst_draining)
+
+        # Negative 1: Unsolicited crash (RAY_RUNNING -> RAY_STOPPED).
+        inst_crash = InstanceUtil.new_instance("i-3", "tpu", Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_crash, Instance.RAY_STOPPED)
+        assert not InstanceUtil.is_solicited_stop(inst_crash)
+
+        # Negative 2: Unsolicited RAY_STOPPING -> RAY_STOPPED (no RAY_STOP_REQUESTED).
+        inst_unsolicited_drain = InstanceUtil.new_instance(
+            "i-4", "tpu", Instance.RAY_RUNNING
+        )
+        assert InstanceUtil.set_status(inst_unsolicited_drain, Instance.RAY_STOPPING)
+        assert InstanceUtil.set_status(inst_unsolicited_drain, Instance.RAY_STOPPED)
+        assert not InstanceUtil.is_solicited_stop(inst_unsolicited_drain)
+
+        # Negative 3: Still RAY_STOP_REQUESTED / RAY_STOPPING (not RAY_STOPPED yet).
+        inst_pending = InstanceUtil.new_instance("i-5", "tpu", Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_pending, Instance.RAY_STOP_REQUESTED)
+        assert not InstanceUtil.is_solicited_stop(inst_pending)
+
+        # Negative 4: Single-entry RAY_STOPPED history.
+        inst_short = InstanceUtil.new_instance("i-6", "tpu", Instance.RAY_STOPPED)
+        assert not InstanceUtil.is_solicited_stop(inst_short)
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
