@@ -33,7 +33,7 @@ _PRELUDE = textwrap.dedent(
                 continue
             try:
                 with open(f"/proc/{entry}/stat") as f:
-                    comm, state, ppid = r._parse_stat(f.read())
+                    comm, state, ppid, _ = r._parse_stat(f.read())
             except (OSError, ValueError):
                 continue
             if state == "Z" and ppid == os.getpid():
@@ -48,13 +48,15 @@ _PRELUDE = textwrap.dedent(
             time.sleep(0.02)
         raise AssertionError(f"no zombie {comm!r}: {zombies()}")
 
-    def orphan(tmp, name, seconds):
+    def orphan(tmp, name, seconds, own_session=True):
         # Start a copy of sleep named `name` from a shell that exits at once,
-        # as runsc starts runsc-fd-parking and exits before it.
+        # as runsc starts runsc-fd-parking and exits before it. runsc starts
+        # its helpers in sessions of their own (setsid).
         path = os.path.join(tmp, name)
         shutil.copy("/bin/sleep", path)
+        setsid = "setsid " if own_session else ""
         out = subprocess.run(
-            ["sh", "-c", f'"{path}" {seconds} & echo $!'],
+            ["sh", "-c", f'{setsid}"{path}" {seconds} & echo $!'],
             check=True, capture_output=True, text=True,
         ).stdout
         return int(out)
@@ -95,8 +97,8 @@ def _needs_coreutils():
 
 
 def test_parse_stat_handles_parentheses_and_spaces_in_comm():
-    stat = "4242 (a) (b c) Z 17 4242 4242 0 -1 4228"
-    assert orphan_reaper._parse_stat(stat) == ("a) (b c", "Z", 17)
+    stat = "4242 (a) (b c) Z 17 4243 4244 0 -1 4228"
+    assert orphan_reaper._parse_stat(stat) == ("a) (b c", "Z", 17, 4244)
 
 
 def test_reaps_orphaned_fd_parking_helper(tmp_path):
@@ -122,6 +124,21 @@ def test_reaps_orphaned_gofer(tmp_path):
         wait_for_zombie("exe")
         assert r.reap_orphans() == 1
         assert "exe" not in zombies().values()
+        """,
+    )
+
+
+def test_leaves_an_orphan_in_this_session_alone(tmp_path):
+    # Only helpers that runsc started in their own session are reaped.
+    _run_child(
+        tmp_path,
+        """
+        assert r._enable_subreaper()
+        orphan(tmp, "exe", 0.1, own_session=False)
+        wait_for_zombie("exe")
+        assert r.reap_orphans() == 0
+        for pid in zombies():
+            os.waitpid(pid, 0)
         """,
     )
 

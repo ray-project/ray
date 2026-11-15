@@ -15,10 +15,10 @@ from running out of process IDs.
 ``start`` makes the worker process that runs the gVisor backend a child
 subreaper, so these helpers become its children, and starts a thread that
 reaps them. The thread only reaps zombies whose command name is in
-``_REAPED_COMMS`` and that no live ``subprocess.Popen`` in this process
-waits for: reaping such a child would take the exit status that
-``subprocess`` waits for (``Popen.wait`` reports 0 for a child it can't
-find). Other orphans in the worker's subtree still become its children and
+``_REAPED_COMMS`` and that run in a session of their own, as runsc's
+helpers do. Children this process starts with ``subprocess``, such as runsc
+itself, share its session, so their exit statuses stay for ``Popen.wait``
+(which reports 0 for a child it can't find). Other orphans in the worker's subtree still become its children and
 are not reaped here; they are reparented again when the worker exits.
 
 Set ``RAY_SANDBOX_REAP_ORPHANS=0`` to turn this off, for example when the
@@ -26,10 +26,8 @@ pod's init reaps orphans (``shareProcessNamespace: true`` or ``tini``).
 """
 
 import ctypes
-import gc
 import logging
 import os
-import subprocess
 import sys
 import threading
 import time
@@ -39,7 +37,9 @@ logger = logging.getLogger(__name__)
 
 REAP_ORPHANS_ENV = "RAY_SANDBOX_REAP_ORPHANS"
 REAP_INTERVAL_ENV = "RAY_SANDBOX_ORPHAN_REAP_INTERVAL_S"
-_DEFAULT_INTERVAL_SECONDS = 5.0
+# runsc's teardown (kill, delete, checkpoint) waits for the sandbox's helpers
+# to be gone, and a zombie still counts, so reap them soon after they exit.
+_DEFAULT_INTERVAL_SECONDS = 0.25
 
 # From <linux/prctl.h>.
 _PR_SET_CHILD_SUBREAPER = 36
@@ -111,22 +111,13 @@ def _enable_subreaper() -> bool:
 
 
 def _parse_stat(stat: str):
-    """Return (comm, state, ppid) from the text of /proc/<pid>/stat."""
+    """Return (comm, state, ppid, session) from the text of /proc/<pid>/stat."""
     # comm is in parentheses and may itself contain spaces or parentheses.
     open_paren = stat.index("(")
     close_paren = stat.rindex(")")
     comm = stat[open_paren + 1 : close_paren]
-    state, ppid = stat[close_paren + 2 :].split()[:2]
-    return comm, state, int(ppid)
-
-
-def _popen_pids() -> set:
-    """The pids of this process's subprocess.Popen children not yet waited for."""
-    return {
-        o.pid
-        for o in gc.get_objects()
-        if isinstance(o, subprocess.Popen) and o.returncode is None
-    }
+    state, ppid, _pgrp, session = stat[close_paren + 2 :].split()[:4]
+    return comm, state, int(ppid), int(session)
 
 
 def reap_orphans() -> int:
@@ -136,8 +127,8 @@ def reap_orphans() -> int:
         The number of zombies reaped.
     """
     me = os.getpid()
+    my_session = os.getsid(0)
     reaped = 0
-    waited_for = None
     try:
         entries = os.listdir("/proc")
     except OSError:
@@ -147,16 +138,15 @@ def reap_orphans() -> int:
             continue
         try:
             with open(f"/proc/{entry}/stat", encoding="utf-8", errors="replace") as f:
-                comm, state, ppid = _parse_stat(f.read())
+                comm, state, ppid, session = _parse_stat(f.read())
         except (OSError, ValueError):
             continue
         if state != "Z" or ppid != me or comm not in _REAPED_COMMS:
             continue
-        # "exe" is a common name for programs that re-execute themselves, so
-        # never take a child that a live Popen in this process waits for.
-        if waited_for is None:
-            waited_for = _popen_pids()
-        if int(entry) in waited_for:
+        # runsc starts its helpers with setsid. "exe" is a common name for
+        # programs that re-execute themselves, so never take a child in this
+        # process's own session: subprocess children, e.g. runsc, stay in it.
+        if session == my_session:
             continue
         # A zombie's pid can't be reused until it's reaped, so this can only
         # reap the process that was just read.
