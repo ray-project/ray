@@ -105,10 +105,21 @@ class TokenSender:
             return False
         return True
 
+    def connect(self, endpoints: List[str]) -> None:
+        """Open sockets to ``endpoints`` before the first push.
+
+        With ``ZMQ_IMMEDIATE``, a push to a socket still connecting fails.
+        """
+        for endpoint in endpoints:
+            self._get_socket(endpoint)
+
     def close(self) -> None:
         for socket in self._sockets.values():
             _close_socket(socket)
         self._sockets.clear()
+        if self._context is not None:
+            self._context.term()
+            self._context = None
 
     def __del__(self) -> None:
         self.close()
@@ -121,9 +132,20 @@ class TokenSender:
             return socket
 
         if self._context is None:
-            self._context = zmq.Context.instance()
+            # The default shared context caps at 1023 sockets.
+            self._context = zmq.Context()
+            self._context.set(zmq.MAX_SOCKETS, self._max_sockets + 1)
 
-        socket = _new_socket(self._context, zmq.PUSH)
+        try:
+            socket = _new_socket(self._context, zmq.PUSH)
+        except zmq.ZMQError as e:
+            logger.warning(
+                "Failed to create prompt-token ZMQ socket for %s; falling back "
+                "to engine tokenization: %s",
+                endpoint,
+                e,
+            )
+            return None
         # SNDHWM is the send high-water mark: how many payloads queue per replica
         # before sends fail. Must be set before connect().
         socket.setsockopt(zmq.SNDHWM, self._send_queue_limit)

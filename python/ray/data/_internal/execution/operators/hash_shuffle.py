@@ -48,6 +48,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -82,6 +83,7 @@ from ray.data.context import (
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -682,8 +684,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
 
     @property
     def shuffle_name(self) -> str:
@@ -1039,6 +1044,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         return shuffling_tasks + finalizing_tasks
 
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        requests = self._get_base_resource_requests()
+        if self._aggregator_pool is not None:
+            # Report aggregator demand even before ``AggregatorPool.start()`` has
+            # issued the ``.remote()`` calls, so a capacity-starved shuffle can
+            # already trigger scale-up.
+            aggregator_request = self._aggregator_pool.get_resource_request()
+            requests.extend(
+                dict(aggregator_request)
+                for _ in range(self._aggregator_pool.num_aggregators)
+            )
+        return requests
+
     def _get_active_shuffling_tasks(self) -> List[MetadataOpTask]:
         return list(
             itertools.chain.from_iterable(
@@ -1096,6 +1114,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             exc: Optional[Exception],
             task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
+            aborted: bool,
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
             #       emitted (current limitation, since it's emitted along with
@@ -1834,6 +1853,10 @@ class AggregatorPool:
     @property
     def num_aggregators(self):
         return self._num_aggregators
+
+    def get_resource_request(self) -> Dict[str, float]:
+        """Return the exact resource request used to create each aggregator."""
+        return actor_resource_dict(self._aggregator_ray_remote_args)
 
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]

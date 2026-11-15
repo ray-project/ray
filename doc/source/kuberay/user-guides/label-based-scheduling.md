@@ -86,7 +86,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Create a RayCluster CR with autoscaling enabled and labels specified
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster-label-selector.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster-label-selector.yaml
 ```
 
 ### Step 4: Verify the Kubernetes cluster status
@@ -109,7 +109,7 @@ kubectl get configmaps
 # ...
 ```
 
-The RayCluster has 1 head Pod and 1 worker Pod already scaled. The head Pod has two containers: a Ray head container and a Ray autoscaler sidecar container. Additionally, the [ray-cluster-label-selector.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster-label-selector.yaml) includes a ConfigMap named `ray-example` that contains three Python scripts: `example_task.py`, `example_actor.py`, and `example_placement_group.py`, which all showcase label-based scheduling.
+The RayCluster has 1 head Pod and 1 worker Pod already scaled. The head Pod has two containers: a Ray head container and a Ray autoscaler sidecar container. Additionally, the [ray-cluster-label-selector.yaml](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster-label-selector.yaml) includes a ConfigMap named `ray-example` that contains three Python scripts: `example_task.py`, `example_actor.py`, and `example_placement_group.py`, which all showcase label-based scheduling.
 
 * `example_task.py` is a Python script that creates a simple task requiring a node with the `ray.io/market-type: on-demand` and `cpu-family: in(intel,amd)` labels. The `in` operator expresses that the cpu-family can be either Intel or AMD.
 ```py
@@ -170,7 +170,7 @@ kubectl exec -it $HEAD_POD -- ray list nodes
 
 ```bash
 # Delete RayCluster and ConfigMap
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster-label-selector.yaml
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster-label-selector.yaml
 
 # Uninstall the KubeRay operator
 helm uninstall kuberay-operator

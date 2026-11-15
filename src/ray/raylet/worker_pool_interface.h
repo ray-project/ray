@@ -147,10 +147,10 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 3: Worker process has been started, but the worker registered back to raylet
   /// timeout.
   //  Case 4: Any fails of runtime env creation.
-  /// Of course, the callback will also be executed when a valid worker found in following
+  /// The callback will also be executed when a valid worker is found in the following
   /// cases:
-  /// Case 1: An suitable worker was found in idle worker pool.
-  /// Case 2: An suitable worker registered to raylet.
+  /// Case 1: A suitable worker was found in idle worker pool.
+  /// Case 2: A suitable worker registered with the raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
   virtual void PopWorker(const LeaseSpecification &lease_spec,
                          const PopWorkerCallback &callback) = 0;

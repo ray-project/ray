@@ -1,6 +1,4 @@
-"""
-This file holds framework-agnostic components for DreamerV3's RLModule.
-"""
+"""This file holds framework-agnostic components for DreamerV3's RLModule."""
 
 import abc
 from typing import Dict

@@ -204,30 +204,46 @@ def _compact_file_ids(ids: Union[pa.Array, pa.ChunkedArray]) -> pa.Table:
         A table with ``_COMPACTED_CHECKPOINT_SCHEMA``: one row per done or
         partly done read unit.
     """
-    path_prefix = _id_field(ids, PATH_PREFIX_FIELD, pa.string())[0]
-    file_name = _id_field(ids, FILE_NAME_FIELD, pa.string())[0]
+    if len(ids) == 0:
+        return _COMPACTED_CHECKPOINT_SCHEMA.empty_table()
+    # All IDs passed to _compact_file_ids belong to the same file, so slicing
+    # the first element is sufficient to extract the shared path_prefix,
+    # file_name, and num_row_groups metadata.
+    first_id = ids.slice(0, 1)
+    path_prefix = _id_field(first_id, PATH_PREFIX_FIELD, pa.string())[0]
+    file_name = _id_field(first_id, FILE_NAME_FIELD, pa.string())[0]
     path = posixpath.join(path_prefix, file_name)
-    num_row_groups = int(_id_field(ids, NUM_FRAGMENTS_FIELD, pa.int32())[0])
+    num_row_groups = int(_id_field(first_id, NUM_FRAGMENTS_FIELD, pa.int32())[0])
     row_groups = _id_field(ids, FRAGMENT_FIELD, pa.int32())
     row_group_sizes = _id_field(ids, NUM_ROWS_FIELD, pa.int32())
     row_ids = _id_field(ids, ROW_ID_FIELD, pa.int32())
 
+    if len(row_groups) > 1 and np.any(row_groups[1:] < row_groups[:-1]):
+        order = np.argsort(row_groups, kind="stable")
+        row_groups = row_groups[order]
+        row_group_sizes = row_group_sizes[order]
+        row_ids = row_ids[order]
+
+    split_points = np.flatnonzero(row_groups[1:] != row_groups[:-1]) + 1
+    starts = np.concatenate(([0], split_points))
+    ends = np.concatenate((split_points, [len(row_groups)]))
+
     done_row_groups: List[int] = []
     partial_row_groups: List[int] = []
     partial_masks: List[np.ndarray] = []
-    for row_group in np.unique(row_groups):
-        in_group = row_groups == row_group
-        size = int(row_group_sizes[in_group][0])
-        committed = np.unique(row_ids[in_group])
+    for start, end in zip(starts.tolist(), ends.tolist()):
+        row_group = int(row_groups[start])
+        size = int(row_group_sizes[start])
+        group_row_ids = row_ids[start:end]
         # Only IDs inside the row group count; anything else must never mark
         # rows done.
-        committed = committed[(committed >= 0) & (committed < size)]
-        if len(committed) >= size:
-            done_row_groups.append(int(row_group))
+        valid_ids = group_row_ids[(group_row_ids >= 0) & (group_row_ids < size)]
+        mask = np.zeros(max(size, 0), dtype=bool)
+        mask[valid_ids] = True
+        if len(valid_ids) >= size and mask.all():
+            done_row_groups.append(row_group)
         else:
-            mask = np.zeros(size, dtype=bool)
-            mask[committed] = True
-            partial_row_groups.append(int(row_group))
+            partial_row_groups.append(row_group)
             partial_masks.append(mask)
 
     if len(done_row_groups) == num_row_groups:

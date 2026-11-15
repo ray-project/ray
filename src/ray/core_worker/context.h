@@ -116,6 +116,20 @@ class WorkerContext {
 
   void SetTaskDepth(int64_t depth) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /**
+   * @brief Records `task_spec` as the task running on the current thread, and
+   *        updates the worker's actor and runtime env state from it.
+   *
+   *        The first normal or actor creation task sets the worker's runtime env.
+   *        Ray doesn't reuse a worker for a different runtime env, so a later task
+   *        with a different one is a fatal error. Its message masks `env_vars`
+   *        values. A `RAY_CHECK` also aborts the process if the task belongs to a
+   *        different job or actor than the one this worker runs.
+   *
+   * @param task_spec The task about to run on the current thread.
+   * @throws nlohmann::json::parse_error If this task is the first to set the
+   *         runtime env and its serialized runtime env isn't valid JSON.
+   */
   void SetCurrentTask(const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mutex_);
 
   void ResetCurrentTask();

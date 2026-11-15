@@ -1831,7 +1831,6 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                                         rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
   resources_data->set_node_id(self_node_id_.Binary());
-  resources_data->set_node_manager_address(initial_config_.node_manager_address);
   cluster_lease_manager_.FillResourceUsage(*resources_data);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -3167,9 +3166,8 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           if (workers.empty()) {
             RAY_LOG_EVERY_MS(WARNING, 5000)
                 << "Memory usage above threshold but no workers are available for "
-                   "killing."
-                << "This could be due to worker memory leak and"
-                << "idle worker are occupying most of the memory.";
+                   "killing. This could be due to a worker memory leak, or idle "
+                   "workers occupying most of the memory.";
             ReleaseKillWorkerInProgress();
             return;
           }

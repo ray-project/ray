@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from google.protobuf.json_format import Parse
 
+from ray.core.generated.events_submission_job_lifecycle_event_pb2 import (
+    SubmissionJobLifecycleEvent,
+)
 from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobErrorType,
@@ -299,6 +302,12 @@ def test_get_all_jobs_filters_out_none_job_info():
     assert result == {"job1": job_info_1}
     for job_id, job_info in result.items():
         asdict(job_info)  # This should not raise an exception
+
+
+def test_job_status_matches_lifecycle_proto_state():
+    """JobStatus and SubmissionJobLifecycleEvent.State must stay in sync."""
+    proto_states = set(SubmissionJobLifecycleEvent.State.keys()) - {"UNSPECIFIED"}
+    assert {s.name for s in JobStatus} == proto_states
 
 
 if __name__ == "__main__":

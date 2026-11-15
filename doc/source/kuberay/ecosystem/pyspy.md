@@ -38,7 +38,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Create a RayCluster with `SYS_PTRACE` capability
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
 ```
 
 ### Step 4: Forward the dashboard port
@@ -72,6 +72,6 @@ python3 samples/long_running_task.py
 ### Step 7: Clean up
 
 ```bash
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
 helm uninstall kuberay-operator
 ```

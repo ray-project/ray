@@ -270,12 +270,6 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
             dictionary,
             ordered=payload.type.ordered,  # Explicitly pass the ordered flag to from_arrays() to prevent dropping it as ordered=False by default
         )
-    elif pa.types.is_map(payload.type) and len(children) > 1:
-        # In pyarrow<7.0.0, the underlying map child array is not exposed, so we work
-        # with the key and item arrays.
-        assert len(children) == 3, len(children)
-        offsets, keys, items = children
-        return pa.MapArray.from_arrays(offsets, keys, items)
     elif isinstance(payload.type, pa.BaseExtensionType):
         assert len(children) == 1, len(children)
         storage = children[0]
@@ -582,7 +576,6 @@ def _dictionary_array_to_array_payload(
 
 def _map_array_to_array_payload(a: "pyarrow.MapArray") -> "PicklableArrayPayload":
     """Serialize map arrays to PicklableArrayPayload."""
-    import pyarrow as pa
 
     # Dedicated path for MapArrays.
     # Buffer scheme: [bitmap, offsets, child_struct_array_buffers, ...]
@@ -603,29 +596,10 @@ def _map_array_to_array_payload(a: "pyarrow.MapArray") -> "PicklableArrayPayload
         offset_buf, a.type, a.offset, len(a)
     )
 
-    if isinstance(a, pa.lib.ListArray):
-        # Map arrays directly expose the one child struct array in pyarrow>=7.0.0, which
-        # is easier to work with than the raw buffers.
-        new_buffers.append(offset_buf)
-        children = [_array_to_array_payload(a.values.slice(data_offset, data_length))]
-    else:
-        # In pyarrow<7.0.0, the child struct array is not exposed, so we work with the
-        # key and item arrays.
-        buffers = a.buffers()
-        assert len(buffers) > 2, len(buffers)
-        # Reconstruct offsets array.
-        offsets = pa.Array.from_buffers(
-            pa.int32(), len(a) + 1, [bitmap_buf, offset_buf]
-        )
-        # Propagate slice to keys.
-        keys = a.keys.slice(data_offset, data_length)
-        # Propagate slice to items.
-        items = a.items.slice(data_offset, data_length)
-        children = [
-            _array_to_array_payload(offsets),
-            _array_to_array_payload(keys),
-            _array_to_array_payload(items),
-        ]
+    # Map arrays directly expose the one child struct array, which is easier to
+    # work with than the raw buffers.
+    new_buffers.append(offset_buf)
+    children = [_array_to_array_payload(a.values.slice(data_offset, data_length))]
     return PicklableArrayPayload(
         type=a.type,
         length=len(a),

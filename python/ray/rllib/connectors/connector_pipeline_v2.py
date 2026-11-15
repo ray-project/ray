@@ -89,12 +89,31 @@ class ConnectorPipelineV2(ConnectorV2):
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         metrics: Optional[MetricsLogger] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Any:
         """In a pipeline, we simply call each of our connector pieces after each other.
 
         Each connector piece receives as input the output of the previous connector
         piece in the pipeline.
+
+        Args:
+            rl_module: The RLModule, passed to each connector piece.
+            batch: The input data, which the first connector piece receives.
+            episodes: The episodes, passed to each connector piece.
+            explore: Whether `explore` is currently on, passed to each connector
+                piece.
+            shared_data: Context data shared between the connector pieces. Defaults
+                to a new empty dict.
+            metrics: An optional MetricsLogger. If given, the pipeline times itself
+                and each connector piece.
+            **kwargs: Passed to each connector piece. A `metrics_prefix_key` tuple
+                prefixes the keys of the timers.
+
+        Returns:
+            The batch that the last connector piece returns.
+
+        Raises:
+            ValueError: If a connector piece doesn't return a dict.
         """
         shared_data = shared_data if shared_data is not None else {}
         full_stats = None

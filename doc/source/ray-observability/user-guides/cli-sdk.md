@@ -69,15 +69,7 @@ State API CLI commands are {ref}`stable <api-stability-stable>`, while Python SD
 
 This example uses the following script that runs two Tasks and creates two Actors.
 
-```{testcode}
-:hide:
-
-import ray
-
-ray.shutdown()
-```
-
-```{testcode}
+```python
 import ray
 import time
 
@@ -97,13 +89,6 @@ tasks = [task_running_300_seconds.remote() for _ in range(2)]
 
 # Create 2 actors
 actors = [Actor.remote() for _ in range(2)]
-```
-
-```{testcode}
-:hide:
-
-# Wait for the tasks to be submitted.
-time.sleep(2)
 ```
 
 See the summarized states of tasks. If it doesn't return the output immediately, retry the command.
@@ -134,12 +119,12 @@ Table (group by func_name):
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import summarize_tasks
 print(summarize_tasks())
 ```
 
-```{testoutput}
+```text
 {'cluster': {'summary': {'task_running_300_seconds': {'func_or_class_name': 'task_running_300_seconds', 'type': 'NORMAL_TASK', 'state_counts': {'RUNNING': 2}}, 'Actor.__init__': {'func_or_class_name': 'Actor.__init__', 'type': 'ACTOR_CREATION_TASK', 'state_counts': {'FINISHED': 2}}}, 'total_tasks': 2, 'total_actor_tasks': 0, 'total_actor_scheduled': 2, 'summary_by': 'func_name'}}
 ```
 :::
@@ -170,12 +155,12 @@ Table:
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_actors
 print(list_actors())
 ```
 
-```{testoutput}
+```text
 [ActorState(actor_id='...', class_name='Actor', state='ALIVE', job_id='01000000', name='', node_id='...', pid=..., ray_namespace='...', serialized_runtime_env=None, required_resources=None, death_cause=None, is_detached=None, placement_group_id=None, repr_name=None), ActorState(actor_id='...', class_name='Actor', state='ALIVE', job_id='01000000', name='', node_id='...', pid=..., ray_namespace='...', serialized_runtime_env=None, required_resources=None, death_cause=None, is_detached=None, placement_group_id=None, repr_name=None)]
 ```
 :::
@@ -208,9 +193,7 @@ state: ALIVE
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.state import get_actor
 # In this case, 31405554844820381c2f0f8501000000
 print(get_actor(id=<ACTOR_ID>))
@@ -239,9 +222,7 @@ Actor created
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.state import get_log
 
 # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
@@ -280,12 +261,12 @@ ray summary actors
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import summarize_actors
 print(summarize_actors())
 ```
 
-```{testoutput}
+```text
 {'cluster': {'summary': {'Actor': {'class_name': 'Actor', 'state_counts': {'ALIVE': 2}}}, 'total_actors': 2, 'summary_by': 'class'}}
 ```
 :::
@@ -303,12 +284,12 @@ ray summary tasks
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import summarize_tasks
 print(summarize_tasks())
 ```
 
-```{testoutput}
+```text
 {'cluster': {'summary': {'task_running_300_seconds': {'func_or_class_name': 'task_running_300_seconds', 'type': 'NORMAL_TASK', 'state_counts': {'RUNNING': 2}}, 'Actor.__init__': {'func_or_class_name': 'Actor.__init__', 'type': 'ACTOR_CREATION_TASK', 'state_counts': {'FINISHED': 2}}}, 'total_tasks': 2, 'total_actor_tasks': 0, 'total_actor_scheduled': 2, 'summary_by': 'func_name'}}
 ```
 :::
@@ -334,12 +315,12 @@ ray summary objects
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import summarize_objects
 print(summarize_objects())
 ```
 
-```{testoutput}
+```text
 {'cluster': {'summary': {'disabled': {'total_objects': 6, 'total_size_mb': 0.0, 'total_num_workers': 3, 'total_num_nodes': 1, 'task_state_counts': {'SUBMITTED_TO_WORKER': 2, 'FINISHED': 2, 'NIL': 2}, 'ref_type_counts': {'LOCAL_REFERENCE': 2, 'ACTOR_HANDLE': 4}}}, 'total_objects': 6, 'total_size_mb': 0.0, 'callsite_enabled': False, 'summary_by': 'callsite'}}
 ```
 :::
@@ -373,7 +354,7 @@ ray list nodes
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_nodes
 list_nodes()
 ```
@@ -392,7 +373,7 @@ ray list placement-groups
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_placement_groups
 list_placement_groups()
 ```
@@ -416,7 +397,7 @@ ray list objects -f pid=<PID> -f reference_type=LOCAL_REFERENCE
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_objects
 list_objects(filters=[("pid", "=", 1234), ("reference_type", "=", "LOCAL_REFERENCE")])
 ```
@@ -435,7 +416,7 @@ ray list actors -f state=ALIVE
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_actors
 list_actors(filters=[("state", "=", "ALIVE")])
 ```
@@ -454,7 +435,7 @@ ray list tasks -f state=RUNNING
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_tasks
 list_tasks(filters=[("state", "=", "RUNNING")])
 ```
@@ -473,7 +454,7 @@ ray list tasks -f state!=RUNNING
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_tasks
 list_tasks(filters=[("state", "!=", "RUNNING")])
 ```
@@ -492,7 +473,7 @@ ray list tasks -f state=RUNNING -f name="task_running_300_seconds()"
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_tasks
 list_tasks(filters=[("state", "=", "RUNNING"), ("name", "=", "task_running_300_seconds()")])
 ```
@@ -515,7 +496,7 @@ ray list tasks --detail
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
+```python
 from ray.util.state import list_tasks
 list_tasks(detail=True)
 ```
@@ -539,9 +520,7 @@ ray get tasks <TASK_ID>
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.state import get_task
 get_task(id=<TASK_ID>)
 ```
@@ -560,9 +539,7 @@ ray get nodes <NODE_ID>
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.state import get_node
 get_node(id=<NODE_ID>)
 ```
@@ -590,9 +567,7 @@ ray logs cluster
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 # You could get the node ID / node IP from `ray list nodes`
 from ray.util.state import list_logs
 # `ray logs` by default print logs from a head node.
@@ -618,9 +593,7 @@ ray logs gcs_server.out --node-id <NODE_ID>
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.state import get_log
 
 # Node IP can be retrieved from list_nodes() or ray.nodes()
@@ -646,9 +619,7 @@ ray logs cluster raylet.out --node-ip <NODE_IP> --follow
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.state import get_log
 
 # Retrieve the Node IP from list_nodes() or ray.nodes()
@@ -671,9 +642,7 @@ ray logs actor --id=<ACTOR_ID> --follow
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.state import get_log
 
 # Get the Actor's ID from the output of `ray list actors`.
@@ -696,9 +665,7 @@ ray logs worker --pid=<PID> --follow
 
 :::{tab-item} Python SDK (Internal Developer API)
 :sync: Python SDK (Internal Developer API)
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.state import get_log
 
 # Retrieve the node IP from list_nodes() or ray.nodes()

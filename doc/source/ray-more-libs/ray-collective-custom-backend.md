@@ -26,21 +26,12 @@ Your backend class must inherit from {py:class}`~ray.util.collective.collective_
 
 Here's an example using the `MockInternalKVGroup` backend that uses Ray's internal KV store for communication:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.util.collective.examples.mock_internal_kv_example import MockInternalKVGroup
 
 # MockInternalKVGroup is a complete implementation that inherits from BaseGroup
 # and implements all required collective operations using Ray's internal KV store
 backend_cls = MockInternalKVGroup
-
-# Check that it has the required methods
-assert hasattr(backend_cls, 'backend')
-assert hasattr(backend_cls, 'check_backend_availability')
-assert hasattr(backend_cls, 'allreduce')
-assert hasattr(backend_cls, 'broadcast')
-assert hasattr(backend_cls, 'barrier')
 ```
 
 ### Step 2: Register Your Backend
@@ -208,9 +199,7 @@ ray.shutdown()
 
 The following example demonstrates a complete custom backend implementation using Ray's internal KV store for communication. This `MockInternalKVGroup` backend is useful for testing and understanding how custom backends work.
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 import numpy as np
 from ray.util.collective import allreduce, create_collective_group
@@ -259,9 +248,7 @@ print(f"Results: {results}")  # [3.0, 3.0]
 ray.shutdown()
 ```
 
-```{testoutput}
-:skipif: True
-
+```text
 Results: [3.0, 3.0]
 ```
 

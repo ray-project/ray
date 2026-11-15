@@ -7,7 +7,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import EpisodeType, ModuleID
+from ray.rllib.utils.typing import AgentToModuleMappingFn, EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
 
@@ -81,54 +81,66 @@ class AgentToModuleMapping(ConnectorV2):
     we have to store the env vector index AND AgentID of each module's batch item
     in an additionally returned `memorized_map_structure`.
 
-    .. testcode::
+    Examples:
+        >>> from ray.rllib.connectors.env_to_module import AgentToModuleMapping
+        >>> from ray.rllib.utils.test_utils import check
+        >>> batch = {
+        ...     "obs": {
+        ...         ("MA-EPS0", "agent0", "module0"): [0, 1, 2],
+        ...         ("MA-EPS0", "agent1", "module1"): [3, 4, 5],
+        ...     },
+        ...     "actions": {
+        ...         ("MA-EPS1", "agent2", "module0"): [8],
+        ...         ("MA-EPS0", "agent1", "module1"): [9],
+        ...     },
+        ... }
+        >>> # Create our connector piece.
+        >>> connector = AgentToModuleMapping(
+        ...     rl_module_specs={"module0", "module1"},
+        ...     agent_to_module_mapping_fn=(
+        ...         lambda agent_id, eps: "module1" if agent_id == "agent1" else "module0"
+        ...     ),
+        ...     # Keep the data of all agents. In env-to-module mode, the connector
+        ...     # keeps only the agents that act next in `episodes`.
+        ...     as_learner_connector=True,
+        ... )
+        >>> # Call the connector (and thereby flip from AgentID based to ModuleID based
+        >>> # structure..
+        >>> output_batch = connector(
+        ...     rl_module=None,  # This particular connector works without an RLModule.
+        ...     batch=batch,
+        ...     episodes=[],  # This particular connector works without a list of episodes.
+        ...     explore=True,
+        ...     shared_data={},
+        ... )
+        >>> # `data` should now be mapped from ModuleIDs to module data.
+        >>> check(
+        ...     output_batch,
+        ...     {
+        ...         "module0": {
+        ...             "obs": [0, 1, 2],
+        ...             "actions": [8],
+        ...         },
+        ...         "module1": {
+        ...             "obs": [3, 4, 5],
+        ...             "actions": [9],
+        ...         },
+        ...     },
+        ... )
 
-        from ray.rllib.connectors.env_to_module import AgentToModuleMapping
-        from ray.rllib.utils.test_utils import check
-
-        batch = {
-            "obs": {
-                ("MA-EPS0", "agent0", "module0"): [0, 1, 2],
-                ("MA-EPS0", "agent1", "module1"): [3, 4, 5],
-            },
-            "actions": {
-                ("MA-EPS1", "agent2", "module0"): [8],
-                ("MA-EPS0", "agent1", "module1"): [9],
-            },
-        }
-
-        # Create our connector piece.
-        connector = AgentToModuleMapping(
-            rl_module_specs={"module0", "module1"},
-            agent_to_module_mapping_fn=(
-                lambda agent_id, eps: "module1" if agent_id == "agent1" else "module0"
-            ),
-        )
-
-        # Call the connector (and thereby flip from AgentID based to ModuleID based
-        # structure..
-        output_batch = connector(
-            rl_module=None,  # This particular connector works without an RLModule.
-            batch=batch,
-            episodes=[],  # This particular connector works without a list of episodes.
-            explore=True,
-            shared_data={},
-        )
-
-        # `data` should now be mapped from ModuleIDs to module data.
-        check(
-            output_batch,
-            {
-                "module0": {
-                    "obs": [0, 1, 2],
-                    "actions": [8],
-                },
-                "module1": {
-                    "obs": [3, 4, 5],
-                    "actions": [9],
-                },
-            },
-        )
+    Args:
+        input_observation_space: The input observation space, from the env or the
+            previous connector piece in the pipeline.
+        input_action_space: The input action space, from the env or the previous
+            connector piece in the pipeline.
+        rl_module_specs: A dict mapping the ModuleIDs to their RLModuleSpecs. A set
+            of ModuleIDs also works, as in the example above, but then the
+            per-module spaces can't come from the specs.
+        agent_to_module_mapping_fn: The function that maps an AgentID and its
+            episode to a ModuleID.
+        as_learner_connector: Whether this piece runs in a Learner connector
+            pipeline. If False, it keeps only the data of agents that act next in
+            each episode. If True, it keeps the data of all agents.
     """
 
     @override(ConnectorV2)
@@ -153,7 +165,7 @@ class AgentToModuleMapping(ConnectorV2):
         input_action_space: Optional[gym.Space] = None,
         *,
         rl_module_specs: Dict[ModuleID, RLModuleSpec],
-        agent_to_module_mapping_fn,
+        agent_to_module_mapping_fn: AgentToModuleMappingFn,
         as_learner_connector: bool = False,
     ):
         super().__init__(input_observation_space, input_action_space)

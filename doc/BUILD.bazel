@@ -19,6 +19,10 @@ filegroup(
     visibility = ["//ci/pipeline:__pkg__"],
 )
 
+# Consumed by //python/ray/dashboard:test_http_job_server, which checks the
+# Ray Jobs API spec against the JobHead routes and responses.
+exports_files(["source/cluster/running-applications/job-submission/openapi.yml"])
+
 # --------------------------------------------------------------------
 # Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
@@ -351,120 +355,19 @@ py_test_run_all_subdirectory(
     ],
 )
 
-# --------------------------------------------------------------------
-# Test all doc/source/llm/doc_code/serve code included in rst/md files.
-# --------------------------------------------------------------------
-
 filegroup(
-    name = "serve_llm_examples",
-    srcs = glob(["source/llm/doc_code/serve/**/*.py"]),
-    visibility = ["//doc:__subpackages__"],
-)
-
-# GPU Tests (standard GPU tests)
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/llm/doc_code/serve/**/*.py"],
-    data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
-    exclude = [
-        "source/llm/doc_code/serve/direct_streaming/**/*.py",
-        "source/llm/doc_code/serve/multi_gpu/**/*.py",
-        "source/llm/doc_code/serve/sglang/**/*.py",
-        # TODO (jeffreywang): Enable TPU example tests once CI sets up TPU.
-        "source/llm/doc_code/serve/tpu/**/*.py",
-        # custom_vllm runs in its own direct-streaming target below.
-        "source/llm/doc_code/serve/custom_vllm/**/*.py",
-    ],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "gpu",
-        "team:llm",
-    ],
-)
-
-# Custom vLLM model (Qwen3 reward model) GPU tests
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/llm/doc_code/serve/custom_vllm/**/*.py"],
-    data = ["source/llm/doc_code/serve/custom_vllm/custom_vllm_config.yaml"],
-    env = {
-        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
-        "RAY_SERVE_ENABLE_HA_PROXY": "1",
-    },
-    exclude = [
-        "source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/**/*.py",
-        # setup.py packages the plugin; it is not a runnable example.
-        "source/llm/doc_code/serve/custom_vllm/setup.py",
-    ],
-    extra_srcs = [],
-    tags = [
-        "custom_vllm_plugin",
-        "exclusive",
-        "gpu",
-        "team:llm",
-    ],
-)
-
-# Direct streaming GPU Tests. Isolated into their own target so they run with
-# the direct streaming flags set, which exercises the real direct streaming
-# path. The flags can't go on the shared target above because they would force
-# every other serve example into direct streaming mode, and build_openai_app
-# rejects multi-config apps (such as the qwen example) under direct streaming.
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/llm/doc_code/serve/direct_streaming/**/*.py"],
-    data = ["source/llm/doc_code/serve/direct_streaming/direct_streaming_config.yaml"],
-    env = {
-        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
-        # Direct streaming wires LLMRouter as the ingress_request_router,
-        # which build_app.py rejects unless HAProxy is enabled.
-        "RAY_SERVE_ENABLE_HA_PROXY": "1",
-    },
-    exclude = [],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "gpu",
-        "team:llm",
-    ],
-)
-
-# Multi-GPU Tests (4+ GPUs)
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "gpu",
-        "multi_gpu_4",
-        "team:llm",
-    ],
-)
-
-# --------------------------------------------------------------------
-# Test all doc/source/data/doc_code/working-with-llms code included in rst/md files.
-# --------------------------------------------------------------------
-
-filegroup(
-    name = "data_llm_examples",
-    srcs = glob(["source/data/doc_code/working-with-llms/**/*.py"]),
-    visibility = ["//doc:__subpackages__"],
-)
-
-# GPU Tests
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/data/doc_code/working-with-llms/**/*.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "gpu",
-        "team:llm",
-    ],
+    name = "llm_doc_tests",
+    srcs = [
+        "conftest.py",
+        "test_llm_examples.py",
+        "test_myst_doc.py",
+    ] + glob([
+        "source/data/doc_code/working-with-llms/*.py",
+        "source/llm/doc_code/serve/**/*.py",
+        "source/llm/doc_code/serve/**/*.yaml",
+        "source/llm/examples/batch/*.ipynb",
+    ]),
+    visibility = ["//release:__pkg__"],
 )
 
 # --------------------------------------------------------------------
@@ -575,33 +478,23 @@ py_test(
 # Tests code snippets in user guides.
 # --------------------------------------------------------------------
 
-doctest(
+# Prose that no library owns. Its targets are tagged team:none, which only the
+# postmerge "doc: doctest" step in .buildkite/others.rayci.yml selects.
+# Not listed: ray-contribute/getting-involved.md and
+# ray-contribute/writing-code-snippets.md, whose `>>>` samples teach doctest
+# syntax rather than run.
+doctest_each(
     size = "large",
-    files = glob(
-        include = [
-            "source/**/*.md",
-            "source/**/*.rst",
-        ],
-        exclude = [
-            "source/ray-contribute/getting-involved.md",
-            "source/ray-contribute/testing-tips.md",
-            "source/ray-contribute/writing-code-snippets.md",
-            "source/ray-observability/user-guides/ray-tracing.md",
-            "source/ray-observability/user-guides/cli-sdk.md",
-            "source/core/**/*.md",
-            "source/core/**/*.rst",
-            "source/data/**/*.md",
-            "source/data/**/*.rst",
-            "source/rllib/**/*.md",
-            "source/rllib/**/*.rst",
-            "source/serve/**/*.md",
-            "source/serve/**/*.rst",
-            "source/train/**/*.md",
-            "source/train/**/*.rst",
-            "source/tune/**/*.md",
-            "source/tune/**/*.rst",
-        ],
-    ),
+    files = [
+        "source/cluster/configure-manage-dashboard.md",
+        "source/ray-observability/getting-started.md",
+        "source/ray-observability/key-concepts.md",
+        "source/ray-observability/user-guides/debug-apps/debug-failures.md",
+        "source/ray-observability/user-guides/debug-apps/general-debugging.md",
+        "source/ray-observability/user-guides/debug-apps/optimize-performance.md",
+        "source/ray-overview/getting-started.md",
+        "source/ray-references/glossary.md",
+    ],
     # NOTE(edoakes): the global glossary and some tutorials use Ray Data,
     # so we use its pytest plugin file (which is a superset of the default).
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
@@ -617,8 +510,6 @@ doctest(
 # needs no edit.
 doctest_each(
     size = "large",
-    # Not listed: handling-dependencies.md, and tasks/nested-tasks.md, whose
-    # `doc_code/` snippet is tested instead.
     files = [
         "source/core/actors/async-api.md",
         "source/core/actors/concurrency-group-api.md",
@@ -643,19 +534,28 @@ doctest_each(
 doctest_each(
     # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
     env = {"TF_USE_LEGACY_KERAS": "1"},
-    files = glob(
-        include = [
-            "source/data/**/*.md",
-            "source/data/**/*.rst",
-        ],
-        exclude = [
-            # These tests run on GPU (see below).
-            "source/data/batch-inference.md",
-            "source/data/transforming-data.md",
-            # These don't contain code snippets.
-            "source/data/api/**/*.rst",
-        ],
-    ),
+    # Not listed: the GPU pages in doctest[data-gpu] below.
+    files = [
+        "source/data/aggregating-data.md",
+        "source/data/execution-configurations.md",
+        "source/data/index.md",
+        "source/data/inspecting-data.md",
+        "source/data/internals.md",
+        "source/data/iterating-over-data.md",
+        "source/data/joining-data.md",
+        "source/data/key-concepts.md",
+        "source/data/loading-data.md",
+        "source/data/mixing-data.md",
+        "source/data/monitoring-your-workload.md",
+        "source/data/performance-tips.md",
+        "source/data/quickstart.md",
+        "source/data/saving-data.md",
+        "source/data/shuffling-data.md",
+        "source/data/working-with-images.md",
+        "source/data/working-with-pytorch.md",
+        "source/data/working-with-tensors.md",
+        "source/data/working-with-text.md",
+    ],
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
 )
@@ -699,22 +599,12 @@ doctest_each(
 )
 
 doctest_each(
-    # Not listed: advanced-guides/inplace-updates.md and
-    # production-guide/fault-tolerance.md.
-    files = [
-        "source/serve/advanced-guides/multi-app-container.md",
-    ],
-    tags = ["team:serve"],
-)
-
-doctest_each(
     # TODO: [V2] Migrate
     env = {
         "RAY_TRAIN_V2_ENABLED": "0",
         "TF_USE_LEGACY_KERAS": "1",
     },
-    # Not listed: horovod.md, because CI does not have Horovod installed, and the
-    # GPU pages in doctest[train-gpu] below.
+    # Not listed: the GPU pages in doctest[train-gpu] below.
     files = [
         "source/train/common/torch-configure-run.md",
         "source/train/distributed-tensorflow-keras.md",

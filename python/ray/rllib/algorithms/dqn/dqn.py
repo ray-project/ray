@@ -1,12 +1,11 @@
-"""
-Deep Q-Networks (DQN, Rainbow, Parametric DQN)
+"""Deep Q-Networks (DQN, Rainbow, Parametric DQN)
 ==============================================
 
 This file defines the distributed Algorithm class for the Deep Q-Networks
 algorithm. See `dqn_[tf|torch]_policy.py` for the definition of the policies.
 
 Detailed documentation:
-https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
+https://docs.ray.io/en/latest/rllib/algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
 """  # noqa: E501
 
 import logging
@@ -75,49 +74,40 @@ logger = logging.getLogger(__name__)
 class DQNConfig(AlgorithmConfig):
     r"""Defines a configuration class from which a DQN Algorithm can be built.
 
-    .. testcode::
+    Examples:
+        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
+        >>> config = (
+        ...     DQNConfig()
+        ...     .environment("CartPole-v1")
+        ...     .training(replay_buffer_config={
+        ...         "type": "PrioritizedEpisodeReplayBuffer",
+        ...         "capacity": 60000,
+        ...         "alpha": 0.5,
+        ...         "beta": 0.5,
+        ...     })
+        ...     .env_runners(num_env_runners=1)
+        ... )
+        >>> algo = config.build()
+        >>> _ = algo.train()
+        >>> algo.stop()
 
-        from ray.rllib.algorithms.dqn.dqn import DQNConfig
-
-        config = (
-            DQNConfig()
-            .environment("CartPole-v1")
-            .training(replay_buffer_config={
-                "type": "PrioritizedEpisodeReplayBuffer",
-                "capacity": 60000,
-                "alpha": 0.5,
-                "beta": 0.5,
-            })
-            .env_runners(num_env_runners=1)
-        )
-        algo = config.build()
-        algo.train()
-        algo.stop()
-
-    .. testcode::
-
-        from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        from ray import tune
-
-        config = (
-            DQNConfig()
-            .environment("CartPole-v1")
-            .training(
-                num_atoms=tune.grid_search([1,])
-            )
-        )
-        tune.Tuner(
-            "DQN",
-            run_config=tune.RunConfig(stop={"training_iteration":1}),
-            param_space=config,
-        ).fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
-
-
+        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
+        >>> from ray import tune
+        >>> config = (
+        ...     DQNConfig()
+        ...     .environment("CartPole-v1")
+        ...     .training(
+        ...         num_atoms=tune.grid_search([1,])
+        ...     )
+        ... )
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "DQN",
+        ...     run_config=tune.RunConfig(stop={"training_iteration":1}),
+        ...     param_space=config,
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):

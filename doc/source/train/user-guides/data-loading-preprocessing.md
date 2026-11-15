@@ -575,6 +575,8 @@ This example persists the fitted preprocessor with the `Trainer(metadata={...})`
 
 When you diagnose bottlenecks that slow training throughput, first find out whether training ever stalls to wait for the next data batch. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer that question. The **Data Ingestion** row shows whether data loading is stalling training, then narrows down which stage is responsible and whether rank stragglers are the cause.
 
+These stages come from Ray Data's iteration pipeline. See {ref}`How does Ray Data iterate over data? <batch_iteration>` for how that pipeline works and what each stage does.
+
 To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster, as described in {ref}`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**. Open it from Grafana's dashboard list and find the **Data Ingestion** section.
 
 To identify data loading bottlenecks with these panels, follow these steps.
@@ -700,7 +702,7 @@ The following table maps each drill-down result to the performance tips that add
 * - A single rank straggles
   - {ref}`isolating-ray-data-worker-processes`
 * - Batching dominates and you use a large local shuffle buffer
-  - {ref}`map_batches_shuffle`
+  - {ref}`shuffle_batches_shuffle`
 ```
 
 For lower-level, per-operator timings that these panels don't cover, see the {ref}`Ray Data dashboard <ray-data-dashboard>` and {ref}`Ray Data stats <ray-data-stats>`.
@@ -848,7 +850,7 @@ trainer = TorchTrainer(
 ```
 
 :::{tip}
-Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`map_batches-based shuffling <map_batches_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
+Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`shuffle_batches <shuffle_batches_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
 :::
 
 For details on tuning Ray Data, see {ref}`data_performance_tips`.

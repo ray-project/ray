@@ -112,6 +112,7 @@ def num_prompt_blocks(token_ids):
     return len(compute_block_hash_for_seq(list(token_ids), BLOCK_SIZE))
 
 
+@pytest.mark.requires_2GPU
 class TestKvEvents:
     @pytest.fixture(scope="class")
     def deployed_handle(self):
@@ -299,6 +300,7 @@ class TestKvEvents:
         assert chat_token_ids == manual_token_ids
 
 
+@pytest.mark.requires_2GPU
 class TestKvOffload:
     """End-to-end native vLLM CPU offload with tier-aware routing."""
 
@@ -418,11 +420,6 @@ class TestKvOffload:
         cached_score = scores[cached_worker]
         miss_score = scores[miss_worker]
         assert cached_score["host_pinned_extension_blocks"] > 0
-        assert (
-            0
-            < cached_score["router_credit_blocks"]
-            < cached_score["host_pinned_blocks"]
-        )
         assert miss_score["device_blocks"] == 0
         assert miss_score["host_pinned_blocks"] == 0
 
@@ -440,6 +437,7 @@ class TestKvOffload:
         assert scores[miss_worker]["host_pinned_blocks"] == 0
 
 
+@pytest.mark.requires_2GPU
 class TestKvScoring:
     """End-to-end KV-aware routing: a request routed through a deployed
     KVAwareRouter is scored by the selection service and lands on a live

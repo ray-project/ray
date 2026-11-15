@@ -477,9 +477,6 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
 
   committed_bundle_location_index_.AddBundleLocations(placement_group_id,
                                                       committed_bundle_locations);
-  cluster_resource_scheduler_.GetClusterResourceManager()
-      .GetBundleLocationIndex()
-      .AddOrUpdateBundleLocations(committed_bundle_locations);
   // NOTE: If the placement group scheduling has been cancelled, we just need to destroy
   // the committed bundles. The reason is that only `RemovePlacementGroup` will mark the
   // state of placement group as `CANCELLED` and it will also destroy all prepared and
@@ -565,9 +562,6 @@ absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
 GcsPlacementGroupScheduler::GetAndRemoveBundlesOnNode(const NodeID &node_id) {
   auto bundles = GetBundlesOnNode(node_id);
   RAY_UNUSED(committed_bundle_location_index_.Erase(node_id));
-  RAY_UNUSED(cluster_resource_scheduler_.GetClusterResourceManager()
-                 .GetBundleLocationIndex()
-                 .Erase(node_id));
   return bundles;
 }
 
@@ -639,9 +633,6 @@ void GcsPlacementGroupScheduler::Initialize(
     }
     committed_bundle_location_index_.AddBundleLocations(placement_group_id,
                                                         committed_bundle_locations);
-    cluster_resource_scheduler_.GetClusterResourceManager()
-        .GetBundleLocationIndex()
-        .AddOrUpdateBundleLocations(committed_bundle_locations);
   }
   for (const auto &req : prepared_pgs) {
     const auto &pg = req.placement_group;
@@ -717,9 +708,6 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
                                   /*current_retry_count*/ 0);
     }
     committed_bundle_location_index_.Erase(placement_group_id);
-    cluster_resource_scheduler_.GetClusterResourceManager()
-        .GetBundleLocationIndex()
-        .Erase(placement_group_id);
   }
 }
 

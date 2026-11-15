@@ -70,8 +70,7 @@ class RayActivityStatus(str, enum.Enum):
 
 
 class RayActivityResponse(BaseModel, extra=Extra.allow):
-    """
-    Pydantic model used to inform if a particular Ray component can be considered
+    """Pydantic model used to inform if a particular Ray component can be considered
     active, and metadata about observation.
     """
 
@@ -230,12 +229,15 @@ class JobHead(SubprocessModule):
 
     NOTE(architkulkarni): Please keep this class in sync with the OpenAPI spec at
     `doc/source/cluster/running-applications/job-submission/openapi.yml`.
-    We currently do not automatically check that the OpenAPI
-    spec is in sync with the implementation. If any changes are made to the
-    paths in the @route decorators or in the Responses returned by the
-    methods (or any nested fields in the Responses), you will need to find the
-    corresponding field of the OpenAPI yaml file and update it manually. Also,
-    bump the version number in the yaml file and in this class's `get_version`.
+    If any changes are made to the paths in the @route decorators or in the
+    Responses returned by the methods (or any nested fields in the Responses),
+    you will need to find the corresponding field of the OpenAPI yaml file and
+    update it manually. Also, bump the version number in the yaml file and
+    `CURRENT_VERSION` in `ray/dashboard/modules/version.py`.
+
+    The OpenAPI tests in `tests/test_http_job_server.py` check that the spec's
+    routes match this class's, that its version matches `CURRENT_VERSION`, and
+    that the responses of the endpoints they exercise match the spec's schemas.
     """
 
     # Time that we sleep while tailing logs while waiting for
@@ -261,8 +263,7 @@ class JobHead(SubprocessModule):
     async def get_target_agent(
         self, timeout_s: float = WAIT_AVAILABLE_AGENT_TIMEOUT
     ) -> JobAgentSubmissionClient:
-        """
-        Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
+        """Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
         via an agent process.
 
         Args:
@@ -321,8 +322,7 @@ class JobHead(SubprocessModule):
         )
 
     async def _fetch_agent_info(self, target_node_id: NodeID) -> Tuple[str, int, int]:
-        """
-        Fetches agent info by the Node ID. May raise exception if there's network error or the
+        """Fetches agent info by the Node ID. May raise exception if there's network error or the
         agent info is not found.
 
         Returns: (ip, http_port, grpc_port)

@@ -1,6 +1,7 @@
 # ML tracking integrations
 comet-ml==3.44.1
-mlflow>=3.0.0
+# mlflow < 3.18 caps pyarrow < 26.
+mlflow>=3.18
 wandb>=0.23.1
 
 # ML training frameworks

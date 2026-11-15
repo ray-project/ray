@@ -24,10 +24,13 @@ enum class AuthenticationMode {
   TOKEN,
 };
 
-/// Get the authentication mode from the RayConfig.
-/// \return The authentication mode enum value. returns AuthenticationMode::DISABLED if
-/// the authentication mode is not set or is invalid.
+/// Get the authentication mode from the RayConfig. A mode other than "token" or
+/// "disabled" (case-insensitive) is a fatal config error.
 AuthenticationMode GetAuthenticationMode();
+
+/// \return An error naming the configured mode when it is neither "token" nor
+/// "disabled" (case-insensitive), or an empty string when it is valid.
+std::string InvalidAuthenticationModeError();
 
 bool IsK8sTokenAuthEnabled();
 

@@ -16,7 +16,7 @@ To spill objects to a custom directory, set the `object_spilling_directory` para
 
 ::::{tab-set}
 :::{tab-item} Python
-```{doctest}
+```python
 ray.init(object_spilling_directory="/path/to/spill/dir")
 ```
 :::

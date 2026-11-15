@@ -1,0 +1,174 @@
+"""This test suite does not need sglang to be installed."""
+
+import sys
+from unittest.mock import patch
+
+import pytest
+from pydantic import BaseModel
+
+import ray
+from ray.data.llm import SGLangEngineProcessorConfig
+from ray.llm._internal.batch.constants import SGLangTaskType
+from ray.llm._internal.batch.processor import ProcessorBuilder
+from ray.llm._internal.batch.processor.sglang_engine_proc import (
+    build_sglang_engine_processor,
+)
+from ray.llm._internal.batch.tasks.sglang.base import _SGLangTask
+
+
+def test_sglang_engine_processor():
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B",
+        engine_kwargs=dict(
+            context_length=8192,
+            tp_size=2,
+            dp_size=2,
+            disable_cuda_graph=True,
+            dtype="half",  # Older GPUs (e.g. T4) don't support bfloat16
+        ),
+        runtime_env=dict(
+            env_vars=dict(
+                RANDOM_ENV_VAR="12345",
+            ),
+        ),
+        concurrency=4,
+        batch_size=64,
+        max_concurrent_batches=4,
+        max_pending_requests=111,
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
+    )
+    processor = ProcessorBuilder.build(config)
+    assert processor.list_stage_names() == [
+        "ChatTemplateStage",
+        "TokenizeStage",
+        "SGLangEngineStage",
+        "DetokenizeStage",
+    ]
+
+    stage = processor.get_stage_by_name("SGLangEngineStage")
+    assert stage.fn_constructor_kwargs == {
+        "model": "Qwen/Qwen3.5-0.8B",
+        "engine_kwargs": {
+            "context_length": 8192,
+            "tp_size": 2,
+            "dp_size": 2,
+            "disable_cuda_graph": True,
+            "dtype": "half",
+            "task": SGLangTaskType.GENERATE,
+        },
+        "task_type": SGLangTaskType.GENERATE,
+        "max_pending_requests": 111,
+    }
+
+    runtime_env = stage.map_batches_kwargs.pop("runtime_env")
+    assert "env_vars" in runtime_env
+    assert runtime_env["env_vars"]["RANDOM_ENV_VAR"] == "12345"
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
+    assert stage.map_batches_kwargs == {
+        "zero_copy_batch": True,
+        "max_concurrency": 4,
+        "accelerator_type": None,
+        "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
+    }
+
+
+class TestSGLangEngineProcessorConfig:
+    def test_build_processor_autoconfig_failure_with_trust_remote_code(self):
+        config = SGLangEngineProcessorConfig(
+            model_source="nonexistent-org/nonexistent-model",
+            engine_kwargs={"trust_remote_code": True},
+        )
+
+        processor = build_sglang_engine_processor(config)
+        assert processor is not None
+
+    def test_build_processor_import_error_with_trust_remote_code(self):
+        config = SGLangEngineProcessorConfig(
+            model_source="org/model-with-custom-code",
+            engine_kwargs={"trust_remote_code": True},
+        )
+
+        with (
+            patch(
+                "ray.llm._internal.common.utils.download_utils.download_model_files",
+                return_value="/tmp/fake_model_dir",
+            ),
+            patch(
+                "transformers.AutoConfig.from_pretrained",
+                side_effect=ModuleNotFoundError("custom modeling module missing"),
+            ),
+        ):
+            processor = build_sglang_engine_processor(config)
+
+        assert processor is not None
+
+    def test_build_processor_download_error_with_trust_remote_code(self):
+        config = SGLangEngineProcessorConfig(
+            model_source="org/model-with-custom-code",
+            engine_kwargs={"trust_remote_code": True},
+        )
+
+        with patch(
+            "ray.llm._internal.common.utils.download_utils.download_model_files",
+            side_effect=RuntimeError("download failed"),
+        ):
+            processor = build_sglang_engine_processor(config)
+
+        assert processor is not None
+
+
+class _ToyOptions(BaseModel):
+    scale: float = 1.0
+
+
+class _ToyTask(_SGLangTask):
+    unsupported_stages = ("detokenize_stage",)
+    forced_engine_kwargs = {"skip_tokenizer_init": True}
+    options_model = _ToyOptions
+
+
+def test_task_prepare_config_applies_rules():
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B",
+        engine_kwargs={"skip_tokenizer_init": False},
+        task_kwargs={"scale": "2"},
+    )
+    prepared = _ToyTask.prepare_config(config)
+    assert prepared.task_kwargs == {"scale": 2.0}
+    assert prepared.detokenize_stage is False
+    assert prepared.engine_kwargs["skip_tokenizer_init"] is True
+    # The user's config is not modified.
+    assert config.engine_kwargs["skip_tokenizer_init"] is False
+    assert config.detokenize_stage is True
+
+
+@pytest.mark.parametrize("detokenize_stage", [False, {"enabled": False}])
+def test_task_prepare_config_allows_disabled_unsupported_stage(detokenize_stage):
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B", detokenize_stage=detokenize_stage
+    )
+    assert _ToyTask.prepare_config(config).detokenize_stage is False
+
+
+@pytest.mark.parametrize("detokenize_stage", [True, {"enabled": True}])
+def test_task_prepare_config_rejects_unsupported_stage(detokenize_stage):
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B", detokenize_stage=detokenize_stage
+    )
+    with pytest.raises(ValueError, match="doesn't support detokenize_stage"):
+        _ToyTask.prepare_config(config)
+
+
+def test_generate_task_rejects_task_kwargs():
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B", task_kwargs={"scale": 2}
+    )
+    with pytest.raises(ValueError, match="takes no task_kwargs"):
+        ProcessorBuilder.build(config)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

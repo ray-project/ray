@@ -83,7 +83,12 @@ EOF
 #
 # RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1
 #   To make ray data compatible across multiple pyarrow versions.
+#
+# RAY_AUTH_MODE=disabled
+#   Anyscale's agent on the head node calls the Ray dashboard API without an
+#   auth token, so with token auth on, the release test job is never submitted.
 ENV \
   RAY_BACKEND_LOG_JSON=1 \
   RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT=1 \
-  RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1
+  RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1 \
+  RAY_AUTH_MODE=disabled

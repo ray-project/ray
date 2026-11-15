@@ -2643,6 +2643,7 @@ def test_get_serve_instance_details_json_serializable(
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},
+                            "target_version": replica.version,
                             "replicas": [
                                 {
                                     "node_id": node_id,
@@ -2656,6 +2657,7 @@ def test_get_serve_instance_details_json_serializable(
                                     "state": "RUNNING",
                                     "pid": replica.pid,
                                     "start_time_s": replica.start_time_s,
+                                    "version": replica.version,
                                 }
                             ],
                             "recent_dead_replicas": [],
@@ -2680,6 +2682,7 @@ def test_get_serve_instance_details_json_serializable(
             # Set by the controller: this version restores a deployment option
             # that a re-applied config stops setting.
             "restores_unset_config_options": True,
+            "applied_config_id": None,
             "target_groups": [
                 {
                     "targets": [
@@ -2700,6 +2703,12 @@ def test_get_serve_instance_details_json_serializable(
                     "ingress_deployment_name": ""
                     if RAY_SERVE_ENABLE_HA_PROXY
                     else "autoscaling_app",
+                    # Set explicitly only on HTTP app target groups, so exclude_unset keeps it.
+                    **(
+                        {}
+                        if RAY_SERVE_ENABLE_HA_PROXY
+                        else {"is_router_application": False}
+                    ),
                 },
                 {
                     "targets": [

@@ -3,11 +3,13 @@
 import asyncio
 import sys
 import threading
+import time
 
 import pytest
 
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
+    SandboxError,
     SandboxExecError,
     SandboxTimeoutError,
 )
@@ -134,6 +136,29 @@ def test_boot_create_failure_cleans_up_nothing_and_reports() -> None:
     assert "runsc not found" in info["error"]
 
 
+def test_unsupported_limits_fail_before_image_pull() -> None:
+    runtime = FakeSandboxRuntime()
+    runtime.resource_error = SandboxCreationError("Cannot enforce sandbox resources")
+    host = _make_host(runtime)
+    asyncio.run(host.boot())
+    info = asyncio.run(host.describe())
+    assert info["status"] == "error"
+    assert "Cannot enforce" in info["error"]
+    assert not runtime.pull_calls
+    assert not runtime.create_calls
+
+
+def test_memory_oom_is_reported_without_killing_host() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(runtime)
+    asyncio.run(host.boot())
+    runtime.termination_reason = "Sandbox exceeded its enforced memory limit"
+    info = asyncio.run(host.describe())
+    assert info["status"] == "error"
+    assert info["error"] == runtime.termination_reason
+    assert runtime.deleted == []
+
+
 def test_boot_is_idempotent() -> None:
     runtime = FakeSandboxRuntime()
     host = _make_host(runtime)
@@ -184,6 +209,81 @@ def test_network_mode_passed_through_natively() -> None:
 
     (create_call,) = runtime.create_calls
     assert create_call["network"] == "sandbox"
+
+
+def test_cidr_allowlist_passed_through_and_reported() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(
+        runtime, spec_overrides={"network": "public", "cidr_allowlist": ["10.0.0.0/8"]}
+    )
+    asyncio.run(host.boot())
+
+    (create_call,) = runtime.create_calls
+    assert create_call["cidr_allowlist"] == ["10.0.0.0/8"]
+    assert asyncio.run(host.describe())["cidr_allowlist"] == ["10.0.0.0/8"]
+
+
+def test_default_public_allowlist_is_reported_and_changeable() -> None:
+    """A public sandbox created without an allowlist runs under the default,
+    the public internet, and reports it; one without network has none."""
+    runtime = FakeSandboxRuntime()
+    host = _make_host(runtime, spec_overrides={"network": "public"})
+    asyncio.run(host.boot())
+
+    (create_call,) = runtime.create_calls
+    assert create_call["cidr_allowlist"] is None
+    assert asyncio.run(host.describe())["cidr_allowlist"] == ["internet"]
+    info = asyncio.run(host.set_network_access(["internet:443"]))
+    assert info["cidr_allowlist"] == ["internet:443"]
+
+    no_network = _make_host(FakeSandboxRuntime(), spec_overrides={"network": "none"})
+    asyncio.run(no_network.boot())
+    assert asyncio.run(no_network.describe())["cidr_allowlist"] is None
+
+
+def test_set_network_access_updates_runtime_and_info() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(
+        runtime, spec_overrides={"network": "public", "cidr_allowlist": ["0.0.0.0/0"]}
+    )
+    asyncio.run(host.boot())
+
+    info = asyncio.run(host.set_network_access(["52.0.0.1", "10.0.1.5/24"]))
+    assert info["cidr_allowlist"] == ["52.0.0.1/32", "10.0.1.0/24"]
+    assert runtime.allowlist_calls == [
+        {"instance_id": runtime.instance_id, "cidrs": ["52.0.0.1/32", "10.0.1.0/24"]}
+    ]
+
+    assert asyncio.run(host.set_network_access(["nope"]))["error_code"] == "invalid"
+
+    runtime.allowlist_error = SandboxError("nft: Protocol not supported")
+    result = asyncio.run(host.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "internal"
+    assert "Protocol not supported" in result["message"]
+    # The reported allowlist is the one still in force.
+    assert asyncio.run(host.describe())["cidr_allowlist"] == [
+        "52.0.0.1/32",
+        "10.0.1.0/24",
+    ]
+
+
+def test_set_network_access_conflicts() -> None:
+    """Only a network="public" sandbox has an allowlist to change, and nothing
+    is changed before the sandbox runs."""
+    runtime = FakeSandboxRuntime()
+    no_network = _make_host(runtime, spec_overrides={"network": "none"})
+    asyncio.run(no_network.boot())
+    result = asyncio.run(no_network.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "conflict"
+    assert "only network='public'" in result["message"]
+
+    not_running = _make_host(
+        FakeSandboxRuntime(),
+        spec_overrides={"network": "public", "cidr_allowlist": []},
+    )
+    result = asyncio.run(not_running.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "conflict"
+    assert runtime.allowlist_calls == []
 
 
 def test_explicit_capabilities_passed_through() -> None:
@@ -578,7 +678,7 @@ def test_write_failure_is_reported_not_raised() -> None:
 
 
 def test_work_is_refused_while_terminating() -> None:
-    """Execs and file ops that arrive while terminate() is deleting the
+    """Execs, file ops, and network updates that arrive while terminate() is deleting the
     container are refused, although the status still reads running."""
     runtime = FakeSandboxRuntime()
     runtime.delete_gate = threading.Event()
@@ -592,15 +692,235 @@ def test_work_is_refused_while_terminating() -> None:
             await host.start_exec(["true"]),
             await host.write_file("/f", b"x"),
             await host.read_file("/f"),
+            await host.set_network_access(["1.1.1.1/32"]),
         ]
         runtime.delete_gate.set()
         await terminate
         return results
 
     results = asyncio.run(scenario())
-    assert [r["error_code"] for r in results] == ["conflict"] * 3
+    assert [r["error_code"] for r in results] == ["conflict"] * 4
     assert all("terminating" in r["message"] for r in results)
     assert runtime.exec_calls == []
+
+
+def test_network_updates_are_serialized() -> None:
+    """Concurrent set_network_access calls swap the ruleset one at a time,
+    and the recorded allowlist is the one applied last."""
+    runtime = FakeSandboxRuntime()
+    inside = [0, 0]  # [current, peak]
+    counter_lock = threading.Lock()
+
+    def slow_update(instance_id, cidrs):
+        with counter_lock:
+            inside[0] += 1
+            inside[1] = max(inside[1], inside[0])
+        time.sleep(0.05)
+        runtime.allowlist_calls.append({"instance_id": instance_id, "cidrs": cidrs})
+        with counter_lock:
+            inside[0] -= 1
+
+    runtime.set_egress_allowlist = slow_update
+    host = _make_host(
+        runtime,
+        spec_overrides={"network": "public", "cidr_allowlist": ["0.0.0.0/0"]},
+    )
+
+    async def scenario():
+        await host.boot()
+        await asyncio.gather(
+            *(host.set_network_access([c]) for c in ("1.1.1.1", "1.0.0.1", "9.9.9.9"))
+        )
+        return await host.describe()
+
+    info = asyncio.run(scenario())
+    assert inside[1] == 1
+    assert info["cidr_allowlist"] == runtime.allowlist_calls[-1]["cidrs"]
+
+
+# ----------------------------------------------------------------------
+# File writes through stdin (fs_write jobs)
+# ----------------------------------------------------------------------
+
+
+def _write_host(runtime: FakeSandboxRuntime, max_file_bytes: int = 1024):
+    return _make_host(runtime, settings_overrides={"max_file_bytes": max_file_bytes})
+
+
+def test_stdin_write_acknowledges_a_repeated_chunk() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _write_host(runtime)
+
+    async def scenario():
+        await host.boot()
+        await host.fs_write_open("k", "/tmp/f")
+        first = await host.stdin_write("k", b"abc", 0)
+        # Its reply was lost and the caller sent it again.
+        again = await host.stdin_write("k", b"abc", 0)
+        # A different chunk at a stale offset is still a mismatch.
+        stale = await host.stdin_write("k", b"xyz", 0)
+        done = await host.stdin_write("k", b"de", 3, eof=True)
+        return first, again, stale, done, await host.get_exec_by_key("k", 5)
+
+    first, again, stale, done, job = asyncio.run(scenario())
+    assert first == again == {"num_bytes_written": 3, "closed": False}
+    assert stale["error_code"] == "offset_mismatch"
+    assert done == {"num_bytes_written": 5, "closed": True}
+    assert job["status"] == "completed"
+    assert runtime.written_files["/tmp/f"] == b"abcde"
+
+
+def test_stdin_write_after_too_large_stays_failed() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _write_host(runtime, max_file_bytes=4)
+
+    async def scenario():
+        await host.boot()
+        await host.fs_write_open("k", "/tmp/f")
+        assert (await host.stdin_write("k", b"abc", 0))["num_bytes_written"] == 3
+        big = await host.stdin_write("k", b"defg", 3)
+        # A later chunk or EOF must neither revive the job nor write a file.
+        more = await host.stdin_write("k", b"d", 3)
+        eof = await host.stdin_write("k", b"", 3, eof=True)
+        return big, more, eof, await host.get_exec_by_key("k")
+
+    big, more, eof, job = asyncio.run(scenario())
+    assert big["error_code"] == more["error_code"] == eof["error_code"] == "too_large"
+    assert job["status"] == "error"
+    assert job["failure_code"] == "too_large"
+    assert "/tmp/f" not in runtime.written_files
+
+
+def test_file_jobs_fail_instead_of_hanging() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _write_host(runtime)
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("disk on fire")
+
+    async def scenario():
+        await host.boot()
+        runtime.write_file = broken
+        runtime.read_file = broken
+        await host.fs_write_open("w", "/tmp/f")
+        closed = await host.stdin_write("w", b"abc", 0, eof=True)
+        written = await host.get_exec_by_key("w", 5)
+        first = await host.fs_read("r", "/tmp/f")
+        # A repeat returns the finished job instead of waiting forever.
+        again = await asyncio.wait_for(host.fs_read("r", "/tmp/f"), 5)
+        return closed, written, first, again
+
+    closed, written, first, again = asyncio.run(scenario())
+    assert closed["closed"] is True
+    assert (written["status"], written["failure_code"]) == ("error", "write_failed")
+    assert first["status"] == again["status"] == "error"
+
+
+def test_final_stdin_write_returns_before_the_file_is_written() -> None:
+    """Writing a large file can outlast the facade's deadline for one call,
+    so the final stdin write returns at once, and the job finishes when the
+    file is written."""
+    runtime = FakeSandboxRuntime()
+    host = _write_host(runtime)
+    release = threading.Event()
+    write = runtime.write_file
+
+    def slow_write(*args, **kwargs):
+        release.wait(10)
+        return write(*args, **kwargs)
+
+    async def scenario():
+        await host.boot()
+        runtime.write_file = slow_write
+        await host.fs_write_open("k", "/tmp/f")
+        closed = await asyncio.wait_for(host.stdin_write("k", b"abc", 0, eof=True), 2)
+        writing = await host.get_exec_by_key("k")
+        release.set()
+        return closed, writing, await host.get_exec_by_key("k", 5)
+
+    closed, writing, done = asyncio.run(scenario())
+    assert closed == {"num_bytes_written": 3, "closed": True}
+    assert writing["status"] == "running"
+    assert done["status"] == "completed"
+    assert runtime.written_files["/tmp/f"] == b"abc"
+
+
+def test_host_joins_starts_with_the_same_exec_key() -> None:
+    """The host keeps each exec under the client's exec id, so a start that
+    any facade replica retries joins the first one."""
+
+    async def scenario():
+        runtime = FakeSandboxRuntime()
+        host = SandboxHost(
+            "sb-keys", {"image": "img"}, {}, runtime_factory=lambda: runtime
+        )
+        await host.boot()
+        first = await host.start_exec(["true"], exec_key="client-1")
+        again = await host.start_exec(["true"], exec_key="client-1")
+        done = await host.get_exec_by_key("client-1", wait_seconds=5)
+        return (
+            first["exec_id"],
+            again["exec_id"],
+            len(runtime.exec_calls),
+            done["status"],
+        )
+
+    first, again, calls, status = asyncio.run(scenario())
+    assert first == again
+    assert calls == 1
+    assert status == "completed"
+
+
+def test_host_forgets_keys_of_evicted_execs() -> None:
+    """Exec keys go with the finished execs the history cap evicts."""
+
+    async def scenario():
+        runtime = FakeSandboxRuntime()
+        host = SandboxHost(
+            "sb-evict",
+            {"image": "img"},
+            {"max_exec_history": 2},
+            runtime_factory=lambda: runtime,
+        )
+        await host.boot()
+        for i in range(4):
+            await host.start_exec(["true"], exec_key=f"k{i}")
+            await host.get_exec_by_key(f"k{i}", wait_seconds=5)
+        gone = await host.get_exec_by_key("k0")
+        return sorted(host._exec_keys), gone.get("error_code")
+
+    keys, gone = asyncio.run(scenario())
+    assert keys == ["k2", "k3"]
+    assert gone == "exec_not_found"
+
+
+def test_file_jobs_stay_failed_after_terminate() -> None:
+    """A read still running when the sandbox terminates must not report a
+    success once it returns."""
+    runtime = FakeSandboxRuntime()
+    runtime.readable_files["/tmp/f"] = b"abc"
+    gate = threading.Event()
+    read_file = runtime.read_file
+
+    def slow_read(*args):
+        gate.wait(5)
+        return read_file(*args)
+
+    runtime.read_file = slow_read
+    host = _make_host(runtime)
+
+    async def scenario():
+        await host.boot()
+        read = asyncio.ensure_future(host.fs_read("k", "/tmp/f"))
+        await asyncio.sleep(0.05)
+        await host._shutdown()
+        gate.set()
+        await read
+        return await host.get_exec_by_key("k")
+
+    job = asyncio.run(scenario())
+    assert job["status"] == "error"
+    assert job.get("content") is None
 
 
 if __name__ == "__main__":

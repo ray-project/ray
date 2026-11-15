@@ -840,14 +840,48 @@ class TestValidateEnvVars:
         with pytest.raises(TypeError, match=".*Dict[str, str]*"):
             validation.parse_and_validate_env_vars({1: "hi"})
 
-        with pytest.raises(TypeError, match=".*value 123 is of type <class 'int'>*"):
+        # The message names the key but not the value, which may be a secret.
+        with pytest.raises(
+            TypeError, match=".*value of hi is of type <class 'int'>*"
+        ) as exc_info:
             validation.parse_and_validate_env_vars({"hi": 123})
+        assert "123" not in str(exc_info.value)
 
-        with pytest.raises(TypeError, match=".*value True is of type <class 'bool'>*"):
+        with pytest.raises(
+            TypeError, match=".*value of hi is of type <class 'bool'>*"
+        ) as exc_info:
             validation.parse_and_validate_env_vars({"hi": True})
+        assert "True" not in str(exc_info.value)
 
         with pytest.raises(TypeError, match=".*key 1.23 is of type <class 'float'>*"):
             validation.parse_and_validate_env_vars({1.23: "hi"})
+
+
+class TestValidatePreloadModules:
+    @pytest.mark.parametrize(
+        "preload_modules,expected_result,expected_error",
+        [
+            (["os", "sys", "urllib.parse"], ["os", "sys", "urllib.parse"], None),
+            ([" os ", "os", "sys"], ["os", "sys"], None),
+            ([], [], None),
+            ("os", None, TypeError),
+            ([123], None, TypeError),
+            ([""], None, ValueError),
+            (["123invalid"], None, ValueError),
+            (["bad..module"], None, ValueError),
+            (["import"], None, ValueError),
+            (["foo.class"], None, ValueError),
+        ],
+    )
+    def test_preload_modules_validation(
+        self, preload_modules, expected_result, expected_error
+    ):
+        if expected_error is None:
+            env = RuntimeEnv(preload_modules=preload_modules)
+            assert env.preload_modules() == expected_result
+        else:
+            with pytest.raises(expected_error):
+                RuntimeEnv(preload_modules=preload_modules)
 
 
 def test_validate_no_local_paths_raises_exceptions_on_type_mismatch():
