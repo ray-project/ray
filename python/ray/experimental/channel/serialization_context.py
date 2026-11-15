@@ -81,8 +81,7 @@ class _SerializationContext:
     def reset_out_of_band_tensors(
         self, tensors: List["torch.Tensor"]
     ) -> Tuple[List["torch.Tensor"], Set[int]]:
-        """
-        Return and reset the out-of-band tensors and all tensor placeholders
+        """Return and reset the out-of-band tensors and all tensor placeholders
         that were deserialized since the last call to reset.
         """
         prev_tensors = self._out_of_band_tensors
@@ -113,8 +112,7 @@ class _SerializationContext:
     def serialize_to_numpy_or_scalar(
         self, tensor: "torch.Tensor"
     ) -> Tuple[Union["np.ndarray", Any], "torch.dtype", str]:
-        """
-        Serialize a tensor to a numpy array,
+        """Serialize a tensor to a numpy array,
         or a scalar when the tensor is 0-dim.
         """
         import torch

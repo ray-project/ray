@@ -54,8 +54,7 @@ IDLE_SUSPEND_KEY = "idleSuspend"
 
 
 class KubeRayProvider(ICloudInstanceProvider):
-    """
-    This class is a thin wrapper around the Kubernetes API client. It modifies
+    """This class is a thin wrapper around the Kubernetes API client. It modifies
     the RayCluster resource spec on the Kubernetes API server to scale the cluster:
 
     It launches new instances/nodes by submitting patches to the Kubernetes API
@@ -69,8 +68,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         gcs_client: GcsClient,
         k8s_api_client: Optional[IKubernetesHttpApiClient] = None,
     ):
-        """
-        Initializes a new KubeRayProvider.
+        """Initializes a new KubeRayProvider.
 
         Args:
             cluster_name: The name of the RayCluster resource.
@@ -271,8 +269,7 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _initialize_scale_request(
         self, to_launch: Dict[NodeType, int], to_delete_instances: List[CloudInstanceId]
     ) -> "KubeRayProvider.ScaleRequest":
-        """
-        Initialize the scale request based on the current state of the cluster and
+        """Initialize the scale request based on the current state of the cluster and
         the desired state (to launch, to delete).
 
         Args:
@@ -457,8 +454,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         details: str,
         e: Optional[Exception] = None,
     ) -> None:
-        """
-        Adds launch errors to the error queue.
+        """Adds launch errors to the error queue.
 
         Args:
             shape: The shape of the nodes that failed to launch.
@@ -485,8 +481,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         details: str,
         e: Optional[Exception] = None,
     ) -> None:
-        """
-        Adds terminate errors to the error queue.
+        """Adds terminate errors to the error queue.
 
         Args:
             ids: The ids of the nodes that failed to terminate.
@@ -537,8 +532,7 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _get_workers_delete_info(
         ray_cluster_spec: Dict[str, Any], node_set: Set[CloudInstanceId]
     ) -> Tuple[Set[NodeType], Set[NodeType], Set[CloudInstanceId]]:
-        """
-        Gets the worker groups that have pending deletes and the worker groups that
+        """Gets the worker groups that have pending deletes and the worker groups that
         have finished deletes.
 
         Args:
@@ -587,8 +581,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         )
 
     def _fetch_instances(self) -> Dict[CloudInstanceId, CloudInstance]:
-        """
-        Fetches the pods from the Kubernetes API server and convert them to Ray
+        """Fetches the pods from the Kubernetes API server and convert them to Ray
         CloudInstance.
 
         Returns:
@@ -642,8 +635,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     @staticmethod
     def _cloud_instance_from_pod(pod: Dict[str, Any]) -> Optional[CloudInstance]:
-        """
-        Convert a pod to a Ray CloudInstance.
+        """Convert a pod to a Ray CloudInstance.
 
         Args:
             pod: The pod resource dict.
@@ -849,9 +841,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             logger.exception(f"Failed to delete {self._cluster_name}")
 
     def _suspend_idle_ray_cluster(self) -> None:
-        """
-        Merge-Patch spec.idleSuspend=true for an idle RayCluster
-        """
+        """Merge-Patch spec.idleSuspend=true for an idle RayCluster"""
         path = f"rayclusters/{self._cluster_name}"
         spec_idle_suspend = self._ray_cluster.get("spec", {}).get(IDLE_SUSPEND_KEY)
         if spec_idle_suspend:
@@ -885,8 +875,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         logger.info(f"Set {IDLE_SUSPEND_KEY}=true on RayCluster {self._cluster_name}")
 
     def _get_head_pod_resource_version(self) -> str:
-        """
-        Extract a recent pods resource version by reading the head pod's
+        """Extract a recent pods resource version by reading the head pod's
         metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:

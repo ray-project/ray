@@ -27,22 +27,27 @@ pip install -U "ray[default]"
 
 Ray needs bidirectional network access between every pair of nodes, not only from the worker nodes to the head node. Each node listens on several ports, and the head node listens on a few more, such as 6379 for the GCS server and 8265 for the dashboard. Several of the per-node ports default to random values, so a firewall that allows only a fixed list of ports blocks them. Either allow all traffic between the cluster's nodes, or pin each port with its `ray start` option and open those ports. For the full list of ports and options, see {ref}`ray-ports`.
 
-### Start the Head Node
-Choose any node to be the head node and run the following. If the `--port` argument is omitted, Ray will first choose port 6379, and then fall back to a random port if in 6379 is in use.
+### Start the head node
+Choose any node to be the head node. Starting in Ray 2.61, {ref}`token authentication <token-auth>` is on by default, and `ray start --head` fails if no token exists. Create the token once on the head node, then start Ray. If you omit the `--port` argument, Ray first chooses port 6379, and then falls back to a random port if 6379 is in use.
 
 ```bash
+ray get-auth-token --generate
 ray start --head --port=6379
 ```
 
 The command will print out the Ray cluster address, which can be passed to `ray start` on other machines to start the worker nodes (see below). If you receive a ConnectionError, check your firewall settings and network configuration.
 
-### Start Worker Nodes
+### Start worker nodes
+Copy the head node's token file, `~/.ray/auth_token`, to the same path on each of the other nodes. Don't pass the token on a command line. A worker node without the token fails to join with an error that says to copy it from the head node.
+
 Then on each of the other nodes, run the following command to connect to the head node you just created.
 
 ```bash
 ray start --address=<head-node-address:port>
 ```
 Make sure to replace `head-node-address:port` with the value printed by the command on the head node (it should look something like 123.45.67.89:6379).
+
+To run the cluster without authentication, set `RAY_AUTH_MODE=disabled` on every node and every client of the cluster instead of copying the token. See {ref}`token-auth` for details.
 
 Note that if your compute nodes are on their own subnetwork with Network Address Translation, the address printed by the head node will not work if connecting from a machine outside that subnetwork. You will need to use a head node address reachable from the remote machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on DNS.
 
@@ -100,6 +105,8 @@ pip install "ray[default]"
 The provided [example-full.yaml](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml) cluster config file will create a Ray cluster given a list of nodes.
 
 Note that you'll need to fill in your [head_ip](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L20), a list of [worker_ips](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L26), and the [ssh_user](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L34) field in those templates
+
+`ray up` sets up token authentication for the cluster with no extra steps. See {ref}`vm-cluster-token-auth`.
 
 
 

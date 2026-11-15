@@ -215,6 +215,7 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to discretize."""
         return self._columns
 
     @property
@@ -225,28 +226,48 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         pd.IntervalIndex,
         Dict[str, Union[Iterable[float], pd.IntervalIndex]],
     ]:
+        """The custom bin edges.
+
+        An iterable of numbers, a ``pd.IntervalIndex``, or a mapping from columns to
+        either of them.
+        """
         return self._bins
 
     @property
     def right(self) -> bool:
+        """Whether bins include the rightmost edge."""
         return self._right
 
     @property
     def include_lowest(self) -> bool:
+        """Whether the first interval is left-inclusive."""
         return self._include_lowest
 
     @property
     def duplicates(self) -> str:
+        """What to do if bin edges aren't unique.
+
+        ``"raise"`` raises a ``ValueError``, and ``"drop"`` drops the duplicates.
+        """
         return self._duplicates
 
     @property
     def dtypes(
         self,
     ) -> Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]:
+        """The output dtype for each column.
+
+        A mapping from columns to ``pd.CategoricalDtype`` objects or ``np.integer``
+        types.
+        """
         return self._dtypes
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     _is_fittable = False
@@ -417,32 +438,52 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to discretize."""
         return self._columns
 
     @property
     def bins(self) -> Union[int, Dict[str, int]]:
+        """The number of equal-width bins.
+
+        An integer for all columns, or a mapping from columns to integers.
+        """
         return self._bins
 
     @property
     def right(self) -> bool:
+        """Whether bins include the rightmost edge."""
         return self._right
 
     @property
     def include_lowest(self) -> bool:
+        """Whether the first interval is left-inclusive."""
         return self._include_lowest
 
     @property
     def duplicates(self) -> str:
+        """What to do if bin edges aren't unique.
+
+        ``"raise"`` raises a ``ValueError``, and ``"drop"`` drops the duplicates.
+        """
         return self._duplicates
 
     @property
     def dtypes(
         self,
     ) -> Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]:
+        """The output dtype for each column.
+
+        A mapping from columns to ``pd.CategoricalDtype`` objects or ``np.integer``
+        types.
+        """
         return self._dtypes
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:

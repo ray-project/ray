@@ -1317,6 +1317,7 @@ class StandardAutoscaler:
             node_resources=self._node_resources(node_id),
             node_labels=self._node_labels(node_id),
             for_recovery=True,
+            auth_mode=self.config.get("auth_mode"),
         )
         updater.start()
         self.updaters[node_id] = updater
@@ -1427,6 +1428,7 @@ class StandardAutoscaler:
             docker_config=docker_config,
             node_resources=node_resources,
             node_labels=node_labels,
+            auth_mode=self.config.get("auth_mode"),
         )
         updater.start()
         self.updaters[node_id] = updater

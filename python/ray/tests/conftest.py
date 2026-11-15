@@ -16,7 +16,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
-from typing import List, Optional
+from typing import Iterator, List, Optional
 from unittest import mock
 
 import pytest
@@ -862,40 +862,42 @@ def call_ray_start_context(request):
         parameter = parameter.get("cmd", default_cmd)
 
     command_args = parameter.split(" ")
-    try:
-        out = ray._common.utils.decode(
-            subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
-        )
-    # If the exit code is non-zero subprocess.check_output raises a CalledProcessError
-    except subprocess.CalledProcessError as e:
-        print("Ray start cmd failed!")
-        print(f"Command: {' '.join(e.cmd)}")
-        print(f"Exit code: {e.returncode}")
-        if e.output:
-            print(f"Output:\n{e.output.decode()}")
-        raise
-    except Exception as e:
-        print(type(e), e)
-        raise
+    head_auth_mode = (env or os.environ).get("RAY_AUTH_MODE", "token")
+    with hold_test_auth_mode(enable_token_auth=head_auth_mode.lower() != "disabled"):
+        try:
+            out = ray._common.utils.decode(
+                subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
+            )
+        # If the exit code is non-zero subprocess.check_output raises a CalledProcessError
+        except subprocess.CalledProcessError as e:
+            print("Ray start cmd failed!")
+            print(f"Command: {' '.join(e.cmd)}")
+            print(f"Exit code: {e.returncode}")
+            if e.output:
+                print(f"Output:\n{e.output.decode()}")
+            raise
+        except Exception as e:
+            print(type(e), e)
+            raise
 
-    # Get the redis address from the output.
-    redis_substring_prefix = "--address='"
-    idx = out.find(redis_substring_prefix)
-    if idx >= 0:
-        address_location = idx + len(redis_substring_prefix)
-        address = out[address_location:]
-        address = address.split("'")[0]
-    else:
-        address = None
+        # Get the redis address from the output.
+        redis_substring_prefix = "--address='"
+        idx = out.find(redis_substring_prefix)
+        if idx >= 0:
+            address_location = idx + len(redis_substring_prefix)
+            address = out[address_location:]
+            address = address.split("'")[0]
+        else:
+            address = None
 
-    yield address
+        yield address
 
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"], env=env)
-    # Delete the cluster address just in case.
-    ray._common.utils.reset_ray_address()
+        # Disconnect from the Ray cluster.
+        ray.shutdown()
+        # Kill the Ray cluster.
+        subprocess.check_call(["ray", "stop"], env=env)
+        # Delete the cluster address just in case.
+        ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -1646,7 +1648,7 @@ def _isolate_token_auth_state(tmp_path_factory):
     finally:
         # Turn auth off before the home changes: a still-draining Ray thread
         # reloads the token on its next RPC and CHECK-fails if it's gone.
-        os.environ.pop("RAY_AUTH_MODE", None)
+        os.environ["RAY_AUTH_MODE"] = "disabled"
         reset_auth_token_state()
         for var, value in original.items():
             if value is None:
@@ -1671,18 +1673,42 @@ def _restore_token_auth_env(_token_auth_env_baseline):
     yield
     if ray.is_initialized() or _TestClusterAuthMode.active_count:
         return
-    for key, value in _token_auth_env_baseline.items():
-        if value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = value
     # Same ordering constraint as ``_isolate_token_auth_state``: auth has to be
     # off in this process before the token file goes away.
+    os.environ["RAY_AUTH_MODE"] = "disabled"
     reset_auth_token_state()
 
     default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
     if os.path.exists(default_token):
         os.remove(default_token)
+
+    for key, value in _token_auth_env_baseline.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    reset_auth_token_state()
+
+
+@contextmanager
+def hold_test_auth_mode(enable_token_auth: bool = True) -> Iterator[None]:
+    """Set the auth mode, and in token mode create the token, for tests where
+    nothing else creates it: a head the test starts with ``ray start --head``, or
+    Ray servers and clients it runs with no driver. Per-test env cleanup leaves
+    both alone meanwhile, so a module-scoped head keeps its token.
+    """
+    auth_mode = _TestClusterAuthMode(enable_token_auth)
+    auth_mode.apply(None)
+    try:
+        yield
+    finally:
+        auth_mode.restore()
+
+
+@pytest.fixture
+def create_auth_token() -> Iterator[None]:
+    with hold_test_auth_mode():
+        yield
 
 
 @pytest.fixture

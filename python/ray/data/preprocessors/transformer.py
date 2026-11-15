@@ -75,18 +75,25 @@ class PowerTransformer(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately transform."""
         return self._columns
 
     @property
     def method(self) -> str:
+        """The transformation to apply: ``"yeo-johnson"`` or ``"box-cox"``."""
         return self._method
 
     @property
     def power(self) -> float:
+        """The parameter that determines how the data is transformed."""
         return self._power
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):

@@ -81,8 +81,7 @@ def _arrow_to_clickhouse_type(field: pyarrow.Field) -> str:
 
 @dataclass
 class ClickHouseTableSettings:
-    """
-    Additional table creation instructions for ClickHouse.
+    """Additional table creation instructions for ClickHouse.
 
     Attributes:
         engine: The engine definition for the created table. Defaults
@@ -103,8 +102,7 @@ class ClickHouseTableSettings:
 
 @PublicAPI(stability="alpha")
 class SinkMode(IntEnum):
-    """
-    Enum of possible modes for sinking data
+    """Enum of possible modes for sinking data
 
     Attributes:
         CREATE: Create a new table; fail if that table already exists.

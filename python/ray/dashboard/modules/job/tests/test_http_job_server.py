@@ -1,6 +1,8 @@
+import inspect
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -12,6 +14,7 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from openapi_schema_validator import OAS30Validator, validate
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -28,6 +31,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.common import uri_to_http_components
+from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 from ray.dashboard.modules.version import CURRENT_VERSION
@@ -42,6 +46,26 @@ from ray.tests.conftest import _ray_start
 logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
+
+# The Ray Jobs REST API spec published on docs.ray.io, which users generate
+# client libraries from. The tests below keep it in sync with JobHead.
+OPENAPI_SPEC_PATH = (
+    Path(__file__).parents[6]
+    / "doc/source/cluster/running-applications/job-submission/openapi.yml"
+)
+
+# JobHead routes deliberately left out of the OpenAPI spec, as
+# (method, normalized path) pairs.
+ROUTES_NOT_IN_OPENAPI_SPEC = {
+    # Used internally by JobSubmissionClient to upload `working_dir` and
+    # `py_modules` packages before submitting a job. Not part of the public
+    # contract that the spec describes.
+    ("GET", "/api/packages/{}/{}"),
+    ("PUT", "/api/packages/{}/{}"),
+    # Reports dashboard component activity. Not a Jobs API endpoint; it's only
+    # served from JobHead.
+    ("GET", "/api/component_activities"),
+}
 
 
 @pytest.fixture(scope="module")
@@ -666,6 +690,100 @@ def test_version_endpoint(job_sdk_client):
         "ray_commit": ray.__commit__,
         "session_name": body["session_name"],
     }
+
+
+@pytest.fixture(scope="module")
+def openapi_spec():
+    with open(OPENAPI_SPEC_PATH) as f:
+        return yaml.safe_load(f)
+
+
+def _normalize_route(path: str) -> str:
+    # aiohttp registers some routes with a trailing slash and names the path
+    # parameter differently from the spec, so compare on the shape only.
+    return re.sub(r"\{[^}]+\}", "{}", path.rstrip("/"))
+
+
+def _job_head_routes():
+    return {
+        (h.__route_method__, _normalize_route(h.__route_path__))
+        for _, h in inspect.getmembers(
+            JobHead, lambda o: inspect.isfunction(o) and hasattr(o, "__route_path__")
+        )
+    }
+
+
+def _spec_routes(spec):
+    return {
+        (method.upper(), _normalize_route(path))
+        for path, operations in spec["paths"].items()
+        for method in operations
+    }
+
+
+def test_openapi_spec_routes_are_served(openapi_spec):
+    """Every operation in the OpenAPI spec is registered by JobHead."""
+    missing = _spec_routes(openapi_spec) - _job_head_routes()
+    assert not missing, f"Spec declares routes that JobHead doesn't serve: {missing}"
+
+
+def test_job_head_routes_are_in_openapi_spec(openapi_spec):
+    """Every JobHead route is in the OpenAPI spec or deliberately left out."""
+    undocumented = (
+        _job_head_routes() - _spec_routes(openapi_spec) - ROUTES_NOT_IN_OPENAPI_SPEC
+    )
+    assert not undocumented, (
+        f"JobHead serves routes missing from {OPENAPI_SPEC_PATH.name}: "
+        f"{undocumented}. Document them in the spec, or add them to "
+        "ROUTES_NOT_IN_OPENAPI_SPEC with the reason they're left out."
+    )
+
+
+def test_openapi_spec_version_matches_current_version(openapi_spec):
+    """The spec's major version tracks CURRENT_VERSION."""
+    assert openapi_spec["info"]["version"].split(".")[0] == CURRENT_VERSION
+
+
+def _assert_matches_openapi_spec(spec, method: str, path: str, response):
+    operation = spec["paths"][path][method.lower()]
+    assert response.status_code in operation["responses"], (
+        f"{method} {path} returned {response.status_code}, which the spec "
+        "doesn't declare."
+    )
+    content = operation["responses"][response.status_code].get("content", {})
+    if "application/json" not in content:
+        return
+    # Inline the spec's components so `#/components/...` refs resolve against
+    # the schema root.
+    schema = {
+        **content["application/json"]["schema"],
+        "components": spec["components"],
+    }
+    validate(response.json(), schema, cls=OAS30Validator)
+
+
+def test_responses_match_openapi_spec(job_sdk_client, openapi_spec):
+    """Responses from a real job server conform to the spec's schemas."""
+    client = job_sdk_client
+
+    def check(method, spec_path, url, **kwargs):
+        r = client._do_request(method, url, **kwargs)
+        _assert_matches_openapi_spec(openapi_spec, method, spec_path, r)
+        return r
+
+    check("GET", "/api/version", "/api/version")
+
+    r = check("POST", "/api/jobs", "/api/jobs/", json_data={"entrypoint": "echo hello"})
+    submission_id = r.json()["submission_id"]
+    wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
+
+    check("GET", "/api/jobs", "/api/jobs/")
+    check("GET", "/api/jobs/{submission_id}", f"/api/jobs/{submission_id}")
+    check("GET", "/api/jobs/{submission_id}/logs", f"/api/jobs/{submission_id}/logs")
+    check("POST", "/api/jobs/{submission_id}/stop", f"/api/jobs/{submission_id}/stop")
+    check("DELETE", "/api/jobs/{submission_id}", f"/api/jobs/{submission_id}")
+    r = check("GET", "/api/jobs/{submission_id}", f"/api/jobs/{submission_id}")
+    assert r.status_code == 404
 
 
 def test_request_headers(job_sdk_client):

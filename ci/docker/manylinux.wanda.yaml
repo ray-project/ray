@@ -1,6 +1,7 @@
 name: "manylinux-$HOSTTYPE"
 froms:
   - rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE
+  - cr.ray.io/rayproject/bazel-glibc217-$HOSTTYPE
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - MANYLINUX_VERSION

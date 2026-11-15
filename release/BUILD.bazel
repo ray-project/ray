@@ -286,6 +286,7 @@ py_binary(
         ["**/*.yaml"],
         exclude = ["ray_release/**/*.yaml"],
     ) + [
+        "//doc:llm_doc_tests",
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
     ] + glob(

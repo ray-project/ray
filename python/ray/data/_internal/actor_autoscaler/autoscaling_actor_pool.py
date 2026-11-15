@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ray import ObjectRef
 from ray.actor import ActorHandle
@@ -36,8 +36,7 @@ class ActorPoolScalingRequest:
 
 @dataclass(frozen=True)
 class AutoscalingActorConfig:
-    """
-    per_actor_resource_usage: The resource usage per actor.
+    """per_actor_resource_usage: The resource usage per actor.
     min_size: The minimum number of running actors to be maintained
         in the pool. Note, that this constraint could be violated when
         no new work is available for scheduling in the actor pool (ie
@@ -243,6 +242,15 @@ class AutoscalingActorPool(ABC):
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
         return self._config.per_actor_resource_usage
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        """Return exact resource requests for actors in this pool.
+
+        Default is an empty list -- a pool that does not track exact requests
+        reports nothing and its operators fall back to the logical bundle.
+        Pools that know the shape of each actor override this.
+        """
+        return []
 
     def max_actor_concurrency(self) -> int:
         """Returns max number of tasks single actor could run concurrently."""

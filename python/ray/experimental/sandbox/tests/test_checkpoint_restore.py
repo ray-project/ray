@@ -1,6 +1,7 @@
 import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,7 @@ class TestCheckpointRestore(unittest.TestCase):
         self.image_manager.pull_image.return_value = os.path.join(
             self.temp_dir, "images", "busybox_latest"
         )
+        self.image_manager.prepare_oci_bundle.side_effect = self._write_bundle
         self.backend = GVisorSandboxBackend(
             image_manager=self.image_manager,
         )
@@ -58,11 +60,46 @@ class TestCheckpointRestore(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     @staticmethod
+    def _write_bundle(root_dir, **kwargs):
+        """Write a bundle's config.json, as prepare_oci_bundle does, with a
+        spec that boots straight from the image."""
+        path = os.path.join(root_dir, "config.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"root": {"path": "rootfs", "readonly": True}}, f)
+        return path
+
+    @staticmethod
     def _running_proc():
         proc = MagicMock()
         proc.poll.return_value = None
         proc.pid = 12345
         return proc
+
+    def _launches(self, proc=None):
+        """Return a subprocess.Popen side effect that returns ``proc``, or a
+        new running process for each launch.
+
+        It first writes the pid file named by the launch command, as
+        ``runsc run`` and ``runsc restore`` do once the container exists, so
+        the start loop goes on to ask ``runsc state``.
+        """
+
+        def launch(argv, *_, **__):
+            launched = proc if proc is not None else self._running_proc()
+            cmd = argv if isinstance(argv, str) else " ".join(argv)
+            match = re.search(r"--pid-file\s+'?([^\s']+)", cmd)
+            if match:
+                with open(match.group(1), "w") as f:
+                    f.write(str(launched.pid))
+            return launched
+
+        return launch
+
+    @staticmethod
+    def _run_command(config, root_dir, sandbox_id, **_):
+        """Stand in for _build_run_command with a command that names the
+        sandbox's pid file."""
+        return ["true", "--pid-file", os.path.join(root_dir, "sandbox.pid")]
 
     def _fake_runsc(self, state: str = "running", checkpoint_returncode: int = 0):
         """Patch runsc and its launch processes for one test.
@@ -96,7 +133,7 @@ class TestCheckpointRestore(unittest.TestCase):
         stack = contextlib.ExitStack()
         mock_run = stack.enter_context(patch("subprocess.run", side_effect=fake_run))
         mock_popen = stack.enter_context(
-            patch("subprocess.Popen", side_effect=lambda *a, **k: self._running_proc())
+            patch("subprocess.Popen", side_effect=self._launches())
         )
         stack.enter_context(patch("time.sleep"))
         stack.enter_context(patch("shutil.which", return_value="/usr/bin/runsc"))
@@ -209,7 +246,10 @@ class TestCheckpointRestore(unittest.TestCase):
         old_proc.wait.assert_called()
         launches = self._launch_commands(mock_popen)
         assert len(launches) == 1
-        assert " restore --bundle " + root_dir in launches[0]
+        assert (
+            f" restore --pid-file {root_dir}/sandbox.pid --bundle {root_dir}"
+            in launches[0]
+        )
         assert os.path.join(checkpoint_path, "state") in launches[0]
         assert "--background" in launches[0]
         assert launches[0].endswith(sandbox_id)
@@ -254,6 +294,8 @@ class TestCheckpointRestore(unittest.TestCase):
         assert "/path/to/bundle" in cmd
         assert "--image-path" in cmd
         assert "/path/to/state" in cmd
+        # The start loop waits for this file before asking `runsc state`.
+        assert cmd[cmd.index("--pid-file") + 1] == "/path/to/bundle/sandbox.pid"
         assert cmd[-1] == "sb-test"
 
         # Public network: the same namespace, egress and interrupt wrapping as
@@ -280,11 +322,38 @@ class TestCheckpointRestore(unittest.TestCase):
         assert script.startswith("trap '' INT QUIT; ")
         assert (
             script.replace(
-                "restore --bundle /path/to/bundle --image-path /path/to/state --direct",
-                "run --bundle /path/to/bundle",
+                "restore --pid-file /path/to/bundle/sandbox.pid --bundle "
+                "/path/to/bundle --image-path /path/to/state --direct",
+                "run --pid-file /path/to/bundle/sandbox.pid --bundle /path/to/bundle",
             )
             == run_public[2]
         )
+
+    def test_lifecycle_commands_run_runsc_with_gomaxprocs(self):
+        """runsc pause, resume and checkpoint, and the restore that follows a
+        checkpoint, run with runsc_env()'s GOMAXPROCS like every runsc call."""
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        stack, mock_run, mock_popen = self._fake_runsc()
+        with stack, patch.dict(os.environ):
+            os.environ.pop("GOMAXPROCS", None)
+            self.backend.pause_sandbox(sandbox_id)
+            self.backend.resume_sandbox(sandbox_id)
+            self.backend.checkpoint_sandbox(
+                sandbox_id, checkpoint_path=os.path.join(self.temp_dir, "ckpt")
+            )
+
+        calls = {
+            subcommand: [
+                call
+                for call in mock_run.call_args_list
+                if call[0] and subcommand in call[0][0]
+            ]
+            for subcommand in ("pause", "resume", "checkpoint")
+        }
+        (restore,) = mock_popen.call_args_list
+        for call in [*calls["pause"], *calls["resume"], *calls["checkpoint"], restore]:
+            assert call.kwargs["env"]["GOMAXPROCS"] == "2"
+        assert all(calls.values())
 
     def test_checkpoint_already_paused_sandbox_remains_paused(self):
         sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
@@ -307,6 +376,98 @@ class TestCheckpointRestore(unittest.TestCase):
         assert (
             self.backend._sandbox_metadata[sandbox_id]["status"] == SandboxStatus.PAUSED
         )
+
+    def test_restore_in_place_waits_for_a_new_pid_file(self):
+        """A sandbox restored in place loses its old launch's pid file first,
+        so the start loop waits for the restore to write a new one before it
+        asks `runsc state`."""
+        sandbox_id, root_dir = self._create_mock_sandbox()
+        pid_file = os.path.join(root_dir, "sandbox.pid")
+        with open(pid_file, "w") as f:
+            f.write("12345")  # Written by the launch that the checkpoint stops.
+        stale_at_launch = []
+        launch = self._launches()
+
+        def popen(argv, *args, **kwargs):
+            stale_at_launch.append(os.path.exists(pid_file))
+            return launch(argv, *args, **kwargs)
+
+        stack, _, _ = self._fake_runsc()
+        with stack, patch("subprocess.Popen", side_effect=popen):
+            self.backend.checkpoint_sandbox(
+                sandbox_id,
+                checkpoint_path=os.path.join(self.temp_dir, "pid_checkpoint"),
+                leave_running=True,
+            )
+        assert stale_at_launch == [False]
+        assert os.path.exists(pid_file)
+
+    def test_checkpoint_restores_an_overlayfs_sandbox_in_its_overlay(self):
+        """leave_running=True restores an overlayfs sandbox inside its kernel
+        overlay."""
+        sandbox_id, _ = self._create_mock_sandbox()
+        rootfs_overlay = MagicMock()
+        self.backend._sandbox_metadata[sandbox_id]["rootfs_overlay"] = rootfs_overlay
+
+        stack, _, _ = self._fake_runsc()
+        with (
+            stack,
+            patch.object(
+                self.backend, "_build_run_command", side_effect=self._run_command
+            ) as build,
+        ):
+            self.backend.checkpoint_sandbox(
+                sandbox_id,
+                checkpoint_path=os.path.join(self.temp_dir, "overlay_checkpoint"),
+                leave_running=True,
+            )
+
+        assert build.call_args.kwargs["restore"] is not None
+        assert build.call_args.kwargs["rootfs_overlay"] is rootfs_overlay
+
+    def test_restore_boots_an_overlayfs_sandbox_in_its_overlay(self):
+        """A restored sandbox whose spec needs a kernel overlay is restored
+        inside one."""
+        ckpt_dir = os.path.join(self.temp_dir, "overlay_checkpoint")
+        os.makedirs(os.path.join(ckpt_dir, "state"))
+        manifest = {
+            "config": {
+                "image": "busybox:latest",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+        rootfs_overlay = MagicMock()
+
+        stack, _, _ = self._fake_runsc()
+        with (
+            stack,
+            patch(
+                "ray.experimental.sandbox._internal.overlayfs.needs_rootfs_overlay",
+                return_value=True,
+            ),
+            patch.object(
+                self.backend, "_prepare_rootfs_overlay", return_value=rootfs_overlay
+            ),
+            patch.object(
+                self.backend, "_build_run_command", side_effect=self._run_command
+            ) as build,
+        ):
+            restored_id = self.backend.restore_sandbox(ckpt_dir)
+
+        assert build.call_args.kwargs["restore"] is not None
+        assert build.call_args.kwargs["rootfs_overlay"] is rootfs_overlay
+        meta = self.backend._sandbox_metadata[restored_id]
+        assert meta["rootfs_overlay"] is rootfs_overlay
+
+    def test_checkpoint_refuses_a_sandbox_with_gpus(self):
+        sandbox_id, _ = self._create_mock_sandbox()
+        self.backend._sandbox_metadata[sandbox_id]["config"].gpu_ids = ["0"]
+        with pytest.raises(SandboxError, match="GPUs"):
+            self.backend.checkpoint_sandbox(sandbox_id)
 
     def test_restore_success(self):
         # Setup mock checkpoint directory
@@ -350,7 +511,7 @@ class TestCheckpointRestore(unittest.TestCase):
         mock_proc.returncode = 0
 
         with (
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.Popen", side_effect=self._launches(mock_proc)),
             patch("subprocess.run") as mock_run,
             patch("time.sleep"),
         ):
@@ -403,7 +564,7 @@ class TestCheckpointRestore(unittest.TestCase):
 
         with (
             patch("shutil.which", return_value="/usr/bin/mock"),
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.Popen", side_effect=self._launches(mock_proc)),
             patch("subprocess.run") as mock_run,
             patch("time.sleep"),
         ):
@@ -472,7 +633,10 @@ class TestCheckpointRestore(unittest.TestCase):
         # image, synchronously since the staging directory is then deleted.
         launches = self._launch_commands(mock_popen)
         assert len(launches) == 1
-        assert " restore --bundle " + root_dir in launches[0]
+        assert (
+            f" restore --pid-file {root_dir}/sandbox.pid --bundle {root_dir}"
+            in launches[0]
+        )
         assert "--background" not in launches[0]
         meta = self.backend._sandbox_metadata[sandbox_id]
         assert meta["status"] == SandboxStatus.RUNNING
@@ -784,11 +948,13 @@ class TestCheckpointRestore(unittest.TestCase):
             return spec
 
         with (
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.Popen", side_effect=self._launches(mock_proc)),
             patch("subprocess.run") as mock_run,
             patch("time.sleep"),
             patch.object(
-                self.backend._image_manager, "prepare_oci_bundle"
+                self.backend._image_manager,
+                "prepare_oci_bundle",
+                side_effect=self._write_bundle,
             ) as mock_prep,
         ):
             mock_run.return_value = MagicMock(
@@ -875,7 +1041,10 @@ class TestCheckpointRestore(unittest.TestCase):
         # Launched with the same wrapping as a created network="public" sandbox.
         (launch,) = self._launch_commands(mock_popen)
         assert "nft -f" in launch
-        assert " restore --bundle " + meta["root_dir"] in launch
+        assert (
+            f" restore --pid-file {meta['root_dir']}/sandbox.pid --bundle {meta['root_dir']}"
+            in launch
+        )
 
     def test_copy_fs_tree_preserves_symlinks_without_following(self):
         src_dir = os.path.join(self.temp_dir, "symlink_src")
@@ -964,7 +1133,11 @@ class TestCheckpointRestore(unittest.TestCase):
         with (
             patch("shutil.which", return_value="/usr/bin/runsc"),
             patch.object(self.backend._image_manager, "pull_image"),
-            patch.object(self.backend._image_manager, "prepare_oci_bundle"),
+            patch.object(
+                self.backend._image_manager,
+                "prepare_oci_bundle",
+                side_effect=self._write_bundle,
+            ),
             patch.object(self.backend._image_manager, "release_image") as mock_release,
             patch(
                 "subprocess.Popen", side_effect=FileNotFoundError("missing executable")
@@ -1303,7 +1476,9 @@ class TestCheckpointRestore(unittest.TestCase):
             )
         assert os.path.isfile(os.path.join(ckpt_dir, "manifest.json"))
         (launch,) = self._launch_commands(mock_popen)
-        assert " restore --bundle " + root_dir in launch
+        assert (
+            f" restore --pid-file {root_dir}/sandbox.pid --bundle {root_dir}" in launch
+        )
 
     def _write_image(self, name, superblock_byte):
         image_dir = os.path.join(self.temp_dir, "images", name)

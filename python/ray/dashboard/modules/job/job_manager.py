@@ -480,8 +480,7 @@ class JobManager:
         entrypoint_label_selector: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
-        """
-        Job execution happens asynchronously.
+        """Job execution happens asynchronously.
 
         1) Generate a new unique id for this job submission, each call of this
             method assumes they're independent submission with its own new

@@ -43,6 +43,8 @@
 namespace ray {
 namespace core {
 
+constexpr char kTestActorIdHex[] = "e4ce02420592ca68c1738a0d01000000";
+
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies,
                                    bool dynamic_returns = false,
@@ -81,7 +83,7 @@ TaskSpecification CreateActorStreamingGeneratorTaskHelper(
   RAY_CHECK_GT(actor_generator_backpressure_num_objects, 0);
   TaskSpecification task;
   const JobID job_id = JobID::FromInt(1);
-  const ActorID actor_id = ActorID::FromHex("e4ce02420592ca68c1738a0d01000000");
+  const ActorID actor_id = ActorID::FromHex(kTestActorIdHex);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
   const ObjectID actor_creation_dummy_object_id =
       ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
@@ -100,6 +102,24 @@ TaskSpecification CreateActorStreamingGeneratorTaskHelper(
   actor_spec->set_actor_creation_dummy_object_id(actor_creation_dummy_object_id.Binary());
   actor_spec->set_actor_generator_backpressure_num_objects(
       actor_generator_backpressure_num_objects);
+  return task;
+}
+
+TaskSpecification CreateActorTaskHelper(uint64_t num_returns) {
+  TaskSpecification task;
+  const JobID job_id = JobID::FromInt(1);
+  const ActorID actor_id = ActorID::FromHex(kTestActorIdHex);
+  const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
+  task.GetMutableMessage().set_task_id(
+      TaskID::ForActorTask(job_id, TaskID::Nil(), /*parent_counter=*/0, actor_id)
+          .Binary());
+  task.GetMutableMessage().set_job_id(job_id.Binary());
+  task.GetMutableMessage().set_num_returns(num_returns);
+  task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  auto *actor_spec = task.GetMutableMessage().mutable_actor_task_spec();
+  actor_spec->set_actor_id(actor_id.Binary());
+  actor_spec->set_actor_creation_dummy_object_id(
+      ObjectID::FromIndex(actor_creation_task_id, /*index=*/1).Binary());
   return task;
 }
 
@@ -239,6 +259,7 @@ class TaskManagerTest : public ::testing::Test {
             fake_gcs_client_,
             fake_task_by_state_counter_,
             fake_total_lineage_bytes_gauge_,
+            fake_task_retry_submissions_counter_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
             /*set_direct_transport_metadata=*/
             [](const ObjectID &, const std::string &) {},
@@ -288,6 +309,13 @@ class TaskManagerTest : public ::testing::Test {
         };
   }
 
+  double RecordedRetrySubmissions(const TaskSpecification &spec,
+                                  const std::string &reason) const {
+    const auto tag_to_value = fake_task_retry_submissions_counter_.GetTagToValue();
+    auto it = tag_to_value.find({{"Reason", reason}, {"Name", spec.GetName()}});
+    return it == tag_to_value.end() ? 0 : it->second;
+  }
+
   bool lineage_pinning_enabled_;
   bool did_queue_generator_resubmit_ = false;
   rpc::Address addr_;
@@ -311,6 +339,7 @@ class TaskManagerTest : public ::testing::Test {
   std::unordered_map<ObjectID, rpc::ErrorType> plasma_put_error_types_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
+  ray::observability::FakeCounter fake_task_retry_submissions_counter_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
@@ -372,6 +401,22 @@ TEST_F(TaskManagerTest, TestRecordMetricsReEmitsAcrossTicksWithoutTransitions) {
     }
   }
   ASSERT_EQ(pending_args_avail, 0) << "gauge must be retracted to 0 after the task fails";
+}
+
+TEST_F(TaskManagerTest, TestConsumeOnceReturnsAreMovable) {
+  auto spec = CreateActorTaskHelper(/*num_returns=*/2);
+  manager_.AddPendingTask(
+      rpc::Address(), spec, "", /*max_retries=*/0, /*consume_once=*/true);
+  ASSERT_EQ(reference_counter_->GetMoveState(spec.ReturnId(0)), MoveState::MOVABLE);
+  ASSERT_EQ(reference_counter_->GetMoveState(spec.ReturnId(1)), MoveState::MOVABLE);
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+
+TEST_F(TaskManagerTest, TestReturnsAreNotMovableByDefault) {
+  auto spec = CreateActorTaskHelper(/*num_returns=*/1);
+  manager_.AddPendingTask(rpc::Address(), spec, "");
+  ASSERT_EQ(reference_counter_->GetMoveState(spec.ReturnId(0)), MoveState::NOT_MOVABLE);
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
@@ -712,6 +757,9 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 2);
+  // Only the two attempts that were retried are counted, by failure reason.
+  ASSERT_EQ(RecordedRetrySubmissions(spec, "OUT_OF_MEMORY"), 1);
+  ASSERT_EQ(RecordedRetrySubmissions(spec, "WORKER_DIED"), 1);
 
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
@@ -1110,12 +1158,10 @@ class TaskManagerLineageEvictionTest : public TaskManagerTest {
 // accumulator never advanced and the loop drained the whole queue.
 TEST_F(TaskManagerLineageEvictionTest, TestEvictLineageStopsAtTarget) {
   rpc::Address caller_address;
-  // Infinite retries, so that completed tasks stay reconstructable (ELIGIBLE).
-  const int max_retries = -1;
-
   auto add_and_complete_task = [this, &caller_address]() {
     auto spec = CreateTaskHelper(/*num_returns=*/1, /*dependencies=*/{});
-    manager_.AddPendingTask(caller_address, spec, "", max_retries);
+    // Infinite retries, so that completed tasks stay reconstructable (ELIGIBLE).
+    manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/-1);
     manager_.MarkDependenciesResolved(spec.TaskId());
     manager_.MarkTaskWaitingForExecution(
         spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
@@ -1381,6 +1427,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
+  ASSERT_EQ(RecordedRetrySubmissions(spec, "LINEAGE_RECONSTRUCTION"), 1);
   resubmitted_task_deps.clear();
 
   // The return ID goes out of scope.
@@ -1402,6 +1449,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED);
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(RecordedRetrySubmissions(spec, "LINEAGE_RECONSTRUCTION"), 1);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
@@ -1707,6 +1755,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_task_retry_submissions_counter_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
       /*free_stale_unconsumed_generator_objects_async=*/
@@ -1781,6 +1830,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_task_retry_submissions_counter_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
       /*free_stale_unconsumed_generator_objects_async=*/
@@ -1853,6 +1903,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_task_retry_submissions_counter_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
       /*free_stale_unconsumed_generator_objects_async=*/
@@ -5427,6 +5478,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_task_retry_submissions_counter_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
       /*free_stale_unconsumed_generator_objects_async=*/
@@ -5518,6 +5570,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_task_retry_submissions_counter_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
       /*free_stale_unconsumed_generator_objects_async=*/

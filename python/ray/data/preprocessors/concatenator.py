@@ -109,22 +109,30 @@ class Concatenator(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to concatenate, in concatenation order."""
         return self._columns
 
     @property
     def output_column_name(self) -> str:
+        """The name of the column that holds the concatenated tensors."""
         return self._output_column_name
 
     @property
     def dtype(self) -> Optional[np.dtype]:
+        """The ``dtype`` of the output tensors.
+
+        ``None`` means the ``dtype`` follows standard coercion rules.
+        """
         return self._dtype
 
     @property
     def raise_if_missing(self) -> bool:
+        """Whether a missing column raises an error instead of logging a warning."""
         return self._raise_if_missing
 
     @property
     def flatten(self) -> bool:
+        """Whether nested vectors in the columns are flattened during concatenation."""
         return self._flatten
 
     def _validate(self, df: pd.DataFrame) -> None:
@@ -182,9 +190,19 @@ class Concatenator(SerializablePreprocessorBase):
         return df
 
     def get_input_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor reads.
+
+        Returns:
+            The columns to concatenate.
+        """
         return self._columns
 
     def get_output_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor writes.
+
+        Returns:
+            A list that contains ``output_column_name``.
+        """
         return [self._output_column_name]
 
     def __repr__(self):

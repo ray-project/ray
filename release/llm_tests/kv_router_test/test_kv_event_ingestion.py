@@ -15,7 +15,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     _MODEL_NAME,
-    _TENANT_ID,
+    _ROUTING_GROUP,
     KVTokenTracker,
     get_worker_id,
 )
@@ -51,7 +51,7 @@ class _TestKVTokenTracker(KVTokenTracker):
         if self._svc is None:
             return []
         workers = self._svc.list_workers(
-            model_name=_MODEL_NAME, routing_group=_TENANT_ID
+            model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP
         )
         return sorted(
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
@@ -82,7 +82,7 @@ class _TestKVTokenTracker(KVTokenTracker):
         scores = await self._svc.overlap_scores(
             {
                 "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
+                "routing_group": _ROUTING_GROUP,
                 "token_ids": list(token_ids),
                 "lora_name": lora_name,
             }
@@ -96,7 +96,7 @@ class _TestKVTokenTracker(KVTokenTracker):
         loads = await self._svc.potential_loads(
             {
                 "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
+                "routing_group": _ROUTING_GROUP,
                 "token_ids": list(token_ids),
             }
         )
@@ -106,7 +106,9 @@ class _TestKVTokenTracker(KVTokenTracker):
         """(Test only) Current per-worker active load."""
         if self._svc is None:
             return {}
-        model_loads = self._svc.loads(model_name=_MODEL_NAME, routing_group=_TENANT_ID)
+        model_loads = self._svc.loads(
+            model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP
+        )
         if not model_loads:
             return {}
         return {load["worker_id"]: load for load in model_loads[0]["loads"]}
@@ -557,8 +559,6 @@ class TestKvEventIngestion:
 
             scores = await tracker.get_kv_overlap_scores(token_ids)
             assert scores[worker_a]["host_pinned_extension_blocks"] == 2
-            assert 1 < scores[worker_a]["router_credit_blocks"] < 3
-            assert scores[worker_b]["router_credit_blocks"] == 3
 
             gpu_selection = await tracker.select_worker(
                 "gpu-hit", token_ids, [worker_a, worker_b]

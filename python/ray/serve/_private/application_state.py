@@ -269,8 +269,7 @@ class ApplicationState:
         logging_config: LoggingConfig,
         external_scaler_enabled: bool,
     ):
-        """
-        Initialize an ApplicationState instance.
+        """Initialize an ApplicationState instance.
 
         Args:
             name: Application name.
@@ -561,8 +560,7 @@ class ApplicationState:
         return self._autoscaling_state_manager.should_autoscale_application(self._name)
 
     def autoscale(self) -> bool:
-        """
-        Apply the autoscaling decisions for the application.
+        """Apply the autoscaling decisions for the application.
         If the application has deployment-level autoscaling, it will apply the autoscaling decisions for each deployment.
 
         Returns:

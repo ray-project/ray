@@ -92,6 +92,10 @@ class PlacementGroupFactory(ResourceRequest):
     """
 
     def __call__(self, *args, **kwargs):
+        """Deprecated. Creates a placement group from this factory.
+
+        Use ``to_placement_group()`` instead.
+        """
         warnings.warn(
             "Calling PlacementGroupFactory objects is deprecated. Use "
             "`to_placement_group()` instead.",
