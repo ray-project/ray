@@ -672,6 +672,44 @@ TEST_F(GcsPlacementGroupSchedulerTest, FailedPrepareCleanupKeepsBoundedRetries) 
   ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
 }
 
+// A placement group removed while its bundles are being prepared is never
+// rescheduled, so its prepared bundles are removed without a retry cap.
+TEST_F(GcsPlacementGroupSchedulerTest, CancelledPrepareCleanupKeepsRetryingLiveNode) {
+  auto node0 = GenNodeInfo(0);
+  auto node1 = GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      }});
+  // Both nodes prepare successfully, but the placement group is cancelled in between.
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  scheduler_->MarkScheduleCancelled(placement_group->GetPlacementGroupID());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  for (int attempt = 0; attempt < 5; ++attempt) {
+    WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+    ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(
+        Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  }
+  // The node is still alive, so GCS must keep trying.
+  WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 6);
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+}
+
 // Once the node is dead the raylet cannot hold the bundles anymore, so the
 // retry loop ends.
 TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupStopsRetryingDeadNode) {

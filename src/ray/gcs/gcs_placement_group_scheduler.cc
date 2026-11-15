@@ -422,8 +422,14 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     // and the raylet's removal handler cancels every lease and worker of the placement
     // group on the node. A removal retried after a newer attempt reserved bundles there
     // would destroy them, so keep the retry budget bounded on this path.
-    DestroyPlacementGroupPreparedBundleResources(placement_group_id,
-                                                 kMaxPreparedBundleRemovalRetries);
+    // A cancelled placement group is being removed and never rescheduled, so its
+    // prepared bundles are retried while the node is alive.
+    const bool cancelled =
+        lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED;
+    DestroyPlacementGroupPreparedBundleResources(
+        placement_group_id,
+        cancelled ? std::nullopt
+                  : std::optional<int>(kMaxPreparedBundleRemovalRetries));
     auto it = placement_group_leasing_in_progress_.find(placement_group_id);
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
     placement_group_leasing_in_progress_.erase(it);
