@@ -159,13 +159,37 @@ class PrevActionsPrevRewards(ConnectorV2):
         return batch
 
     def _convert_individual_space(self, obs_space, act_space):
+        # Compute the space of the flattened previous actions, matching how
+        # `__call__` transforms the action values (one-hot for Discrete and
+        # MultiDiscrete, flattened for Box).
+        if isinstance(act_space, gym.spaces.Box):
+            single_shape = int(np.prod(act_space.shape))
+            prev_actions_space = Box(
+                np.tile(np.asarray(act_space.low).flatten(), self.n_prev_actions),
+                np.tile(np.asarray(act_space.high).flatten(), self.n_prev_actions),
+                (single_shape * self.n_prev_actions,),
+                np.float32,
+            )
+        elif isinstance(act_space, gym.spaces.MultiDiscrete):
+            prev_actions_space = Box(
+                0.0,
+                1.0,
+                (int(np.sum(act_space.nvec)) * self.n_prev_actions,),
+                np.float32,
+            )
+        elif isinstance(act_space, gym.spaces.Discrete):
+            prev_actions_space = Box(
+                0.0, 1.0, (act_space.n * self.n_prev_actions,), np.float32
+            )
+        else:
+            raise ValueError(
+                f"`PrevActionsPrevRewards` does not support action space "
+                f"{act_space} (only Box, Discrete, and MultiDiscrete)."
+            )
         return gym.spaces.Dict(
             {
                 self.ORIG_OBS_KEY: obs_space,
-                # Currently only works for Discrete action spaces.
-                self.PREV_ACTIONS_KEY: Box(
-                    0.0, 1.0, (act_space.n * self.n_prev_actions,), np.float32
-                ),
+                self.PREV_ACTIONS_KEY: prev_actions_space,
                 self.PREV_REWARDS_KEY: Box(
                     float("-inf"),
                     float("inf"),
