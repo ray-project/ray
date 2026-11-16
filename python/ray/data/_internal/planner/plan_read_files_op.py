@@ -33,7 +33,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,10 @@ def plan_read_files_op(
         # ``prune_input_split`` is an identity by default; ``FileScanner``
         # overrides it to drop files failing a pushed-down partition predicate.
         for block in blocks:
+            # A block can arrive empty and without the manifest's columns,
+            # such as when a checkpoint filter upstream dropped all its rows.
+            if BlockAccessor.for_block(block).num_rows() == 0:
+                continue
             manifest = scanner.prune_input_split(FileManifest(block))
             if len(manifest) == 0:
                 continue
