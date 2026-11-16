@@ -28,7 +28,7 @@ def load_torch_model(
     if isinstance(saved_model, torch.nn.Module):
         return saved_model
     elif isinstance(saved_model, dict):
-        if not model_definition:
+        if model_definition is None:
             raise ValueError(
                 "Attempting to load torch model from a "
                 "state_dict, but no `model_definition` was "
@@ -104,12 +104,16 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
             state_dict[newkey] = state_dict.pop(key)
 
     if "_metadata" in state_dict:
+        if not copied:
+            state_dict = state_dict.copy()
+            copied = True
         state_dict["_metadata"] = state_dict["_metadata"].copy()
         metadata = state_dict["_metadata"]
-        for key in metadata:
+        for key in sorted(metadata.keys()):
             if len(key) == 0:
                 continue
-            newkey = key[len(prefix) :]
-            metadata[newkey] = metadata.pop(key)
+            if key == prefix.rstrip(".") or key.startswith(prefix):
+                newkey = key[len(prefix) :]
+                metadata[newkey] = metadata.pop(key)
 
     return state_dict
