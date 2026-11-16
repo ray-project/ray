@@ -10,7 +10,7 @@ external credentials are needed.
 
 The client uses `PLAIN` and the server uses `NONE`. The `hive` password is a
 non-secret placeholder required by the client. This covers table/query reads,
-limits, scalar types, and timestamps. The TLS-specific test remains skipped
+limits, scalar types, and timestamps. The TLS-specific tests remain skipped
 because this fixture does not configure TLS.
 
 The script preserves a failing test command's exit status, saves server and readiness
@@ -53,7 +53,7 @@ bash ci/ray_ci/data/run_hive_integration.sh --tls
 
 This uses the same Hive image and Data test environment with an ephemeral CA.
 It checks verified table reads, rejection of an untrusted CA on the driver, and
-rejection of a hostname mismatch on a read worker. The Ray nodes are separate
-processes in one test container and share its filesystem. This manual security
+rejection of a hostname mismatch on a read worker. The driver and worker are
+separate processes on one Ray node and share its filesystem. This manual security
 check doesn't run as part of the default checks before merging. It doesn't
 validate `GSSAPI`, `NOSASL`, or zero data RPCs after a TLS failure.

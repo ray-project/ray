@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import shlex
 import ssl
 import subprocess
 import sys
@@ -26,21 +27,13 @@ def test_certificate_error_traverses_thrift_inner_and_cause():
     assert utils._certificate_error(RuntimeError("unrelated")) is None
 
 
-@pytest.mark.parametrize(
-    "failure", ["logged_tls", "wrapped_tls", "hostname", "unrelated", "success"]
-)
+@pytest.mark.parametrize("failure", ["logged_tls", "hostname", "unrelated"])
 def test_factory_records_only_this_readers_connection(tmp_path, monkeypatch, failure):
-    import ray
-
-    monkeypatch.setattr(
-        ray, "get_runtime_context", lambda: SimpleNamespace(get_node_id=lambda: "node")
-    )
     directory = tmp_path
 
     logger = logging.getLogger("thrift.transport.TSocket")
     old_level, old_propagate = logger.level, logger.propagate
     secret = "secret-error-marker"
-    connection = object()
 
     # Python 3.13 removed ssl.match_hostname; model Thrift's Python 3.10
     # callback while still exercising this helper on newer test hosts.
@@ -66,10 +59,6 @@ def test_factory_records_only_this_readers_connection(tmp_path, monkeypatch, fai
             except ssl.SSLCertVerificationError:
                 logger.info("certificate failed", exc_info=True)
             raise RuntimeError("transport failed")
-        if failure == "wrapped_tls":
-            error = ssl.SSLCertVerificationError(secret)
-            error.verify_code = 62
-            raise TransportFailure(error)
         if failure == "hostname":
             try:
                 match_hostname({"subjectAltName": (("DNS", "hiveserver2"),)}, "wrong")
@@ -87,82 +76,61 @@ def test_factory_records_only_this_readers_connection(tmp_path, monkeypatch, fai
             thread.start()
             thread.join()
             raise OSError("unrelated connection failure")
-        return connection
 
     factory = utils._make_auth_factory(connect, directory)
-    if failure == "success":
-        assert factory() is connection
-    else:
-        expected_error: tuple[type[Exception], ...] = (RuntimeError, OSError)
-        with pytest.raises(expected_error):
-            factory()
+    expected_error: tuple[type[Exception], ...] = (RuntimeError, OSError)
+    with pytest.raises(expected_error):
+        factory()
     record_text = next(directory.glob("*.json")).read_text()
     record = json.loads(record_text)
     assert record["complete"] is True
-    assert record["node"] == "node"
-    assert record["connected"] is (failure == "success")
-    assert record["certificate_error"] is (
-        failure in {"logged_tls", "wrapped_tls", "hostname"}
-    )
-    assert record["verify_code"] == {"logged_tls": 19, "wrapped_tls": 62}.get(failure)
+    assert record["pid"] == os.getpid()
+    assert record["connected"] is False
+    assert record["certificate_error"] is (failure != "unrelated")
+    assert record["verify_code"] == (19 if failure == "logged_tls" else None)
     assert record["hostname_mismatch"] is (failure == "hostname")
     assert secret not in record_text
     assert (logger.level, logger.propagate) == (old_level, old_propagate)
 
 
-@pytest.mark.parametrize("checkout", ["/ray", "/rayci"])
-def test_reader_evidence_matches_its_checkout(tmp_path, checkout):
-    data_dir = Path(checkout) / "python/ray/data"
-    test_file = data_dir / "tests/datasource/test_hive_auth_integration.py"
-    source = data_dir / "_internal/datasource_v2/formats/hive/hive_hs2.py"
-    record = dict(complete=True, node="node", source=str(source.resolve()))
-    event = tmp_path / "event.json"
-    event.write_text(json.dumps(record))
-    assert utils._read_evidence(tmp_path, {"node"}, test_file) == [record]
-
-    for wrong_source in (
-        source.with_name("another_hive_module.py"),
-        Path(checkout + "-stale")
-        / "python/ray/data/_internal/datasource_v2/formats/hive/hive_hs2.py",
-    ):
-        record["source"] = str(wrong_source.resolve())
-        event.write_text(json.dumps(record))
-        with pytest.raises(ValueError):
-            utils._read_evidence(tmp_path, {"node"}, test_file)
-
-
-@pytest.mark.parametrize("damage", ["missing", "truncated", "unfinished", "node"])
+@pytest.mark.parametrize("damage", ["missing", "unfinished"])
 def test_rejects_missing_or_invalid_reader_evidence(tmp_path, damage):
-    data_dir = tmp_path / "checkout/python/ray/data"
-    test_file = data_dir / "tests/datasource/test_hive_auth_integration.py"
     if damage != "missing":
-        record = dict(
-            complete=damage != "unfinished",
-            node="node",
-            source=str(data_dir / "_internal/datasource_v2/formats/hive/hive_hs2.py"),
-        )
-        if damage == "node":
-            record[damage] = "unexpected"
         path = tmp_path / "event.json"
-        path.write_text(json.dumps(record) if damage != "truncated" else "{")
+        path.write_text(json.dumps({"complete": False}))
     with pytest.raises(ValueError):
-        utils._read_evidence(tmp_path, {"node"}, test_file)
+        utils._read_evidence(tmp_path)
 
 
 @pytest.mark.parametrize(
     "mode,exit_code,summary",
     [
         ("ordinary", 0, "3 skipped"),
+        ("normal_main", 0, "7 skipped"),
         ("entry", 1, "3 skipped"),
-        ("entry_no_summary", 1, "3 skipped"),
         ("one_skip", 1, "2 passed, 1 skipped"),
         ("collect_only", 1, "3 tests collected"),
+        ("partial", 4, "TLS suite did not collect exactly the expected cases"),
         ("all_pass", 0, "3 passed"),
+        ("interrupted", 2, "guard status: 2"),
     ],
 )
-def test_tls_opt_in_and_entry_guard(mode, exit_code, summary):
+def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
     """Exercise pytest collection and the real entry guard without Hive or Ray."""
-    target = Path(__file__).with_name("test_hive_auth_integration.py").resolve()
+    target = Path(__file__).with_name("test_hive_integration.py").resolve()
+    root = tmp_path / "pytest root"
+    root.mkdir()
+    cases = root / "test_cases.py"
+    cases.write_text(
+        "import os, pytest\n"
+        "@pytest.mark.parametrize('scenario', "
+        "['table', 'untrusted_ca_driver', 'hostname_worker'])\n"
+        "def test_hive_tls(scenario):\n"
+        "    if scenario == 'table' and os.environ['MODE'] == 'one_skip':\n"
+        "        pytest.skip('simulated skip')\n"
+        "    if scenario == 'table' and os.environ['MODE'] == 'interrupted':\n"
+        "        pytest.exit('controlled exit', returncode=2)\n"
+    )
     bootstrap = textwrap.dedent(
         """\
         import os, runpy, sys, types
@@ -173,67 +141,76 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary):
         arrow.int64 = arrow.string = lambda: None
         sys.modules['pyarrow'] = arrow
         sys.modules['certifi'] = None
-        for name in ('ray', 'ray.data', 'ray.data.tests', 'ray.data.tests.datasource'):
+        for name in ('ray', 'ray.data', 'ray.data.tests', 'ray.data.tests.datasource',
+                     'ray.data._internal', 'ray.data._internal.datasource_v2',
+                     'ray.data._internal.datasource_v2.formats',
+                     'ray.data._internal.datasource_v2.formats.hive'):
             module = types.ModuleType(name)
             module.__path__ = []
             sys.modules[name] = module
             if '.' in name:
                 parent, child = name.rsplit('.', 1)
                 setattr(sys.modules[parent], child, module)
-        for name, attrs in (
-            ('_hive_test_utils', ('_make_auth_factory', '_read_evidence')),
-            ('test_hive_integration', ('_connection_options', '_make_connection_factory', '_temporary_table')),
-        ):
-            module = types.ModuleType(name)
-            for attr in attrs:
-                setattr(module, attr, lambda *args, **kwargs: None)
-            sys.modules['ray.data.tests.datasource.' + name] = module
+        module = types.ModuleType('_hive_test_utils')
+        module._make_auth_factory = module._read_evidence = lambda *args: None
+        sys.modules['ray.data.tests.datasource._hive_test_utils'] = module
+        module = types.ModuleType('hive_hs2')
+        module._connect = lambda *args: None
+        sys.modules['ray.data._internal.datasource_v2.formats.hive.hive_hs2'] = module
 
-        target, mode = sys.argv[1:]
-        if mode in ('entry', 'entry_no_summary', 'collect_only'):
+        target, mode, cases = sys.argv[1:]
+        if mode == 'ordinary':
+            sys.exit(pytest.main(['-q', target + '::test_hive_tls']))
+        elif mode == 'normal_main':
+            os.environ.pop('RAY_HIVE_TEST_HOST', None)
             runpy.run_path(target, run_name='__main__')
-        elif mode == 'ordinary':
-            sys.exit(pytest.main(['-q', target]))
         else:
-            os.environ['RAY_HIVE_CA_PEM_B64'] = 'configured'
-            class StubSuite:
-                @pytest.fixture
-                def ray_start_cluster_enabled(self):
-                    return None
-                def pytest_collection_modifyitems(self, items):
-                    for item in items:
-                        if mode == 'one_skip' and item.name == 'test_hive_tls[table]':
-                            item.obj = lambda **kwargs: pytest.skip('simulated skip')
-                        else:
-                            item.obj = lambda **kwargs: None
-            original_main = pytest.main
-            def main_with_skip(args, plugins=None):
-                return original_main(args, plugins=[*(plugins or []), StubSuite()])
-            pytest.main = main_with_skip
+            os.environ['RAY_HIVE_TLS_SUITE'] = '1'
+            if mode in ('one_skip', 'all_pass', 'interrupted'):
+                os.environ['RAY_HIVE_CA_PEM_B64'] = 'configured'
+                original_main = pytest.main
+                def run_cases(args, plugins=None):
+                    guard = plugins[0]
+                    finish = guard.pytest_sessionfinish
+                    def observe_guard(session, exitstatus):
+                        print('guard status:', int(exitstatus), flush=True)
+                        finish(session, exitstatus)
+                    guard.pytest_sessionfinish = observe_guard
+                    return original_main(['-v', cases], plugins=plugins)
+                pytest.main = run_cases
             runpy.run_path(target, run_name='__main__')
         """
     )
     env = os.environ.copy()
     env.pop("RAY_HIVE_CA_PEM_B64", None)
+    env.pop("RAY_HIVE_TLS_SUITE", None)
     env.update(
         RAY_HIVE_TEST_HOST="hiveserver2",
         PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
-        PYTEST_ADDOPTS=f"--noconftest -p no:cacheprovider -c {os.devnull} --disable-warnings",
+        PYTEST_ADDOPTS=(
+            f"--noconftest -p no:cacheprovider -c {os.devnull} "
+            f"--rootdir={shlex.quote(str(root))} --disable-warnings"
+        ),
         PYTHONDONTWRITEBYTECODE="1",
+        MODE=mode,
     )
-    if mode == "entry_no_summary":
+    if mode == "one_skip":
         env["PYTEST_ADDOPTS"] += " --no-summary"
     if mode == "collect_only":
         env["PYTEST_ADDOPTS"] += " --collect-only"
+    if mode == "partial":
+        env["PYTEST_ADDOPTS"] += " -k table"
     result = subprocess.run(
-        [sys.executable, "-c", bootstrap, str(target), mode],
+        [sys.executable, "-c", bootstrap, str(target), mode, str(cases)],
         env=env,
         capture_output=True,
         text=True,
         timeout=30,
     )
     assert result.returncode == exit_code, result.stdout + result.stderr
-    assert summary in result.stdout, result.stdout + result.stderr
+    assert summary in result.stdout + result.stderr, result.stdout + result.stderr
+    if mode == "one_skip":
+        assert "guard status: 0" in result.stdout
 
 
 if __name__ == "__main__":

@@ -145,6 +145,7 @@ def test_ready_service_runs_suite(run_script, scenario):
     assert "RAY_HIVE_TEST_HOST=hiveserver2" in test_envs
     assert "RAY_HIVE_TEST_AUTH=PLAIN" in test_envs
     assert "HIVE_TEST_PASSWORD=hive" in test_envs
+    assert "RAY_HIVE_TLS_SUITE=1" not in test_envs
     probes = [call for call in calls if call[:2] == ["docker", "exec"]]
     assert len(probes) == (2 if scenario == "retry" else 1)
     assert "-t" in probes[-1]
@@ -211,6 +212,7 @@ def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script, monkeypat
     )
     envs = [test[i + 1] for i, arg in enumerate(test) if arg == "--test-env"]
     assert "RAY_HIVE_TEST_USE_SSL=true" in envs
+    assert "RAY_HIVE_TLS_SUITE=1" in envs
     assert any(value.startswith("RAY_HIVE_CA_PEM_B64=") for value in envs)
     assert not any(value.startswith("HIVE_TLS_PASSWORD") for value in envs)
     assert any(

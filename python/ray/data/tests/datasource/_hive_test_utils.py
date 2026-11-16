@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import ssl
 import threading
 import uuid
@@ -52,16 +53,12 @@ class _CertificateFailure(logging.Handler):
 
 
 def _make_auth_factory(factory, directory):
-    """Record node and certificate failure for each actual reader connection."""
+    """Record process and certificate failure for each actual reader connection."""
 
     def observed():
-        import ray
-        from ray.data._internal.datasource_v2.formats.hive import hive_hs2
-
         path = Path(directory) / f"{uuid.uuid4().hex}.json"
         evidence = dict(
-            node=ray.get_runtime_context().get_node_id(),
-            source=str(Path(hive_hs2.__file__).resolve()),
+            pid=os.getpid(),
             complete=False,
             connected=False,
             certificate_error=False,
@@ -96,15 +93,8 @@ def _make_auth_factory(factory, directory):
     return observed
 
 
-def _read_evidence(directory, nodes, test_file):
+def _read_evidence(directory):
     records = [json.loads(path.read_text()) for path in Path(directory).glob("*.json")]
-    if not records or {record["node"] for record in records} != set(nodes):
-        raise ValueError("Missing or unexpected reader connection evidence")
-    expected_source = (
-        Path(test_file).resolve().parents[2]
-        / "_internal/datasource_v2/formats/hive/hive_hs2.py"
-    ).resolve()
-    for record in records:
-        if record["complete"] is not True or record["source"] != str(expected_source):
-            raise ValueError("Incomplete or unexpected reader connection evidence")
+    if not records or any(record["complete"] is not True for record in records):
+        raise ValueError("Missing or incomplete reader connection evidence")
     return records

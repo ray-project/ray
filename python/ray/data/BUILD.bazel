@@ -264,7 +264,10 @@ py_test(
 py_test(
     name = "test_hive_integration",
     size = "large",
-    srcs = ["tests/datasource/test_hive_integration.py"],
+    srcs = [
+        "tests/datasource/_hive_test_utils.py",
+        "tests/datasource/test_hive_integration.py",
+    ],
     tags = [
         "data_integration",
         "exclusive",
@@ -281,6 +284,7 @@ py_test(
     name = "test_hive_direct_integration",
     size = "medium",
     srcs = [
+        "tests/datasource/_hive_test_utils.py",
         "tests/datasource/test_hive_direct_integration.py",
         "tests/datasource/test_hive_integration.py",
     ],
@@ -303,7 +307,7 @@ py_test(
         "tests/datasource/_hive_test_utils.py",
         "tests/datasource/test_hive_auth_utils.py",
     ],
-    data = ["tests/datasource/test_hive_auth_integration.py"],
+    data = ["tests/datasource/test_hive_integration.py"],
     tags = ["team:data"],
     deps = [
         ":conftest",
@@ -316,10 +320,9 @@ py_test(
     size = "large",
     srcs = [
         "tests/datasource/_hive_test_utils.py",
-        "tests/datasource/test_hive_auth_integration.py",
         "tests/datasource/test_hive_integration.py",
     ],
-    main = "tests/datasource/test_hive_auth_integration.py",
+    main = "tests/datasource/test_hive_integration.py",
     tags = [
         "hive_auth_integration",
         "manual",
