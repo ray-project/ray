@@ -272,6 +272,24 @@ After defining our configuration, we will use the Ray cluster launcher to start 
 $ ray up -y config.yaml
 ```
 
+(vm-cluster-token-auth)=
+
+### Token authentication with the cluster launcher
+
+Starting in Ray 2.61, {ref}`token authentication <token-auth>` is on by default, and `ray up` needs no token steps. It uses this machine's token, creates `~/.ray/auth_token` if no token exists, and ships the token to the head node as a file. The head node ships it to every worker node it launches, including worker nodes the autoscaler adds later. Clients on this machine already have the token.
+
+To launch a cluster without authentication, set the `auth_mode` key in the cluster YAML:
+
+```yaml
+auth_mode: disabled
+```
+
+`ray up` then sets `RAY_AUTH_MODE=disabled` in the start commands of every node. Set the mode with the `auth_mode` key, not with `RAY_AUTH_MODE` in start commands or Docker `run_options`. Every client of the cluster still needs `RAY_AUTH_MODE=disabled`.
+
+:::{warning}
+Ray 2.61 mounts the token file on every node. After you upgrade an existing `ray up` cluster to Ray 2.61, the first `ray up` updates every node once, including the head node. Each node reruns its setup commands and restarts Ray, and in Docker mode its container restarts. The cluster doesn't relaunch instances. Run this first `ray up` without `--no-restart`, because `--no-restart` doesn't work on a cluster until one full `ray up` has shipped the token.
+:::
+
 ## Running applications on a Ray Cluster
 
 We are now ready to execute an application on our Ray Cluster. `ray.init()` will now automatically connect to the newly created cluster.

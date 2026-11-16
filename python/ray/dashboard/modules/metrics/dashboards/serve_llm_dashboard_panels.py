@@ -31,7 +31,7 @@ _VLLM_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_f
 
 # vLLM filter scoped to a specific deployment (used for ray_serve_* metrics
 # that also carry model_name / WorkerId labels).
-_VLLM_DEPLOYMENT_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", deployment=~"$deployment", {global_filters}'
+_VLLM_DEPLOYMENT_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", deployment=~"$deployment", deployment!~"LLMRouter.*", {global_filters}'
 
 # Legend used by most per-worker panels
 _DEP_REPLICA = "{{deployment}}: {{replica}}"

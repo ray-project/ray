@@ -98,6 +98,7 @@ class TestCheckpointUtils(unittest.TestCase):
             disk="2Gi",
             cidr_allowlist=["203.0.113.0/24"],
             mounts={"/data": "/srv/inbox"},
+            oom_score_adj=0,
         )
         manifest = create_manifest(
             sandbox_id="test-sb",
@@ -115,6 +116,10 @@ class TestCheckpointUtils(unittest.TestCase):
         assert restored.disk == "2Gi"
         assert restored.cidr_allowlist == ["203.0.113.0/24"]
         assert restored.mounts == {"/data": "/srv/inbox"}
+        assert restored.oom_score_adj == 0
+        overridden = build_restored_config(manifest, oom_score_adj=1000)
+        assert overridden.oom_score_adj == 1000
+        assert overridden.mounts == restored.mounts
 
     def test_build_restored_config_rejects_changes_to_saved_state(self):
         manifest = {

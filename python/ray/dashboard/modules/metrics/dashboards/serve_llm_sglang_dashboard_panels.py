@@ -24,7 +24,7 @@ _SGLANG_FILTER = (
 )
 
 # Filter for ray_serve_* metrics (they have no model_name label).
-_SERVE_FILTER = 'deployment=~"$deployment", {global_filters}'
+_SERVE_FILTER = 'deployment=~"$deployment", deployment!~"LLMRouter.*", {global_filters}'
 
 # Per-replica legend.
 _DEP_REPLICA = "{{deployment}}: {{replica}}"

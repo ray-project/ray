@@ -203,6 +203,7 @@ def create_manifest(
             "cidr_allowlist": cidr_allowlist,
             "disk": config.disk,
             "mounts": config.mounts,
+            "oom_score_adj": config.oom_score_adj,
             "_ignore_cgroups": getattr(config, "_ignore_cgroups", False),
         },
         "state_dir": "state",

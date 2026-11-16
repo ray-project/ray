@@ -4,6 +4,7 @@ import sys
 from unittest.mock import patch
 
 import pytest
+from pydantic import BaseModel
 
 import ray
 from ray.data.llm import SGLangEngineProcessorConfig
@@ -12,6 +13,7 @@ from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.sglang_engine_proc import (
     build_sglang_engine_processor,
 )
+from ray.llm._internal.batch.tasks.sglang.base import _SGLangTask
 
 
 def test_sglang_engine_processor():
@@ -116,6 +118,56 @@ class TestSGLangEngineProcessorConfig:
             processor = build_sglang_engine_processor(config)
 
         assert processor is not None
+
+
+class _ToyOptions(BaseModel):
+    scale: float = 1.0
+
+
+class _ToyTask(_SGLangTask):
+    unsupported_stages = ("detokenize_stage",)
+    forced_engine_kwargs = {"skip_tokenizer_init": True}
+    options_model = _ToyOptions
+
+
+def test_task_prepare_config_applies_rules():
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B",
+        engine_kwargs={"skip_tokenizer_init": False},
+        task_kwargs={"scale": "2"},
+    )
+    prepared = _ToyTask.prepare_config(config)
+    assert prepared.task_kwargs == {"scale": 2.0}
+    assert prepared.detokenize_stage is False
+    assert prepared.engine_kwargs["skip_tokenizer_init"] is True
+    # The user's config is not modified.
+    assert config.engine_kwargs["skip_tokenizer_init"] is False
+    assert config.detokenize_stage is True
+
+
+@pytest.mark.parametrize("detokenize_stage", [False, {"enabled": False}])
+def test_task_prepare_config_allows_disabled_unsupported_stage(detokenize_stage):
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B", detokenize_stage=detokenize_stage
+    )
+    assert _ToyTask.prepare_config(config).detokenize_stage is False
+
+
+@pytest.mark.parametrize("detokenize_stage", [True, {"enabled": True}])
+def test_task_prepare_config_rejects_unsupported_stage(detokenize_stage):
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B", detokenize_stage=detokenize_stage
+    )
+    with pytest.raises(ValueError, match="doesn't support detokenize_stage"):
+        _ToyTask.prepare_config(config)
+
+
+def test_generate_task_rejects_task_kwargs():
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B", task_kwargs={"scale": 2}
+    )
+    with pytest.raises(ValueError, match="takes no task_kwargs"):
+        ProcessorBuilder.build(config)
 
 
 if __name__ == "__main__":

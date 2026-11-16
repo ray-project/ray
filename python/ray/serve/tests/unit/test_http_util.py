@@ -1,10 +1,12 @@
 import asyncio
 import pickle
 import sys
+from contextlib import asynccontextmanager
 from typing import Generator, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -12,6 +14,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray.serve import HTTPOptions
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
     ASGIReceiveProxy,
     MessageQueue,
     configure_http_middlewares,
@@ -429,6 +432,42 @@ class TestBackpressureHTTPResponse:
         exc = pickle.loads(pickle.dumps(BackPressureError(3, 2)))
         assert exc.status_code == 503
         assert exc.retry_after_s is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope_type", ["http", "websocket"])
+async def test_asgi_app_wrapper_copies_lifespan_state_into_request(scope_type):
+    resource = object()
+
+    @asynccontextmanager
+    async def lifespan(app):
+        yield {"resource": resource, "overridden": "lifespan"}
+
+    wrapper = ASGIAppReplicaWrapper(FastAPI(lifespan=lifespan))
+    await wrapper._run_asgi_lifespan_startup()
+
+    seen = []
+
+    async def record_scope(scope, receive, send):
+        seen.append(scope["state"])
+
+    wrapper._asgi_app = record_scope
+    await wrapper(
+        {"type": scope_type, "state": {"kept": 1, "overridden": "request"}}, None, None
+    )
+    request_state = seen[0]
+
+    # The request has the lifespan's entries and its own, and its value wins.
+    assert request_state == {"resource": resource, "kept": 1, "overridden": "request"}
+    # The request gets a copy, so changing it doesn't change the lifespan state.
+    assert request_state is not wrapper._serve_asgi_lifespan.state
+    request_state["added"] = True
+    assert wrapper._serve_asgi_lifespan.state == {
+        "resource": resource,
+        "overridden": "lifespan",
+    }
+
+    await wrapper._serve_asgi_lifespan.shutdown()
 
 
 if __name__ == "__main__":

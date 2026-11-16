@@ -3925,8 +3925,8 @@ class Algorithm(Checkpointable, Trainable):
                         ),
                         kwargs=dict(
                             algorithm=self,
-                            env_runner_group=self.offline_eval_runner_group,
-                            env_runner_indices=restored,
+                            offline_eval_runner_group=self.offline_eval_runner_group,
+                            offline_eval_runner_indices=restored,
                         ),
                     )
 

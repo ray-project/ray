@@ -540,6 +540,8 @@ def test_ci_worker_mounts_rootfs_overlays():
 def test_prepare_creates_the_overlay_dirs(
     tmp_path, monkeypatch, userns, image_mount_mode
 ):
+    extract = mock.Mock(return_value="/cache/rootfs.erofs.rootfs")
+    monkeypatch.setattr(overlayfs, "_extract_image_rootfs", extract)
     monkeypatch.setattr(overlayfs.IdMaps, "detect", lambda: _ID_MAPS)
     monkeypatch.setattr(overlayfs.UserNamespaceType, "detect", lambda: userns)
     monkeypatch.setattr(
@@ -554,7 +556,12 @@ def test_prepare_creates_the_overlay_dirs(
     assert overlay.tmpfs_dir == str(tmp_path / "overlayfs-tmpfs")
     assert os.path.isdir(overlay.tmpfs_dir)
     assert mountpoint.is_dir()
-    assert overlay.image == "/cache/rootfs.erofs"
+    if image_mount_mode is ImageMountMode.EXTRACTED:
+        extract.assert_called_once_with("/cache/rootfs.erofs", timeout_seconds=600)
+        assert overlay.image == "/cache/rootfs.erofs.rootfs"
+    else:
+        extract.assert_not_called()
+        assert overlay.image == "/cache/rootfs.erofs"
     assert overlay.userns is userns
     assert overlay.image_mount_mode is image_mount_mode
     # Only a new user namespace created for the sandbox maps subordinate ids.
@@ -725,6 +732,8 @@ def _stub_probe_mount(monkeypatch, errors):
 
     def probe(userns, image_mount_mode):
         error = errors.get((userns, image_mount_mode))
+        if isinstance(error, Exception):
+            raise error
         return error is None, error or ""
 
     monkeypatch.setattr(overlayfs, "_probe_mount", probe)
@@ -741,6 +750,19 @@ def _stub_probe_mount(monkeypatch, errors):
             ImageMountMode.FUSE,
         ),
         (UserNamespaceType.PRIVATE, {}, ImageMountMode.FUSE),
+        (
+            UserNamespaceType.HOST,
+            {
+                (UserNamespaceType.HOST, ImageMountMode.KERNEL): "no kernel",
+                (UserNamespaceType.HOST, ImageMountMode.FUSE): "no fuse",
+            },
+            ImageMountMode.EXTRACTED,
+        ),
+        (
+            UserNamespaceType.PRIVATE,
+            {(UserNamespaceType.PRIVATE, ImageMountMode.FUSE): "no fuse"},
+            ImageMountMode.EXTRACTED,
+        ),
     ],
 )
 def test_image_mount_picks_how_to_mount_the_image(
@@ -750,45 +772,89 @@ def test_image_mount_picks_how_to_mount_the_image(
     assert overlayfs.ImageMountMode.detect(userns) is expected
 
 
-def test_image_mount_falls_back_to_erofsfuse_when_the_kernel_mount_hangs(
-    monkeypatch,
-):
-    """A kernel mount that times out counts as one that failed, so a worker
-    that can use erofsfuse still does."""
-
+@pytest.mark.parametrize(
+    "failed_mode, expected",
+    [
+        (ImageMountMode.KERNEL, ImageMountMode.FUSE),
+        (ImageMountMode.FUSE, ImageMountMode.EXTRACTED),
+    ],
+)
+def test_image_mount_falls_back_after_probe_error(
+    monkeypatch, failed_mode: ImageMountMode, expected: ImageMountMode
+) -> None:
     def probe(userns, image_mount_mode):
-        if image_mount_mode is ImageMountMode.KERNEL:
-            raise SandboxCreationError("Timed out test-mounting")
-        return True, ""
+        if image_mount_mode is failed_mode:
+            raise SandboxCreationError("Mount probe failed")
+        return image_mount_mode is expected, "unavailable"
 
     monkeypatch.setattr(overlayfs, "_probe_mount", probe)
     detected = overlayfs.ImageMountMode.detect(UserNamespaceType.HOST)
-    assert detected is ImageMountMode.FUSE
+    assert detected is expected
+
+
+@pytest.mark.parametrize(
+    "timed_out_mode, expected_calls",
+    [
+        (ImageMountMode.KERNEL, [ImageMountMode.KERNEL]),
+        (ImageMountMode.FUSE, [ImageMountMode.KERNEL, ImageMountMode.FUSE]),
+    ],
+)
+def test_image_mount_timeout_propagates_and_retries(
+    monkeypatch, timed_out_mode: ImageMountMode, expected_calls: list[ImageMountMode]
+) -> None:
+    calls = []
+    timeout = overlayfs._ProbeTimeoutError("Mount probe timed out")
+
+    def probe(ns, mode):
+        calls.append(mode)
+        if mode is timed_out_mode:
+            raise timeout
+        return False, "unavailable"
+
+    monkeypatch.setattr(overlayfs, "_probe_mount", probe)
+    for _ in range(2):
+        with pytest.raises(overlayfs._ProbeTimeoutError) as err:
+            overlayfs.ImageMountMode.detect(UserNamespaceType.HOST)
+        assert err.value is timeout
+    assert calls == expected_calls * 2
 
 
 def test_image_mount_reports_why_erofsfuse_failed(monkeypatch):
     """A failed mount's stderr says what broke, such as a missing tool."""
     fuse_error = "bash: line 1: erofsfuse: command not found"
     _stub_probe_mount(
-        monkeypatch, {(UserNamespaceType.PRIVATE, ImageMountMode.FUSE): fuse_error}
+        monkeypatch,
+        {
+            (UserNamespaceType.PRIVATE, ImageMountMode.FUSE): fuse_error,
+            (UserNamespaceType.PRIVATE, ImageMountMode.EXTRACTED): "no extraction",
+        },
     )
     with pytest.raises(SandboxCreationError, match=fuse_error):
         overlayfs.ImageMountMode.detect(UserNamespaceType.PRIVATE)
 
 
-def test_image_mount_reports_why_both_mounts_failed(monkeypatch):
+@pytest.mark.parametrize("raise_errors", [False, True])
+def test_image_mount_reports_why_all_mounts_failed(
+    monkeypatch, raise_errors: bool
+) -> None:
+    errors = {
+        ImageMountMode.KERNEL: "no kernel",
+        ImageMountMode.FUSE: "no fuse",
+        ImageMountMode.EXTRACTED: "no extraction",
+    }
     _stub_probe_mount(
         monkeypatch,
         {
-            (UserNamespaceType.HOST, ImageMountMode.KERNEL): "no kernel",
-            (UserNamespaceType.HOST, ImageMountMode.FUSE): "no fuse",
+            (UserNamespaceType.HOST, mode): SandboxCreationError(error)
+            if raise_errors
+            else error
+            for mode, error in errors.items()
         },
     )
     with pytest.raises(SandboxCreationError) as err:
         overlayfs.ImageMountMode.detect(UserNamespaceType.HOST)
-    assert (
-        "driver failed with: no kernel. Mounting with erofsfuse failed with: no fuse"
-        in str(err.value)
+    assert "kernel: no kernel; fuse: no fuse; extracted: no extraction" in str(
+        err.value
     )
 
 
@@ -853,6 +919,58 @@ def test_probe_that_hangs_raises_and_probes_again(monkeypatch, probe):
     finally:
         overlayfs._has_mount_privileges.cache_clear()
         overlayfs._probe_mount.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "cached, evictable", [(True, True), (True, False), (False, False)]
+)
+def test_rootfs_extraction_keeps_the_cache_free_space_floor(
+    tmp_path, monkeypatch, cached: bool, evictable: bool
+) -> None:
+    """A cached image's extraction first evicts other images to stay above the
+    free-space floor, or fails before writing. A probe's scratch image isn't
+    in the cache, so it extracts without touching it."""
+    images_dir = tmp_path / "images"
+    image_dir = images_dir / "app"
+    image_dir.mkdir(parents=True)
+    image = image_dir / "rootfs.erofs"
+    image.write_bytes(b"x" * 100)
+    if cached:
+        (image_dir / ".extracted").touch()
+    other = images_dir / "other"
+    other.mkdir()
+    (other / ".extracted").touch()
+    (other / "rootfs.erofs").write_bytes(b"x" * 100)
+    if not evictable:
+        overlayfs.image_utils._mark_image_in_use(str(other), "running")
+
+    # 150 bytes free, plus whatever evicting "other" releases.
+    monkeypatch.setattr(
+        overlayfs.image_utils,
+        "_free_bytes",
+        lambda path: 150 + (0 if other.exists() else 100),
+    )
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "100")
+    monkeypatch.setattr(overlayfs.shutil, "which", lambda name: f"/bin/{name}")
+    calls = []
+
+    def fsck(args, **kwargs):
+        calls.append(args)
+        os.makedirs(args[2].split("=", 1)[1])
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(overlayfs.subprocess, "run", fsck)
+
+    if cached and not evictable:
+        with pytest.raises(SandboxCreationError, match="Not enough disk space"):
+            overlayfs._extract_image_rootfs(str(image))
+        assert calls == []
+        return
+    assert os.path.isdir(overlayfs._extract_image_rootfs(str(image)))
+    assert len(calls) == 1
+    # Only a cached image's extraction evicts other images.
+    assert other.exists() is not cached
 
 
 if __name__ == "__main__":
