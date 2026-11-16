@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 import lance
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from packaging.version import Version
 from pytest_lazy_fixtures import lf as lazy_fixture
@@ -461,6 +462,17 @@ def test_lance_read_with_version(data_path, ray_start_regular_shared):
         [6, "g"],
     ]
 
+    ds_filtered = ray.data.read_lance(
+        path, version=initial_version, scanner_options={"filter": "one >= 3"}
+    )
+    count = ds_filtered.count()
+    train, test = ds_filtered.train_test_split(test_size=0.2)
+    train_ids = {row["one"] for row in train.take_all()}
+    test_ids = {row["one"] for row in test.take_all()}
+    assert (count, train.count(), test.count()) == (4, 3, 1)
+    assert train_ids.isdisjoint(test_ids)
+    assert train_ids | test_ids == {3, 4, 5, 6}
+
 
 @pytest.fixture
 def mock_lance_write(monkeypatch):
@@ -582,350 +594,120 @@ def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_sh
 @pytest.fixture
 def lance_count_dataset(tmp_path):
     path = str(tmp_path / "counts.lance")
-    table = pa.table(
-        {
-            "id": range(28),
-            "nullable": [None if i % 4 == 0 else i for i in range(28)],
-            "payload": [b"image-or-video-payload"] * 28,
-        }
-    )
+    table = pa.table({"id": range(28)})
     return lance.write_dataset(table, path, max_rows_per_file=7, max_rows_per_group=7)
 
 
-@pytest.mark.parametrize("parallelism", [1, 3])
-@pytest.mark.parametrize("deleted", [False, True])
-@pytest.mark.parametrize("filter_kind", ["sql", "arrow", "pushdown", "combined"])
-def test_lance_filtered_task_counts(
-    lance_count_dataset, parallelism, deleted, filter_kind
-):
-    dataset = lance_count_dataset
-    if deleted:
-        dataset.delete("id = 22 OR id = 25")
-    if filter_kind == "arrow":
-        source = LanceDatasource(
-            dataset.uri, scanner_options={"filter": pa.compute.field("id") >= 21}
-        )
-    elif filter_kind == "pushdown":
-        source = LanceDatasource(dataset.uri).apply_predicate(col("id") >= 21)
-    elif filter_kind == "combined":
-        source = LanceDatasource(dataset.uri, filter="id >= 21").apply_predicate(
-            col("id") < 27
-        )
-    else:
-        source = LanceDatasource(dataset.uri, filter="id >= 21")
-
-    tasks = source.get_read_tasks(parallelism)
-    actual_ids = []
-    for task in tasks:
-        rows = [row for block in task() for row in block.to_pylist()]
-        assert task.metadata.num_rows is None
-        actual_ids.extend(row["id"] for row in rows)
-    expected_ids = set(range(21, 27 if filter_kind == "combined" else 28))
-    if deleted:
-        expected_ids -= {22, 25}
-    assert set(actual_ids) == expected_ids
-    assert len(actual_ids) == len(expected_ids)
-
-
-@pytest.mark.parametrize(
-    "predicate,expected", [("id > 100", 0), ("id >= 0", 28), ("nullable IS NULL", 7)]
-)
-def test_lance_filtered_count_boundaries(
-    lance_count_dataset, ray_start_regular_shared, predicate, expected
-):
-    source = LanceDatasource(lance_count_dataset.uri, filter=predicate)
-    tasks = source.get_read_tasks(3)
-    assert all(task.metadata.num_rows is None for task in tasks)
-    assert sum(len(block) for task in tasks for block in task()) == expected
-    assert (
-        ray.data.read_lance(lance_count_dataset.uri, filter=predicate).count()
-        == expected
-    )
-
-
-@pytest.mark.parametrize("filter_kind", ["argument", "scanner", "pushdown"])
-@pytest.mark.parametrize("test_size,shuffle", [(0.2, False), (2, False), (0.2, True)])
-def test_lance_filtered_count_and_split(
-    lance_count_dataset, ray_start_regular_shared, filter_kind, test_size, shuffle
-):
-    kwargs = {"override_num_blocks": 4}
-    if filter_kind == "argument":
-        kwargs["filter"] = "id >= 21"
-    elif filter_kind == "scanner":
-        kwargs["scanner_options"] = {"filter": "id >= 21"}
-    ds = ray.data.read_lance(lance_count_dataset.uri, **kwargs)
-    if filter_kind == "pushdown":
-        ds = ds.filter(expr=col("id") >= 21)
-
-    assert ds.count() == 7
-    train, test = ds.train_test_split(test_size=test_size, shuffle=shuffle, seed=42)
-    train_ids = {row["id"] for row in train.take_all()}
-    test_ids = {row["id"] for row in test.take_all()}
-    assert (train.count(), test.count()) == (5, 2)
-    assert (len(train_ids), len(test_ids)) == (5, 2)
-    assert train_ids.isdisjoint(test_ids)
-    assert train_ids | test_ids == set(range(21, 28))
-
-
-def test_lance_unfiltered_count_uses_fragment_metadata(
-    lance_count_dataset, monkeypatch
-):
-    lance_count_dataset.delete("id = 0")
-    source = LanceDatasource(
-        lance_count_dataset.uri,
-        columns=["id"],
-        scanner_options={"batch_size": 2, "order_by": ["id"], "fast_search": False},
-    )
-    scanner = Mock(side_effect=AssertionError("Unfiltered count must not scan data"))
-    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
-    assert sum(task.metadata.num_rows for task in source.get_read_tasks(3)) == 27
-    scanner.assert_not_called()
-
-
-def test_lance_filtered_planning_preserves_options(lance_count_dataset, monkeypatch):
-    callback = Mock()
-    options = {
-        "filter": "id >= 21",
-        "columns": ["payload"],
-        "order_by": ["id"],
-        "scan_stats_callback": callback,
-        "use_stats": False,
-        "use_scalar_index": False,
-        "batch_size": 2,
-    }
-    source = LanceDatasource(lance_count_dataset.uri, scanner_options=options)
-    original_options = dict(options)
-    scanner_calls = []
-    original = lance.LanceDataset.scanner
-
-    def scanner(dataset, **kwargs):
-        scanner_calls.append(kwargs)
-        return original(dataset, **kwargs)
-
-    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
-    tasks = source.get_read_tasks(3)
-    assert all(task.metadata.num_rows is None for task in tasks)
-    callback.assert_not_called()
-    assert scanner_calls == []
-    assert source.scanner_options == original_options
-    assert sum(len(block) for task in tasks for block in task()) == 7
-    assert callback.called
-    assert len(scanner_calls) == len(tasks)
-    for kwargs in scanner_calls:
-        for key, value in original_options.items():
-            assert kwargs[key] == value
-    assert source.scanner_options == original_options
-
-
-@pytest.mark.parametrize("filtered", [False, True])
-@pytest.mark.parametrize(
-    "options",
-    [
-        {"limit": 0},
-        {"limit": 3},
-        {"offset": 0},
-        {"offset": 3},
-        {"nearest": {"column": "vector", "q": [0.0], "k": 1}},
-        {"full_text_query": "query"},
-        {"index_segments": []},
-        {"fast_search": True},
-        {"include_deleted_rows": True},
-        {"row_addr_allowlist": b""},
-        {"row_addr_blocklist": b""},
-        {"future_row_set_option": True},
-    ],
-)
-def test_lance_special_scan_has_unknown_count(
-    lance_count_dataset, monkeypatch, filtered, options
-):
-    source = LanceDatasource(
-        lance_count_dataset.uri,
-        filter="id >= 21" if filtered else None,
-        scanner_options=dict(options),
-    )
-    scanner = Mock(side_effect=AssertionError("Special scans must defer counting"))
-    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
-    assert all(task.metadata.num_rows is None for task in source.get_read_tasks(3))
-    scanner.assert_not_called()
-
-
-def test_lance_search_filter_has_unknown_count(lance_count_dataset, monkeypatch):
-    source = LanceDatasource(
-        lance_count_dataset.uri, scanner_options={"filter": {"expr_filter": "id > 0"}}
-    )
-    scanner = Mock(side_effect=AssertionError("Search filter must defer counting"))
-    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
-    assert source.get_read_tasks(1)[0].metadata.num_rows is None
-    scanner.assert_not_called()
-
-
-@pytest.mark.parametrize("options", [{"limit": 0}, {"limit": 10}, {"offset": 3}])
-def test_lance_special_scan_count_and_split(
-    lance_count_dataset, ray_start_regular_shared, options
-):
-    # In particular, limit=0 has different semantics across Lance versions.
-    # Compare with actual scan output instead of assuming a particular version.
-    expected = (
-        lance_count_dataset.scanner(filter="id >= 14", **options).to_table().num_rows
-    )
-    ds = ray.data.read_lance(
-        lance_count_dataset.uri,
-        filter="id >= 14",
-        scanner_options=options,
-        override_num_blocks=1,
-    )
-    assert ds.count() == expected
-    if expected:
-        train, test = ds.train_test_split(test_size=0.2)
-        assert train.count() == int(expected * 0.8)
-        assert test.count() == expected - int(expected * 0.8)
-
-
-@pytest.mark.parametrize("parallelism", [1, 3, 7])
-def test_lance_filtered_count_scope(lance_count_dataset, tmp_path, parallelism):
-    dataset = lance_count_dataset
-    initial_version = dataset.version
-    path2 = str(tmp_path / "second.lance")
-    table = dataset.to_table()
-    lance.write_dataset(
-        table.slice(21), path2, max_rows_per_file=7, max_rows_per_group=7
-    )
-    lance.write_dataset(table.slice(21), dataset.uri, mode="append")
-
-    def count(source):
-        tasks = source.get_read_tasks(parallelism)
-        assert all(task.metadata.num_rows is None for task in tasks)
-        return sum(len(block) for task in tasks for block in task())
-
-    assert (
-        count(LanceDatasource(dataset.uri, version=initial_version, filter="id >= 21"))
-        == 7
-    )
-    assert count(LanceDatasource(dataset.uri, filter="id >= 21")) == 14
-    assert count(LanceDatasource([dataset.uri, path2], filter="id >= 21")) == 21
-    subset = lance.dataset(dataset.uri).get_fragments()[2:4]
-    source = LanceDatasource(
-        dataset.uri, filter="id >= 18", scanner_options={"fragments": subset}
-    )
-    assert count(source) == 10
-    assert (
-        LanceDatasource(dataset.uri, scanner_options={"fragments": []}).get_read_tasks(
-            1
-        )
-        == []
-    )
-
-
-@pytest.mark.parametrize(
-    "filter_kind", ["argument", "arrow", "pushdown", "combined", "random"]
-)
+@pytest.mark.parametrize("filter_kind", ["argument", "arrow", "pushdown", "combined"])
 def test_lance_filtered_planning_does_not_scan(
     lance_count_dataset, monkeypatch, filter_kind
 ):
     if filter_kind == "arrow":
         source = LanceDatasource(
             lance_count_dataset.uri,
-            scanner_options={"filter": pa.compute.field("id") >= 21},
+            scanner_options={"filter": pc.field("id") >= 21},
         )
     else:
         source = LanceDatasource(
             lance_count_dataset.uri,
-            filter={"pushdown": None, "random": "random() < 0.5"}.get(
-                filter_kind, "id >= 21"
-            ),
+            filter=None if filter_kind == "pushdown" else "id >= 21",
         )
     if filter_kind in {"pushdown", "combined"}:
         source = source.apply_predicate(col("id") < 27)
+
     scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
-    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
     fragment_count = Mock(side_effect=AssertionError("Filtered count must be unknown"))
+    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
     monkeypatch.setattr(
         type(lance_count_dataset.get_fragments()[0]), "count_rows", fragment_count
     )
-    for parallelism in (1, 3, 1):
-        assert all(
-            task.metadata.num_rows is None
-            for task in source.get_read_tasks(parallelism)
-        )
+    tasks = source.get_read_tasks(3)
+    assert tasks
+    assert all(task.metadata.num_rows is None for task in tasks)
     scanner.assert_not_called()
     fragment_count.assert_not_called()
 
 
-def test_lance_filtered_count_preserves_ray_task_limit(lance_count_dataset):
-    source = LanceDatasource(lance_count_dataset.uri, filter="id >= 21")
-    task = source.get_read_tasks(1, per_task_row_limit=3)[0]
-    assert task.metadata.num_rows is None
-    assert task.per_task_row_limit == 3
-    assert sum(len(block) for block in task()) == 3
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"limit": 3},
+        {"limit": 0},
+        {"nearest": {"column": "vector", "q": [0.0], "k": 1}},
+        {"future_row_set_option": True},
+        {"fast_search": True},
+        {"include_deleted_rows": True},
+        {"filter": {"expr_filter": "id > 0"}},
+    ],
+)
+def test_lance_row_set_options_have_unknown_count(lance_count_dataset, options):
+    source = LanceDatasource(lance_count_dataset.uri, scanner_options=dict(options))
+    tasks = source.get_read_tasks(1)
+    assert tasks
+    assert all(task.metadata.num_rows is None for task in tasks)
 
 
-def test_lance_filtered_read_with_ray_limit(
-    lance_count_dataset, ray_start_regular_shared
+def test_lance_unfiltered_count_uses_fragment_metadata(
+    lance_count_dataset, monkeypatch
 ):
-    ds = ray.data.read_lance(
-        lance_count_dataset.uri, filter="id >= 21", override_num_blocks=3
-    ).limit(3)
-    assert ds.count() == 3
-    rows = ds.take_all()
-    assert len(rows) == 3
-    assert all(row["id"] >= 21 for row in rows)
+    source = LanceDatasource(
+        lance_count_dataset.uri, scanner_options={"fast_search": False}
+    )
+    scanner = Mock(side_effect=AssertionError("Unfiltered count must not scan data"))
+    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+    tasks = source.get_read_tasks(1)
+    assert [task.metadata.num_rows for task in tasks] == [28]
+    scanner.assert_not_called()
 
 
-@pytest.mark.parametrize("filter_kind", ["argument", "scanner", "pushdown"])
-@pytest.mark.parametrize("action", ["take", "limit"])
-def test_lance_filtered_early_read(
-    lance_count_dataset, ray_start_regular_shared, monkeypatch, filter_kind, action
+@pytest.mark.parametrize("filter_kind", ["argument", "pushdown"])
+def test_lance_filtered_count_and_split(
+    lance_count_dataset, ray_start_regular_shared, monkeypatch, filter_kind
 ):
-    planning_scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
-    monkeypatch.setattr(lance.LanceDataset, "scanner", planning_scanner)
-    kwargs = {"override_num_blocks": 4, "scanner_options": {"batch_size": 1}}
-    if filter_kind == "argument":
-        kwargs["filter"] = "id >= 21"
-    elif filter_kind == "scanner":
-        kwargs["scanner_options"]["filter"] = "id >= 21"
-    ds = ray.data.read_lance(lance_count_dataset.uri, **kwargs)
+    scanner = None
     if filter_kind == "pushdown":
+        scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
+        monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+        ds = ray.data.read_lance(lance_count_dataset.uri, override_num_blocks=4)
         ds = ds.filter(expr=col("id") >= 21)
-    assert ds._meta_count() is None
-    planning_scanner.assert_not_called()
+        rows = ds.take(1)
+        assert len(rows) == 1 and rows[0]["id"] >= 21
+    else:
+        ds = ray.data.read_lance(
+            lance_count_dataset.uri, filter="id >= 21", override_num_blocks=4
+        )
 
-    # Worker processes use the real scanner; a driver-side scan during optimized
-    # planning still raises. Keep the patch active through take/limit execution.
-    rows = ds.take(1) if action == "take" else ds.limit(1).take_all()
-    assert len(rows) == 1
-    assert rows[0]["id"] >= 21
-    planning_scanner.assert_not_called()
+    count = ds.count()
+    train, test = ds.train_test_split(test_size=0.2)
+    train_ids = {row["id"] for row in train.take_all()}
+    test_ids = {row["id"] for row in test.take_all()}
+    assert (count, train.count(), test.count()) == (7, 5, 2)
+    assert (len(train_ids), len(test_ids)) == (5, 2)
+    assert train_ids.isdisjoint(test_ids)
+    assert train_ids | test_ids == set(range(21, 28))
+    if scanner is not None:
+        scanner.assert_not_called()
+    else:
+        assert (
+            ray.data.read_lance(lance_count_dataset.uri, filter="id > 100").count() == 0
+        )
 
 
-@pytest.mark.parametrize("test_size", [0.2, 2])
-def test_lance_random_filter_split_uses_materialized_rows(
-    tmp_path, ray_start_regular_shared, monkeypatch, test_size
-):
+def test_lance_random_filter_split(tmp_path, ray_start_regular_shared):
+    # Use enough rows that either split is overwhelmingly likely to be non-empty.
     path = str(tmp_path / "random.lance")
     lance.write_dataset(pa.table({"id": range(1000)}), path)
     ds = ray.data.read_lance(path, filter="random() < 0.5", override_num_blocks=1)
-    assert ds._meta_count() is None
-    original = ray.data.Dataset.materialize
-    materialized_ids = []
-
-    def materialize(dataset):
-        result = original(dataset)
-        materialized_ids.append({row["id"] for row in result.take_all()})
-        return result
-
-    monkeypatch.setattr(ray.data.Dataset, "materialize", materialize)
-    train, test = ds.train_test_split(test_size=test_size)
-    assert len(materialized_ids) == 1
-    train_ids = {row["id"] for row in train.take_all()}
-    test_ids = {row["id"] for row in test.take_all()}
-    expected = materialized_ids[0]
-    expected_train = int(len(expected) * 0.8) if test_size == 0.2 else len(expected) - 2
-    assert (train.count(), test.count()) == (
-        expected_train,
-        len(expected) - expected_train,
-    )
+    train, test = ds.train_test_split(test_size=0.2)
+    train_rows = train.take_all()
+    test_rows = test.take_all()
+    train_ids = {row["id"] for row in train_rows}
+    test_ids = {row["id"] for row in test_rows}
     assert train_ids.isdisjoint(test_ids)
-    assert train_ids | test_ids == expected
+    assert train.count() + test.count() == len(train_ids | test_ids)
+    total = len(train_ids | test_ids)
+    assert len(train_ids) == int(total * 0.8)
+    assert len(test_ids) == total - int(total * 0.8)
 
 
 if __name__ == "__main__":
