@@ -1530,133 +1530,6 @@ def test_extract_tar_layer_reads_a_layer_once(tmp_path):
     assert reader.bytes_read <= len(blob)
 
 
-@pytest.mark.parametrize(
-    "image,mirror,expected",
-    [
-        ("busybox", None, ("registry-1.docker.io/library/busybox:latest", False)),
-        ("ghcr.io/org/app:1.0", None, ("ghcr.io/org/app:1.0", False)),
-        (
-            "busybox:1.36",
-            "http://127.0.0.1:5000",
-            ("127.0.0.1:5000/library/busybox:1.36", True),
-        ),
-        # mkfs.erofs reads tags only.
-        (f"busybox@sha256:{'0' * 64}", None, None),
-        # A mirror's path prefix becomes part of the repository.
-        (
-            "busybox",
-            "https://mirror.example.com/v2-proxy",
-            ("mirror.example.com/v2-proxy/library/busybox:latest", False),
-        ),
-        # mkfs.erofs wouldn't take this host for a registry.
-        ("localhost/app:1.0", None, None),
-        # Local archives are extracted as before.
-        ("./image.tar", None, None),
-    ],
-)
-def test_oci_reference(monkeypatch, image, mirror, expected):
-    if mirror:
-        monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", mirror)
-    else:
-        monkeypatch.delenv("RAY_SANDBOX_REGISTRY_MIRROR", raising=False)
-    assert image_utils._oci_reference(image) == expected
-
-
-@pytest.fixture
-def fake_oci_mkfs(fake_mkfs_erofs, monkeypatch):
-    """The fake mkfs.erofs, advertising --oci too. An --oci build runs
-    ``oci.sh`` next to it with the image path (write one to change what it
-    does); by default it writes a tar holding ``built-by-oci``, so the test
-    can tell the builds apart. Seeding is skipped: the fake's images aren't
-    EROFS."""
-    script = fake_mkfs_erofs / "mkfs.erofs"
-    script.write_text(
-        "#!/bin/sh\n"
-        'dir="$(dirname "$0")"\n'
-        'if [ "$1" = "--help" ]; then\n'
-        '  echo "  --tar=MODE  build from tarball"\n'
-        '  echo "  --oci=[f|i]  build from an OCI registry"; exit 0\n'
-        "fi\n"
-        'case "$1" in --oci=*)\n'
-        '  echo "$@" > "$dir/oci.args"\n'
-        # The image path comes just before the reference, which is last.
-        '  prev=; for arg; do out="$prev"; prev="$arg"; done\n'
-        '  exec sh "$dir/oci.sh" "$out";;\n'
-        "esac\n"
-        'echo "$@" > "$dir/mkfs.args"\n'
-        'cat > "$4"\n'
-    )
-    (fake_mkfs_erofs / "built-by-oci").write_text("oci")
-    (fake_mkfs_erofs / "oci.sh").write_text(
-        f'tar -C "{fake_mkfs_erofs}" -cf "$1" ./built-by-oci\n'
-    )
-    monkeypatch.setattr(image_utils, "_seed_erofs_image", lambda mkfs, path: None)
-    image_utils._mkfs_erofs_supports_oci.cache_clear()
-    yield fake_mkfs_erofs
-    image_utils._mkfs_erofs_supports_oci.cache_clear()
-
-
-def test_pull_builds_with_mkfs_oci(tmp_path, fake_docker_hub, fake_oci_mkfs):
-    """mkfs.erofs pulls the image itself, from the mirror; the config is
-    still cached, and no layer is downloaded."""
-    image_dir = pull_and_extract_container_image(
-        "busybox:latest", images_dir=str(tmp_path / "images")
-    )
-    assert _image_file(image_dir, "built-by-oci") == b"oci"
-    args = (fake_oci_mkfs / "oci.args").read_text().split()
-    port = os.environ["RAY_SANDBOX_REGISTRY_MIRROR"].rsplit(":", 1)[1]
-    assert args[0] == "--oci=f,insecure"
-    assert {"--ovlfs-strip=1", "-E^inline_data", f"-b{mmap.PAGESIZE}"} <= set(args)
-    assert args[-1] == f"127.0.0.1:{port}/library/busybox:latest"
-    with open(os.path.join(image_dir, ".image_config.json")) as f:
-        assert json.load(f)["os"] == "linux"
-    assert not (fake_oci_mkfs / "mkfs.args").exists()
-
-
-def test_pull_falls_back_when_mkfs_oci_fails(
-    tmp_path, fake_docker_hub, fake_oci_mkfs, monkeypatch
-):
-    """A failed --oci build leaves nothing behind: the image is built from
-    the downloaded layers instead."""
-    (fake_oci_mkfs / "oci.sh").write_text(
-        'echo partial > "$1"; echo "curl: (28) timed out" >&2; exit 1\n'
-    )
-    warnings = []
-    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
-    image_dir = pull_and_extract_container_image(
-        "busybox:latest", images_dir=str(tmp_path / "images")
-    )
-    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
-    (warning,) = warnings
-    assert "built from the downloaded layers instead" in warning
-    assert "timed out" in warning
-
-
-def test_pull_skips_mkfs_oci_when_disabled(
-    tmp_path, fake_docker_hub, fake_oci_mkfs, monkeypatch
-):
-    monkeypatch.setenv("RAY_SANDBOX_EROFS_OCI", "0")
-    image_dir = pull_and_extract_container_image(
-        "busybox:latest", images_dir=str(tmp_path / "images")
-    )
-    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
-    assert not (fake_oci_mkfs / "oci.args").exists()
-
-
-def test_pull_with_mkfs_oci_reports_a_missing_image(
-    tmp_path, fake_docker_hub, fake_oci_mkfs
-):
-    """An image the registry doesn't have fails the pull as before, and
-    mkfs.erofs isn't left running."""
-    (fake_oci_mkfs / "oci.sh").write_text("exec sleep 60\n")
-    with pytest.raises(SandboxCreationError, match="HTTP Error 404"):
-        pull_and_extract_container_image(
-            "nonexistent_image_12345_xyz:latest",
-            images_dir=str(tmp_path / "images"),
-            timeout_seconds=5.0,
-        )
-
-
 def _real_mkfs(fake_mkfs_erofs, monkeypatch, needs):
     """The mkfs.erofs on PATH behind the fake one, made first on PATH, or
     skip without one whose --help mentions ``needs``."""
@@ -1671,8 +1544,18 @@ def _real_mkfs(fake_mkfs_erofs, monkeypatch, needs):
         pytest.skip(f"{mkfs} has no {needs}")
     monkeypatch.setenv("PATH", path)
     image_utils.mkfs_erofs_path.cache_clear()
-    image_utils._mkfs_erofs_supports_oci.cache_clear()
+    image_utils._mkfs_erofs_can_merge.cache_clear()
     return mkfs
+
+
+@pytest.fixture
+def merging_mkfs(fake_mkfs_erofs, monkeypatch):
+    """The real mkfs.erofs, or skip without one that can merge layer images."""
+    mkfs = _real_mkfs(fake_mkfs_erofs, monkeypatch, "--ovlfs-strip")
+    if not image_utils._mkfs_erofs_can_merge(mkfs):
+        pytest.skip(f"{mkfs} can't merge layer images")
+    yield mkfs
+    image_utils._mkfs_erofs_can_merge.cache_clear()
 
 
 def _erofs_stat(mkfs, image, path):
@@ -1686,41 +1569,88 @@ def _erofs_stat(mkfs, image, path):
 
 
 def _erofs_cat(mkfs, image, path):
+    """A file's contents, or a symlink's target, in ``image``."""
     dump = os.path.join(os.path.dirname(mkfs), "dump.erofs")
     return subprocess.run(
         [dump, "--cat", f"--path={path}", image], capture_output=True
     ).stdout
 
 
-def _assert_seeded(mkfs, image):
-    ls = lambda path: image_utils._erofs_listdir(  # noqa: E731
+def _erofs_ls(mkfs, image, path):
+    return image_utils._erofs_listdir(
         os.path.join(os.path.dirname(mkfs), "dump.erofs"), image, path
     )
-    assert {"dev", "etc", "proc", "run", "sys", "tmp"} <= set(ls("/"))
-    assert {"pts", "shm"} <= set(ls("/dev"))
-    assert {"hosts", "hostname", "resolv.conf"} <= set(ls("/etc"))
-    assert ".ray-sandbox-keep" in ls("/tmp")
+
+
+def _erofs_tree(mkfs, image, path="/"):
+    """{path: (type, mode, uid, gid, contents)} of everything in ``image``,
+    leaving out the files seeding adds and the mtimes it sets."""
+    tree = {}
+    for name, kind in _erofs_ls(mkfs, image, path).items():
+        if name in (".", ".."):
+            continue
+        child = os.path.join(path, name)
+        data = b"" if kind == _EROFS_FT_DIR else _erofs_cat(mkfs, image, child)
+        tree[child] = (kind, *_erofs_stat(mkfs, image, child), data)
+        if kind == _EROFS_FT_DIR:
+            tree.update(_erofs_tree(mkfs, image, child))
+    return tree
+
+
+_EROFS_FT_DIR = 2
+_EROFS_FT_SYMLINK = 7
+
+
+def _assert_seeded(mkfs, image):
+    assert {"dev", "etc", "proc", "run", "sys", "tmp"} <= set(
+        _erofs_ls(mkfs, image, "/")
+    )
+    assert {"pts", "shm"} <= set(_erofs_ls(mkfs, image, "/dev"))
+    assert {"hosts", "hostname", "resolv.conf"} <= set(_erofs_ls(mkfs, image, "/etc"))
+    assert ".ray-sandbox-keep" in _erofs_ls(mkfs, image, "/tmp")
     assert _erofs_stat(mkfs, image, "/") == (0o755, 0, 0)
     # dump.erofs shows the permission bits; /tmp is 1777 like the tree's.
     assert _erofs_stat(mkfs, image, "/tmp")[0] == 0o777
 
 
-def test_seed_erofs_image(tmp_path, fake_mkfs_erofs, monkeypatch):
-    """Seeding adds the mount points an image lacks and keeps its files,
-    without touching what the layers shipped."""
-    mkfs = _real_mkfs(fake_mkfs_erofs, monkeypatch, "--incremental")
+def _build_test_image(mkfs, path, *members):
+    """An EROFS image at ``path`` of a tar of ``_add_member`` arguments."""
     layer = io.BytesIO()
     with tarfile.open(fileobj=layer, mode="w") as tar:
-        _add_member(tar, "usr/bin/sh", b"sh", mode=0o755)
-        _add_member(tar, "etc", typ=tarfile.DIRTYPE, mode=0o755)
-        _add_member(tar, "etc/hostname", b"image-host\n")
-        _add_member(tar, "home/u/notes", b"hi", uid=1000, gid=1000, mode=0o600)
-    image = str(tmp_path / "rootfs.erofs")
+        for args, kwargs in members:
+            _add_member(tar, *args, **kwargs)
     subprocess.run(
-        [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", image],
+        [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", path],
         input=layer.getvalue(),
         check=True,
         capture_output=True,
+    )
+
+
+def _m(*args, **kwargs):
+    return args, kwargs
+
+
+def _dir(name, **kwargs):
+    return _m(name, typ=tarfile.DIRTYPE, mode=kwargs.pop("mode", 0o755), **kwargs)
+
+
+def _symlink(name, target):
+    return _m(name, typ=tarfile.SYMTYPE, mode=0o777, linkname=target)
+
+
+def test_seed_erofs_image(tmp_path, merging_mkfs):
+    """Seeding adds the mount points an image lacks and keeps its files,
+    without touching what the layers shipped."""
+    mkfs = merging_mkfs
+    image = str(tmp_path / "rootfs.erofs")
+    _build_test_image(
+        mkfs,
+        image,
+        _m("usr/bin/sh", b"sh", mode=0o755),
+        _dir("etc"),
+        _m("etc/hostname", b"image-host\n"),
+        _m("home/u/notes", b"hi", uid=1000, gid=1000, mode=0o600),
     )
 
     image_utils._seed_erofs_image(mkfs, image)
@@ -1731,40 +1661,261 @@ def test_seed_erofs_image(tmp_path, fake_mkfs_erofs, monkeypatch):
     assert _erofs_stat(mkfs, image, "/home/u/notes") == (0o600, 1000, 1000)
 
 
-def test_seed_erofs_image_refuses_a_symlinked_etc(
-    tmp_path, fake_mkfs_erofs, monkeypatch
+@pytest.mark.parametrize(
+    "members,message",
+    [
+        (
+            [_dir("real-etc"), _symlink("etc", "real-etc")],
+            "/etc isn't a directory",
+        ),
+        (
+            [_dir("dev"), _dir("run/shm"), _symlink("dev/shm", "/run/shm")],
+            "/dev/shm isn't a directory",
+        ),
+    ],
+)
+def test_seed_erofs_image_refuses_symlinked_seed_dirs(
+    tmp_path, merging_mkfs, members, message
 ):
-    """Seeds can't follow a symlinked /etc, so the pull falls back."""
-    mkfs = _real_mkfs(fake_mkfs_erofs, monkeypatch, "--incremental")
-    layer = io.BytesIO()
-    with tarfile.open(fileobj=layer, mode="w") as tar:
-        _add_member(tar, "real-etc", typ=tarfile.DIRTYPE, mode=0o755)
-        _add_member(tar, "etc", typ=tarfile.SYMTYPE, mode=0o777, linkname="real-etc")
+    """Seeds can't follow a symlink, so the pull falls back to extraction,
+    which keeps it."""
     image = str(tmp_path / "rootfs.erofs")
-    subprocess.run(
-        [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", image],
-        input=layer.getvalue(),
-        check=True,
-        capture_output=True,
-    )
-    with pytest.raises(RuntimeError, match="/etc isn't a directory"):
-        image_utils._seed_erofs_image(mkfs, image)
+    _build_test_image(merging_mkfs, image, *members)
+    with pytest.raises(RuntimeError, match=message):
+        image_utils._seed_erofs_image(merging_mkfs, image)
 
 
-def test_pull_with_a_real_mkfs_oci(
-    tmp_path, fake_docker_hub, fake_mkfs_erofs, monkeypatch
+def _tar_layer(*members) -> bytes:
+    """A gzipped layer of ``_add_member`` arguments, in order."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for args, kwargs in members:
+            _add_member(tar, *args, **kwargs)
+    return buf.getvalue()
+
+
+# A UsrMerge base layer.
+_BASE_LAYER = (
+    _dir("usr"),
+    _dir("usr/bin"),
+    _m("usr/bin/sh", b"sh-1", mode=0o755),
+    _symlink("bin", "usr/bin"),
+    _dir("etc", mode=0o755),
+    _m("etc/secret", b"build-time secret", mode=0o600),
+    _m("etc/keep", b"keep"),
+    _dir("opq"),
+    _m("opq/a", b"a"),
+    _dir("gone"),
+    _m("gone/x", b"x"),
+    _dir("home"),
+    _dir("home/u", mode=0o700, uid=1000, gid=1000),
+    _m("home/u/notes", b"notes", uid=1000, gid=1000, mode=0o600),
+)
+
+
+def test_pull_merges_layer_images(tmp_path, merging_mkfs, monkeypatch):
+    """Each layer becomes an EROFS image and the merge applies whiteouts,
+    opaque directories, replacements, hard links and owners: the image is
+    the one extraction builds, entry for entry."""
+    layers = [
+        _tar_layer(*_BASE_LAYER),
+        _tar_layer(
+            _dir("etc"),
+            _m("etc/.wh.secret"),
+            _m(".wh.gone"),
+            _dir("opq"),
+            _m("opq/.wh..wh..opq"),
+            _m("opq/b", b"b"),
+            _dir("usr"),
+            _dir("usr/bin"),
+            _m("usr/bin/hello", b"hello", mode=0o755),
+            _m("usr/bin/hello2", typ=tarfile.LNKTYPE, linkname="usr/bin/hello"),
+        ),
+        _tar_layer(_dir("usr"), _dir("usr/bin"), _m("usr/bin/sh", b"sh-3", mode=0o755)),
+    ]
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    with _serve_image(monkeypatch, layers) as image:
+        merged = os.path.join(
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "a")),
+            ROOTFS_IMAGE,
+        )
+        monkeypatch.setenv("RAY_SANDBOX_EROFS_MERGE", "0")
+        extracted = os.path.join(
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "b")),
+            ROOTFS_IMAGE,
+        )
+    assert warnings == []
+    mkfs = merging_mkfs
+    _assert_seeded(mkfs, merged)
+    assert "secret" not in _erofs_ls(mkfs, merged, "/etc")
+    assert "gone" not in _erofs_ls(mkfs, merged, "/")
+    assert set(_erofs_ls(mkfs, merged, "/opq")) == {".", "..", "b"}
+    assert _erofs_ls(mkfs, merged, "/")["bin"] == _EROFS_FT_SYMLINK
+    assert _erofs_cat(mkfs, merged, "/usr/bin/sh") == b"sh-3"
+    assert _erofs_cat(mkfs, merged, "/usr/bin/hello2") == b"hello"
+    assert _erofs_stat(mkfs, merged, "/home/u") == (0o700, 1000, 1000)
+    assert _erofs_tree(mkfs, merged) == _erofs_tree(mkfs, extracted)
+
+
+@pytest.mark.parametrize(
+    "upper,problem",
+    [
+        # bin/ over UsrMerge's bin -> usr/bin: the merge would replace the
+        # symlink, and with it /bin/sh.
+        (
+            [_dir("bin"), _m("bin/hello", b"hello", mode=0o755)],
+            "directory at the symlink /bin",
+        ),
+        # No entry for etc/: mkfs.erofs would make it 0777 over the base's.
+        ([_m("etc/hostname", b"host\n")], "no entry for /etc"),
+        ([_m("etc/.wh.keep")], "no entry for /etc"),
+    ],
+)
+def test_pull_extracts_layers_that_merge_differently(
+    tmp_path, merging_mkfs, monkeypatch, upper, problem
 ):
-    """With an erofs-utils built with --enable-oci, a pull from the fake
-    registry gives an image with the layer's files and Ray's seeds."""
-    mkfs = _real_mkfs(fake_mkfs_erofs, monkeypatch, "--oci")
+    """Layers whose merge would differ from extraction fall back to it."""
+    layers = [_tar_layer(*_BASE_LAYER), _tar_layer(*upper)]
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    with _serve_image(monkeypatch, layers) as image:
+        image_dir = pull_and_extract_container_image(
+            image, images_dir=str(tmp_path / "images")
+        )
+    (warning,) = warnings
+    assert "built by extracting them instead" in warning
+    assert problem in warning
+    rootfs = os.path.join(image_dir, ROOTFS_IMAGE)
+    mkfs = merging_mkfs
+    assert _erofs_ls(mkfs, rootfs, "/")["bin"] == _EROFS_FT_SYMLINK
+    assert _erofs_cat(mkfs, rootfs, "/usr/bin/sh") == b"sh-1"
+    assert _erofs_stat(mkfs, rootfs, "/etc")[0] == 0o755
+    # Nothing is left of the merged build.
+    assert sorted(os.listdir(image_dir)) == [".extracted", ROOTFS_IMAGE]
+
+
+def test_layer_merge_problem():
+    def entries(*members):
+        out = []
+        for args, kwargs in members:
+            ti = tarfile.TarInfo(args[0])
+            ti.type = kwargs.get("typ", tarfile.REGTYPE)
+            out.append(image_utils._layer_entry(ti))
+        return out
+
+    base = entries(*_BASE_LAYER)
+    problem = image_utils._layer_merge_problem
+    assert problem([base]) is None
+    # The root needs no entry; "./"-prefixed and absolute names are the same.
+    assert problem([entries(_m("./a"), _m("/b"))]) is None
+    # A deleted symlink can come back as a directory.
+    assert problem([base, entries(_m(".wh.bin")), entries(_dir("bin"))]) is None
+    assert problem([base, entries(_m(".wh..wh..opq")), entries(_dir("bin"))]) is None
+    assert "/bin" in problem([base, entries(_dir("bin"))])
+    # Within a layer too.
+    assert "/l" in problem([entries(_dir("d"), _symlink("l", "d"), _dir("l"))])
+    # A directory replaced by a symlink is no parent for what follows.
+    assert "no entry for /d" in problem(
+        [entries(_dir("d"), _symlink("d", "x"), _m("d/f"))]
+    )
+    assert "outside the root" in problem([entries(_m("../escape"))])
+
+
+def test_pull_with_a_real_mkfs_merge(tmp_path, fake_docker_hub, merging_mkfs):
+    """A pull from the fake registry (token challenge, multi-arch index,
+    blobs redirected to storage) merges the layer images; the config is
+    cached and no layer image is left behind."""
     image_dir = pull_and_extract_container_image(
         "busybox:latest", images_dir=str(tmp_path / "images")
     )
     image = os.path.join(image_dir, ROOTFS_IMAGE)
-    _assert_seeded(mkfs, image)
-    assert _erofs_cat(mkfs, image, "/bin/busybox") == fake_docker_hub
-    assert _erofs_stat(mkfs, image, "/bin/busybox")[0] == 0o755
-    assert os.path.exists(os.path.join(image_dir, ".image_config.json"))
+    _assert_seeded(merging_mkfs, image)
+    assert _erofs_cat(merging_mkfs, image, "/bin/busybox") == fake_docker_hub
+    assert _erofs_stat(merging_mkfs, image, "/bin/busybox")[0] == 0o755
+    with open(os.path.join(image_dir, ".image_config.json")) as f:
+        assert json.load(f)["os"] == "linux"
+    assert sorted(os.listdir(image_dir)) == [
+        ".extracted",
+        ".image_config.json",
+        ROOTFS_IMAGE,
+    ]
+
+
+def test_merged_pull_skipped_when_disabled(tmp_path, fake_docker_hub, monkeypatch):
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_MERGE", "0")
+    monkeypatch.setattr(image_utils, "_mkfs_erofs_can_merge", lambda mkfs: 1 / 0)
+    image_dir = pull_and_extract_container_image(
+        "busybox:latest", images_dir=str(tmp_path / "images")
+    )
+    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
+
+
+def test_merged_pull_reports_a_missing_image(tmp_path, fake_docker_hub, merging_mkfs):
+    with pytest.raises(SandboxCreationError, match="HTTP Error 404"):
+        pull_and_extract_container_image(
+            "nonexistent_image_12345_xyz:latest", images_dir=str(tmp_path / "images")
+        )
+
+
+def _cut_short(index, handler, blob):
+    """Promise the whole blob, send half of it, and close the connection."""
+    handler.send_response(200)
+    handler.send_header("Content-Length", str(len(blob)))
+    handler.end_headers()
+    handler.wfile.write(blob[: len(blob) // 2])
+
+
+def _wrong_blob(index, handler, blob):
+    _send(handler, _tar_layer(_m("evil", b"not the layer the digest names")))
+
+
+@pytest.mark.parametrize(
+    "serve_blob,message", [(_cut_short, "ended early"), (_wrong_blob, "doesn't match")]
+)
+def test_merged_pull_verifies_layers(
+    tmp_path, merging_mkfs, monkeypatch, serve_blob, message
+):
+    """A layer cut short or swapped fails the pull, without a fallback."""
+    layers = [_tar_layer(_m("a", os.urandom(1 << 16)))]
+    monkeypatch.setattr(image_utils, "_extract_image_layers", lambda *a: 1 / 0)
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        with pytest.raises(SandboxCreationError, match=message):
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+    assert os.listdir(tmp_path / "images") == [f"{image_cache_name(image)}.lock"]
+
+
+def test_merged_pull_stops_other_layers_when_one_fails(
+    tmp_path, merging_mkfs, monkeypatch
+):
+    """A layer that can't be fetched fails the pull at once, and a layer
+    still downloading stops instead of finishing first."""
+    layers = [_tar_layer(_m("a", b"a")), _tar_layer(_m("b", os.urandom(200_000)))]
+    hung_up = threading.Event()
+
+    def serve_blob(index, handler, blob):
+        if index == 0:
+            time.sleep(0.5)
+            handler.send_error(500)
+            return
+        # About 20 s at this pace.
+        handler.send_response(200)
+        handler.send_header("Content-Length", str(len(blob)))
+        handler.end_headers()
+        try:
+            for i in range(0, len(blob), 1024):
+                handler.wfile.write(blob[i : i + 1024])
+                handler.wfile.flush()
+                time.sleep(0.1)
+        except OSError:
+            hung_up.set()
+
+    start = time.monotonic()
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        with pytest.raises(SandboxCreationError, match="500"):
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+        assert time.monotonic() - start < 5
+        assert hung_up.wait(5)
 
 
 if __name__ == "__main__":
