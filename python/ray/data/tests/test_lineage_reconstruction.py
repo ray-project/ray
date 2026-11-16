@@ -393,7 +393,7 @@ def test_joined_plans_sharing_a_child_release_it_once(
     plan_ids = [
         tracker.register_task_failed(leaf_task_id)[1] for leaf_task_id in leaf_task_ids
     ]
-    stamped_seed_input = producer.stamp_seed_reconstruction_task(
+    stamped_seed_input = producer.stamp_reconstruction_task(
         seed_task_id, {plan_ids[0]}, seed_input
     )
     assert producer.join_queued_reconstruction_task(seed_task_id, {plan_ids[1]})
@@ -514,16 +514,14 @@ def test_shared_child_is_batched_until_it_is_submitted(
     (second_seed_a,) = _produced_bundles([[2]])
     _run_to_completion(
         producer,
-        producer.stamp_seed_reconstruction_task(seed_task_ids[1], {plan_a}, seed_input),
+        producer.stamp_reconstruction_task(seed_task_ids[1], {plan_a}, seed_input),
         [second_seed_a],
     )
     assert not producer.has_next()
 
     # Both plans share the first seed's re-run. Its completion completes the child's
     # input for the first plan only.
-    stamped = producer.stamp_seed_reconstruction_task(
-        seed_task_ids[0], {plan_a}, seed_input
-    )
+    stamped = producer.stamp_reconstruction_task(seed_task_ids[0], {plan_a}, seed_input)
     assert producer.join_queued_reconstruction_task(seed_task_ids[0], {plan_b})
     (first_seed,) = _produced_bundles([[1]])
     _run_to_completion(producer, stamped, [first_seed])
@@ -540,7 +538,7 @@ def test_shared_child_is_batched_until_it_is_submitted(
     (second_seed_b,) = _produced_bundles([[2]])
     _run_to_completion(
         producer,
-        producer.stamp_seed_reconstruction_task(seed_task_ids[1], {plan_b}, seed_input),
+        producer.stamp_reconstruction_task(seed_task_ids[1], {plan_b}, seed_input),
         [second_seed_b],
     )
     assert producer._reconstruction_outputs == {}
@@ -600,9 +598,7 @@ def test_seed_targeted_by_one_plan_and_reused_by_another(
     seed_plan = tracker.register_task_failed(seed_task_id)[1]
     child_plan = tracker.register_task_failed(child_task_id)[1]
 
-    stamped = producer.stamp_seed_reconstruction_task(
-        seed_task_id, {seed_plan}, seed_input
-    )
+    stamped = producer.stamp_reconstruction_task(seed_task_id, {seed_plan}, seed_input)
     assert producer.join_queued_reconstruction_task(seed_task_id, {child_plan})
     consumed_output, unqueued_output = _produced_bundles([[1], [2]])
     task = _run_to_completion(producer, stamped, [consumed_output, unqueued_output])
@@ -1248,7 +1244,7 @@ def test_started_reconstruction_aborts_for_reconstruction():
     calls = []
     task = _abortable_task(lambda *args: calls.append(args))
     tracker = MagicMock()
-    tracker.register_task_failed.return_value = (set(), "plan_a")
+    tracker.register_task_failed.return_value = ({}, "plan_a")
     lost_error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
 
     _reconstruct_lost_object({}, tracker, MagicMock(), task, lost_error)
@@ -1279,10 +1275,9 @@ def test_reconstruction_error_wraps_object_lost_error():
         )
     reconstruction_error = raised.value
 
-    assert isinstance(reconstruction_error, ObjectLostError)
-    assert isinstance(reconstruction_error, LineageReconstructionError)
     assert reconstruction_error.lost_error is object_lost_error
     assert reconstruction_error.__cause__ is object_lost_error
+    assert isinstance(reconstruction_error, ObjectLostError)
     for field in ("object_ref_hex", "owner_address", "call_site"):
         assert getattr(reconstruction_error, field) == getattr(object_lost_error, field)
     assert str(object_lost_error) in str(reconstruction_error)

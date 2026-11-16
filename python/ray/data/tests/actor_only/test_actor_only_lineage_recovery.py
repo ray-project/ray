@@ -9,7 +9,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
-from ray.exceptions import ObjectLostError
+from ray.exceptions import ObjectLostError, OutOfMemoryError
 from ray.job_config import JobConfig
 
 NUM_ROWS = 200
@@ -65,23 +65,46 @@ def test_plan_reconstruction_does_not_support_runs_without_it(
     assert len(_two_stage_pipeline().limit(5).take_all()) == 5
 
 
-def test_lost_output_is_reconstructed(ray_with_data_reconstruction, monkeypatch):
-    """A block lost while being read is rebuilt from its seed input."""
+@pytest.mark.parametrize(
+    "error, reruns_failed_task",
+    [
+        # A lost block is rebuilt from its seed input.
+        (ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"), False),
+        # An OOM-killed actor's task is re-run alone on the input it holds.
+        (OutOfMemoryError("injected by test"), True),
+    ],
+)
+def test_failed_task_is_recovered(
+    ray_with_data_reconstruction,
+    monkeypatch,
+    caplog,
+    propagate_logs,
+    error,
+    reruns_failed_task,
+):
     lost = []
     original = DataOpTask.on_data_ready
 
     def lose_once(self, *, max_to_read, metadata_fetcher):
         if "add_one" in self.operator_name and not lost and self.task_index() == 1:
             lost.append(self.task_index())
-            raise ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+            raise error
         return original(
             self, max_to_read=max_to_read, metadata_fetcher=metadata_fetcher
         )
 
     monkeypatch.setattr(DataOpTask, "on_data_ready", lose_once)
 
-    _assert_every_row_once(_two_stage_pipeline())
+    with caplog.at_level(logging.INFO, logger="ray.data"):
+        _assert_every_row_once(_two_stage_pipeline())
     assert lost == [1]
+    reinjected_ops = [
+        record.args[1]
+        for record in caplog.records
+        if record.getMessage().startswith("[lineage-reconstruction] Re-injected")
+    ]
+    assert len(reinjected_ops) == 1
+    assert ("add_one" in reinjected_ops[0]) == reruns_failed_task
 
 
 class _DieOnce:

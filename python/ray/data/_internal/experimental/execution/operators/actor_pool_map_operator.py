@@ -76,7 +76,10 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.common import ActorId, ActorStatus
-from ray.data._internal.execution.interfaces.physical_operator import TaskPullRequest
+from ray.data._internal.execution.interfaces.physical_operator import (
+    TaskPullRequest,
+    is_actor_death,
+)
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
@@ -111,8 +114,7 @@ from ray.data._internal.experimental.execution.withheld_deadlock import (
 )
 from ray.data._internal.util import MiB
 from ray.data.context import DataContext
-from ray.data.exceptions import LineageReconstructionError
-from ray.exceptions import ActorUnavailableError, GetTimeoutError, RayActorError
+from ray.exceptions import GetTimeoutError, RayActorError
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -1244,13 +1246,10 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         ray_task_id = self._task_ray_id.pop(task_index)
 
         self.resource_bank.on_task_completed(op=self, task_id=ray_task_id)
-        if isinstance(exception, LineageReconstructionError):
-            # Reconstruction couldn't start and aborted the task with this
-            # wrapper; the actor's death is the wrapped error.
-            exception = exception.lost_error
-        if isinstance(exception, RayActorError) and not isinstance(
-            exception, ActorUnavailableError
-        ):
+        self.actor_pool.on_task_completed(actor_to_return, input_bundle=inputs)
+        for entry in inputs.blocks:
+            self.resource_bank.on_block_consumed(input_ref=entry.ref)
+        if exception is not None and is_actor_death(exception):
             self.actor_pool.release_dead_actor(actor_to_return)
         self.actor_pool.on_task_completed(actor_to_return, input_bundle=inputs)
         for entry in inputs.blocks:

@@ -46,7 +46,12 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
-from ray.exceptions import ActorUnavailableError, ObjectLostError, RayActorError
+from ray.exceptions import (
+    ActorUnavailableError,
+    ObjectLostError,
+    OutOfMemoryError,
+    RayActorError,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -225,7 +230,16 @@ def is_data_lineage_recoverable_error(error: BaseException) -> bool:
     the actor is declared dead, so a real death still lands here."""
     if isinstance(error, ActorUnavailableError):
         return False
-    return isinstance(error, (ObjectLostError, RayActorError))
+    return isinstance(error, ObjectLostError) or is_actor_death(error)
+
+
+def is_actor_death(error: BaseException) -> bool:
+    """Whether ``error`` means the actor running the task died. The memory
+    monitor killing the actor fails its tasks with ``OutOfMemoryError``
+    rather than ``ActorDiedError``."""
+    if isinstance(error, ActorUnavailableError):
+        return False
+    return isinstance(error, (RayActorError, OutOfMemoryError))
 
 
 class DataOpTask(OpTask):

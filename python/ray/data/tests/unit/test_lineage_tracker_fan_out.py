@@ -248,7 +248,7 @@ def _fail_child_and_open_plan(
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         child_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
     assert reconstruction_plan_id not in existing_reconstruction_plan_ids
     return reconstruction_plan_id
@@ -794,7 +794,7 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         seed_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
 
     # Resubmit the seed to emulate recovery.
@@ -979,7 +979,7 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         failed_leaf_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
 
     # Resubmit the seed to emulate recovery of the graph root.
