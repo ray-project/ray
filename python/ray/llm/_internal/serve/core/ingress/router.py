@@ -131,8 +131,8 @@ class LLMRouter:
     Health:
         ``GET /health`` is exposed as a human-operator convenience.
         Serve's ``check_health()`` exercises request routing after a model
-        replica has been observed. The builder disables routing probes for
-        models configured to scale to zero.
+        replica has been observed. Models configured to scale to zero are
+        excluded from routing probes.
     """
 
     # Warn once per replica when no routing key is derived. Class-level default
@@ -146,12 +146,10 @@ class LLMRouter:
         server: DeploymentHandle,
         llm_config: Optional["LLMConfig"] = None,
         base_model_id: Optional[str] = None,
-        enable_routing_health_check: bool = True,
     ):
         self._handle: DeploymentHandle = server
         self._llm_config = llm_config
         self._base_model_id = base_model_id
-        self._enable_routing_health_check = enable_routing_health_check
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
@@ -198,12 +196,8 @@ class LLMRouter:
         self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
 
     async def check_health(self):
-        if (
-            not self._enable_routing_health_check
-            or not self._handle.running_replicas_populated()
-        ):
-            return
         await check_router_health(
+            self._handle,
             self.route,
             self._llm_config.model_id
             if self._llm_config is not None

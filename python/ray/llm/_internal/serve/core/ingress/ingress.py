@@ -58,9 +58,6 @@ from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
-from ray.llm._internal.serve.core.ingress.router_health import (
-    _get_min_replicas_from_llm_config,
-)
 from ray.llm._internal.serve.core.ingress.utils import (
     NON_STREAMING_RESPONSE_TYPES,
     _openai_json_wrapper,
@@ -95,6 +92,15 @@ DEFAULT_INGRESS_OPTIONS = {
         "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     },
 }
+
+
+def _get_min_replicas_from_llm_config(config: LLMConfig) -> Optional[int]:
+    autoscaling_config = config.deployment_config.get("autoscaling_config")
+    if autoscaling_config is None:
+        return None
+    if isinstance(autoscaling_config, dict):
+        return autoscaling_config.get("min_replicas")
+    return getattr(autoscaling_config, "min_replicas", None)
 
 
 def _all_models_scale_to_zero(llm_configs: Optional[List[LLMConfig]]) -> bool:

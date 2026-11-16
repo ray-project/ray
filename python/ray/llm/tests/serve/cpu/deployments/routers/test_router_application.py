@@ -19,6 +19,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 from ray.llm._internal.serve.core.ingress import (
     router_application as router_application_module,
+    router_health,
 )
 from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.serve._private.constants import (
@@ -27,6 +28,7 @@ from ray.serve._private.constants import (
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import DeploymentUnavailableError, RayServeException
 
 MODEL_APPS = {
@@ -58,6 +60,7 @@ class FakeHandle:
 
     def __init__(self, app_name: str):
         self.app_name = app_name
+        self.deployment_name = "Ingress"
         self.replica_id = f"SERVE_REPLICA::{app_name}#Ingress#r1"
         self.initialized = False
         self.session_id = None
@@ -103,8 +106,15 @@ class FakeHandle:
 @pytest.fixture(autouse=True)
 def _no_real_app_handles():
     """Background lookups may outlive a test's own patch; never reach Serve."""
-    with patch.object(router_application_module.serve, "get_app_handle", FakeHandle):
-        yield
+    with patch.object(
+        router_application_module.serve, "get_app_handle", FakeHandle
+    ), patch.object(router_health, "_get_global_client") as get_client:
+        get_info = get_client.return_value.get_deployment_info
+        get_info.return_value = (
+            SimpleNamespace(deployment_config=SimpleNamespace(autoscaling_config=None)),
+            None,
+        )
+        yield get_info
 
 
 def _new(cls, *args):
@@ -184,9 +194,22 @@ async def _chat(router, body, headers=None):
 
 class TestHealth:
     @pytest.mark.asyncio
-    async def test_skips_scale_to_zero_models(self):
+    async def test_skips_scale_to_zero_models(self, _no_real_app_handles):
         configs = _llm_configs()
-        configs[0].deployment_config["autoscaling_config"] = {"min_replicas": 0}
+
+        def get_info(name, app_name):
+            return (
+                SimpleNamespace(
+                    deployment_config=SimpleNamespace(
+                        autoscaling_config=AutoscalingConfig(
+                            min_replicas=0 if app_name == "llm-model-a" else 1
+                        )
+                    )
+                ),
+                None,
+            )
+
+        _no_real_app_handles.side_effect = get_info
         router = _new(RouterApplication, MODEL_APPS, configs)
         try:
             handle = await router._handles["model-a"]

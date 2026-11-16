@@ -32,10 +32,7 @@ from ray.llm._internal.serve.core.ingress.router import (
     _BODY_TRUNCATED_HEADER,
     _get_routing_payload_from_body,
 )
-from ray.llm._internal.serve.core.ingress.router_health import (
-    _get_min_replicas_from_llm_config,
-    check_router_health,
-)
+from ray.llm._internal.serve.core.ingress.router_health import check_router_health
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
@@ -176,11 +173,6 @@ class RouterApplication:
         llm_configs: List[LLMConfig],
     ):
         self._model_applications = dict(model_applications)
-        self._routing_health_check_models = {
-            config.model_id
-            for config in llm_configs
-            if _get_min_replicas_from_llm_config(config) != 0
-        }
         self._api_key_hashes = {
             config.model_id: _api_key_hashes(config) for config in llm_configs
         }
@@ -191,15 +183,16 @@ class RouterApplication:
         }
 
     async def check_health(self):
-        model_ids = [
-            model_id
+        handles = {
+            model_id: task.result()
             for model_id, task in self._handles.items()
-            if model_id in self._routing_health_check_models
-            and task.done()
-            and task.result().running_replicas_populated()
-        ]
+            if task.done()
+        }
         await asyncio.gather(
-            *(check_router_health(self.route, model_id) for model_id in model_ids)
+            *(
+                check_router_health(handle, self.route, model_id)
+                for model_id, handle in handles.items()
+            )
         )
 
     @router_app.post("/internal/route")

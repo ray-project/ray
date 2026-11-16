@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -12,24 +12,31 @@ from ray.serve._private.constants import (
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
 )
-from ray.serve.config import AutoscalingConfig
-
-if TYPE_CHECKING:
-    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-
-
-def _get_min_replicas_from_llm_config(config: "LLMConfig") -> Optional[int]:
-    autoscaling_config = config.deployment_config.get("autoscaling_config")
-    if autoscaling_config is None:
-        return None
-    return AutoscalingConfig.model_validate(autoscaling_config).min_replicas
+from ray.serve.context import _get_global_client
+from ray.serve.handle import DeploymentHandle
 
 
 async def check_router_health(
+    handle: DeploymentHandle,
     route: Callable[[Request], Awaitable[Any]],
     model_id: Optional[str] = None,
 ) -> None:
     """Exercise routing without sending an inference request."""
+    if not handle.running_replicas_populated():
+        return
+
+    deployment_info, _ = await asyncio.wait_for(
+        asyncio.to_thread(
+            lambda: _get_global_client().get_deployment_info(
+                handle.deployment_name, handle.app_name
+            )
+        ),
+        timeout=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    )
+    autoscaling_config = deployment_info.deployment_config.autoscaling_config
+    if autoscaling_config is not None and autoscaling_config.min_replicas == 0:
+        return
+
     # A plain prompt also works for tokenizers without a chat template.
     payload: Dict[str, Any] = {"prompt": "health check"}
     if model_id is not None:

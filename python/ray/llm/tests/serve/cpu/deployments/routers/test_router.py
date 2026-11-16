@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import threading
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Optional
@@ -31,6 +32,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
+from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import DeploymentUnavailableError
 
 
@@ -74,7 +76,6 @@ def _new_direct_router(handle=None):
     router._tokenizer = None
     router._llm_config = None
     router._base_model_id = None
-    router._enable_routing_health_check = True
     return router
 
 
@@ -141,6 +142,18 @@ def create_oai_client(llm_config: LLMConfig):
 
 
 class TestDirectStreamingLLMRouter:
+    @pytest.fixture(autouse=True)
+    def deployment_info(self):
+        with patch.object(router_health, "_get_global_client") as get_client:
+            get_info = get_client.return_value.get_deployment_info
+            get_info.return_value = (
+                SimpleNamespace(
+                    deployment_config=SimpleNamespace(autoscaling_config=None)
+                ),
+                None,
+            )
+            yield get_info
+
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "error", [None, ValueError("broken routing"), RuntimeError("broken routing")]
@@ -174,7 +187,7 @@ class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
     async def test_health_routing_timeout(self, monkeypatch):
         monkeypatch.setattr(
-            router_health, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 0.01
+            router_health, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 0.05
         )
         router = _new_direct_router()
 
@@ -186,7 +199,7 @@ class TestDirectStreamingLLMRouter:
             await router.check_health()
 
     @pytest.mark.asyncio
-    async def test_health_waits_for_first_running_replica(self):
+    async def test_health_waits_for_first_running_replica(self, deployment_info):
         router = _new_direct_router()
         router._handle.running_replicas_populated.return_value = False
         router._pick_replica = AsyncMock(
@@ -195,19 +208,64 @@ class TestDirectStreamingLLMRouter:
 
         await router.check_health()
         router._pick_replica.assert_not_awaited()
+        deployment_info.assert_not_called()
 
         router._handle.running_replicas_populated.return_value = True
         await router.check_health()
         router._pick_replica.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_health_routing_disabled(self):
+    @pytest.mark.parametrize("min_replicas", [None, 0, 1])
+    async def test_health_uses_deployment_config(self, deployment_info, min_replicas):
         router = _new_direct_router()
-        router._enable_routing_health_check = False
         router._handle.running_replicas_populated.return_value = True
-        router._pick_replica = AsyncMock()
+        deployment_info.return_value[0].deployment_config.autoscaling_config = (
+            AutoscalingConfig(min_replicas=min_replicas)
+            if min_replicas is not None
+            else None
+        )
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
+        )
 
         await router.check_health()
+
+        assert router._pick_replica.await_count == (0 if min_replicas == 0 else 1)
+        deployment_info.assert_called_once_with(
+            router._handle.deployment_name, router._handle.app_name
+        )
+
+    @pytest.mark.asyncio
+    async def test_health_config_lookup_failure_does_not_route(self, deployment_info):
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock()
+        deployment_info.side_effect = RuntimeError("controller unavailable")
+
+        with pytest.raises(RuntimeError, match="controller unavailable"):
+            await router.check_health()
+
+        router._pick_replica.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_health_config_lookup_timeout(self, deployment_info, monkeypatch):
+        monkeypatch.setattr(
+            router_health, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 0.05
+        )
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock()
+        release_lookup = threading.Event()
+        info = deployment_info.return_value
+
+        def blocked_lookup(*args):
+            release_lookup.wait()
+            return info
+
+        deployment_info.side_effect = blocked_lookup
+        try:
+            with pytest.raises(asyncio.TimeoutError):
+                await router.check_health()
+        finally:
+            release_lookup.set()
 
         router._pick_replica.assert_not_awaited()
 
