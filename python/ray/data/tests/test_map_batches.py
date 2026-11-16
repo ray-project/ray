@@ -540,7 +540,7 @@ def test_map_batches_batch_zero_copy(
     assert mutated_ids == list(range(1, num_rows + 1))
 
 
-@pytest.mark.parametrize("batch_size", [2, 3])
+@pytest.mark.parametrize("batch_size", [2, 3, None])
 @pytest.mark.parametrize("with_variable_shaped_tensor", [False, True])
 def test_map_batches_numpy_batch_mutation(
     ray_start_regular_shared, batch_size, with_variable_shaped_tensor
