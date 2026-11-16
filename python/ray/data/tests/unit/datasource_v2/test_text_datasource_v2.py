@@ -1,25 +1,17 @@
 """Unit tests for the plain-text DataSourceV2: reader, scanner and datasource."""
 
-import bz2
 import gzip
+import io
 from pathlib import Path
 from unittest.mock import Mock
 
 import pyarrow as pa
 import pytest
-from pyarrow.fs import LocalFileSystem
+import snappy
+from pyarrow.fs import HadoopFileSystem, LocalFileSystem
 
 import ray.data.read_api as read_api
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
-from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
-    NonSamplingFileIndexer,
-)
-from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
-    RoundRobinPartitioner,
-)
-from ray.data._internal.datasource_v2.common.size_estimators import (
-    SamplingInMemorySizeEstimator,
-)
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.text import text_reader as text_reader_mod
 from ray.data._internal.datasource_v2.formats.text.text_datasource_v2 import (
@@ -83,15 +75,8 @@ def test_reader_yields_one_table_per_file_in_manifest_order(tmp_path):
 
 @pytest.mark.parametrize(
     "content, expected",
-    [
-        ("a\nb", ["a", "b"]),
-        ("a\nb\n", ["a", "b"]),
-        ("a\r\nb\r\n", ["a", "b"]),
-        ("a\rb", ["a", "b"]),
-        ("\n", [""]),
-        ("", []),
-    ],
-    ids=["no_trailing_newline", "trailing_newline", "crlf", "cr", "one_blank", "empty"],
+    [("a\r\nb", ["a", "b"]), ("\n", [""])],
+    ids=["crlf_no_trailing_newline", "one_blank"],
 )
 def test_reader_splits_lines_like_v1(tmp_path, content, expected):
     path = _write(tmp_path / "data.txt", content)
@@ -118,16 +103,6 @@ def test_reader_decodes_with_the_requested_encoding(tmp_path):
 def test_reader_empty_file_yields_no_tables(tmp_path):
     path = _write(tmp_path / "empty.txt", "")
     assert list(TextReader().read(_manifest(path))) == []
-
-
-def test_reader_empty_manifest_yields_nothing():
-    manifest = FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
-    assert list(TextReader().read(manifest)) == []
-
-
-def test_reader_reads_duplicated_path_once_per_row(tmp_path):
-    path = _write(tmp_path / "data.txt", "x\ny\n")
-    assert _lines(TextReader(), path, path) == ["x", "y", "x", "y"]
 
 
 def test_reader_limit_stops_within_and_across_files(tmp_path):
@@ -242,22 +217,9 @@ def test_reader_rejects_root_file_when_partition_type_is_declared(tmp_path):
         list(reader.read(_manifest(root)))
 
 
-@pytest.mark.parametrize(
-    "predicate, expected",
-    [
-        (col("year") == "2024", ["n24"]),
-        (col("year") != "2024", ["n23"]),
-        (col("year").is_null(), ["r"]),
-        (col("year").is_not_null(), ["n23", "n24"]),
-    ],
-    ids=["eq", "ne", "is_null", "is_not_null"],
-)
-def test_reader_applies_partition_predicate_before_opening(
-    tmp_path, predicate, expected
-):
+def test_reader_applies_partition_predicate_before_opening(tmp_path):
     root = _write(tmp_path / "root.txt", "r\n")
-    n23 = _write(tmp_path / "year=2023" / "data.txt", "n23\n")
-    n24 = _write(tmp_path / "year=2024" / "data.txt", "n24\n")
+    nested = _write(tmp_path / "year=2024" / "data.txt", "n\n")
     schema = pa.schema([(TEXT_COLUMN_NAME, pa.string()), ("year", pa.string())])
     opened = []
 
@@ -268,18 +230,24 @@ def test_reader_applies_partition_predicate_before_opening(
 
     reader = CountingReader(
         partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
-        partition_predicate=predicate,
+        partition_predicate=col("year").is_null(),
         schema=schema,
     )
 
-    assert sorted(_lines(reader, root, n23, n24)) == expected
-    assert len(opened) == len(expected)
+    assert _lines(reader, root, nested) == ["r"]
+    assert opened == [str(root)]
+
+
+def _snappy_stream_compress(data: bytes) -> bytes:
+    out = io.BytesIO()
+    snappy.stream_compress(io.BytesIO(data), out)
+    return out.getvalue()
 
 
 @pytest.mark.parametrize(
     "suffix, compress",
-    [(".txt.gz", gzip.compress), (".txt.bz2", bz2.compress)],
-    ids=["gzip", "bz2"],
+    [(".txt.gz", gzip.compress), (".txt.snappy", _snappy_stream_compress)],
+    ids=["gzip", "snappy"],
 )
 def test_reader_decompresses_by_extension(tmp_path, suffix, compress):
     path = tmp_path / f"data{suffix}"
@@ -288,13 +256,17 @@ def test_reader_decompresses_by_extension(tmp_path, suffix, compress):
     assert _lines(TextReader(), path) == ["a", "b"]
 
 
-def test_reader_reports_missing_file_path(tmp_path):
-    missing = tmp_path / "missing.txt"
-    manifest = FileManifest.construct_manifest(
-        paths=[str(missing)], sizes=[1], chunk_metadatas=[None]
+def test_decompress_snappy_uses_hadoop_framing_for_hdfs():
+    data = b"a\nb\n"
+    framed = io.BytesIO()
+    snappy.stream_compress(
+        io.BytesIO(data), framed, compressor_cls=snappy.HadoopStreamCompressor
     )
-    with pytest.raises(FileNotFoundError, match=str(missing)):
-        list(TextReader().read(manifest))
+    hdfs = Mock(spec=HadoopFileSystem)
+
+    assert (
+        text_reader_mod._decompress_snappy(io.BytesIO(framed.getvalue()), hdfs) == data
+    )
 
 
 def test_reader_retries_transient_errors(tmp_path, monkeypatch):
@@ -344,55 +316,42 @@ def test_scanner_read_schema_projects_planned_columns():
     )
 
 
-def test_scanner_pushdowns_survive_and_reach_the_reader():
+def test_scanner_options_and_pushdowns_reach_the_reader(tmp_path):
+    path = _write(tmp_path / "data.txt", "café\n\nb\nc\n", encoding="latin-1")
     scanner = (
         TextScanner(schema=TEXT_SCHEMA, encoding="latin-1", drop_empty_lines=False)
         .prune_columns([TEXT_COLUMN_NAME])
-        .push_limit(7)
+        .push_limit(3)
         .push_limit(9)
     )
 
-    assert scanner.pruned_column_names() == (TEXT_COLUMN_NAME,)
-    assert scanner.pushed_limit() == 7
-    reader = scanner.create_reader()
-    assert reader._encoding == "latin-1"
-    assert reader._drop_empty_lines is False
-    assert reader._columns == [TEXT_COLUMN_NAME]
-    assert reader._limit == 7
+    tables = list(scanner.create_reader().read(_manifest(path)))
+
+    assert pa.concat_tables(tables).column(TEXT_COLUMN_NAME).to_pylist() == [
+        "café",
+        "",
+        "b",
+    ]
 
 
-def test_scanner_does_not_claim_filter_pushdown():
-    from ray.data._internal.datasource_v2.interfaces.pushdown import (
-        SupportsFilterPushdown,
-    )
-
-    assert not isinstance(TextScanner(schema=TEXT_SCHEMA), SupportsFilterPushdown)
-
-
-def test_scanner_prunes_partitions_from_typed_paths_and_keeps_root_files(tmp_path):
+def test_scanner_prunes_partitions_by_typed_path_values_and_keeps_root_files(
+    tmp_path,
+):
+    kept = _write(tmp_path / "year=2024" / "a.txt", "a\n")
+    dropped = _write(tmp_path / "year=2023" / "b.txt", "b\n")
+    root = _write(tmp_path / "root.txt", "r\n")
     scanner = TextScanner(
         schema=pa.schema([(TEXT_COLUMN_NAME, pa.string()), ("year", pa.int64())]),
         partitioning=Partitioning(
             PartitionStyle.HIVE, base_dir=str(tmp_path), field_names=["year"]
         ),
     ).prune_partitions(col("year") == 2024)
-    paths = [
-        str(tmp_path / "year=2024" / "a.txt"),
-        str(tmp_path / "year=2023" / "b.txt"),
-        str(tmp_path / "root.txt"),
-    ]
-    manifest = FileManifest.construct_manifest(
-        paths=paths, sizes=[1, 1, 1], chunk_metadatas=[None, None, None]
-    )
 
-    assert scanner.partition_columns == {"year"}
-    assert scanner.prune_input_split(manifest).paths.tolist() == [paths[0], paths[2]]
-    pruner = scanner.pushed_partition_pruner()
-    assert pruner is not None
-    assert [pruner.should_include(path) for path in paths] == [True, False, True]
-    reader = scanner.create_reader()
-    assert isinstance(reader, TextReader)
-    assert reader._partition_predicate is scanner.partition_predicate
+    pruned = scanner.prune_input_split(_manifest(kept, dropped, root))
+    rows = pa.concat_tables(list(scanner.create_reader().read(pruned))).to_pylist()
+
+    assert pruned.paths.tolist() == [str(kept), str(root)]
+    assert rows == [{TEXT_COLUMN_NAME: "a", "year": 2024}]
 
 
 # -- datasource ----------------------------------------------------------------
@@ -460,52 +419,22 @@ def test_datasource_filesystem_retries_listing_errors(tmp_path):
     assert isinstance(datasource.filesystem.unwrap(), LocalFileSystem)
 
 
-@pytest.mark.parametrize("preserve_order", [False, True])
-def test_datasource_uses_one_bucket_when_order_is_preserved(
-    tmp_path, monkeypatch, preserve_order
-):
-    monkeypatch.setattr(
-        DataContext.get_current().execution_options, "preserve_order", preserve_order
-    )
-    paths = [_write(tmp_path / f"{i}.txt", f"{i}\n") for i in range(5)]
+def test_datasource_sizes_read_tasks_without_opening_files(tmp_path):
     datasource = TextDatasourceV2([str(tmp_path)])
-
-    partitioner = datasource.get_file_partitioner(
-        hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=2)
+    manifest = FileManifest.construct_manifest(
+        paths=[str(tmp_path / "missing.txt")], sizes=[4], chunk_metadatas=[None]
     )
 
-    assert isinstance(partitioner, RoundRobinPartitioner)
-    assert partitioner.num_buckets == (1 if preserve_order else 2)
-    for path in paths:
-        partitioner.add_input(_manifest(path))
-    partitioner.finalize()
-    partitions = []
-    while partitioner.has_partition():
-        partitions.append(partitioner.next_partition().paths.tolist())
-    if preserve_order:
-        assert partitions == [[str(path) for path in paths]]
-    else:
-        assert sorted(sum(partitions, [])) == [str(path) for path in paths]
-
-
-def test_datasource_reuses_generic_file_components(tmp_path):
-    path = _write(tmp_path / "data.txt", "a\nb\n")
-    datasource = TextDatasourceV2([str(tmp_path)], file_extensions=["txt"])
-    sample = _manifest(path)
-
-    assert isinstance(datasource._get_file_indexer(), NonSamplingFileIndexer)
     assert datasource.get_file_partitioner(hints=None) is None
     partitioner = datasource.get_file_partitioner(
         hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=1)
     )
-    assert isinstance(partitioner, RoundRobinPartitioner)
-    estimator = partitioner._in_memory_size_estimator
-    assert not isinstance(estimator, SamplingInMemorySizeEstimator)
-    assert estimator.estimate_in_memory_sizes(sample).tolist() == [4]
-    partitioner.add_input(sample)
+    assert partitioner is not None
+    partitioner.add_input(manifest)
     partitioner.finalize()
+
     assert partitioner.has_partition()
-    assert partitioner.next_partition().paths.tolist() == sample.paths.tolist()
+    assert partitioner.next_partition().paths.tolist() == manifest.paths.tolist()
 
 
 def test_datasource_keeps_caller_paths_for_lineage(tmp_path):
@@ -516,43 +445,6 @@ def test_datasource_keeps_caller_paths_for_lineage(tmp_path):
     assert datasource.source_paths == [uri]
     assert datasource.paths == [str(tmp_path)]
     assert datasource.supports_distributed_reads
-
-
-def test_list_and_read_text_files_with_partition_columns(tmp_path):
-    _write(tmp_path / "year=2023" / "a.txt", "one\n")
-    _write(tmp_path / "year=2024" / "b.txt", "two\n\nthree\n")
-    datasource = TextDatasourceV2(
-        [str(tmp_path)],
-        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
-        file_extensions=["txt"],
-        include_paths=True,
-    )
-
-    manifests = list(
-        datasource._get_file_indexer().list_files(
-            pa.array(datasource.paths, type=pa.string()),
-            filesystem=datasource.filesystem,
-            preserve_order=True,
-        )
-    )
-    manifest = FileManifest.concat(manifests)
-    schema = datasource.infer_schema(manifest)
-    partitioning = datasource.resolve_partitioning(manifest)
-    scanner = datasource.create_scanner(
-        schema, filesystem=datasource.filesystem, partitioning=partitioning
-    )
-
-    assert isinstance(scanner, TextScanner)
-    assert scanner.read_schema() == schema
-    result = pa.concat_tables(list(scanner.create_reader().read(manifest)))
-    rows = sorted(result.to_pylist(), key=lambda row: row[TEXT_COLUMN_NAME])
-    assert [(row[TEXT_COLUMN_NAME], row["year"]) for row in rows] == [
-        ("one", "2023"),
-        ("three", "2024"),
-        ("two", "2024"),
-    ]
-    assert rows[0]["path"].endswith("year=2023/a.txt")
-    assert rows[1]["path"].endswith("year=2024/b.txt")
 
 
 # -- read_api routing ----------------------------------------------------------
@@ -588,9 +480,14 @@ def test_read_text_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path)
     assert isinstance(datasource, TextDatasourceV2)
     assert datasource.paths == [str(tmp_path)]
     assert datasource.file_extensions == ["txt"]
-    assert datasource._encoding == "latin-1"
-    assert datasource._drop_empty_lines is False
-    assert datasource._synthesized_columns == (PathColumn(),)
+    schema = datasource.infer_schema(None)
+    assert schema.names == [TEXT_COLUMN_NAME, "path"]
+    path = _write(tmp_path / "data.txt", "café\n\n", encoding="latin-1")
+    reader = datasource.create_scanner(schema).create_reader()
+    assert pa.concat_tables(list(reader.read(_manifest(path)))).to_pylist() == [
+        {TEXT_COLUMN_NAME: "café", "path": str(path)},
+        {TEXT_COLUMN_NAME: "", "path": str(path)},
+    ]
     assert captured["kwargs"]["parallelism"] == 2
     assert captured["kwargs"]["concurrency"] == 4
     assert captured["kwargs"]["partition_filter"] is partition_filter

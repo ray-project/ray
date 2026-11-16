@@ -1,11 +1,10 @@
 from typing import TYPE_CHECKING, Iterator, List
 
-from ray.data._internal.datasource_v2.formats.text.text_reader import (
-    TEXT_COLUMN_NAME,
-)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+
+TEXT_COLUMN_NAME = "text"
 
 if TYPE_CHECKING:
     import pyarrow

@@ -13,6 +13,7 @@ import pyarrow as pa
 from pyarrow.fs import FileSystem, HadoopFileSystem, LocalFileSystem
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.datasource.text_datasource import TEXT_COLUMN_NAME
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
 )
@@ -35,8 +36,6 @@ from ray.data.datasource.partitioning import (
 )
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
-
-TEXT_COLUMN_NAME = "text"
 
 
 def _raise_on_text_partition_field(partition_names) -> None:
@@ -256,8 +255,10 @@ def _decompress_snappy(file: pa.NativeFile, filesystem: FileSystem) -> bytes:
     stream = io.BytesIO()
     unwrap = getattr(filesystem, "unwrap", None)
     base = unwrap() if callable(unwrap) else filesystem
-    if isinstance(base, HadoopFileSystem):
-        snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
-    else:
-        snappy.stream_decompress(src=file, dst=stream)
+    decompressor_cls = (
+        snappy.HadoopStreamDecompressor
+        if isinstance(base, HadoopFileSystem)
+        else snappy.StreamDecompressor
+    )
+    snappy.stream_decompress(src=file, dst=stream, decompressor_cls=decompressor_cls)
     return stream.getvalue()
