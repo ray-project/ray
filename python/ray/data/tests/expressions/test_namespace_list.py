@@ -142,9 +142,11 @@ class TestListNamespace:
             }
         )
         ds = _create_dataset(None, dataset_format, arrow_table=arrow_table)
-        result = ds.with_column(
-            "sorted", col("s").struct["items"].list.sort()
-        ).to_pandas()
+        result = (
+            ds.with_column("sorted", col("s").struct["items"].list.sort())
+            .select_columns(["sorted"])
+            .to_pandas()
+        )
         expected = pd.DataFrame({"sorted": [[1, 3], None, [7]]})
         assert rows_same(result, expected)
 
@@ -165,9 +167,11 @@ class TestListNamespace:
             }
         )
         ds = _create_dataset(None, dataset_format, arrow_table=arrow_table)
-        result = ds.with_column(
-            "flattened", col("s").struct["nested"].list.flatten()
-        ).to_pandas()
+        result = (
+            ds.with_column("flattened", col("s").struct["nested"].list.flatten())
+            .select_columns(["flattened"])
+            .to_pandas()
+        )
         expected = pd.DataFrame({"flattened": [[1, 2], None, [4, 5, 6]]})
         assert rows_same(result, expected)
 

@@ -240,7 +240,9 @@ class _ListNamespace:
                 # extracted from a null struct row). `list_flatten` skips those
                 # child values while `list_parent_indices` still reports them, so
                 # drop the parent indices under null rows to keep the two aligned.
-                if sort_arr.null_count:
+                # The length check skips the filtering entirely in the common
+                # case where the lengths already agree.
+                if len(row_indices) != len(values):
                     slot_is_under_null_row = pc.take(sort_arr.is_null(), row_indices)
                     row_indices = pc.filter(
                         row_indices, pc.invert(slot_is_under_null_row)
@@ -310,13 +312,14 @@ class _ListNamespace:
                 # extracted from a null struct row). `list_flatten` skips those
                 # child values while `list_parent_indices` still reports them, so
                 # drop the parent indices under null slots to keep the take below
-                # aligned with `all_scalars`.
-                if arr.null_count:
+                # aligned with `all_scalars`. The length checks skip the filtering
+                # entirely in the common case where the lengths already agree.
+                if len(arr_parents) != len(inner_lists):
                     slot_is_under_null_row = pc.take(arr.is_null(), arr_parents)
                     arr_parents = pc.filter(
                         arr_parents, pc.invert(slot_is_under_null_row)
                     )
-                if inner_lists.null_count:
+                if len(inner_parents) != len(all_scalars):
                     slot_is_under_null_row = pc.take(
                         inner_lists.is_null(), inner_parents
                     )
