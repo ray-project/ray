@@ -11,6 +11,7 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     ResourceRequestPriority,
     get_or_create_autoscaling_coordinator,
 )
+from ray.data._internal.execution.interfaces.common import PlacementGroupIdStr
 from ray.train._internal.autoscaling_coordinator_client import (
     build_train_resource_request,
 )
@@ -87,6 +88,25 @@ class TrainAutoscalingCoordinatorClient:
         ):
             return
         self.send_resource_request(scaling_config, num_workers)
+
+    def register_placement_group(self, placement_group_id: PlacementGroupIdStr) -> None:
+        """Tell the coordinator which placement group holds the worker bundles,
+        so it reserves them on the nodes Ray actually placed them on."""
+        try:
+            ray.get(
+                self._autoscaling_coordinator.register_placement_group.remote(
+                    requester_id=self._requester_id,
+                    placement_group_id=placement_group_id,
+                ),
+                timeout=AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
+            )
+        except Exception:
+            logger.warning(
+                f"Failed to register placement group {placement_group_id} for"
+                f" {self._requester_id}. The coordinator keeps packing the worker"
+                " bundles, which may not match where they were placed.",
+                exc_info=True,
+            )
 
     def cancel_resource_request(self) -> None:
         try:

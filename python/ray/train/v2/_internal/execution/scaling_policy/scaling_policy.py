@@ -6,12 +6,16 @@ from typing import Dict, Optional
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     RequesterId,
 )
-from ray.train.v2._internal.execution.callback import ControllerCallback
+from ray.train.v2._internal.execution.callback import (
+    ControllerCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.scaling_policy.autoscaling_coordinator_client import (  # noqa: E501
     TrainAutoscalingCoordinatorClient,
 )
 from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroup,
     WorkerGroupPollStatus,
     WorkerGroupState,
 )
@@ -36,7 +40,7 @@ class ResizeDecision(ScalingDecision):
     resources_per_worker: Dict[str, float]
 
 
-class ScalingPolicy(abc.ABC, ControllerCallback):
+class ScalingPolicy(abc.ABC, ControllerCallback, WorkerGroupCallback):
     """A policy that determines when and how to scale a worker group.
 
     This can be used to implement elasticity and fault tolerance.
@@ -137,6 +141,21 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         else:
             logger.info(f"Requesting resources: {resources_per_worker} * {num_workers}")
         self._send_resource_request()
+
+    # --------------------------
+    # WorkerGroupCallback
+    # --------------------------
+
+    def after_worker_group_start(self, worker_group: WorkerGroup):
+        """Register the worker group's placement group with the coordinator."""
+        if self._coordinator_client is None:
+            return
+        placement_group = (
+            worker_group.get_worker_group_state().placement_group_handle.placement_group
+        )
+        self._coordinator_client.register_placement_group(
+            placement_group_id=placement_group.id.hex()
+        )
 
     async def before_controller_shutdown(self):
         """Cancel the resource request when the controller shuts down."""
