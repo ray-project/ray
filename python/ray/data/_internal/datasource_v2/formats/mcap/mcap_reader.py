@@ -1,4 +1,4 @@
-"""``MCAPReader``, which reads one read task's chunks into message rows.
+"""``MCAPReader``, which reads one read task's chunks into rows.
 
 ``MCAPReader.read`` receives a ``FileManifest`` whose rows name files and, per
 file, the byte offsets of the chunks the task owns and the summary records it
@@ -8,23 +8,27 @@ decompresses them, keeps the selected messages and yields Arrow tables of about
 by log time as they are read, so memory holds only the chunks that overlap in
 time.
 
-A row has the columns of ``message_schema``. Its optional ``row_id`` is a
-deterministic name for the message, built from the file path, the chunk's byte
-offset and the message's position in the chunk.
+A message row has the columns of ``message_schema``. Its optional ``row_id``
+is a deterministic name for the message, built from the file path, the chunk's
+byte offset and the message's position in the chunk. A sample read's manifest
+rows are samples instead, and each becomes one row of each topic's steps.
 
 This module reads the manifest row by row and finishes every table with its
 partition and synthesized columns. The other modules read and build the rows:
 
 - ``mcap_chunks`` reads the selected messages of a file.
 - ``mcap_message_rows`` builds message rows.
+- ``mcap_sample_rows`` builds sample rows, with the step rules of
+  ``mcap_samples``.
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Iterator,
     List,
     Optional,
@@ -52,6 +56,14 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     _MessageTableBuilder,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
+from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
+    DEFAULT_MAX_ROW_BYTES,
+    SampleFile,
+    SamplePaths,
+    SampleRows,
+    group_samples_by_file,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import TopicPlan
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import chunk_unit_id
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
     task_summaries,
@@ -99,6 +111,9 @@ class MCAPReader(Reader[FileManifest]):
         target_block_size: Optional[int] = None,
         schema: Optional[pa.Schema] = None,
         decode_json: bool = False,
+        max_row_bytes: int = DEFAULT_MAX_ROW_BYTES,
+        topic_plans: Sequence[TopicPlan] = (),
+        max_run_bytes: Optional[int] = None,
     ):
         """Initialize the reader.
 
@@ -119,6 +134,13 @@ class MCAPReader(Reader[FileManifest]):
             schema: Dataset schema, used to type partition columns.
             decode_json: Whether ``data`` holds decoded JSON values rather than
                 the payload bytes.
+            max_row_bytes: Largest payload a sample row may carry. A larger row
+                fails the read.
+            topic_plans: For a sample read, each topic's steps
+                (``mcap_samples``), in the order the row's columns take. Empty
+                for a read of message rows.
+            max_run_bytes: Most bytes the chunks of a run of samples hold
+                (``mcap_sample_rows``); ``None`` ends runs only at gaps.
         """
         self._message_reader = SelectedMessageReader(selection, log_time_order)
         self._decode_json = decode_json
@@ -133,23 +155,37 @@ class MCAPReader(Reader[FileManifest]):
         self._synthesized_columns = tuple(synthesized_columns)
         self._target_block_size = target_block_size
         self._schema = schema
+        self._sample_rows: Optional[SampleRows] = None
+        if topic_plans:
+            self._sample_rows = SampleRows(
+                topic_plans,
+                self._message_reader,
+                self._project,
+                columns=self._columns,
+                target_block_size=target_block_size,
+                max_row_bytes=max_row_bytes,
+                max_run_bytes=max_run_bytes,
+            )
+        self._sample_paths = SamplePaths(filesystem)
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read the files and chunks named by ``input_split``.
 
         Each row is read on its own, in manifest order, so a path listed twice
         is read twice. With ``limit``, reading stops at that many rows: no later
-        message is added to a table and no later chunk or file is read.
+        message is added to a table and no later chunk or file is read. A sample
+        read reads only as many samples as the limit leaves.
 
         When ``DataContext.max_errored_blocks`` lets errors be skipped, a
         corrupt chunk costs only itself: the reader skips it and reads the
-        file's other chunks. A message whose payload is not valid JSON likewise
-        costs only its own row. A file whose other data does not decode keeps
-        the rows before the failure and does not stop the task's other files.
-        Once they are read, one error names every file, chunk and message
-        skipped, so the task counts once against the budget. Any other error,
-        such as a failed read, raises at once, so the task's retry settings see
-        it. Without skipping, the first failure fails the task at once.
+        file's other chunks, but in a sample read it fails the file. A message
+        whose payload is not valid JSON likewise costs only its own row. A file
+        whose other data does not decode does not stop the task's other files,
+        and a message read keeps the file's rows before the failure. Once they
+        are read, one error names what was skipped (``_skipped_data_error``),
+        so the task counts once against the budget. Any other error, such as a
+        failed read, raises at once, so the task's retry settings see it.
+        Without skipping, the first failure fails the task at once.
         """
         from ray.data.context import DataContext
 
@@ -158,11 +194,11 @@ class MCAPReader(Reader[FileManifest]):
         skip_corrupt = DataContext.get_current().max_errored_blocks != 0
         remaining = self._limit
         failures: List[Tuple[str, Exception]] = []
-        for owned in _owned_files(input_split):
+        for path, read_file in self._file_reads(input_split):
             if remaining is not None and remaining <= 0:
                 break
-            for table in self._read_owned_file(
-                owned, remaining, skip_corrupt, failures
+            for table in self._read_one_file(
+                path, read_file, remaining, skip_corrupt, failures
             ):
                 if remaining is not None:
                     remaining -= table.num_rows
@@ -170,9 +206,10 @@ class MCAPReader(Reader[FileManifest]):
         if failures:
             raise _read_error(failures)
 
-    def _read_owned_file(
+    def _read_one_file(
         self,
-        owned: "_OwnedFile",
+        path: str,
+        read_file: Callable[..., Iterator[pa.Table]],
         limit: Optional[int],
         skip_corrupt: bool,
         failures: List[Tuple[str, Exception]],
@@ -190,8 +227,8 @@ class MCAPReader(Reader[FileManifest]):
         # last attempt's.
         skipped = _SkippedData() if skip_corrupt else None
         tables = iterate_with_retry(
-            partial(self._read_file, owned, limit, skipped),
-            f"read MCAP file {owned.path}",
+            partial(read_file, limit, skipped),
+            f"read MCAP file {path}",
             match=DataContext.get_current().retried_io_errors,
         )
         try:
@@ -199,10 +236,24 @@ class MCAPReader(Reader[FileManifest]):
         except Exception as e:
             if not skip_corrupt or not is_corrupt_data_error(e):
                 raise
-            failures.append((owned.path, e))
+            failures.append((path, e))
             return
         if skipped is not None and (skipped.chunks.offsets or skipped.num_messages):
-            failures.append((owned.path, _skipped_data_error(owned.path, skipped)))
+            failures.append((path, _skipped_data_error(path, skipped)))
+
+    def _file_reads(
+        self, manifest: FileManifest
+    ) -> List[Tuple[str, Callable[..., Iterator[pa.Table]]]]:
+        """Each file of the task, with the call that reads its tables."""
+        if self._sample_rows is not None:
+            return [
+                (file.path, partial(self._read_samples, file))
+                for file in group_samples_by_file(manifest, self._sample_paths)
+            ]
+        return [
+            (owned.path, partial(self._read_file, owned))
+            for owned in _owned_files(manifest)
+        ]
 
     # -- one file ----------------------------------------------------------
 
@@ -261,6 +312,32 @@ class MCAPReader(Reader[FileManifest]):
                     else partial(_record_corrupt_chunk, skipped.chunks),
                 )
             yield from self._tables(messages, path, offsets, limit, skipped)
+
+    def _read_samples(
+        self,
+        file: SampleFile,
+        limit: Optional[int],
+        skipped: Optional["_SkippedData"] = None,
+    ) -> Iterator[pa.Table]:
+        """Yield the sample rows of one file, at most ``limit`` of them.
+
+        A chunk that cannot be decoded fails the file, so ``skipped`` stays
+        empty. A read that keeps only the samples' own columns opens no file.
+        """
+        assert self._sample_rows is not None
+        if limit is not None and limit < file.samples.num_rows:
+            # Rows come out in the anchor order ``samples`` holds, so the
+            # samples past the limit need no chunk read.
+            file = replace(file, samples=file.samples.slice(0, limit))
+        if not self._sample_rows.reads_messages:
+            yield from self._sample_rows.tables_without_messages(file)
+            return
+        filesystem = file.filesystem or self._filesystem or LocalFileSystem()
+        with filesystem.open_input_file(file.path) as f:
+            summary = read_summary_from(f, file.path)
+            if summary is not None and not summary.chunk_indexes:
+                summary = None
+            yield from self._sample_rows.tables(f, file, summary)
 
     # -- rows to tables ----------------------------------------------------
 
@@ -350,9 +427,14 @@ class MCAPReader(Reader[FileManifest]):
     ) -> pa.Table:
         """Append partition and synthesized columns, then apply the projection."""
         wanted = set(self._columns) if self._columns is not None else None
-        num_rows = table.num_rows
         table = self._append_partition_columns(table, path, wanted)
         table = self._append_synthesized_columns(table, unit, rows_before, wanted)
+        return self._project(table)
+
+    def _project(self, table: pa.Table) -> pa.Table:
+        """Apply the projection, keeping the row count of a table left without
+        columns, and refuse pickled-object columns."""
+        num_rows = table.num_rows
         if self._columns is not None:
             produced = set(table.column_names)
             table = table.select([c for c in self._columns if c in produced])
