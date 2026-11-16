@@ -3,7 +3,6 @@ import contextlib
 import errno
 import fcntl
 import hashlib
-import http.client
 import io
 import json
 import logging
@@ -17,17 +16,15 @@ import subprocess
 import tarfile
 import tempfile
 import threading
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-import zlib
 from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
-from ray.experimental.sandbox._internal import docker_config
+from ray.experimental.sandbox._internal import docker_config, layer_cache
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -246,6 +243,8 @@ def get_registry_auth_headers(
     repo: str,
     reference: str = "latest",
     timeout: float = 30.0,
+    scopes: Optional[List[str]] = None,
+    action: str = "pull",
 ) -> Dict[str, str]:
     """Answer a registry's authentication challenge for pulling ``repo``.
 
@@ -263,6 +262,9 @@ def get_registry_auth_headers(
         repo: Repository path within the registry.
         reference: Tag or digest whose manifest is requested.
         timeout: Network and credential helper timeout in seconds.
+        scopes: Override the challenge's scopes, such as pull,push on the
+            target repository and pull on the source repository.
+        action: What the headers are for, "pull" or "push", named in errors.
 
     Returns:
         The ``Authorization`` header for the pull's registry requests, or no
@@ -291,7 +293,7 @@ def get_registry_auth_headers(
         if scheme == "basic":
             if creds is None or not creds.username:
                 raise SandboxCreationError(
-                    f"Registry '{registry}' requires credentials to pull "
+                    f"Registry '{registry}' requires credentials to {action} "
                     f"'{repo}', and the Docker config "
                     f"{docker_config.config_path()} provides none for it."
                 )
@@ -313,8 +315,7 @@ def get_registry_auth_headers(
         params = {}
         if service:
             params["service"] = service
-        if scope:
-            params["scope"] = scope
+        params["scope"] = scopes or [scope]
 
         if creds is not None and creds.identity_token:
             # The token spec's OAuth2 refresh-token grant.
@@ -327,13 +328,15 @@ def get_registry_auth_headers(
             )
             auth_req = urllib.request.Request(
                 auth_url,
-                data=urllib.parse.urlencode(form).encode("utf-8"),
+                data=urllib.parse.urlencode(form, doseq=True).encode("utf-8"),
                 headers={"User-Agent": _USER_AGENT},
             )
         else:
             sep = "&" if "?" in realm else "?"
             auth_url = (
-                f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
+                f"{realm}{sep}{urllib.parse.urlencode(params, doseq=True)}"
+                if params
+                else realm
             )
             basic = None
             if creds is not None and creds.username:
@@ -348,7 +351,7 @@ def get_registry_auth_headers(
         except Exception as auth_err:
             if creds is not None:
                 raise SandboxCreationError(
-                    f"Failed to get a pull token for '{registry}' from "
+                    f"Failed to get a {action} token for '{registry}' from "
                     f"'{realm}' with the credentials in "
                     f"{docker_config.config_path()}: "
                     f"{_describe_pull_error(auth_err)}"
@@ -440,6 +443,7 @@ def extract_tar_layer(
     tar_input: Union[bytes, io.IOBase, BinaryIO],
     dest_dir: str,
     ownership: Optional[Dict[str, Tuple[int, int]]] = None,
+    dir_attrs: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> None:
     """Extract a tar archive layer onto dest_dir with OCI whiteout handling.
 
@@ -454,13 +458,22 @@ def extract_tar_layer(
     entry at; whiteouts and root-owned replacements drop entries. The
     extracted files themselves stay owned by the extracting user; the EROFS
     image build restores the recorded owners.
+
+    ``dir_attrs``, likewise shared across an image's layers, collects each
+    directory's archived {canonical path: (mode, mtime)} instead of applying
+    it, and the caller runs ``apply_dir_attrs`` after the last layer: a
+    read-only directory (0555) locked after its own layer would stop an
+    unprivileged worker from extracting a later layer's files, or whiteouts,
+    inside it. Without it the attributes are applied when this layer ends.
     """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
     else:
         tar_fileobj = tar_input
 
-    dir_mtimes = []
+    apply_now = dir_attrs is None
+    if dir_attrs is None:
+        dir_attrs = {}
     # Iterating reads the layer once; getmembers() first would decompress it
     # twice, since extractfile() then rewinds a compressed stream. Not stream
     # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
@@ -489,6 +502,10 @@ def extract_tar_layer(
             if basename == ".wh..wh..opq":
                 if ownership is not None:
                     _drop_ownership_children(ownership, parent_rel)
+                opaque_attrs = dir_attrs.get(parent_rel)
+                _drop_ownership_children(dir_attrs, parent_rel)
+                if opaque_attrs is not None:
+                    dir_attrs[parent_rel] = opaque_attrs
                 if os.path.isdir(parent_dir):
                     for item in os.listdir(parent_dir):
                         item_path = os.path.join(parent_dir, item)
@@ -507,10 +524,10 @@ def extract_tar_layer(
                 if not del_name:
                     continue
                 del_path = os.path.join(parent_dir, del_name)
+                del_rel = os.path.normpath(os.path.join(parent_rel, del_name))
                 if ownership is not None:
-                    _drop_ownership_subtree(
-                        ownership, os.path.normpath(os.path.join(parent_rel, del_name))
-                    )
+                    _drop_ownership_subtree(ownership, del_rel)
+                _drop_ownership_subtree(dir_attrs, del_rel)
                 if os.path.isdir(del_path) and not os.path.islink(del_path):
                     shutil.rmtree(del_path, ignore_errors=True)
                 elif os.path.exists(del_path) or os.path.islink(del_path):
@@ -523,6 +540,7 @@ def extract_tar_layer(
             # Remove conflicting existing file/dir if member type differs
             if os.path.exists(target_path) or os.path.islink(target_path):
                 if not (os.path.isdir(target_path) and member.isdir()):
+                    _drop_ownership_subtree(dir_attrs, rel)
                     try:
                         if os.path.isdir(target_path) and not os.path.islink(
                             target_path
@@ -566,12 +584,12 @@ def extract_tar_layer(
                     pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
-                # Deferred to the post-loop pass: tar lists a directory
-                # before its contents, so a restrictive archived mode (0500)
-                # applied here would break extracting the children. Preserved
+                # Deferred to apply_dir_attrs: tar lists a directory before
+                # its contents, so a restrictive archived mode (0500) applied
+                # here would break extracting the children. Preserved
                 # symlinks (UsrMerge) are skipped: chmod/utime follow them.
                 if not os.path.islink(target_path):
-                    dir_mtimes.append((target_path, member.mode, member.mtime))
+                    dir_attrs[rel] = (member.mode, member.mtime)
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -606,9 +624,28 @@ def extract_tar_layer(
                     # A later layer re-shipping the path as root wins.
                     ownership.pop(rel, None)
 
+    if apply_now:
+        apply_dir_attrs(dest_dir, dir_attrs)
+
+
+def apply_dir_attrs(dest_dir: str, dir_attrs: Dict[str, Tuple[int, int]]) -> None:
+    """Apply the directory modes and mtimes ``extract_tar_layer`` collected.
+
+    Args:
+        dest_dir: Directory the layers were extracted onto.
+        dir_attrs: {canonical path: (mode, mtime)} of the extracted directories.
+    """
     # Children first, so a parent's restrictive mode cannot block them.
-    for dir_path, mode, mtime in reversed(dir_mtimes):
+    for rel in sorted(
+        dir_attrs, key=lambda rel: -1 if rel == "." else rel.count("/"), reverse=True
+    ):
+        mode, mtime = dir_attrs[rel]
+        dir_path = os.path.join(dest_dir, rel)
         try:
+            # A path since replaced by a file or a symlink keeps its own
+            # attributes: chmod/utime would follow the symlink.
+            if not stat.S_ISDIR(os.lstat(dir_path).st_mode):
+                continue
             if mode:
                 os.chmod(dir_path, mode)
             os.utime(dir_path, (mtime, mtime))
@@ -845,521 +882,6 @@ def build_erofs_image(
             raise SandboxCreationError(f"mkfs.erofs failed: {message}")
 
 
-# Set to "0" to build every image by extracting its layers to a tree, even
-# with a mkfs.erofs that can build and merge per-layer images.
-_EROFS_MERGE_ENV = "RAY_SANDBOX_EROFS_MERGE"
-# The mkfs.erofs options a merged build needs (erofs-utils 1.8+): per-layer
-# images from tar streams that keep whiteouts as overlayfs metadata, a merge
-# that copies their data into one image and applies the whiteouts, and the
-# incremental pass that seeds it.
-_MKFS_EROFS_MERGE_OPTIONS = (
-    "--aufs",
-    "--sort=",
-    "--clean=",
-    "--incremental=",
-    "--ovlfs-strip",
-)
-# Bytes read from a layer download at a time.
-_LAYER_READ_SIZE = 1 << 20
-# Directories runsc mounts over, so a merged image gets them whether or not
-# it ships them: being there is all that matters. The root is listed too, as
-# an incremental build resets a directory it meets only as the parent of a
-# new entry.
-_SEED_DIRS = {
-    "": 0o755,
-    "proc": 0o755,
-    "sys": 0o755,
-    "dev": 0o755,
-    "dev/pts": 0o755,
-    "dev/shm": 0o755,
-    "run": 0o755,
-    "tmp": 0o1777,
-}
-# dump.erofs's TYPE column for a directory (EROFS_FT_DIR).
-_EROFS_FT_DIR = 2
-
-
-@lru_cache(maxsize=8)
-def _mkfs_erofs_can_merge(mkfs: str) -> bool:
-    """Whether ``mkfs`` (and the ``dump.erofs`` next to it) can build an
-    image by merging per-layer images."""
-    if not os.access(os.path.join(os.path.dirname(mkfs), "dump.erofs"), os.X_OK):
-        return False
-    try:
-        res = subprocess.run(
-            [mkfs, "--help"], capture_output=True, text=True, timeout=30
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return all(
-        option in res.stdout + res.stderr for option in _MKFS_EROFS_MERGE_OPTIONS
-    )
-
-
-def _erofs_listdir(dump: str, image: str, path: str) -> Optional[Dict[str, int]]:
-    """{name: dump.erofs file type} of directory ``path`` in ``image``, or
-    None if it isn't one."""
-    res = subprocess.run(
-        [dump, "--ls", f"--path={path}", image], capture_output=True, text=True
-    )
-    if res.returncode != 0 or "FILENAME" not in res.stdout:
-        return None
-    entries = {}
-    for line in res.stdout.split("FILENAME", 1)[1].splitlines():
-        fields = line.split(None, 2)
-        if len(fields) == 3 and fields[0].isdigit() and fields[1].isdigit():
-            entries[fields[2]] = int(fields[1])
-    return entries
-
-
-def _seed_erofs_image(mkfs: str, image_path: str) -> None:
-    """Give a merged image what ``_seed_tmp`` and ``_seed_mountpoints`` give
-    an extracted tree, with an incremental pass.
-
-    The mount-point directories and ``/tmp`` (1777, kept non-empty) are
-    written over whatever the image has; the files in ``/etc`` only where
-    missing, since an image's own may show through. Seeding through a
-    symlinked ``/etc``, ``/tmp``, ``/dev``, ``/dev/pts`` or ``/dev/shm``
-    would need ``_resolve_in_root``, so such an image is left to extraction.
-
-    Args:
-        mkfs: The ``mkfs.erofs`` that built the image.
-        image_path: The image, changed in place.
-
-    Raises:
-        RuntimeError: If the image can't be seeded this way.
-    """
-    dump = os.path.join(os.path.dirname(mkfs), "dump.erofs")
-    root = _erofs_listdir(dump, image_path, "/")
-    if root is None:
-        raise RuntimeError("dump.erofs can't list the image's root")
-    for name in ("dev", "etc", "proc", "run", "sys", "tmp"):
-        if root.get(name, _EROFS_FT_DIR) != _EROFS_FT_DIR:
-            raise RuntimeError(f"the image's /{name} isn't a directory")
-    dev = (_erofs_listdir(dump, image_path, "/dev") or {}) if "dev" in root else {}
-    for name in ("pts", "shm"):
-        if dev.get(name, _EROFS_FT_DIR) != _EROFS_FT_DIR:
-            raise RuntimeError(f"the image's /dev/{name} isn't a directory")
-    etc = (_erofs_listdir(dump, image_path, "/etc") or {}) if "etc" in root else {}
-    missing = [f for f in _MOUNTPOINT_FILES if os.path.basename(f) not in etc]
-
-    def entry(name: str, kind: bytes, mode: int) -> tarfile.TarInfo:
-        ti = tarfile.TarInfo(name)
-        ti.type, ti.mode, ti.mtime = kind, mode, int(time.time())
-        return ti
-
-    seeds = io.BytesIO()
-    with tarfile.open(fileobj=seeds, mode="w", format=tarfile.PAX_FORMAT) as tar:
-        for rel, mode in _SEED_DIRS.items():
-            tar.addfile(entry(rel or "./", tarfile.DIRTYPE, mode))
-        tar.addfile(entry("tmp/.ray-sandbox-keep", tarfile.REGTYPE, 0o644))
-        if missing:
-            tar.addfile(entry("etc", tarfile.DIRTYPE, 0o755))
-        for rel in missing:
-            tar.addfile(entry(rel, tarfile.REGTYPE, 0o644))
-    res = subprocess.run(
-        [mkfs, "--incremental=data", "--tar=f", f"-b{mmap.PAGESIZE}"]
-        + ["-E^inline_data", "--quiet", image_path],
-        input=seeds.getvalue(),
-        capture_output=True,
-    )
-    if res.returncode != 0:
-        message = (res.stdout + res.stderr).decode(errors="replace").strip()
-        raise RuntimeError(f"seeding the image failed: {message[-500:]}")
-
-
-class _LayerBuildStopped(Exception):
-    """A layer build stopped because another layer's failed."""
-
-
-class _LayerStream:
-    """A layer blob as it downloads: verified against its digest,
-    decompressed, and copied to ``sink`` as it's read.
-
-    ``tarfile`` reads the layer's tar through this, so ``mkfs.erofs`` (on
-    ``sink``) and the member list see the same bytes, read once.
-    """
-
-    def __init__(self, resp, digest: str, sink, stop: threading.Event):
-        algorithm, _, self._expected = digest.partition(":")
-        try:
-            self._hash = hashlib.new(algorithm)
-        except ValueError:
-            raise RuntimeError(f"unsupported layer digest {digest}") from None
-        self._digest = digest
-        self._resp = resp
-        self._sink = sink
-        self._stop = stop
-        self._inflate = None
-        self._started = False
-        self._done = False
-        self._buf = bytearray()
-
-    def _fill(self) -> None:
-        if self._stop.is_set():
-            raise _LayerBuildStopped()
-        try:
-            # read1 returns what has arrived, so a stop takes effect soon.
-            chunk = self._resp.read1(_LAYER_READ_SIZE)
-        except (OSError, http.client.HTTPException) as err:
-            raise SandboxCreationError(
-                f"Failed to download layer {self._digest}: {err}"
-            ) from err
-        if not chunk:
-            self._finish()
-            return
-        self._hash.update(chunk)
-        if not self._started:
-            self._started = True
-            if chunk[:2] == b"\x1f\x8b":
-                self._inflate = zlib.decompressobj(wbits=31)
-            elif chunk.startswith((b"BZh", b"\xfd7zXZ", b"\x28\xb5\x2f\xfd")):
-                raise RuntimeError(f"layer {self._digest} isn't gzip or plain tar")
-        if self._inflate is None:
-            self._buf += chunk
-            return
-        try:
-            self._buf += self._inflate.decompress(chunk)
-            # A gzip file may hold several members, one after another.
-            while self._inflate.eof and self._inflate.unused_data.strip(b"\0"):
-                rest = self._inflate.unused_data
-                self._inflate = zlib.decompressobj(wbits=31)
-                self._buf += self._inflate.decompress(rest)
-        except zlib.error as err:
-            raise RuntimeError(f"layer {self._digest}: {err}") from err
-
-    def _finish(self) -> None:
-        self._done = True
-        if self._inflate is not None and not self._inflate.eof:
-            raise SandboxCreationError(f"Layer {self._digest} ended early")
-        if self._hash.hexdigest() != self._expected:
-            raise SandboxCreationError(
-                f"Layer {self._digest} doesn't match its digest "
-                f"({self._hash.name}:{self._hash.hexdigest()})"
-            )
-
-    def read(self, size: int = -1) -> bytes:
-        while not self._done and (size < 0 or len(self._buf) < size):
-            self._fill()
-        n = len(self._buf) if size < 0 else min(size, len(self._buf))
-        data = bytes(self._buf[:n])
-        del self._buf[:n]
-        if data and self._sink is not None:
-            try:
-                self._sink.write(data)
-            except BrokenPipeError:
-                # mkfs.erofs stopped reading, maybe once past the tar's end;
-                # its exit status says if that was a failure. The rest is
-                # still read, so the digest is checked.
-                self._sink = None
-        return data
-
-    def drain(self) -> None:
-        """Read (and copy) the rest of the layer, verifying it."""
-        while self.read(_LAYER_READ_SIZE):
-            pass
-
-
-def _layer_entry(member: tarfile.TarInfo) -> Tuple[str, str]:
-    """(kind, path) of a layer member for ``_layer_merge_problem``: "dir",
-    "sym", "file", "wh" (a whiteout, with the path it deletes), "opq" (an
-    opaque whiteout, with its directory) or "bad" (a path out of the root).
-    Paths are relative to the root, which is ""."""
-    name = member.name.lstrip("/")
-    if ".." in name.split("/"):
-        return "bad", name
-    path = os.path.normpath(name)
-    path = "" if path == "." else path
-    parent, base = os.path.split(path)
-    if base == ".wh..wh..opq":
-        return "opq", parent
-    if base.startswith(".wh."):
-        return "wh", os.path.join(parent, base[4:])
-    if member.isdir():
-        return "dir", path
-    if member.issym():
-        return "sym", path
-    return "file", path
-
-
-def _layer_merge_problem(layers: List[List[Tuple[str, str]]]) -> Optional[str]:
-    """Why merging per-layer images of ``layers`` (their ``_layer_entry``
-    lists, lowest first) would give another tree than ``extract_tar_layer``
-    does, or None if it wouldn't.
-
-    Two cases differ. A layer that names a path without an entry for its
-    parent directory: ``mkfs.erofs`` makes the parent up (0777, owned by
-    the worker), and the merge puts that over the parent the layers below
-    ship, where extraction keeps theirs or follows a symlink there. And a
-    directory entry for a path that is a symlink by then (UsrMerge's ``bin
-    -> usr/bin``): the merge replaces the symlink with the directory, as
-    Docker does, where extraction keeps the symlink and writes through it.
-    Image builders don't write such layers, so this is only a guard.
-    """
-    symlinks: set = set()
-    for index, entries in enumerate(layers, 1):
-        dirs = {""}
-        for kind, path in entries:
-            if kind == "bad":
-                return f"layer {index} has a member outside the root: {path}"
-            parent = path if kind == "opq" else os.path.dirname(path)
-            if parent not in dirs:
-                return f"layer {index} has /{path} but no entry for /{parent}"
-            if kind == "dir":
-                if path in symlinks:
-                    return f"layer {index} has a directory at the symlink /{path}"
-                dirs.add(path)
-            elif kind == "sym":
-                symlinks.add(path)
-                dirs.discard(path)
-            elif kind == "file":
-                symlinks.discard(path)
-                dirs.discard(path)
-            else:
-                # A whiteout deletes ``path`` and what's under it; an opaque
-                # one only what's under its directory.
-                prefix = f"{path}/" if path else ""
-                symlinks = {
-                    s
-                    for s in symlinks
-                    if not s.startswith(prefix) and (kind == "opq" or s != path)
-                }
-    return None
-
-
-def _build_layer_image(
-    mkfs: str,
-    url: str,
-    headers: Dict[str, str],
-    auth_header: Optional[str],
-    digest: str,
-    timeout_seconds: float,
-    out_path: str,
-    stop: threading.Event,
-) -> List[Tuple[str, str]]:
-    """Download one layer straight into an EROFS image of it.
-
-    The blob is verified and decompressed as it arrives and goes into
-    ``mkfs.erofs --tar=f`` on stdin, so it's never on disk as a blob or a
-    tree. ``--aufs`` turns its whiteouts into overlayfs metadata for the
-    merge to apply, and ``--sort=none`` writes file data as it comes instead
-    of spooling it under ``$TMPDIR``.
-
-    Returns:
-        The layer's ``_layer_entry`` list, in tar order.
-
-    Raises:
-        SandboxCreationError: If the layer can't be downloaded, or isn't the
-            blob its digest names.
-        RuntimeError: If ``mkfs.erofs`` can't build the image.
-        _LayerBuildStopped: If ``stop`` was set meanwhile.
-    """
-    entries: List[Tuple[str, str]] = []
-    # The output goes to a file, not a pipe that could fill up.
-    with tempfile.TemporaryFile() as output:
-        proc = subprocess.Popen(
-            [mkfs, "--tar=f", "--aufs", "--sort=none", f"-b{mmap.PAGESIZE}"]
-            + ["-E^inline_data", "--quiet", out_path],
-            stdin=subprocess.PIPE,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-        )
-        try:
-            req = _registry_request(url, headers, auth_header)
-            try:
-                resp = urllib.request.urlopen(req, timeout=timeout_seconds)
-            except (OSError, http.client.HTTPException) as err:
-                raise SandboxCreationError(
-                    f"Failed to download layer {digest}: {_describe_pull_error(err)}"
-                ) from err
-            with resp:
-                layer = _LayerStream(resp, digest, proc.stdin, stop)
-                try:
-                    tar = tarfile.open(
-                        fileobj=layer, mode="r|", bufsize=_LAYER_READ_SIZE
-                    )
-                    member = tar.next()
-                    while member is not None:
-                        entries.append(_layer_entry(member))
-                        # Stream mode keeps every member it read otherwise.
-                        tar.members.clear()
-                        member = tar.next()
-                except tarfile.TarError as err:
-                    raise RuntimeError(f"layer {digest}: {err}") from err
-                layer.drain()
-            with contextlib.suppress(BrokenPipeError):
-                proc.stdin.close()
-            returncode = proc.wait()
-        except BaseException:
-            proc.kill()
-            proc.wait()
-            raise
-        finally:
-            with contextlib.suppress(BrokenPipeError):
-                proc.stdin.close()
-        if returncode != 0:
-            output.seek(0)
-            message = output.read().decode(errors="replace").strip()[-500:]
-            raise RuntimeError(f"mkfs.erofs failed on layer {digest}: {message}")
-    return entries
-
-
-def _build_layer_images(
-    mkfs: str,
-    blob_base: str,
-    headers: Dict[str, str],
-    auth_header: Optional[str],
-    layer_descs: List[Dict],
-    timeout_seconds: float,
-    layer_dir: str,
-) -> Tuple[List[str], List[List[Tuple[str, str]]]]:
-    """Build an EROFS image of each layer, a few at a time.
-
-    Returns:
-        The images' paths and the layers' ``_layer_entry`` lists, both in
-        manifest order.
-
-    Raises:
-        SandboxCreationError, RuntimeError: As ``_build_layer_image`` does,
-            for the first layer that failed. The other builds are stopped
-            and waited for first.
-    """
-    stop = threading.Event()
-    paths = [os.path.join(layer_dir, f"{i}.erofs") for i in range(len(layer_descs))]
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=_LAYER_DOWNLOADS, thread_name_prefix="sandbox-layer-build"
-    ) as pool:
-        builds = [
-            pool.submit(
-                _build_layer_image,
-                mkfs,
-                f"{blob_base}/{desc['digest']}",
-                headers,
-                auth_header,
-                desc["digest"],
-                timeout_seconds,
-                path,
-                stop,
-            )
-            for desc, path in zip(layer_descs, paths)
-        ]
-        concurrent.futures.wait(builds, return_when=concurrent.futures.FIRST_EXCEPTION)
-        if any(b.done() and b.exception() is not None for b in builds):
-            stop.set()
-            for build in builds:
-                build.cancel()
-    errors = [
-        b.exception() for b in builds if not b.cancelled() and b.exception() is not None
-    ]
-    real = [e for e in errors if not isinstance(e, _LayerBuildStopped)]
-    if real:
-        raise real[0]
-    return paths, [b.result() for b in builds]
-
-
-def _merge_layer_images(mkfs: str, layer_paths: List[str], out_path: str) -> None:
-    """Merge per-layer images, lowest first, into one self-contained image.
-
-    ``--clean=data`` copies the layers' file data into ``out_path``, where
-    the default would only point at the layer images; runsc mounts one
-    image. ``--ovlfs-strip=1`` applies the whiteouts instead of keeping
-    them. The data layout and block size are those ``build_erofs_image``
-    uses, for gVisor's reader.
-    """
-    res = subprocess.run(
-        [mkfs, "--clean=data", "--ovlfs-strip=1", f"-b{mmap.PAGESIZE}"]
-        + ["-E^inline_data", "--quiet", out_path]
-        + layer_paths,
-        capture_output=True,
-    )
-    if res.returncode != 0:
-        message = (res.stdout + res.stderr).decode(errors="replace").strip()
-        raise RuntimeError(f"merging the layer images failed: {message[-500:]}")
-
-
-def _build_erofs_image_from_registry(
-    image: str, image_dir: str, out_path: str, timeout_seconds: float
-) -> bool:
-    """Build ``out_path`` for registry image ``image`` from per-layer images.
-
-    Each layer downloads straight into an EROFS image of its own
-    (``_build_layer_image``), and one ``mkfs.erofs`` pass merges them and
-    applies their whiteouts. That skips extracting the layers to a tree and
-    re-packing it, which is most of a cold pull's time. The image is
-    resolved, authenticated against and fetched as for extraction, so
-    mirrors, credential helpers, digests, the host's platform and
-    ``timeout_seconds`` all work as there.
-
-    Args:
-        image: Container image reference or path to a local tar archive.
-        image_dir: Directory that receives the image config and, while the
-            build runs, the layer images.
-        out_path: Destination image file.
-        timeout_seconds: Network request timeout.
-
-    Returns:
-        True if the image is built; False, with nothing at ``out_path``, if
-        it should be built by extraction instead: a local archive, a node
-        whose ``mkfs.erofs`` can't merge, layers whose merge would differ
-        from extraction (``_layer_merge_problem``), or a failed build.
-
-    Raises:
-        SandboxCreationError: When the image cannot be resolved or a layer
-            cannot be downloaded.
-    """
-    mkfs = mkfs_erofs_path()
-    if (
-        os.environ.get(_EROFS_MERGE_ENV, "1") == "0"
-        or mkfs is None
-        or _is_local_image(image)
-        or not _mkfs_erofs_can_merge(mkfs)
-    ):
-        return False
-    try:
-        blob_base, headers, auth_header, layer_descs = _resolve_registry_image(
-            image, image_dir, timeout_seconds
-        )
-    except SandboxCreationError:
-        raise
-    except Exception as err:
-        raise SandboxCreationError(
-            f"Failed to pull container image '{image}': {_describe_pull_error(err)}"
-        ) from err
-    layer_dir = tempfile.mkdtemp(prefix=".layers.", dir=image_dir)
-    try:
-        layer_paths, layers = _build_layer_images(
-            mkfs,
-            blob_base,
-            headers,
-            auth_header,
-            layer_descs,
-            timeout_seconds,
-            layer_dir,
-        )
-        problem = _layer_merge_problem(layers)
-        if problem is not None:
-            raise RuntimeError(problem)
-        _merge_layer_images(mkfs, layer_paths, out_path)
-        _seed_erofs_image(mkfs, out_path)
-    except SandboxCreationError as err:
-        raise SandboxCreationError(
-            f"Failed to pull container image '{image}': {err}"
-        ) from err
-    except Exception as err:
-        # mkfs.erofs failed, or the layers need extraction's rules: the
-        # extraction pipeline builds the image instead.
-        logger.warning(
-            f"Building image '{image}' by merging its layers failed, so it is "
-            f"built by extracting them instead: {err}"
-        )
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(out_path)
-        return False
-    finally:
-        shutil.rmtree(layer_dir, ignore_errors=True)
-    return True
-
-
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
 _IMAGE_CACHE_MIN_FREE_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"
 # Subdirectory of each cached image holding one marker file per live sandbox.
@@ -1367,7 +889,7 @@ _USERS_SUBDIR = ".users"
 
 
 def image_cache_max_bytes(images_dir: str) -> int:
-    """Return the image cache size cap in bytes, or 0 for no cap.
+    """Return the combined image and layer cache size cap, or 0 for no cap.
 
     ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES`` sets the cap explicitly; ``0``
     disables eviction. Unset, the cap defaults to half of the filesystem
@@ -1527,17 +1049,16 @@ def evict_least_recently_used_images(
     keep: Optional[str] = None,
     min_free_bytes: int = 0,
 ) -> None:
-    """Evict least-recently-extracted images until the cache fits ``max_bytes``
+    """Evict cached layers, then images until the cache fits ``max_bytes``
     and its filesystem has ``min_free_bytes`` free.
 
-    Nodes cache every image they ever ran, so without a cap a long-lived
-    node eventually fills its disk, and the cache also gives way when
-    sandboxes' overlays or anything else fill it. Candidates are fully extracted images
-    (``.extracted`` marker present) and ``<name>.tar`` archives left behind
-    by earlier Ray versions, oldest first. An image is skipped when a live sandbox uses it, when its
-    per-image lock is held (a pull in progress), or when it is ``keep``. The
-    in-use check is repeated under the lock, which is also where pulls
-    register their users, so a marked image is never removed.
+    Entries are sorted by priority, then modification time: layers have priority
+    0 and go first in last-used order; fully extracted images (``.extracted``
+    marker present) and legacy tar archives have priority 1 and follow in
+    extraction order. Locked entries, pinned images and ``keep`` are skipped.
+    Image pins are rechecked under the same lock that pulls hold when registering
+    users.
+    Open layer files remain readable after eviction.
 
     Args:
         images_dir: Root image cache directory.
@@ -1549,7 +1070,11 @@ def evict_least_recently_used_images(
         names = os.listdir(images_dir)
     except OSError:
         return
-    entries = []  # (mtime, name, image_dir or None, tar_path, size)
+    # (priority, mtime, name, image_dir or None, file_path, size)
+    entries = [
+        (0, mtime, name, None, os.path.join(images_dir, name), size)
+        for mtime, name, size in layer_cache.cached_blobs(images_dir)
+    ]
     for name in names:
         path = os.path.join(images_dir, name)
         if name.endswith(".tar") and os.path.isfile(path):
@@ -1559,6 +1084,7 @@ def evict_least_recently_used_images(
                 try:
                     entries.append(
                         (
+                            1,
                             os.path.getmtime(path),
                             stem,
                             None,
@@ -1583,11 +1109,11 @@ def evict_least_recently_used_images(
             continue  # Concurrently deleted; keep going.
         tar_path = os.path.join(images_dir, f"{name}.tar")
         size = _dir_size_bytes(path) + _file_size_bytes(tar_path)
-        entries.append((mtime, name, path, tar_path, size))
+        entries.append((1, mtime, name, path, tar_path, size))
 
     total = sum(entry[-1] for entry in entries)
     free = _free_bytes(images_dir)
-    for _, name, img_dir, tar_path, size in sorted(entries):
+    for priority, mtime, name, img_dir, tar_path, size in sorted(entries):
         if (max_bytes is None or total <= max_bytes) and (
             free is None or free >= min_free_bytes
         ):
@@ -1601,6 +1127,14 @@ def evict_least_recently_used_images(
                 # A pull may have registered a user since the scan.
                 if img_dir is not None and _has_users(img_dir):
                     continue
+                if img_dir is None:
+                    try:
+                        # Recheck under the lock: a pull may have reused the
+                        # blob and updated its mtime since the initial scan.
+                        if os.path.getmtime(tar_path) != mtime:
+                            continue
+                    except FileNotFoundError:
+                        pass  # Count an entry another pull already evicted.
                 # Another pull may have evicted it since the scan.
                 if img_dir is not None and os.path.isdir(img_dir):
                     _rename_for_deletion(img_dir)
@@ -1612,10 +1146,44 @@ def evict_least_recently_used_images(
             continue  # Locked by an in-progress pull; try the next one.
         # Delete the image once its lock is free, so a pull of it doesn't wait
         # for the delete.
-        _remove_stale_deletions(images_dir)
+        if img_dir is not None:
+            _remove_stale_deletions(images_dir)
         total -= size
         free = _free_bytes(images_dir)
-        logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
+        logger.info(
+            "Evicted cached sandbox %s %s (%d bytes)",
+            "layer" if priority == 0 else "image",
+            name,
+            size,
+        )
+
+
+def reserve_image_cache_space(image_dir: str, needed_bytes: int) -> None:
+    """Evict other cached images until ``needed_bytes`` more fit in the cache.
+
+    Args:
+        image_dir: The cached image that is about to grow.
+        needed_bytes: How much it grows by.
+
+    Raises:
+        SandboxCreationError: If the cache's free-space floor can't be kept.
+    """
+    images_dir = os.path.dirname(image_dir)
+    max_cache = image_cache_max_bytes(images_dir)
+    min_free = image_cache_min_free_bytes(images_dir) + needed_bytes
+    evict_least_recently_used_images(
+        images_dir,
+        max(max_cache - needed_bytes, 0) if max_cache > 0 else None,
+        keep=os.path.basename(image_dir),
+        min_free_bytes=min_free,
+    )
+    free = _free_bytes(images_dir)
+    if free is not None and free < min_free:
+        raise SandboxCreationError(
+            f"Not enough disk space to extract the image rootfs: need {min_free} "
+            f"bytes free, including the image cache's free-space floor, "
+            f"but only {free} are."
+        )
 
 
 def pull_and_extract_container_image(
@@ -1685,6 +1253,12 @@ def pull_and_extract_container_image(
                     _drop_stale_rootfs_tree(target_dir)
                     return _finish()
 
+            if _has_users(target_dir):
+                raise SandboxCreationError(
+                    f"Cannot refresh cached image {image!r} while sandboxes are "
+                    "using it. Stop those sandboxes before retrying."
+                )
+
             # Checked before any download: without it the pull cannot finish.
             require_mkfs_erofs()
 
@@ -1695,20 +1269,16 @@ def pull_and_extract_container_image(
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
             try:
-                rootfs_image = os.path.join(tmp_extract_dir, ROOTFS_IMAGE)
-                if not _build_erofs_image_from_registry(
-                    image, tmp_extract_dir, rootfs_image, timeout_seconds
-                ):
-                    ownership = _extract_image_layers(
-                        image,
-                        tmp_rootfs_dir,
-                        tmp_extract_dir,
-                        timeout_seconds,
-                        images_dir,
-                    )
-                    _seed_tmp(tmp_rootfs_dir)
-                    _seed_mountpoints(tmp_rootfs_dir)
-                    build_erofs_image(tmp_rootfs_dir, ownership, rootfs_image)
+                ownership = _extract_image_layers(
+                    image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
+                )
+                _seed_tmp(tmp_rootfs_dir)
+                _seed_mountpoints(tmp_rootfs_dir)
+                build_erofs_image(
+                    tmp_rootfs_dir,
+                    ownership,
+                    os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
+                )
             except Exception:
                 shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                 raise
@@ -1752,69 +1322,29 @@ def pull_and_extract_container_image(
             _remove_stale_deletions(images_dir)
 
 
-def _download_blob(
-    url: str,
-    headers: Dict[str, str],
-    auth_header: Optional[str],
-    timeout_seconds: float,
-    blob_dir: str,
-    stop: threading.Event,
-) -> BinaryIO:
-    """Download a registry blob into an anonymous temporary file.
-
-    Args:
-        url: The blob's URL.
-        headers: Request headers.
-        auth_header: The registry's ``Authorization`` value, if any.
-        timeout_seconds: Network request timeout.
-        blob_dir: Directory for the temporary file.
-        stop: Set to end the download early.
-
-    Returns:
-        The file, rewound; a partial one if ``stop`` was set meanwhile.
-    """
-    blob = tempfile.TemporaryFile(dir=blob_dir)
-    if stop.is_set():
-        return blob
-    try:
-        req = _registry_request(url, headers, auth_header)
-        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            while not stop.is_set():
-                # read1 returns what has arrived, so a stop takes effect soon.
-                chunk = resp.read1(1 << 20)
-                if not chunk:
-                    break
-                blob.write(chunk)
-        blob.seek(0)
-    except BaseException:
-        blob.close()
-        raise
-    return blob
-
-
 def _download_blobs(
-    urls: List[str],
+    digests: List[str],
+    base_url: str,
     headers: Dict[str, str],
     auth_header: Optional[str],
     timeout_seconds: float,
     blob_dir: str,
 ) -> Iterator[BinaryIO]:
-    """Yield registry blobs in order, downloading a few of them at a time.
+    """Yield cached layers in manifest order while later layers download.
 
-    The caller extracts each layer while the ones after it download, and
-    closes each blob it gets. Closing the generator, as on an error, returns
-    at once: downloads still running stop at their next read, and the blobs
-    nobody took get closed.
+    The caller closes each blob. Closing the generator stops outstanding
+    downloads and closes the blobs nobody took.
 
     Args:
-        urls: Blob URLs, in the order to yield them.
-        headers: Request headers.
-        auth_header: The registry's ``Authorization`` value, if any.
+        digests: Layer digests in manifest order.
+        base_url: Registry blob URL prefix to which each digest is appended.
+        headers: Headers to include in registry requests.
+        auth_header: Optional Authorization header value for registry requests.
         timeout_seconds: Network request timeout.
-        blob_dir: Directory for the temporary files.
+        blob_dir: Image cache directory, whose layer cache keeps the blobs.
 
     Yields:
-        BinaryIO: Each blob, as a rewound temporary file.
+        BinaryIO: Cached layer blobs in manifest order; the caller closes each blob.
     """
     stop = threading.Event()
     pool = concurrent.futures.ThreadPoolExecutor(
@@ -1822,9 +1352,14 @@ def _download_blobs(
     )
     downloads = [
         pool.submit(
-            _download_blob, url, headers, auth_header, timeout_seconds, blob_dir, stop
+            layer_cache.fetch_blob,
+            blob_dir,
+            digest,
+            _registry_request(base_url + digest, headers, auth_header),
+            timeout_seconds,
+            stop,
         )
-        for url in urls
+        for digest in digests
     ]
     yielded = 0
     try:
@@ -1845,101 +1380,6 @@ def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
         download.result().close()
 
 
-def _is_local_image(image: str) -> bool:
-    """Whether ``image`` names a local tar archive rather than a registry image."""
-    return (
-        os.path.isfile(image)
-        or image.endswith(".tar")
-        or image.startswith(("/", "./", "../"))
-    )
-
-
-def _resolve_registry_image(
-    image: str, image_dir: str, timeout_seconds: float
-) -> Tuple[str, Dict[str, str], Optional[str], List[Dict]]:
-    """Resolve a registry image to its layers, for the host's platform.
-
-    The image config is written to ``image_dir/.image_config.json``.
-
-    Args:
-        image: Container image reference.
-        image_dir: Directory that receives the image config.
-        timeout_seconds: Network request timeout.
-
-    Returns:
-        The repository's blob URL prefix, the request headers, the
-        registry's ``Authorization`` value if any, and the manifest's layer
-        descriptors, lowest first.
-
-    Raises:
-        SandboxCreationError: If the manifest names no layers. Registry and
-            network errors propagate as they are.
-    """
-    registry, repo, reference = parse_image_ref(image)
-    registry, repo = apply_registry_mirror(registry, repo)
-    auth_headers = get_registry_auth_headers(
-        registry,
-        repo,
-        reference=reference,
-        timeout=timeout_seconds,
-    )
-    headers = {
-        "User-Agent": _USER_AGENT,
-        "Accept": (
-            "application/vnd.docker.distribution.manifest.v2+json, "
-            "application/vnd.docker.distribution.manifest.list.v2+json, "
-            "application/vnd.oci.image.manifest.v1+json, "
-            "application/vnd.oci.image.index.v1+json"
-        ),
-    }
-    auth_header = auth_headers.get("Authorization")
-
-    manifest_url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
-    req = _registry_request(manifest_url, headers, auth_header)
-    with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-        manifest_data = json.loads(resp.read().decode("utf-8"))
-
-    # Resolve multi-architecture manifest list / OCI index
-    if "manifests" in manifest_data:
-        target_arch = get_platform_arch()
-        chosen_digest = None
-        for m in manifest_data["manifests"]:
-            plat = m.get("platform", {})
-            if plat.get("os") == "linux" and plat.get("architecture") == target_arch:
-                chosen_digest = m["digest"]
-                break
-        if not chosen_digest:
-            chosen_digest = manifest_data["manifests"][0]["digest"]
-
-        sub_req = _registry_request(
-            f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",
-            headers,
-            auth_header,
-        )
-        with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
-            manifest_data = json.loads(resp.read().decode("utf-8"))
-
-    blob_base = f"{registry_base_url(registry)}/v2/{repo}/blobs"
-    # extract image config so we can reference metadata bout the image later.
-    config_desc = manifest_data.get("config")
-    if config_desc and "digest" in config_desc:
-        config_req = _registry_request(
-            f"{blob_base}/{config_desc['digest']}", headers, auth_header
-        )
-        try:
-            with urllib.request.urlopen(config_req, timeout=timeout_seconds) as resp:
-                config_bytes = resp.read()
-                with open(os.path.join(image_dir, ".image_config.json"), "wb") as f:
-                    f.write(config_bytes)
-        except Exception as e:
-            logger.warning(f"Failed to fetch image config blob: {e}")
-
-    layer_descs = manifest_data.get("layers", [])
-    if not layer_descs:
-        raise SandboxCreationError(f"No layers found in manifest for image '{image}'")
-    return blob_base, headers, auth_header, layer_descs
-
-
 def _extract_image_layers(
     image: str,
     rootfs_dir: str,
@@ -1950,15 +1390,16 @@ def _extract_image_layers(
     """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
 
     ``image`` is a local tar archive or a registry reference. A registry
-    image's config is written to ``image_dir/.image_config.json`` and its
-    layer blobs are spooled through ``blob_dir``.
+    image's config and manifest are written to ``image_dir/.image_config.json``
+    and ``image_dir/.manifest.json``, respectively, and its
+    layer blobs come from the shared layer cache under ``blob_dir``.
 
     Args:
         image: Container image name or path to a local tar archive.
         rootfs_dir: Empty directory that receives the flattened tree.
         image_dir: Directory that receives the image config.
         timeout_seconds: Network request timeout.
-        blob_dir: Directory for temporary layer blobs.
+        blob_dir: Image cache directory, whose layer cache keeps the blobs.
 
     Returns:
         {path: (uid, gid)} for every path shipped with a non-root owner.
@@ -1976,19 +1417,104 @@ def _extract_image_layers(
                 f"Failed to extract local image archive '{image}': {err}"
             ) from err
         return ownership
-    if _is_local_image(image):
+    if (
+        image.endswith(".tar")
+        or image.startswith("/")
+        or image.startswith("./")
+        or image.startswith("../")
+    ):
         raise SandboxCreationError(f"Local image archive '{image}' not found.")
     try:
-        blob_base, headers, auth_header, layer_descs = _resolve_registry_image(
-            image, image_dir, timeout_seconds
+        registry, repo, reference = parse_image_ref(image)
+        registry, repo = apply_registry_mirror(registry, repo)
+        auth_headers = get_registry_auth_headers(
+            registry,
+            repo,
+            reference=reference,
+            timeout=timeout_seconds,
         )
-        blob_urls = [f"{blob_base}/{layer['digest']}" for layer in layer_descs]
+        headers = {
+            "User-Agent": _USER_AGENT,
+            "Accept": (
+                "application/vnd.docker.distribution.manifest.v2+json, "
+                "application/vnd.docker.distribution.manifest.list.v2+json, "
+                "application/vnd.oci.image.manifest.v1+json, "
+                "application/vnd.oci.image.index.v1+json"
+            ),
+        }
+        auth_header = auth_headers.get("Authorization")
+
+        manifest_url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
+        req = _registry_request(manifest_url, headers, auth_header)
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            manifest_data = json.loads(resp.read().decode("utf-8"))
+
+        # Resolve multi-architecture manifest list / OCI index
+        if "manifests" in manifest_data:
+            target_arch = get_platform_arch()
+            chosen_digest = None
+            for m in manifest_data["manifests"]:
+                plat = m.get("platform", {})
+                if (
+                    plat.get("os") == "linux"
+                    and plat.get("architecture") == target_arch
+                ):
+                    chosen_digest = m["digest"]
+                    break
+            if not chosen_digest:
+                chosen_digest = manifest_data["manifests"][0]["digest"]
+
+            sub_req = _registry_request(
+                f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",
+                headers,
+                auth_header,
+            )
+            with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
+                manifest_data = json.loads(resp.read().decode("utf-8"))
+        with open(os.path.join(image_dir, ".manifest.json"), "w") as f:
+            json.dump(manifest_data, f)
+
+        # extract image config so we can reference metadata bout the image later.
+        config_desc = manifest_data.get("config")
+        if config_desc and "digest" in config_desc:
+            config_digest = config_desc["digest"]
+            config_url = (
+                f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
+            )
+            config_req = _registry_request(config_url, headers, auth_header)
+            try:
+                with urllib.request.urlopen(
+                    config_req, timeout=timeout_seconds
+                ) as resp:
+                    config_bytes = resp.read()
+                    with open(
+                        os.path.join(image_dir, ".image_config.json"),
+                        "wb",
+                    ) as f_cfg:
+                        f_cfg.write(config_bytes)
+            except Exception as e:
+                logger.warning(f"Failed to fetch image config blob: {e}")
+
+        layers = manifest_data.get("layers", [])
+        if not layers:
+            raise SandboxCreationError(
+                f"No layers found in manifest for image '{image}'"
+            )
+
+        digests = [layer["digest"] for layer in layers]
+        base_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/"
         with contextlib.closing(
-            _download_blobs(blob_urls, headers, auth_header, timeout_seconds, blob_dir)
+            _download_blobs(
+                digests, base_url, headers, auth_header, timeout_seconds, blob_dir
+            )
         ) as blobs:
+            dir_attrs: Dict[str, Tuple[int, int]] = {}
             for blob in blobs:
                 with blob:
-                    extract_tar_layer(blob, rootfs_dir, ownership=ownership)
+                    extract_tar_layer(
+                        blob, rootfs_dir, ownership=ownership, dir_attrs=dir_attrs
+                    )
+            apply_dir_attrs(rootfs_dir, dir_attrs)
 
     except Exception as err:
         if isinstance(err, SandboxCreationError):

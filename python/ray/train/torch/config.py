@@ -11,7 +11,11 @@ from packaging.version import Version
 import ray
 from ray._common.network_utils import build_address
 from ray._private import ray_constants
-from ray._private.accelerators.tpu import DEFAULT_MEGASCALE_PORT
+from ray._private.accelerators.tpu import (
+    DEFAULT_MEGASCALE_PORT,
+    TPU_VISIBLE_DEVICES_ENV_VAR,
+    wait_for_tpu_vfio_ready,
+)
 from ray.air._internal.device_manager import register_custom_torch_dist_backend
 from ray.exceptions import GetTimeoutError
 from ray.train._internal.base_worker_group import BaseWorkerGroup
@@ -142,6 +146,12 @@ def _setup_torch_process_group(
             )
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
     elif backend in ("hccl", "tpu_dist"):
+        if backend == "tpu_dist":
+            # TorchTPU opens the single device in TPU_VISIBLE_DEVICES, else LOCAL_RANK.
+            device = os.environ.get(TPU_VISIBLE_DEVICES_ENV_VAR, "")
+            if not device.isdecimal():
+                device = os.environ.get("LOCAL_RANK", "")
+            wait_for_tpu_vfio_ready(visible_devices=device)
         register_custom_torch_dist_backend(backend)
 
     dist.init_process_group(

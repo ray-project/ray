@@ -5,9 +5,15 @@ and caches the latest values of the metrics captured.
 An execution captures a copy of the latest snapshot as its baseline when
 it starts, then computes the delta between the latest snapshot and that
 baseline when it ends.
+
+Every driver that has run a Dataset polls until it exits, and
+``RAY_PROMETHEUS_HOST`` can be a metrics backend shared by many clusters.
+Before adding a metric or shortening the interval, estimate the total query
+rate (drivers * queries per poll / interval).
 """
 
 import logging
+import random
 import threading
 import time
 from typing import Callable, Dict, Optional
@@ -16,23 +22,29 @@ from ray.data._internal.usage import collector
 
 logger = logging.getLogger(__name__)
 
-# Defaults to 10s to match Ray's Prometheus scrape interval
-_POLL_INTERVAL_S = 10
+# Every driver that has run a Dataset polls for the rest of its life, so keep
+# the interval long to bound the query load on the metrics backend.
+_POLL_INTERVAL_S = 60
+
+# Each sleep is randomized by this fraction of the interval so that drivers
+# started together drift apart instead of polling in lockstep.
+_POLL_JITTER = 0.1
 
 # The value of a single cluster metric (None when its query failed / is unavailable).
 MetricValue = Optional[int]
 
-MetricFn = Callable[[], MetricValue]
+# Fetches the current value of every cluster metric, keyed by metric name.
+MetricsFn = Callable[[], Dict[str, MetricValue]]
 
 
 class ClusterMetricsPoller:
     def __init__(
         self,
-        metrics: Dict[str, MetricFn],
+        metrics_fn: MetricsFn,
         interval_s: float = _POLL_INTERVAL_S,
     ):
-        # The metrics to poll, keyed by name of metric defined in PipelinePerf
-        self._metrics = metrics
+        # Fetches the metrics to poll, keyed by name of metric defined in PipelinePerf
+        self._metrics_fn = metrics_fn
         # The interval at which to poll the metrics
         self._interval_s = interval_s
         # Serializes access to poller state, since the poll thread writes the
@@ -72,21 +84,28 @@ class ClusterMetricsPoller:
             return dict(self._first_snapshot) if self._first_snapshot else None
 
     def poll_once(self) -> None:
-        """Sample every metric one at a time and publish the values as the latest
-        snapshot (and as the first snapshot if this is the first poll)."""
-        values = {name: fn() for name, fn in self._metrics.items()}
+        """Fetch every metric and publish the values as the latest snapshot (and
+        as the first snapshot if this is the first poll)."""
+        values = self._metrics_fn()
         with self._lock:
             self._latest_snapshot = values
             if self._first_snapshot is None:
                 self._first_snapshot = values
 
     def _run(self) -> None:
+        # Poll right away so the execution that started the poller gets a
+        # baseline. Then wait a random fraction of the interval to spread out
+        # drivers that started at the same time.
+        sleep_s = random.uniform(0, self._interval_s)
         while True:
             try:
                 self.poll_once()
             except Exception:
                 logger.debug("Cluster metrics poll failed", exc_info=True)
-            time.sleep(self._interval_s)
+            time.sleep(sleep_s)
+            sleep_s = self._interval_s * random.uniform(
+                1 - _POLL_JITTER, 1 + _POLL_JITTER
+            )
 
 
 _poller: Optional[ClusterMetricsPoller] = None
@@ -98,19 +117,6 @@ def get_poller() -> ClusterMetricsPoller:
     global _poller
     with _poller_lock:
         if _poller is None:
-            _poller = ClusterMetricsPoller(
-                {
-                    collector.METRIC_BYTES_SPILLED: collector.cluster_spilled_bytes,
-                    collector.METRIC_NODE_DEATHS: collector.cluster_dead_node_count,
-                    collector.METRIC_OOM_KILLS: collector.cluster_oom_kills,
-                    collector.METRIC_UNEXPECTED_WORKER_KILLS: (
-                        collector.cluster_unexpected_worker_kills
-                    ),
-                    collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS: (
-                        collector.cluster_object_reconstruction_attempts
-                    ),
-                    collector.METRIC_TASK_RETRIES: collector.cluster_task_retries,
-                }
-            )
+            _poller = ClusterMetricsPoller(collector.collect_cluster_metrics)
             _poller._start_thread_if_not_running()
         return _poller

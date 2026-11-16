@@ -81,57 +81,52 @@ class AgentToModuleMapping(ConnectorV2):
     we have to store the env vector index AND AgentID of each module's batch item
     in an additionally returned `memorized_map_structure`.
 
-    .. testcode::
-
-        from ray.rllib.connectors.env_to_module import AgentToModuleMapping
-        from ray.rllib.utils.test_utils import check
-
-        batch = {
-            "obs": {
-                ("MA-EPS0", "agent0", "module0"): [0, 1, 2],
-                ("MA-EPS0", "agent1", "module1"): [3, 4, 5],
-            },
-            "actions": {
-                ("MA-EPS1", "agent2", "module0"): [8],
-                ("MA-EPS0", "agent1", "module1"): [9],
-            },
-        }
-
-        # Create our connector piece.
-        connector = AgentToModuleMapping(
-            rl_module_specs={"module0", "module1"},
-            agent_to_module_mapping_fn=(
-                lambda agent_id, eps: "module1" if agent_id == "agent1" else "module0"
-            ),
-            # Keep the data of all agents. In env-to-module mode, the connector
-            # keeps only the agents that act next in `episodes`.
-            as_learner_connector=True,
-        )
-
-        # Call the connector (and thereby flip from AgentID based to ModuleID based
-        # structure..
-        output_batch = connector(
-            rl_module=None,  # This particular connector works without an RLModule.
-            batch=batch,
-            episodes=[],  # This particular connector works without a list of episodes.
-            explore=True,
-            shared_data={},
-        )
-
-        # `data` should now be mapped from ModuleIDs to module data.
-        check(
-            output_batch,
-            {
-                "module0": {
-                    "obs": [0, 1, 2],
-                    "actions": [8],
-                },
-                "module1": {
-                    "obs": [3, 4, 5],
-                    "actions": [9],
-                },
-            },
-        )
+    Examples:
+        >>> from ray.rllib.connectors.env_to_module import AgentToModuleMapping
+        >>> from ray.rllib.utils.test_utils import check
+        >>> batch = {
+        ...     "obs": {
+        ...         ("MA-EPS0", "agent0", "module0"): [0, 1, 2],
+        ...         ("MA-EPS0", "agent1", "module1"): [3, 4, 5],
+        ...     },
+        ...     "actions": {
+        ...         ("MA-EPS1", "agent2", "module0"): [8],
+        ...         ("MA-EPS0", "agent1", "module1"): [9],
+        ...     },
+        ... }
+        >>> # Create our connector piece.
+        >>> connector = AgentToModuleMapping(
+        ...     rl_module_specs={"module0", "module1"},
+        ...     agent_to_module_mapping_fn=(
+        ...         lambda agent_id, eps: "module1" if agent_id == "agent1" else "module0"
+        ...     ),
+        ...     # Keep the data of all agents. In env-to-module mode, the connector
+        ...     # keeps only the agents that act next in `episodes`.
+        ...     as_learner_connector=True,
+        ... )
+        >>> # Call the connector (and thereby flip from AgentID based to ModuleID based
+        >>> # structure..
+        >>> output_batch = connector(
+        ...     rl_module=None,  # This particular connector works without an RLModule.
+        ...     batch=batch,
+        ...     episodes=[],  # This particular connector works without a list of episodes.
+        ...     explore=True,
+        ...     shared_data={},
+        ... )
+        >>> # `data` should now be mapped from ModuleIDs to module data.
+        >>> check(
+        ...     output_batch,
+        ...     {
+        ...         "module0": {
+        ...             "obs": [0, 1, 2],
+        ...             "actions": [8],
+        ...         },
+        ...         "module1": {
+        ...             "obs": [3, 4, 5],
+        ...             "actions": [9],
+        ...         },
+        ...     },
+        ... )
 
     Args:
         input_observation_space: The input observation space, from the env or the

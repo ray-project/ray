@@ -23,6 +23,7 @@ from ray.util.tpu import get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
+    from ray.train.health import HealthConfig
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +312,10 @@ class CheckpointConfig:
             (or lowest-scoring, if ``checkpoint_score_attribute`` is set)
             checkpoint will be deleted.
             If this is ``None`` then all checkpoints will be kept. Must be >= 1.
+            The latest checkpoint is never deleted, because training resumes
+            from it after a failure, so up to ``num_to_keep + 1`` checkpoints
+            can be on disk. A checkpoint whose validation hasn't finished is
+            also kept until the validation completes.
         checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept.
             This attribute must be a key from the metrics dictionary
@@ -460,6 +465,8 @@ class RunConfig:
             for all Ray Train worker actors.
         logging_config: Configuration for Ray Train's logging behavior.
             See :class:`LoggingConfig` for details.
+        health_config: [Alpha] The health checks to run during training. See
+            ``ray.train.health.HealthConfig``.
     """
 
     name: Optional[str] = None
@@ -470,6 +477,7 @@ class RunConfig:
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
     logging_config: Optional[LoggingConfig] = None
+    health_config: Optional["HealthConfig"] = None
 
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED

@@ -12,9 +12,6 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
-)
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
@@ -23,7 +20,6 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
@@ -444,11 +440,12 @@ def test_map_batches_generator(
 
 
 @pytest.mark.parametrize(
-    "num_rows,num_blocks,batch_size",
+    "num_rows,num_blocks,batch_size,batch_format",
     [
-        (10, 5, 2),
-        (10, 1, 10),
-        (12, 3, 2),
+        (10, 5, 2, "pandas"),
+        (10, 1, 10, "pandas"),
+        (12, 3, 2, "pandas"),
+        (3, 1, None, "numpy"),
     ],
 )
 def test_map_batches_batch_mutation(
@@ -456,6 +453,7 @@ def test_map_batches_batch_mutation(
     num_rows,
     num_blocks,
     batch_size,
+    batch_format,
     restore_data_context,
     target_max_block_size_infinite_or_default,
 ):
@@ -464,18 +462,26 @@ def test_map_batches_batch_mutation(
 
     # Test that batch mutation works without encountering a read-only error (e.g. if the
     # batch is a zero-copy view on data in the object store).
-    def mutate(df):
-        df["id"] += 1
-        return df
+    def mutate(batch):
+        if batch_format == "numpy":
+            assert batch["id"].flags.writeable
+        batch["id"] += 1
+        return batch
 
     ds = ray.data.range(num_rows, override_num_blocks=num_blocks).repartition(
         num_blocks
     )
-    # Convert to Pandas blocks.
-    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
+    if batch_format == "pandas":
+        # Convert to Pandas blocks.
+        ds = ds.map_batches(lambda batch: batch, batch_format="pandas", batch_size=None)
 
     # Apply UDF that mutates the batches.
-    ds = ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=False)
+    ds = ds.map_batches(
+        mutate,
+        batch_size=batch_size,
+        batch_format=batch_format,
+        zero_copy_batch=False,
+    )
     assert [row["id"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
 
 
@@ -823,10 +829,6 @@ def test_map_batches_async_generator_fast_yield(
     assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
-)
 def test_map_batches_struct_field_type_divergence(shutdown_only):
     """Test map_batches with struct fields that have diverging primitive types."""
 
