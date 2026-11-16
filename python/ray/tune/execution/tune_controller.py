@@ -1227,7 +1227,7 @@ class TuneController:
                         f"for trial {trial}: {e}"
                     )
                     if isinstance(e, TuneError) or self._fail_fast == self.RAISE:
-                        raise e
+                        raise
                     else:
                         raise TuneError(traceback.format_exc())
 
@@ -1252,7 +1252,7 @@ class TuneController:
                         f"for trial {trial}: {e}"
                     )
                     if isinstance(e, TuneError) or self._fail_fast == self.RAISE:
-                        raise e
+                        raise
                     else:
                         raise TuneError(traceback.format_exc())
 

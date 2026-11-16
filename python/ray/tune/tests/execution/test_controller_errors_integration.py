@@ -240,5 +240,39 @@ def test_tune_error_in_result_handler_is_not_rewrapped(ray_start_4_cpus_2_gpus_e
     assert str(exc_info.value) == "custom message"
 
 
+def test_tune_error_in_error_handler_is_not_rewrapped(ray_start_4_cpus_2_gpus_extra):
+    """A ``TuneError`` raised while handling a trial failure reaches the caller as is.
+
+    It must not be wrapped into a new ``TuneError`` that holds a traceback string.
+    """
+
+    class _RaisingScheduler(FIFOScheduler):
+        def on_trial_error(self, tune_controller, trial):
+            raise TuneError("custom message")
+
+    runner = TuneController(
+        scheduler=_RaisingScheduler(),
+        resource_manager_factory=lambda: FixedResourceManager(),
+        storage=STORAGE,
+    )
+    runner.add_trial(
+        Trial(
+            MOCK_TRAINABLE_NAME,
+            stopping_criterion={"training_iteration": 3},
+            placement_group_factory=PlacementGroupFactory([{"CPU": 1}]),
+            max_failures=0,
+            config={"mock_error": True, "persistent_error": True},
+            storage=STORAGE,
+        )
+    )
+
+    with pytest.raises(TuneError) as exc_info:
+        while not runner.is_finished():
+            runner.step()
+    runner.cleanup()
+
+    assert str(exc_info.value) == "custom message"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
