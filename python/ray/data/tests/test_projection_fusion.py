@@ -1918,6 +1918,75 @@ class TestProjectionDerivation:
             float(i) for i in range(31, 60)
         ]
 
+    @pytest.mark.parametrize(
+        "condition, left_scan, right_scan, executes",
+        [
+            # ``ExtractEquiJoinKeys`` turns the equality into condition keys.
+            pytest.param(
+                col("a2") == col("b2"),
+                {"id", "a2", "payload"},
+                {"id", "b2"},
+                True,
+                id="condition-keys",
+            ),
+            # The inequality stays on the join as the residual, which can be
+            # planned but not executed yet.
+            pytest.param(
+                (col("a2") == col("b2")) & (col("x") < col("y")),
+                {"id", "a2", "x", "payload"},
+                {"id", "b2", "y"},
+                False,
+                id="residual",
+            ),
+        ],
+    )
+    def test_join_keeps_the_columns_of_its_condition(
+        self,
+        tmp_path,
+        condition,
+        left_scan,
+        right_scan,
+        executes,
+        ray_start_regular_shared,
+    ):
+        left = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "left.parquet"),
+                {
+                    "id": [1, 2, 3],
+                    "a2": [1, 2, 9],
+                    "x": [0, 0, 0],
+                    "payload": [10, 20, 30],
+                    "unused_left": ["x" * 32] * 3,
+                },
+            )
+        )
+        right = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "right.parquet"),
+                {
+                    "id": [1, 2, 3],
+                    "b2": [1, 2, 3],
+                    "y": [1, 1, 1],
+                    "unused_right": ["y" * 32] * 3,
+                },
+            )
+        )
+        # The join reads the condition's columns itself, though the consumer
+        # selects none of them.
+        ds = self._join(left, right, "inner", condition=condition).select_columns(
+            ["payload"]
+        )
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            left_scan,
+            right_scan,
+        ]
+        if executes:
+            # ``id`` 3 matches on the key but not on the condition.
+            assert sorted(row["payload"] for row in ds.take_all()) == [10, 20]
+
     def test_join_with_unsuffixed_collision_is_left_alone(
         self, tmp_path, ray_start_regular_shared
     ):
@@ -1949,6 +2018,12 @@ class TestProjectionDerivation:
             exc_info.value.cause
         )
 
+    # The pool's actor holds its CPU share from the start, and the tasks that
+    # list and read the parquet files each need a whole CPU on top of it, so
+    # the default one-CPU cluster would never schedule them.
+    @pytest.mark.parametrize(
+        "ray_start_regular_shared", [{"num_cpus": 4}], indirect=True, ids=["4_cpus"]
+    )
     def test_join_input_computed_by_actor_pool_udf(
         self, join_parquet, ray_start_regular_shared
     ):

@@ -370,8 +370,9 @@ class Join(
         self, required_output_columns: Optional[Set[str]]
     ) -> Optional[List[Optional[Set[str]]]]:
         """Split the required output columns by the side that produces each one
-        (via :meth:`output_to_input_columns`) and add the join keys, which the
-        join needs whether or not a consumer references them. Declines when a
+        (via :meth:`output_to_input_columns`) and add what the join itself
+        reads whether or not a consumer references it: the ``on`` keys, the
+        condition keys and the columns of ``condition``. Declines when a
         required name is one the mirror could not place, so the consumer never
         loses a column, and when the join's output schema can't be inferred:
         an input schema is unknown or not Arrow, or the join is going to fail
@@ -390,8 +391,29 @@ class Join(
         if required_output_columns is None:
             required_output_columns = set(output_schema.names)
 
-        left_required = set(self.left_key_columns)
-        right_required = set(self.right_key_columns)
+        left_columns = set(self.input_dependencies[0].infer_schema().names)
+        right_columns = set(self.input_dependencies[1].infer_schema().names)
+        # What the join itself reads: the columns it hashes on, and those of a
+        # ``condition`` whose equalities ``ExtractEquiJoinKeys`` hasn't turned
+        # into condition keys yet, or which stays as the residual.
+        left_required = set(self.left_key_columns) | set(
+            self.left_condition_key_columns
+        )
+        right_required = set(self.right_key_columns) | set(
+            self.right_condition_key_columns
+        )
+        if self.condition is not None:
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                get_column_references,
+            )
+
+            # The output schema was inferred, so the condition resolved: each
+            # of its columns belongs to exactly one side.
+            for name in get_column_references(self.condition):
+                if _resolve_side(name, left_columns, right_columns) is JoinSide.LEFT:
+                    left_required.add(name)
+                else:
+                    right_required.add(name)
         for output_name in required_output_columns:
             placed = False
             if output_name in left_map:
@@ -409,8 +431,6 @@ class Join(
             JoinType.RIGHT_SEMI,
             JoinType.RIGHT_ANTI,
         ):
-            left_columns = set(self.input_dependencies[0].infer_schema().names)
-            right_columns = set(self.input_dependencies[1].infer_schema().names)
             collisions = left_columns & (right_columns - set(self.right_key_columns))
             kept_collisions = collisions & (left_required | right_required)
             left_required |= kept_collisions
