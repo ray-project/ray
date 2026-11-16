@@ -8,6 +8,7 @@ from freezegun import freeze_time
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     ReservedResources,
     ResourceDict,
+    ResourceRequestStrategy,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     ResourceRequestPriority,
@@ -500,6 +501,7 @@ def test_request_and_clear():
             label_selectors=None,
             expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
             priority=ResourceRequestPriority.HIGH,
+            strategy=ResourceRequestStrategy.PACK,
         )
 
     with freeze_time() as frozen_time:
