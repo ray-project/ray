@@ -175,7 +175,7 @@ def _preload_modules(preload_arg: str) -> None:
         try:
             importlib.import_module(module)
         except Exception:
-            logger.exception(f"Failed to preload module '{module}'")
+            logger.warning(f"Failed to preload module '{module}'", exc_info=True)
 
 
 def _env_int(name: str, default: int = 0) -> int:

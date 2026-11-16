@@ -284,14 +284,6 @@ def set_num_threads_env_vars_if_unset() -> List[str]:
         # If modules like torch or numpy/OpenBLAS were pre-imported before fork(), their
         # internal thread pool is already initialized and ignores subsequent env updates.
         set_thread_pool_module_threads(num_threads_int, unset_env_vars)
-    elif (
-        "OPENBLAS_NUM_THREADS" in unset_env_vars or "MKL_NUM_THREADS" in unset_env_vars
-    ):
-        resize_native_thread_pools(
-            0,
-            num_threads_int if "OPENBLAS_NUM_THREADS" in unset_env_vars else 0,
-            num_threads_int if "MKL_NUM_THREADS" in unset_env_vars else 0,
-        )
     return unset_env_vars
 
 
