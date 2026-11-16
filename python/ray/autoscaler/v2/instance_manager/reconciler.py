@@ -10,13 +10,10 @@ from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider i
     KubeRayProvider,
 )
 from ray.autoscaler.v2.instance_manager.common import (
-    _BOOTING_INSTANCE_STATUSES as _BOOTING_INSTANCE_STATUSES,
-    _DRAINING_INSTANCE_STATUSES as _DRAINING_INSTANCE_STATUSES,
     _TEARDOWN_INSTANCE_STATUSES,
     _TERMINAL_INSTANCE_STATUSES,
     _UNALLOCATED_INSTANCE_STATUSES,
     InstanceUtil,
-    _build_multihost_replica_view,
     _get_replica_key,
     _has_teardown_history,
     _MultiHostReplicaView,
@@ -72,9 +69,8 @@ logger = logging.getLogger(__name__)
 class _ReplicaViewCache:
     """Tick-scoped cache for read-only `_MultiHostReplicaView` projections.
 
-    Keyed by InstanceManager storage version and explicitly invalidated on
-    non-empty IM updates within a reconcile step so consecutive read-only
-    phases reuse one projection without scanning IM rows repeatedly.
+    Keyed by InstanceManager storage version so consecutive read-only phases
+    reuse one projection without scanning IM rows repeatedly.
     """
 
     def __init__(
@@ -93,15 +89,11 @@ class _ReplicaViewCache:
         version: int,
     ) -> _MultiHostReplicaView:
         if self._view is None or self._version != version:
-            self._view = _build_multihost_replica_view(
+            self._view = _MultiHostReplicaView.build(
                 im_instances, self._cloud_instances, self._replica_sizes
             )
             self._version = version
         return self._view
-
-    def invalidate(self) -> None:
-        self._version = None
-        self._view = None
 
 
 class Reconciler:
@@ -212,7 +204,7 @@ class Reconciler:
         ray_install_errors: List[RayInstallError],
         ray_stop_errors: List[RayStopError],
         autoscaling_config: AutoscalingConfig,
-        replica_sizes: Optional[Dict[NodeType, int]] = None,
+        replica_sizes: Dict[NodeType, int],
     ):
         """Reconcile the instance states of the instance manager from external states like
         the cloud provider's, the ray cluster's states, the ray installer's results,
@@ -370,7 +362,6 @@ class Reconciler:
             instance_manager=instance_manager,
             cloud_provider=cloud_provider,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
-            autoscaling_config=autoscaling_config,
             replica_sizes=replica_sizes,
             view_cache=view_cache,
         )
@@ -407,7 +398,6 @@ class Reconciler:
                 instance_manager=instance_manager,
                 cloud_provider=cloud_provider,
                 non_terminated_cloud_instances=non_terminated_cloud_instances,
-                autoscaling_config=autoscaling_config,
                 replica_sizes=replica_sizes,
                 view_cache=view_cache,
             )
@@ -491,7 +481,7 @@ class Reconciler:
         # multi-host replica launches and prevent a batch from claiming a pod
         # belonging to an existing, draining, or tearing-down replica.
         replica_view = (
-            _build_multihost_replica_view(
+            _MultiHostReplicaView.build(
                 im_instances, non_terminated_cloud_instances, replica_sizes
             )
             if replica_sizes
@@ -631,7 +621,7 @@ class Reconciler:
                 match_idx = None
                 avail_req = max(
                     0,
-                    replica_view.requested_by_lid[(nt, lid)]
+                    replica_view.requested_by_lid.get((nt, lid), 0)
                     - remaining_launch_failures.get((lid, nt), 0),
                 )
                 # 1. Finish an incomplete live replica already bound to this batch.
@@ -644,13 +634,14 @@ class Reconciler:
                 # REQUESTED + mid-boot vanished slots cover a full replica beyond
                 # open debt on already-claimed live replicas.
                 if match_idx is None:
+                    claimed_rids = replica_view.claimed_reps_by_lid.get((nt, lid), ())
                     open_live_slots = sum(
                         replica_view.owed_batch_slots(nt, r, lid, size)
-                        for r in replica_view.claimed_reps_by_lid[(nt, lid)]
+                        for r in claimed_rids
                     )
                     vanished_slots = (
-                        len(replica_view.vanished_cids_by_lid[(nt, lid)])
-                        if not replica_view.claimed_reps_by_lid[(nt, lid)]
+                        len(replica_view.vanished_cids_by_lid.get((nt, lid), ()))
+                        if not claimed_rids
                         else 0
                     )
                     if avail_req + vanished_slots - open_live_slots >= size:
@@ -675,7 +666,7 @@ class Reconciler:
                 # 3. Fallback for providers without replica_id metadata.
                 if (
                     match_idx is None
-                    and not replica_view.claimed_reps_by_lid[(nt, lid)]
+                    and not replica_view.claimed_reps_by_lid.get((nt, lid))
                     and avail_req > 0
                 ):
                     for idx in range(len(candidates) - 1, -1, -1):
@@ -1167,13 +1158,10 @@ class Reconciler:
         instance_manager: InstanceManager,
         cloud_provider: ICloudInstanceProvider,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-        autoscaling_config: AutoscalingConfig,
-        replica_sizes: Optional[Dict[NodeType, int]] = None,
-        view_cache: Optional[_ReplicaViewCache] = None,
+        replica_sizes: Dict[NodeType, int],
+        view_cache: _ReplicaViewCache,
     ) -> None:
         im_instances, version = Reconciler._get_im_instances(instance_manager)
-        if replica_sizes is None:
-            replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
         known_cloud_instance_ids: Set[CloudInstanceId] = {
             inst.cloud_instance_id
             for inst in im_instances
@@ -1194,20 +1182,12 @@ class Reconciler:
 
         unclaimed_replicas_by_lid: Dict[NodeType, Dict[str, int]] = {}
         if replica_sizes:
-            view = (
-                view_cache.get(im_instances, version)
-                if view_cache is not None
-                else _build_multihost_replica_view(
-                    im_instances, non_terminated_cloud_instances, replica_sizes
-                )
-            )
+            view = view_cache.get(im_instances, version)
             unclaimed_replicas_by_lid = view.unclaimed_replicas_by_lid(replica_sizes)
 
         cloud_provider.begin_reconcile_step(
             known_cloud_instance_ids=known_cloud_instance_ids,
-            single_host_in_flight={
-                nt: dict(counts) for nt, counts in single_host_in_flight.items()
-            },
+            single_host_in_flight=single_host_in_flight,
             unclaimed_replicas_by_lid=unclaimed_replicas_by_lid,
         )
 
@@ -1215,8 +1195,8 @@ class Reconciler:
     def _handle_instances_launch(
         instance_manager: InstanceManager,
         autoscaling_config: AutoscalingConfig,
-        cloud_provider: Optional[ICloudInstanceProvider] = None,
-        replica_sizes: Optional[Dict[NodeType, int]] = None,
+        cloud_provider: ICloudInstanceProvider,
+        replica_sizes: Dict[NodeType, int],
     ):
         instances, version = Reconciler._get_im_instances(instance_manager)
 
@@ -1254,8 +1234,6 @@ class Reconciler:
                 if not queued_instances:
                     return
 
-        if replica_sizes is None:
-            replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
         to_launch = Reconciler._compute_to_launch(
             queued_instances,
             requested_instances,
@@ -1348,36 +1326,25 @@ class Reconciler:
             )
             # Enforce global limit, at most we can launch `max_concurrent_launches`
             available = max_concurrent_launches - total_num_requested_to_launch
-            if size > 1:
-                num_desired_to_upscale = max(
-                    size, ((num_desired_to_upscale + size - 1) // size) * size
-                )
-                if (
-                    available > 0
-                    and not requested_instances_by_type.get(instance_type)
-                    and len(queued_instances_for_type) >= size
-                ):
-                    # Allow one atomic multi-host replica when launch capacity is
-                    # open and this group has no in-flight REQUESTED instances,
-                    # preventing smaller groups from starving larger replicas.
-                    available = max(available, size)
-                num_to_launch = min(
-                    len(queued_instances_for_type),
-                    max(0, min(available, num_desired_to_upscale)),
-                )
-                num_to_launch -= num_to_launch % size
-                if num_to_launch > 0:
-                    all_to_launch[instance_type].extend(
-                        queued_instances_for_type[:num_to_launch]
-                    )
-                    total_num_requested_to_launch += num_to_launch
-                continue
-
+            num_desired_to_upscale = (
+                (num_desired_to_upscale + size - 1) // size
+            ) * size
+            if (
+                size > 1
+                and available > 0
+                and not requested_instances_by_type.get(instance_type)
+                and len(queued_instances_for_type) >= size
+            ):
+                # Allow one atomic multi-host replica when launch capacity is
+                # open and this group has no in-flight REQUESTED instances,
+                # preventing smaller groups from starving larger replicas.
+                available = max(available, size)
             # Cap both ends 0 <= num_to_launch <= num_queued
             num_to_launch = min(
                 len(queued_instances_for_type),
                 max(0, min(available, num_desired_to_upscale)),
             )
+            num_to_launch -= num_to_launch % size
             if num_to_launch > 0:
                 all_to_launch[instance_type].extend(
                     queued_instances_for_type[:num_to_launch]
@@ -1513,21 +1480,9 @@ class Reconciler:
         ] = defaultdict(list)
         for instance in instances_by_status[IMInstance.REQUESTED]:
             if replica_sizes and instance.instance_type in replica_sizes:
-                if instance.launch_request_id:
-                    multihost_requested_by_batch[
-                        (instance.instance_type, instance.launch_request_id)
-                    ].append(instance)
-                elif InstanceUtil.has_timeout(
-                    instance, reconcile_config.request_status_timeout_s
-                ):
-                    im_updates[instance.instance_id] = IMInstanceUpdateEvent(
-                        instance_id=instance.instance_id,
-                        new_instance_status=IMInstance.ALLOCATION_FAILED,
-                        details=(
-                            "failed to allocate multi-worker cloud instance "
-                            f"after timeout={reconcile_config.request_status_timeout_s}s"
-                        ),
-                    )
+                multihost_requested_by_batch[
+                    (instance.instance_type, instance.launch_request_id)
+                ].append(instance)
                 continue
             update = Reconciler._handle_stuck_requested_instance(
                 instance,
@@ -1812,7 +1767,7 @@ class Reconciler:
             (
                 view_cache.get(im_instances, version)
                 if view_cache is not None
-                else _build_multihost_replica_view(
+                else _MultiHostReplicaView.build(
                     im_instances, cloud_instances, replica_sizes
                 )
             )
@@ -1909,7 +1864,7 @@ class Reconciler:
                 iid: ev.new_instance_status for iid, ev in updates.items()
             }
             view = (
-                _build_multihost_replica_view(
+                _MultiHostReplicaView.build(
                     im_instances,
                     cloud_instances,
                     replica_sizes,
@@ -1961,8 +1916,10 @@ class Reconciler:
                     continue
                 covered = 0
                 if rk not in view.non_fillable_reps:
-                    missing_unassigned = max(0, size - len(view.rep_assigned_cids[rk]))
-                    for lid in sorted(view.rep_lids[rk]):
+                    missing_unassigned = max(
+                        0, size - len(view.rep_assigned_cids.get(rk, ()))
+                    )
+                    for lid in sorted(view.rep_lids.get(rk, ())):
                         owed = view.owed_batch_slots(nt, rid, lid, size)
                         take = min(
                             missing_unassigned - covered,
@@ -1976,7 +1933,7 @@ class Reconciler:
                 active_total += extra_gap
 
             for (nt, lid), vanished_cids in view.vanished_cids_by_lid.items():
-                if view.requested_by_lid[(nt, lid)] > 0:
+                if view.requested_by_lid.get((nt, lid), 0) > 0:
                     active_by_type[nt] += len(vanished_cids)
                     active_total += len(vanished_cids)
 
@@ -2016,8 +1973,6 @@ class Reconciler:
             cloud_provider.do_ippr_requests(reply.to_ippr)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
-        if updates and view_cache is not None:
-            view_cache.invalidate()
 
     @staticmethod
     def _filter_partial_replica_terminations(
@@ -2035,7 +1990,7 @@ class Reconciler:
             return list(to_terminate)
 
         if view is None:
-            view = _build_multihost_replica_view(
+            view = _MultiHostReplicaView.build(
                 im_instances, cloud_instances, replica_sizes
             )
         # Mid-materialization guard is bounded by request_status_timeout_s.
@@ -2136,7 +2091,7 @@ class Reconciler:
         view = (
             view_cache.get(im_instances, version)
             if view_cache is not None
-            else _build_multihost_replica_view(
+            else _MultiHostReplicaView.build(
                 im_instances, cloud_instances, replica_sizes
             )
         )
@@ -2266,8 +2221,6 @@ class Reconciler:
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
-        if updates and view_cache is not None:
-            view_cache.invalidate()
 
     @staticmethod
     def _install_ray(

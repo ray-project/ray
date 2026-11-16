@@ -351,10 +351,10 @@ class KubeRayProvider(ICloudInstanceProvider):
         rejected_nodes: Dict[NodeType, int],
     ) -> None:
         hosts_by_type = {
-            wg["groupName"]: (
-                1 if wg.get("numOfHosts") is None else wg.get("numOfHosts")
+            wg["groupName"]: _worker_group_num_of_hosts(self._ray_cluster, idx)
+            for idx, wg in enumerate(
+                self._ray_cluster["spec"].get("workerGroupSpecs", [])
             )
-            for wg in self._ray_cluster["spec"].get("workerGroupSpecs", [])
         }
         for node_type, req_w in shape.items():
             if req_w <= 0:
@@ -452,18 +452,15 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Calculate the desired number of workers by type.
         num_workers_dict: Dict[NodeType, int] = defaultdict(int)
         worker_groups = ray_cluster["spec"].get("workerGroupSpecs", [])
-        for worker_group in worker_groups:
+        for group_index, worker_group in enumerate(worker_groups):
             node_type = worker_group["groupName"]
             req_w = to_launch.get(node_type, 0)
             is_targeted = req_w > 0 or node_type in to_delete_instances_by_type
             if self._in_reconcile_step and not is_targeted:
                 continue
 
-            raw_num_of_hosts = worker_group.get("numOfHosts")
-            num_of_hosts = 1 if raw_num_of_hosts is None else raw_num_of_hosts
+            num_of_hosts = _worker_group_num_of_hosts(ray_cluster, group_index)
             if num_of_hosts <= 0:
-                if req_w > 0:
-                    num_workers_dict[node_type] = req_w
                 continue
 
             # Handle the case where users manually increase `minReplicas`
@@ -560,13 +557,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                 newly_materialized_reps = new_labeled_reps + new_unlabeled_reps
 
                 unclaimed_map = self._step_unclaimed_replicas_by_lid[node_type]
-                if req_w == 0:
-                    cur_reps, cur_unaligned = 0, 0
-                else:
-                    cur_reps, cur_unaligned = (
-                        req_w // num_of_hosts,
-                        req_w % num_of_hosts,
-                    )
+                cur_reps, cur_unaligned = divmod(max(0, req_w), num_of_hosts)
                 prior_reps = sum(unclaimed_map.values())
                 in_flight_reps = max(0, prior_reps + cur_reps - newly_materialized_reps)
                 num_workers_dict[node_type] = (
@@ -639,8 +630,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                 or 0
             )
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
-            raw_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
-            group_num_of_hosts = 1 if raw_num_of_hosts is None else raw_num_of_hosts
+            group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
             if group_num_of_hosts <= 0:
                 if num_workers > 0:
                     logger.warning(

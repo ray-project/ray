@@ -636,28 +636,22 @@ class _MultiHostReplicaView:
     live_cids: Set[Tuple[NodeType, CloudInstanceId]] = field(default_factory=set)
     assigned_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
     rep_assigned_cids: Dict[Tuple[NodeType, str], Set[str]] = field(
-        default_factory=lambda: defaultdict(set)
+        default_factory=dict
     )
-    rep_lids: Dict[Tuple[NodeType, str], Set[str]] = field(
-        default_factory=lambda: defaultdict(set)
-    )
+    rep_lids: Dict[Tuple[NodeType, str], Set[str]] = field(default_factory=dict)
     rep_bound_cids_by_lid: Dict[Tuple[Tuple[NodeType, str], str], Set[str]] = field(
-        default_factory=lambda: defaultdict(set)
+        default_factory=dict
     )
     non_fillable_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
-    rep_occupying: Dict[Tuple[NodeType, str], int] = field(
-        default_factory=lambda: defaultdict(int)
-    )
+    rep_occupying: Dict[Tuple[NodeType, str], int] = field(default_factory=dict)
     draining_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
     ray_running_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
     claimed_reps_by_lid: Dict[Tuple[NodeType, str], Set[str]] = field(
-        default_factory=lambda: defaultdict(set)
+        default_factory=dict
     )
-    requested_by_lid: Dict[Tuple[NodeType, str], int] = field(
-        default_factory=lambda: defaultdict(int)
-    )
+    requested_by_lid: Dict[Tuple[NodeType, str], int] = field(default_factory=dict)
     vanished_cids_by_lid: Dict[Tuple[NodeType, str], Set[str]] = field(
-        default_factory=lambda: defaultdict(set)
+        default_factory=dict
     )
     torn_down_lids: Set[Tuple[NodeType, str]] = field(default_factory=set)
 
@@ -670,14 +664,14 @@ class _MultiHostReplicaView:
         if not bound:
             return 0
         return min(
-            max(0, size - len(self.rep_assigned_cids[rk])),
+            max(0, size - len(self.rep_assigned_cids.get(rk, ()))),
             max(0, size - len(bound)),
         )
 
     def consume_requested_slot(self, nt: NodeType, lid: str) -> None:
         """Decrement one pending REQUESTED slot for batch `(nt, lid)`."""
         key = (nt, lid)
-        self.requested_by_lid[key] = max(0, self.requested_by_lid[key] - 1)
+        self.requested_by_lid[key] = max(0, self.requested_by_lid.get(key, 0) - 1)
 
     def claim_replica_slot(
         self,
@@ -689,14 +683,15 @@ class _MultiHostReplicaView:
         """Bind allocated pod `cid` in replica `(nt, rid)` to batch `lid`."""
         rk = (nt, rid)
         self.assigned_reps.add(rk)
-        self.rep_assigned_cids[rk].add(cid)
+        self.rep_assigned_cids.setdefault(rk, set()).add(cid)
         if lid:
-            self.rep_lids[rk].add(lid)
+            self.rep_lids.setdefault(rk, set()).add(lid)
             vanished = self.vanished_cids_by_lid.pop((nt, lid), None)
+            bound = self.rep_bound_cids_by_lid.setdefault((rk, lid), set())
             if vanished:
-                self.rep_bound_cids_by_lid[(rk, lid)].update(vanished)
-            self.rep_bound_cids_by_lid[(rk, lid)].add(cid)
-            self.claimed_reps_by_lid[(nt, lid)].add(rid)
+                bound.update(vanished)
+            bound.add(cid)
+            self.claimed_reps_by_lid.setdefault((nt, lid), set()).add(rid)
 
     def is_partial_vanished_batch(self, nt: NodeType, lid: str, size: int) -> bool:
         """Return True if batch `(nt, lid)` lost pods mid-boot and has fewer
@@ -781,9 +776,10 @@ class _MultiHostReplicaView:
             st = overrides.get(inst.instance_id, inst.status)
             if not inst.cloud_instance_id:
                 if st == Instance.REQUESTED:
-                    view.requested_by_lid[
-                        (inst.instance_type, inst.launch_request_id or "")
-                    ] += 1
+                    req_key = (inst.instance_type, inst.launch_request_id or "")
+                    view.requested_by_lid[req_key] = (
+                        view.requested_by_lid.get(req_key, 0) + 1
+                    )
                 continue
 
             c_inst = _match_worker_cloud_instance(
@@ -875,9 +871,11 @@ class _MultiHostReplicaView:
         rk = (nt, rid)
         self.assigned_reps.add(rk)
         if lid:
-            self.claimed_reps_by_lid[(nt, lid)].add(rid)
-            self.rep_bound_cids_by_lid[(rk, lid)].add(inst.cloud_instance_id)
-            self.rep_lids[rk].add(lid)
+            self.claimed_reps_by_lid.setdefault((nt, lid), set()).add(rid)
+            self.rep_bound_cids_by_lid.setdefault((rk, lid), set()).add(
+                inst.cloud_instance_id
+            )
+            self.rep_lids.setdefault(rk, set()).add(lid)
 
         # Ignore stale RAY_STOPPED rows shadowed by an active IM row on the
         # same cloud instance (e.g. after a raylet restart).
@@ -892,9 +890,9 @@ class _MultiHostReplicaView:
         if st in _DRAINING_INSTANCE_STATUSES | _TEARDOWN_INSTANCE_STATUSES:
             self.non_fillable_reps.add(rk)
 
-        self.rep_assigned_cids[rk].add(inst.cloud_instance_id)
+        self.rep_assigned_cids.setdefault(rk, set()).add(inst.cloud_instance_id)
         if st in _OCCUPYING_CLOUD_STATUSES:
-            self.rep_occupying[rk] += 1
+            self.rep_occupying[rk] = self.rep_occupying.get(rk, 0) + 1
         if st in _DRAINING_INSTANCE_STATUSES:
             self.draining_reps.add(rk)
             self.ray_running_reps.add(rk)
@@ -943,12 +941,14 @@ class _MultiHostReplicaView:
             term_cids = {r.cloud_instance_id for r in rows}
             is_td = (nt, lid) in self.torn_down_lids
             if rk in self.assigned_reps and (
-                lid in self.rep_lids[rk]
+                lid in self.rep_lids.get(rk, ())
                 or (not is_td and bool(term_cids & state.untagged_active_cids[rk]))
             ):
-                self.claimed_reps_by_lid[(nt, lid)].add(rid)
-                self.rep_bound_cids_by_lid[(rk, lid)].update(term_cids)
-                self.rep_lids[rk].add(lid)
+                self.claimed_reps_by_lid.setdefault((nt, lid), set()).add(rid)
+                self.rep_bound_cids_by_lid.setdefault((rk, lid), set()).update(
+                    term_cids
+                )
+                self.rep_lids.setdefault(rk, set()).add(lid)
                 if is_td:
                     self.non_fillable_reps.add(rk)
 
@@ -958,7 +958,7 @@ class _MultiHostReplicaView:
         # bound to that replica so sibling REQUESTED slots fail instead of
         # leaking.
         for rk in state.teardown_reps:
-            for bound_lid in self.rep_lids[rk]:
+            for bound_lid in self.rep_lids.get(rk, ()):
                 self.torn_down_lids.add((rk[0], bound_lid))
 
         # Propagate teardown of live untagged rows by (node_type,
@@ -987,15 +987,19 @@ class _MultiHostReplicaView:
             if claimed_rids:
                 for rid in claimed_rids:
                     rk = (nt, rid)
-                    self.rep_bound_cids_by_lid[(rk, lid)].update(missing_cids)
+                    self.rep_bound_cids_by_lid.setdefault((rk, lid), set()).update(
+                        missing_cids
+                    )
                     if is_td:
                         self.non_fillable_reps.add(rk)
             elif (
                 not is_td
-                and self.requested_by_lid[(nt, lid)] > 0
+                and self.requested_by_lid.get((nt, lid), 0) > 0
                 and len(missing_cids) < replica_sizes[nt]
             ):
-                self.vanished_cids_by_lid[(nt, lid)].update(missing_cids)
+                self.vanished_cids_by_lid.setdefault((nt, lid), set()).update(
+                    missing_cids
+                )
 
 
 def _match_worker_cloud_instance(
@@ -1093,18 +1097,3 @@ def _propagate_cid_teardown_lids(
     for start_ns, lid in candidates:
         if start_ns == latest_start_ns:
             torn_down_lids.add((nt, lid))
-
-
-def _build_multihost_replica_view(
-    im_instances: List[Instance],
-    cloud_instances: Dict[CloudInstanceId, CloudInstance],
-    replica_sizes: Dict[NodeType, int],
-    status_overrides: Optional[Dict[str, "Instance.InstanceStatus"]] = None,
-) -> _MultiHostReplicaView:
-    """Project per-instance IM rows and cloud replica IDs into one canonical view."""
-    return _MultiHostReplicaView.build(
-        im_instances,
-        cloud_instances,
-        replica_sizes,
-        status_overrides=status_overrides,
-    )

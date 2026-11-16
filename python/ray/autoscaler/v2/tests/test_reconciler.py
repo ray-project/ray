@@ -12,6 +12,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from ray._common.utils import binary_to_hex
+from ray.autoscaler.v2.instance_manager.common import (
+    _BOOTING_INSTANCE_STATUSES,
+    _DRAINING_INSTANCE_STATUSES,
+    _MultiHostReplicaView,
+)
 from ray.autoscaler.v2.instance_manager.config import (
     InstanceReconcileConfig,
     NodeTypeConfig,
@@ -26,13 +31,10 @@ from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
     TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.reconciler import (
-    _BOOTING_INSTANCE_STATUSES,
-    _DRAINING_INSTANCE_STATUSES,
     _TEARDOWN_INSTANCE_STATUSES,
     _TERMINAL_INSTANCE_STATUSES,
     _UNALLOCATED_INSTANCE_STATUSES,
     Reconciler,
-    _build_multihost_replica_view,
     _get_replica_key,
     logger,
 )
@@ -7535,7 +7537,7 @@ class TestReconciler:
         )
         insts, _ = store.get_instances()
         assert insts[restarted_id].status == Instance.TERMINATED
-        view = _build_multihost_replica_view(
+        view = _MultiHostReplicaView.build(
             list(insts.values()), provider.get_non_terminated(), {"tpu": 4}
         )
         assert view.vanished_cids_by_lid == {}
@@ -7755,7 +7757,7 @@ class TestReconciler:
             )
             == 0
         )
-        view = _build_multihost_replica_view(
+        view = _MultiHostReplicaView.build(
             list(insts.values()), provider.get_non_terminated(), {"tpu": 4}
         )
         assert view.vanished_cids_by_lid == {}
@@ -7957,7 +7959,7 @@ class TestReconciler:
         )
         now_ns = time.time_ns()
 
-        view = _build_multihost_replica_view(
+        view = _MultiHostReplicaView.build(
             [
                 create_instance(
                     "i-orig",
@@ -8028,7 +8030,7 @@ class TestReconciler:
         )
         now_ns = time.time_ns()
 
-        view = _build_multihost_replica_view(
+        view = _MultiHostReplicaView.build(
             [
                 create_instance(
                     "i-orig",
@@ -8084,7 +8086,7 @@ class TestReconciler:
         }
         now_ns = time.time_ns()
 
-        shadowed_view = _build_multihost_replica_view(
+        shadowed_view = _MultiHostReplicaView.build(
             [
                 create_instance(
                     "i-old-term",
@@ -8186,7 +8188,7 @@ class TestReconciler:
                 status_times=[(Instance.REQUESTED, 80)],
             ),
         ]
-        b1_view = _build_multihost_replica_view(b1_rows, live_cloud, {"tpu": 4})
+        b1_view = _MultiHostReplicaView.build(b1_rows, live_cloud, {"tpu": 4})
         assert ("tpu", "lid-1") in b1_view.torn_down_lids
         assert ("tpu", "lid-2") not in b1_view.torn_down_lids
         if replica_id is not None:
@@ -8196,9 +8198,9 @@ class TestReconciler:
         # B2: Old r1 already GC'd while stale u1 terminal teardown stays in IM;
         # newer r2 reusing p0 must stay unaffected both live and if r2 vanishes.
         b2_rows = [r for r in b1_rows if r.instance_id != "r1"]
-        b2_live = _build_multihost_replica_view(b2_rows, live_cloud, {"tpu": 4})
+        b2_live = _MultiHostReplicaView.build(b2_rows, live_cloud, {"tpu": 4})
         assert ("tpu", "lid-2") not in b2_live.torn_down_lids
-        b2_vanished = _build_multihost_replica_view(b2_rows, {}, {"tpu": 4})
+        b2_vanished = _MultiHostReplicaView.build(b2_rows, {}, {"tpu": 4})
         assert ("tpu", "lid-2") not in b2_vanished.torn_down_lids
         assert b2_vanished.vanished_cids_by_lid == {("tpu", "lid-2"): {"p0"}}
 
@@ -8256,7 +8258,7 @@ class TestReconciler:
                 (Instance.RAY_RUNNING, 230),
             ],
         )
-        b3_healthy = _build_multihost_replica_view(
+        b3_healthy = _MultiHostReplicaView.build(
             [*b3_base, b3_healthy_u2], live_cloud, {"tpu": 4}
         )
         assert ("tpu", "lid-1") not in b3_healthy.torn_down_lids
@@ -8278,7 +8280,7 @@ class TestReconciler:
                 (Instance.RAY_STOPPED, 240),
             ],
         )
-        b3_tick4 = _build_multihost_replica_view(
+        b3_tick4 = _MultiHostReplicaView.build(
             [*b3_base, b3_live_u2], live_cloud, {"tpu": 4}
         )
         assert ("tpu", "lid-2") in b3_tick4.torn_down_lids
@@ -8300,7 +8302,7 @@ class TestReconciler:
                 (Instance.TERMINATED, 250),
             ],
         )
-        b3_tick5 = _build_multihost_replica_view([*b3_base, b3_term_u2], {}, {"tpu": 4})
+        b3_tick5 = _MultiHostReplicaView.build([*b3_base, b3_term_u2], {}, {"tpu": 4})
         assert ("tpu", "lid-2") in b3_tick5.torn_down_lids
         assert ("tpu", "lid-2") not in b3_tick5.vanished_cids_by_lid
         assert ("tpu", "lid-1") not in b3_tick5.torn_down_lids
@@ -8325,14 +8327,14 @@ class TestReconciler:
             b3_term_u2,
         ]
         for ordered in (multi_td_rows, list(reversed(multi_td_rows))):
-            multi_view = _build_multihost_replica_view(ordered, {}, {"tpu": 4})
+            multi_view = _MultiHostReplicaView.build(ordered, {}, {"tpu": 4})
             assert ("tpu", "lid-1") in multi_view.torn_down_lids
             assert ("tpu", "lid-2") in multi_view.torn_down_lids
             assert multi_view.vanished_cids_by_lid == {}
 
         # Non-teardown states: RAY_STOP_REQUESTED and external pod loss without
         # teardown history must NOT mark lid-1 torn down.
-        stop_req_view = _build_multihost_replica_view(
+        stop_req_view = _MultiHostReplicaView.build(
             [
                 b3_base[0],
                 b3_base[1],
@@ -8353,7 +8355,7 @@ class TestReconciler:
         )
         assert ("tpu", "lid-1") not in stop_req_view.torn_down_lids
 
-        ext_loss_view = _build_multihost_replica_view(
+        ext_loss_view = _MultiHostReplicaView.build(
             [
                 b3_base[0],
                 b3_base[1],
@@ -8454,7 +8456,7 @@ class TestReconciler:
         assert "done-0" not in insts
 
         # Seam check: surviving records still propagate teardown to lid-0.
-        view = _build_multihost_replica_view(list(insts.values()), {}, {"tpu": 4})
+        view = _MultiHostReplicaView.build(list(insts.values()), {}, {"tpu": 4})
         assert ("tpu", "lid-0") in view.torn_down_lids
         assert view.vanished_cids_by_lid == {}
 
@@ -8601,7 +8603,7 @@ class TestReconciler:
             )
         }
         if u1_status == Instance.TERMINATED:
-            view = _build_multihost_replica_view(list(insts.values()), {}, {"tpu": 4})
+            view = _MultiHostReplicaView.build(list(insts.values()), {}, {"tpu": 4})
             assert ("tpu", "lid-1") in view.torn_down_lids
             assert ("tpu", "lid-0") not in view.torn_down_lids
             assert view.vanished_cids_by_lid == {("tpu", "lid-0"): {"p0"}}
@@ -8628,7 +8630,7 @@ class TestReconciler:
                         (Instance.RAY_RUNNING, expired_ns + 10),
                     ],
                 )
-                view_3rd = _build_multihost_replica_view(
+                view_3rd = _MultiHostReplicaView.build(
                     [*insts.values(), r2_old, u2_live], live_cloud, {"tpu": 4}
                 )
                 assert view_3rd.rep_lids[("tpu", replica_id)] == {"lid-2"}
@@ -8640,7 +8642,7 @@ class TestReconciler:
                 assert view_3rd.vanished_cids_by_lid == {("tpu", "lid-0"): {"p0"}}
         else:
             if u1_status == Instance.RAY_RUNNING:
-                healthy_view = _build_multihost_replica_view(
+                healthy_view = _MultiHostReplicaView.build(
                     list(insts.values()), live_cloud, {"tpu": 4}
                 )
                 assert ("tpu", "lid-0") not in healthy_view.torn_down_lids
@@ -8656,7 +8658,7 @@ class TestReconciler:
                 if u1_status == Instance.RAY_RUNNING
                 else None
             )
-            view = _build_multihost_replica_view(
+            view = _MultiHostReplicaView.build(
                 list(insts.values()),
                 live_cloud,
                 {"tpu": 4},
@@ -9020,7 +9022,7 @@ class TestReconciler:
                 "p1", "tpu-a", NodeKind.WORKER, True, replica_id="rep-1"
             ),
         }
-        view = _build_multihost_replica_view(instances, cloud, {"tpu-a": 4, "tpu-b": 4})
+        view = _MultiHostReplicaView.build(instances, cloud, {"tpu-a": 4, "tpu-b": 4})
         assert view.rep_bound_cids_by_lid[(("tpu-a", "rep-1"), "lid-1")] == {"p0", "p1"}
         assert view.owed_batch_slots("tpu-a", "rep-1", "lid-1", 4) == 2
         assert view.claimed_reps_by_lid[("tpu-a", "lid-1")] == {"rep-1"}
@@ -9065,7 +9067,7 @@ class TestReconciler:
                 (Instance.RAY_RUNNING, 110),
             ],
         )
-        live_view = _build_multihost_replica_view(
+        live_view = _MultiHostReplicaView.build(
             [ra_stale, rb_live], cloud_p0_b, {"tpu-a": 2, "tpu-b": 2}
         )
         assert ("tpu-a", "rep-0") not in live_view.rep_lids
@@ -9085,7 +9087,7 @@ class TestReconciler:
                 (Instance.TERMINATING, 120),
             ],
         )
-        td_view = _build_multihost_replica_view(
+        td_view = _MultiHostReplicaView.build(
             [ra_stale_td, rb_live], cloud_p0_b, {"tpu-a": 2, "tpu-b": 2}
         )
         assert ("tpu-a", "rep-0") not in td_view.rep_lids
@@ -9116,7 +9118,7 @@ class TestReconciler:
             launch_request_id="lid-a",
             status_times=[(Instance.REQUESTED, 90)],
         )
-        stopped_view = _build_multihost_replica_view(
+        stopped_view = _MultiHostReplicaView.build(
             [ra_stopped, ra_req, rb_live], cloud_p0_b, {"tpu-a": 2, "tpu-b": 2}
         )
         assert ("tpu-a", "lid-a") in stopped_view.torn_down_lids
@@ -9213,7 +9215,7 @@ class TestReconciler:
             "p0": CloudInstance("p0", "tpu-a", NodeKind.HEAD, True, replica_id="rep-0")
         }
         assert _get_replica_key(a_inst, head_cloud, replica_sizes) is None
-        head_reused_view = _build_multihost_replica_view(
+        head_reused_view = _MultiHostReplicaView.build(
             [
                 create_instance(
                     "a-term",
@@ -9456,7 +9458,7 @@ class TestReconciler:
             workers_per_replica=4,
         )
         before_insts, _ = store1.get_instances()
-        view_before = _build_multihost_replica_view(
+        view_before = _MultiHostReplicaView.build(
             list(before_insts.values()), {}, {"tpu": 4}
         )
         assert ("tpu", "lid-0") in view_before.torn_down_lids
@@ -9464,7 +9466,7 @@ class TestReconciler:
         Reconciler._gc_terminated_instances(im1, gc_cfg, [])
         after_insts, _ = store1.get_instances()
         assert "u-td" in after_insts
-        view_after = _build_multihost_replica_view(
+        view_after = _MultiHostReplicaView.build(
             list(after_insts.values()), {}, {"tpu": 4}
         )
         assert view_after.torn_down_lids == view_before.torn_down_lids
@@ -9522,7 +9524,7 @@ class TestReconciler:
         insts2, ver2 = store2.get_instances()
         assert "r1" in insts2
         assert "u1" in insts2
-        td_view = _build_multihost_replica_view(
+        td_view = _MultiHostReplicaView.build(
             list(insts2.values()),
             {"p0": CloudInstance("p0", "tpu", NodeKind.WORKER, True, replica_id=None)},
             {"tpu": 4},
@@ -9594,8 +9596,6 @@ class TestReconciler:
     def test_replica_view_cache_reuses_within_tick_and_invalidates_on_im_update(self):
         """Verify Reconciler reuses one multi-host replica view per unchanged IM
         version within a tick and invalidates immediately after IM mutations."""
-        import ray.autoscaler.v2.instance_manager.reconciler as reconciler_mod
-
         cfg = MockAutoscalingConfig(
             configs={
                 "max_workers": 6,
@@ -9671,7 +9671,7 @@ class TestReconciler:
         monitor = CloudResourceMonitor()
 
         call_count = 0
-        orig_build = reconciler_mod._build_multihost_replica_view
+        orig_build = _MultiHostReplicaView.build
 
         def _counting_build(*args, **kwargs):
             nonlocal call_count
@@ -9679,7 +9679,7 @@ class TestReconciler:
             return orig_build(*args, **kwargs)
 
         with mock.patch.object(
-            reconciler_mod, "_build_multihost_replica_view", side_effect=_counting_build
+            _MultiHostReplicaView, "build", side_effect=_counting_build
         ):
             # Steady-state tick: no REQUESTED rows, no scale/terminate mutations.
             # View is built once and shared across all read-only _step_next phases.
@@ -9810,6 +9810,22 @@ class TestReconciler:
 
         # Domain methods on _MultiHostReplicaView.
         view = _MultiHostReplicaView()
+        for dict_attr in (
+            "rep_assigned_cids",
+            "rep_lids",
+            "rep_bound_cids_by_lid",
+            "rep_occupying",
+            "claimed_reps_by_lid",
+            "requested_by_lid",
+            "vanished_cids_by_lid",
+        ):
+            assert type(getattr(view, dict_attr)) is dict
+        assert view.owed_batch_slots("tpu-a", "rep-missing", "lid-missing", 4) == 0
+        assert not view.has_pending_backfill_for_replica("tpu-a", "rep-missing", 4)
+        assert not view.is_partial_vanished_batch("tpu-a", "lid-missing", 4)
+        assert not view.is_surplus_batch("tpu-a", "lid-missing", 4)
+        assert view.rep_lids == {}
+        assert view.requested_by_lid == {}
         view.requested_by_lid[("tpu-a", "lid-1")] = 2
         view.vanished_cids_by_lid[("tpu-a", "lid-1")] = {"p-old"}
         assert view.is_partial_vanished_batch("tpu-a", "lid-1", size=4)

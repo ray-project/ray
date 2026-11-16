@@ -1747,33 +1747,69 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             ],
         ]
 
+        for raw_bad_hosts in (0, -1):
+            for in_step in (False, True):
+                prov5, client5 = self._make_kuberay_provider(
+                    worker_groups=[
+                        {
+                            "groupName": "tpu-a",
+                            "replicas": 0,
+                            "minReplicas": 0,
+                            "maxReplicas": 5,
+                            "numOfHosts": raw_bad_hosts,
+                            "template": {"spec": {"containers": [{}]}},
+                        }
+                    ],
+                    pods=[],
+                )
+                if in_step:
+                    prov5.begin_reconcile_step(
+                        known_cloud_instance_ids={"head-0"},
+                        single_host_in_flight={},
+                        unclaimed_replicas_by_lid={},
+                    )
+                prov5.launch(shape={"tpu-a": 4}, request_id="bad-hosts")
+                if in_step:
+                    prov5.end_reconcile_step()
+                assert client5.patch_history == []
+                assert [
+                    (e.request_id, e.node_type, e.count) for e in prov5.poll_errors()
+                ] == [("bad-hosts", "tpu-a", 4)]
+
+        # Explicit `"numOfHosts": None` defaults to 1 host per replica cleanly.
         for in_step in (False, True):
-            prov5, client5 = self._make_kuberay_provider(
+            prov6, client6 = self._make_kuberay_provider(
                 worker_groups=[
                     {
-                        "groupName": "tpu-a",
+                        "groupName": "cpu-none",
                         "replicas": 0,
                         "minReplicas": 0,
                         "maxReplicas": 5,
-                        "numOfHosts": 0,
+                        "numOfHosts": None,
                         "template": {"spec": {"containers": [{}]}},
                     }
                 ],
                 pods=[],
             )
             if in_step:
-                prov5.begin_reconcile_step(
+                prov6.begin_reconcile_step(
                     known_cloud_instance_ids={"head-0"},
                     single_host_in_flight={},
                     unclaimed_replicas_by_lid={},
                 )
-            prov5.launch(shape={"tpu-a": 4}, request_id="bad-hosts")
+            prov6.launch(shape={"cpu-none": 2}, request_id="none-hosts")
             if in_step:
-                prov5.end_reconcile_step()
-            assert client5.patch_history == []
-            assert [
-                (e.request_id, e.node_type, e.count) for e in prov5.poll_errors()
-            ] == [("bad-hosts", "tpu-a", 4)]
+                prov6.end_reconcile_step()
+            assert prov6.poll_errors() == []
+            assert client6.patch_history == [
+                [
+                    {
+                        "op": "replace",
+                        "path": "/spec/workerGroupSpecs/0/replicas",
+                        "value": 2,
+                    }
+                ]
+            ]
 
     def test_reconcile_step_intra_tick_pod_deduplication(self):
         """Intra-tick newly materialized pods deduplicate against in-flight counts
