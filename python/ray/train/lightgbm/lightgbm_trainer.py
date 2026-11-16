@@ -223,7 +223,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         # TODO: [Deprecated] Legacy LightGBMTrainer API
         label_column: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        num_boost_round: Optional[int] = None,
+        num_boost_round: int = 10,
         **train_kwargs,
     ):
         # TODO: [Deprecated] Legacy LightGBMTrainer API
@@ -264,7 +264,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         run_config: Optional[ray.train.RunConfig],
         datasets: Optional[Dict[str, GenDataset]],
         label_column: Optional[str],
-        num_boost_round: Optional[int],
+        num_boost_round: int = 10,
     ) -> Callable[[Dict], None]:
         """Get the training function for the legacy LightGBMTrainer API."""
 
@@ -283,9 +283,6 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 "if `train_loop_per_worker` is not provided. "
                 "This is the column name of the label in the dataset."
             )
-
-        if num_boost_round is None:
-            num_boost_round = 10
 
         _log_deprecation_warning(LEGACY_LIGHTGBM_TRAINER_DEPRECATION_MESSAGE)
 

@@ -213,7 +213,12 @@ def test_legacy_num_boost_round_zero_and_callbacks_not_mutated():
     )
     assert trainer._train_loop_per_worker.keywords["num_boost_round"] == 0
     assert len(user_callbacks) == 1
-    assert len(trainer._train_loop_per_worker.keywords["xgboost_train_kwargs"]["callbacks"]) == 2
+    assert (
+        len(
+            trainer._train_loop_per_worker.keywords["xgboost_train_kwargs"]["callbacks"]
+        )
+        == 2
+    )
 
 
 def test_callback_get_model(tmp_path):

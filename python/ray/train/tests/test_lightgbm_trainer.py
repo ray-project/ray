@@ -202,7 +202,14 @@ def test_legacy_num_boost_round_zero_and_callbacks_not_mutated():
     )
     assert trainer._train_loop_per_worker.keywords["num_boost_round"] == 0
     assert len(user_callbacks) == 1
-    assert len(trainer._train_loop_per_worker.keywords["lightgbm_train_kwargs"]["callbacks"]) == 2
+    assert (
+        len(
+            trainer._train_loop_per_worker.keywords["lightgbm_train_kwargs"][
+                "callbacks"
+            ]
+        )
+        == 2
+    )
 
 
 @pytest.mark.parametrize("rank", [None, 0, 1])

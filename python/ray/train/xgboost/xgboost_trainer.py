@@ -204,7 +204,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
         label_column: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        num_boost_round: Optional[int] = None,
+        num_boost_round: int = 10,
         **train_kwargs,
     ):
         if Version(xgboost.__version__) < Version("1.7.0"):
@@ -250,7 +250,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         run_config: Optional[ray.train.RunConfig],
         datasets: Optional[Dict[str, GenDataset]],
         label_column: Optional[str],
-        num_boost_round: Optional[int],
+        num_boost_round: int = 10,
     ) -> Callable[[Dict], None]:
         """Get the training function for the legacy XGBoostTrainer API."""
 
@@ -269,9 +269,6 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 "if `train_loop_per_worker` is not provided. "
                 "This is the column name of the label in the dataset."
             )
-
-        if num_boost_round is None:
-            num_boost_round = 10
 
         _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
 
