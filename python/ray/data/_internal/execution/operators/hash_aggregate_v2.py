@@ -119,11 +119,8 @@ def _raw_rows_to_partials(
     """Turns raw rows into the partial-state layout ``_aggregate_raw_rows``
     produces, treating every row as its own group, so they can be merged with
     real partials in a single group_by. Uses each spec's ``raw_to_partial``
-    projection (no hashing); falls back to ``_aggregate_raw_rows`` if any spec
-    lacks one."""
-    if any(spec.raw_to_partial is None for spec in specs):
-        partials, _ = _aggregate_raw_rows(table, keys, aggs, specs)
-        return partials
+    projection (no hashing). Every spec must have one: map tasks only ship raw
+    rows when they all do (see _make_vectorized_aggregating_transformer)."""
 
     # Cast every column to the type the map-side group_by would produce
     # (e.g. int32 values -> int64 sums), so it concatenates with real partials.
@@ -142,7 +139,7 @@ def _raw_rows_to_partials(
         if spec.prep is not None:
             table = spec.prep(i, col, table)
         raw_to_partial = spec.raw_to_partial
-        assert raw_to_partial is not None  # checked above
+        assert raw_to_partial is not None, "map tasks only skip with raw_to_partial"
         states = raw_to_partial(table, i, col, opts)
         for component, state in zip(spec.components, states):
             name = f"__agg{i}_{component}"
@@ -311,6 +308,11 @@ def _make_vectorized_aggregating_transformer(
             return block.select(keep)
 
         return _prune_transform
+
+    if any(spec.raw_to_partial is None for spec in specs):
+        # The reducer can only merge raw rows by projecting them with
+        # ``raw_to_partial``; without it, always pre-aggregate.
+        policy = None
 
     def _arrow_transform(block: pa.Table) -> pa.Table:
         block_schema = BlockAccessor.for_block(block).schema()

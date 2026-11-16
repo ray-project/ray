@@ -66,7 +66,8 @@ class ArrowAggSpec(NamedTuple):
     # array per ``components`` entry, holding each row's state as if it were a
     # group of one.  Lets a reducer turn raw rows (shipped when a map task
     # skipped partial aggregation) into partial state without a group_by, so
-    # one ``merge_specs`` pass covers raw and partial shards alike.
+    # one ``merge_specs`` pass covers raw and partial shards alike.  If any
+    # agg in a query lacks it, map tasks always pre-aggregate.
     raw_to_partial: Optional[
         Callable[..., List[Union["pa.Array", "pa.ChunkedArray"]]]
     ] = None

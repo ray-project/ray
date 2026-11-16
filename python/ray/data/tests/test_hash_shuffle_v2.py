@@ -954,6 +954,24 @@ def test_partial_agg_forced_modes(mode, expect_partial):
     assert _is_partial(out) == expect_partial
 
 
+def test_partial_agg_never_skips_without_raw_to_partial():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+    from ray.data.aggregate import Sum
+
+    original = Sum._arrow_agg_spec
+
+    def _spec_without_raw_to_partial(self):
+        return original(self)._replace(raw_to_partial=None)
+
+    table = _partial_agg_test_table(num_rows=1000, num_keys=1000)
+    with patch.object(Sum, "_arrow_agg_spec", _spec_without_raw_to_partial):
+        out = _make_partial_agg_transformer(PartialAggMode.NEVER)(table)
+
+    assert _is_partial(out)
+
+
 def _reduce_shards_table(shards) -> pa.Table:
     from ray.data._internal.execution.operators.hash_aggregate_v2 import (
         _make_aggregating_reduce_fn,
