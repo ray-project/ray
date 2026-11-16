@@ -78,7 +78,15 @@ logger = logging.getLogger(__name__)
 
 # Reader features this reader handles. ``columnMapping`` only with the mapping
 # mode ``none``, which ``check_delta_table_is_readable`` checks.
-_SUPPORTED_READER_FEATURES = frozenset({"timestampNtz", "columnMapping"})
+#
+# `v2Checkpoint` only changes how the log is stored: checkpoints can list the
+# data files in sidecar files. deltalake replays them when it lists the add
+# actions, so the V2 reader sees every file. The V1 reader's
+# `to_pyarrow_dataset` refuses these tables, and Databricks turns v2
+# checkpoints on for new tables by default.
+_SUPPORTED_READER_FEATURES = frozenset(
+    {"timestampNtz", "columnMapping", "v2Checkpoint"}
+)
 
 # PyArrow scan options that only tune how the V1 reader read; the V2 reader
 # sets its own batch size, readahead and threads, so it ignores them.
