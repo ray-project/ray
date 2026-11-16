@@ -2,8 +2,10 @@ import concurrent.futures
 import contextlib
 import errno
 import fcntl
+import gzip
 import hashlib
 import io
+import itertools
 import json
 import logging
 import mmap
@@ -16,10 +18,12 @@ import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import zlib
 from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
@@ -882,6 +886,307 @@ def build_erofs_image(
             raise SandboxCreationError(f"mkfs.erofs failed: {message}")
 
 
+# Set to "0" to build every image by extracting its layers to a tree, even
+# with a mkfs.erofs that can build and merge per-layer images.
+_EROFS_MERGE_ENV = "RAY_SANDBOX_EROFS_MERGE"
+# The mkfs.erofs options a merged build needs (erofs-utils 1.8+): per-layer
+# images from tar streams that keep whiteouts as overlayfs metadata, a merge
+# that copies their data into one image and applies the whiteouts, and an
+# incremental pass for the seeds that go on top.
+_MKFS_EROFS_MERGE_OPTIONS = (
+    "--aufs",
+    "--sort=",
+    "--clean=",
+    "--ovlfs-strip",
+    "--incremental=",
+)
+# Seeds. Below the image's layers, as a layer of their own, the mount points
+# runsc needs: the image's own entries win, as ``_seed_mountpoints`` leaves
+# existing ones alone. Over the merged image, in an incremental pass, the
+# root (a merge gives it the building user's owner and 0777, whatever the
+# layers say) and /tmp as ``_seed_tmp`` leaves it.
+_SEEDS_BELOW = tuple(d for d in _MOUNTPOINT_DIRS if d != "tmp") + ("etc",)
+_SEEDS_ABOVE = ("", "tmp")
+# Directories whose seeds a symlink in the image would hide; extraction
+# seeds through it instead.
+_SEED_PARENTS = ("", "dev", "etc")
+
+
+@lru_cache(maxsize=8)
+def _mkfs_erofs_can_merge(mkfs: str) -> bool:
+    """Whether ``mkfs`` can build an image by merging per-layer images."""
+    try:
+        res = subprocess.run(
+            [mkfs, "--help"], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return all(opt in res.stdout + res.stderr for opt in _MKFS_EROFS_MERGE_OPTIONS)
+
+
+def _seed_layer(dirs: Tuple[str, ...], files: Tuple[str, ...] = ()) -> BinaryIO:
+    """A tar of root-owned seed directories (``tmp`` 1777, others 0755) and
+    empty files."""
+    layer = io.BytesIO()
+    with tarfile.open(fileobj=layer, mode="w") as tar:
+        for name in sorted(dirs) + list(files):
+            ti = tarfile.TarInfo(name or ".")
+            if name in files:
+                ti.mode = 0o644
+            else:
+                ti.type, ti.mode = tarfile.DIRTYPE, 0o1777 if name == "tmp" else 0o755
+            ti.mtime = int(time.time())
+            tar.addfile(ti)
+    layer.seek(0)
+    return layer
+
+
+class _Tee:
+    """Reads ``source`` and copies what it reads into ``sink``."""
+
+    def __init__(self, source: BinaryIO, sink: BinaryIO):
+        self._source, self._sink = source, sink
+
+    def read(self, size: int = -1) -> bytes:
+        try:
+            data = self._source.read(size)
+        except (EOFError, OSError, zlib.error) as err:
+            raise SandboxCreationError(f"A layer is corrupt: {err}") from err
+        if data and self._sink is not None:
+            try:
+                self._sink.write(data)
+            except BrokenPipeError:
+                # mkfs.erofs stopped reading; its exit status says why.
+                self._sink = None
+        return data
+
+
+def _layer_entry(member: tarfile.TarInfo) -> Tuple[str, str]:
+    """(kind, path) of a layer member for ``_layer_merge_problem``: "dir",
+    "sym", "file", "wh" (a whiteout, with the path it deletes), "opq" (an
+    opaque whiteout, with its directory) or "bad" (a path out of the root).
+    Paths are relative to the root, which is ""."""
+    name = member.name.lstrip("/")
+    if ".." in name.split("/"):
+        return "bad", name
+    path = os.path.normpath(name)
+    path = "" if path == "." else path
+    parent, base = os.path.split(path)
+    if base == ".wh..wh..opq":
+        return "opq", parent
+    if base.startswith(".wh."):
+        return "wh", os.path.join(parent, base[4:])
+    if member.isdir():
+        return "dir", path
+    return ("sym" if member.issym() else "file"), path
+
+
+def _build_layer_image(
+    mkfs: str, blob: BinaryIO, out_path: str
+) -> List[Tuple[str, str]]:
+    """Build an EROFS image of one layer and return its ``_layer_entry`` list.
+
+    The tar streams into ``mkfs.erofs --tar=f`` once, and its headers are
+    read on the way. ``--aufs`` keeps whiteouts as overlayfs metadata for
+    the merge to apply, and ``--sort=none`` writes file data as it comes
+    instead of spooling it under ``$TMPDIR``. Closes ``blob``.
+    """
+    with blob, tempfile.TemporaryFile() as output:
+        gzipped = blob.read(2) == b"\x1f\x8b"
+        blob.seek(0)
+        source = gzip.GzipFile(fileobj=blob) if gzipped else blob
+        # The output goes to a file, not a pipe that could fill up.
+        proc = subprocess.Popen(
+            [mkfs, "--tar=f", "--aufs", "--sort=none", f"-b{mmap.PAGESIZE}"]
+            + ["-E^inline_data", "--quiet", out_path],
+            stdin=subprocess.PIPE,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+        )
+        try:
+            tee = _Tee(source, proc.stdin)
+            entries = []
+            try:
+                tar = tarfile.open(fileobj=tee, mode="r|", bufsize=1 << 20)
+                for member in iter(tar.next, None):
+                    entries.append(_layer_entry(member))
+                    # Stream mode keeps every member it read otherwise.
+                    tar.members.clear()
+            except tarfile.TarError as err:
+                raise RuntimeError(f"a layer isn't a tar mkfs.erofs reads: {err}")
+            # The rest: tar padding, and the gzip trailer, which is checked.
+            while tee.read(1 << 20):
+                pass
+            with contextlib.suppress(BrokenPipeError):
+                proc.stdin.close()
+            returncode = proc.wait()
+        except BaseException:
+            proc.kill()
+            proc.wait()
+            raise
+        if returncode != 0:
+            output.seek(0)
+            message = output.read().decode(errors="replace").strip()[-500:]
+            raise RuntimeError(f"mkfs.erofs failed on a layer: {message}")
+    return entries
+
+
+def _layer_merge_problem(layers: List[List[Tuple[str, str]]]) -> Optional[str]:
+    """Why merging the images of ``layers`` (their ``_layer_entry`` lists,
+    lowest first, with the seeds below and above) would give another tree than
+    extraction and seeding do, or None.
+
+    A layer that names a path without an entry for its parent directory:
+    ``mkfs.erofs`` makes the parent up (0777, owned by the worker) over the
+    one below. A directory entry at a path that is a symlink by then
+    (UsrMerge's ``bin -> usr/bin``): the merge replaces the symlink, as
+    Docker does, where extraction writes through it. And an image that
+    deletes a seed or makes ``/etc`` or ``/dev`` a symlink, which
+    extraction seeds again or through. Image builders don't write the first
+    two, so this is mostly a guard.
+    """
+    seeds = set(_SEEDS_BELOW) | set(_MOUNTPOINT_FILES)
+    symlinks: set = set()
+    for index, entries in enumerate(layers):
+        dirs = {""}
+        for kind, path in entries:
+            if kind == "bad":
+                return f"layer {index} has a member outside the root: {path}"
+            parent = path if kind == "opq" else os.path.dirname(path)
+            if parent not in dirs:
+                return f"layer {index} has /{path} but no entry for /{parent}"
+            if kind == "dir":
+                if path in symlinks:
+                    return f"layer {index} has a directory at the symlink /{path}"
+                dirs.add(path)
+            elif kind in ("sym", "file"):
+                (symlinks.add if kind == "sym" else symlinks.discard)(path)
+                dirs.discard(path)
+            else:
+                if path in seeds or (kind == "opq" and path in _SEED_PARENTS):
+                    return f"layer {index} deletes the seeded /{path}"
+                prefix = f"{path}/" if path else ""
+                symlinks = {
+                    s
+                    for s in symlinks
+                    if not s.startswith(prefix) and (kind == "opq" or s != path)
+                }
+    hidden = symlinks & set(_SEED_PARENTS)
+    return f"the image's /{hidden.pop()} is a symlink" if hidden else None
+
+
+def _run_mkfs(args: List[str], stdin: Optional[bytes] = None) -> None:
+    """Run ``mkfs.erofs`` with the block size and data layout gVisor reads
+    (see ``build_erofs_image``)."""
+    res = subprocess.run(
+        args[:1] + [f"-b{mmap.PAGESIZE}", "-E^inline_data", "--quiet"] + args[1:],
+        input=stdin,
+        capture_output=True,
+    )
+    if res.returncode != 0:
+        message = (res.stdout + res.stderr).decode(errors="replace").strip()
+        raise RuntimeError(f"mkfs.erofs failed: {message[-500:]}")
+
+
+def _pull_errors(image: str, blobs: Iterator[BinaryIO]) -> Iterator[BinaryIO]:
+    """``blobs``, raising a failed download as a ``SandboxCreationError``."""
+    with contextlib.closing(blobs):
+        try:
+            yield from blobs
+        except SandboxCreationError:
+            raise
+        except Exception as err:
+            raise SandboxCreationError(
+                f"Failed to pull container image '{image}': "
+                f"{_describe_pull_error(err)}"
+            ) from err
+
+
+def _build_erofs_image_from_registry(
+    image: str,
+    image_dir: str,
+    out_path: str,
+    timeout_seconds: float,
+    blob_dir: str,
+) -> bool:
+    """Build ``out_path`` for registry image ``image`` by merging per-layer
+    EROFS images, without extracting the layers to a tree.
+
+    The layers come from the layer cache as for extraction. Each streams
+    into an image of its own (``_build_layer_image``), a few at a time,
+    over a layer of seeds; one ``mkfs.erofs --clean=data --ovlfs-strip=1``
+    pass then copies their data into ``out_path`` and applies the
+    whiteouts, and an incremental one adds the seeds that go on top.
+
+    Returns:
+        True if the image is built; False, with nothing at ``out_path``, if
+        extraction should build it: a local archive, a ``mkfs.erofs`` that
+        can't merge, a failed build, or layers ``_layer_merge_problem``
+        rejects.
+
+    Raises:
+        SandboxCreationError: When the image or a layer can't be fetched.
+    """
+    mkfs = mkfs_erofs_path()
+    if (
+        os.environ.get(_EROFS_MERGE_ENV, "1") == "0"
+        or mkfs is None
+        or _is_local_image(image)
+        or not _mkfs_erofs_can_merge(mkfs)
+    ):
+        return False
+    try:
+        base_url, headers, auth_header, digests = _resolve_registry_image(
+            image, image_dir, timeout_seconds
+        )
+    except SandboxCreationError:
+        raise
+    except Exception as err:
+        raise SandboxCreationError(
+            f"Failed to pull container image '{image}': {_describe_pull_error(err)}"
+        ) from err
+    blobs = _download_blobs(
+        digests, base_url, headers, auth_header, timeout_seconds, blob_dir
+    )
+    layer_dir = tempfile.mkdtemp(prefix=".layers.", dir=image_dir)
+    paths = [os.path.join(layer_dir, f"{i}.erofs") for i in range(len(digests) + 1)]
+    try:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=_LAYER_DOWNLOADS, thread_name_prefix="sandbox-layer-build"
+        ) as pool:
+            sources = itertools.chain(
+                [_seed_layer(_SEEDS_BELOW, _MOUNTPOINT_FILES)],
+                _pull_errors(image, blobs),
+            )
+            builds = [
+                pool.submit(_build_layer_image, mkfs, source, path)
+                for source, path in zip(sources, paths)
+            ]
+            layers = [build.result() for build in builds]
+        above = _seed_layer(_SEEDS_ABOVE, ("tmp/.ray-sandbox-keep",))
+        with tarfile.open(fileobj=above) as tar:
+            layers.append([_layer_entry(member) for member in tar])
+        problem = _layer_merge_problem(layers)
+        if problem is not None:
+            raise RuntimeError(problem)
+        _run_mkfs([mkfs, "--clean=data", "--ovlfs-strip=1", out_path] + paths)
+        above.seek(0)
+        _run_mkfs([mkfs, "--incremental=data", "--tar=f", out_path], above.read())
+    except SandboxCreationError:
+        raise
+    except Exception as err:
+        logger.warning(
+            f"Building image '{image}' by merging its layers failed, so it is "
+            f"built by extracting them instead: {err}"
+        )
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(out_path)
+        return False
+    finally:
+        shutil.rmtree(layer_dir, ignore_errors=True)
+    return True
+
+
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
 _IMAGE_CACHE_MIN_FREE_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"
 # Subdirectory of each cached image holding one marker file per live sandbox.
@@ -1269,16 +1574,20 @@ def pull_and_extract_container_image(
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
             try:
-                ownership = _extract_image_layers(
-                    image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
-                )
-                _seed_tmp(tmp_rootfs_dir)
-                _seed_mountpoints(tmp_rootfs_dir)
-                build_erofs_image(
-                    tmp_rootfs_dir,
-                    ownership,
-                    os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
-                )
+                rootfs_image = os.path.join(tmp_extract_dir, ROOTFS_IMAGE)
+                if not _build_erofs_image_from_registry(
+                    image, tmp_extract_dir, rootfs_image, timeout_seconds, images_dir
+                ):
+                    ownership = _extract_image_layers(
+                        image,
+                        tmp_rootfs_dir,
+                        tmp_extract_dir,
+                        timeout_seconds,
+                        images_dir,
+                    )
+                    _seed_tmp(tmp_rootfs_dir)
+                    _seed_mountpoints(tmp_rootfs_dir)
+                    build_erofs_image(tmp_rootfs_dir, ownership, rootfs_image)
             except Exception:
                 shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                 raise
@@ -1380,6 +1689,107 @@ def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
         download.result().close()
 
 
+def _is_local_image(image: str) -> bool:
+    """Whether ``image`` names a local tar archive, not a registry image."""
+    return (
+        os.path.isfile(image)
+        or image.endswith(".tar")
+        or image.startswith(("/", "./", "../"))
+    )
+
+
+def _resolve_registry_image(
+    image: str, image_dir: str, timeout_seconds: float
+) -> Tuple[str, Dict[str, str], Optional[str], List[str]]:
+    """Resolve a registry image's layers for the host's platform.
+
+    The manifest and config are written to ``image_dir/.manifest.json`` and
+    ``image_dir/.image_config.json``.
+
+    Returns:
+        The blob URL prefix each digest is appended to, the request headers,
+        the registry's ``Authorization`` value if any, and the layer digests
+        in manifest order.
+
+    Raises:
+        SandboxCreationError: If the manifest names no layers. Registry and
+            network errors propagate as they are.
+    """
+    registry, repo, reference = parse_image_ref(image)
+    registry, repo = apply_registry_mirror(registry, repo)
+    auth_headers = get_registry_auth_headers(
+        registry,
+        repo,
+        reference=reference,
+        timeout=timeout_seconds,
+    )
+    headers = {
+        "User-Agent": _USER_AGENT,
+        "Accept": (
+            "application/vnd.docker.distribution.manifest.v2+json, "
+            "application/vnd.docker.distribution.manifest.list.v2+json, "
+            "application/vnd.oci.image.manifest.v1+json, "
+            "application/vnd.oci.image.index.v1+json"
+        ),
+    }
+    auth_header = auth_headers.get("Authorization")
+
+    manifest_url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
+    req = _registry_request(manifest_url, headers, auth_header)
+    with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+        manifest_data = json.loads(resp.read().decode("utf-8"))
+
+    # Resolve multi-architecture manifest list / OCI index
+    if "manifests" in manifest_data:
+        target_arch = get_platform_arch()
+        chosen_digest = None
+        for m in manifest_data["manifests"]:
+            plat = m.get("platform", {})
+            if plat.get("os") == "linux" and plat.get("architecture") == target_arch:
+                chosen_digest = m["digest"]
+                break
+        if not chosen_digest:
+            chosen_digest = manifest_data["manifests"][0]["digest"]
+
+        sub_req = _registry_request(
+            f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",
+            headers,
+            auth_header,
+        )
+        with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
+            manifest_data = json.loads(resp.read().decode("utf-8"))
+    with open(os.path.join(image_dir, ".manifest.json"), "w") as f:
+        json.dump(manifest_data, f)
+
+    # extract image config so we can reference metadata bout the image later.
+    config_desc = manifest_data.get("config")
+    if config_desc and "digest" in config_desc:
+        config_digest = config_desc["digest"]
+        config_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
+        config_req = _registry_request(config_url, headers, auth_header)
+        try:
+            with urllib.request.urlopen(config_req, timeout=timeout_seconds) as resp:
+                config_bytes = resp.read()
+                with open(
+                    os.path.join(image_dir, ".image_config.json"),
+                    "wb",
+                ) as f_cfg:
+                    f_cfg.write(config_bytes)
+        except Exception as e:
+            logger.warning(f"Failed to fetch image config blob: {e}")
+
+    layers = manifest_data.get("layers", [])
+    if not layers:
+        raise SandboxCreationError(f"No layers found in manifest for image '{image}'")
+    digests = [layer["digest"] for layer in layers]
+    return (
+        f"{registry_base_url(registry)}/v2/{repo}/blobs/",
+        headers,
+        auth_header,
+        digests,
+    )
+
+
 def _extract_image_layers(
     image: str,
     rootfs_dir: str,
@@ -1417,92 +1827,12 @@ def _extract_image_layers(
                 f"Failed to extract local image archive '{image}': {err}"
             ) from err
         return ownership
-    if (
-        image.endswith(".tar")
-        or image.startswith("/")
-        or image.startswith("./")
-        or image.startswith("../")
-    ):
+    if _is_local_image(image):
         raise SandboxCreationError(f"Local image archive '{image}' not found.")
     try:
-        registry, repo, reference = parse_image_ref(image)
-        registry, repo = apply_registry_mirror(registry, repo)
-        auth_headers = get_registry_auth_headers(
-            registry,
-            repo,
-            reference=reference,
-            timeout=timeout_seconds,
+        base_url, headers, auth_header, digests = _resolve_registry_image(
+            image, image_dir, timeout_seconds
         )
-        headers = {
-            "User-Agent": _USER_AGENT,
-            "Accept": (
-                "application/vnd.docker.distribution.manifest.v2+json, "
-                "application/vnd.docker.distribution.manifest.list.v2+json, "
-                "application/vnd.oci.image.manifest.v1+json, "
-                "application/vnd.oci.image.index.v1+json"
-            ),
-        }
-        auth_header = auth_headers.get("Authorization")
-
-        manifest_url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
-        req = _registry_request(manifest_url, headers, auth_header)
-        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            manifest_data = json.loads(resp.read().decode("utf-8"))
-
-        # Resolve multi-architecture manifest list / OCI index
-        if "manifests" in manifest_data:
-            target_arch = get_platform_arch()
-            chosen_digest = None
-            for m in manifest_data["manifests"]:
-                plat = m.get("platform", {})
-                if (
-                    plat.get("os") == "linux"
-                    and plat.get("architecture") == target_arch
-                ):
-                    chosen_digest = m["digest"]
-                    break
-            if not chosen_digest:
-                chosen_digest = manifest_data["manifests"][0]["digest"]
-
-            sub_req = _registry_request(
-                f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",
-                headers,
-                auth_header,
-            )
-            with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
-                manifest_data = json.loads(resp.read().decode("utf-8"))
-        with open(os.path.join(image_dir, ".manifest.json"), "w") as f:
-            json.dump(manifest_data, f)
-
-        # extract image config so we can reference metadata bout the image later.
-        config_desc = manifest_data.get("config")
-        if config_desc and "digest" in config_desc:
-            config_digest = config_desc["digest"]
-            config_url = (
-                f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
-            )
-            config_req = _registry_request(config_url, headers, auth_header)
-            try:
-                with urllib.request.urlopen(
-                    config_req, timeout=timeout_seconds
-                ) as resp:
-                    config_bytes = resp.read()
-                    with open(
-                        os.path.join(image_dir, ".image_config.json"),
-                        "wb",
-                    ) as f_cfg:
-                        f_cfg.write(config_bytes)
-            except Exception as e:
-                logger.warning(f"Failed to fetch image config blob: {e}")
-
-        layers = manifest_data.get("layers", [])
-        if not layers:
-            raise SandboxCreationError(
-                f"No layers found in manifest for image '{image}'"
-            )
-
-        digests = [layer["digest"] for layer in layers]
-        base_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/"
         with contextlib.closing(
             _download_blobs(
                 digests, base_url, headers, auth_header, timeout_seconds, blob_dir
