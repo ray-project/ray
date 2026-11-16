@@ -283,8 +283,11 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         committed: Optional[Dict[str, ExecutionResources]] = None,
         # The part of ``committed`` held by draining actors.
         draining: Optional[Dict[str, ExecutionResources]] = None,
+        # An ``on_start`` (e.g. ``on_write_start``) registered but not yet run.
+        awaiting_on_start=False,
     ):
         self._fake_name = name
+        self.pending_on_start = awaiting_on_start
         self._name = name
         self._id = name
         self._user_set_ray_remote_args = dict(user_ray_remote_args or {})
@@ -372,6 +375,9 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
 
     def wait_for_min_actors(self):
         self.waited_for_min_actors = True
+
+    def awaiting_on_start(self):
+        return self.pending_on_start
 
     def process_draining_actors(self):
         return 0
@@ -462,7 +468,8 @@ class _TestSizer(OperatorSizer):
         return self._ticker.next_tick(self.reporter.view)
 
     def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
-        """One scale_how_many evaluation."""
+        """One scale_how_many evaluation, after the step's on_start releases."""
+        self._release_started_ops()
         ctx = self.next_tick(force=force)
         assert ctx is not None
         return self._per_op_how_many(ctx)
@@ -611,6 +618,30 @@ def _linear_pipeline(running=1):
 
 
 # --- bootstrap and validation --------------------------------------------------
+
+
+def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
+    # Creating an actor serializes the MapTransformer, so an actor created
+    # before ``on_write_start`` ships a datasink without the state it sets
+    # (Iceberg: table metadata is None). Such an op stays at zero actors,
+    # through initial sizing and the warm loop, until its first input runs it.
+    read = _FakeOp("read", _FakePool(min_size=1, max_size=10, cpu=1))
+    write = _write_op(
+        "write",
+        _FakePool(min_size=1, max_size=10, cpu=1),
+        inputs=[read],
+        awaiting_on_start=True,
+    )
+    sizer, _ = _bootstrapped(read, write)
+
+    sizer.initial_sizing_request()
+    assert len(read._pool.scaled) == 1
+    assert write._pool.scaled == []
+    assert not write.waited_for_min_actors
+    assert write not in _tick(sizer).request
+
+    write.pending_on_start = False
+    assert _tick(sizer).request[write].delta >= 1
 
 
 def test_warmup_latches_off_on_critical_op_first_output():

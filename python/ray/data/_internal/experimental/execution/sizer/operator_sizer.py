@@ -78,6 +78,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_AWAITING_ON_START_REASON = "awaiting first input to run on_start"
+
 
 class OperatorSizer:
     """Owns how many actors every operator in the topology has, and where.
@@ -137,6 +139,14 @@ class OperatorSizer:
         # One clock for all three, so a faked clock in a test moves guard
         # expiry, tick cadence and rule deadlines together.
         self._guard = OpScalingGuard(clock)
+        # Ops whose ``on_start`` (e.g. ``on_write_start``) hasn't run. Their
+        # first actor would serialize the MapTransformer without the state
+        # ``on_start`` sets, so they stay at zero actors until it runs.
+        self._awaiting_on_start: Set[ExperimentalActorPoolMapOperator] = {
+            op for op in self._profiles.actor_pool_ops if op.awaiting_on_start()
+        }
+        for op in self._awaiting_on_start:
+            self._guard.block(op, _AWAITING_ON_START_REASON)
         # Warm the non-blocking allocation cache, so the first ticks read a
         # real allocation instead of the cold-cache empty value (the client
         # submits an async RPC and serves the answer on a later call).
@@ -168,6 +178,8 @@ class OperatorSizer:
     def initial_sizing_request(self) -> None:
         """Bring every pool up to its initial (min) size, untargeted."""
         for op in ordered_actor_pool_ops(self._topology, self._profiles.actor_pool_ops):
+            if not self._guard.can_scale(op):
+                continue
             pool = op.actor_pool
             delta = pool.initial_size() - pool.serving_size()
             if delta > 0:
@@ -193,6 +205,7 @@ class OperatorSizer:
         handed in, so the bank and every phase of a tick agree on it.
         """
         t0 = time.perf_counter()
+        self._release_started_ops()
         self._observe()
         ctx = self._ticker.next_tick(cluster_view)
         t1 = time.perf_counter()
@@ -218,6 +231,13 @@ class OperatorSizer:
             apply_s=t5 - t4,
             e2e_s=t5 - t0,
         )
+
+    def _release_started_ops(self) -> None:
+        """Let ops whose ``on_start`` has now run (on their first input) scale."""
+        started = {op for op in self._awaiting_on_start if not op.awaiting_on_start()}
+        for op in started:
+            self._guard.release(op)
+        self._awaiting_on_start -= started
 
     def _observe(self) -> None:
         """Sample the signals the optimizer decides on."""
@@ -309,8 +329,9 @@ class OperatorSizer:
             if op.has_completed():
                 continue
             if not self._guard.can_scale(op):
-                # An optimizer rule has claimed this op (e.g. mid-transfer).
-                # Leave it alone so our pendings aren't mistaken for its claim.
+                # An optimizer rule has claimed this op (e.g. mid-transfer),
+                # or its ``on_start`` hasn't run yet. Leave it alone so our
+                # pendings aren't mistaken for a rule's claim.
                 continue
             want: Optional[ActorPoolScalingRequest] = None
             if pool.min_size() == pool.max_size():

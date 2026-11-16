@@ -337,6 +337,14 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         """
         self._map_task_kwargs_fns.append(map_task_kwargs_fn)
 
+    def awaiting_on_start(self) -> bool:
+        """Whether an ``on_start`` callback is registered but has not run yet.
+
+        Until it runs, the serialized ``MapTransformer`` would miss the state
+        it sets (e.g. Iceberg's table metadata from ``on_write_start``).
+        """
+        return self._on_start is not None and not self._on_start_called
+
     def _notify_first_input(self, bundled_input: RefBundle) -> None:
         """Invoke on_start callback with schema if registered and not yet invoked.
 
