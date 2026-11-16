@@ -7,15 +7,14 @@ import ray
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.random_shuffle import (
     RandomShufflePartitioner,
     make_random_shuffle_reduce_fn,
 )
-from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
-    DiskHashShuffleMapOp,
-)
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
+    DiskHashShuffleRegroupOp,
 )
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.context import DataContext, ShuffleStrategy
@@ -122,11 +121,12 @@ def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
     assert isinstance(dag, DiskHashShuffleReduceOp)
     assert dag.name == "DiskRandomShuffleReduce(partitions=2)"
     assert dag._reduce_ray_remote_args == {"resources": {"bar": 1}}
-    map_op = dag.input_dependencies[0]
-    assert isinstance(map_op, DiskHashShuffleMapOp)
+    regroup_op = dag.input_dependencies[0]
+    assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
+    map_op = regroup_op.input_dependencies[0]
+    assert isinstance(map_op, MapOperator)
     assert map_op.name == "DiskRandomShuffleMap(partitions=2)"
-    assert isinstance(map_op._partition_fn, RandomShufflePartitioner)
-    assert map_op._map_ray_remote_args == {"resources": {"bar": 1}}
+    assert map_op._get_dynamic_ray_remote_args()["resources"] == {"bar": 1}
     assert not dag._preserve_partition_order
 
     # Ordering must survive fusion of a downstream map into the reduce.

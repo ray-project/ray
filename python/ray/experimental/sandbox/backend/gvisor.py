@@ -61,6 +61,7 @@ from ray.experimental.sandbox.config import (
     INTERNET_EXCLUDED_IPV4,
     INTERNET_IPV6,
     SandboxConfig,
+    default_public_dns,
     normalize_cidr_allowlist,
     parse_cidr_allowlist_entry,
     parse_memory_bytes,
@@ -461,7 +462,7 @@ def _write_egress_ruleset(
             ``RAY_SANDBOX_EGRESS_DENY`` isn't an IP address or network) or
             the file can't be written. Nothing is written then.
     """
-    resolvers = list(dns) if dns else list(DEFAULT_PUBLIC_DNS)
+    resolvers = list(dns) if dns else list(default_public_dns())
     text = _render_egress_ruleset(cidrs, resolvers, denied=egress_guard.always_denied())
     path = os.path.join(root_dir, _EGRESS_RULES_FILE)
     fd, tmp_path = tempfile.mkstemp(dir=root_dir, prefix=_EGRESS_RULES_FILE + ".")
@@ -586,6 +587,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def __init__(self, image_manager: Optional[BaseImageManager] = None):
         super().__init__(image_manager=image_manager)
         self._sandbox_metadata: Dict[str, Dict] = {}
+        # The node's default resolvers (RAY_SANDBOX_DEFAULT_DNS) that a
+        # sandbox of this backend has reached.
+        self._reachable_node_dns: Set[Tuple[str, ...]] = set()
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
@@ -603,6 +607,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "Please install gVisor (runsc) on the node."
             )
         if config.network == "public":
+            if not config.dns:
+                # Before the image pull and the cgroup, not at the bundle.
+                try:
+                    default_public_dns()
+                except ValueError as err:
+                    raise SandboxCreationError(str(err)) from None
             missing = [
                 b
                 for b in ("slirp4netns", "nsenter", "setpriv", "nft")
@@ -701,25 +711,49 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return sandbox_id
 
     def _check_dns_reachable(self, config: SandboxConfig, sandbox_id: str) -> None:
-        """Delete a network="public" sandbox whose resolvers it can't reach."""
-        if config.network == "public" and config.dns:
-            # The filter drops a resolver it can't match, such as a
-            # Service IP that the cluster's network translates when a
-            # connection opens, and the sandbox has no IPv6 route. Either
-            # way every lookup would fail, so fail the create instead.
-            unreachable = self._unreachable_resolver(sandbox_id, config.dns)
-            if unreachable is not None:
-                self.delete_sandbox(sandbox_id)
-                server, reason = unreachable
-                raise SandboxCreationError(
-                    f"dns resolver {server} isn't reachable from a "
-                    f"network='public' sandbox: {reason}. The sandbox "
-                    "has no IPv6 route, and on Kubernetes clusters that "
-                    "translate Service IPs when a connection opens, such "
-                    "as Cilium clusters, its egress filter drops a "
-                    "Service IP such as the cluster DNS Service's. Use an "
-                    "IPv4 resolver that isn't a Service IP."
-                )
+        """Delete a network="public" sandbox whose resolvers it can't reach.
+
+        A sandbox's own ``dns`` is checked each time. The node's default is
+        the same for every sandbox, so it's checked until one reaches it.
+        The built-in public resolvers aren't checked.
+        """
+        if config.network != "public":
+            return
+        resolvers, source = config.dns, "dns"
+        if not resolvers:
+            node_default = default_public_dns()
+            if (
+                node_default == DEFAULT_PUBLIC_DNS
+                or node_default in self._reachable_node_dns
+            ):
+                return
+            resolvers, source = list(node_default), "RAY_SANDBOX_DEFAULT_DNS"
+        # The filter drops a resolver it can't match, such as a Service IP
+        # that the cluster's network translates when a connection opens, and
+        # the sandbox has no IPv6 route. Either way every lookup would fail,
+        # so fail the create instead.
+        if config.dns:
+            unreachable = self._unreachable_resolver(sandbox_id, resolvers)
+        else:
+            # Only a probe that ran shows that sandboxes reach the node's
+            # resolvers. One that couldn't run proves nothing, so the next
+            # sandbox checks again.
+            ran, unreachable = self._probe_resolvers(sandbox_id, resolvers)
+            if ran and unreachable is None:
+                self._reachable_node_dns.add(tuple(resolvers))
+        if unreachable is None:
+            return
+        self.delete_sandbox(sandbox_id)
+        server, reason = unreachable
+        raise SandboxCreationError(
+            f"{source} resolver {server} isn't reachable from a "
+            f"network='public' sandbox: {reason}. The sandbox "
+            "has no IPv6 route, and on Kubernetes clusters that "
+            "translate Service IPs when a connection opens, such "
+            "as Cilium clusters, its egress filter drops a "
+            "Service IP such as the cluster DNS Service's. Use an "
+            "IPv4 resolver that isn't a Service IP."
+        )
 
     def _start_sandbox(
         self,
@@ -1247,9 +1281,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     ) -> Optional[Tuple[str, str]]:
         """The first of ``resolvers`` that a public sandbox can't reach.
 
-        Runs ``_RESOLVER_PROBE`` in the sandbox's network namespace, opened
-        the way ``set_egress_allowlist`` opens it. A probe that can't run
-        proves nothing, so it counts as reachable.
+        A probe that can't run proves nothing, so it counts as reachable.
 
         Args:
             sandbox_id: Unique string identifier of the sandbox.
@@ -1258,10 +1290,28 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         Returns:
             The resolver and the reason the sandbox can't reach it, or None.
         """
+        return self._probe_resolvers(sandbox_id, resolvers)[1]
+
+    def _probe_resolvers(
+        self, sandbox_id: str, resolvers: List[str]
+    ) -> Tuple[bool, Optional[Tuple[str, str]]]:
+        """Check that a public sandbox can reach each of ``resolvers``.
+
+        Runs ``_RESOLVER_PROBE`` in the sandbox's network namespace, opened
+        the way ``set_egress_allowlist`` opens it.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            resolvers: Resolver addresses.
+
+        Returns:
+            Whether the probe ran, and the first resolver that the sandbox
+            can't reach with the reason, or None.
+        """
         meta = self._sandbox_metadata[sandbox_id]
         ns_fds = _open_holder_namespaces(meta["root_dir"], meta.get("netns_ids"))
         if ns_fds is None:
-            return None
+            return False, None
         user_fd, net_fd = ns_fds
         # The sandbox's user namespace maps only this process's uid. Root
         # doesn't need it to enter the network namespace, and inside it would
@@ -1293,20 +1343,21 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             logger.warning(
                 "Couldn't check the dns resolvers of sandbox %s: %s", sandbox_id, err
             )
-            return None
+            return False, None
         finally:
             for fd in ns_fds:
                 os.close(fd)
         if proc.returncode == _RESOLVER_UNREACHABLE:
             server, _, reason = proc.stdout.strip().partition("\t")
-            return server, reason
+            return True, (server, reason)
         if proc.returncode != 0:
             logger.warning(
                 "Couldn't check the dns resolvers of sandbox %s: %s",
                 sandbox_id,
                 proc.stderr.strip(),
             )
-        return None
+            return False, None
+        return True, None
 
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
         """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
