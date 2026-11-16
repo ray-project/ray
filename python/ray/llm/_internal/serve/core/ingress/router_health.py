@@ -12,6 +12,7 @@ from ray.serve._private.constants import (
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
 )
+from ray.serve.config import AutoscalingConfig
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -21,9 +22,7 @@ def _get_min_replicas_from_llm_config(config: "LLMConfig") -> Optional[int]:
     autoscaling_config = config.deployment_config.get("autoscaling_config")
     if autoscaling_config is None:
         return None
-    if isinstance(autoscaling_config, dict):
-        return autoscaling_config.get("min_replicas")
-    return getattr(autoscaling_config, "min_replicas", None)
+    return AutoscalingConfig.model_validate(autoscaling_config).min_replicas
 
 
 async def check_router_health(
