@@ -947,7 +947,9 @@ Compared with {func}`~ray.data.read_sql`, the default HS2 mode fetches results i
 (native-hive-file-reads)=
 #### Native Hive file reads
 
-Use `read_mode="direct"` to read supported Parquet or ORC Hive tables without partitions using native Ray Data readers. Both managed and external tables are eligible. The driver gets metadata through HiveServer2. Workers read storage directly. Queries, partitions, transactional tables, custom SerDes, and Iceberg/Delta/Hudi tables aren't supported.
+Use `read_mode="direct"` to read supported Parquet or ORC Hive tables with native Ray Data readers. Both managed and external tables are eligible. The driver gets metadata through HiveServer2. Workers read storage directly. Queries, transactional tables, custom SerDes, and Iceberg/Delta/Hudi tables aren't supported.
+
+For partitioned tables, the driver resolves every registered partition through HiveServer2, including multiple keys, escaped values, and custom locations. Only registered partition locations are listed; directories outside them are never read. Each partition's declared typed values reach the reading workers and appear as partition columns after the data columns. The default-partition marker stays a literal value for string keys and becomes a `NULL` for other key types, matching HiveServer2 `SELECT *` output. Duplicate or overlapping partition locations are rejected during metadata planning. Filters on partition columns currently apply after the read; partition pruning is a follow-up.
 
 Driver and workers need independent storage access. Pass a configured PyArrow `filesystem` when needed. See {func}`~ray.data.read_hive` for client requirements, column mapping, type compatibility, and schema-checking costs.
 

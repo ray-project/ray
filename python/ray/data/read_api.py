@@ -4674,10 +4674,16 @@ def read_hive(
             data scanning. HS2 mode sends it as SQL; direct mode uses Ray's
             global limit. This argument isn't supported for query reads.
         read_mode: ``"hs2"`` preserves the single-query HiveServer2 path.
-            ``"direct"`` uses native Parquet/ORC readers for nonpartitioned,
-            non-ACID tables. Queries, custom SerDes, Iceberg/Delta/Hudi, and
-            Parquet positional access are unsupported. The driver validates
-            Hive metadata before file planning. See Notes for compatibility.
+            ``"direct"`` uses native Parquet/ORC readers for non-ACID tables.
+            Registered partitions, including multiple keys and custom
+            locations, resolve through HiveServer2 on the driver; reading
+            workers receive the declared typed partition values and expose
+            the keys after the data columns. Filters on partition columns
+            currently apply as residual filters after the read; partition
+            pruning is a follow-up. Queries, custom SerDes, Iceberg/Delta/
+            Hudi, and Parquet positional access are unsupported. The driver
+            validates Hive metadata before file planning. See Notes for
+            compatibility.
         filesystem: The direct-mode filesystem, inferred from LOCATION if omitted.
             Driver and workers need storage credentials, network access and
             client dependencies; storage access doesn't inherit HS2 policies.
