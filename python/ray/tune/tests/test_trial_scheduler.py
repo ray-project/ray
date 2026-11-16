@@ -30,7 +30,11 @@ from ray.tune.schedulers import (
     PopulationBasedTraining,
     TrialScheduler,
 )
-from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _PBTTrialState, _explore
+from ray.tune.schedulers.pbt import (
+    PopulationBasedTrainingReplay,
+    _explore,
+    _PBTTrialState,
+)
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible,
 )
@@ -1773,7 +1777,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             ).readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
-
 
     def testLogConfigUsesPBTTrialStateNotTrialLastResult(self):
         """Policy rows must use PBT trial_state iterations (issue #67932).
