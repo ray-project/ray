@@ -202,11 +202,10 @@ class LineChunkableFileReader(FileReader):
             )
         else:
             fragment = self._read_chunk_fragment(fragment_to_read)
-            if fragment is None:
-                return
-        yield from self._iter_fragment_tables(
-            fragment=fragment, scanner_kwargs=scanner_kwargs
-        )
+        if fragment is not None:
+            yield from self._iter_fragment_tables(
+                fragment=fragment, scanner_kwargs=scanner_kwargs
+            )
 
     def _read_small_file(
         self, fragment_to_read: ReadUnitFragment
@@ -226,7 +225,7 @@ class LineChunkableFileReader(FileReader):
     def _read_chunk_fragment(
         self, fragment_to_read: ReadUnitFragment
     ) -> Optional[pds.Fragment]:
-        """Fetch a chunk unit's whole lines; ``None`` when no line starts in it."""
+        """Fetch a chunk unit's whole lines; ``None`` when it holds no rows."""
         unit = fragment_to_read.unit
         with fragment_to_read.fragment.open() as file:
             file_size = file.size()
@@ -269,7 +268,7 @@ class LineChunkableFileReader(FileReader):
 
     def _make_chunk_fragment(
         self, lines: memoryview, *, starts_at_file_start: bool, path: str
-    ) -> pds.Fragment:
+    ) -> Optional[pds.Fragment]:
         """Return a pyarrow fragment that parses ``lines`` as one block.
 
         Each format's subclass implements it with its format's read options,
@@ -292,6 +291,7 @@ class LineChunkableFileReader(FileReader):
             path: The file's path, for error messages.
 
         Returns:
-            A fragment over ``lines``.
+            A fragment over ``lines``, or ``None`` when they hold no rows, such
+            as a chunk of only blank lines, which a format may not parse.
         """
         raise NotImplementedError

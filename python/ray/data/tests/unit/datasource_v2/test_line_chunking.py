@@ -104,6 +104,8 @@ def test_one_block_size_is_the_buffer_length_within_pyarrow_bounds(size, expecte
 
 class _JsonlReader(LineChunkableFileReader):
     def _make_chunk_fragment(self, lines, *, starts_at_file_start, path):
+        if not bytes(lines).strip():
+            return None
         read_options = pajson.ReadOptions(block_size=one_block_size(lines))
         return pds.JsonFileFormat(read_options=read_options).make_fragment(
             pa.py_buffer(lines)
@@ -151,6 +153,17 @@ def test_reader_reads_every_row_exactly_once(tmp_path, chunk_size):
     _assert_sorted_column(tables, "id", pa.array(range(200), pa.int64()))
     if chunk_size < 10_000:
         assert len(manifest) > 1
+
+
+@pytest.mark.parametrize("trailing", ["\n", "\n\n\n\n", "\r\n"])
+def test_reader_skips_a_chunk_of_only_blank_lines(tmp_path, trailing):
+    path = tmp_path / "a.jsonl"
+    path.write_text('{"id": 1}\n{"id": 2}\n' + trailing)
+    manifest, tables = _read(
+        [str(path)], chunk_size=18, schema=pa.schema([("id", pa.int64())])
+    )
+    assert len(manifest) > 1
+    _assert_sorted_column(tables, "id", pa.array([1, 2], pa.int64()))
 
 
 def test_reader_infers_types_per_chunk_and_null_fills_missing_columns(tmp_path):
