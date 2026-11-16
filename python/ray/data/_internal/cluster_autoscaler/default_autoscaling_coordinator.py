@@ -486,6 +486,13 @@ class _AutoscalingCoordinatorActor:
         subcluster_selector: Optional[LabelSelector] = None,
         strategy: ResourceRequestStrategy = ResourceRequestStrategy.PACK,
     ) -> None:
+        """See ``AutoscalingCoordinator.request_resources``.
+
+        ``resources`` includes the bundles of a placement group registered with
+        ``register_placement_group``; registering only says where they are.
+        ``subcluster_selector`` limits the requester to the nodes of one
+        subcluster, for both its bundles and its leftover share
+        """
         share_leftover_resource_types = frozenset(request_remaining or ())
         logger.debug(
             "Received request from %s: %s "
@@ -599,10 +606,10 @@ class _AutoscalingCoordinatorActor:
     ) -> None:
         """Reserve the requester's bundles where its placement group put them.
 
-        Packing guesses where a requester's bundles land; a requester that
-        places them itself through a placement group can pass its id here so
-        other requesters are not handed capacity it already holds. The group
-        stays excluded until it is removed, even if the request expires.
+        Adds nothing to the request: the group's bundles must already be among
+        the trailing bundles of ``request_resources``, and those it covers are
+        reserved where Ray placed them instead of packed. The group stays out of
+        everyone else's capacity until removed, even if the request expires.
         ``None`` unregisters it.
         """
         with self._lock:
@@ -706,7 +713,16 @@ class _AutoscalingCoordinatorActor:
     def get_reserved_resources(
         self, requester_id: RequesterId, recompute: bool = False
     ) -> ReservedResources:
-        """Get the reserved resources for the requester.
+        """Everything assigned to the requester on each node: PG and non-PG.
+
+        Per node, the sum of three parts, not split by source:
+        1. Bundles of its registered placement group that Ray placed there.
+        2. Its other requested bundles that the coordinator put there.
+        3. Its share of what is left on the node (``request_remaining``).
+
+        Example: a request for 3 x {CPU: 1}, whose placement group holds two
+        of them on n2, returns {"n2": {"CPU": 2}} for the group plus the third
+        bundle wherever it fits, e.g. {"n1": {"CPU": 1}, "n2": {"CPU": 2}}.
 
         Args:
             requester_id: The requester to answer for.
