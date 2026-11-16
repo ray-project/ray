@@ -422,12 +422,13 @@ class FuseOperators(Rule):
 
         if isinstance(up_op, DiskHashShuffleReduceOp):
             fused_op = DiskHashShuffleReduceOp(
-                up_op.input_dependencies,
+                up_op.input_dependencies[0],
                 up_op.data_context,
                 num_partitions=up_op._num_partitions,
                 reduce_fn=up_op._reduce_fn,
                 disallow_block_splitting=up_op._disallow_block_splitting,
                 reduce_ray_remote_args=up_op._reduce_ray_remote_args,
+                preserve_partition_order=up_op._preserve_partition_order,
                 peak_memory_multiplier=up_op._peak_memory_multiplier,
                 should_emit_empty_partitions=up_op._emit_empty_partitions,
                 # The fused map (filter/flat_map/...) may change the row count.

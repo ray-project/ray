@@ -57,6 +57,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
     actor_resource_dict,
 )
+from ray.data._internal.execution.interfaces.task_context import RerunPolicy
 from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
@@ -116,6 +117,23 @@ def _pop_actor_task_remote_args(
 def get_map_worker_cls_name(op_name: str) -> str:
     """Return the dynamic class name used for actor pool map workers."""
     return f"MapWorker({op_name})"
+
+
+def _actor_task_rerun_policy(
+    task_args: Dict[str, Any], actor_args: Dict[str, Any]
+) -> RerunPolicy:
+    """The errors on which Ray reruns an actor task.
+
+    Ray reruns an actor task only while ``max_task_retries`` allows it. The task
+    option overrides the actor's, and Ray defaults it to 0, as it stays when
+    ``max_restarts=0``.
+    """
+    max_task_retries = task_args.get(
+        "max_task_retries", actor_args.get("max_task_retries", 0)
+    )
+    if max_task_retries == 0:
+        return RerunPolicy.from_retry_exceptions(False)
+    return RerunPolicy.from_retry_exceptions(task_args.get("retry_exceptions", False))
 
 
 class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
@@ -505,12 +523,15 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             input_blocks = [entry.ref for entry in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
 
+            actor_task_args = dict(self._ray_actor_task_remote_args)
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
                 target_max_block_size_override=self.target_max_block_size_override,
+                rerun_policy=_actor_task_rerun_policy(
+                    actor_task_args, self._ray_remote_args
+                ),
             )
-            actor_task_args = dict(self._ray_actor_task_remote_args)
             extra_labels = actor_task_args.pop("_labels", None) or {}
             gen = actor.submit.options(
                 num_returns="streaming",
