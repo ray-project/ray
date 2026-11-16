@@ -168,6 +168,20 @@ def _list_offsets(lengths: np.ndarray) -> Tuple["pa.Array", type]:
     return pa.array(offsets.astype(np.int32)), pa.ListArray
 
 
+def _narrow_ids(ids: np.ndarray, num_groups: int) -> np.ndarray:
+    """``ids`` in the smallest integer type that holds them. A stable sort on
+    16-bit or smaller integers is a radix sort, ~10x faster than on int64."""
+    for dtype in (np.uint8, np.uint16, np.uint32):
+        if num_groups <= np.iinfo(dtype).max:
+            return ids.astype(dtype, copy=False)
+    return ids
+
+
+def _group_order(ids: np.ndarray, num_groups: int) -> np.ndarray:
+    """Row indices ordered by group, keeping row order within a group."""
+    return np.argsort(_narrow_ids(ids, num_groups), kind="stable")
+
+
 def lists_by_group(
     columns: List[Union["pa.Array", "pa.ChunkedArray"]],
     ids: np.ndarray,
@@ -175,7 +189,7 @@ def lists_by_group(
 ) -> List["pa.Array"]:
     """Gathers each column's values into one list per group (in group order),
     keeping row order within a group. Works for any value type."""
-    order = pa.array(np.argsort(ids, kind="stable"))
+    order = pa.array(_group_order(ids, num_groups))
     offsets, list_cls = _list_offsets(np.bincount(ids, minlength=num_groups))
     return [
         list_cls.from_arrays(offsets, _as_array(column).take(order))
@@ -572,66 +586,41 @@ def _value_counts_spec(
     keep_value: Callable,
     finalize: Callable,
     supports_type: Callable[["pa.DataType"], bool],
-    count_nulls: bool = False,
 ) -> ArrowAggSpec:
-    """State shared by ValueCounter, TopKUnique and Quantile: per group, its
-    distinct values and their counts (Spark's ``mode``/``percentile`` state),
-    as two list columns, plus a null count when ``count_nulls``. Merging adds
-    up the counts of equal values.
+    """State shared by ValueCounter and TopKUnique: per group, its distinct
+    values and their counts (Spark's ``mode`` state), as two list columns.
+    Merging adds up the counts of equal values.
 
     ``prepare(column) -> column`` normalizes the values (e.g. NaN -> null);
     ``keep_value(column) -> bool mask`` picks the values to count.
     """
-    components = ("values", "counts") + (("nulls",) if count_nulls else ())
 
     def _prepped(agg_index: int) -> str:
         return f"__d{agg_index}_vc"
 
-    def _null_count(column, ids, num_groups) -> "pa.Array":
-        is_null = _as_array(pc.is_null(column)).to_numpy(zero_copy_only=False)
-        return pa.array(
-            np.bincount(ids, weights=is_null, minlength=num_groups).astype(np.int64)
-        )
-
     def _grouped_raw(table, groups, agg_index, source_col, options):
         column = table[_prepped(agg_index)]
         keep = keep_value(column)
-        states = _count_values_by_group(
+        return _count_values_by_group(
             column.filter(pa.array(keep)), groups.ids[keep], groups.count
         )
-        if count_nulls:
-            states.append(_null_count(column, groups.ids, groups.count))
-        return states
 
     def _grouped_merge(table, groups, component_cols, options):
         (values, counts), ids = flatten_lists(
             [table[component_cols[0]], table[component_cols[1]]], groups.ids
         )
-        states = _count_values_by_group(values, ids, groups.count, weights=counts)
-        if count_nulls:
-            nulls = _as_array(table[component_cols[2]]).to_numpy(zero_copy_only=False)
-            states.append(
-                pa.array(
-                    np.bincount(
-                        groups.ids, weights=nulls, minlength=groups.count
-                    ).astype(np.int64)
-                )
-            )
-        return states
+        return _count_values_by_group(values, ids, groups.count, weights=counts)
 
     def _raw_to_partial(block, agg_index, source_col, options):
         column = block[_prepped(agg_index)]
         keep = keep_value(column)
-        states = [
+        return [
             _singleton_lists(column, keep),
             _singleton_lists(pa.array(np.ones(len(column), dtype=np.int64)), keep),
         ]
-        if count_nulls:
-            states.append(pc.cast(pc.is_null(column), pa.int64()))
-        return states
 
     return ArrowAggSpec(
-        components=components,
+        components=("values", "counts"),
         prep=lambda agg_index, source_col, block: block.append_column(
             _prepped(agg_index), prepare(_decode(block[source_col]))
         ),
@@ -710,35 +699,30 @@ def topk_unique_spec(k: int, ignore_nulls: bool) -> ArrowAggSpec:
 
 def _finalize_quantile(q: float, ignore_nulls: bool) -> Callable:
     def _finalize(merged: "pa.Table", component_cols: Tuple[str, ...]):
-        values_col, counts_col, nulls_col = component_cols
+        values_col, nulls_col = component_cols
         num_groups = merged.num_rows
-        (values, counts), parents = flatten_lists(
-            [merged[values_col], merged[counts_col]], np.arange(num_groups)
-        )
+        (values,), parents = flatten_lists([merged[values_col]], np.arange(num_groups))
         values = pc.cast(values, pa.float64()).to_numpy(zero_copy_only=False)
-        counts = counts.to_numpy(zero_copy_only=False)
-        order = np.lexsort((values, parents))
-        values, counts, parents = values[order], counts[order], parents[order]
+        # Sort by value, then (stably) by group: sorted values per group.
+        # Much faster than np.lexsort.
+        by_value = np.argsort(values)
+        values = values[by_value[_group_order(parents[by_value], num_groups)]]
 
-        # The value at (0-based) rank r of group g is the first sorted entry
-        # whose running count passes base[g] + r.
-        group_sizes = np.bincount(parents, weights=counts, minlength=num_groups)
-        group_sizes = group_sizes.astype(np.int64)
-        base = np.concatenate([[0], np.cumsum(group_sizes)[:-1]])
-        running = np.cumsum(counts)
-        position = q * np.maximum(group_sizes - 1, 0)
+        # Group g's values sit at [start[g], start[g] + size[g]) after sorting.
+        sizes = np.bincount(parents, minlength=num_groups)
+        starts = np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int64)
+        position = q * np.maximum(sizes - 1, 0)
         lower, upper = np.floor(position), np.ceil(position)
         last = max(len(values) - 1, 0)
 
         def _value_at(rank: np.ndarray) -> np.ndarray:
             if not len(values):
                 return np.full(num_groups, np.nan)
-            index = np.searchsorted(running, base + rank.astype(np.int64), "right")
-            return values[np.minimum(index, last)]
+            return values[np.minimum(starts + rank.astype(np.int64), last)]
 
         low_value, high_value = _value_at(lower), _value_at(upper)
         result = low_value + (high_value - low_value) * (position - lower)
-        null = group_sizes == 0
+        null = sizes == 0
         if not ignore_nulls:
             nulls = _as_array(merged[nulls_col]).to_numpy(zero_copy_only=False)
             null |= nulls > 0
@@ -748,13 +732,53 @@ def _finalize_quantile(q: float, ignore_nulls: bool) -> Callable:
 
 
 def quantile_spec(q: float, ignore_nulls: bool) -> ArrowAggSpec:
-    """Exact quantile with linear interpolation, like ``pc.quantile``, from
-    each group's value counts. Null and NaN are skipped; a null makes the
-    result null unless nulls are ignored."""
-    return _value_counts_spec(
-        prepare=lambda column: column,
-        keep_value=_is_valid_number,
+    """Exact quantile with linear interpolation, like ``pc.quantile``. The
+    state is each group's list of values (DataFusion's ``percentile_cont``)
+    plus a null count; merging concatenates the lists. Null and NaN are
+    skipped; a null makes the result null unless nulls are ignored.
+
+    Value counts (Spark's ``percentile``) would compress repeated values, but
+    on mostly-distinct values (e.g. prices) hashing every (group, value) pair
+    costs far more than gathering lists."""
+
+    def _null_count(column, ids, num_groups) -> "pa.Array":
+        is_null = _as_array(pc.is_null(column)).to_numpy(zero_copy_only=False)
+        return pa.array(
+            np.bincount(ids, weights=is_null, minlength=num_groups).astype(np.int64)
+        )
+
+    def _grouped_raw(table, groups, agg_index, source_col, options):
+        column = _decode(table[source_col])
+        keep = _is_valid_number(column)
+        return lists_by_group(
+            [column.filter(pa.array(keep))], groups.ids[keep], groups.count
+        ) + [_null_count(column, groups.ids, groups.count)]
+
+    def _grouped_merge(table, groups, component_cols, options):
+        values_col, nulls_col = component_cols
+        (values,), ids = flatten_lists([table[values_col]], groups.ids)
+        nulls = _as_array(table[nulls_col]).to_numpy(zero_copy_only=False)
+        return lists_by_group([values], ids, groups.count) + [
+            pa.array(
+                np.bincount(groups.ids, weights=nulls, minlength=groups.count).astype(
+                    np.int64
+                )
+            )
+        ]
+
+    def _raw_to_partial(block, agg_index, source_col, options):
+        column = _decode(block[source_col])
+        return [
+            _singleton_lists(column, _is_valid_number(column)),
+            pc.cast(pc.is_null(column), pa.int64()),
+        ]
+
+    return ArrowAggSpec(
+        components=("values", "nulls"),
+        raw_agg_specs=_no_kernels,
+        grouped_raw=_grouped_raw,
+        grouped_merge=_grouped_merge,
         finalize=_finalize_quantile(q, ignore_nulls),
+        raw_to_partial=_raw_to_partial,
         supports_type=_is_numeric,
-        count_nulls=True,
     )
