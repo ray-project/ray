@@ -107,6 +107,7 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.schema import (
     APIType,
     ApplicationDetails,
+    ApplicationStatus,
     DeploymentDetails,
     HTTPOptionsSchema,
     LoggingConfig,
@@ -342,6 +343,9 @@ class ServeController:
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
+        self._last_broadcasted_app_statuses: Optional[
+            Dict[str, Tuple[ApplicationStatus, bool]]
+        ] = None
 
     def _log_throughput_opt_message(self) -> None:
         msg = "Throughput optimized Ray Serve enabled with the following configurations:\n"
@@ -717,6 +721,7 @@ class ServeController:
         try:
             asm_update_start_time = time.time()
             self.application_state_manager.update()
+            self.broadcast_app_statuses_if_changed()
             asm_duration = time.time() - asm_update_start_time
             self.asm_update_duration_gauge_s.set(asm_duration)
             self._health_metrics_tracker.record_asm_update_duration(asm_duration)
@@ -863,6 +868,50 @@ class ServeController:
         """
         await self.done_recovering_event.wait()
         return self.broadcast_target_groups_if_changed()
+
+    def broadcast_app_statuses_if_changed(self) -> None:
+        """Broadcast {app name: (status, serving)} to the proxies if it changed.
+
+        The proxies answer ``{route_prefix}/-/healthz`` from this, so a probe
+        does not go through an ingress replica or its max_ongoing_requests.
+        ``serving`` is True when the app is RUNNING, or DEPLOYING while its
+        ingress deployment still has running replicas (for example during an
+        in-place config update). It is computed here from live replica state
+        rather than remembered by each proxy, so a proxy that starts or
+        restarts mid-update gets the same answer as the others.
+        """
+        app_statuses = {
+            name: (info.status, self._app_is_serving(name, info.status))
+            for name, info in self.application_state_manager.list_app_statuses().items()
+        }
+        if self._last_broadcasted_app_statuses == app_statuses:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.APPLICATION_STATUSES: app_statuses}
+        )
+        self._last_broadcasted_app_statuses = app_statuses
+
+    def _app_is_serving(self, app_name: str, status: ApplicationStatus) -> bool:
+        if status == ApplicationStatus.RUNNING:
+            return True
+        if status != ApplicationStatus.DEPLOYING:
+            return False
+        ingress = self.application_state_manager.get_ingress_deployment_name(app_name)
+        ingress_id: Optional[DeploymentID] = None
+        if ingress is not None:
+            ingress_id = DeploymentID(name=ingress, app_name=app_name)
+        else:
+            # A declarative rebuild clears the target ingress until the build
+            # task finishes, while the old deployments keep serving. Fall back
+            # to the endpoint the proxies are still routing this app to.
+            for endpoint in self.endpoint_state.get_endpoints():
+                if endpoint.app_name == app_name:
+                    ingress_id = endpoint
+                    break
+        if ingress_id is None:
+            return False
+        return self.deployment_state_manager.get_num_running_replicas(ingress_id) > 0
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""
