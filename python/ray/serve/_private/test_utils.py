@@ -7,9 +7,20 @@ import random
 import socket
 import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from copy import copy, deepcopy
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 from unittest.mock import Mock
 
 import grpc
@@ -38,6 +49,7 @@ from ray.serve._private.common import (
     RequestProtocol,
     RunningReplicaInfo,
 )
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
@@ -63,7 +75,11 @@ from ray.serve._private.request_router import (
     RunningReplica,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve.context import _get_global_client
+from ray.serve.context import (
+    _get_global_client,
+    _set_internal_replica_context,
+    _set_request_context,
+)
 from ray.serve.gang import GangContext
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import ApplicationStatus, ReplicaRank, TargetGroup
@@ -90,6 +106,33 @@ def skip_if_haproxy(reason: str):
     return pytest.mark.skipif(
         RAY_SERVE_ENABLE_HA_PROXY, reason=f"HAProxy ingress: {reason}"
     )
+
+
+@contextmanager
+def serve_with_fake_replica_context() -> Generator[None, None, None]:
+    """Run Serve with the calling process standing in for a replica.
+
+    serve.start() -> replica context set -> body -> contexts cleared, shutdown
+    """
+    serve.start()
+    _set_internal_replica_context(
+        replica_id=ReplicaID(
+            "fake_replica_id",
+            deployment_id=DeploymentID(name="fake_deployment", app_name="fake_app"),
+        ),
+        # No deployment object: the caller only needs the replica's identity.
+        servable_object=None,  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+        _deployment_config=DeploymentConfig(),
+        rank=ReplicaRank(rank=0, node_rank=0, local_rank=0),
+        world_size=1,
+    )
+    try:
+        yield
+    finally:
+        serve.shutdown()
+        ray.serve.context._INTERNAL_REPLICA_CONTEXT = None  # type: ignore[assignment]  # pyrefly: ignore[bad-assignment]
+        _set_request_context()
+        ray.shutdown()
 
 
 # Global variable that is fetched during controller recovery that

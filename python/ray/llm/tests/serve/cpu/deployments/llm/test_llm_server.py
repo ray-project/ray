@@ -15,7 +15,6 @@ from vllm.entrypoints.common.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.v1.engine.exceptions import EngineDeadError
 
-import ray
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
@@ -34,13 +33,11 @@ from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     MockVLLMEngine,
 )
 from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
-from ray.serve._private.common import DeploymentID, ReplicaID
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.test_utils import serve_with_fake_replica_context
 from ray.serve.context import (
     _RequestContext,
     _serve_request_context,
     _serve_work_finished,
-    _set_internal_replica_context,
 )
 
 
@@ -86,25 +83,10 @@ def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms=0):
 def serve_replica_context():
     """Serve running, with the test process standing in for a replica.
 
-    serve.start() -> replica context set -> test -> context cleared, shutdown
+    serve.start() -> replica context set -> test -> contexts cleared, shutdown
     """
-    serve.start()
-    _set_internal_replica_context(
-        replica_id=ReplicaID(
-            "fake_replica_id",
-            deployment_id=DeploymentID(name="fake_deployment", app_name="fake_app"),
-        ),
-        servable_object=None,
-        _deployment_config=DeploymentConfig(),
-        rank=0,
-        world_size=1,
-    )
-    try:
+    with serve_with_fake_replica_context():
         yield
-    finally:
-        ray.serve.context._INTERNAL_REPLICA_CONTEXT = None
-        serve.shutdown()
-        ray.shutdown()
 
 
 async def resolve_lora_in_request(

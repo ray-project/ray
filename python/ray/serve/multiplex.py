@@ -281,6 +281,9 @@ class _ModelMultiplexWrapper:
         """
         if model_id not in self.models:
             return False
+        if not self._room_waiters:
+            # Nothing is draining.
+            return True
         draining = {waiter.draining_model for waiter in self._room_waiters}
         return (
             model_id not in draining

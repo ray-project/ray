@@ -10,10 +10,9 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private.common import DeploymentID, ReplicaID
-from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
+from ray.serve._private.test_utils import serve_with_fake_replica_context
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper, _unpinned_model_lookups
@@ -27,23 +26,12 @@ def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
 
 @pytest.fixture()
 def start_serve_with_context():
-    serve.start()
-    ray.serve.context._set_internal_replica_context(
-        replica_id=ReplicaID(
-            "fake_replica_id",
-            deployment_id=DeploymentID(name="fake_deployment", app_name="fake_app"),
-        ),
-        servable_object=None,
-        _deployment_config=DeploymentConfig(),
-        rank=0,
-        world_size=1,
-    )
-    try:
+    """Serve running, with the test process standing in for a replica.
+
+    serve.start() -> replica context set -> test -> contexts cleared, shutdown
+    """
+    with serve_with_fake_replica_context():
         yield
-    finally:
-        serve.shutdown()
-        ray.serve.context._set_request_context()
-        ray.shutdown()
 
 
 @pytest.mark.asyncio
@@ -68,7 +56,7 @@ class TestMultiplexWrapper:
         multiplexer._push_model_ids_info()
         assert multiplexer._push_multiplexed_replica_info is False
 
-    async def test_collect_model_ids(self):
+    async def test_collect_model_ids(self, start_serve_with_context):
         multiplexer = _ModelMultiplexWrapper(None, None, max_num_models_per_replica=1)
         multiplexer.models = {"1": "1", "2": "2"}
         assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == ["1", "2"]
@@ -156,7 +144,9 @@ class TestMultiplexWrapper:
         with pytest.raises(Exception, match="1 is dead"):
             await multiplexer.load_model("2")
 
-    async def test_push_model_ids_info_after_unload_model(self):
+    async def test_push_model_ids_info_after_unload_model(
+        self, start_serve_with_context
+    ):
         """
         Push the model ids info right after the model is unloaded, even though
         new model is not loaded yet.
@@ -498,6 +488,27 @@ class TestMultiplexPinning:
         await asyncio.wait_for(lookup_c, timeout=5)
         assert not model_a.unloaded
         assert list(multiplexer.models) == ["a", "c"]
+
+    async def test_draining_model_goes_to_request_already_using_it(
+        self, start_serve_with_context
+    ):
+        """Request R pins "a" and S pins "b"; a miss on "c" waits and drains "a".
+        R looks "a" up again and gets it at once, though S could still free a
+        slot."""
+        multiplexer = await _make_multiplexer(cap=2)
+        request_r, request_s, request_c = _FakeRequest(), _FakeRequest(), _FakeRequest()
+        model_a = await request_r.get(multiplexer, "a")
+        await request_s.get(multiplexer, "b")
+        lookup_c = request_c.start_get(multiplexer, "c")
+        await asyncio.sleep(SETTLE_S)
+
+        assert await asyncio.wait_for(request_r.get(multiplexer, "a"), 5) is model_a
+        assert not lookup_c.done()
+
+        await request_r.finish()
+        await request_s.finish()
+        await asyncio.wait_for(lookup_c, timeout=5)
+        await request_c.finish()
 
     async def test_draining_model_is_kept_for_the_miss_when_unpinned(
         self, start_serve_with_context

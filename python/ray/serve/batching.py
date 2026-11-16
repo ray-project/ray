@@ -506,6 +506,7 @@ class _BatchQueue:
         # When asyncio task is created, the task will inherit the request context from the current context.
         # So we unset the request context so the current context is not inherited by the task, _process_batch.
         serve.context._unset_request_context()
+        serve.context._serve_work_finished.set(None)
         while not self._loop.is_closed():
             # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
             # Take the permit before forming the batch, so requests that arrive
