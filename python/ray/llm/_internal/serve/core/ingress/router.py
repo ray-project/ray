@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
 from ray.llm._internal.common.utils.lora_utils import get_base_model_id
+from ray.llm._internal.serve.core.ingress.router_health import check_router_health
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
@@ -129,7 +130,7 @@ class LLMRouter:
 
     Health:
         ``GET /health`` is exposed as a human-operator convenience.
-        Serve uses ``check_health()`` for replica readiness, not HTTP.
+        Serve's ``check_health()`` exercises routing for live model replicas.
     """
 
     # Warn once per replica when no routing key is derived. Class-level default
@@ -137,6 +138,7 @@ class LLMRouter:
     _warned_no_routing_key: bool = False
     _warned_no_token_endpoint: bool = False
     _base_model_id: Optional[str] = None
+    _health_check_model_id: Optional[str] = None
 
     async def __init__(
         self,
@@ -146,6 +148,9 @@ class LLMRouter:
     ):
         self._handle: DeploymentHandle = server
         self._base_model_id = base_model_id
+        self._health_check_model_id = (
+            llm_config.model_id if llm_config is not None else base_model_id
+        )
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
@@ -190,6 +195,9 @@ class LLMRouter:
 
         self._token_sender = token_channel.TokenSender()
         self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
+
+    async def check_health(self):
+        await check_router_health(self._handle, self.route, self._health_check_model_id)
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):

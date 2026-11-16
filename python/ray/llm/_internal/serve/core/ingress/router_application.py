@@ -32,6 +32,7 @@ from ray.llm._internal.serve.core.ingress.router import (
     _BODY_TRUNCATED_HEADER,
     _get_routing_payload_from_body,
 )
+from ray.llm._internal.serve.core.ingress.router_health import check_router_health
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
@@ -182,7 +183,17 @@ class RouterApplication:
         }
 
     async def check_health(self):
-        pass
+        handles = {
+            model_id: task.result()
+            for model_id, task in self._handles.items()
+            if task.done()
+        }
+        await asyncio.gather(
+            *(
+                check_router_health(handle, self.route, model_id)
+                for model_id, handle in handles.items()
+            )
+        )
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):

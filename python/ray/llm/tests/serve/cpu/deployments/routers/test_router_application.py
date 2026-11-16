@@ -66,6 +66,11 @@ class FakeHandle:
         # Raised by the pick-only (`_reserve=False`) path only.
         self.pick_only_error: Optional[Exception] = None
         self.delay_s = 0.0
+        self._router = SimpleNamespace(
+            _asyncio_router=SimpleNamespace(
+                _request_router=SimpleNamespace(curr_replicas={self.replica_id: self})
+            )
+        )
 
     def _init(self):
         self.initialized = True
@@ -176,6 +181,65 @@ async def _route(router, method, path, body=b"", headers=None, form=None):
 async def _chat(router, body, headers=None):
     raw = body if isinstance(body, bytes) else json.dumps(body).encode()
     return await _route(router, "POST", "/v1/chat/completions", raw, headers)
+
+
+class TestHealth:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("live", [False, True])
+    @pytest.mark.parametrize(
+        "error", [None, ValueError("broken routing"), RuntimeError("broken routing")]
+    )
+    async def test_probes_only_live_models(self, live, error):
+        router, _, patcher = _new_router()
+        try:
+            handle = await router._handles["model-a"]
+            other_handle = await router._handles["org/model-b"]
+            handle.error = error
+            if not live:
+                handle._router._asyncio_router._request_router.curr_replicas = {}
+
+            if live and error is not None:
+                with pytest.raises(RuntimeError, match="model-a"):
+                    await router.check_health()
+            else:
+                await router.check_health()
+
+            assert bool(handle.calls) == live
+            assert other_handle.calls[0]["args"][0].model == "org/model-b"
+            assert other_handle.calls[0]["args"][0].prompt == "health check"
+        finally:
+            _cancel_handle_tasks(router)
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_skips_unresolved_applications(self, monkeypatch):
+        monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
+        router, _, patcher = _new_router(missing_apps={"llm-model-a"})
+        try:
+            live_handle = await router._handles["org/model-b"]
+            await router.check_health()
+            assert live_handle.calls
+            assert not router._handles["model-a"].done()
+        finally:
+            _cancel_handle_tasks(router)
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_probes_model_after_scale_up(self):
+        router, _, patcher = _new_router()
+        try:
+            handle = await router._handles["model-a"]
+            request_router = handle._router._asyncio_router._request_router
+            request_router.curr_replicas = {}
+            await router.check_health()
+            assert not handle.calls
+
+            request_router.curr_replicas = {handle.replica_id: handle}
+            await router.check_health()
+            assert handle.calls
+        finally:
+            _cancel_handle_tasks(router)
+            patcher.stop()
 
 
 class TestModels:

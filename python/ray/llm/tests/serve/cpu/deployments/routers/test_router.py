@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -15,7 +16,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
-from ray.llm._internal.serve.core.ingress import router as router_module
+from ray.llm._internal.serve.core.ingress import router as router_module, router_health
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
@@ -138,6 +139,95 @@ def create_oai_client(llm_config: LLMConfig):
 
 
 class TestDirectStreamingLLMRouter:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("live", [False, True])
+    @pytest.mark.parametrize(
+        "error", [None, ValueError("broken routing"), RuntimeError("broken routing")]
+    )
+    async def test_health_checks_live_routing(self, live, error):
+        router = _new_direct_router()
+        router._health_check_model_id = "test-model"
+        router._handle._router._asyncio_router._request_router.curr_replicas = (
+            {"replica": object()} if live else {}
+        )
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica", None),
+            side_effect=error,
+        )
+
+        if live and error is not None:
+            with pytest.raises(HTTPException):
+                await router.check_health()
+        else:
+            await router.check_health()
+
+        if live:
+            assert (
+                router._pick_replica.await_args.kwargs["routing_payload"].prompt
+                == "health check"
+            )
+            assert (
+                router._pick_replica.await_args.kwargs["routing_payload"].model
+                == "test-model"
+            )
+        else:
+            router._pick_replica.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_health_routing_timeout(self, monkeypatch):
+        monkeypatch.setattr(
+            router_health, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 0.01
+        )
+        router = _new_direct_router()
+
+        async def stuck(**kwargs):
+            await asyncio.Event().wait()
+
+        router._pick_replica = AsyncMock(side_effect=stuck)
+        with pytest.raises(asyncio.TimeoutError):
+            await router.check_health()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("initialized", [False, True])
+    async def test_health_before_replicas_are_known(self, initialized):
+        router = _new_direct_router()
+        router._handle.is_initialized = initialized
+        router._handle._router._asyncio_router._request_router = None
+        router._pick_replica = AsyncMock()
+
+        await router.check_health()
+
+        router._pick_replica.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_health_exercises_tokenization(self):
+        router = _new_direct_router()
+        router._tokenizer = SimpleNamespace(tokenize=AsyncMock(return_value=[]))
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
+        )
+
+        await router.check_health()
+
+        assert router._tokenizer.tokenize.await_args.kwargs == {
+            "request_path": "/v1/completions"
+        }
+        assert router._pick_replica.await_args.kwargs["request_token_ids"] == []
+
+    @pytest.mark.asyncio
+    async def test_health_tolerates_scale_down_during_probe(self):
+        router = _new_direct_router()
+
+        async def scale_down(**kwargs):
+            router._handle._router._asyncio_router._request_router.curr_replicas = {}
+            raise RuntimeError("model scaled down")
+
+        router._pick_replica = AsyncMock(side_effect=scale_down)
+
+        await router.check_health()
+
+        router._pick_replica.assert_awaited_once()
+
     @pytest.mark.asyncio
     async def test_route_parses_body_into_routing_payload(self):
         """A parseable body becomes a routing payload passed positionally."""
