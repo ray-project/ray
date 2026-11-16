@@ -85,6 +85,14 @@ def test_reads_every_row_of_a_split_file_once(tmp_path, small_chunks, lines):
     assert sorted(table.column("id").to_pylist()) == list(range(300))
 
 
+@pytest.mark.parametrize("blank_lines", ["\n" * 200, "\r\n" * 200, "\n" * 3])
+def test_skips_chunks_of_only_blank_lines(tmp_path, small_chunks, blank_lines):
+    path = tmp_path / "a.jsonl"
+    path.write_text("".join(f'{{"id": {i}}}\n' for i in range(20)) + blank_lines)
+    table = _read_all(JsonDatasourceV2([str(path)], lines=True), [str(path)])
+    assert sorted(table.column("id").to_pylist()) == list(range(20))
+
+
 @pytest.mark.parametrize("chunk_bytes", ["2000000", "134217728"])
 def test_keeps_a_key_first_seen_after_the_first_block(
     tmp_path, monkeypatch, chunk_bytes

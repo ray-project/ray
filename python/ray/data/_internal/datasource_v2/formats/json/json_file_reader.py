@@ -158,7 +158,7 @@ class JsonFileReader(LineChunkableFileReader):
     @override
     def _make_chunk_fragment(
         self, lines: memoryview, *, starts_at_file_start: bool, path: str
-    ) -> pds.Fragment:
+    ) -> Optional[pds.Fragment]:
         # One block parses the chunk into one record batch, hence one
         # fragment, and no line can straddle two blocks.
         read_options = copy.deepcopy(self._read_options)
@@ -173,4 +173,5 @@ class JsonFileReader(LineChunkableFileReader):
         assert table is not None
         # A no-op unless the chunk exceeded the largest ``block_size``.
         table = table.combine_chunks()
-        return next(iter(pds.dataset(table).get_fragments()))
+        # A chunk of only blank lines parses to no columns, hence no fragment.
+        return next(iter(pds.dataset(table).get_fragments()), None)
