@@ -71,6 +71,30 @@ here:
   [`doc/source/ray-contribute/development.md`](doc/source/ray-contribute/development.md)
 - General contribution process: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
+### Changes to public API behavior
+
+A change to a `@PublicAPI` or `@DeveloperAPI` symbol under `python/ray/` is
+not complete until its documentation matches the new behavior. In the same PR:
+
+- **Docstrings.** Update the docstring of every symbol whose signature,
+  defaults, return value, raised exceptions or behavior changed. Each
+  parameter needs an entry in the `Args:` block; CI's `api_param_coverage`
+  check fails on new parameters without one. Keep `>>>` examples runnable and
+  their output accurate.
+- **API reference.** Add a new public symbol to its library's API reference
+  page under `doc/source/<library>/api/`, and remove a deleted one. CI's
+  `doc: check API doc consistency` step fails when the documented and
+  annotated API surfaces disagree.
+- **User guides and examples.** Search `doc/source/` for the symbol and update
+  any prose, code snippet or example that now describes the old behavior or
+  uses a removed or renamed argument. Follow
+  `doc/source/ray-contribute/writing-style.md`, as described in `doc/AGENTS.md`.
+- **Deprecations.** When deprecating an API, say so in its docstring, name the
+  replacement, and update docs examples to use the replacement.
+
+Internal refactors that leave user-visible behavior unchanged need no docs
+update.
+
 ### Changes that move docs.ray.io URLs
 
 Renaming, moving, or removing a public API under `python/ray/` changes or
