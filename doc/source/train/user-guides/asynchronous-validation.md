@@ -238,6 +238,10 @@ To keep the best checkpoints by a metric that your `validation_fn` returns, set 
 ```python
 from ray.train import CheckpointConfig, RunConfig
 
+def validation_fn(checkpoint) -> dict:
+    ...
+    return {"val_loss": val_loss}
+
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
         num_to_keep=2,
@@ -251,9 +255,9 @@ run_config = RunConfig(
 A checkpoint doesn't have the metric until its validation finishes. Ray Train handles checkpoints without the metric as follows:
 
 * **Validation in progress**: The checkpoint ranks below every checkpoint that has the metric, but Ray Train doesn't delete it. When the validation finishes, Ray Train ranks the checkpoint by the returned metric and deletes it if it isn't among the best `num_to_keep` or the latest checkpoint.
-* **Validation failed or timed out**: The checkpoint never gets the metric, so it keeps the lowest rank. Ray Train deletes it once it's no longer the latest checkpoint.
+* **Validation failed or timed out**: The checkpoint never gets the metric, so it keeps the lowest rank. Once it's no longer the latest checkpoint, it's the first checkpoint that Ray Train deletes when more than `num_to_keep` checkpoints exist.
 
-While validations are in progress, the number of checkpoints on disk can exceed `num_to_keep`. It includes the best `num_to_keep` checkpoints, the latest checkpoint, and every checkpoint that's waiting for validation. If training reports checkpoints faster than validation completes, checkpoints that wait for validation accumulate on disk.
+While validations are in progress, the number of checkpoints on disk can exceed `num_to_keep`. It includes the best `num_to_keep` checkpoints, the latest checkpoint, and every checkpoint that's waiting for validation. Be aware that if training reports checkpoints faster than validation completes, checkpoints that wait for validation accumulate on disk.
 
 ## Experiment tracking
 

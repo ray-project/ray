@@ -69,7 +69,7 @@ class _CheckpointManager:
         # even if it's not in the top K checkpoints, based on score.
         self._latest_checkpoint_result: Optional[_TrainingResult] = None
 
-        # Checkpoints with missing `checkpoint_score_attribute` to allowing only
+        # Checkpoints with missing `checkpoint_score_attribute`, to allow only
         # reporting this issue once.
         self._checkpoints_missing_score_logged: Set[Checkpoint] = set()
 
@@ -204,8 +204,9 @@ class _CheckpointManager:
         if checkpoint in self._checkpoints_missing_score_logged:
             return
         self._checkpoints_missing_score_logged.add(checkpoint)
+        checkpoint_path = checkpoint.path if checkpoint else None
         logger.error(
-            f"Checkpoint {checkpoint.path} metrics are missing the checkpoint_score_attribute "
+            f"Checkpoint {checkpoint_path} metrics are missing the checkpoint_score_attribute "
             f"key ({self._checkpoint_config.checkpoint_score_attribute}) to score by. "
             f"Its metric keys are: {checkpoint_metric_keys}"
         )

@@ -428,8 +428,7 @@ class CheckpointConfig:
             will not be deleted. Must be >= 1.
             The latest checkpoint is never deleted, because training resumes
             from it after a failure, so up to ``num_to_keep + 1`` checkpoints
-            can be on disk. In Ray Train, a checkpoint whose validation hasn't
-            finished is also kept until the validation completes.
+            can be on disk.
         checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept
             on disk when there are greater than ``num_to_keep`` checkpoints.
