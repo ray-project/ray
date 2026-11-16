@@ -5,6 +5,11 @@ version, not whatever a directory walk finds: files of removed versions,
 uncommitted writes and the ``_delta_log`` directory share the table root. So the
 indexers here read the file list from the log, at the version the driver pinned,
 and hand it to the regular listing machinery.
+
+Each file's partition values come from the log too, not from its path: Delta
+doesn't require partition directories, and it stores a null value and the
+string ``__HIVE_DEFAULT_PARTITION__`` in the same directory. The listing
+carries them to the reader in a manifest column (``PARTITION_VALUES_COLUMN``).
 """
 
 from __future__ import annotations
@@ -15,12 +20,12 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
-    AbstractSet,
     Any,
     Dict,
     Iterable,
     Iterator,
     List,
+    Mapping,
     Optional,
     Sequence,
 )
@@ -31,27 +36,24 @@ from typing_extensions import override
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    _evaluate_path_predicate,
+)
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     FooterFileIndexer,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
-from ray.data.datasource.partitioning import (
-    HIVE_DEFAULT_PARTITION,
-    Partitioning,
-    PartitionStyle,
-    PathPartitionParser,
-)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 if TYPE_CHECKING:
     from deltalake import DeltaTable
     from pyarrow.fs import FileSystem
 
-    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-        FileManifest,
-    )
-    from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
+    from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,14 @@ logger = logging.getLogger(__name__)
 ADD_ACTION_PATH_COLUMN = "path"
 ADD_ACTION_SIZE_COLUMN = "size_bytes"
 ADD_ACTION_PARTITION_PREFIX = "partition."
+
+# The manifest column that carries each file's partition values from the log
+# to the reader: a struct with one string field per partition column.
+PARTITION_VALUES_COLUMN = "__delta_partition_values"
+
+# One file's partition values, by column, as ``partition_values_as_strings``
+# writes them. ``None`` is a null value.
+PartitionValues = Dict[str, Optional[str]]
 
 
 @dataclass(frozen=True)
@@ -132,10 +142,10 @@ def _has_scheme(path: str) -> bool:
 
 
 def make_partitioning(partition_columns: Sequence[str]) -> Optional[Partitioning]:
-    """Partitioning that parses a Delta table's partition directories.
+    """Partitioning that names a Delta table's partition columns.
 
-    Delta writes Hive-style directories in ``partitionColumns`` order, with
-    ``__HIVE_DEFAULT_PARTITION__`` for a null value.
+    The reader uses it to tell partition columns from data columns. Their
+    values come from the log (``PARTITION_VALUES_COLUMN``), not from the path.
 
     Args:
         partition_columns: The table's partition columns, in log order.
@@ -145,66 +155,101 @@ def make_partitioning(partition_columns: Sequence[str]) -> Optional[Partitioning
     """
     if not partition_columns:
         return None
-    return Partitioning(
-        PartitionStyle.HIVE,
-        field_names=list(partition_columns),
-        null_fallback=HIVE_DEFAULT_PARTITION,
+    return Partitioning(PartitionStyle.HIVE, field_names=list(partition_columns))
+
+
+def is_supported_partition_type(data_type: pa.DataType) -> bool:
+    """Whether ``partition_values_as_strings`` round-trips ``data_type``.
+
+    The reader casts each value back from the string, so only types whose
+    Arrow string form casts back exactly are supported.
+    """
+    return (
+        pa.types.is_integer(data_type)
+        or pa.types.is_floating(data_type)
+        or pa.types.is_decimal(data_type)
+        or pa.types.is_string(data_type)
+        or pa.types.is_large_string(data_type)
+        or pa.types.is_boolean(data_type)
+        or pa.types.is_date(data_type)
+        or pa.types.is_timestamp(data_type)
     )
 
 
-def _check_partition_directories(
-    parser: PathPartitionParser, path: str, partition_columns: AbstractSet[str]
-) -> None:
-    """Fail unless ``path`` sits under Hive directories for every partition column.
+def partition_values_as_strings(
+    add_actions: pa.Table, partition_schema: pa.Schema
+) -> List[PartitionValues]:
+    """Each file's partition values from the log, in the reader's string form.
 
-    The reader takes partition values from the path. The Delta protocol doesn't
-    require partition directories, so a file written without them would
-    otherwise read back with its partition columns missing.
+    The reader casts a partition value from a string to the column's type, as
+    it does for a value parsed from a path. ``deltalake`` parses the log's
+    values by type, so cast them to the table's types and back to strings with
+    Arrow, whose cast from that string form returns the value exactly
+    (``'true'``, ``'2024-01-02 03:04:05.000006Z'``, ...).
+
+    Args:
+        add_actions: The ``add`` actions, one row per data file.
+        partition_schema: The table's partition columns and their types.
+
+    Returns:
+        One mapping per ``add`` action, in the same order.
     """
-    try:
-        found = set(parser(path))
-    except ValueError:
-        found = set()
-    if found != partition_columns:
-        raise ValueError(
-            f"Delta data file {path!r} isn't under Hive-style directories for the "
-            f"table's partition columns {sorted(partition_columns)}. The DataSourceV2 "
-            "reader for `read_delta` reads partition values from those "
-            "directories. Set `DataContext.use_delta_datasource_v2 = False` to "
-            "read this table with the V1 reader."
-        )
+    columns = {}
+    for field in partition_schema:
+        logged = add_actions[ADD_ACTION_PARTITION_PREFIX + field.name]
+        columns[field.name] = logged.cast(field.type).cast(pa.string()).to_pylist()
+    return [
+        {name: values[i] for name, values in columns.items()}
+        for i in range(add_actions.num_rows)
+    ]
 
 
-def _check_no_literal_null_partition_values(
-    add_actions: pa.Table, partition_columns: Sequence[str]
-) -> None:
-    """Fail if a partition value is the string Delta writes for a null value.
+def partition_values_type(partition_schema: pa.Schema) -> pa.StructType:
+    """Type of ``PARTITION_VALUES_COLUMN``: one string per partition column.
 
-    Delta stores a null partition value in a directory named
-    ``__HIVE_DEFAULT_PARTITION__``. A file whose value is that exact string goes
-    into the same directory, so only the log tells the two apart. The reader
-    takes partition values from the directories, so it would read that string
-    back as null.
+    Every manifest gets the same type, so the bin packer can merge rows from
+    different manifests.
     """
-    for column in partition_columns:
-        name = ADD_ACTION_PARTITION_PREFIX + column
-        if name not in add_actions.column_names:
-            continue
-        values = add_actions[name]
-        if not (
-            pa.types.is_string(values.type) or pa.types.is_large_string(values.type)
-        ):
-            continue
-        if values.index(HIVE_DEFAULT_PARTITION).as_py() != -1:
-            raise ValueError(
-                f"The Delta table's partition column {column!r} holds the string "
-                f"{HIVE_DEFAULT_PARTITION!r}. Delta stores null partition values "
-                "in a directory with that name, so the DataSourceV2 reader for "
-                "`read_delta`, which reads partition values from the directory "
-                "names, can't tell the string from null. Set "
-                "`DataContext.use_delta_datasource_v2 = False` to read this table "
-                "with the V1 reader."
+    return pa.struct([pa.field(field.name, pa.string()) for field in partition_schema])
+
+
+class DeltaPartitionPruner(FilePruner):
+    """Leaves out files whose partition values in the log fail a predicate.
+
+    Its ``should_include`` keeps every file: a path doesn't carry the values.
+    The Delta indexers call ``should_include_values`` instead.
+    """
+
+    def __init__(self, predicate: "Expr", schema: Optional[pa.Schema]):
+        """Create the pruner.
+
+        Args:
+            predicate: The pushed-down predicate on partition columns.
+            schema: The table schema, which gives the partition columns' types.
+        """
+        self.predicate = predicate
+        self.schema = schema
+
+    def should_include(self, path: str) -> bool:
+        return True
+
+    def should_include_values(self, values: Mapping[str, Any], path: str) -> bool:
+        """Whether a file with these partition values may hold matching rows.
+
+        Args:
+            values: The file's partition values, as ``partition_values_as_strings``
+                gives them.
+            path: The file's path, for error messages.
+
+        Returns:
+            ``False`` only if the predicate is false for these values.
+        """
+        return (
+            _evaluate_path_predicate(
+                self.predicate, dict(values), self.schema, path=path
             )
+            is not False
+        )
 
 
 class _DeltaLogListing:
@@ -216,15 +261,16 @@ class _DeltaLogListing:
 
     _snapshot: DeltaTableSnapshot
     _filesystem: "FileSystem"
-    _partition_columns: tuple
+    _partition_schema: pa.Schema
     _shuffle_config: Optional["FileShuffleConfig"]
+    _partition_values_by_path: Dict[str, PartitionValues]
 
     def _init_delta_listing(
         self,
         *,
         snapshot: DeltaTableSnapshot,
         filesystem: "FileSystem",
-        partition_columns: Sequence[str],
+        partition_schema: pa.Schema,
         shuffle_config: Optional["FileShuffleConfig"] = None,
     ) -> None:
         self._snapshot = snapshot
@@ -232,8 +278,10 @@ class _DeltaLogListing:
         # metadata-backed source's indexer, so the table's filesystem and the
         # read's shuffle travel with the indexer.
         self._filesystem = filesystem
-        self._partition_columns = tuple(partition_columns)
+        self._partition_schema = partition_schema
         self._shuffle_config = shuffle_config
+        # Filled by ``list_file_infos``, in the listing task.
+        self._partition_values_by_path = {}
 
     def list_file_infos(
         self,
@@ -249,16 +297,25 @@ class _DeltaLogListing:
         not read. Paths are relative to the table root and sorted, so a seeded
         shuffle and ``preserve_order`` don't depend on the log's order.
         Zero-size files are skipped and ``pruners`` applied, as the directory
-        listing does.
+        listing does; a ``DeltaPartitionPruner`` gets each file's partition
+        values from the log.
         """
         add_actions = self._snapshot.add_actions()
-        _check_no_literal_null_partition_values(add_actions, self._partition_columns)
+        file_paths = [
+            resolve_data_file_path(path)
+            for path in add_actions[ADD_ACTION_PATH_COLUMN].to_pylist()
+        ]
+        self._partition_values_by_path = dict(
+            zip(
+                file_paths,
+                partition_values_as_strings(add_actions, self._partition_schema),
+            )
+        )
         file_infos = sorted(
             (
-                FileInfo(path=resolve_data_file_path(path), size=size)
+                FileInfo(path=path, size=size)
                 for path, size in zip(
-                    add_actions[ADD_ACTION_PATH_COLUMN].to_pylist(),
-                    add_actions[ADD_ACTION_SIZE_COLUMN].to_pylist(),
+                    file_paths, add_actions[ADD_ACTION_SIZE_COLUMN].to_pylist()
                 )
             ),
             key=lambda info: info.path,
@@ -274,18 +331,20 @@ class _DeltaLogListing:
     def _filter_file_infos(
         self, file_infos: Iterable[FileInfo], pruners: List["FilePruner"]
     ) -> Iterator[FileInfo]:
-        partitioning = make_partitioning(self._partition_columns)
-        parser = PathPartitionParser(partitioning) if partitioning else None
-        expected_partitions = frozenset(self._partition_columns)
         for info in file_infos:
-            if parser is not None:
-                _check_partition_directories(parser, info.path, expected_partitions)
             if not info.size:
                 logger.warning(f"Skipping zero-size file: {info.path!r}")
                 continue
-            if not all(pruner.should_include(info.path) for pruner in pruners):
+            if not all(self._pruner_includes(pruner, info.path) for pruner in pruners):
                 continue
             yield info
+
+    def _pruner_includes(self, pruner: FilePruner, path: str) -> bool:
+        if isinstance(pruner, DeltaPartitionPruner):
+            return pruner.should_include_values(
+                self._partition_values_by_path[path], path
+            )
+        return pruner.should_include(path)
 
     def list_files(
         self,
@@ -293,23 +352,42 @@ class _DeltaLogListing:
         *,
         filesystem: Optional["FileSystem"] = None,
         **kwargs: Any,
-    ) -> Iterable["FileManifest"]:
-        self._default_shuffle(kwargs)
-        # pyrefly: ignore[missing-attribute]
-        return super().list_files(paths, filesystem=self._filesystem, **kwargs)
+    ) -> Iterator[FileManifest]:
+        """List manifests through the base class, from ``list_file_infos``.
 
-    def list_files_from_file_infos(
-        self,
-        file_infos: Iterable[FileInfo],
-        *,
-        filesystem: Optional["FileSystem"] = None,
-        **kwargs: Any,
-    ) -> Iterable["FileManifest"]:
+        For a partitioned table, each manifest row also carries its file's
+        partition values from the log, in ``PARTITION_VALUES_COLUMN``.
+        """
         self._default_shuffle(kwargs)
         # pyrefly: ignore[missing-attribute]
-        return super().list_files_from_file_infos(
-            file_infos, filesystem=self._filesystem, **kwargs
-        )
+        manifests = super().list_files(paths, filesystem=self._filesystem, **kwargs)
+        yield from self._with_partition_values(manifests)
+
+    def _with_partition_values(
+        self, manifests: Iterable[FileManifest]
+    ) -> Iterator[FileManifest]:
+        # Added after the base listing, whose row-group shuffle rebuilds its
+        # rows from the required columns only.
+        if len(self._partition_schema) == 0:
+            yield from manifests
+            return
+        values_type = partition_values_type(self._partition_schema)
+        for manifest in manifests:
+            block = manifest.as_block()
+            # Listing manifests are always built as Arrow tables.
+            assert isinstance(block, pa.Table)
+            values = pa.array(
+                [
+                    self._partition_values_by_path[path]
+                    for path in manifest.paths.tolist()
+                ],
+                type=values_type,
+            )
+            yield FileManifest(
+                block.append_column(
+                    pa.field(PARTITION_VALUES_COLUMN, values_type), values
+                )
+            )
 
     def _default_shuffle(self, list_files_kwargs: Dict[str, Any]) -> None:
         if list_files_kwargs.get("shuffle_config") is None:
@@ -322,7 +400,9 @@ class DeltaFileIndexer(_DeltaLogListing, FooterFileIndexer):
     Each file's Parquet footer is read on ``FooterFileIndexer``'s actor pool,
     so the listing emits one row per row-group run with exact stats: row groups
     are pruned by the pushed-down predicate, split into read units and skipped
-    when a resumed job already finished them.
+    when a resumed job already finished them. For a partitioned table, each row
+    also carries its file's partition values from the log, in
+    ``PARTITION_VALUES_COLUMN``.
     """
 
     def __init__(
@@ -330,7 +410,7 @@ class DeltaFileIndexer(_DeltaLogListing, FooterFileIndexer):
         *,
         snapshot: DeltaTableSnapshot,
         filesystem: "FileSystem",
-        partition_columns: Sequence[str],
+        partition_schema: pa.Schema,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         coalesce_bytes: int = 0,
         small_shuffle_chunk_size: int = 0,
@@ -344,7 +424,7 @@ class DeltaFileIndexer(_DeltaLogListing, FooterFileIndexer):
         self._init_delta_listing(
             snapshot=snapshot,
             filesystem=filesystem,
-            partition_columns=partition_columns,
+            partition_schema=partition_schema,
             shuffle_config=shuffle_config,
         )
 
@@ -359,7 +439,7 @@ class DeltaFileIndexer(_DeltaLogListing, FooterFileIndexer):
         return DeltaWholeFileIndexer(
             snapshot=self._snapshot,
             filesystem=self._filesystem,
-            partition_columns=self._partition_columns,
+            partition_schema=self._partition_schema,
             max_paths_per_output=self._max_paths_per_output,
         )
 
@@ -375,8 +455,7 @@ class DeltaWholeFileIndexer(_DeltaLogListing, NonSamplingFileIndexer):
         *,
         snapshot: DeltaTableSnapshot,
         filesystem: "FileSystem",
-        partition_columns: Sequence[str],
-        shuffle_config: Optional["FileShuffleConfig"] = None,
+        partition_schema: pa.Schema,
         max_paths_per_output: Optional[int] = None,
     ):
         NonSamplingFileIndexer.__init__(
@@ -387,8 +466,7 @@ class DeltaWholeFileIndexer(_DeltaLogListing, NonSamplingFileIndexer):
         self._init_delta_listing(
             snapshot=snapshot,
             filesystem=filesystem,
-            partition_columns=partition_columns,
-            shuffle_config=shuffle_config,
+            partition_schema=partition_schema,
         )
 
     @override

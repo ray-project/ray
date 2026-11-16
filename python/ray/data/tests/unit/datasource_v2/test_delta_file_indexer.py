@@ -1,7 +1,12 @@
-"""Unit tests for the Delta Lake file listing (no Ray cluster)."""
+"""Unit tests for the Delta Lake file listing (no Ray cluster).
 
+Listing through ``read_delta`` (the log at the pinned version, path decoding,
+shuffle, resume) is tested in ``tests/datasource/test_delta_v2.py``. These cover
+what ``read_delta`` can't reach.
+"""
+
+import datetime
 import os
-import posixpath
 import sys
 from typing import List, Optional
 
@@ -9,32 +14,34 @@ import pyarrow as pa
 import pyarrow.fs as pa_fs
 import pytest
 
-import ray.cloudpickle as cloudpickle
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
+    PARTITION_VALUES_COLUMN,
     DeltaFileIndexer,
+    DeltaPartitionPruner,
     DeltaTableSnapshot,
-    DeltaWholeFileIndexer,
-    make_partitioning,
+    partition_values_as_strings,
     resolve_data_file_path,
 )
-from ray.data.datasource.file_based_datasource import FileShuffleConfig
-from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION, PartitionStyle
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data.datasource.partitioning import (
+    HIVE_DEFAULT_PARTITION,
+    _broadcast_partition_value,
+)
+from ray.data.expressions import col
 
 deltalake = pytest.importorskip("deltalake")
 
 
-def _write(path: str, table: pa.Table, **kwargs) -> None:
-    deltalake.write_deltalake(path, table, **kwargs)
-
-
-def _indexer(path: str, version: Optional[int] = None, **kwargs) -> DeltaFileIndexer:
+def _indexer(path: str, version: Optional[int] = None) -> DeltaFileIndexer:
     """The indexer ``DeltaDatasourceV2`` builds, reading a local table."""
     table = deltalake.DeltaTable(path, version=version, without_files=True)
+    schema = pa.schema(table.schema().to_arrow())
     return DeltaFileIndexer(
         snapshot=DeltaTableSnapshot(table_uri=table.table_uri, version=table.version()),
         filesystem=pa_fs.SubTreeFileSystem(path, pa_fs.LocalFileSystem()),
-        partition_columns=table.metadata().partition_columns,
-        **kwargs,
+        partition_schema=pa.schema(
+            [schema.field(name) for name in table.metadata().partition_columns]
+        ),
     )
 
 
@@ -44,26 +51,14 @@ def _listed_paths(indexer, **kwargs) -> List[str]:
     ]
 
 
-def _log_paths(path: str, version: Optional[int] = None) -> List[str]:
-    table = deltalake.DeltaTable(path, version=version)
-    return sorted(
-        resolve_data_file_path(p)
-        for p in pa.table(table.get_add_actions(flatten=True))["path"].to_pylist()
-    )
-
-
 @pytest.fixture
 def partitioned_table(tmp_path) -> str:
+    """``grp`` holds a null and the string Delta names a null's directory after,
+    which share that directory."""
     path = str(tmp_path / "partitioned")
-    _write(
+    deltalake.write_deltalake(
         path,
-        pa.table(
-            {
-                "id": [1, 2, 3, 4],
-                "grp": ["a b", "e=f", None, "a b"],
-                "value": [1.0, 2.0, 3.0, 4.0],
-            }
-        ),
+        pa.table({"id": [1, 2, 3], "grp": ["a b", None, HIVE_DEFAULT_PARTITION]}),
         partition_by=["grp"],
     )
     return path
@@ -73,9 +68,6 @@ def partitioned_table(tmp_path) -> str:
     "logged_path, expected",
     [
         ("part-0.parquet", "part-0.parquet"),
-        # The log encodes the on-disk name once more; decode exactly once.
-        ("grp=e%253Df/part-0.parquet", "grp=e%3Df/part-0.parquet"),
-        ("grp=a%2520b/part-0.parquet", "grp=a%20b/part-0.parquet"),
         # A colon in a partition value isn't a URI scheme.
         ("ts=10:30/part-0.parquet", "ts=10:30/part-0.parquet"),
     ],
@@ -93,159 +85,111 @@ def test_resolve_data_file_path_rejects_absolute_paths(logged_path):
         resolve_data_file_path(logged_path)
 
 
-def test_make_partitioning():
-    assert make_partitioning([]) is None
+def test_partition_values_come_from_the_log(partitioned_table):
+    """The null and the string share a directory; only the log tells them apart."""
+    indexer = _indexer(partitioned_table)
 
-    partitioning = make_partitioning(["year", "month"])
+    paths = _listed_paths(indexer)
 
-    assert partitioning is not None
-    assert partitioning.style == PartitionStyle.HIVE
-    assert partitioning.field_names == ["year", "month"]
-    assert partitioning.null_fallback == HIVE_DEFAULT_PARTITION
-
-
-def test_lists_only_the_files_the_log_names(tmp_path):
-    """An overwrite leaves the old version's files in the table directory."""
-    path = str(tmp_path / "table")
-    _write(path, pa.table({"x": [1, 2]}))
-    _write(path, pa.table({"x": [3]}), mode="overwrite")
-    on_disk = [f for f in os.listdir(path) if f.endswith(".parquet")]
-    assert len(on_disk) == 2
-
-    indexer = _indexer(path).as_whole_file_indexer()
-
-    assert _listed_paths(indexer) == _log_paths(path)
-    assert len(_listed_paths(indexer)) == 1
+    values = sorted(
+        (indexer._partition_values_by_path[path]["grp"] for path in paths),
+        key=str,
+    )
+    assert values == [None, HIVE_DEFAULT_PARTITION, "a b"]
 
 
-def test_lists_the_pinned_version(tmp_path):
-    path = str(tmp_path / "table")
-    _write(path, pa.table({"x": [1, 2]}))
-    _write(path, pa.table({"x": [3]}), mode="append")
-
-    indexer = _indexer(path, version=0).as_whole_file_indexer()
-
-    assert _listed_paths(indexer) == _log_paths(path, version=0)
-
-
-def test_lists_relative_decoded_sorted_paths_with_log_sizes(partitioned_table):
-    indexer = _indexer(partitioned_table).as_whole_file_indexer()
-
-    infos = list(indexer.list_file_infos(pa.array(["label"])))
-
-    paths = [info.path for info in infos]
-    assert paths == sorted(paths)
-    # The on-disk directory names, which hold one level of URL encoding.
-    assert {posixpath.dirname(p) for p in paths} == {
-        "grp=a%20b",
-        "grp=e%3Df",
-        f"grp={HIVE_DEFAULT_PARTITION}",
-    }
-    for info in infos:
-        assert info.size == os.path.getsize(os.path.join(partitioned_table, info.path))
-
-
-def test_applies_pruners(partitioned_table):
-    class _DropNullPartition:
-        def should_include(self, path: str) -> bool:
-            return HIVE_DEFAULT_PARTITION not in path
-
-    paths = _listed_paths(_indexer(partitioned_table), pruners=[_DropNullPartition()])
-
-    assert len(paths) == 2
-    assert all(HIVE_DEFAULT_PARTITION not in p for p in paths)
-
-
-def test_rejects_data_files_outside_partition_directories(
-    partitioned_table, monkeypatch
-):
-    """The reader takes partition values from the path, so a partitioned table
-    whose file isn't under partition directories must fail, not read nulls."""
+def test_lists_files_outside_partition_directories(partitioned_table, monkeypatch):
+    """The Delta protocol doesn't require partition directories."""
     monkeypatch.setattr(
         DeltaTableSnapshot,
         "add_actions",
-        lambda self: pa.table({"path": ["part-0.parquet"], "size_bytes": [10]}),
+        lambda self: pa.table(
+            {"path": ["part-0.parquet"], "size_bytes": [10], "partition.grp": ["x"]}
+        ),
     )
-
-    with pytest.raises(ValueError, match="Hive-style directories"):
-        _listed_paths(_indexer(partitioned_table))
-
-
-def test_rejects_the_literal_null_partition_string(tmp_path):
-    """It shares a directory with null values, so the reader would read it as
-    null; only the log tells them apart."""
-    path = str(tmp_path / "literal")
-    _write(
-        path,
-        pa.table({"id": [1, 2], "grp": [HIVE_DEFAULT_PARTITION, "a"]}),
-        partition_by=["grp"],
-    )
-    indexer = _indexer(path)
-
-    with pytest.raises(ValueError, match="can't tell the string from null"):
-        _listed_paths(indexer)
-    with pytest.raises(ValueError, match="can't tell the string from null"):
-        _listed_paths(indexer.as_whole_file_indexer())
-
-
-@pytest.mark.parametrize("excluded_index", [0, 1])
-def test_whole_file_listing_honors_excluded_read_units(tmp_path, excluded_index):
-    path = str(tmp_path / "table")
-    _write(path, pa.table({"x": [1, 2]}))
-    _write(path, pa.table({"x": [3]}), mode="append")
-    indexer = _indexer(path).as_whole_file_indexer()
-    paths = _log_paths(path)
-
-    manifests = list(
-        indexer.list_files(
-            pa.array(["label"]),
-            filesystem=None,
-            excluded_read_unit_ids={paths[excluded_index]},
-        )
-    )
-
-    listed = [p for m in manifests for p in m.paths.tolist()]
-    assert listed == [p for i, p in enumerate(paths) if i != excluded_index]
-
-
-def test_whole_file_indexer_lists_from_the_log(partitioned_table):
-    """Not ``FooterFileIndexer``'s, which walks the table directory."""
     indexer = _indexer(partitioned_table)
 
-    whole_file = indexer.as_whole_file_indexer()
-
-    assert isinstance(whole_file, DeltaWholeFileIndexer)
-    assert whole_file.as_whole_file_indexer() is whole_file
-    assert _listed_paths(whole_file) == _listed_paths(indexer)
+    assert _listed_paths(indexer) == ["part-0.parquet"]
+    assert indexer._partition_values_by_path == {"part-0.parquet": {"grp": "x"}}
 
 
-def test_listing_applies_the_read_shuffle(tmp_path):
-    path = str(tmp_path / "table")
-    for i in range(8):
-        _write(path, pa.table({"x": [i]}), mode="append")
-    footer_indexer = _indexer(path)
-    indexer = DeltaWholeFileIndexer(
-        snapshot=footer_indexer._snapshot,
-        filesystem=footer_indexer._filesystem,
-        partition_columns=[],
-        shuffle_config=FileShuffleConfig(seed=7),
-    )
+@pytest.mark.parametrize(
+    "logged",
+    [
+        pa.array([1, None], pa.int8()),
+        pa.array([0.1, None], pa.float64()),
+        pa.array([True, False], pa.bool_()),
+        pa.array([datetime.date(2024, 1, 2), None], pa.date32()),
+        pa.array(
+            [datetime.datetime(2024, 1, 2, 3, 4, 5, 6, tzinfo=datetime.timezone.utc)],
+            pa.timestamp("us", tz="UTC"),
+        ),
+    ],
+    ids=lambda array: str(array.type),
+)
+def test_partition_values_as_strings_cast_back_exactly(logged):
+    """The reader casts each string back to the column's type."""
+    schema = pa.schema([pa.field("p", logged.type)])
 
-    shuffled = [
-        p
-        for m in indexer.list_files(pa.array(["label"]), filesystem=None)
-        for p in m.paths.tolist()
+    strings = partition_values_as_strings(pa.table({"partition.p": logged}), schema)
+
+    read_back = [
+        _broadcast_partition_value("p", values["p"], 1, schema)[0].as_py()
+        for values in strings
+    ]
+    assert read_back == logged.to_pylist()
+
+
+@pytest.mark.parametrize(
+    "predicate, expected",
+    [
+        (col("grp") == "a b", ["a b"]),
+        (col("grp").is_null(), [None]),
+        (col("grp") == HIVE_DEFAULT_PARTITION, [HIVE_DEFAULT_PARTITION]),
+    ],
+    ids=["equal", "is_null", "literal_null_string"],
+)
+def test_partition_pruner_uses_the_log_values(partitioned_table, predicate, expected):
+    indexer = _indexer(partitioned_table)
+    pruner = DeltaPartitionPruner(predicate, schema=pa.schema([("grp", pa.string())]))
+
+    paths = _listed_paths(indexer, pruners=[pruner])
+
+    assert [indexer._partition_values_by_path[p]["grp"] for p in paths] == expected
+
+
+def test_lists_sizes_from_the_log(partitioned_table):
+    """Without a ``get_file_info`` per file."""
+    infos = list(_indexer(partitioned_table).list_file_infos(pa.array(["label"])))
+
+    assert [info.size for info in infos] == [
+        os.path.getsize(os.path.join(partitioned_table, info.path)) for info in infos
     ]
 
-    assert sorted(shuffled) == _log_paths(path)
-    assert shuffled != _log_paths(path)
+
+def test_applies_path_pruners(partitioned_table):
+    class _DropAll:
+        def should_include(self, path: str) -> bool:
+            return False
+
+    assert _listed_paths(_indexer(partitioned_table), pruners=[_DropAll()]) == []
 
 
-def test_indexer_survives_worker_serialization(partitioned_table):
-    """Listing tasks receive the indexer pickled, and reopen the table."""
-    indexer = cloudpickle.loads(cloudpickle.dumps(_indexer(partitioned_table)))
+def test_manifests_carry_the_partition_values(partitioned_table):
+    indexer = _indexer(partitioned_table)
+    paths = _listed_paths(indexer)
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=[1] * len(paths), chunk_metadatas=[None] * len(paths)
+    )
 
-    assert _listed_paths(indexer) == _log_paths(partitioned_table)
+    (with_values,) = indexer._with_partition_values([manifest])
+
+    extra_columns = with_values.extra_columns
+    assert with_values.paths.tolist() == paths
+    assert extra_columns is not None
+    assert extra_columns[PARTITION_VALUES_COLUMN].to_pylist() == [
+        indexer._partition_values_by_path[path] for path in paths
+    ]
 
 
 if __name__ == "__main__":
