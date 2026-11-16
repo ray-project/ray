@@ -9,7 +9,7 @@ from ray.data.expressions import download
 import numpy as np
 import uuid
 import ray
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 
 INPUT_PATH = "s3://anonymous@ray-example-data/imagenet/metadata_file.parquet"
@@ -19,7 +19,7 @@ BATCH_SIZE = 100
 weights = ResNet18_Weights.DEFAULT
 transform = transforms.Compose([transforms.ToTensor(), weights.transforms()])
 
-ray.init()
+ray.init(job_config=benchmark_job_config())
 
 
 @ray.remote

@@ -25,6 +25,7 @@ from benchmark import (
     RuntimeEnvSetupTracker,
     benchmark_py_modules,
     collect_dataset_stats,
+    benchmark_job_config,
 )
 from profiling.coordinator import Profiling
 from profiling import nvtx as profiling_nvtx
@@ -304,7 +305,10 @@ def start_chaos():
 
 
 if __name__ == "__main__":
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
+    ray.init(
+        runtime_env={"py_modules": benchmark_py_modules()},
+        job_config=benchmark_job_config(),
+    )
     args = parse_args()
 
     # S3 sometimes returns transient ACCESS_DENIED on HeadObject under heavy

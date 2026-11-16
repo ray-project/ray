@@ -6,7 +6,7 @@ import traceback
 import numpy as np
 import psutil
 
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.util import _check_pyarrow_version, GiB
@@ -79,6 +79,8 @@ class RandomIntRowDatasource(Datasource):
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     import argparse
 
     parser = argparse.ArgumentParser()

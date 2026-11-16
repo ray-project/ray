@@ -15,7 +15,7 @@ import time
 
 import numpy as np
 import pyarrow as pa
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 import ray
 from ray.data import TaskPoolStrategy
@@ -170,6 +170,7 @@ def main():
         parser.error("--concurrency must be positive")
 
     ray.init(
+        job_config=benchmark_job_config(),
         num_cpus=args.num_cpus,
         runtime_env={
             "env_vars": {

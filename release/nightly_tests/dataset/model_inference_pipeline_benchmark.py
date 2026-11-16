@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import Benchmark, BenchmarkMetric, benchmark_job_config
 from transformers import AutoModel, AutoTokenizer
 
 import ray
@@ -446,5 +446,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     main(args)

@@ -18,6 +18,7 @@ from benchmark import (
     RuntimeEnvSetupTracker,
     benchmark_py_modules,
     collect_dataset_stats,
+    benchmark_job_config,
 )
 
 BATCH_SIZE = 128
@@ -158,6 +159,9 @@ def get_hf_token() -> str:
 
 
 if __name__ == "__main__":
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
+    ray.init(
+        runtime_env={"py_modules": benchmark_py_modules()},
+        job_config=benchmark_job_config(),
+    )
     args = parse_args()
     main(args)

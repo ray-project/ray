@@ -7,7 +7,7 @@ import pyarrow as pa
 import torch
 import torch.distributed as dist
 
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import Benchmark, BenchmarkMetric, benchmark_job_config
 
 import ray
 import ray.data
@@ -245,6 +245,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     main(args)

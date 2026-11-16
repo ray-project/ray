@@ -7,7 +7,7 @@ import boto3
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 from PIL import Image
 from torchvision.models import ResNet50_Weights, resnet50
 
@@ -116,5 +116,7 @@ class Predictor:
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     main(args)

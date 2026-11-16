@@ -10,6 +10,7 @@ from benchmark import (
     RuntimeEnvSetupTracker,
     collect_dataset_stats,
     benchmark_py_modules,
+    benchmark_job_config,
 )
 from torchvision.models import ResNet50_Weights, resnet50
 
@@ -174,5 +175,8 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
+    ray.init(
+        runtime_env={"py_modules": benchmark_py_modules()},
+        job_config=benchmark_job_config(),
+    )
     main(args)

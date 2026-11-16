@@ -9,7 +9,7 @@ import pyarrow.compute as pc
 from pyiceberg import catalog as pyi_catalog, schema as pyi_schema, types as pyi_types
 
 import ray
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import Benchmark, BenchmarkMetric, benchmark_job_config
 from ray.data import SaveMode
 from ray.data.datatype import DataType
 from ray.data.expressions import col, udf
@@ -262,6 +262,6 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     main(args)

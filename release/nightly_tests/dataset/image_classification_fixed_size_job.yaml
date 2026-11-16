@@ -1,0 +1,48 @@
+# Anyscale job version of the `image_classification_fixed_size` release test
+# (release/release_data_tests.yaml), run on the actor-only backend.
+# View the docs https://docs.anyscale.com/reference/job-api#jobconfig.
+#
+# Submit from the dataset/ directory, since the script imports benchmark.py
+# from it:
+#   cd release/nightly_tests/dataset
+#   anyscale job submit -f image_classification_fixed_size_job.yaml
+name: image-classification-fixed-size-ao
+
+image_uri: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/ray:jhsu-11-13-2026
+
+# Same cluster as fixed_size_gpu_compute.yaml: 10 fixed g4dn.2xlarge workers
+# (8 CPU, 1 T4 each).
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge
+  worker_nodes:
+    - instance_type: g4dn.2xlarge
+      min_nodes: 10
+      max_nodes: 10
+      market_type: ON_DEMAND
+
+# The release test's torch-cu128 BYOD image pins pyarrow to 19: the dataset
+# uses the legacy pickled tensor type, whose pyarrow.PyExtensionType base was
+# removed in pyarrow 21.
+requirements:
+  - torch==2.7.0
+  - torchvision==0.22.0
+  - pyarrow==19.0.1
+
+working_dir: .
+
+cloud: anyscale_v2_default_cloud
+
+env_vars:
+  RAY_DATA_ACTOR_ONLY_BACKEND: "1"
+  # The dataset uses the legacy pickled tensor type.
+  RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
+
+entrypoint: >-
+  python gpu_batch_inference.py
+  --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
+max_retries: 0
+
+# Matches the release test's 1800s run timeout.
+timeout_s: 1800

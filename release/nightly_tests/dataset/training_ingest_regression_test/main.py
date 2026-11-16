@@ -52,6 +52,7 @@ from benchmark import (  # noqa: E402
     Benchmark,
     ObjectStoreMemorySampler,
     _get_spilled_bytes_total,
+    benchmark_job_config,
 )
 
 # Per-worker default batch count.
@@ -599,4 +600,6 @@ def _check_pull_push(comparison: Dict[str, float], args: argparse.Namespace) -> 
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     main()

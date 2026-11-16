@@ -29,6 +29,7 @@ from benchmark import (
     RuntimeEnvSetupTracker,
     benchmark_py_modules,
     collect_dataset_stats,
+    benchmark_job_config,
 )
 from profiling.coordinator import Profiling
 
@@ -293,7 +294,10 @@ if __name__ == "__main__":
     import profiling as _profiling_pkg
 
     _profiling_dir = os.path.dirname(os.path.abspath(_profiling_pkg.__file__))
-    ray.init(runtime_env={"py_modules": benchmark_py_modules() + [_profiling_dir]})
+    ray.init(
+        runtime_env={"py_modules": benchmark_py_modules() + [_profiling_dir]},
+        job_config=benchmark_job_config(),
+    )
     args = parse_args()
 
     profiling = Profiling(outdir=SHARED_OUTDIR, num_gpu_nodes=0)
