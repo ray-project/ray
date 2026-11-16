@@ -154,7 +154,7 @@ def optimize_acq(func, m, m1, fixed, num_f):
     opts = {"maxiter": 200, "maxfun": 200, "disp": False}
 
     T = 10
-    best_value = -np.inf
+    best_value = -999
     best_theta = m1.X_train_[0, num_f:]
 
     bounds = [(0, 1) for _ in range(m.X_train_.shape[1] - num_f)]

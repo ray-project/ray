@@ -1132,6 +1132,7 @@ def test_pb2_optimize_acq_fallback_shape():
         num_f=num_f,
     )
     assert x_best.shape == (num_hparams,)
+    np.testing.assert_allclose(x_best, dummy_m1.X_train_[0, num_f:])
     base_vals = np.array([[1.0, 2.0, 4.0], [2.0, 4.0, 10.0]])
     rescaled = x_best * (
         np.max(base_vals, axis=0) - np.min(base_vals, axis=0)
