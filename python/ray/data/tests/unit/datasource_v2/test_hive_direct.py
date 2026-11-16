@@ -925,6 +925,7 @@ def _partition_detail_rows(
     return [
         ("# col_name", "data_type", None),
         ("id", "bigint", None),
+        _metadata(file_format)[2],
         ("", "", ""),
         ("# Partition Information", None, None),
         ("# col_name", "data_type", None),
@@ -1103,6 +1104,102 @@ def test_lookup_resolves_registered_partitions_with_typed_values():
     ]
     for cursor in connection.cursors:
         assert cursor.closed
+
+
+def test_partition_descriptors_reuse_bounded_sessions_and_keep_input_order():
+    from threading import Barrier, Lock, get_ident
+
+    count = 48
+    specs = [f"dt=2026-09-01/region=r{index}" for index in range(count)]
+    locations = [f"/data/p{index}" for index in range(count)]
+    template = _partitioned_connection(specs, locations)
+    metadata = _parse_file_table(template._table_rows)
+    raw = [["2026-09-01", f"r{index}"] for index in range(count)]
+    typed = [(date(2026, 9, 1), f"r{index}") for index in range(count)]
+    first_queries = Barrier(16, timeout=10)
+    created = []
+    created_lock = Lock()
+
+    def factory():
+        connection = _PartitionedHiveConnection(
+            template._table_rows,
+            "__HIVE_DEFAULT_PARTITION__",
+            template._show_specs,
+            template._partition_rows,
+        )
+        connection.close = MagicMock()
+        open_cursor = connection.cursor
+
+        def cursor(user=None):
+            value = open_cursor(user=user)
+            owner = get_ident()
+            first = True
+            execute = value.execute
+
+            def execute_owned(statement):
+                nonlocal first
+                assert get_ident() == owner
+                if first:
+                    first = False
+                    first_queries.wait()
+                execute(statement)
+
+            value.execute = execute_owned
+            value.close = MagicMock(wraps=value.close)
+            return value
+
+        connection.cursor = MagicMock(side_effect=cursor)
+        with created_lock:
+            created.append(connection)
+        return connection
+
+    spec = HiveReadSpec(connection_factory=factory, table="events", user="reader")
+    for read in range(2):
+        result = hive_direct._read_partition_locations(
+            raw, typed, metadata, spec, "default", "events"
+        )
+        assert result == [
+            HivePartitionInfo(values, path) for values, path in zip(typed, locations)
+        ]
+        assert len(created) == (read + 1) * 16
+        connections = created[read * 16 : (read + 1) * 16]
+        assert sum(len(connection.statements) for connection in connections) == count
+        for connection in connections:
+            connection.cursor.assert_called_once_with(user="reader")
+            connection.close.assert_called_once()
+            connection.cursors[0].close.assert_called_once()
+
+
+@pytest.mark.parametrize("stage", ["cursor", "execute", "parse"])
+def test_partition_session_cleanup_preserves_original_failure(monkeypatch, stage):
+    error = RuntimeError("partition lookup failed")
+    connection = MagicMock()
+    cursor = connection.cursor.return_value
+    connection.close.side_effect = RuntimeError("connection close failed")
+    cursor.close.side_effect = RuntimeError("cursor close failed")
+    if stage == "cursor":
+        connection.cursor.side_effect = error
+    elif stage == "execute":
+        cursor.execute.side_effect = error
+    else:
+        monkeypatch.setattr(
+            hive_direct, "_parse_partition_details", MagicMock(side_effect=error)
+        )
+    spec = HiveReadSpec(connection_factory=lambda: connection, table="events")
+    metadata = _parse_file_table(_partitioned_metadata())
+    with pytest.raises(RuntimeError) as caught:
+        hive_direct._read_partition_locations(
+            [["2026-09-01", "us"]],
+            [(date(2026, 9, 1), "us")],
+            metadata,
+            spec,
+            "default",
+            "events",
+        )
+    assert caught.value is error
+    connection.close.assert_called_once()
+    if stage != "cursor":
+        cursor.close.assert_called_once()
 
 
 def test_default_partition_marker_stays_literal_only_for_string_keys():
@@ -1427,6 +1524,151 @@ def test_partitioned_indexer_excludes_unregistered_roots(tmp_path):
         str(first / "part-00"),
         str(second / "part-01"),
     }
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_partition_descriptor_schema_mismatch_fails_during_metadata(file_format):
+    rows = _partition_detail_rows("/data/a", file_format)
+    rows[1] = ("id", "string", None)
+    connection = _partitioned_connection(
+        ["dt=2026-09-01/region=us"],
+        ["/data/a"],
+        file_format=file_format,
+        detail_overrides={0: rows},
+    )
+    with pytest.raises(ValueError, match="incompatible declared schema"):
+        read_file_table_metadata(
+            HiveReadSpec(connection_factory=lambda: connection, table="events")
+        )
+
+
+def test_partition_specs_preserve_literal_whitespace():
+    assert hive_direct._parse_partition_specs(
+        [("dt=2026-09-01/region=us ",)], _PARTITION_FIELDS, "default", "events"
+    ) == [["2026-09-01", "us "]]
+
+
+def test_custom_partition_marker_preserves_literal_whitespace():
+    connection = _partitioned_connection(
+        ["dt=%20__NONE__%20/region=us"], ["/data/a"], marker=" __NONE__ "
+    )
+    table = read_file_table_metadata(
+        HiveReadSpec(connection_factory=lambda: connection, table="events")
+    )
+    assert table.default_partition_name == " __NONE__ "
+    assert table.partitions[0].values == (None, "us")
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("O'Brien", "'O\\'Brien'"),
+        ("a\\b", "'a\\\\b'"),
+        ("a\nb", "'a\\nb'"),
+    ],
+)
+def test_partition_literal_uses_hive_escapes(value, expected):
+    assert hive_direct._partition_sql_literal(value) == expected
+
+
+@pytest.mark.parametrize(
+    "locations,match",
+    [
+        (["/data/a", "/data/a-trap", "/data/a/child"], "overlapping"),
+        (["/data/a", "/data//a"], "canonical"),
+        (["/data/a", "//data/a"], "canonical"),
+        (["/data/a", "/data/x/../a"], "canonical"),
+    ],
+)
+def test_partition_location_identity_rejects_aliases(locations, match):
+    with pytest.raises(ValueError, match=match):
+        hive_direct._validate_partition_locations(locations)
+
+
+def test_partition_resolver_handles_registered_prefix_siblings():
+    resolver = hive_direct._HivePartitionResolver(
+        _PARTITION_LOCATIONS + (("/warehouse/p1-trap", (date(2026, 9, 3), "trap")),)
+    )
+    assert resolver.values_for("/warehouse/p1/file.parquet") == (
+        date(2026, 9, 1),
+        "us",
+    )
+    assert resolver.values_for("/warehouse/p1-trap/file.parquet") == (
+        date(2026, 9, 3),
+        "trap",
+    )
+
+
+def test_partition_uri_aliases_rejected_before_sampling(tmp_path, monkeypatch):
+    table = _partitioned_table(
+        tmp_path,
+        "parquet",
+        [
+            (str(tmp_path), (date(2026, 9, 1), "us")),
+            (tmp_path.as_uri(), (date(2026, 9, 2), "eu")),
+        ],
+    )
+    monkeypatch.setattr(
+        hive_direct,
+        "sample_files",
+        lambda *args, **kwargs: pytest.fail("must reject before sampling"),
+    )
+    with pytest.raises(ValueError, match="duplicate partition locations"):
+        HiveDirectDatasource(table)
+
+
+def test_partition_integer_bounds_checked_before_file_planning():
+    with pytest.raises((ValueError, OverflowError)):
+        hive_direct._typed_partition_values(
+            ["128"], (pa.field("key", pa.int8()),), "__NULL__"
+        )
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+@pytest.mark.parametrize("explicit_filesystem", [False, True])
+def test_partition_uri_preserves_hive_escaped_directory(
+    tmp_path, file_format, explicit_filesystem
+):
+    import pyarrow.fs as pafs
+
+    directory = tmp_path / "region=u%3Ds"
+    directory.mkdir()
+    path = _write_table_file(
+        directory / "data",
+        file_format,
+        pa.table({"id": pa.array([1], type=pa.int64())}),
+    )
+    source = HiveDirectDatasource(
+        _partitioned_table(
+            tmp_path,
+            file_format,
+            [("file://" + str(directory), (date(2026, 9, 1), "u=s"))],
+        ),
+        filesystem=pafs.LocalFileSystem() if explicit_filesystem else None,
+    )
+    infos = list(source._get_file_indexer().list_file_infos(source.paths))
+    assert [info.path for info in infos] == [str(path)]
+    reader = source.create_scanner(source.infer_schema(None)).create_reader()
+    result = pa.concat_tables(list(reader.read(_read_manifest([path]))))
+    assert result.to_pylist() == [{"id": 1, "dt": date(2026, 9, 1), "region": "u=s"}]
+
+
+def test_partition_resolution_failure_cannot_reassign_values(tmp_path, monkeypatch):
+    table = _partitioned_table(
+        tmp_path,
+        "parquet",
+        [
+            ("file://", (date(2026, 9, 1), "broken")),
+            (tmp_path, (date(2026, 9, 2), "local")),
+        ],
+    )
+    monkeypatch.setattr(
+        hive_direct,
+        "sample_files",
+        lambda *args, **kwargs: pytest.fail("must reject before sampling"),
+    )
+    with pytest.raises(ValueError, match="resolve every partition location"):
+        HiveDirectDatasource(table)
 
 
 def test_partitioned_table_without_partitions_reads_empty(tmp_path):

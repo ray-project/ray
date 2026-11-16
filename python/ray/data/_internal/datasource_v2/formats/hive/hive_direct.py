@@ -4,7 +4,6 @@ import datetime
 import decimal
 import logging
 import re
-from bisect import bisect_right
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import (
@@ -13,6 +12,7 @@ from dataclasses import (
     fields as dataclass_fields,
     replace,
 )
+from threading import Lock
 from typing import (
     Any,
     Callable,
@@ -77,7 +77,6 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import iterate_with_retry
 from ray.data.context import DataContext
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 logger = logging.getLogger(__name__)
 
@@ -153,13 +152,13 @@ def _read_hive_marker(cursor, option: str, default: str) -> str:
     rows = cursor.fetchall()
     if len(rows) != 1 or len(rows[0]) != 1:
         raise ValueError(f"Cannot determine Hive setting {option}")
-    text = str(rows[0][0]).strip()
-    if text == f"{option} is undefined":
+    text = str(rows[0][0])
+    if text.strip() == f"{option} is undefined":
         return default
     key, separator, value = text.partition("=")
     if key.strip() != option or not separator:
         raise ValueError(f"Cannot determine Hive setting {option}")
-    return value.strip()
+    return value
 
 
 def _partition_key_field(name: str, hive_type: str) -> pa.Field:
@@ -468,7 +467,7 @@ def _parse_partition_specs(
     for row in rows:
         if len(row) < 1 or row[0] is None:
             raise ValueError("Hive direct-read requires complete partition metadata")
-        spec = str(row[0]).strip()
+        spec = str(row[0])
         if not spec:
             continue
         parts = spec.split("/")
@@ -504,7 +503,8 @@ def _typed_partition_values(
     def convert(text, field):
         if text == default_partition_name and not pa.types.is_string(field.type):
             return None
-        return _convert_partition_value(text, field.type)
+        value = _convert_partition_value(text, field.type)
+        return pa.scalar(value, type=field.type).as_py()
 
     return tuple(
         convert(text, field) for text, field in zip(raw_values, partition_fields)
@@ -512,17 +512,34 @@ def _typed_partition_values(
 
 
 def _partition_sql_literal(text: str) -> str:
-    return "'" + text.replace("'", "''") + "'"
+    escapes = {
+        "\\": "\\\\",
+        "'": "\\'",
+        "\n": "\\n",
+        "\r": "\\r",
+        "\t": "\\t",
+        "\b": "\\b",
+        "\0": "\\0",
+    }
+    return "'" + "".join(escapes.get(character, character) for character in text) + "'"
 
 
 def _parse_partition_details(
-    rows, *, database: str, table: str, raw_values: List[str], table_format: str
+    rows,
+    *,
+    database: str,
+    table: str,
+    raw_values: List[str],
+    table_format: str,
+    table_schema: pa.Schema,
 ) -> str:
     """Validate one partition's storage descriptor and return its location."""
     details: Dict[str, str] = {}
     partition_properties: Dict[str, str] = {}
     serde_properties: Dict[str, str] = {}
     in_columns = True
+    in_partition_info = False
+    columns = []
     properties: Optional[Dict[str, str]] = None
     for row in rows:
         if len(row) < 3:
@@ -530,6 +547,9 @@ def _parse_partition_details(
         key, value, comment = (
             "" if item is None else str(item).strip() for item in row[:3]
         )
+        if key.startswith("# Partition Information"):
+            in_partition_info = True
+            continue
         if key.startswith("# Detailed Partition Information"):
             in_columns = False
             properties = None
@@ -540,7 +560,18 @@ def _parse_partition_details(
         if not key and not value:
             continue
         if in_columns:
-            # Data columns and partition keys match the validated table schema.
+            if not in_partition_info:
+                if not key or not value:
+                    raise ValueError(
+                        "Hive direct-read requires complete partition schema"
+                    )
+                columns.append(
+                    pa.field(
+                        str(row[0]),
+                        hive_type_to_arrow(value),
+                        metadata={b"hive_type": value.encode()},
+                    )
+                )
             continue
         if key == "Partition Parameters:":
             properties = partition_properties
@@ -555,6 +586,8 @@ def _parse_partition_details(
             else:
                 properties[value.casefold()] = comment
     label = f"{database}.{table} partition ({'/'.join(raw_values)})"
+    if not pa.schema(columns).equals(table_schema, check_metadata=True):
+        raise ValueError(f"Hive partition {label} has an incompatible declared schema")
     if partition_properties.get(
         "transactional", "false"
     ).lower() != "false" or partition_properties.get("transactional_properties"):
@@ -590,42 +623,69 @@ def _read_partition_locations(
 ) -> List[HivePartitionInfo]:
     """Fetch each registered partition's storage descriptor through HS2.
 
-    Every lookup opens its own connection so bounded-concurrency driver-side
-    fetches stay independent; workers never see the connection factory.
+    At most sixteen driver threads each own one connection and cursor for this
+    lookup. They reuse that session across descriptors; native read workers
+    never receive the connection factory.
     """
+    if not raw_specs:
+        return []
+    pending = iter(enumerate(raw_specs))
+    lookup_lock = Lock()
+    stopped = False
+    locations = [""] * len(raw_specs)
 
-    def fetch(raw_values: List[str]) -> str:
-        connection = _connect(spec.connection_factory)
+    def fetch():
+        nonlocal stopped
+        connection = None
+        cursor = None
         try:
-            cursor = connection.cursor(user=spec.user)
-            try:
+            while True:
+                with lookup_lock:
+                    if stopped:
+                        return
+                    item = next(pending, None)
+                if item is None:
+                    return
+                index, raw_values = item
+                if cursor is None:
+                    connection = _connect(spec.connection_factory)
+                    cursor = connection.cursor(user=spec.user)
                 assignments = ", ".join(
-                    f"`{field.name}` = {_partition_sql_literal(raw)}"
+                    "`"
+                    + field.name.replace("`", "``")
+                    + "` = "
+                    + _partition_sql_literal(raw)
                     for field, raw in zip(metadata.partition_fields, raw_values)
                 )
                 cursor.execute(
                     f"DESCRIBE FORMATTED `{database}`.`{table}` "
                     f"PARTITION ({assignments})"
                 )
-                return _parse_partition_details(
+                locations[index] = _parse_partition_details(
                     cursor.fetchall(),
                     database=database,
                     table=table,
                     raw_values=raw_values,
                     table_format=metadata.file_format,
+                    table_schema=metadata.schema,
                 )
-            finally:
+        except Exception:
+            with lookup_lock:
+                stopped = True
+            raise
+        finally:
+            if cursor is not None:
                 with suppress(Exception):
                     cursor.close()
-        finally:
-            with suppress(Exception):
-                connection.close()
+            if connection is not None:
+                with suppress(Exception):
+                    connection.close()
 
-    if not raw_specs:
-        return []
     workers = min(len(raw_specs), 16)
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        locations = list(executor.map(fetch, raw_specs))
+        futures = [executor.submit(fetch) for _ in range(workers)]
+        for future in futures:
+            future.result()
     _validate_partition_locations(locations)
     return [
         HivePartitionInfo(values, location)
@@ -635,16 +695,30 @@ def _read_partition_locations(
 
 def _validate_partition_locations(locations: List[str]) -> None:
     """Reject duplicate or overlapping locations before any file is listed."""
+    for location in locations:
+        path = urlsplit(location).path
+        if (
+            location.startswith("//")
+            or "//" in path
+            or any(part in (".", "..") for part in path.split("/"))
+        ):
+            raise ValueError(
+                "Hive direct-read requires canonical partition locations without "
+                "dot segments or repeated separators"
+            )
     normalized = [location.rstrip("/") for location in locations]
     if len(set(normalized)) != len(normalized):
         raise ValueError("Hive direct-read found duplicate partition locations")
-    ordered = sorted(normalized)
-    for parent, child in zip(ordered, ordered[1:]):
-        if child.startswith(parent + "/"):
-            raise ValueError(
-                "Hive direct-read found overlapping partition locations "
-                f"{parent!r} and {child!r}"
-            )
+    roots = set(normalized)
+    for child in normalized:
+        parent = child
+        while "/" in parent:
+            parent = parent.rsplit("/", 1)[0]
+            if parent in roots:
+                raise ValueError(
+                    "Hive direct-read found overlapping partition locations "
+                    f"{parent!r} and {child!r}"
+                )
 
 
 def _compatible_read_type(expected: pa.DataType, actual: pa.DataType) -> pa.DataType:
@@ -890,33 +964,26 @@ class _HivePartitionResolver:
     """Longest-prefix resolution from a file path to its partition's values.
 
     Locations never overlap (validated during planning), so each listed file
-    belongs to exactly one partition. Keys are stored sorted for bisect-based
-    prefix lookup at read time.
+    belongs to exactly one partition. Check directory ancestors so sibling
+    names such as ``p1-trap`` cannot hide the owning root ``p1``.
     """
 
     def __init__(
         self,
         partition_locations: Tuple[Tuple[str, Tuple[Optional[object], ...]], ...],
     ):
-        self._entries = tuple(
-            sorted(
-                (
-                    _normalize_partition_root(location),
-                    tuple(values),
-                )
-                for location, values in partition_locations
-            )
-        )
-        self._roots = tuple(location for location, _ in self._entries)
+        self._values_by_root = {
+            _normalize_partition_root(location): tuple(values)
+            for location, values in partition_locations
+        }
 
     def values_for(self, path: str) -> Optional[Tuple[Optional[object], ...]]:
         path = _normalize_partition_root(path)
-        index = bisect_right(self._roots, path) - 1
-        if index >= 0:
-            root, values = self._entries[index]
-            if path == root or path.startswith(root + "/"):
-                return values
-        return None
+        while path not in self._values_by_root:
+            if "/" not in path:
+                return None
+            path = path.rsplit("/", 1)[0]
+        return self._values_by_root[path]
 
 
 class _HivePartitionColumn(SynthesizedColumn):
@@ -1387,19 +1454,25 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
         super().__init__("HiveDirect", DatasourceCategory.DATABASE)
 
         # Hadoop table locations commonly use s3a; Arrow's native client uses s3.
-        def _rewrite_s3a(location: str) -> str:
+        def _native_location(location: str) -> str:
             if location.startswith("s3a://"):
-                return "s3://" + location[len("s3a://") :]
+                location = "s3://" + location[len("s3a://") :]
+            # Hive reports literal percent-escaped directory names. Arrow URI
+            # parsing must not decode them into different filesystem paths.
+            if table.partition_fields and urlsplit(location).scheme:
+                location = location.replace("%", "%25")
             return location
 
         partition_fields = table.partition_fields
         if partition_fields:
-            roots = [_rewrite_s3a(partition.location) for partition in table.partitions]
+            roots = [
+                _native_location(partition.location) for partition in table.partitions
+            ]
         else:
-            roots = [_rewrite_s3a(table.location)]
+            roots = [_native_location(table.location)]
         # A partitioned table may have no registered partitions yet; keep the
         # table location only to construct the native source and list nothing.
-        source_paths = roots if roots else [_rewrite_s3a(table.location)]
+        source_paths = roots if roots else [_native_location(table.location)]
         if table.file_format == "parquet":
             from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
                 ParquetDatasourceV2,
@@ -1424,12 +1497,16 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
             )
         if not source.paths and not partition_fields:
             raise ValueError("Hive direct-read location could not be resolved")
-        # Resolve partition locations into the listing path namespace once, so
-        # file-to-partition association works for custom locations and never
-        # re-parses paths on workers.
-        resolved_roots = (
-            _resolve_paths_and_filesystem(roots, filesystem)[0] if roots else []
-        )
+        # Reuse the source's resolved paths so listing and partition association
+        # share one namespace. Resolution may skip paths, so never zip a shortened
+        # result with the original partition values.
+        resolved_roots = list(source.paths) if roots else []
+        if len(resolved_roots) != len(roots):
+            raise ValueError(
+                "Hive direct-read could not resolve every partition location"
+            )
+        if partition_fields:
+            _validate_partition_locations(resolved_roots)
         self._partition_locations = tuple(
             (resolved, partition.values)
             for resolved, partition in zip(resolved_roots, table.partitions)
