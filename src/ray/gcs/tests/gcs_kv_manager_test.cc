@@ -22,6 +22,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/fake_gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client_kv.h"
@@ -157,3 +158,27 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,
                          GcsKVManagerTest,
                          ::testing::Values("redis", "memory"));
+
+// HandleInternalKVExists must reply exactly once for an invalid key: the
+// KeyError reply must not fall through into the lookup, whose callback would
+// send a second reply on an already-finished server call.
+TEST(GcsInternalKVManagerInvalidKeyTest, InvalidKeyRepliesExactlyOnce) {
+  instrumented_io_context io_context;
+  ray::gcs::GcsInternalKVManager manager(
+      std::make_unique<ray::gcs::FakeInternalKV>(), "", io_context);
+  ray::rpc::InternalKVExistsRequest request;
+  request.set_key("@namespace_invalid");
+  ray::rpc::InternalKVExistsReply reply;
+  int reply_count = 0;
+  auto send_reply_callback = [&reply_count](const ray::Status &,
+                                            std::function<void()>,
+                                            std::function<void()>) { reply_count++; };
+
+  manager.HandleInternalKVExists(request, &reply, send_reply_callback);
+  // The KeyError reply is sent synchronously by the handler.
+  ASSERT_EQ(reply_count, 1);
+  ASSERT_EQ(reply.status().code(), static_cast<int>(ray::StatusCode::KeyError));
+  // Drain any posted work: the lookup's callback must never send a second reply.
+  io_context.poll();
+  ASSERT_EQ(reply_count, 1);
+}
