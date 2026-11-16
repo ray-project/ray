@@ -297,6 +297,48 @@
           runtime_env:
             RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
 
+# One run per aggregation, timed separately (agg_<name> in the results).
+# Compares vectorized aggregations against the Python engine across commits.
+- name: aggregate_each_agg_low_cardinality
+  frequency: manual
+  python: "3.11"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        RAY_max_direct_call_object_size: "8192"
+        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "536870912"
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 14400
+    script: >
+      python groupby_benchmark.py --sf 1000 --aggregate
+      --group-by column08 column13 column14
+      --shuffle-strategy shuffle_v2 --num-partitions 500
+      --aggs absmax std custom topk_unique value_counter quantile
+
+- name: aggregate_each_agg_high_cardinality
+  frequency: manual
+  python: "3.11"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        RAY_max_direct_call_object_size: "8192"
+        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 14400
+    script: >
+      python groupby_benchmark.py --sf 1000 --aggregate
+      --group-by column02 column14
+      --shuffle-strategy shuffle_v2 --num-partitions 500
+      --aggs absmax std custom topk_unique value_counter quantile aslist
+
 # map_groups (keyed repartition under the hood).
 - name: map_groups_high_cardinality
   python: "3.11"
