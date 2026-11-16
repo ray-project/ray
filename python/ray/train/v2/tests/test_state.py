@@ -13,7 +13,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.runtime_env import RuntimeEnv
-from ray.train import BackendConfig, DataConfig
+from ray.train import BackendConfig, DataConfig, SplitConfig
 from ray.train.v2._internal.callbacks.state_manager import (
     StateManagerCallback,
     TrainingFramework,
@@ -1088,6 +1088,29 @@ def test_construct_data_config_defaults_and_split_variants():
     # Shard locality disabled
     result = construct_data_config(DataConfig(enable_shard_locality=False))
     assert result.enable_shard_locality is False
+
+    # unequal_split_datasets default (empty list, all datasets use equal=True)
+    default = construct_data_config(DataConfig())
+    assert default.unequal_split_datasets == []
+
+    # unequal_split_datasets specific list
+    result = construct_data_config(DataConfig(unequal_split_datasets=["eval"]))
+    assert result.unequal_split_datasets == ["eval"]
+
+    # Dict-based per-dataset split config preserves legacy split list and stores detail.
+    result = construct_data_config(
+        DataConfig(
+            datasets_to_split={
+                "train": SplitConfig(),
+                "eval": SplitConfig(equal=False, enable_shard_locality=False),
+            }
+        )
+    )
+    assert result.datasets_to_split == ["train", "eval"]
+    assert result.dataset_split_configs["train"].equal is True
+    assert result.dataset_split_configs["train"].enable_shard_locality is True
+    assert result.dataset_split_configs["eval"].equal is False
+    assert result.dataset_split_configs["eval"].enable_shard_locality is False
 
 
 def test_construct_data_config_single_execution_options():
