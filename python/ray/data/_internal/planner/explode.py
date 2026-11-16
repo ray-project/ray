@@ -154,7 +154,7 @@ def _explode_zipped(
     return out
 
 
-def explode_block(block: Block, columns: Sequence[str]) -> Block:
+def explode_block(block: Block, columns: Sequence[str]) -> "pa.Table":
     """Expand each element of ``block``'s list ``columns`` into its own row,
     replicating all other columns.
 

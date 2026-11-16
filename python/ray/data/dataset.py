@@ -1073,11 +1073,12 @@ class Dataset:
         column per struct field, named after the fields.
 
         A mapping value may be an :func:`~ray.data.expressions.explode`
-        expression (at most one per call), which expands each element of its
-        list-typed expression into its own row, replicating all other
-        columns. All sibling expressions are evaluated on the pre-explode
-        rows. See :func:`~ray.data.expressions.explode` for the full
-        semantics and :meth:`explode` for the plain-column shorthand.
+        expression, which expands each element of its list-typed expression
+        into its own row, replicating all other columns. Several explodes in
+        one call expand in lockstep, under distinct output names; all sibling
+        expressions are evaluated on the pre-explode rows. See
+        :func:`~ray.data.expressions.explode` for the full semantics and
+        :meth:`explode` for the plain-column shorthand.
 
         Examples:
             >>> import ray

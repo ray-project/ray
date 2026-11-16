@@ -75,6 +75,13 @@ ignore-missing-imports = [
 # -- a numcodecs typing defect we can't satisfy without lying about the return
 # type. So treat numcodecs as Any. (``ignore-missing-imports`` only covers
 # modules that can't be found, not installed ones, so it belongs here.)
+#
+# ``pyarrow.compute`` builds its function namespace at import time out of the
+# registered Arrow kernels, so ``pc.list_flatten``, ``pc.if_else`` and friends
+# exist only at runtime and no static checker can see them. (``pyarrow.*`` in
+# ``ignore-missing-imports`` above does not help: pyarrow is installed in the
+# type-check image, so its attributes do get checked.)
 replace-imports-with-any = [
     "numcodecs.*",
+    "pyarrow.compute",
 ]

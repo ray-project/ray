@@ -629,6 +629,15 @@ class Explode(AbstractMap):
 
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert self.columns, "Explode requires at least one column"
+        # Exploding a column twice would make the block kernel drop it from
+        # the schema twice -- taking an unrelated column with it -- so reject
+        # it here, where every construction path passes.
+        duplicates = {c for c in self.columns if self.columns.count(c) > 1}
+        if duplicates:
+            raise ValueError(
+                f"explode() got duplicate columns: {sorted(duplicates)}. "
+                "Each column can only be exploded once."
+            )
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
         object.__setattr__(self, "columns", tuple(self.columns))

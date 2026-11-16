@@ -241,6 +241,25 @@ def test_explode_non_list_raises_at_runtime(ray_start_regular_shared):
             id="no-columns",
         ),
         pytest.param(
+            # Separate mappings can repeat an output name, which would
+            # otherwise explode the same column twice and drop a sibling.
+            lambda ds: ds.with_columns(
+                {"items": explode(col("items"))}, {"items": explode(col("items"))}
+            ),
+            ValueError,
+            "duplicate columns",
+            id="duplicate-explode-names-in-with-columns",
+        ),
+        pytest.param(
+            lambda ds: ds.with_columns(
+                {"x": explode(col("items"))},
+                {"x": explode(col("items").list.slice(0, 1))},
+            ),
+            ValueError,
+            "duplicate columns",
+            id="duplicate-derived-explode-names-in-with-columns",
+        ),
+        pytest.param(
             lambda ds: ds.with_columns(explode(col("items"))),
             TypeError,
             "must be passed as a mapping value",
