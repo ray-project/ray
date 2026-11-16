@@ -1,6 +1,7 @@
 """Unit tests for compacting committed generated IDs into what a resumed job
 can skip: done read units and row masks of partly done row groups."""
 
+import posixpath
 from typing import Iterable, List, Sequence, Tuple
 
 import numpy as np
@@ -173,8 +174,22 @@ def test_empty_checkpoint_skips_nothing():
 
 @pytest.mark.parametrize(
     "path",
-    ["a.parquet", "/abs/dir/a.parquet", "C:\\data\\a.parquet"],
-    ids=["no_directory", "absolute", "backslashes"],
+    [
+        "a.parquet",
+        "/abs/dir/a.parquet",
+        "C:\\data\\a.parquet",
+        "dir//a.parquet",
+        "/abs//dir///a.parquet",
+        "//a.parquet",
+    ],
+    ids=[
+        "no_directory",
+        "absolute",
+        "backslashes",
+        "repeated_separator",
+        "repeated_separators",
+        "root_separators",
+    ],
 )
 def test_compacted_path_matches_the_source_path(path):
     """IDs split a path into directory and name; joining them back must give
@@ -183,6 +198,20 @@ def test_compacted_path_matches_the_source_path(path):
     compacted = _compact(_ids(path, [(0, every_row)], num_row_groups=1))
 
     assert _checkpoint_from_compacted(compacted).done_unit_ids.to_pylist() == [path]
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["bucket/dir/a.parquet", "/a.parquet", "//a.parquet", "a.parquet"],
+    ids=["relative", "root", "root_separators", "no_directory"],
+)
+def test_path_fields_keep_the_checkpoint_format(path):
+    """Paths that always round-tripped keep the ``posixpath`` split, so
+    checkpoints written earlier still decode to the same paths."""
+    ids = _build_generated_ids(path, 0, 1, ROW_GROUP_SIZE, 0, 1)
+
+    assert ids[0][PATH_PREFIX_FIELD].as_py() == posixpath.dirname(path)
+    assert ids[0][FILE_NAME_FIELD].as_py() == posixpath.basename(path)
 
 
 def test_partial_mask_lookup_indexes_masks_by_unit_id():
@@ -261,6 +290,19 @@ def test_drop_committed_rows_keeps_rows_outside_the_mask():
     )
 
     assert kept.equals(_rows(PATH, 2, [-1, 1, 3]))
+
+
+def test_drop_committed_rows_matches_paths_with_repeated_separators():
+    """The mask lookup is keyed by the path the reader used, which keeps the
+    repeated separator."""
+    path = "bucket/dir//a.parquet"
+    table = _rows(path, 1, [0, 1, 2, 3])
+
+    kept = _drop_committed_rows(
+        table, "generated_id", {f"{path}#rg1": np.array([True, False, True, False])}
+    )
+
+    assert kept.equals(_rows(path, 1, [1, 3]))
 
 
 @pytest.mark.parametrize(

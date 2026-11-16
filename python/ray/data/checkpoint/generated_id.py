@@ -12,9 +12,8 @@ field names, order and types are the checkpoint format: changing them would
 make existing checkpoints unreadable.
 """
 
-import posixpath
 from dataclasses import dataclass, field
-from typing import Dict, List, Mapping, Union
+from typing import Dict, List, Mapping, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -58,6 +57,26 @@ GENERATED_ID_COLUMN_TYPE = pa.struct(
 )
 
 
+def _split_path(path: str) -> Tuple[str, str]:
+    """Split a source path into the ID's directory and file name.
+
+    Unlike ``posixpath.split``, repeated separators before the file name stay
+    in the directory, so :func:`_join_path` gives back exactly ``path``.
+    """
+    directory, separator, name = path.rpartition("/")
+    if separator and not directory.strip("/"):
+        # The root keeps all its separators, as in ``posixpath.dirname``.
+        directory = path[: len(directory) + 1]
+    return directory, name
+
+
+def _join_path(directory: str, name: str) -> str:
+    """Rejoin the ``(directory, name)`` of :func:`_split_path`."""
+    if not directory.strip("/"):
+        return directory + name
+    return f"{directory}/{name}"
+
+
 def _build_generated_ids(
     path: str,
     row_group_index: int,
@@ -81,11 +100,12 @@ def _build_generated_ids(
         A struct array of type ``GENERATED_ID_COLUMN_TYPE`` with ``num_rows``
         entries.
     """
-    # Readers of the ID rejoin these with ``posixpath.join``; that must give
-    # back the exact source path, which holds for any separator.
+    # Readers of the ID rejoin these with ``_join_path``; that must give back
+    # the exact source path, which listing compares against.
+    directory, file_name = _split_path(path)
     constants = {
-        PATH_PREFIX_FIELD: (posixpath.dirname(path), pa.string()),
-        FILE_NAME_FIELD: (posixpath.basename(path), pa.string()),
+        PATH_PREFIX_FIELD: (directory, pa.string()),
+        FILE_NAME_FIELD: (file_name, pa.string()),
         FRAGMENT_FIELD: (row_group_index, pa.int32()),
         NUM_FRAGMENTS_FIELD: (num_row_groups, pa.int32()),
         NUM_ROWS_FIELD: (row_group_num_rows, pa.int32()),
@@ -212,7 +232,7 @@ def _compact_file_ids(ids: Union[pa.Array, pa.ChunkedArray]) -> pa.Table:
     first_id = ids.slice(0, 1)
     path_prefix = _id_field(first_id, PATH_PREFIX_FIELD, pa.string())[0]
     file_name = _id_field(first_id, FILE_NAME_FIELD, pa.string())[0]
-    path = posixpath.join(path_prefix, file_name)
+    path = _join_path(path_prefix, file_name)
     num_row_groups = int(_id_field(first_id, NUM_FRAGMENTS_FIELD, pa.int32())[0])
     row_groups = _id_field(ids, FRAGMENT_FIELD, pa.int32())
     row_group_sizes = _id_field(ids, NUM_ROWS_FIELD, pa.int32())
@@ -337,7 +357,7 @@ def _drop_committed_rows(
     drop = np.zeros(table.num_rows, dtype=bool)
     row_groups = keys.group_by(list(keys.column_names)).aggregate([]).to_pylist()
     for row_group in row_groups:
-        path = posixpath.join(row_group[PATH_PREFIX_FIELD], row_group[FILE_NAME_FIELD])
+        path = _join_path(row_group[PATH_PREFIX_FIELD], row_group[FILE_NAME_FIELD])
         mask = partial_masks.get(_row_group_unit_id(path, row_group[FRAGMENT_FIELD]))
         if mask is None:
             continue
