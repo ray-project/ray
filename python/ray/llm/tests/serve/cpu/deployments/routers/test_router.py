@@ -72,6 +72,7 @@ def _new_direct_router(handle=None):
     router._handle = handle or MagicMock()
     # Routing tests don't exercise tokenization; that lives in test_tokenizer.py.
     router._tokenizer = None
+    router._llm_config = None
     router._base_model_id = None
     return router
 
@@ -146,7 +147,9 @@ class TestDirectStreamingLLMRouter:
     )
     async def test_health_checks_live_routing(self, live, error):
         router = _new_direct_router()
-        router._health_check_model_id = "test-model"
+        router._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
         router._handle._router._asyncio_router._request_router.curr_replicas = (
             {"replica": object()} if live else {}
         )

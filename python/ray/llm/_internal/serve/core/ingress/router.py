@@ -138,7 +138,6 @@ class LLMRouter:
     _warned_no_routing_key: bool = False
     _warned_no_token_endpoint: bool = False
     _base_model_id: Optional[str] = None
-    _health_check_model_id: Optional[str] = None
 
     async def __init__(
         self,
@@ -147,10 +146,8 @@ class LLMRouter:
         base_model_id: Optional[str] = None,
     ):
         self._handle: DeploymentHandle = server
+        self._llm_config = llm_config
         self._base_model_id = base_model_id
-        self._health_check_model_id = (
-            llm_config.model_id if llm_config is not None else base_model_id
-        )
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
@@ -197,7 +194,13 @@ class LLMRouter:
         self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
 
     async def check_health(self):
-        await check_router_health(self._handle, self.route, self._health_check_model_id)
+        await check_router_health(
+            self._handle,
+            self.route,
+            self._llm_config.model_id
+            if self._llm_config is not None
+            else self._base_model_id,
+        )
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
