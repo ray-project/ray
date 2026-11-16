@@ -106,6 +106,7 @@ py_test_module_list(
         "test_failure_2.py",
         "test_grpc_e2e.py",
         "test_grpc_replica_wrapper.py",
+        "test_grpc_util.py",
         "test_handle.py",
         "test_handle_1.py",
         "test_handle_2.py",

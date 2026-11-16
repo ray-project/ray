@@ -1,24 +1,19 @@
+import asyncio
+import logging
 import sys
 
 import grpc
-import grpc.aio._server  # noqa: F401  # ensure Server class is loaded
 import pytest
 
+import grpc.aio._server  # noqa: F401  # ensure the Server class is loaded
+
 from ray.serve._private.grpc_util import gRPCGenericServer
+
+logger = logging.getLogger(__name__)
 
 
 def _noop_handler_factory(**kwargs):
     return None
-
-
-def _get_free_port() -> int:
-    import socket
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
 
 
 def test_so_reuseport_channel_arg_is_integer(monkeypatch):
@@ -47,26 +42,47 @@ def test_so_reuseport_channel_arg_is_integer(monkeypatch):
     assert isinstance(options["grpc.so_reuseport"], int)
 
 
+@pytest.mark.asyncio
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="SO_REUSEPORT semantics differ on Windows.",
 )
-def test_port_conflict_fails_with_reuseport_disabled():
-    """With reuseport disabled, binding an in-use port must fail."""
-    port = _get_free_port()
-    address = f"127.0.0.1:{port}"
+async def test_port_conflict_fails_with_reuseport_disabled():
+    """With reuseport disabled, binding an in-use port must fail.
 
+    The first server binds to an ephemeral port (port 0) and the second binds
+    to that exact port, so the test is deterministic and does not race with
+    other processes over a pre-picked port.
+    """
     server1 = gRPCGenericServer(
         _noop_handler_factory,
         extra_options=[("grpc.so_reuseport", 0)],
     )
-    assert server1.add_insecure_port(address) == port
-
     server2 = gRPCGenericServer(
         _noop_handler_factory,
         extra_options=[("grpc.so_reuseport", 0)],
     )
-    assert server2.add_insecure_port(address) == 0
+    try:
+        port = server1.add_insecure_port("127.0.0.1:0")
+        assert port != 0
+
+        # Binding the same explicit port must be refused. Newer grpcio raises
+        # RuntimeError from add_insecure_port for a failed explicit-port bind;
+        # older versions return 0.
+        refused = False
+        try:
+            bound = server2.add_insecure_port(f"127.0.0.1:{port}")
+            refused = bound == 0
+        except RuntimeError:
+            refused = True
+        assert refused, "second bind must be refused with reuseport disabled"
+    finally:
+        results = await asyncio.gather(
+            server1.stop(grace=0), server2.stop(grace=0), return_exceptions=True
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                logger.debug("Ignoring error while stopping test server: %s", result)
 
 
 if __name__ == "__main__":
