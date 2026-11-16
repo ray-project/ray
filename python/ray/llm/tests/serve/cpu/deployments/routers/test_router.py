@@ -17,7 +17,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
-from ray.llm._internal.serve.core.ingress import router as router_module, router_health
+from ray.llm._internal.serve.core.ingress import router as router_module
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
@@ -144,7 +144,7 @@ def create_oai_client(llm_config: LLMConfig):
 class TestDirectStreamingLLMRouter:
     @pytest.fixture(autouse=True)
     def deployment_info(self):
-        with patch.object(router_health, "_get_global_client") as get_client:
+        with patch.object(router_module, "_get_global_client") as get_client:
             get_info = get_client.return_value.get_deployment_info
             get_info.return_value = (
                 SimpleNamespace(
@@ -187,7 +187,7 @@ class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
     async def test_health_routing_timeout(self, monkeypatch):
         monkeypatch.setattr(
-            router_health, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 0.05
+            router_module, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 0.05
         )
         router = _new_direct_router()
 
@@ -249,7 +249,7 @@ class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
     async def test_health_config_lookup_timeout(self, deployment_info, monkeypatch):
         monkeypatch.setattr(
-            router_health, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 0.05
+            router_module, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 0.05
         )
         router = _new_direct_router()
         router._pick_replica = AsyncMock()

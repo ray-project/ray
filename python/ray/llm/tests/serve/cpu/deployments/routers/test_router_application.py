@@ -18,8 +18,8 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.core.ingress import (
+    router as router_module,
     router_application as router_application_module,
-    router_health,
 )
 from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.serve._private.constants import (
@@ -108,7 +108,7 @@ def _no_real_app_handles():
     """Background lookups may outlive a test's own patch; never reach Serve."""
     with patch.object(
         router_application_module.serve, "get_app_handle", FakeHandle
-    ), patch.object(router_health, "_get_global_client") as get_client:
+    ), patch.object(router_module, "_get_global_client") as get_client:
         get_info = get_client.return_value.get_deployment_info
         get_info.return_value = (
             SimpleNamespace(deployment_config=SimpleNamespace(autoscaling_config=None)),
