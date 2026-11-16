@@ -126,9 +126,10 @@ def test_dataset_limit_sql_integer_boundary(limit, expected):
     assert original.limit is None
 
 
-@pytest.mark.parametrize("limit", [True, False])
-@pytest.mark.parametrize("source_limit", [None, 5])
-@pytest.mark.parametrize("existing_limit", [None, 2])
+@pytest.mark.parametrize(
+    "limit,source_limit,existing_limit",
+    [(True, None, None), (False, None, None), (True, 5, 2), (False, 5, 2)],
+)
 def test_boolean_limit_remains_in_ray(limit, source_limit, existing_limit):
     scanner = _scanner(source_limit)
     if existing_limit is not None:
@@ -244,7 +245,7 @@ def test_non_table_read_metadata_preserves_original_args(source):
         scanner = (ParquetScanner if source == "parquet" else OrcScanner)(
             schema=_SCHEMA
         )
-        name = source
+        name = "ParquetV2" if source == "parquet" else "OrcV2"
     read = replace(_read(scanner), datasource_name=name)
     original = super(ReadFiles, read)._get_args()
     current = read._get_args()

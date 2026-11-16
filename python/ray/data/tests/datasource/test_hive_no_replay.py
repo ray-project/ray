@@ -1,5 +1,6 @@
 """Verify Hive error tolerance and that failed reads don't replay queries."""
 
+import os
 from pathlib import Path
 
 import pyarrow as pa
@@ -22,7 +23,9 @@ class Cursor:
         with open(
             os.environ["HIVE_TEST_EXECUTE_COUNT_FILE"], "a", encoding="utf-8"
         ) as log:
-            log.write("execute\\n")
+            log.write(statement + "\\n")
+        if os.environ["HIVE_TEST_FAILURE_MODE"] == "execute":
+            raise RuntimeError("injected execute failure")
 
     def fetchmany(self, size):
         self.fetch_calls += 1
@@ -31,6 +34,8 @@ class Cursor:
             return [(1,), (2,)] if self.fetch_calls == 1 else []
         if mode == "after_first_block" and self.fetch_calls == 1:
             return [(1,)]
+        if mode == "convert":
+            return [(1,)] if self.fetch_calls == 1 else [("invalid integer",)]
         if mode == "worker_crash":
             os._exit(23)
         raise RuntimeError("injected fetch failure")
@@ -66,14 +71,42 @@ def _write_fake_impyla(tmp_path: Path):
     return working_dir, count_file
 
 
-@pytest.mark.parametrize("max_errored_blocks", [0, 1, -1])
 @pytest.mark.parametrize(
-    "failure_mode", ["before_first_block", "after_first_block", "worker_crash"]
+    "failure_mode,max_errored_blocks,read_mode",
+    [
+        (failure, max_errors, "query")
+        for failure in ("before_first_block", "after_first_block", "worker_crash")
+        for max_errors in (0, 1, -1)
+    ]
+    + [(failure, 0, "table") for failure in ("execute", "convert", "worker_crash")],
 )
 def test_failed_read_submits_one_data_query(
-    tmp_path: Path, failure_mode: str, max_errored_blocks: int, restore_data_context
+    tmp_path: Path,
+    failure_mode: str,
+    max_errored_blocks: int,
+    read_mode: str,
+    restore_data_context,
 ):
+    driver_pid = os.getpid()
+
     def connection_factory():
+        if read_mode == "table" and os.getpid() == driver_pid:
+
+            class MetadataCursor:
+                def get_table_schema(self, table, database):
+                    return [("id", "bigint"), ("name", "string")]
+
+                def close(self):
+                    pass
+
+            class MetadataConnection:
+                def cursor(self, *, user):
+                    return MetadataCursor()
+
+                def close(self):
+                    pass
+
+            return MetadataConnection()
         from impala.dbapi import connect
 
         return connect()
@@ -93,15 +126,20 @@ def test_failed_read_submits_one_data_query(
     try:
         context = ray.data.DataContext.get_current()
         context.max_errored_blocks = max_errored_blocks
-        if failure_mode == "after_first_block":
+        if failure_mode in ("after_first_block", "convert"):
             # Flush the first fetched rows as their own output block so the
             # read task produces output before the injected failure.
             context.target_max_block_size = 1
-        dataset = ray.data.read_hive(
-            query="SELECT id",
-            connection_factory=connection_factory,
-            schema=pa.schema([("id", pa.int64())]),
-        )
+        if read_mode == "table":
+            dataset = ray.data.read_hive(
+                table="events", connection_factory=connection_factory
+            ).select_columns(["id"])
+        else:
+            dataset = ray.data.read_hive(
+                query="SELECT id",
+                connection_factory=connection_factory,
+                schema=pa.schema([("id", pa.int64())]),
+            )
         assert dataset.context.max_errored_blocks == max_errored_blocks
         assert context.max_errored_blocks == max_errored_blocks
         if max_errored_blocks != 0:
@@ -111,8 +149,9 @@ def test_failed_read_submits_one_data_query(
                 assert rows in ([], [{"id": 1}])
             else:
                 assert rows == []
-        elif failure_mode == "worker_crash":
-            with pytest.raises(Exception):
+        elif failure_mode in ("worker_crash", "convert"):
+            message = "could not be converted" if failure_mode == "convert" else None
+            with pytest.raises(Exception, match=message):
                 dataset.take_all()
         else:
             with pytest.raises(Exception, match="HiveServer2 read failed"):
@@ -120,7 +159,10 @@ def test_failed_read_submits_one_data_query(
     finally:
         ray.shutdown()
 
-    assert count_file.read_text().splitlines() == ["execute"]
+    expected_sql = (
+        "SELECT `id` FROM `default`.`events`" if read_mode == "table" else "SELECT id"
+    )
+    assert count_file.read_text().splitlines() == [expected_sql]
 
 
 @pytest.mark.parametrize("max_errored_blocks", [0, 1, -1])
@@ -171,7 +213,7 @@ def test_downstream_map_preserves_error_tolerance(
     finally:
         ray.shutdown()
 
-    assert count_file.read_text().splitlines() == ["execute"]
+    assert count_file.read_text().splitlines() == ["SELECT id"]
 
 
 if __name__ == "__main__":

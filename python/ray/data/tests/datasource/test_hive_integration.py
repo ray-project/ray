@@ -18,6 +18,7 @@ from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
     _connect as connect_read_hive,
 )
 from ray.data.expressions import col
+from ray.tests.conftest import _ray_start
 
 _HOST = os.environ.get("RAY_HIVE_TEST_HOST")
 _AUTH = os.environ.get("RAY_HIVE_TEST_AUTH", "PLAIN").upper()
@@ -112,9 +113,7 @@ def _traced_factory(options, trace_path, fail_fetch=False):
                 self.fetches += 1
                 if fail_fetch and self.fetches == 2:
                     raise RuntimeError("injected fetch failure after real HS2 output")
-                rows = self.cursor.fetchmany(size)
-                self.record("fetch", [len(rows), len(self.cursor.description)])
-                return rows
+                return self.cursor.fetchmany(size)
 
         class Connection:
             def __init__(self, connection):
@@ -320,12 +319,16 @@ def test_hive_timestamps_over_real_hs2():
             ray.shutdown()
 
 
-def test_hive_projection_limit_and_filter_order_over_real_hs2(tmp_path):
-    options = _connection_options()
-    values = "SELECT 1, 'a' UNION ALL SELECT 2, 'b' UNION ALL SELECT 3, 'c' UNION ALL SELECT 4, 'd' UNION ALL SELECT 5, 'e'"
-    with _temporary_table(options, "id BIGINT, name STRING", values) as (table, _):
-        ray.init(num_cpus=2, include_dashboard=False)
-        try:
+class TestHiveTablePushdown:
+    @pytest.fixture(scope="class", autouse=True)
+    def shared_ray(self):
+        with _ray_start(num_cpus=2, include_dashboard=False):
+            yield
+
+    def test_hive_projection_limit_and_filter_order_over_real_hs2(self, tmp_path):
+        options = _connection_options()
+        values = "SELECT 1, 'a' UNION ALL SELECT 2, 'b' UNION ALL SELECT 3, 'c' UNION ALL SELECT 4, 'd' UNION ALL SELECT 5, 'e'"
+        with _temporary_table(options, "id BIGINT, name STRING", values) as (table, _):
 
             def source(trace, limit=None):
                 return ray.data.read_hive(
@@ -340,6 +343,45 @@ def test_hive_projection_limit_and_filter_order_over_real_hs2(tmp_path):
             sql = _data_statements(trace)
             assert len(sql) == 1 and sql[0].startswith("SELECT `name`")
             assert sql[0].endswith(" LIMIT 2")
+
+            trace = tmp_path / "branches.jsonl"
+            dataset = source(trace)
+            ids = dataset.select_columns(["id"])
+            names = dataset.select_columns(["name"])
+            assert sorted(row["id"] for row in ids.take_all()) == [1, 2, 3, 4, 5]
+            assert sorted(row["name"] for row in names.take_all()) == [
+                "a",
+                "b",
+                "c",
+                "d",
+                "e",
+            ]
+            assert sorted(row["id"] for row in ids.take_all()) == [1, 2, 3, 4, 5]
+            statements = _data_statements(trace)
+            assert len(statements) == 3
+            assert [statement.split(" FROM ")[0] for statement in statements] == [
+                "SELECT `id`",
+                "SELECT `name`",
+                "SELECT `id`",
+            ]
+
+            trace = tmp_path / "query.jsonl"
+            query = f"SELECT id, name FROM {table}"
+            rows = (
+                ray.data.read_hive(
+                    query=query,
+                    schema=pa.schema([("id", pa.int64()), ("name", pa.string())]),
+                    connection_factory=_traced_factory(options, trace),
+                )
+                .filter(expr=col("id") >= 3)
+                .select_columns(["name"])
+                .limit(2)
+                .take_all()
+            )
+            assert len(rows) == 2 and all(
+                row["name"] in ("c", "d", "e") for row in rows
+            )
+            assert _data_statements(trace) == [query]
 
             trace = tmp_path / "source-filter-limit.jsonl"
             rows = (
@@ -392,16 +434,11 @@ def test_hive_projection_limit_and_filter_order_over_real_hs2(tmp_path):
             with pytest.raises(Exception):
                 failing.take_all()
             assert len(_data_statements(trace)) == 1
-        finally:
-            ray.shutdown()
 
-
-def test_hive_dataset_boolean_limit_over_real_hs2(tmp_path):
-    options = _connection_options()
-    values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
-    with _temporary_table(options, "id BIGINT", values) as (table, _):
-        ray.init(num_cpus=2, include_dashboard=False)
-        try:
+    def test_hive_dataset_boolean_limit_over_real_hs2(self, tmp_path):
+        options = _connection_options()
+        values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
+        with _temporary_table(options, "id BIGINT", values) as (table, _):
             for limit in (True, False):
                 trace = tmp_path / f"boolean-limit-{limit}.jsonl"
                 dataset = ray.data.read_hive(
@@ -423,16 +460,11 @@ def test_hive_dataset_boolean_limit_over_real_hs2(tmp_path):
             assert len(dataset.take_all()) == 1
             statements = _data_statements(trace)
             assert len(statements) == 1 and statements[0].endswith(" LIMIT 2")
-        finally:
-            ray.shutdown()
 
-
-def test_hive_dataset_limit_integer_range_over_real_hs2(tmp_path):
-    options = _connection_options()
-    values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
-    with _temporary_table(options, "id BIGINT", values) as (table, _):
-        ray.init(num_cpus=2, include_dashboard=False)
-        try:
+    def test_hive_dataset_limit_integer_range_over_real_hs2(self, tmp_path):
+        options = _connection_options()
+        values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
+        with _temporary_table(options, "id BIGINT", values) as (table, _):
             for limit in (2**31 - 1, 2**31, 2**63):
                 trace = tmp_path / f"limit-{limit}.jsonl"
                 dataset = ray.data.read_hive(
@@ -473,23 +505,18 @@ def test_hive_dataset_limit_integer_range_over_real_hs2(tmp_path):
             statements = _data_statements(trace)
             assert len(statements) == 1
             assert " WHERE " not in statements[0] and " LIMIT " not in statements[0]
-        finally:
-            ray.shutdown()
 
-
-def test_hive_projection_quoted_columns_over_real_hs2(tmp_path):
-    options = _connection_options()
-    value = "O'Reilly\\line\n\t\x00中文"
-    encoded = value.encode("utf-8").hex()
-    values = f"SELECT 1, decode(unhex('{encoded}'), 'UTF-8'), '标签', 'tick'"
-    with _temporary_table(
-        options,
-        "id BIGINT, `select` STRING, `类别` STRING, `a``b` STRING",
-        values,
-        storage_clause="STORED AS ORC",
-    ) as (table, _):
-        ray.init(num_cpus=2, include_dashboard=False)
-        try:
+    def test_hive_projection_quoted_columns_over_real_hs2(self, tmp_path):
+        options = _connection_options()
+        value = "O'Reilly\\line\n\t\x00中文"
+        encoded = value.encode("utf-8").hex()
+        values = f"SELECT 1, decode(unhex('{encoded}'), 'UTF-8'), '标签', 'tick'"
+        with _temporary_table(
+            options,
+            "id BIGINT, `select` STRING, `类别` STRING, `a``b` STRING",
+            values,
+            storage_clause="STORED AS ORC",
+        ) as (table, _):
             for index, (column, expected) in enumerate(
                 (("select", value), ("类别", "标签"), ("a`b", "tick"))
             ):
@@ -506,8 +533,6 @@ def test_hive_projection_quoted_columns_over_real_hs2(tmp_path):
                 assert statements[0].startswith(
                     "SELECT `" + column.replace("`", "``") + "`, `id`"
                 )
-        finally:
-            ray.shutdown()
 
 
 def test_hive_tls_rejects_untrusted_or_mismatched_server():
