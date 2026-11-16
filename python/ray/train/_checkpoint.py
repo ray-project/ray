@@ -25,6 +25,10 @@ _METADATA_FILE_NAME = ".metadata.json"
 # The prefix of the temp checkpoint directory that `to_directory` downloads to
 # on the local filesystem.
 _CHECKPOINT_TEMP_DIR_PREFIX = "checkpoint_tmp_"
+# Siblings of the temporary checkpoint directory, used to download it and delete
+# it with an atomic rename.
+_STAGING_SUFFIX = ".staging"
+_DELETING_SUFFIX = ".deleting"
 
 
 class _CheckpointMetaClass(type):
@@ -212,11 +216,13 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         Returns:
             str: Directory containing checkpoint data.
         """
-        user_provided_path = path is not None
-        local_path = (
-            path if user_provided_path else self._get_temporary_checkpoint_dir()
-        )
-        local_path = os.path.normpath(os.path.expanduser(str(local_path)))
+        if path is None:
+            local_path = self._get_temporary_checkpoint_dir()
+            with TempFileLock(local_path):
+                self._download_to_temporary_dir(local_path)
+            return local_path
+
+        local_path = os.path.normpath(os.path.expanduser(str(path)))
         os.makedirs(local_path, exist_ok=True)
 
         try:
@@ -240,6 +246,33 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
         return local_path
 
+    def _download_to_temporary_dir(self, local_path: str) -> None:
+        """Download the checkpoint to its shared temporary directory, unless it's
+        already there.
+
+        The caller must hold ``TempFileLock(local_path)``. The download goes to a
+        staging directory that is renamed once complete, so
+        ``local_path`` either doesn't exist or holds the full checkpoint, even
+        if a process crashes partway through.
+
+        Args:
+            local_path: The shared temporary directory for this checkpoint.
+        """
+        if os.path.isdir(local_path):
+            return
+        staging_path = f"{local_path}{_STAGING_SUFFIX}"
+        # Left behind if a process crashed while downloading.
+        shutil.rmtree(staging_path, ignore_errors=True)
+        # The caller already holds the lock for `local_path`, so skip the
+        # separate lock that `_download_from_fs_path` would take.
+        _download_from_fs_path(
+            fs=self.filesystem,
+            fs_path=self.path,
+            local_path=staging_path,
+            filelock=False,
+        )
+        os.rename(staging_path, local_path)
+
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
         """Returns checkpoint contents in a local directory as a context.
@@ -261,7 +294,8 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         receive the same local (temporary) directory to read from.
 
         Once all processes have finished working with the checkpoint,
-        the temporary directory is cleaned up.
+        the temporary directory is cleaned up. A later call downloads the
+        checkpoint again.
 
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it may be deleted when exiting the context.
@@ -286,40 +320,48 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path
         else:
-            del_lock_path = _get_del_lock_path(self._get_temporary_checkpoint_dir())
-            open(del_lock_path, "a").close()
+            temp_dir = self._get_temporary_checkpoint_dir()
+            # Each call registers as a reader with its own deletion lock file,
+            # so nested calls and threads in one process are counted separately.
+            del_lock_path = _get_del_lock_path(temp_dir)
 
-            temp_dir = self.to_directory()
+            # Registering, downloading, unregistering and deleting all happen
+            # under the same lock, so whoever holds it sees a consistent set of
+            # readers and a directory that is either complete or absent.
+            with TempFileLock(temp_dir):
+                open(del_lock_path, "a").close()
+                try:
+                    self._download_to_temporary_dir(temp_dir)
+                except Exception:
+                    os.remove(del_lock_path)
+                    raise
+
             try:
                 yield temp_dir
             finally:
-                # Always cleanup the del lock after we're done with the directory.
-                # This avoids leaving a lock file behind in the case of an exception
-                # in the user code.
+                # Cleanup failures are logged rather than raised, so that they
+                # never hide an exception raised inside the user's `with` block.
                 try:
-                    os.remove(del_lock_path)
+                    with TempFileLock(temp_dir):
+                        os.remove(del_lock_path)
+                        # If there are no more deletion lock files, there are no
+                        # more readers, and we can delete the directory. If a
+                        # process crashed before removing its deletion lock file,
+                        # the directory is never deleted. Since it's in /tmp,
+                        # that's not a big deal.
+                        if not _list_existing_del_locks(temp_dir):
+                            # Rename before deleting, so that a crash partway
+                            # through never leaves a partial directory at
+                            # `temp_dir`, where it would look like a complete one.
+                            deleting_path = f"{temp_dir}{_DELETING_SUFFIX}"
+                            shutil.rmtree(deleting_path, ignore_errors=True)
+                            os.rename(temp_dir, deleting_path)
+                            shutil.rmtree(deleting_path, ignore_errors=True)
                 except Exception:
                     logger.warning(
-                        f"Could not remove {del_lock_path} deletion file lock. "
-                        f"Traceback:\n{traceback.format_exc()}"
+                        "Could not clean up the temporary checkpoint directory "
+                        f"{temp_dir}. Traceback:\n{traceback.format_exc()}"
                     )
-
-                # If there are no more lock files, that means there are no more
-                # readers of this directory, and we can safely delete it.
-                # In the edge case (process crash before del lock file is removed),
-                # we do not remove the directory at all.
-                # Since it's in /tmp, this is not that big of a deal.
-                # check if any lock files are remaining
-                remaining_locks = _list_existing_del_locks(temp_dir)
-                if not remaining_locks:
-                    try:
-                        # Timeout 0 means there will be only one attempt to acquire
-                        # the file lock. If it cannot be acquired, a TimeoutError
-                        # will be thrown.
-                        with TempFileLock(temp_dir, timeout=0):
-                            shutil.rmtree(temp_dir, ignore_errors=True)
-                    except TimeoutError:
-                        pass
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir that this checkpoint
@@ -360,7 +402,8 @@ def _get_del_lock_path(path: str, suffix: str = None) -> str:
     Args:
         path: The path of the file or directory to generate a lock path for.
         suffix: Suffix appended after ``.del_lock_``. Defaults to the current
-            process ID.
+            process ID followed by a random ID, so that each call returns a new
+            path.
 
     Returns:
         The deletion lock file path.
@@ -375,7 +418,7 @@ def _get_del_lock_path(path: str, suffix: str = None) -> str:
         '/tmp/checkpoint_tmp.txt.del_lock_...
 
     """
-    suffix = suffix if suffix is not None else str(os.getpid())
+    suffix = suffix if suffix is not None else f"{os.getpid()}_{uuid.uuid4().hex}"
     return f"{path.rstrip('/')}.del_lock_{suffix}"
 
 
