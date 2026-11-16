@@ -415,9 +415,14 @@ class DeploymentAutoscalingState:
         self._replica_running_memo.pop(replica_id, None)
 
     def get_num_replicas_lower_bound(self) -> int:
-        if self._config.initial_replicas is not None and (
+        # `initial_replicas` is a floor only while ramping up under a capacity limit.
+        # The direction stays UP once the ramp reaches 100, where no limit applies.
+        ramping_up_under_limit = (
             self._target_capacity_direction == TargetCapacityDirection.UP
-        ):
+            and self._target_capacity is not None
+            and self._target_capacity < 100
+        )
+        if self._config.initial_replicas is not None and ramping_up_under_limit:
             return get_capacity_adjusted_num_replicas(
                 self._config.initial_replicas,
                 self._target_capacity,

@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    TargetCapacityDirection,
+    TimeStampedValue,
+)
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
@@ -1604,6 +1609,40 @@ def test_last_decision_total_num_requests_reuses_decision_value():
         policy_scope="deployment",
     )
     assert st.get_last_decision_total_num_requests() == 42.0
+
+
+@pytest.mark.parametrize(
+    "target_capacity,direction,expected",
+    [
+        # Ramping up under a capacity limit: hold `initial_replicas`.
+        (0, TargetCapacityDirection.UP, 0),
+        (50, TargetCapacityDirection.UP, 2),
+        (99, TargetCapacityDirection.UP, 4),
+        # At full capacity there is no limit, so the floor is `min_replicas` even
+        # though the direction is still UP.
+        (100, TargetCapacityDirection.UP, 0),
+        (100.0, TargetCapacityDirection.UP, 0),
+        # Not ramping up: `min_replicas`, adjusted by the capacity.
+        (50, TargetCapacityDirection.DOWN, 0),
+        (50, None, 0),
+        (100, TargetCapacityDirection.DOWN, 0),
+        (None, None, 0),
+    ],
+)
+def test_num_replicas_lower_bound_with_target_capacity(
+    target_capacity, direction, expected
+):
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    info = MagicMock()
+    info.deployment_config.autoscaling_config = AutoscalingConfig(
+        min_replicas=0, initial_replicas=4, max_replicas=8
+    )
+    info.deployment_config.gang_scheduling_config = None
+    info.target_capacity = target_capacity
+    info.target_capacity_direction = direction
+    info.config_changed.return_value = False
+    st.register(info, curr_target_num_replicas=4)
+    assert st.get_num_replicas_lower_bound() == expected
 
 
 if __name__ == "__main__":
