@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 import pytest
 import torch
 
@@ -264,6 +266,23 @@ def test_prepare_data_loader_custom_batch_sampler(ray_start_4_cpus):
     )
     with pytest.raises(WorkerGroupError, match="custom `batch_sampler`"):
         trainer.fit()
+
+
+def test_prepare_data_loader_keeps_namedtuple_batches(ray_start_4_cpus):
+    """prepare_data_loader must not turn namedtuple batches into plain tuples."""
+    Sample = namedtuple("Sample", ["x", "y"])
+
+    def train_func():
+        dataset = [Sample(torch.tensor([float(i)]), torch.tensor(i)) for i in range(8)]
+        data_loader = torch.utils.data.DataLoader(dataset, batch_size=2)
+        data_loader = ray.train.torch.prepare_data_loader(data_loader)
+        for batch in data_loader:
+            assert isinstance(batch, Sample)
+            assert batch.x.shape == (2, 1)
+            assert batch.y.shape == (2,)
+
+    trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=2))
+    trainer.fit()
 
 
 def test_is_backend_nccl():

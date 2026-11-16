@@ -652,7 +652,13 @@ class _WrappedDataLoader(DataLoader):
             if isinstance(item, collections.abc.Mapping):
                 item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
             elif isinstance(item, tuple):
-                item_on_device = tuple(self._move_to_device(i) for i in item)
+                moved = [self._move_to_device(i) for i in item]
+                # Rebuild namedtuples with their own type so field access
+                # (e.g. `batch.x`) keeps working, as torch's default_collate does.
+                if hasattr(item, "_fields"):
+                    item_on_device = type(item)(*moved)
+                else:
+                    item_on_device = tuple(moved)
             elif isinstance(item, list):
                 item_on_device = [self._move_to_device(i) for i in item]
             elif isinstance(item, torch.Tensor):
