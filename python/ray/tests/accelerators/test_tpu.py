@@ -1294,8 +1294,9 @@ def test_get_node_group_accelerator_labels(
 
 def test_invalid_topology_warning_logged_once(monkeypatch):
     from ray.util import debug as ray_debug
+    from ray.util.debug import reset_log_once
 
-    ray_debug._logged.clear()
+    reset_log_once()
     warnings = []
     errors = []
     monkeypatch.setattr(
@@ -1350,6 +1351,69 @@ def test_invalid_topology_warning_logged_once(monkeypatch):
     assert len(errors) == 1
     assert len(warnings) == 2
 
+    # Distinct group names with identical misconfiguration each log once.
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(
+            resources, missing_topo, group_name="group-a"
+        )
+        is None
+    )
+    assert (
+        TPUAcceleratorManager.get_node_group_additional_resources(
+            resources, missing_topo, group_name="group-a"
+        )
+        is None
+    )
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(
+            resources, missing_topo, group_name="group-b"
+        )
+        is None
+    )
+    assert len(errors) == 3
+    assert any("group-a" in msg for msg in errors)
+    assert any("group-b" in msg for msg in errors)
+
+    # Unbounded invalid annotation values must not be retained verbatim in _logged.
+    huge_ann = {"cloud.google.com/gke-tpu-slice-topology": "bad-" + ("9" * 10000)}
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(
+            resources, missing_topo, huge_ann
+        )
+        is None
+    )
+    assert len(warnings) == 3
+    assert max(len(k) for k in ray_debug._logged) < 100
+
+
+def test_resolve_gke_tpu_catches_infer_pod_type_value_error(monkeypatch):
+    from ray.util.debug import reset_log_once
+
+    reset_log_once()
+    warnings = []
+    monkeypatch.setattr(
+        tpu.logger, "warning", lambda msg, *a, **k: warnings.append(msg)
+    )
+    monkeypatch.setattr(
+        tpu,
+        "infer_tpu_pod_type_from_topology",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad topology")),
+    )
+    resources = {"CPU": 4, "TPU": 4}
+    selector = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x2",
+    }
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(resources, selector)
+        is None
+    )
+    assert (
+        TPUAcceleratorManager.get_node_group_additional_resources(resources, selector)
+        is None
+    )
+    assert len(warnings) == 1
+
 
 def test_base_accelerator_manager_hooks_are_none():
     from ray._private.accelerators.accelerator import AcceleratorManager
@@ -1365,47 +1429,75 @@ def test_base_accelerator_manager_hooks_are_none():
         AcceleratorManager.get_node_group_additional_resources({"GPU": 8}, {}, {})
         is None
     )
+    assert (
+        AcceleratorManager.get_node_group_accelerator_labels(
+            {"GPU": 8}, {}, {}, group_name="gpu-group"
+        )
+        is None
+    )
+    assert (
+        AcceleratorManager.get_node_group_additional_resources(
+            {"GPU": 8}, {}, {}, group_name="gpu-group"
+        )
+        is None
+    )
     assert tpu.GKE_TPU_SLICE_TOPOLOGY_ANNOTATION == (
         "cloud.google.com/gke-tpu-slice-topology"
     )
 
 
 @pytest.mark.parametrize(
-    "gke_accel, topology, runtime_accel_env",
+    "gke_accel, selector_topology, slice_annotation, runtime_topology, runtime_accel_env",
     [
-        ("tpu-v4-podslice", "2x2x1", "v4-8"),
-        ("tpu-v4-podslice", "2x2x2", "v4-16"),
-        ("tpu-v4-podslice", "12x16x16", "v4-6144"),
-        ("tpu-v5-lite-device", "1x1", "v5litepod-1"),
-        ("tpu-v5-lite-device", "2x4", "v5litepod-8"),
-        ("tpu-v5-lite-podslice", "4x4", "v5litepod-16"),
-        ("tpu-v5p-slice", "2x2x1", "v5p-8"),
-        ("tpu-v5p-slice", "2x2x4", "v5p-32"),
-        ("tpu-v6e-slice", "2x4", "v6e-8"),
-        ("tpu-v6e-slice", "4x4", "v6e-16"),
-        ("tpu7x", "1x1x1", "tpu7x-2"),
-        ("tpu7x", "2x2x2", "tpu7x-16"),
+        ("tpu-v4-podslice", "2x2x1", None, "2x2x1", "v4-8"),
+        ("tpu-v4-podslice", "2x2x2", None, "2x2x2", "v4-16"),
+        ("tpu-v4-podslice", "12x16x16", None, "12x16x16", "v4-6144"),
+        ("tpu-v5-lite-device", "1x1", None, "1x1", "v5litepod-1"),
+        ("tpu-v5-lite-device", "2x4", None, "2x4", "v5litepod-8"),
+        ("tpu-v5-lite-podslice", "4x4", None, "4x4", "v5litepod-16"),
+        ("tpu-v5p-slice", "2x2x1", None, "2x2x1", "v5p-8"),
+        ("tpu-v5p-slice", "2x2x4", None, "2x2x4", "v5p-32"),
+        ("tpu-v6e-slice", "2x4", None, "2x4", "v6e-8"),
+        ("tpu-v6e-slice", "4x4", None, "4x4", "v6e-16"),
+        ("tpu7x", "1x1x1", None, "1x1x1", "tpu7x-2"),
+        ("tpu7x", "2x2x2", None, "2x2x2", "tpu7x-16"),
+        # Sub-slicing and Dynamic Slicing: GKE's built-in mutating webhook
+        # (gke-common-webhooks) reads `gke-tpu-slice-topology` and injects
+        # matching `TPU_TOPOLOGY` and `TPU_ACCELERATOR_TYPE` env vars at runtime.
+        ("tpu7x", "4x4x4", "2x2x2", "2x2x2", "tpu7x-16"),
+        ("tpu7x", None, "2x2x1", "2x2x1", "tpu7x-8"),
+        ("tpu-v6e-slice", "4x4", "2x4", "2x4", "v6e-8"),
+        ("tpu-v6e-slice", None, "2x2", "2x2", "v6e-4"),
     ],
 )
 def test_static_tpu_labels_match_runtime_defaults(
-    monkeypatch, gke_accel, topology, runtime_accel_env
+    monkeypatch,
+    gke_accel,
+    selector_topology,
+    slice_annotation,
+    runtime_topology,
+    runtime_accel_env,
 ):
     from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 
     monkeypatch.setenv("TPU_ACCELERATOR_TYPE", runtime_accel_env)
-    monkeypatch.setenv("TPU_TOPOLOGY", topology)
+    monkeypatch.setenv("TPU_TOPOLOGY", runtime_topology)
     monkeypatch.setenv("TPU_NAME", "test-tpu-slice")
     monkeypatch.setenv("TPU_WORKER_ID", "0")
     monkeypatch.setattr(tpu, "_get_tpu_metadata", lambda key: None)
 
-    selector = {
-        "cloud.google.com/gke-tpu-accelerator": gke_accel,
-        "cloud.google.com/gke-tpu-topology": topology,
-    }
+    selector = {"cloud.google.com/gke-tpu-accelerator": gke_accel}
+    if selector_topology is not None:
+        selector["cloud.google.com/gke-tpu-topology"] = selector_topology
+    annotations = (
+        {"cloud.google.com/gke-tpu-slice-topology": slice_annotation}
+        if slice_annotation is not None
+        else None
+    )
     resources = {"CPU": 4, "TPU": 4}
     runtime_labels = ResourceAndLabelSpec._get_default_labels(TPUAcceleratorManager)
     static_labels = TPUAcceleratorManager.get_node_group_accelerator_labels(
-        resources, selector
+        resources, selector, annotations
     )
     assert static_labels == {
         k: v
@@ -1423,7 +1515,7 @@ def test_static_tpu_labels_match_runtime_defaults(
         k: v for k, v in runtime_additional.items() if k.startswith("TPU-")
     }
     static_additional = TPUAcceleratorManager.get_node_group_additional_resources(
-        resources, selector
+        resources, selector, annotations
     )
     assert static_additional == runtime_head_resources
 
@@ -1523,12 +1615,115 @@ def test_static_tpu_labels_match_runtime_defaults(
             id="boolean-tpu-resource-skips-labels-and-head-resource",
         ),
         pytest.param(
+            {"CPU": 4, "TPU": -4},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            None,
+            None,
+            id="negative-tpu-resource-skips",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": float("nan")},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            None,
+            None,
+            id="nan-tpu-resource-skips",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": float("inf")},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            None,
+            None,
+            id="inf-tpu-resource-skips",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": "4"},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            None,
+            None,
+            id="string-tpu-resource-skips",
+        ),
+        pytest.param(
+            None,
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            None,
+            None,
+            id="non-dict-resources-skips",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            ["not-a-dict"],
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            None,
+            None,
+            id="non-dict-node-selector-skips",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "2x4",
+            },
+            ["not-a-dict"],
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
+            {"TPU-v6e-8-head": 1},
+            id="non-dict-annotations-falls-back-to-selector",
+        ),
+        pytest.param(
             {"CPU": 4, "TPU": 4},
             {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"},
+            {"cloud.google.com/gke-tpu-slice-topology": "123456x1"},
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "123456x1",
+                "ray.io/tpu-pod-type": "v6e-123456",
+            },
+            {"TPU-v6e-123456-head": 1},
+            id="max-6-digit-part-boundary-valid",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"},
+            {"cloud.google.com/gke-tpu-slice-topology": "1234567x1"},
             None,
             None,
+            id="7-digit-part-rejected",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"},
+            {"cloud.google.com/gke-tpu-slice-topology": "1" * 40 + "x" + "1" * 40},
             None,
-            id="missing-topology-returns-none",
+            None,
+            id="over-63-char-numeric-topology-rejected",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "9" * 4301 + "x2x2"},
+            None,
+            None,
+            id="over-4300-digit-topology-rejected-without-value-error",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {
+                "cloud.google.com/gke-tpu-slice-topology": (
+                    "9" * 2000 + "x" + "9" * 2000 + "x" + "9" * 2000
+                )
+            },
+            None,
+            None,
+            id="product-over-4300-digits-rejected-without-value-error",
         ),
     ],
 )

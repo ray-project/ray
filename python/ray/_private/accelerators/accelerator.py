@@ -164,6 +164,7 @@ class AcceleratorManager(ABC):
         resources: Dict[str, Any],
         node_selector: Dict[str, str],
         annotations: Optional[Dict[str, str]] = None,
+        group_name: Optional[str] = None,
     ) -> Optional[Dict[str, str]]:
         """Get accelerator-related Ray node labels for a node group from its
         base resources, required pod node labels, and optional pod annotations.
@@ -173,6 +174,7 @@ class AcceleratorManager(ABC):
             node_selector: Required pod node labels (for example from
                 `nodeSelector` and required `nodeAffinity`).
             annotations: Optional pod metadata annotations dictionary.
+            group_name: Optional node group name for diagnostics.
 
         Returns:
             A dictionary mapping accelerator-related label keys to values, or
@@ -185,6 +187,7 @@ class AcceleratorManager(ABC):
         resources: Dict[str, Any],
         node_selector: Dict[str, str],
         annotations: Optional[Dict[str, str]] = None,
+        group_name: Optional[str] = None,
     ) -> Optional[Dict[str, int]]:
         """Get any additional Ray resources derived for a node group from its
         base resources, required pod node labels, and optional pod annotations.
@@ -194,6 +197,7 @@ class AcceleratorManager(ABC):
             node_selector: Required pod node labels (for example from
                 `nodeSelector` and required `nodeAffinity`).
             annotations: Optional pod metadata annotations dictionary.
+            group_name: Optional node group name for diagnostics.
 
         Returns:
             A dictionary of additional node-group resources, or None if not

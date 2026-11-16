@@ -229,13 +229,168 @@ def _node_type_from_group_spec(
     return node_type
 
 
+_INT64_MIN = -(1 << 63)
+_INT64_MAX = (1 << 63) - 1
+_MAX_K8S_LABEL_VALUE_LEN = 63
+
+
+def _parse_k8s_int64(value: Any) -> Optional[int]:
+    """Parse a base-10 signed 64-bit integer matching K8s strconv.ParseInt."""
+    if not isinstance(value, str) or not value or len(value) > _MAX_K8S_LABEL_VALUE_LEN:
+        return None
+    digits = value[1:] if value[0] in "+-" else value
+    if not digits or not (digits.isascii() and digits.isdigit()):
+        return None
+    parsed = int(value)
+    if _INT64_MIN <= parsed <= _INT64_MAX:
+        return parsed
+    return None
+
+
+def _evaluate_node_selector_term(
+    term: Any,
+    node_selector: Dict[str, str],
+) -> Optional[Dict[str, str]]:
+    """Return labels pinned by a single NodeSelectorTerm ANDed with `node_selector`.
+
+    Returns None when the term is empty, parse-invalid, or unsatisfiable
+    according to Kubernetes nodeaffinity semantics.
+    """
+    if not isinstance(term, dict):
+        return None
+    raw_me = term.get("matchExpressions")
+    raw_mf = term.get("matchFields")
+    match_expressions = [] if raw_me is None else raw_me
+    match_fields = [] if raw_mf is None else raw_mf
+    if (
+        not isinstance(match_expressions, list)
+        or not isinstance(match_fields, list)
+        or (not match_expressions and not match_fields)
+    ):
+        return None
+
+    field_in: Dict[str, str] = {}
+    field_not_in: Dict[str, Set[str]] = {}
+    for expr in match_fields:
+        if not isinstance(expr, dict):
+            return None
+        key = expr.get("key")
+        op = expr.get("operator")
+        vals = expr.get("values")
+        if (
+            not isinstance(key, str)
+            or not key
+            or op not in ("In", "NotIn")
+            or not isinstance(vals, list)
+            or len(vals) != 1
+            or not isinstance(vals[0], str)
+        ):
+            return None
+        val = vals[0]
+        if op == "In":
+            if key in field_in and field_in[key] != val:
+                return None
+            field_in[key] = val
+            if val in field_not_in.get(key, ()):
+                return None
+        else:
+            field_not_in.setdefault(key, set()).add(val)
+            if field_in.get(key) == val:
+                return None
+
+    allowed: Dict[str, Set[str]] = {k: {v} for k, v in node_selector.items()}
+    must_exist: Set[str] = set(node_selector.keys())
+    must_not_exist: Set[str] = set()
+    excluded: Dict[str, Set[str]] = {}
+    gt_bounds: Dict[str, int] = {}
+    lt_bounds: Dict[str, int] = {}
+
+    for expr in match_expressions:
+        if not isinstance(expr, dict):
+            return None
+        key = expr.get("key")
+        op = expr.get("operator")
+        vals = expr.get("values")
+        if not isinstance(key, str) or not key:
+            return None
+
+        if op in ("In", "NotIn"):
+            if (
+                not isinstance(vals, list)
+                or not vals
+                or not all(isinstance(v, str) for v in vals)
+            ):
+                return None
+            val_set = set(vals)
+            if op == "In":
+                must_exist.add(key)
+                allowed[key] = (
+                    val_set if key not in allowed else (allowed[key] & val_set)
+                )
+            else:
+                excluded.setdefault(key, set()).update(val_set)
+        elif op in ("Exists", "DoesNotExist"):
+            if vals is not None and (not isinstance(vals, list) or len(vals) != 0):
+                return None
+            if op == "Exists":
+                must_exist.add(key)
+            else:
+                must_not_exist.add(key)
+        elif op in ("Gt", "Lt"):
+            if not isinstance(vals, list) or len(vals) != 1:
+                return None
+            bound = _parse_k8s_int64(vals[0])
+            if bound is None:
+                return None
+            must_exist.add(key)
+            if op == "Gt":
+                gt_bounds[key] = (
+                    max(gt_bounds[key], bound) if key in gt_bounds else bound
+                )
+            else:
+                lt_bounds[key] = (
+                    min(lt_bounds[key], bound) if key in lt_bounds else bound
+                )
+        else:
+            return None
+
+    if must_exist & must_not_exist:
+        return None
+
+    for key in gt_bounds.keys() | lt_bounds.keys():
+        lo = gt_bounds.get(key, _INT64_MIN - 1)
+        hi = lt_bounds.get(key, _INT64_MAX + 1)
+        if lo + 1 >= hi:
+            return None
+
+    pins: Dict[str, str] = {}
+    for key, vals in allowed.items():
+        narrowed = vals - excluded.get(key, set())
+        if key in gt_bounds or key in lt_bounds:
+            lo = gt_bounds.get(key, _INT64_MIN - 1)
+            hi = lt_bounds.get(key, _INT64_MAX + 1)
+            narrowed = {
+                v
+                for v in narrowed
+                if (parsed := _parse_k8s_int64(v)) is not None and lo < parsed < hi
+            }
+        if not narrowed:
+            return None
+        if len(narrowed) == 1:
+            pins[key] = next(iter(narrowed))
+
+    return pins
+
+
 def _get_required_node_labels(pod_spec: Dict[str, Any]) -> Dict[str, str]:
     """Return node labels guaranteed by pod `nodeSelector` and required `nodeAffinity`.
 
     A label key is guaranteed when set in `nodeSelector` or when every
-    non-empty `nodeSelectorTerm` pins it to the same value via `In`
-    expressions (Kubernetes ANDs expressions within a term and ORs terms).
+    satisfiable `nodeSelectorTerm` pins it to the same value (Kubernetes ANDs
+    expressions within a term and ORs terms).
     """
+    if not isinstance(pod_spec, dict):
+        return {}
     raw_selector = pod_spec.get("nodeSelector")
     node_selector = (
         {
@@ -257,65 +412,33 @@ def _get_required_node_labels(pod_spec: Dict[str, Any]) -> Dict[str, str]:
     if not isinstance(terms, list) or not terms:
         return {}
 
-    common_pins: Optional[Dict[str, str]] = None
-    for term in terms:
-        if not isinstance(term, dict):
-            continue
-        raw_me = term.get("matchExpressions")
-        raw_mf = term.get("matchFields")
-        match_expressions = [] if raw_me is None else raw_me
-        match_fields = [] if raw_mf is None else raw_mf
-        if (
-            not isinstance(match_expressions, list)
-            or not isinstance(match_fields, list)
-            or (not match_expressions and not match_fields)
-        ):
-            continue
-
-        allowed: Dict[str, Set[str]] = {k: {v} for k, v in node_selector.items()}
-        term_contradiction = False
-        for expr in match_expressions:
-            if not isinstance(expr, dict) or expr.get("operator") != "In":
-                continue
-            key = expr.get("key")
-            vals = expr.get("values")
-            if (
-                not isinstance(key, str)
-                or not key
-                or not isinstance(vals, list)
-                or not all(isinstance(v, str) for v in vals)
-            ):
-                term_contradiction = True
-                break
-            val_set = set(vals)
-            allowed[key] = val_set if key not in allowed else (allowed[key] & val_set)
-            if not allowed[key]:
-                term_contradiction = True
-                break
-        if term_contradiction:
-            continue
-
-        term_pins = {
-            key: next(iter(vals)) for key, vals in allowed.items() if len(vals) == 1
-        }
-        if common_pins is None:
-            common_pins = term_pins
-        else:
-            common_pins = {
-                k: v for k, v in common_pins.items() if term_pins.get(k) == v
-            }
-
-    return {} if common_pins is None else common_pins
+    satisfiable_terms = [
+        pins
+        for term in terms
+        if (pins := _evaluate_node_selector_term(term, node_selector)) is not None
+    ]
+    if not satisfiable_terms:
+        return {}
+    first, *rest = satisfiable_terms
+    return {k: v for k, v in first.items() if all(other.get(k) == v for other in rest)}
 
 
 def _get_pod_scheduling_metadata(
     group_spec: Dict[str, Any],
 ) -> Tuple[Dict[str, str], Dict[str, str]]:
     """Returns required pod node labels and pod annotations."""
-    template = group_spec.get("template") or {}
-    pod_spec = template.get("spec") or {}
-    node_selector = _get_required_node_labels(pod_spec)
-    annotations = (template.get("metadata") or {}).get("annotations") or {}
+    template = group_spec.get("template")
+    if not isinstance(template, dict):
+        return {}, {}
+    pod_spec = template.get("spec")
+    node_selector = (
+        _get_required_node_labels(pod_spec) if isinstance(pod_spec, dict) else {}
+    )
+    metadata = template.get("metadata")
+    raw_annotations = (
+        metadata.get("annotations") if isinstance(metadata, dict) else None
+    )
+    annotations = raw_annotations if isinstance(raw_annotations, dict) else {}
     return node_selector, annotations
 
 
@@ -367,21 +490,38 @@ def _get_ray_resources_from_group_spec(
     resources.update(custom_resource_dict)
 
     node_selector, annotations = _get_pod_scheduling_metadata(group_spec)
-    for accelerator_manager in get_all_accelerator_managers():
+    base_resources = dict(resources)
+    derived_resource_owners: Dict[str, str] = {}
+    for accelerator_manager in sorted(
+        get_all_accelerator_managers(), key=lambda m: m.__name__
+    ):
         additional = accelerator_manager.get_node_group_additional_resources(
-            resources, node_selector, annotations
+            dict(base_resources), node_selector, annotations, group_name=group_name
         )
         if additional:
             for key, val in additional.items():
-                resources.setdefault(key, val)
+                if key in derived_resource_owners:
+                    logger.warning(
+                        "Accelerator manager '%s' attempted to set additional "
+                        "resource '%s' already set by '%s' for group '%s'; "
+                        "keeping existing value.",
+                        accelerator_manager.__name__,
+                        key,
+                        derived_resource_owners[key],
+                        group_name,
+                    )
+                    continue
+                if key not in resources:
+                    derived_resource_owners[key] = accelerator_manager.__name__
+                    resources[key] = val
 
     return resources
 
 
 def _get_labels_from_group_spec(
     group_spec: Dict[str, Any],
-    group_name: str = "",
-    resources: Optional[Dict[str, Any]] = None,
+    group_name: str,
+    resources: Dict[str, Any],
 ) -> Dict[str, str]:
     """Parses Ray node labels for the autoscaling config based on the following
     priority:
@@ -398,8 +538,6 @@ def _get_labels_from_group_spec(
     Returns:
         A dictionary of labels for the node type.
     """
-    labels_dict = {}
-
     ray_start_params = group_spec.get("rayStartParams", {})
     labels_str = ray_start_params.get("labels")
     # Use a unique log_once key per group to ensure each group's warning is shown.
@@ -424,22 +562,40 @@ def _get_labels_from_group_spec(
 
     # Check for top-level structured Labels field.
     raw_labels = group_spec.get("labels")
-    if isinstance(raw_labels, dict):
-        labels_dict = raw_labels
+    explicit_labels = dict(raw_labels) if isinstance(raw_labels, dict) else {}
+    if explicit_labels:
         # Validate node labels follow expected Kubernetes label syntax.
-        validate_node_label_syntax(labels_dict)
+        validate_node_label_syntax(explicit_labels)
 
     node_selector, annotations = _get_pod_scheduling_metadata(group_spec)
-    resolved_resources = resources or {}
-    for accelerator_manager in get_all_accelerator_managers():
+    derived_labels: Dict[str, str] = {}
+    derived_label_owners: Dict[str, str] = {}
+    for accelerator_manager in sorted(
+        get_all_accelerator_managers(), key=lambda m: m.__name__
+    ):
         accel_labels = accelerator_manager.get_node_group_accelerator_labels(
-            resolved_resources, node_selector, annotations
+            dict(resources), node_selector, annotations, group_name=group_name
         )
         if accel_labels:
-            # Explicit group labels take precedence over derived ones.
-            labels_dict = {**accel_labels, **labels_dict}
+            for key, val in accel_labels.items():
+                if key in derived_labels:
+                    logger.warning(
+                        "Accelerator manager '%s' attempted to set label '%s' "
+                        "already set by '%s' for group '%s'; keeping existing value.",
+                        accelerator_manager.__name__,
+                        key,
+                        derived_label_owners[key],
+                        group_name,
+                    )
+                    continue
+                derived_labels[key] = val
+                derived_label_owners[key] = accelerator_manager.__name__
 
-    return labels_dict
+    if derived_labels:
+        validate_node_label_syntax(derived_labels)
+
+    # Explicit group labels take precedence over derived ones.
+    return {**derived_labels, **explicit_labels}
 
 
 def _get_num_cpus(
