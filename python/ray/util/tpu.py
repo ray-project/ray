@@ -660,31 +660,24 @@ def _get_intact_tpu_slices(
                 if slice_name:
                     slice_to_nodes.setdefault(slice_name, []).append(node)
 
-    intact_slices = {}
-    for slice_name, nodes in slice_to_nodes.items():
-        slice_tpu_chips = sum(
-            (node.get("Resources") or {}).get("TPU", 0) for node in nodes
-        )
+    return {
+        slice_name: nodes
+        for slice_name, nodes in slice_to_nodes.items()
+        if _is_slice_intact(nodes, total_chips_expected)
+    }
 
-        # Validate the slice has all its physical chips.
-        if slice_tpu_chips != total_chips_expected:
-            continue
 
-        # TPU slices must have a head worker (rank 0).
-        # Single-host TPUs are inherently their own head.
-        has_head = any(
-            (n.get("Labels") or {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
-            for n in nodes
-        )
-        if not has_head and len(nodes) == 1:
-            has_head = True
-
-        if not has_head:
-            continue
-
-        intact_slices[slice_name] = nodes
-
-    return intact_slices
+def _is_slice_intact(nodes: Collection[Dict[str, Any]], expected_tpus: int) -> bool:
+    """Return True iff *nodes* have *expected_tpus* total TPU resources and a
+    rank-0 head worker (or form a single-host slice).
+    """
+    slice_tpus = sum((n.get("Resources") or {}).get("TPU", 0) for n in nodes)
+    if slice_tpus != expected_tpus:
+        return False
+    return len(nodes) == 1 or any(
+        (n.get("Labels") or {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+        for n in nodes
+    )
 
 
 def _get_nodes_with_placed_tpu_bundles() -> Set[str]:
@@ -1081,9 +1074,7 @@ class SlicePlacementGroup:
                 stacklevel=2,
             )
 
-        self._bundle_label_selector: List[Dict[str, str]] = []
         self._managed_pgs: List[PlacementGroup] = []
-        self._user_bundle_label_selector = bundle_label_selector
 
         spec = _prepare_slice_pg_specs(
             topology=topology,
@@ -1873,23 +1864,15 @@ def _discover_and_persist_subslices(
         accelerator_version,
     )
 
-    num_bundles, _ = get_tpu_worker_resources(
-        topology=parent_topology,
-        accelerator_type=accelerator_version,
-        chips_per_vm=chips_per_vm,
-    )
-    bundle_label_selector = [
-        {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: target_slice_name}
-        for _ in range(num_bundles)
-    ]
-
     full_slice = None
     try:
         full_slice = SlicePlacementGroup(
             topology=parent_topology,
             accelerator_version=accelerator_version,
             chips_per_vm=chips_per_vm,
-            bundle_label_selector=bundle_label_selector,
+            bundle_label_selector=[
+                {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: target_slice_name}
+            ],
         )
         try:
             ray.get(
@@ -2505,15 +2488,9 @@ def _find_undiscovered_idle_slice(
         for (topo, sname), sns in topo_slice_nodes.items():
             if topo != parent_topology or sname in discovered:
                 continue
-            slice_tpus = sum((n.get("Resources") or {}).get("TPU", 0) for n in sns)
-            has_head = len(sns) == 1 or any(
-                (n.get("Labels") or {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
-                == "0"
-                for n in sns
-            )
-            if slice_tpus != expected_tpus or not has_head:
-                continue
-            if _tpus_idle(sns, avail, pg_used_nodes or set()):
+            if _is_slice_intact(sns, expected_tpus) and _tpus_idle(
+                sns, avail, pg_used_nodes or set()
+            ):
                 return parent_topology, sname
 
     return None

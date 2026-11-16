@@ -754,6 +754,68 @@ def test_get_num_ready_tpu_slices_calculation(
     assert actual_ready == expected_ready
 
 
+@pytest.mark.parametrize("active_state", ["CREATED", "PREPARED", "RESCHEDULING"])
+@patch("ray.is_initialized", return_value=True)
+@patch("ray._private.state.available_resources_per_node")
+@patch("ray.nodes")
+@patch("ray.util.tpu.placement_group_table")
+def test_get_num_ready_tpu_slices_respects_placed_tpu_bundles(
+    mock_pg_table,
+    mock_nodes_call,
+    mock_avail_resources_call,
+    mock_is_initialized,
+    active_state,
+):
+    """Non-REMOVED placement groups with placed TPU > 0 bundles mark a slice
+    non-ready even when available_resources_per_node() is stale, while REMOVED
+    PGs, unplaced bundles, and CPU-only bundles are ignored.
+    """
+    mock_nodes_call.return_value = [
+        _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+        _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
+        _make_mock_tpu_node(True, "v4-16", "slice-2", 0, node_id="C"),
+        _make_mock_tpu_node(True, "v4-16", "slice-2", 1, node_id="D"),
+    ]
+    # Simulate stale ResourceSyncer heartbeats reporting all 4 hosts as idle.
+    mock_avail_resources_call.return_value = {
+        "A": {"TPU": 4},
+        "B": {"TPU": 4},
+        "C": {"TPU": 4},
+        "D": {"TPU": 4},
+    }
+    mock_pg_table.return_value = {
+        "pg_active_tpu": {
+            "state": active_state,
+            "bundles": {0: {"TPU": 4, "CPU": 1}, 1: {"TPU": 4, "CPU": 1}},
+            "bundles_to_node_id": {0: "A", 1: ""},
+        },
+        "pg_removed_tpu": {
+            "state": "REMOVED",
+            "bundles": {0: {"TPU": 4}},
+            "bundles_to_node_id": {0: "C"},
+        },
+        "pg_unplaced_tpu": {
+            "state": "PENDING",
+            "bundles": {0: {"TPU": 4}},
+            "bundles_to_node_id": {0: ""},
+        },
+        "pg_cpu_only": {
+            "state": "CREATED",
+            "bundles": {0: {"CPU": 2}, 1: {"CPU": 1, "TPU": 0}},
+            "bundles_to_node_id": {0: "C", 1: "D"},
+        },
+    }
+
+    assert ray.util.tpu._get_nodes_with_placed_tpu_bundles() == {"A"}
+    assert (
+        ray.util.tpu.get_num_ready_tpu_slices(
+            topology="2x2x2",
+            accelerator_type="v4",
+        )
+        == 1
+    )
+
+
 @pytest.mark.parametrize(
     "topology, accelerator_type, mock_nodes, expected_intact",
     [
@@ -4403,6 +4465,77 @@ def test_subslice_placement_group_filters_by_accelerator_and_intact_slices():
     assert ray.util.tpu._find_undiscovered_idle_slice(
         ["4x4"], nodes, avail, accelerator_version="v6e"
     ) == ("4x4", "slice-v6e-ok")
+
+    # KV refresh, cache collection, and cached subslice lookup must also ignore
+    # cached slices of a different accelerator generation and honor pg_used_nodes.
+    kv_store = {
+        ray.util.tpu._get_subslice_kv_key("slice-v5e"): json.dumps(
+            _SUBSLICE_4X4_PHYSICAL_IDS
+        ).encode(),
+        ray.util.tpu._get_subslice_kv_key("slice-v6e-ok"): json.dumps(
+            _SUBSLICE_4X4_PHYSICAL_IDS
+        ).encode(),
+    }
+    try:
+        with patch(
+            "ray.experimental.internal_kv._internal_kv_get",
+            side_effect=lambda key, namespace=None: kv_store.get(key),
+        ):
+            ray.util.tpu._refresh_cache_from_kv(
+                ["4x4"], nodes, accelerator_version="v6e"
+            )
+
+        assert set(ray.util.tpu._tpu_subslice_cache) == {"slice-v6e-ok"}
+
+        # Even if a mismatched-generation slice is present in the runtime cache,
+        # _collect_known_slices and _find_available_cached_subslice filter it out.
+        with ray.util.tpu._tpu_subslice_cache_lock:
+            ray.util.tpu._tpu_subslice_cache["slice-v5e"] = dict(
+                _SUBSLICE_4X4_PHYSICAL_IDS
+            )
+
+        assert ray.util.tpu._collect_known_slices(
+            "4x4", nodes, accelerator_version="v6e"
+        ) == [("slice-v6e-ok", _SUBSLICE_4X4_PHYSICAL_IDS)]
+
+        slice_worker_to_node = ray.util.tpu._build_slice_worker_to_node(nodes)
+        assert ray.util.tpu._find_available_cached_subslice(
+            ["4x4"],
+            "2x4",
+            nodes,
+            avail,
+            slice_worker_to_node,
+            accelerator_version="v6e",
+        ) == (["0", "2"], 0, "slice-v6e-ok", "4x4")
+
+        # When pg_used_nodes marks the first cached subslice's host busy, select
+        # the second free cached subslice on the matching generation.
+        assert ray.util.tpu._find_available_cached_subslice(
+            ["4x4"],
+            "2x4",
+            nodes,
+            avail,
+            slice_worker_to_node,
+            pg_used_nodes={"slice-v6e-ok-w0"},
+            accelerator_version="v6e",
+        ) == (["1", "3"], 1, "slice-v6e-ok", "4x4")
+
+        # When both v6e subslices have PG-reserved hosts, return None rather than
+        # falling back to the idle v5e cached slice.
+        assert (
+            ray.util.tpu._find_available_cached_subslice(
+                ["4x4"],
+                "2x4",
+                nodes,
+                avail,
+                slice_worker_to_node,
+                pg_used_nodes={"slice-v6e-ok-w0", "slice-v6e-ok-w1"},
+                accelerator_version="v6e",
+            )
+            is None
+        )
+    finally:
+        ray.util.tpu._tpu_subslice_cache.clear()
 
 
 def test_v7x_3d_topology_disambiguation():

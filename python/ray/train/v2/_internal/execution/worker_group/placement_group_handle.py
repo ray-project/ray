@@ -26,14 +26,9 @@ class PlacementGroupHandle(ABC):
 
     @property
     @abstractmethod
-    def placement_group(self) -> PlacementGroup:
-        """The underlying PlacementGroup for worker scheduling."""
-        ...
-
-    @property
     def placement_groups(self) -> List[PlacementGroup]:
         """All underlying PlacementGroups for worker scheduling."""
-        return [self.placement_group]
+        ...
 
     @abstractmethod
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
@@ -61,8 +56,8 @@ class DefaultPlacementGroupHandle(PlacementGroupHandle):
         self._pg = pg
 
     @property
-    def placement_group(self) -> PlacementGroup:
-        return self._pg
+    def placement_groups(self) -> List[PlacementGroup]:
+        return [self._pg]
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         try:
@@ -87,10 +82,6 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
     @property
     def placement_groups(self) -> List[PlacementGroup]:
         return self._spg.slice_placement_groups
-
-    @property
-    def placement_group(self) -> PlacementGroup:
-        return self._spg.placement_group
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         try:

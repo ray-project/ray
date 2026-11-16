@@ -171,7 +171,6 @@ class AcceleratorBackend(ABC):
     ) -> List[Dict[str, float]]:
         pass
 
-    @abstractmethod
     def create_placement_group(
         self,
         *,
@@ -181,7 +180,15 @@ class AcceleratorBackend(ABC):
         accelerator_type_str: Optional[str] = None,
         bundle_label_selector: Optional[Sequence[Dict[str, str]]] = None,
     ) -> PlacementGroup:
-        pass
+        resolved_selector = _resolve_bundle_label_selector(
+            len(bundles), bundle_label_selector
+        )
+        return placement_group(
+            bundles=bundles,
+            strategy=strategy,
+            name=name,
+            bundle_label_selector=resolved_selector,
+        )
 
     @property
     def requires_deferred_placement_group(self) -> bool:
@@ -214,25 +221,6 @@ class CPUAccelerator(AcceleratorBackend):
     ):
         return [{"CPU": 1} for _ in range(num_devices)]
 
-    def create_placement_group(
-        self,
-        *,
-        bundles: List[Dict[str, float]],
-        strategy: str,
-        name: str,
-        accelerator_type_str: Optional[str] = None,
-        bundle_label_selector: Optional[Sequence[Dict[str, str]]] = None,
-    ):
-        resolved_selector = _resolve_bundle_label_selector(
-            len(bundles), bundle_label_selector
-        )
-        return placement_group(
-            bundles=bundles,
-            strategy=strategy,
-            name=name,
-            bundle_label_selector=resolved_selector,
-        )
-
     @property
     def requires_remote_initialization(self) -> bool:
         return False
@@ -250,25 +238,6 @@ class GPUAccelerator(AcceleratorBackend):
         if accelerator_type_str:
             bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
         return [bundle.copy() for _ in range(num_devices)]
-
-    def create_placement_group(
-        self,
-        *,
-        bundles: List[Dict[str, float]],
-        strategy: str,
-        name: str,
-        accelerator_type_str: Optional[str] = None,
-        bundle_label_selector: Optional[Sequence[Dict[str, str]]] = None,
-    ):
-        resolved_selector = _resolve_bundle_label_selector(
-            len(bundles), bundle_label_selector
-        )
-        return placement_group(
-            bundles=bundles,
-            strategy=strategy,
-            name=name,
-            bundle_label_selector=resolved_selector,
-        )
 
     @property
     def requires_remote_initialization(self) -> bool:
@@ -386,15 +355,14 @@ class TPUAccelerator(AcceleratorBackend):
             # Default to 1 TPU per bundle.
             worker_bundle = {"TPU": 1}
 
-        _prepare_slice_pg_specs(
-            topology=self._config.topology,
-            accelerator_version=version,
-            resources_per_bundle=worker_bundle,
-            name=name,
-            bundle_label_selector=bundle_label_selector,
-        )
-
         if self._slice_pg_wrapper is not None:
+            _prepare_slice_pg_specs(
+                topology=self._config.topology,
+                accelerator_version=version,
+                resources_per_bundle=worker_bundle,
+                name=name,
+                bundle_label_selector=bundle_label_selector,
+            )
             logger.debug(
                 "Existing TPU slice PG found. Shutting it down before creating a new one."
             )

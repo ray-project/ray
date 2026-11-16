@@ -29,11 +29,11 @@ def test_default_handle_is_placement_group_handle():
     handle.shutdown()
 
 
-def test_default_handle_placement_group_property():
-    """placement_group property should return the underlying PlacementGroup."""
+def test_default_handle_placement_groups_property():
+    """placement_groups property should return the underlying PlacementGroup list."""
     pg = placement_group([{"CPU": 1}])
     handle = DefaultPlacementGroupHandle(pg)
-    assert handle.placement_group is pg
+    assert handle.placement_groups == [pg]
     handle.shutdown()
 
 
@@ -76,14 +76,14 @@ def test_slice_handle_is_placement_group_handle():
     assert isinstance(handle, PlacementGroupHandle)
 
 
-def test_slice_handle_placement_group_property():
-    """placement_group property should return the underlying PlacementGroup."""
+def test_slice_handle_placement_groups_property():
+    """placement_groups property should return the underlying slice PlacementGroups."""
     mock_spg = MagicMock()
     mock_pg = MagicMock()
-    mock_spg.placement_group = mock_pg
+    mock_spg.slice_placement_groups = [mock_pg]
 
     handle = SlicePlacementGroupHandle(mock_spg)
-    assert handle.placement_group is mock_pg
+    assert handle.placement_groups == [mock_pg]
 
 
 def test_slice_handle_wait():

@@ -404,6 +404,60 @@ def test_pg_cleaner_cleans_up_multiple_placement_groups():
     assert ray.util.placement_group_table(pg2).get("state") == "REMOVED"
 
 
+def test_pg_cleaner_multi_pg_error_isolation_and_already_removed():
+    """Verify error isolation in PlacementGroupCleaner._monitor_loop when an earlier PG
+    is already REMOVED or remove_placement_group raises on an earlier PG.
+    """
+    pg1 = placement_group([{"CPU": 1}], strategy="SPREAD")
+    pg2 = placement_group([{"CPU": 1}], strategy="SPREAD")
+    pg3 = placement_group([{"CPU": 1}], strategy="SPREAD")
+    ray.get([pg1.ready(), pg2.ready(), pg3.ready()])
+
+    # Pre-remove pg1 so _is_placement_group_removed(pg1) is True when controller dies.
+    remove_placement_group(pg1)
+    assert ray.util.placement_group_table(pg1).get("state") == "REMOVED"
+
+    attempted_ids = []
+
+    def _flaky_remove(pg):
+        attempted_ids.append(pg.id)
+        if pg.id == pg2.id:
+            raise RuntimeError("Simulated remove_placement_group failure on pg2")
+        return remove_placement_group(pg)
+
+    alive_target = (
+        "ray.train.v2._internal.execution.controller"
+        ".placement_group_cleaner.is_actor_alive"
+    )
+    remove_target = (
+        "ray.train.v2._internal.execution.controller"
+        ".placement_group_cleaner.remove_placement_group"
+    )
+    try:
+        with patch(alive_target, return_value=False), patch(
+            remove_target, side_effect=_flaky_remove
+        ):
+            cleaner = PlacementGroupCleaner(
+                controller_actor_id="test_controller",
+                check_interval_s=0.05,
+                get_actor_timeout_s=2,
+                stop_timeout=5,
+            )
+            cleaner.register_placement_group([pg1, pg2, pg3])
+            cleaner.start_monitoring()
+            monitor_thread = cleaner._monitor_thread
+            assert monitor_thread is not None
+            monitor_thread.join(timeout=5)
+            assert not monitor_thread.is_alive()
+
+        # pg1 was already REMOVED so remove_placement_group was only called on pg2 and pg3,
+        # and pg2's exception did not prevent pg3 from being removed.
+        assert attempted_ids == [pg2.id, pg3.id]
+        assert ray.util.placement_group_table(pg3).get("state") == "REMOVED"
+    finally:
+        remove_placement_group(pg2)
+
+
 if __name__ == "__main__":
     import sys
 
