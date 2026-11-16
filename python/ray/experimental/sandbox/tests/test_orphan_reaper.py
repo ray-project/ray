@@ -253,5 +253,70 @@ def test_does_nothing_off_linux(monkeypatch):
     assert not orphan_reaper.start()
 
 
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "0", "-1", "soon"])
+def test_interval_falls_back_to_default_unless_positive_and_finite(monkeypatch, value):
+    monkeypatch.setenv(orphan_reaper.REAP_INTERVAL_ENV, value)
+    assert orphan_reaper._interval_seconds() == orphan_reaper._DEFAULT_INTERVAL_SECONDS
+
+
+def test_interval_from_env(monkeypatch):
+    monkeypatch.setenv(orphan_reaper.REAP_INTERVAL_ENV, "0.5")
+    assert orphan_reaper._interval_seconds() == 0.5
+
+
+def test_enable_subreaper_without_libc_returns_false(monkeypatch):
+    def no_libc(*args, **kwargs):
+        raise OSError("no libc")
+
+    monkeypatch.setattr(orphan_reaper.ctypes, "CDLL", no_libc)
+    assert not orphan_reaper._enable_subreaper()
+
+
+def test_enable_subreaper_without_prctl_returns_false(monkeypatch):
+    monkeypatch.setattr(orphan_reaper.ctypes, "CDLL", lambda *a, **k: object())
+    assert not orphan_reaper._enable_subreaper()
+
+
+def test_reap_now_does_nothing_without_the_reaper(monkeypatch):
+    monkeypatch.setattr(orphan_reaper, "_thread", None)
+    monkeypatch.setattr(
+        orphan_reaper, "reap_orphans", lambda: pytest.fail("scanned /proc")
+    )
+    assert orphan_reaper.reap_now() == 0
+
+
+def test_reap_now_reaps_before_the_next_pass(tmp_path):
+    # With an interval far longer than the test, only reap_now can reap the
+    # helper, as when the worker exits right after deleting a sandbox.
+    _run_child(
+        tmp_path,
+        """
+        assert r.start()
+        orphan(tmp, "runsc-fd-parking", 0.1)
+        wait_for_zombie("runsc-fd-parkin")
+        assert r.reap_now() == 1
+        assert "runsc-fd-parkin" not in zombies().values()
+        """,
+        env={orphan_reaper.REAP_INTERVAL_ENV: "600"},
+    )
+
+
+def test_delete_sandbox_reaps_helpers_before_returning(monkeypatch):
+    from ray.experimental.sandbox.backend import gvisor
+
+    calls = []
+    backend = gvisor.GVisorSandboxBackend.__new__(gvisor.GVisorSandboxBackend)
+    backend._sandbox_metadata = {
+        "sb": {"root_dir": "/nonexistent", "config": None, "cgroup": None}
+    }
+    backend._runsc_base_args = lambda config: ["runsc"]
+    backend._delete_container_state = lambda config, sandbox_id: None
+    monkeypatch.setattr(gvisor.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(gvisor, "_release_cgroup", lambda *a: False)
+    monkeypatch.setattr(orphan_reaper, "reap_now", lambda: calls.append("reap"))
+    backend.delete_sandbox("sb")
+    assert calls == ["reap"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -1187,6 +1187,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # being deleted.
             if meta.get("owner_file"):
                 meta["owner_file"].close()
+            # The sandbox's runsc helpers have exited by now. Reap them
+            # before this worker can exit, which would hand them to PID 1.
+            orphan_reaper.reap_now()
 
     def set_egress_allowlist(self, sandbox_id: str, cidrs: List[str]) -> None:
         """Replace the egress allowlist of a running network="public" sandbox.

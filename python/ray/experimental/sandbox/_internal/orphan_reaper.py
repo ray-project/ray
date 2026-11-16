@@ -16,7 +16,8 @@ from running out of process IDs.
 subreaper, so these helpers become its children, and starts a thread that
 reaps them. The thread only reaps zombies whose command name is in
 ``_REAPED_COMMS`` and that run in a session of their own, as runsc's
-helpers do. Children this process starts with ``subprocess``, such as runsc
+helpers do. ``reap_now`` also reaps them at once when the backend deletes a
+sandbox, so a worker that exits right afterwards leaves none behind. Children this process starts with ``subprocess``, such as runsc
 itself, share its session, so their exit statuses stay for ``Popen.wait``
 (which reports 0 for a child it can't find). Other orphans in the worker's subtree still become its children and
 are not reaped here; they are reparented again when the worker exits.
@@ -27,6 +28,7 @@ pod's init reaps orphans (``shareProcessNamespace: true`` or ``tini``).
 
 import ctypes
 import logging
+import math
 import os
 import sys
 import threading
@@ -82,7 +84,7 @@ def _interval_seconds() -> float:
         value = float(raw)
     except ValueError:
         value = 0.0
-    if value <= 0:
+    if not math.isfinite(value) or value <= 0:
         logger.warning(
             "Ignoring %s=%r, which isn't a positive number of seconds.",
             REAP_INTERVAL_ENV,
@@ -98,13 +100,18 @@ def _enable_subreaper() -> bool:
     Returns:
         Whether the call succeeded.
     """
-    libc = ctypes.CDLL(None, use_errno=True)
-    if libc.prctl(_PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
-        err = ctypes.get_errno()
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        failed = libc.prctl(_PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0
+        reason = os.strerror(ctypes.get_errno()) if failed else None
+    except (AttributeError, OSError) as err:
+        # No libc to load, or one without prctl.
+        failed, reason = True, str(err)
+    if failed:
         logger.warning(
             "prctl(PR_SET_CHILD_SUBREAPER) failed (%s), so orphaned runsc "
             "helpers stay zombies unless the pod's init reaps them.",
-            os.strerror(err),
+            reason,
         )
         return False
     return True
@@ -116,7 +123,7 @@ def _parse_stat(stat: str):
     open_paren = stat.index("(")
     close_paren = stat.rindex(")")
     comm = stat[open_paren + 1 : close_paren]
-    state, ppid, _pgrp, session = stat[close_paren + 2 :].split()[:4]
+    state, ppid, _pgrp, session = stat[close_paren + 2 :].split(maxsplit=4)[:4]
     return comm, state, int(ppid), int(session)
 
 
@@ -157,6 +164,25 @@ def reap_orphans() -> int:
         if pid:
             reaped += 1
     return reaped
+
+
+def reap_now() -> int:
+    """Reap orphaned runsc helpers now, if the reaper runs in this process.
+
+    The backend calls this when it deletes a sandbox. The worker can exit
+    before the thread's next pass, and an exiting subreaper's children go to
+    PID 1, which doesn't reap them.
+
+    Returns:
+        The number of zombies reaped; 0 when the reaper isn't running.
+    """
+    if _thread is None:
+        return 0
+    try:
+        return reap_orphans()
+    except Exception:
+        logger.exception("Reaping orphaned runsc helpers failed.")
+        return 0
 
 
 def _run(interval: float) -> None:
