@@ -211,6 +211,9 @@ class WorkerReplicaConfig:
         )
 
 
+_DEFAULT_PLAIN_REPLICA_CONFIG = WorkerReplicaConfig(domain_exclusive=False)
+
+
 @dataclass
 class NodeTypeConfig:
     """NodeTypeConfig is the helper class to provide node type specific configs.
@@ -258,12 +261,13 @@ class NodeTypeConfig:
                 )
 
     @property
+    def effective_replica_config(self) -> WorkerReplicaConfig:
+        """Return `replica_config`, or single-host non-exclusive defaults when unset."""
+        return self.replica_config or _DEFAULT_PLAIN_REPLICA_CONFIG
+
+    @property
     def workers_per_replica(self) -> int:
-        return (
-            self.replica_config.workers_per_replica
-            if self.replica_config is not None
-            else 1
-        )
+        return self.effective_replica_config.workers_per_replica
 
     @property
     def is_multi_worker_replica(self) -> bool:
@@ -271,33 +275,19 @@ class NodeTypeConfig:
 
     @property
     def domain_label_key(self) -> Optional[str]:
-        return (
-            self.replica_config.domain_label_key
-            if self.replica_config is not None
-            else None
-        )
+        return self.effective_replica_config.domain_label_key
 
     @property
     def domain_exclusive(self) -> bool:
-        return bool(
-            self.replica_config is not None and self.replica_config.domain_exclusive
-        )
+        return self.effective_replica_config.domain_exclusive
 
     @property
     def worker_index_label_key(self) -> Optional[str]:
-        return (
-            self.replica_config.worker_index_label_key
-            if self.replica_config is not None
-            else None
-        )
+        return self.effective_replica_config.worker_index_label_key
 
     @property
     def head_resources(self) -> Tuple[str, ...]:
-        return (
-            self.replica_config.head_resources
-            if self.replica_config is not None
-            else ()
-        )
+        return self.effective_replica_config.head_resources
 
 
 class AutoscalingConfig:

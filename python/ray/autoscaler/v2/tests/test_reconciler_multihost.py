@@ -10786,6 +10786,186 @@ class TestReconcilerMultiHost:
         finally:
             reset_log_once()
 
+    def test_multitick_unlabeled_multihost_reconcile_seam_active_to_idle(self):
+        """Multi-tick Reconciler.reconcile + real ResourceDemandScheduler seam:
+        workers joining without runtime domain/index labels log runtime-label drift
+        and stay alive while a launch_request_id peer is busy, then scale down
+        only the complete expired idle batch when one replica transitions idle."""
+        from ray.autoscaler.v2.instance_manager.reconciler import CloudInstance
+        from ray.util.debug import reset_log_once
+
+        head_id = b"h" * 28
+        b0_id, b1_id = b"b0" + b"\x00" * 26, b"b1" + b"\x00" * 26
+        i0_id, i1_id = b"i0" + b"\x00" * 26, b"i1" + b"\x00" * 26
+        node_type_configs = {
+            "head": NodeTypeConfig(
+                name="head",
+                min_worker_nodes=1,
+                max_worker_nodes=1,
+                resources={"CPU": 0},
+            ),
+            "tpu": NodeTypeConfig(
+                name="tpu",
+                min_worker_nodes=0,
+                max_worker_nodes=4,
+                idle_timeout_s=10.0,
+                resources={"CPU": 4, "TPU": 4},
+                replica_config=WorkerReplicaConfig(
+                    workers_per_replica=2,
+                    domain_label_key="ray.io/tpu-slice-name",
+                    domain_exclusive=True,
+                    worker_index_label_key="ray.io/tpu-worker-id",
+                ),
+                runtime_label_keys=("ray.io/tpu-slice-name", "ray.io/tpu-worker-id"),
+            ),
+        }
+        cfg = MockAutoscalingConfig(
+            configs={
+                "max_num_nodes": 5,
+                "idle_timeout_s": 10.0,
+                "node_type_configs": node_type_configs,
+            }
+        )
+        store = InstanceStorage(
+            cluster_id="multitick_unlabeled_seam", storage=InMemoryStorage()
+        )
+        im = InstanceManager(store, instance_status_update_subscribers=[])
+        self._add_instances(
+            store,
+            [
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="head-pod",
+                    ray_node_id=binary_to_hex(head_id),
+                ),
+                create_instance(
+                    "b0",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="pod-b0",
+                    launch_request_id="lid-busy",
+                ),
+                create_instance(
+                    "b1",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="pod-b1",
+                    launch_request_id="lid-busy",
+                ),
+                create_instance(
+                    "i0",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="pod-i0",
+                    launch_request_id="lid-idle",
+                ),
+                create_instance(
+                    "i1",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="pod-i1",
+                    launch_request_id="lid-idle",
+                ),
+            ],
+        )
+        cloud_instances = {
+            "head-pod": CloudInstance("head-pod", "head", NodeKind.HEAD, True),
+            "pod-b0": CloudInstance("pod-b0", "tpu", NodeKind.WORKER, True),
+            "pod-b1": CloudInstance("pod-b1", "tpu", NodeKind.WORKER, True),
+            "pod-i0": CloudInstance("pod-i0", "tpu", NodeKind.WORKER, True),
+            "pod-i1": CloudInstance("pod-i1", "tpu", NodeKind.WORKER, True),
+        }
+        provider = MagicMock()
+        provider.poll_errors.return_value = []
+        provider.get_node_types_with_pending_deletes.return_value = set()
+        sched = ResourceDemandScheduler()
+
+        def _tpu_node(nid, cid, *, busy, idle_ms):
+            return NodeState(
+                node_id=nid,
+                instance_id=cid,
+                ray_node_type_name="tpu",
+                status=NodeStatus.RUNNING if busy else NodeStatus.IDLE,
+                idle_duration_ms=idle_ms,
+                total_resources={"CPU": 4.0, "TPU": 4.0},
+                available_resources={
+                    "CPU": 4.0,
+                    "TPU": 0.0 if busy else 4.0,
+                },
+                labels={},
+            )
+
+        reset_log_once()
+        reconcile_logger = MagicMock()
+        try:
+            # Tick 1: all four unlabeled workers join GCS active/under-timeout -> 0 terminations.
+            tick1_state = ClusterResourceState(
+                node_states=[
+                    NodeState(
+                        node_id=head_id,
+                        instance_id="head-pod",
+                        status=NodeStatus.RUNNING,
+                    ),
+                    _tpu_node(b0_id, "pod-b0", busy=True, idle_ms=0),
+                    _tpu_node(b1_id, "pod-b1", busy=False, idle_ms=2_000),
+                    _tpu_node(i0_id, "pod-i0", busy=True, idle_ms=0),
+                    _tpu_node(i1_id, "pod-i1", busy=True, idle_ms=0),
+                ]
+            )
+            Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=sched,
+                cloud_provider=provider,
+                ray_cluster_resource_state=tick1_state,
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            insts_t1, _ = store.get_instances()
+            for k in ("b0", "b1", "i0", "i1"):
+                assert insts_t1[k].status == Instance.RAY_RUNNING
+            assert reconcile_logger.warning.call_count >= 2
+
+            # Tick 2: lid-idle expires idle > 10s while lid-busy stays active on b0 (b1 idle > 10s).
+            tick2_state = ClusterResourceState(
+                node_states=[
+                    NodeState(
+                        node_id=head_id,
+                        instance_id="head-pod",
+                        status=NodeStatus.RUNNING,
+                    ),
+                    _tpu_node(b0_id, "pod-b0", busy=True, idle_ms=0),
+                    _tpu_node(b1_id, "pod-b1", busy=False, idle_ms=20_000),
+                    _tpu_node(i0_id, "pod-i0", busy=False, idle_ms=20_000),
+                    _tpu_node(i1_id, "pod-i1", busy=False, idle_ms=20_000),
+                ]
+            )
+            Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=sched,
+                cloud_provider=provider,
+                ray_cluster_resource_state=tick2_state,
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            insts_t2, _ = store.get_instances()
+            assert insts_t2["b0"].status == Instance.RAY_RUNNING
+            assert insts_t2["b1"].status == Instance.RAY_RUNNING
+            assert insts_t2["i0"].status == Instance.RAY_STOP_REQUESTED
+            assert insts_t2["i1"].status == Instance.RAY_STOP_REQUESTED
+        finally:
+            reset_log_once()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

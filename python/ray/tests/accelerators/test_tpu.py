@@ -2156,6 +2156,50 @@ def test_get_node_group_replica_metadata(
             False,
             id="fractional-tpu-skips-check",
         ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            0,
+            False,
+            id="workers-per-replica-zero-skips-check",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            -1,
+            False,
+            id="workers-per-replica-negative-skips-check",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            True,
+            False,
+            id="workers-per-replica-bool-true-skips-check",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            None,
+            False,
+            False,
+            id="workers-per-replica-bool-false-skips-check",
+        ),
     ],
 )
 def test_get_node_group_replica_metadata_workers_per_replica_warning(
@@ -2719,6 +2763,48 @@ def test_query_local_tpu_chip_coordinates_raises(
     monkeypatch.setitem(sys.modules, "jax", jax_module)
     with pytest.raises(RuntimeError, match=match):
         tpu._query_local_tpu_chip_coordinates(num_hosts=4)
+
+
+def test_get_node_group_replica_metadata_with_resource_per_chip_env(
+    monkeypatch, propagate_logs, caplog
+):
+    """RAY_TPU_RESOURCE_PER_CHIP env setting stays consistent with replica metadata
+    checks across valid and mismatched TPU worker configurations."""
+    from ray.util.debug import reset_log_once
+
+    reset_log_once()
+    caplog.set_level(logging.WARNING, logger=tpu.__name__)
+    monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    assert tpu.get_tpu_resource_per_chip() == 2
+
+    caplog.clear()
+    meta_ok = TPUAcceleratorManager.get_node_group_replica_metadata(
+        {"CPU": 4, "TPU": 8},
+        {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+        {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+        workers_per_replica=2,
+    )
+    assert meta_ok is not None
+    assert meta_ok["head_resources"] == ["TPU-v7x-16-head"]
+    assert [
+        r for r in caplog.records if "Keeping workers_per_replica=" in r.message
+    ] == []
+
+    caplog.clear()
+    meta_bad = TPUAcceleratorManager.get_node_group_replica_metadata(
+        {"CPU": 4, "TPU": 8},
+        {
+            "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+            "cloud.google.com/gke-tpu-topology": "4x4",
+        },
+        None,
+        workers_per_replica=4,
+    )
+    assert meta_bad is not None
+    assert (
+        len([r for r in caplog.records if "Keeping workers_per_replica=" in r.message])
+        == 1
+    )
 
 
 if __name__ == "__main__":

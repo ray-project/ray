@@ -993,7 +993,9 @@ class _MultiHostReplicaView:
         nt = inst.instance_type
         lid = inst.launch_request_id
         ck = (nt, inst.cloud_instance_id)
-        is_shadowed_stopped = st == Instance.RAY_STOPPED and ck in state.active_nt_cids
+        is_shadowed_stopped = _is_shadowed_stopped(
+            nt, st, inst.cloud_instance_id, state.active_nt_cids
+        )
         in_teardown = not is_shadowed_stopped and st in (
             _TEARDOWN_INSTANCE_STATUSES | {Instance.RAY_STOPPING}
         )
@@ -1149,6 +1151,20 @@ class _MultiHostReplicaView:
                 self.vanished_cids_by_lid.setdefault((nt, lid), set()).update(
                     missing_cids
                 )
+
+
+def _is_shadowed_stopped(
+    nt: NodeType,
+    status: "Instance.InstanceStatus",
+    cloud_instance_id: Optional[str],
+    active_nt_cids: Set[Tuple[NodeType, str]],
+) -> bool:
+    """Return True if a RAY_STOPPED row is shadowed by an active row on the same pod."""
+    return (
+        status == Instance.RAY_STOPPED
+        and bool(cloud_instance_id)
+        and (nt, cloud_instance_id) in active_nt_cids
+    )
 
 
 def _match_worker_cloud_instance(

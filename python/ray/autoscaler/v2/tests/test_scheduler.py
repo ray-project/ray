@@ -19,7 +19,6 @@ from ray.autoscaler.v2.instance_manager.common import (
 from ray.autoscaler.v2.instance_manager.config import WorkerReplicaConfig
 from ray.autoscaler.v2.instance_manager.node_provider import CloudInstance
 from ray.autoscaler.v2.scheduler import (
-    _PENDING_DOMAIN_PREFIX,
     NodeTypeConfig,
     ResourceDemandScheduler,
     ResourceRequestSource,
@@ -6107,12 +6106,13 @@ def _schedule_gangs(
     return _launch_and_terminate(rep)[0], len(rep.infeasible_gang_resource_requests)
 
 
-def _mk_ctx(cfgs, insts, gangs=None):
+def _mk_ctx(cfgs, insts, gangs=None, max_num_nodes=None):
     req = SchedulingRequest(
         disable_launch_config_check=True,
         node_type_configs=cfgs,
         current_instances=insts,
         gang_resource_requests=gangs or [],
+        max_num_nodes=max_num_nodes,
         replica_view=_synthetic_replica_view(cfgs, insts),
     )
     return ResourceDemandScheduler.ScheduleContext.from_schedule_request(req)
@@ -11728,16 +11728,16 @@ def test_locality_gang_bundle_label_domain_pruning_and_fallback(monkeypatch):
         ]
         return _locality_gang(reqs, _SLICE, pinned=pinned)
 
+    from ray.autoscaler.v2.scheduler import _GangSearch
+
     evaluated_domains: List[str] = []
-    orig_sid = ResourceDemandScheduler._schedule_in_domain
+    orig_sid = _GangSearch.schedule_in_domain
 
     def _spy_sid(*args, **kwargs):
         evaluated_domains.append(args[7] if len(args) > 7 else kwargs["domain_val"])
         return orig_sid(*args, **kwargs)
 
-    monkeypatch.setattr(
-        ResourceDemandScheduler, "_schedule_in_domain", staticmethod(_spy_sid)
-    )
+    monkeypatch.setattr(_GangSearch, "schedule_in_domain", staticmethod(_spy_sid))
 
     # Positive: bundle pins slice-b; slice-a is never evaluated and no new slice launches.
     g_pin_b = _pinned_bundle_gang(
@@ -11889,33 +11889,6 @@ def test_duplicate_infeasible_gang_dedup_and_invalidation(monkeypatch):
     # g_fail_1 (eval) -> g_succeed (eval + clears cache) -> g_fail_2 (re-eval) -> g_fail_3 (deduped)
     assert calls == 3
 
-    # Negative: internal _PENDING_DOMAIN_PREFIX selector bypasses dedup cache
-    # (and the second identical gang succeeds once the pending domain counter advances).
-    calls = 0
-    pd_gangs = []
-    for i in range(2):
-        reqs = [
-            _mk_req(
-                {"CPU": 1, "TPU": 4},
-                label_selectors=[
-                    [
-                        (_TOPO, _IN, ["4x4"]),
-                        (_ACC, _IN, ["TPU-V6E"]),
-                        (_WID, _IN, [str(h)]),
-                        (_SLICE, _NOT_IN, [f"{_PENDING_DOMAIN_PREFIX}tpu_4x4:0"]),
-                    ]
-                ],
-            )
-            for h in range(4)
-        ]
-        g = _locality_gang(reqs, _SLICE)
-        g.details = f"pd-{i}"
-        pd_gangs.append(g)
-    rep_pd = _sched(cfgs, [], gangs=pd_gangs)
-    assert len(rep_pd.infeasible_gang_resource_requests) == 1
-    assert _launch_and_terminate(rep_pd) == ({"tpu_4x4": 4}, [])
-    assert calls == 2
-
 
 def test_try_schedule_gang_read_only_nodes_and_backfill_cache():
     """Verify _try_schedule_gang never mutates ScheduleContext nodes and
@@ -11924,8 +11897,9 @@ def test_try_schedule_gang_read_only_nodes_and_backfill_cache():
     cfgs = {"tpu_4x4": _tpu_config(max_workers=8)}
     # Partial 3-of-4 replica without provider replica_id -> 1 missing backfill slot.
     partial = [_tpu_host(f"a{i}", "slice-a", i, None, 0, rep=None) for i in range(3)]
-    ctx = _mk_ctx(cfgs, partial)
+    ctx = _mk_ctx(cfgs, partial, max_num_nodes=8)
     assert ctx.get_missing_replica_backfill_slots() == {"tpu_4x4": 1}
+    assert ctx.get_headroom() == 4
 
     # Snapshot peek_nodes() before feasible and infeasible direct calls.
     def _snap(nodes):
@@ -11951,28 +11925,32 @@ def test_try_schedule_gang_read_only_nodes_and_backfill_cache():
     assert len(inf2) == 4
     assert _snap(ctx.peek_nodes()) == before
 
-    # restricted_to invalidates the cache so backfill matches the subset.
+    # restricted_to inherits parent headroom and cached backfill without mutating ctx.
     sub_ctx = ctx.restricted_to(
-        ctx.peek_nodes()[:2], node_type_available={"tpu_4x4": 4}, max_num_nodes=6
+        ctx.peek_nodes()[:2], node_type_available={"tpu_4x4": 4}
     )
-    assert sub_ctx.get_missing_replica_backfill_slots() == {"tpu_4x4": 2}
+    assert sub_ctx.get_missing_replica_backfill_slots() == {"tpu_4x4": 1}
     assert sub_ctx.get_node_type_available() == {"tpu_4x4": 4}
-    assert sub_ctx.get_max_num_nodes() == 6
+    assert sub_ctx.get_headroom() == 4
     # Parent ctx cache remains intact.
     assert ctx.get_missing_replica_backfill_slots() == {"tpu_4x4": 1}
-    assert ctx.get_max_num_nodes() is None
+    assert ctx.get_headroom() == 4
 
-    # update() refreshes the cached backfill count.
+    # update() refreshes the cached backfill count and headroom.
     ctx.update(upd)
     assert ctx.get_missing_replica_backfill_slots() == {"tpu_4x4": 1}
+    assert ctx.get_headroom() == 0
     # Updating ctx with a complete 4-host replica clears the missing backfill slot.
     full_ctx = _mk_ctx(
         cfgs,
         partial + [_tpu_host("a3", "slice-a", 3, None, 0, rep=None)],
+        max_num_nodes=8,
     )
     assert full_ctx.get_missing_replica_backfill_slots() == {}
+    assert full_ctx.get_headroom() == 4
     ctx.update(full_ctx.peek_nodes())
     assert ctx.get_missing_replica_backfill_slots() == {}
+    assert ctx.get_headroom() == 4
 
 
 def test_enforce_min_workers_ippr_keeps_baseline_resources():
@@ -12454,6 +12432,540 @@ def test_gang_prefilters_match_oracle_and_reduce_trials():
         a = _run_with_mode(insts, gangs, True, ippr_specs, ippr_statuses)
         b = _run_with_mode(insts, gangs, False, ippr_specs, ippr_statuses)
         assert a[:3] == b[:3], f"trial {trial}: opt={a} vs oracle={b}"
+
+
+def test_pg_normalization_dedup_and_ippr_non_cpu_pruning(monkeypatch):
+    """Verify normalized _pg_<hex> dedup hits on distinct fresh keys while excluding
+    node-present keys (including dynamically scheduled ones), and IPPR domains only
+    inflate CPU/memory in `_domain_fits_resource_totals`."""
+    from ray.autoscaler.v2.scheduler import _GangSearch
+
+    cfgs = {"tpu_4x4": _tpu_config(max_workers=8)}
+    busy_slices = [
+        _tpu_host(f"s{s}-{h}", f"slice-{s}", h, {"TPU": 4}, 0, rep=f"rep-{s}")
+        for s in range(2)
+        for h in range(4)
+    ]
+
+    def _spread_pg(pg_name: str, bundles_keys=None):
+        keys = bundles_keys or [pg_name] * 4
+        reqs = [
+            _mk_req(
+                {"CPU": 1, "TPU": 4},
+                [(_ANTI, k, "")],
+                label_selectors=[
+                    [
+                        (_TOPO, _IN, ["4x4"]),
+                        (_ACC, _IN, ["TPU-V6E"]),
+                        (_WID, _IN, [str(h)]),
+                    ]
+                ],
+            )
+            for h, k in enumerate(keys)
+        ]
+        return _locality_gang(reqs, _SLICE)
+
+    calls = 0
+    orig_tsg = ResourceDemandScheduler._try_schedule_gang
+
+    def _spy_tsg(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return orig_tsg(*args, **kwargs)
+
+    monkeypatch.setattr(
+        ResourceDemandScheduler, "_try_schedule_gang", staticmethod(_spy_tsg)
+    )
+
+    # 1) Unique unseen _pg_<hex> keys across 4 infeasible gangs -> 1 trial.
+    fresh_gangs = [_spread_pg(f"_pg_{i:032x}") for i in range(4)]
+    rep_fresh = _sched(cfgs, busy_slices, gangs=fresh_gangs)
+    assert len(rep_fresh.infeasible_gang_resource_requests) == 4
+    assert calls == 1
+
+    # 2) Intra-gang mixed keys vs uniform keys remain distinct.
+    calls = 0
+    mixed_vs_uniform = [
+        _spread_pg(
+            "mix", [f"_pg_{1:032x}", f"_pg_{2:032x}", f"_pg_{1:032x}", f"_pg_{1:032x}"]
+        ),
+        _spread_pg("uni", [f"_pg_{3:032x}"] * 4),
+    ]
+    rep_mix = _sched(cfgs, busy_slices, gangs=mixed_vs_uniform)
+    assert len(rep_mix.infeasible_gang_resource_requests) == 2
+    assert calls == 2
+
+    # 3) Already-active node label key is excluded from fresh normalization.
+    calls = 0
+    pg_existing = f"_pg_{0xAAAA:032x}"
+    pg_unseen = f"_pg_{0xBBBB:032x}"
+    nodes_with_pg = list(busy_slices)
+    nodes_with_pg[0] = _run_node(
+        "tpu_4x4",
+        "s0-0",
+        {"CPU": 4, "TPU": 4},
+        {**TPU_LABELS, _SLICE: "slice-0", _WID: "0", pg_existing: ""},
+        used={"TPU": 4},
+        rep="rep-0",
+    )
+    rep_active = _sched(
+        cfgs, nodes_with_pg, gangs=[_spread_pg(pg_existing), _spread_pg(pg_unseen)]
+    )
+    assert len(rep_active.infeasible_gang_resource_requests) == 2
+    assert calls == 2
+
+    # 4) A feasible gang stamping a fresh _pg key dynamically adds it to active keys.
+    # Use 4 bundles on g_sched so all 4 gangs tie on sort key (0, 8, 4) and run in order.
+    calls = 0
+    pg_dyn = f"_pg_{0xCCCC:032x}"
+    g_fail_0 = _spread_pg(f"_pg_{0xDDD0:032x}")
+    g_sched = _locality_gang(
+        [
+            _mk_req(
+                {"CPU": 0.25},
+                [(_ANTI, pg_dyn, "")],
+                label_selectors=[
+                    [
+                        (_TOPO, _IN, ["4x4"]),
+                        (_ACC, _IN, ["TPU-V6E"]),
+                        (_WID, _IN, [str(h)]),
+                    ]
+                ],
+            )
+            for h in range(4)
+        ],
+        _SLICE,
+    )
+    g_fail_dyn = _spread_pg(pg_dyn)
+    g_fail_fresh = _spread_pg(f"_pg_{0xDDD1:032x}")
+    rep_dyn = _sched(
+        cfgs, busy_slices, gangs=[g_fail_0, g_sched, g_fail_dyn, g_fail_fresh]
+    )
+    assert len(rep_dyn.infeasible_gang_resource_requests) == 3
+    assert calls == 4
+
+    # 5) IPPR resize-up only relaxes CPU/memory; exhausted TPU domains prune before schedule_in_domain.
+    spec = IPPRGroupSpec(
+        min_cpu=4, max_cpu=8, min_memory=1000, max_memory=2000, resize_timeout=60
+    )
+    ippr_cfgs = {"tpu_4x4": _tpu_config(max_workers=8)}
+    ippr_statuses = {
+        f"cloud-s{s}-{h}": IPPRStatus(
+            cloud_instance_id=f"cloud-s{s}-{h}",
+            spec=spec,
+            current_cpu=4,
+            current_memory=1000,
+            desired_cpu=4,
+            desired_memory=1000,
+        )
+        for s in range(2)
+        for h in range(4)
+    }
+    for inst in busy_slices:
+        inst.cloud_instance_id = f"cloud-{inst.im_instance.instance_id}"
+
+    sid_calls = 0
+    orig_sid = _GangSearch.schedule_in_domain
+
+    def _spy_sid(*args, **kwargs):
+        nonlocal sid_calls
+        sid_calls += 1
+        return orig_sid(*args, **kwargs)
+
+    monkeypatch.setattr(_GangSearch, "schedule_in_domain", staticmethod(_spy_sid))
+    rep_tpu_pruned = _sched(
+        ippr_cfgs,
+        busy_slices,
+        gangs=[_tpu_gang()],
+        ippr_specs=IPPRSpecs(groups={"tpu_4x4": spec}),
+        ippr_statuses=ippr_statuses,
+    )
+    assert len(rep_tpu_pruned.infeasible_gang_resource_requests) == 1
+    assert sid_calls == 0
+
+    cpu_up_gang = _locality_gang(
+        [
+            _mk_req(
+                {"CPU": 8},
+                label_selectors=[[(_TOPO, _IN, ["4x4"]), (_WID, _IN, [str(h)])]],
+            )
+            for h in range(4)
+        ],
+        _SLICE,
+    )
+    rep_cpu_ippr = _sched(
+        ippr_cfgs,
+        busy_slices,
+        gangs=[cpu_up_gang],
+        ippr_specs=IPPRSpecs(groups={"tpu_4x4": spec}),
+        ippr_statuses=ippr_statuses,
+    )
+    assert rep_cpu_ippr.infeasible_gang_resource_requests == []
+    assert len(rep_cpu_ippr.to_ippr) == 4
+    assert sid_calls >= 1
+
+
+@pytest.mark.parametrize("use_replica_cfg", [False, True])
+def test_single_host_pinned_domain_idle_protection(use_replica_cfg):
+    """Single-host (workers_per_replica=1) idle workers inside a pinned domain stay
+    protected while sibling workers in that domain are busy or booting, and scale down
+    once all domain workers are idle and expired."""
+    clique_key = "ray.io/gpu-clique"
+    rc = (
+        WorkerReplicaConfig(
+            workers_per_replica=1,
+            domain_label_key=clique_key,
+            domain_exclusive=False,
+        )
+        if use_replica_cfg
+        else None
+    )
+    cfgs = {
+        "gpu-sh": NodeTypeConfig(
+            name="gpu-sh",
+            resources={"CPU": 8, "GPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=6,
+            replica_config=rc,
+            runtime_label_keys=(clique_key,),
+        )
+    }
+    pin_c0 = _strict_pack_gang(
+        clique_key,
+        _spread_reqs({"CPU": 4, "GPU": 4}, 2, "_pg_sh_pin"),
+        loc_constraints=[(clique_key, _IN, ["c0"])],
+    )
+
+    g0_busy = _run_node(
+        "gpu-sh",
+        "g0",
+        {"CPU": 8, "GPU": 4},
+        {clique_key: "c0"},
+        used={"GPU": 4},
+        idle_ms=0,
+    )
+    g1_idle = _run_node(
+        "gpu-sh", "g1", {"CPU": 8, "GPU": 4}, {clique_key: "c0"}, idle_ms=60_000
+    )
+    g2_other = _run_node(
+        "gpu-sh", "g2", {"CPU": 8, "GPU": 4}, {clique_key: "c1"}, idle_ms=60_000
+    )
+    rep_busy_sib = _sched(
+        cfgs, [g0_busy, g1_idle, g2_other], gangs=[pin_c0], idle_s=10.0
+    )
+    assert [t.instance_id for t in rep_busy_sib.to_terminate] == ["g2"]
+
+    g0_under_timeout = _run_node(
+        "gpu-sh", "g0", {"CPU": 8, "GPU": 4}, {clique_key: "c0"}, idle_ms=2_000
+    )
+    rep_boot_or_warm = _sched(
+        cfgs, [g0_under_timeout, g1_idle], gangs=[pin_c0], idle_s=10.0
+    )
+    assert rep_boot_or_warm.to_terminate == []
+
+    # When all c0 workers are idle past timeout and still cannot fit, scale down cleanly.
+    g0_expired = _run_node(
+        "gpu-sh", "g0", {"CPU": 8, "GPU": 4}, {clique_key: "c0"}, idle_ms=60_000
+    )
+    pin_c0_3 = _strict_pack_gang(
+        clique_key,
+        _spread_reqs({"CPU": 4, "GPU": 4}, 3, "_pg_sh_pin3"),
+        loc_constraints=[(clique_key, _IN, ["c0"])],
+    )
+    rep_all_idle = _sched(cfgs, [g0_expired, g1_idle], gangs=[pin_c0_3], idle_s=10.0)
+    assert sorted(t.instance_id for t in rep_all_idle.to_terminate) == ["g0", "g1"]
+
+    # Single-host node with domain_exclusive=True on its own slice key still protects
+    # siblings pinned on an orthogonal shared label (e.g., ray.io/rack).
+    if use_replica_cfg:
+        slice_key = "ray.io/tpu-slice-name"
+        rack_key = "ray.io/rack"
+        excl_cfgs = {
+            "tpu-sh": NodeTypeConfig(
+                name="tpu-sh",
+                resources={"CPU": 8, "TPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=6,
+                replica_config=WorkerReplicaConfig(
+                    workers_per_replica=1,
+                    domain_label_key=slice_key,
+                    domain_exclusive=True,
+                ),
+                runtime_label_keys=(slice_key, rack_key),
+            )
+        }
+        pin_rack = _strict_pack_gang(
+            rack_key,
+            _spread_reqs({"CPU": 4, "TPU": 4}, 2, "_pg_rack_pin"),
+            loc_constraints=[(rack_key, _IN, ["rack-0"])],
+        )
+        t0_busy = _run_node(
+            "tpu-sh",
+            "t0",
+            {"CPU": 8, "TPU": 4},
+            {slice_key: "s0", rack_key: "rack-0"},
+            used={"TPU": 4},
+            idle_ms=0,
+        )
+        t1_idle = _run_node(
+            "tpu-sh",
+            "t1",
+            {"CPU": 8, "TPU": 4},
+            {slice_key: "s1", rack_key: "rack-0"},
+            idle_ms=60_000,
+        )
+        t2_other_rack = _run_node(
+            "tpu-sh",
+            "t2",
+            {"CPU": 8, "TPU": 4},
+            {slice_key: "s2", rack_key: "rack-1"},
+            idle_ms=60_000,
+        )
+        rep_rack = _sched(
+            excl_cfgs,
+            [t0_busy, t1_idle, t2_other_rack],
+            gangs=[pin_rack],
+            idle_s=10.0,
+        )
+        assert [t.instance_id for t in rep_rack.to_terminate] == ["t2"]
+
+        # Pinning on the exclusive slice key itself does not protect an idle node.
+        pin_slice = _strict_pack_gang(
+            slice_key,
+            _spread_reqs({"CPU": 4, "TPU": 4}, 2, "_pg_slice_pin"),
+            loc_constraints=[(slice_key, _IN, ["s0"])],
+        )
+        t1_same_slice = _run_node(
+            "tpu-sh",
+            "t1",
+            {"CPU": 8, "TPU": 4},
+            {slice_key: "s0", rack_key: "rack-0"},
+            idle_ms=60_000,
+        )
+        rep_slice = _sched(
+            excl_cfgs,
+            [t0_busy, t1_same_slice],
+            gangs=[pin_slice],
+            idle_s=10.0,
+        )
+        assert [t.instance_id for t in rep_slice.to_terminate] == ["t1"]
+
+
+def test_non_exclusive_shared_clique_tight_max_and_partial_boot_multitick():
+    """Shared non-exclusive cliques combine idle spare capacity with bounded launches
+    when Step 5 cannot fit under max_workers, and consume unlabeled booting siblings
+    in occupied cliques across ticks cleanly."""
+    clique_key = "ray.io/gpu-clique"
+
+    def _cnode(iid, clique, rep, *, busy=False, idle_ms=60_000):
+        return _run_node(
+            "gpu-clique",
+            iid,
+            {"CPU": 8, "GPU": 4},
+            {clique_key: clique},
+            used={"GPU": 4} if busy else None,
+            idle_ms=0 if busy else idle_ms,
+            rep=rep,
+        )
+
+    # A) Tight min=2, max=4: 1 idle 2-host replica in clique-0 + avail=2 fits 4-host unpinned gang.
+    cfgs_tight = {
+        "gpu-clique": NodeTypeConfig(
+            name="gpu-clique",
+            resources={"CPU": 8, "GPU": 4},
+            min_worker_nodes=2,
+            max_worker_nodes=4,
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=2,
+                domain_label_key=clique_key,
+                domain_exclusive=False,
+            ),
+            runtime_label_keys=(clique_key,),
+        )
+    }
+    rep0 = [_cnode(f"r0-{i}", "clique-0", "rep-0", idle_ms=0) for i in range(2)]
+    g4 = _strict_pack_gang(clique_key, _spread_reqs({"CPU": 4, "GPU": 4}, 4, "_pg_t4"))
+    r_unpinned = _sched(cfgs_tight, rep0, gangs=[g4])
+    assert _launch_and_terminate(r_unpinned) == ({"gpu-clique": 2}, [])
+    assert r_unpinned.infeasible_gang_resource_requests == []
+
+    # Pinned gang to dynamic clique-0 MUST NOT launch new nodes even when avail=2.
+    g4_pin = _strict_pack_gang(
+        clique_key,
+        _spread_reqs({"CPU": 4, "GPU": 4}, 4, "_pg_p4"),
+        loc_constraints=[(clique_key, _IN, ["clique-0"])],
+    )
+    r_pinned = _sched(cfgs_tight, rep0, gangs=[g4_pin])
+    assert _launch_and_terminate(r_pinned) == ({}, [])
+    assert len(r_pinned.infeasible_gang_resource_requests) == 1
+
+    # B) Multi-tick max=6: rep0_busy + rep1_idle in clique-0 + rep2_boot unlabeled.
+    cfgs_6 = {
+        "gpu-clique": NodeTypeConfig(
+            name="gpu-clique",
+            resources={"CPU": 8, "GPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=6,
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=2,
+                domain_label_key=clique_key,
+                domain_exclusive=False,
+            ),
+            runtime_label_keys=(clique_key,),
+        )
+    }
+    rep0_busy = [_cnode(f"b0-{i}", "clique-0", "rep-0", busy=True) for i in range(2)]
+    rep1_idle = [_cnode(f"i1-{i}", "clique-0", "rep-1", busy=False) for i in range(2)]
+    rep2_boot = [
+        _pending_node("gpu-clique", f"p2-{i}", Instance.ALLOCATED, rep="rep-2")
+        for i in range(2)
+    ]
+
+    sched = ResourceDemandScheduler()
+    tick1 = _sched(
+        cfgs_6,
+        rep0_busy + rep1_idle + rep2_boot,
+        gangs=[g4],
+        idle_s=10.0,
+        pending_idle_s=10.0,
+        sched=sched,
+    )
+    assert _launch_and_terminate(tick1) == ({}, [])
+    assert tick1.infeasible_gang_resource_requests == []
+    assert sched._pending_unneeded_since_s.get("gpu-clique", []) == []
+
+    # Tick 2: gang cleared and rep2_boot expires unneeded; rep1_idle & rep2_boot scale down, rep0_busy stays.
+    tick2 = _sched(
+        cfgs_6,
+        rep0_busy + rep1_idle + rep2_boot,
+        gangs=[],
+        idle_s=10.0,
+        pending_idle_s=10.0,
+        unneeded={"gpu-clique": [0.0, 0.0]},
+    )
+    assert sorted(t.instance_id for t in tick2.to_terminate) == [
+        "i1-0",
+        "i1-1",
+        "p2-0",
+        "p2-1",
+    ]
+
+
+def test_schedule_in_domain_joint_fallback_tier_retry():
+    """Joint domain_nodes + siblings retry recovers gang placement when an earlier
+    fallback-tier bundle consumed a restricted zone node needed by a stricter bundle."""
+    clique_key = "ray.io/gpu-clique"
+    cfgs = {
+        "gpu-large": NodeTypeConfig(
+            name="gpu-large",
+            resources={"CPU": 8, "GPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+            runtime_label_keys=(clique_key, "zone"),
+            priority=0,
+        ),
+        "gpu-small": NodeTypeConfig(
+            name="gpu-small",
+            resources={"CPU": 4, "GPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+            runtime_label_keys=(clique_key, "zone"),
+            priority=10,
+        ),
+    }
+    n0 = _run_node(
+        "gpu-large", "n0", {"CPU": 8, "GPU": 4}, {clique_key: "c0", "zone": "zone-a"}
+    )
+    sib0 = _pending_node("gpu-small", "sib0", Instance.ALLOCATED)
+    b_fallback = _mk_req(
+        {"CPU": 4, "GPU": 4},
+        label_selectors=[[("zone", _IN, ["zone-a"]), ("extra", _IN, ["x"])], []],
+    )
+    b_zone = _mk_req(
+        {"CPU": 8, "GPU": 4},
+        label_selectors=[[("zone", _IN, ["zone-a"])]],
+    )
+    gang = _locality_gang([b_fallback, b_zone], clique_key)
+    rep_ok = _sched(cfgs, [n0, sib0], gangs=[gang])
+    assert _launch_and_terminate(rep_ok) == ({}, [])
+    assert rep_ok.infeasible_gang_resource_requests == []
+
+    n0_wrong_zone = _run_node(
+        "gpu-large", "n0", {"CPU": 8, "GPU": 4}, {clique_key: "c0", "zone": "zone-b"}
+    )
+    rep_bad = _sched(cfgs, [n0_wrong_zone, sib0], gangs=[gang])
+    assert len(rep_bad.infeasible_gang_resource_requests) == 1
+
+
+@pytest.mark.parametrize("dom_key", [None, _SLICE])
+def test_domainless_and_missing_label_multihost_lrid_idle_scaledown(dom_key):
+    """Missing runtime domain labels (or dom_key=None) still scale down complete
+    idle launch_request_id batches alongside busy batches without breaking
+    unattributed running safety."""
+    cfgs = {
+        "lws": NodeTypeConfig(
+            name="lws",
+            resources={"CPU": 8, "GPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=12,
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=2, domain_label_key=dom_key
+            ),
+        )
+    }
+
+    def _lws_node(iid, *, busy=False, lid=""):
+        inst = _run_node(
+            "lws",
+            iid,
+            {"CPU": 8, "GPU": 4},
+            {},
+            used={"GPU": 4} if busy else None,
+            idle_ms=0 if busy else 60_000,
+        )
+        assert inst.im_instance is not None
+        inst.im_instance.launch_request_id = lid
+        return inst
+
+    # Distinct launch_request_ids: idle lid-1 scales down while busy lid-0 stays whole.
+    rep = _sched(
+        cfgs,
+        [
+            _lws_node("a0", busy=True, lid="lid-0"),
+            _lws_node("a1", busy=False, lid="lid-0"),
+            _lws_node("b0", busy=False, lid="lid-1"),
+            _lws_node("b1", busy=False, lid="lid-1"),
+        ],
+        idle_s=10.0,
+    )
+    assert sorted(t.instance_id for t in rep.to_terminate) == ["b0", "b1"]
+
+    # Oversized 4-node single-lrid batch chunks cleanly into size-2 units.
+    rep_oversized = _sched(
+        cfgs,
+        [
+            _lws_node("m0", busy=False, lid="lid-mix"),
+            _lws_node("m1", busy=False, lid="lid-mix"),
+            _lws_node("m2", busy=False, lid="lid-mix"),
+            _lws_node("m3", busy=True, lid="lid-mix"),
+        ],
+        idle_s=10.0,
+    )
+    assert len(rep_oversized.to_terminate) == 2
+    assert "m3" not in {t.instance_id for t in rep_oversized.to_terminate}
+
+    # Unattributed nodes (no lid, no prov, no runtime domain) preserve safety when 1 is busy.
+    rep_unattr = _sched(
+        cfgs,
+        [
+            _lws_node("u0"),
+            _lws_node("u1"),
+            _lws_node("u2", busy=True),
+            _lws_node("u3"),
+        ],
+        idle_s=10.0,
+    )
+    assert rep_unattr.to_terminate == []
 
 
 if __name__ == "__main__":

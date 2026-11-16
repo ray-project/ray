@@ -40,13 +40,6 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 _HEAD_GROUP_NAME = "headgroup"
 
 _NODE_LABEL_FIELD_PATH_RE = re.compile(r"\Ametadata\.labels\['([^']+)'\]\Z")
-_K8S_DNS1123_SUBDOMAIN_MAX_LEN = 253
-_K8S_QUALIFIED_NAME_MAX_LEN = 63
-_K8S_DNS1123_LABEL_FMT = r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?"
-_K8S_DNS1123_SUBDOMAIN_RE = re.compile(
-    rf"\A{_K8S_DNS1123_LABEL_FMT}(?:\.{_K8S_DNS1123_LABEL_FMT})*\Z"
-)
-_K8S_QUALIFIED_NAME_RE = re.compile(r"\A(?:[A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]\Z")
 
 
 class AutoscalingConfigProducer:
@@ -182,39 +175,10 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
     }
 
 
-def _is_k8s_qualified_name(value: str) -> bool:
-    """Return True iff `value` satisfies Kubernetes validation.IsQualifiedName."""
-    if not isinstance(value, str):
-        return False
-    parts = value.split("/")
-    if len(parts) == 1:
-        name = parts[0]
-    elif len(parts) == 2:
-        prefix, name = parts
-        if (
-            not prefix
-            or len(prefix) > _K8S_DNS1123_SUBDOMAIN_MAX_LEN
-            or not _K8S_DNS1123_SUBDOMAIN_RE.match(prefix)
-        ):
-            return False
-    else:
-        return False
-
-    return (
-        1 <= len(name) <= _K8S_QUALIFIED_NAME_MAX_LEN
-        and _K8S_QUALIFIED_NAME_RE.match(name) is not None
-    )
-
-
 def _parse_worker_group_label_refs(
     group_spec: Dict[str, Any],
 ) -> List[str]:
     """Parse workerGroupSpecs[].labelRefs into delivered Ray label keys.
-
-    Validates Kubernetes qualified names (`validation.IsQualifiedName`) on both
-    the Kubernetes node label key and delivered Ray label key for KubeRay
-    `labelRefs` (`kuberay#5329`, `kuberay#5501`), skipping entries with
-    malformed syntax or duplicate delivered Ray label keys.
 
     Args:
         group_spec: Worker group specification dictionary from the RayCluster CR.
@@ -234,25 +198,25 @@ def _parse_worker_group_label_refs(
         if not isinstance(ref, dict):
             continue
         value_from = ref.get("valueFrom")
-        if not isinstance(value_from, dict):
-            continue
-        node_ref = value_from.get("nodeRef")
-        if not isinstance(node_ref, dict):
-            continue
-        field_path = node_ref.get("fieldPath")
+        node_ref = value_from.get("nodeRef") if isinstance(value_from, dict) else None
+        field_path = node_ref.get("fieldPath") if isinstance(node_ref, dict) else None
         if not isinstance(field_path, str):
             continue
         match = _NODE_LABEL_FIELD_PATH_RE.match(field_path)
         if not match:
             continue
         node_label_key = match.group(1)
-        if not _is_k8s_qualified_name(node_label_key):
+        if not node_label_key.strip() or any(c.isspace() for c in node_label_key):
             continue
 
         raw_name = ref.get("name")
         if raw_name is None or raw_name == "":
             delivered_key = node_label_key
-        elif isinstance(raw_name, str) and _is_k8s_qualified_name(raw_name):
+        elif (
+            isinstance(raw_name, str)
+            and raw_name.strip()
+            and not any(c.isspace() for c in raw_name)
+        ):
             delivered_key = raw_name
         else:
             continue

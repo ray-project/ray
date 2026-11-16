@@ -26,7 +26,6 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     _get_pod_scheduling_metadata,
     _get_ray_resources_from_group_spec,
     _get_required_node_labels,
-    _is_k8s_qualified_name,
     _parse_worker_group_label_refs,
     _round_up_k8s_quantity,
 )
@@ -2013,78 +2012,17 @@ def test_direct_spec_helper_without_metadata_backwards_compat():
     ]
 
 
-@pytest.mark.parametrize(
-    "value, expected",
-    [
-        # Valid qualified names (including max boundary lengths and >63-char prefix segments)
-        ("a", True),
-        ("A", True),
-        ("0", True),
-        ("a-b_c.d", True),
-        ("example.com/My_Name-1.0", True),
-        ("a..b", True),
-        ("a__b", True),
-        ("a--b", True),
-        ("a" * 63, True),
-        ("a" * 253 + "/" + "b" * 63, True),
-        ("a" * 64 + "." + "b" * 64 + "/name", True),
-        ("ray.io/tpu-slice-name", True),
-        ("cloud.google.com/gke-tpu-partition-2x2x2-id", True),
-        ("topology.kubernetes.io/zone", True),
-        # Invalid: whitespace and trailing newline
-        ("a b", False),
-        ("a\nb", False),
-        ("foo\nbar", False),
-        ("a\tb", False),
-        (" leading", False),
-        ("trailing ", False),
-        ("foo\n", False),
-        ("example.com/foo\n", False),
-        # Invalid: slash structure
-        ("", False),
-        ("/", False),
-        ("/foo", False),
-        ("foo/", False),
-        ("a/b/c", False),
-        # Invalid: DNS1123 subdomain prefix
-        ("FOO.com/bar", False),
-        ("example_com/bar", False),
-        ("a..b/c", False),
-        (".a/b", False),
-        ("a./b", False),
-        ("-a.com/b", False),
-        ("a-.com/b", False),
-        ("a" * 254 + "/bar", False),
-        # Invalid: name part
-        ("a" * 64, False),
-        ("example.com/" + "a" * 64, False),
-        ("-bad", False),
-        ("bad-", False),
-        ("_bad", False),
-        ("bad_", False),
-        (".bad", False),
-        ("bad.", False),
-        ("bad@char", False),
-        ("caf\u00e9", False),
-        ("\u00e9.com/a", False),
-        # Non-string values
-        (None, False),
-        (123, False),
-    ],
-)
-def test_is_k8s_qualified_name(value, expected):
-    assert _is_k8s_qualified_name(value) is expected
-
-
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
-def test_worker_group_label_refs_k8s_qualified_name_validation():
+def test_worker_group_label_refs_malformed_and_whitespace_validation():
     from ray.autoscaler.v2.instance_manager.config import (
         AutoscalingConfig,
         WorkerReplicaConfig,
     )
 
-    # Unit checks: invalid node label keys and invalid name aliases are skipped.
+    # Unit checks: whitespace and empty label keys or aliases are skipped.
     invalid_keys = [
+        "",
+        "   ",
         "a b",
         "a\nb",
         "foo\nbar",
@@ -2092,33 +2030,25 @@ def test_worker_group_label_refs_k8s_qualified_name_validation():
         " leading",
         "trailing ",
         "foo\n",
-        "a/b/c",
-        "/foo",
-        "foo/",
-        "/",
-        "FOO.com/bar",
-        "example_com/bar",
-        "a..b/c",
-        ".a/b",
-        "a./b",
-        "-a.com/b",
-        "a-.com/b",
-        "a" * 254 + "/bar",
-        "a" * 64,
-        "example.com/" + "a" * 64,
-        "-bad",
-        "bad-",
-        "_bad",
-        "bad_",
-        ".bad",
-        "bad.",
-        "bad@char",
-        "caf\u00e9",
     ]
     invalid_refs = [_make_label_ref(key) for key in invalid_keys] + [
-        _make_label_ref("topology.kubernetes.io/zone", name=key) for key in invalid_keys
+        _make_label_ref("topology.kubernetes.io/zone", name=key)
+        for key in invalid_keys
+        if key != ""
     ]
     assert _parse_worker_group_label_refs({"labelRefs": invalid_refs}) == []
+
+    # Non-dict entries and non-string aliases are ignored cleanly without raising.
+    malformed_refs = [
+        None,
+        "not-a-dict",
+        {"valueFrom": None},
+        {"valueFrom": {"nodeRef": "bad"}},
+        {"valueFrom": {"nodeRef": {"fieldPath": 123}}},
+        {"valueFrom": {"nodeRef": {"fieldPath": "metadata.name"}}},
+        _make_label_ref("topology.kubernetes.io/zone", name=123),
+    ]
+    assert _parse_worker_group_label_refs({"labelRefs": malformed_refs}) == []
 
     # Valid boundary keys pass through intact.
     valid_boundary_keys = [
@@ -2128,7 +2058,6 @@ def test_worker_group_label_refs_k8s_qualified_name_validation():
         "example.com/My_Name-1.0",
         "a" * 63,
         "a" * 253 + "/" + "b" * 63,
-        "a" * 64 + "." + "b" * 64 + "/name",
         "ray.io/tpu-slice-name",
         "cloud.google.com/gke-tpu-partition-2x2x2-id",
         "topology.kubernetes.io/zone",
@@ -2159,12 +2088,9 @@ def test_worker_group_label_refs_k8s_qualified_name_validation():
         _make_label_ref("a b"),
         _make_label_ref("a\nb"),
         _make_label_ref("topology.kubernetes.io/zone", name="foo\nbar"),
-        _make_label_ref("a/b/c"),
-        _make_label_ref("/foo"),
-        _make_label_ref("FOO.com/bar"),
-        _make_label_ref("a" * 64),
-        _make_label_ref("a" * 254 + "/bar"),
         _make_label_ref(" padded "),
+        {"valueFrom": {"nodeRef": {"fieldPath": "metadata.name"}}},
+        _make_label_ref("topology.kubernetes.io/zone", name=123),
     ]
 
     # Duplicate delivered key E2E: deduplicates to a single "dup" runtime key.
@@ -2490,6 +2416,176 @@ def test_distinct_misconfigured_tpu_groups_each_log_once_with_bounded_keys():
         _derive_autoscaling_config_from_ray_cr(cr)
         assert mock_err.call_count == 2
         assert mock_warn.call_count == 1
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_kuberay_cr_multihost_label_refs_scheduler_rescheduling_and_idle_seam():
+    """End-to-end seam from KubeRay CR (numOfHosts=2 + labelRefs, non-TPU)
+    through AutoscalingConfig to ResourceDemandScheduler:
+    1) shared runtime_label_keys on a running replica member propagate onto
+       ALLOCATED booting siblings so pinned rescheduling gangs land without launching;
+    2) idle complete replicas inside a pinned shared clique stay protected while
+       another replica in that clique has busy work, while other cliques scale down."""
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+    from ray.autoscaler.v2.scheduler import (
+        ResourceDemandScheduler,
+        SchedulingRequest,
+    )
+    from ray.autoscaler.v2.schema import AutoscalerInstance
+    from ray.core.generated.autoscaler_pb2 import (
+        BundleSelector,
+        GangResourceRequest,
+        LocalityConstraint,
+        LocalityRequirement,
+        NodeState,
+        NodeStatus,
+        ResourceRequest,
+    )
+    from ray.core.generated.common_pb2 import (
+        LabelSelectorConstraint,
+        LabelSelectorOperator,
+        PlacementStrategy,
+    )
+    from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+
+    clique_key = "ray.io/gpu-clique"
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    gpu_wg = copy.deepcopy(cr["spec"]["workerGroupSpecs"][1])
+    gpu_wg.update(
+        groupName="gpu-clique",
+        replicas=0,
+        minReplicas=0,
+        maxReplicas=4,
+        numOfHosts=2,
+        rayStartParams={},
+        labelRefs=[
+            {
+                "name": clique_key,
+                "valueFrom": {
+                    "nodeRef": {"fieldPath": "metadata.labels['nvidia.com/gpu.clique']"}
+                },
+            }
+        ],
+    )
+    gpu_wg["template"].setdefault("metadata", {})["annotations"] = {}
+    gpu_wg["template"]["spec"]["nodeSelector"] = {}
+    gpu_wg["template"]["spec"]["containers"][0]["resources"] = {
+        "limits": {"cpu": "8", "memory": "16Gi", "nvidia.com/gpu": "4"},
+        "requests": {"cpu": "8", "memory": "16Gi", "nvidia.com/gpu": "4"},
+    }
+    cr["spec"]["workerGroupSpecs"] = [gpu_wg]
+
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    nt_cfgs = AutoscalingConfig(configs=derived).get_node_type_configs()
+    assert nt_cfgs["gpu-clique"].runtime_label_keys == (clique_key,)
+    assert nt_cfgs["gpu-clique"].workers_per_replica == 2
+
+    def _run_inst(iid, clique, rep, *, busy=False, idle_ms=0):
+        nid = iid.encode().ljust(28, b"\0")
+        avail = {
+            "CPU": 8.0,
+            "GPU": 0.0 if busy else 4.0,
+            "memory": float(16 * 1024**3),
+        }
+        total = {"CPU": 8.0, "GPU": 4.0, "memory": float(16 * 1024**3)}
+        return AutoscalerInstance(
+            im_instance=Instance(
+                instance_id=iid,
+                instance_type="gpu-clique",
+                status=Instance.RAY_RUNNING,
+                node_id=nid.hex(),
+                cloud_instance_id=f"c-{iid}",
+                node_kind=NodeKind.WORKER,
+            ),
+            ray_node=NodeState(
+                node_id=nid,
+                instance_id=f"c-{iid}",
+                ray_node_type_name="gpu-clique",
+                status=NodeStatus.RUNNING if busy else NodeStatus.IDLE,
+                idle_duration_ms=idle_ms,
+                total_resources=total,
+                available_resources=avail,
+                labels={clique_key: clique},
+            ),
+            cloud_instance_id=f"c-{iid}",
+            cloud_instance_replica_id=rep,
+        )
+
+    def _boot_inst(iid, rep):
+        return AutoscalerInstance(
+            im_instance=Instance(
+                instance_id=iid,
+                instance_type="gpu-clique",
+                status=Instance.ALLOCATED,
+                cloud_instance_id=f"c-{iid}",
+                node_kind=NodeKind.WORKER,
+            ),
+            cloud_instance_id=f"c-{iid}",
+            cloud_instance_replica_id=rep,
+        )
+
+    def _pinned_gang(n_bundles, clique_val, pg_key):
+        reqs = []
+        for _ in range(n_bundles):
+            req = ResourceRequest(resources_bundle={"CPU": 4.0, "GPU": 4.0})
+            pc = req.placement_constraints.add()
+            pc.anti_affinity.label_name = pg_key
+            pc.anti_affinity.label_value = ""
+            reqs.append(req)
+        lr = LocalityRequirement(
+            locality_constraint=LocalityConstraint(
+                label_name=clique_key,
+                placement_strategy=PlacementStrategy.STRICT_PACK,
+            )
+        )
+        lr.label_selector.label_constraints.append(
+            LabelSelectorConstraint(
+                label_key=clique_key,
+                operator=LabelSelectorOperator.LABEL_OPERATOR_IN,
+                label_values=[clique_val],
+            )
+        )
+        return GangResourceRequest(
+            bundle_selectors=[
+                BundleSelector(resource_requests=reqs, locality_requirement=lr)
+            ]
+        )
+
+    # 1) Booting sibling inherits shared runtime label key from running peer.
+    rep_boot = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=nt_cfgs,
+            current_instances=[
+                _run_inst("r0-0", "clique-0", "rep-0", busy=True),
+                _boot_inst("r0-1", "rep-0"),
+            ],
+            gang_resource_requests=[_pinned_gang(1, "clique-0", "_pg_boot")],
+        )
+    )
+    assert rep_boot.to_launch == []
+    assert rep_boot.infeasible_gang_resource_requests == []
+
+    # 2) Idle rep-1 in pinned clique-0 stays protected while r0-0 is busy; rep-2 in clique-1 terminates.
+    rep_idle = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=nt_cfgs,
+            current_instances=[
+                _run_inst("r0-0", "clique-0", "rep-0", busy=True),
+                _run_inst("r0-1", "clique-0", "rep-0", idle_ms=60_000),
+                _run_inst("r1-0", "clique-0", "rep-1", idle_ms=60_000),
+                _run_inst("r1-1", "clique-0", "rep-1", idle_ms=60_000),
+                _run_inst("r2-0", "clique-1", "rep-2", idle_ms=60_000),
+                _run_inst("r2-1", "clique-1", "rep-2", idle_ms=60_000),
+            ],
+            gang_resource_requests=[_pinned_gang(4, "clique-0", "_pg_pin4")],
+            idle_timeout_s=10.0,
+        )
+    )
+    assert rep_idle.to_launch == []
+    assert sorted(t.instance_id for t in rep_idle.to_terminate) == ["r2-0", "r2-1"]
 
 
 if __name__ == "__main__":

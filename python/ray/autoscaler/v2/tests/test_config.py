@@ -914,6 +914,56 @@ def test_node_type_config_replica_properties():
     assert multi_host.head_resources == ("TPU-v6e-16-head",)
 
 
+def test_non_kuberay_labels_overlapping_replica_and_runtime_keys():
+    """Direct non-KubeRay YAML may overlap static `labels` with
+    `replica_config.domain_label_key` or `runtime_label_keys` without failing
+    parsing or dropping static labels."""
+    from ray.autoscaler.v2.instance_manager.config import WorkerReplicaConfig
+
+    raw_cfg = {
+        "cluster_name": "overlap-test",
+        "provider": {"type": "aws", "disable_launch_config_check": True},
+        "head_node_type": "head",
+        "available_node_types": {
+            "head": {"node_config": {}, "resources": {"CPU": 2}},
+            "worker": {
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 4,
+                "resources": {"CPU": 4, "GPU": 4},
+                "labels": {
+                    "ray.io/gpu-clique": "static-clique-a",
+                    "topology.kubernetes.io/zone": "us-central1-a",
+                },
+                "replica_config": {
+                    "workers_per_replica": 2,
+                    "domain_label_key": "ray.io/gpu-clique",
+                    "domain_exclusive": False,
+                },
+                "runtime_label_keys": [
+                    "ray.io/gpu-clique",
+                    "topology.kubernetes.io/zone",
+                ],
+            },
+        },
+    }
+    nt_cfgs = AutoscalingConfig(configs=raw_cfg).get_node_type_configs()
+    worker = nt_cfgs["worker"]
+    assert worker.labels == {
+        "ray.io/gpu-clique": "static-clique-a",
+        "topology.kubernetes.io/zone": "us-central1-a",
+    }
+    assert worker.replica_config == WorkerReplicaConfig(
+        workers_per_replica=2,
+        domain_label_key="ray.io/gpu-clique",
+        domain_exclusive=False,
+    )
+    assert worker.runtime_label_keys == (
+        "ray.io/gpu-clique",
+        "topology.kubernetes.io/zone",
+    )
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
