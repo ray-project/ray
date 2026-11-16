@@ -8,9 +8,6 @@ import sys
 import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
-from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    KV_LIFECYCLE_OWNER_HEADER,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_worker_id,
 )
@@ -140,7 +137,8 @@ async def test_router_connects_to_remote_token_receiver(deployed_app):
 @pytest.mark.asyncio
 @pytest.mark.requires_2x_1GPU
 async def test_cross_node_lifecycle_and_replica_mesh(deployed_app):
-    """A remote engine reports to its owner; router peers share load and affinity."""
+    """Routers on every node apply a remote engine's lifecycle events, and
+    router peers share load and affinity."""
     router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
     server = serve.get_app_handle(APP_NAME)
     endpoints = await discover_replica_endpoints(server, NUM_REPLICAS)
@@ -160,18 +158,16 @@ async def test_cross_node_lifecycle_and_replica_mesh(deployed_app):
         ids = await broadcast("get_registered_worker_ids")
         return bool(ids) and all(set(ids_) == set(workers) for ids_ in ids)
 
+    async def subscribed():
+        sources = await broadcast("get_lifecycle_sources")
+        return all(len(endpoints) == len(workers) for endpoints in sources)
+
     await async_wait_for_condition(registered, timeout=120)
-    snapshots = await broadcast("get_lifecycle_snapshot", request_id, bound)
-    assert len({_endpoint_host(s["lifecycle_endpoint"]) for s in snapshots}) >= 2
-    owner = next(
-        s for s in snapshots if _endpoint_host(s["lifecycle_endpoint"]) != host
-    )
-    peer = next(
-        s
-        for s in snapshots
-        if _endpoint_host(s["lifecycle_endpoint"])
-        != _endpoint_host(owner["lifecycle_endpoint"])
-    )
+    await async_wait_for_condition(subscribed, timeout=60)
+    snapshots = await broadcast("get_load_snapshot", bound)
+    assert len({s["node_ip"] for s in snapshots}) >= 2
+    owner = next(s for s in snapshots if s["node_ip"] != host)
+    peer = next(s for s in snapshots if s["node_ip"] != owner["node_ip"])
 
     async def mesh_connected():
         peers = await broadcast("get_replica_mesh_peers")
@@ -180,7 +176,7 @@ async def test_cross_node_lifecycle_and_replica_mesh(deployed_app):
         )
 
     await async_wait_for_condition(mesh_connected, timeout=60)
-    # Dynamo registers peers before the ZMQ subscriptions finish connecting.
+    # Subscriptions connect in the background.
     await asyncio.sleep(1)
 
     # Force the initial session binding onto the worker on the other node.
@@ -243,25 +239,15 @@ async def test_cross_node_lifecycle_and_replica_mesh(deployed_app):
                     "prompt": "Hello, my name is",
                     "max_tokens": 8,
                 },
-                headers={
-                    "X-Request-Id": request_id,
-                    KV_LIFECYCLE_OWNER_HEADER: owner["lifecycle_endpoint"],
-                },
+                headers={"X-Request-Id": request_id},
                 timeout=120,
             )
             assert response.status_code == 200, response.text
 
         await asyncio.to_thread(complete_on_engine)
-        # Only the engine's ZMQ events can release this booking; the mesh must
-        # then propagate the free to the other node's routers.
+        # Only the engine's lifecycle events can release this booking, and the
+        # routers on both nodes apply them.
         await async_wait_for_condition(load_is, expected=len(booked) - 1, timeout=30)
-        readings = await broadcast("get_lifecycle_snapshot", request_id, bound)
-        assert all(reading["lifecycle"] is None for reading in readings)
-        logs = await broadcast("get_event_log")
-        events = [[name for name, args in log if args[0] == request_id] for log in logs]
-        assert [names for names in events if names] == [
-            ["on_prefill_complete", "on_request_completed"]
-        ]
         assert (
             await select(
                 peer["replica_id"],
@@ -273,13 +259,8 @@ async def test_cross_node_lifecycle_and_replica_mesh(deployed_app):
             == bound
         )
     finally:
-        await broadcast(
-            "on_lifecycle_events",
-            [
-                ("on_request_completed", (rid,))
-                for rid in booked + ["cross-node-next-turn"]
-            ],
-        )
+        for rid in booked + ["cross-node-next-turn"]:
+            await broadcast("free_reservation", rid)
 
 
 if __name__ == "__main__":

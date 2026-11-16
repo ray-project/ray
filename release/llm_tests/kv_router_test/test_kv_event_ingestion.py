@@ -1,3 +1,4 @@
+import math
 import sys
 from typing import Dict, List, Optional
 from unittest.mock import patch
@@ -14,10 +15,10 @@ from ray import serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     REQUEST_TOKEN_IDS_KWARG,
+    SELECTION_MODEL_NAME,
+    SELECTION_ROUTING_GROUP,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
-    _MODEL_NAME,
-    _ROUTING_GROUP,
     KVTokenTracker,
     get_worker_id,
 )
@@ -53,7 +54,7 @@ class _TestKVTokenTracker(KVTokenTracker):
         if self._svc is None:
             return []
         workers = self._svc.list_workers(
-            model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP
+            model_name=SELECTION_MODEL_NAME, routing_group=SELECTION_ROUTING_GROUP
         )
         return sorted(
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
@@ -83,8 +84,8 @@ class _TestKVTokenTracker(KVTokenTracker):
             return {}
         scores = await self._svc.overlap_scores(
             {
-                "model_name": _MODEL_NAME,
-                "routing_group": _ROUTING_GROUP,
+                "model_name": SELECTION_MODEL_NAME,
+                "routing_group": SELECTION_ROUTING_GROUP,
                 "token_ids": list(token_ids),
                 "lora_name": lora_name,
             }
@@ -97,8 +98,8 @@ class _TestKVTokenTracker(KVTokenTracker):
             return {}
         loads = await self._svc.potential_loads(
             {
-                "model_name": _MODEL_NAME,
-                "routing_group": _ROUTING_GROUP,
+                "model_name": SELECTION_MODEL_NAME,
+                "routing_group": SELECTION_ROUTING_GROUP,
                 "token_ids": list(token_ids),
             }
         )
@@ -109,7 +110,7 @@ class _TestKVTokenTracker(KVTokenTracker):
         if self._svc is None:
             return {}
         model_loads = self._svc.loads(
-            model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP
+            model_name=SELECTION_MODEL_NAME, routing_group=SELECTION_ROUTING_GROUP
         )
         if not model_loads:
             return {}
@@ -286,13 +287,23 @@ async def book_decode_load(
     output_tokens,
     expected_output_tokens=None,
 ):
-    """Book a request, move it to decode, and add output blocks."""
+    """Book a request, move it to decode, and add an output block per KV block
+    its output fills, each weighted by the share of output still expected."""
     selection = await tracker.select_worker(
         reservation_id, token_ids, [worker_id], expected_output_tokens
     )
     assert selection["worker_id"] == worker_id
-    await tracker.on_prefill_complete(reservation_id)
-    await tracker.on_decode_progress(reservation_id, output_tokens)
+    await tracker._svc.prefill_complete(reservation_id)
+    decay_fraction = (
+        max(0.0, 1.0 - output_tokens / expected_output_tokens)
+        if expected_output_tokens
+        else None
+    )
+    output_blocks = math.ceil((len(token_ids) + output_tokens) / BLOCK_SIZE) - (
+        math.ceil(len(token_ids) / BLOCK_SIZE)
+    )
+    for _ in range(output_blocks):
+        tracker._svc.add_output_block(reservation_id, decay_fraction=decay_fraction)
     return reservation_id
 
 
@@ -558,7 +569,7 @@ class TestKvEventIngestion:
                 "cpu-tiebreak", token_ids, [worker_a, worker_b]
             )
             assert cpu_selection["worker_id"] == worker_a
-            await tracker.on_request_completed("cpu-tiebreak")
+            await tracker._svc.free_reservation("cpu-tiebreak")
 
             b.publish_stored(block_hashes, token_ids)
             await wait_for_overlap_scores(
@@ -575,7 +586,7 @@ class TestKvEventIngestion:
             )
             assert gpu_selection["worker_id"] == worker_b
             assert gpu_selection["effective_prefill_tokens"] == 0
-            await tracker.on_request_completed("gpu-hit")
+            await tracker._svc.free_reservation("gpu-hit")
 
             b.publish_removed(block_hashes)
             await wait_for_overlap(
@@ -643,7 +654,7 @@ class TestKvEventIngestion:
 
             # Free A and load B instead: the choice flips to A.
             for reservation_id in load_a:
-                await tracker.on_request_completed(reservation_id)
+                await tracker._svc.free_reservation(reservation_id)
             await book_uncached_load(tracker, worker_b, count=8, base=500_000)
             loads = await tracker.get_potential_loads(token_ids)
             assert (

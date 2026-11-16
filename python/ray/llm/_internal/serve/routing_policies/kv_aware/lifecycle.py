@@ -1,183 +1,110 @@
-import asyncio
-import contextlib
-import contextvars
 from enum import Enum
-from typing import Awaitable, Callable, List, Optional
+from typing import Optional
 
 import msgpack
 import zmq
-import zmq.asyncio as zmq_asyncio
-from starlette.datastructures import Headers
-from starlette.types import ASGIApp, Receive, Scope, Send
 
+import ray
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    KV_LIFECYCLE_OWNER_HEADER,
-    KV_TOKEN_ZMQ_RECEIVE_QUEUE_LIMIT,
+    KV_LIFECYCLE_ZMQ_SEND_QUEUE_LIMIT,
+    SELECTION_MODEL_NAME,
+    SELECTION_ROUTING_GROUP,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.network_utils import (
-    ZmqPushSender,
-)
-from ray.util import metrics
 
 logger = get_logger(__name__)
 
-
-class PushOutcome(str, Enum):
-    """``outcome`` tag of the lifecycle events counter."""
-
-    PUSHED = "pushed"
-    DROPPED = "dropped"
+# Must match the selection service's REPLICA_TOPIC
+# (lib/router/kv-router/src/services/common/replica_sync.rs).
+_TOPIC = b"dynamo.slot-tracker.v1"
 
 
-_lifecycle_events_counter = metrics.Counter(
-    "serve_llm_kv_lifecycle_events",
-    description="KV lifecycle events engines pushed to the selecting router.",
-    tag_keys=("outcome",),
-)
+class LifecycleEvent(str, Enum):
+    """The selection service's ActiveSequenceEventData variants
+    (lib/router/slot-tracker/src/wire.rs)."""
 
-# Lifecycle endpoint of the router that selected the current request.
-_request_lifecycle_owner: contextvars.ContextVar[
-    Optional[str]
-] = contextvars.ContextVar("kv_request_lifecycle_owner", default=None)
+    PREFILL_COMPLETE = "MarkPrefillCompleted"
+    FINISHED = "Free"
 
 
-def get_request_lifecycle_owner() -> Optional[str]:
-    """Lifecycle endpoint of the router that selected the current request."""
-    return _request_lifecycle_owner.get()
+class LifecyclePublisher:
+    """Publishes each request's prefill-complete and finished events on a ZMQ
+    PUB socket that every LLMRouter's selection service subscribes to.
 
+    Every router counts the load of every request, including requests other
+    routers routed, so every router needs these events to update that load.
+    Events come straight from this LLMServer, not through the router that
+    routed the request, so the other routers still get them if it fails.
 
-class RequestLifecycleOwnerMiddleware:
-    """Bind the owner before vLLM spawns its handler task, through streaming."""
-
-    def __init__(self, app: ASGIApp):
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        # vLLM prepares the response in a child task but consumes the stream
-        # outside it. Bind here so both inherit the request's owner.
-        token = _request_lifecycle_owner.set(
-            Headers(scope=scope).get(KV_LIFECYCLE_OWNER_HEADER)
-        )
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            _request_lifecycle_owner.reset(token)
-
-
-class LifecycleCodec:
-    """Wire format of lifecycle events: one msgpack frame holding a list of
-    ``[hook, args]`` pairs."""
-
-    @staticmethod
-    def encode(events: List[tuple]) -> bytes:
-        return msgpack.packb([[hook, list(args)] for hook, args in events])
-
-    @staticmethod
-    def decode(payload: bytes) -> List[tuple]:
-        """Decode one message, raising ValueError if it is malformed."""
-        try:
-            return [(hook, tuple(args)) for hook, args in msgpack.unpackb(payload)]
-        except Exception as e:
-            raise ValueError(f"undecodable payload: {e}") from e
-
-
-class LifecycleEventForwarder(ZmqPushSender):
-    """Pushes lifecycle events to the selecting router, one PUSH socket per
-    owner, so a request's events arrive in order. Best effort: an event whose
-    push fails is dropped."""
-
-    _payload = "KV lifecycle events"
-    # Queue while connecting so a router's first events aren't dropped.
-    _immediate = False
-
-    def report(self, owner: str, method_name: str, *args) -> None:
-        payload = LifecycleCodec.encode([(method_name, args)])
-        pushed = self._push(owner, [payload])
-        outcome = PushOutcome.PUSHED if pushed else PushOutcome.DROPPED
-        _lifecycle_events_counter.inc(tags={"outcome": outcome.value})
-
-
-class LifecycleReceiver:
-    """ZMQ PULL endpoint for lifecycle events of requests this router selected.
-
-    Invariants:
-    - Binds a port the OS picks, so routers on one node never collide.
-    - Applies one message at a time, in arrival order. A request's events come
-      from one LLMServer's PUSH socket, so they apply in the order sent.
-    - At most once: a lost message is never redelivered. Dynamo expires a
-      booking whose free never arrives.
-    - A malformed message or a failing handler is logged and skipped. Only
-      ``close`` stops the loop.
-    - Idempotent: a repeated event, or one for an unknown request, changes
-      nothing. The handler must guarantee this.
+    Best effort: a router misses events sent before it connects, or once
+    KV_LIFECYCLE_ZMQ_SEND_QUEUE_LIMIT events are queued for it. Its selection
+    service drops the load of those requests after
+    DYN_ROUTER_ACTIVE_REQUEST_EXPIRY_SECS (300 s by default).
     """
 
-    def __init__(
-        self,
-        *,
-        handler: Callable[[List[tuple]], Awaitable[None]],
-        receive_queue_limit: int = KV_TOKEN_ZMQ_RECEIVE_QUEUE_LIMIT,
-    ):
-        self._handler = handler
-        self._receive_queue_limit = receive_queue_limit
-        self._socket = None
-        self._task: Optional[asyncio.Task] = None
+    def __init__(self):
+        self._socket: Optional[zmq.Socket] = None
+        self._event: dict = {}
 
-    async def start(self) -> int:
-        """Bind to a free port, start receiving, and return the port."""
-        context = zmq_asyncio.Context.instance()
-        socket = context.socket(zmq.PULL)
-        # Close immediately instead of waiting on pending messages.
+    def start(self, worker_id: int, dp_rank: int, block_size: int) -> str:
+        """Bind to a port the OS picks and return the endpoint to advertise."""
+        socket = zmq.Context.instance().socket(zmq.PUB)
+        # Drop unsent events on close, so shutdown never waits on a gone router.
         socket.setsockopt(zmq.LINGER, 0)
-        # Cap unread messages. Past it, LLMServers' pushes back up and drop.
-        socket.setsockopt(zmq.RCVHWM, self._receive_queue_limit)
+        socket.setsockopt(zmq.SNDHWM, KV_LIFECYCLE_ZMQ_SEND_QUEUE_LIMIT)
         try:
             port = socket.bind_to_random_port("tcp://*")
-        except zmq.ZMQError:
-            socket.close(linger=0)
-            raise
+        except zmq.ZMQError as e:
+            socket.close()
+            raise RuntimeError(
+                f"Failed to bind the ZMQ socket for KV lifecycle events: {e}"
+            ) from e
         self._socket = socket
-        self._task = asyncio.create_task(self._run())
-        logger.info("KV lifecycle events listening on port %d.", port)
-        return port
+        # The selection service's ScopedReplicaEvent
+        # (lib/router/scheduler/src/replication.rs).
+        self._event = {
+            "model_name": SELECTION_MODEL_NAME,
+            "routing_group": SELECTION_ROUTING_GROUP,
+            # Must equal the routers' block size, or the selection service drops
+            # the event.
+            "block_size": block_size,
+            "event": {
+                "worker": {"worker_id": worker_id, "dp_rank": dp_rank},
+                # router_id names the sender: routers use their own random id,
+                # an LLMServer uses its worker id. With the worker id, a router
+                # that gets the event before it learns of the request (from the
+                # router that routed it) keeps the event for 30 s and applies it
+                # once it learns of the request.
+                "router_id": worker_id,
+                # Prefill and free events find the booking by request id, and
+                # the booking already holds the LoRA name.
+                "lora_name": None,
+            },
+        }
+        endpoint = f"tcp://{ray.util.get_node_ip_address()}:{port}"
+        logger.info("Publishing KV lifecycle events on %s.", endpoint)
+        return endpoint
 
-    async def _run(self) -> None:
-        socket = self._socket
-        while True:
-            try:
-                payload = await socket.recv()
-            except asyncio.CancelledError:
-                raise
-            except (zmq.ContextTerminated, zmq.ZMQError) as e:
-                if socket.closed or getattr(e, "errno", None) in (
-                    zmq.ETERM,
-                    zmq.ENOTSOCK,
-                ):
-                    break
-                logger.exception("Failed to receive KV lifecycle events.")
-                await asyncio.sleep(1)
-                continue
-            try:
-                events = LifecycleCodec.decode(payload)
-            except ValueError as e:
-                logger.warning("Dropping malformed KV lifecycle message: %s", e)
-                continue
-            try:
-                await self._handler(events)
-            except Exception:
-                logger.exception("Failed to apply KV lifecycle events.")
+    def publish(self, request_id: str, event: LifecycleEvent) -> None:
+        """Publish ``event`` for ``request_id`` without blocking."""
+        if self._socket is None:
+            return
+        message = {
+            **self._event,
+            "event": {
+                **self._event["event"],
+                "request_id": request_id,
+                "data": event.value,
+            },
+        }
+        try:
+            self._socket.send_multipart(
+                [_TOPIC, msgpack.packb(message)], flags=zmq.NOBLOCK
+            )
+        except zmq.ZMQError as e:
+            logger.warning("Dropping KV lifecycle event for %s: %s", request_id, e)
 
-    async def close(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+    def close(self) -> None:
         if self._socket is not None:
-            self._socket.close(linger=0)
+            self._socket.close()
             self._socket = None

@@ -2,23 +2,21 @@
 
 The KVTokenTracker is a plain object built by the LLMRouter ingress replica.
 These tests reach it through the LLMRouter deployment handle: ``patch_ingress``
-swaps in an ``LLMRouter`` subclass (kept named ``LLMRouter`` so the deployment
-name the engine resolves is unchanged) that records booked lifecycle events and
-exposes the tracker's state as handle-callable methods.
+swaps in an ``LLMRouter`` subclass that exposes the tracker's and its selection
+service's state as handle-callable methods.
 """
 
 import asyncio
 from contextlib import contextmanager
-from dataclasses import asdict
 import sys
 from unittest import mock
 
 import ray.cloudpickle
 from ray import serve
 from ray.llm._internal.serve.core.ingress.router import LLMRouter as _LLMRouter
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
-    _MODEL_NAME,
-    _ROUTING_GROUP,
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    SELECTION_MODEL_NAME,
+    SELECTION_ROUTING_GROUP,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
@@ -36,7 +34,6 @@ def build_kv_config(
     request_router_class,
     kv_events_port_base,
     num_replicas=1,
-    decode_progress=False,
     request_router_kwargs=None,
 ):
     """Config for a direct-streaming KV-aware app with engine KV events enabled.
@@ -44,9 +41,6 @@ def build_kv_config(
     Build it outside ``patch_ingress``: serializing the router class clears this
     module from cloudpickle's pickle-by-value registry.
     """
-    runtime_env = {}
-    if decode_progress:
-        runtime_env = {"env_vars": {"RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS": "1"}}
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id=MODEL_ID,
@@ -69,7 +63,6 @@ def build_kv_config(
         ),
         placement_group_config={"bundles": [{"GPU": 1}]},
         experimental_configs={"KV_EVENTS_PORT_BASE": kv_events_port_base},
-        runtime_env=runtime_env,
     )
     # Emit engine KV-cache events so each ingress tracker registers the
     # replica's worker (schedulable, required to book a reservation against it).
@@ -116,15 +109,14 @@ class LLMRouter(_LLMRouter):
     """(Test only) LLMRouter that exposes its embedded KVTokenTracker over the
     deployment handle for the KV-router release tests.
 
-    It records every lifecycle event engines push to this router, and any error
-    raised while applying it, and forwards read-only queries to the tracker and
-    its selection service.
+    It forwards queries to the tracker and its selection service. Engines'
+    lifecycle events reach the selection service directly, without Python;
+    ``prefill_complete`` and ``free_reservation`` stand in for them on requests
+    no engine serves.
     """
 
     async def __init__(self, *args, **kwargs):
         await super().__init__(*args, **kwargs)
-        self._event_log = []
-        self._errors = []
         self._token_pushes = []
         self._selections = []
         renderer = self._tokenizer._renderer.renderer
@@ -150,8 +142,6 @@ class LLMRouter(_LLMRouter):
             return selection
 
         tracker.select_worker = recorded_select_worker
-        # Record the lifecycle events engines push to this router.
-        self._kv_token_tracker._lifecycle_receiver._handler = self.on_lifecycle_events
 
     def _push_prompt_tokens(self, *, token_endpoint, replica_id, request_token_ids):
         key = super()._push_prompt_tokens(
@@ -167,31 +157,25 @@ class LLMRouter(_LLMRouter):
         )
         return key
 
-    async def on_lifecycle_events(self, events):
-        """Record events, then apply each hook to the tracker directly so a
-        hook raising is captured in ``_errors`` rather than swallowed."""
-        self._event_log.extend(events)
-        for hook_name, hook_args in events:
-            try:
-                await getattr(self._kv_token_tracker, hook_name)(*hook_args)
-            except Exception as e:  # noqa: BLE001 - recorded for assertion
-                self._errors.append((hook_name, repr(e)))
+    async def prefill_complete(self, request_id):
+        """(Test only) Mark this router's booking of ``request_id`` prefilled.
+        Returns whether it held one."""
+        try:
+            await self._kv_token_tracker._svc.prefill_complete(request_id)
+            return True
+        except Exception:
+            return False
 
-    async def on_prefill_complete(self, *args, **kwargs):
-        return await self._kv_token_tracker.on_prefill_complete(*args, **kwargs)
-
-    async def on_request_completed(self, *args, **kwargs):
-        return await self._kv_token_tracker.on_request_completed(*args, **kwargs)
+    async def free_reservation(self, request_id):
+        """(Test only) Free this router's booking of ``request_id``. Returns
+        whether it held one."""
+        try:
+            await self._kv_token_tracker._svc.free_reservation(request_id)
+            return True
+        except Exception:
+            return False
 
     # -- introspection ------------------------------------------------------
-    def get_event_log(self):
-        """(Test only) Every lifecycle event booked through this ingress."""
-        return self._event_log
-
-    def get_errors(self):
-        """(Test only) (hook, repr(exc)) for each hook that raised while booking."""
-        return self._errors
-
     def reset_token_pushes(self):
         self._token_pushes.clear()
         self._chat_render.reset_mock()
@@ -216,7 +200,9 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return []
-        workers = svc.list_workers(model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP)
+        workers = svc.list_workers(
+            model_name=SELECTION_MODEL_NAME, routing_group=SELECTION_ROUTING_GROUP
+        )
         return sorted(
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
         )
@@ -240,8 +226,8 @@ class LLMRouter(_LLMRouter):
             return {}
         scores = await svc.overlap_scores(
             {
-                "model_name": _MODEL_NAME,
-                "routing_group": _ROUTING_GROUP,
+                "model_name": SELECTION_MODEL_NAME,
+                "routing_group": SELECTION_ROUTING_GROUP,
                 "token_ids": list(token_ids),
                 "lora_name": lora_name,
             }
@@ -254,7 +240,9 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return 0
-        for model in svc.loads(model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP):
+        for model in svc.loads(
+            model_name=SELECTION_MODEL_NAME, routing_group=SELECTION_ROUTING_GROUP
+        ):
             for load in model["loads"]:
                 if load["worker_id"] == worker_id:
                     return load["active_requests"]
@@ -267,43 +255,52 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return None
-        for model in svc.loads(model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP):
+        for model in svc.loads(
+            model_name=SELECTION_MODEL_NAME, routing_group=SELECTION_ROUTING_GROUP
+        ):
             for load in model["loads"]:
                 if load["worker_id"] == worker_id:
                     return load
         return None
+
+    async def get_load_snapshot(self, worker_id):
+        """(Test only) This replica's id and node, and the load it books on
+        ``worker_id``."""
+        load = await self.get_worker_load(worker_id) or {
+            "active_requests": 0,
+            "potential_prefill_tokens": 0,
+        }
+        return {
+            "replica_id": self.get_replica_id(),
+            "node_ip": self.get_node_ip(),
+            "active_requests": load["active_requests"],
+            "potential_prefill_tokens": load["potential_prefill_tokens"],
+        }
 
     def get_replica_id(self):
         """(Test only) This ingress replica's full id string, to tell the
         per-replica results of a broadcast apart."""
         return serve.get_replica_context().replica_id.to_full_id_str()
 
+    def get_actor_of(self, replica_id):
+        """(Test only) This ingress replica's actor if it is ``replica_id``, to
+        kill it. Broadcast it; the others return ``None``."""
+        if self.get_replica_id() != replica_id:
+            return None
+        return ray.get_runtime_context().current_actor
+
+    def get_node_ip(self):
+        """(Test only) The node this ingress replica runs on."""
+        return ray.util.get_node_ip_address()
+
     def get_replica_mesh_peers(self):
         """(Test only) Mesh endpoints registered with this router's selector."""
         return self._kv_token_tracker._svc.list_replica_peers()
 
-    async def get_request_lifecycle(self, request_id):
-        """(Test only) Snapshot of a request's local lifecycle state, or ``None``."""
-        state = self._kv_token_tracker._requests.get(request_id)
-        if state is None:
-            return None
-        snapshot = asdict(state)
-        snapshot.pop("created_at", None)
-        return snapshot
-
-    async def get_lifecycle_snapshot(self, request_id, worker_id):
-        """(Test only) This replica's id and lifecycle endpoint, its view of a
-        request's lifecycle and the load it books on ``worker_id``."""
-        return {
-            "replica_id": self.get_replica_id(),
-            "lifecycle_endpoint": self._kv_token_tracker.lifecycle_endpoint,
-            "lifecycle": await self.get_request_lifecycle(request_id),
-            "active_requests": await self.get_worker_active_requests(worker_id),
-        }
-
-    async def get_active_request_ids(self):
-        """(Test only) Ids of the requests in the tracker's in-flight view."""
-        return list(self._kv_token_tracker._requests)
+    def get_lifecycle_sources(self):
+        """(Test only) Engine lifecycle endpoints this router's selector
+        subscribes to."""
+        return self._kv_token_tracker._svc.list_worker_publishers()
 
     def get_block_size(self):
         """(Test only) The KV-cache block size the tracker pinned."""
@@ -349,8 +346,8 @@ class LLMRouter(_LLMRouter):
         """
         selection = await self._kv_token_tracker._svc.select(
             {
-                "model_name": _MODEL_NAME,
-                "routing_group": _ROUTING_GROUP,
+                "model_name": SELECTION_MODEL_NAME,
+                "routing_group": SELECTION_ROUTING_GROUP,
                 "token_ids": list(token_ids),
                 "allowed_worker_ids": list(allowed_worker_ids),
                 "session_id": session_id,

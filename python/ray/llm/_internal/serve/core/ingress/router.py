@@ -10,7 +10,6 @@ from ray import serve
 from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    KV_LIFECYCLE_OWNER_HEADER,
     KV_TOKEN_KEY_HEADER,
     REQUEST_TOKEN_IDS_KWARG,
 )
@@ -138,7 +137,6 @@ class LLMRouter:
     _warned_no_routing_key: bool = False
     _warned_no_token_endpoint: bool = False
     _base_model_id: Optional[str] = None
-    _kv_token_tracker = None
 
     async def __init__(
         self,
@@ -158,7 +156,6 @@ class LLMRouter:
             # Build the tracker before _handle._init() below, which initializes
             # the KVAwareRouter that looks it up.
             self._start_kv_token_tracking(llm_config, server)
-            await self._kv_token_tracker.start_lifecycle_receiver()
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
@@ -265,13 +262,6 @@ class LLMRouter:
             )
             if token_key:
                 request_headers[KV_TOKEN_KEY_HEADER] = token_key
-        lifecycle_endpoint = (
-            self._kv_token_tracker.lifecycle_endpoint
-            if self._kv_token_tracker is not None
-            else None
-        )
-        if lifecycle_endpoint:
-            request_headers[KV_LIFECYCLE_OWNER_HEADER] = lifecycle_endpoint
         if request_headers:
             response[
                 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
@@ -304,7 +294,7 @@ class LLMRouter:
         return {"status": "ok"}
 
     async def __del__(self) -> None:
-        """Close token, lifecycle and replica-mesh sockets upon cleanup."""
+        """Close the token channel and selection service sockets upon cleanup."""
         token_sender = getattr(self, "_token_sender", None)
         if token_sender is not None:
             token_sender.close()
@@ -313,7 +303,7 @@ class LLMRouter:
             await tracker.shutdown()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
-        """Advertise this router's replica-mesh endpoint to its peers."""
+        """Advertise this router's replica mesh endpoint to its peers."""
         if self._kv_token_tracker is None:
             return {}
         return self._kv_token_tracker.replica_sync_routing_stats()

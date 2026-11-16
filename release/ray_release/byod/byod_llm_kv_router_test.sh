@@ -7,11 +7,12 @@ set -exo pipefail
 pip3 install --no-cache-dir fastokens==0.2.0
 
 # TODO (jeffreywang): Move to official wheels once a dynamo release includes
-# ai-dynamo/dynamo#16969. Built from dynamo main @ f9c22d7.
+# SelectionService worker publishers. Built with --features select-service from
+# jeffreywang88/dynamo@3d8b918, one commit on dynamo main @ 4a046df.
 # --no-deps: ai-dynamo-runtime constrains pydantic and uvloop, both already
 # pinned by the base llm image's vLLM install.
 cat > /tmp/ai-dynamo-runtime.txt <<'EOF'
-ai-dynamo-runtime @ https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/dynamo/f9c22d7/ai_dynamo_runtime-1.7.0-cp311-abi3-manylinux_2_35_x86_64.whl \
-    --hash=sha256:733c7c57e15b37ac23b0ba7b2bbcd35f75f521f1349766742b867c10f89e5562
+ai-dynamo-runtime @ https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/dynamo/3d8b918/ai_dynamo_runtime-1.7.0-cp311-abi3-manylinux_2_35_x86_64.whl \
+    --hash=sha256:87d1d773635a8b6559652928767994e06f5741e700f463c7e7ad05669f2159ac
 EOF
 pip3 install --no-cache-dir --no-deps --require-hashes -r /tmp/ai-dynamo-runtime.txt

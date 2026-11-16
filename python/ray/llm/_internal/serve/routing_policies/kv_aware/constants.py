@@ -31,6 +31,8 @@ KV_TOKEN_STAGING_MAX_BYTES = get_env_int_positive(
 KV_TOKEN_ZMQ_SEND_QUEUE_LIMIT = 256
 KV_TOKEN_ZMQ_RECEIVE_QUEUE_LIMIT = 1024
 KV_TOKEN_ZMQ_MAX_SOCKETS = 4096
+# Lifecycle events an LLMServer queues per LLMRouter before dropping new ones.
+KV_LIFECYCLE_ZMQ_SEND_QUEUE_LIMIT = 2000
 
 # experimental_configs key overriding the per-node base port.
 KV_EVENTS_PORT_BASE_KEY = "KV_EVENTS_PORT_BASE"
@@ -51,11 +53,6 @@ DEFAULT_KV_INDEXER_THREADS = 4
 # events missed before its SUB connected.
 DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET = 1000
 
-# TTL for a request's lifecycle tracking on the KV router actor. A live
-# replica whose completion event was lost (e.g. a batch dropped on a
-# transient actor outage) would otherwise leave its entry tracked forever.
-REQUEST_TRACKING_TTL_S = 3600
-
 # Session pinning idle timeout in seconds.
 DEFAULT_SESSION_AFFINITY_TTL_S = 1800.0
 
@@ -63,7 +60,13 @@ DEFAULT_SESSION_AFFINITY_TTL_S = 1800.0
 # request's candidates; hard affinity would reject the request instead.
 SESSION_AFFINITY_MODE = "soft"
 
-# routing_stats key under which an LLMRouter advertises its replica-mesh endpoint.
+# routing_stats keys for an LLMRouter's replica mesh endpoint and an LLMServer's
+# lifecycle event endpoint.
 KV_REPLICA_SYNC_METADATA_KEY = "kv_replica_sync_metadata"
-# Header carrying the selecting LLMRouter's lifecycle endpoint to the LLMServer.
-KV_LIFECYCLE_OWNER_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-lifecycle-owner"
+KV_LIFECYCLE_METADATA_KEY = "kv_lifecycle_metadata"
+
+# The selection service keys all worker, indexer, and load state by
+# (model_name, routing_group). Each LLMRouter serves one model, so one fixed key
+# scopes all of its workers. Lifecycle events must carry the same key.
+SELECTION_MODEL_NAME = "default"
+SELECTION_ROUTING_GROUP = "default"
