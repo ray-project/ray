@@ -2,8 +2,10 @@
 
 import json
 import os
+import struct
 from collections import Counter
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Dict, cast
 
 import pyarrow as pa
@@ -15,6 +17,9 @@ from pyarrow import orc
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.datasource_v2.common import schema_inference as inference
+from ray.data._internal.datasource_v2.formats.parquet import (
+    parquet_size_statistics as parquet_thrift,
+)
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
@@ -40,6 +45,56 @@ def _filesystem(trace, **kwargs):
 
 def _records(trace):
     return [json.loads(line) for line in trace.read_text().splitlines()]
+
+
+def _write_map_with_empty_struct(path, table):
+    # PyArrow cannot write an empty struct. Add one to the generated footer
+    # without changing the data pages, row groups, or column metadata.
+    pq.write_table(table, path, store_schema=False)
+    data = path.read_bytes()
+    assert data[:4] == data[-4:] == b"PAR1"
+    footer_size = struct.unpack("<I", data[-8:-4])[0]
+    footer_start = len(data) - 8 - footer_size
+    assert footer_start >= 4
+    footer = bytearray(data[footer_start:-8])
+    reader = parquet_thrift._CompactReader(data[footer_start:-8])
+    schema_list_pos = root_children_pos = schema_end = None
+    for field in reader._fields():
+        if field.id != 2:
+            reader._skip(field.type)
+            continue
+        assert field.type == parquet_thrift._LIST
+        schema_list_pos = reader._pos
+        header = reader._list_header()
+        assert header.element_type == parquet_thrift._STRUCT and header.count == 5
+        assert footer[schema_list_pos] == (header.count << 4) | parquet_thrift._STRUCT
+        for root_field in reader._fields():
+            if root_field.id == 5:
+                assert root_field.type == parquet_thrift._I32
+                root_children_pos = reader._pos
+                assert reader._zigzag() == 1 and reader._pos == root_children_pos + 1
+            else:
+                reader._skip(root_field.type)
+        for _ in range(header.count - 1):
+            reader._skip_struct()
+        schema_end = reader._pos
+    assert reader._pos == len(footer)
+    assert schema_list_pos is not None and root_children_pos is not None
+    assert schema_end is not None
+    footer[schema_list_pos] = (6 << 4) | parquet_thrift._STRUCT
+    footer[root_children_pos] = 4  # zigzag(2)
+    # SchemaElement: optional group named "empty", with zero children.
+    empty_group = bytes((0x35, 0x02, 0x18, 0x05)) + b"empty" + bytes((0x15, 0, 0))
+    footer[schema_end:schema_end] = empty_group
+    path.write_bytes(
+        data[:footer_start] + footer + struct.pack("<I", len(footer)) + b"PAR1"
+    )
+
+
+@pytest.fixture
+def schema_files_dir(tmp_path):
+    with TemporaryDirectory(dir=tmp_path) as directory:
+        yield Path(directory)
 
 
 @pytest.mark.parametrize("name,write,read", _FORMATS)
@@ -213,7 +268,7 @@ def test_driver_schema_fallback_when_workers_are_busy(
 
 @pytest.mark.parametrize("empty_struct", [False, True])
 def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
-    monkeypatch, tmp_path, ray_start_2_cpus, empty_struct
+    monkeypatch, tmp_path, schema_files_dir, ray_start_2_cpus, empty_struct
 ):
     monkeypatch.delenv("RAY_SCHEMA_TEST", raising=False)
     ctx = DataContext.get_current()
@@ -222,16 +277,18 @@ def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
     values = pa.array([[("key", "value")]], type=pa.map_(pa.string(), pa.string()))
     table = pa.table({"attrs": values}).replace_schema_metadata({b"source": b"map"})
-    paths = [tmp_path / f"map{i}.parquet" for i in range(3)]
+    paths = [schema_files_dir / f"map{i}.parquet" for i in range(3)]
     for path in paths:
         if empty_struct:
-            # This file has a manually constructed empty struct in its footer;
-            # PyArrow can read it, but its Parquet writer cannot create it.
-            fixture = Path(__file__).parent / "data" / "map_empty_struct.parquet"
-            path.write_bytes(fixture.read_bytes())
+            _write_map_with_empty_struct(path, table)
         else:
             pq.write_table(table, path)
     expected = pq.read_schema(paths[0])
+    if empty_struct:
+        assert expected.field("empty").type == pa.struct([])
+        assert pq.read_table(paths[0]).num_rows == 1
+        with pytest.raises(pa.ArrowNotImplementedError):
+            pq.write_metadata(expected, pa.BufferOutputStream())
     decoded = pa.ipc.read_schema(pa.BufferReader(expected.serialize()))
     assert not expected.equals(decoded, check_metadata=True)
     trace = tmp_path / "map-reads.jsonl"
