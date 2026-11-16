@@ -181,7 +181,14 @@ if TYPE_CHECKING:
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
-from ray.data.expressions import Expr, StarExpr, UnnestExpr, col
+from ray.data.expressions import (
+    ColumnExpr,
+    ExplodeExpr,
+    Expr,
+    StarExpr,
+    UnnestExpr,
+    col,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1065,6 +1072,13 @@ class Dataset:
         each wraps a struct-typed expression and contributes one output
         column per struct field, named after the fields.
 
+        A mapping value may be an :func:`~ray.data.expressions.explode`
+        expression (at most one per call), which expands each element of its
+        list-typed expression into its own row, replicating all other
+        columns. All sibling expressions are evaluated on the pre-explode
+        rows. See :func:`~ray.data.expressions.explode` for the full
+        semantics and :meth:`explode` for the plain-column shorthand.
+
         Examples:
             >>> import ray
             >>> from ray.data.expressions import col
@@ -1118,6 +1132,8 @@ class Dataset:
         args.extend(more_exprs)
 
         projection_exprs: List[Expr] = [StarExpr()]
+        explode_columns: List[str] = []
+        explode_inner_exprs: List[Expr] = []
         for arg in args:
             if isinstance(arg, UnnestExpr):
                 projection_exprs.append(arg)
@@ -1127,17 +1143,29 @@ class Dataset:
                         "`with_columns` does not support DownloadExpr. "
                         "Use `with_column` for download expressions instead."
                     )
-                projection_exprs.extend(expr.alias(name) for name, expr in arg.items())
+                for name, expr in arg.items():
+                    if isinstance(expr, ExplodeExpr):
+                        # Lowered into an ``Explode`` operator below; the
+                        # projection computes the wrapped list-typed
+                        # expression under the output name. Several explodes
+                        # in one call expand in lockstep.
+                        explode_columns.append(name)
+                        explode_inner_exprs.append(expr.expr)
+                        projection_exprs.append(expr.expr.alias(name))
+                    else:
+                        projection_exprs.append(expr.alias(name))
             else:
                 raise TypeError(
                     "`with_columns` arguments must be mappings from column "
                     "name to expression, or unnest() expressions, got "
-                    f"{type(arg).__name__}."
+                    f"{type(arg).__name__}. explode() expressions must be "
+                    "passed as a mapping value, e.g. "
+                    'with_columns({"item": explode(col("items"))}).'
                 )
         if len(projection_exprs) == 1:
             return self
 
-        from ray.data._internal.logical.operators import Project
+        from ray.data._internal.logical.operators import Explode, Project
 
         ray_remote_args = merge_resources_to_ray_remote_args(
             num_cpus,
@@ -1154,6 +1182,42 @@ class Dataset:
             accelerator_type=accelerator_type,
             runtime_env=runtime_env,
         )
+
+        if explode_columns:
+            # When exploding existing columns under their own names with no
+            # other expressions, the projection would be an identity; build
+            # the ``Explode`` directly on the input.
+            is_identity_projection = len(projection_exprs) == len(
+                explode_columns
+            ) + 1 and all(
+                isinstance(inner, ColumnExpr) and inner.name == name
+                for inner, name in zip(explode_inner_exprs, explode_columns)
+            )
+            if is_identity_projection:
+                explode_op = Explode(
+                    columns=tuple(explode_columns),
+                    input_dependencies=[self._logical_plan.dag],
+                    compute=compute,
+                    ray_remote_args=ray_remote_args,
+                )
+            else:
+                project_op = Project(
+                    exprs=projection_exprs,
+                    input_dependencies=[self._logical_plan.dag],
+                    compute=compute,
+                    ray_remote_args=ray_remote_args,
+                )
+                explode_op = Explode(
+                    columns=tuple(explode_columns),
+                    input_dependencies=[project_op],
+                    # The explode runs as its own map task, so it takes the
+                    # caller's resources too -- whether a Project is needed
+                    # is an implementation detail they can't see.
+                    compute=compute,
+                    ray_remote_args=ray_remote_args,
+                )
+            logical_plan = LogicalPlan(explode_op, self.context)
+            return Dataset._from_parent(self, logical_plan)
 
         project_op = Project(
             exprs=projection_exprs,
@@ -2069,6 +2133,124 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
+        return Dataset._from_parent(self, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP, stability="alpha")
+    def explode(
+        self,
+        columns: Union[str, "ColumnExpr", List[Union[str, "ColumnExpr"]]],
+        *,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """Expand each element of one or more list columns into its own row.
+
+        Each element of the list becomes one output row with all other
+        columns replicated:
+
+        * A null list produces one row with a null value.
+        * An empty list produces no rows.
+        * Exploding a ``list<list<T>>`` removes exactly one level of nesting.
+
+        Passing several columns explodes them in lockstep: a row produces as
+        many rows as its longest list, and shorter lists pad with nulls (the
+        same rule as DataFusion's ``unnest``). To get the cross product
+        instead, chain separate :meth:`explode` calls.
+
+        Each column must be a PyArrow ``list``, ``large_list``, or
+        ``fixed_size_list`` type. To explode a derived expression instead of
+        an existing column, use :func:`~ray.data.expressions.explode` with
+        :meth:`with_column`. Unlike :meth:`flat_map`, this is a native
+        columnar operation with no user-defined function.
+
+        .. note::
+            Output blocks are Arrow-backed; pandas-backed input blocks are
+            converted.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     {"id": 1, "items": [1, 2]},
+            ...     {"id": 2, "items": None},
+            ...     {"id": 3, "items": []},
+            ...     {"id": 4, "items": [3]},
+            ... ])
+            >>> ds.explode("items").take_all()
+            [{'id': 1, 'items': 1}, {'id': 1, 'items': 2}, {'id': 2, 'items': None}, {'id': 4, 'items': 3}]
+
+            Several columns explode together, padding the shorter list:
+
+            >>> ds = ray.data.from_items([{"a": [1, 2, 3], "b": ["x"]}])
+            >>> ds.explode(["a", "b"]).take_all()
+            [{'a': 1, 'b': 'x'}, {'a': 2, 'b': None}, {'a': 3, 'b': None}]
+
+        Args:
+            columns: The name of the list column to explode, a
+                :func:`~ray.data.expressions.col` reference to it, or a list
+                of either to explode in lockstep.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
+            **ray_remote_args: Additional resource requirements to request
+                from Ray for the map tasks (e.g., ``num_gpus=1``). This
+                argument is deprecated and will be removed in Ray 2.64.
+
+        Returns:
+            A new dataset with one row per list element.
+        """
+        from ray.data._internal.logical.operators import Explode
+
+        if isinstance(columns, (str, Expr)):
+            column_list = [columns]
+        elif isinstance(columns, (list, tuple)):
+            column_list = list(columns)
+        else:
+            raise TypeError(
+                f"Dataset.explode() expects a column name or col() reference "
+                f"(or a list of them), got {type(columns).__name__}."
+            )
+        if not column_list:
+            raise ValueError("Dataset.explode() requires at least one column.")
+
+        resolved: List[str] = []
+        for column in column_list:
+            if isinstance(column, ColumnExpr):
+                resolved.append(column.name)
+            elif isinstance(column, Expr):
+                raise TypeError(
+                    "Dataset.explode() accepts a column name or col() "
+                    "reference. To explode a derived expression, use "
+                    'ds.with_column("name", explode(expr)) instead.'
+                )
+            elif isinstance(column, str):
+                resolved.append(column)
+            else:
+                raise TypeError(
+                    f"Dataset.explode() expects a column name or col() "
+                    f"reference (or a list of them), got "
+                    f"{type(column).__name__}."
+                )
+        duplicates = {c for c in resolved if resolved.count(c) > 1}
+        if duplicates:
+            raise ValueError(
+                f"Dataset.explode() got duplicate columns: {sorted(duplicates)}."
+            )
+
+        _warn_on_ray_remote_args(ray_remote_args)
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
+        explode_op = Explode(
+            columns=tuple(resolved),
+            input_dependencies=[self._logical_plan.dag],
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(explode_op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)

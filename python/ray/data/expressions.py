@@ -118,6 +118,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_star(expr)
         elif isinstance(expr, UnnestExpr):
             return self.visit_unnest(expr)
+        elif isinstance(expr, ExplodeExpr):
+            return self.visit_explode(expr)
         elif isinstance(expr, MonotonicallyIncreasingIdExpr):
             return self.visit_monotonically_increasing_id(expr)
         elif isinstance(expr, RandomExpr):
@@ -169,6 +171,24 @@ class _ExprVisitor(ABC, Generic[T]):
             "unnest() expands to multiple columns, so it has no single value "
             "to evaluate. Pass it directly to `with_columns`; it cannot be "
             "composed into another expression."
+        )
+
+    def visit_explode(self, expr: "ExplodeExpr") -> T:
+        """Handle an ``ExplodeExpr``.
+
+        Concrete, like ``visit_unnest``: ``ExplodeExpr`` is a plan-time
+        marker that ``Dataset.with_columns`` lowers into an ``Explode``
+        logical operator, so no visitor running during planning or
+        evaluation can encounter one. The error names the real constraint
+        instead of the generic "unsupported expression type" from
+        ``visit``.
+        """
+        raise TypeError(
+            "explode() produces a different number of rows than its input, "
+            "so it cannot be composed into another expression or used where "
+            "a single row-preserving value is required (filters, sort keys, "
+            "arithmetic). Use it as the top-level expression of "
+            "with_column()/with_columns(), or call Dataset.explode()."
         )
 
     @abstractmethod
@@ -323,6 +343,9 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
         return False
 
     def visit_unnest(self, expr: "UnnestExpr") -> bool:
+        return False
+
+    def visit_explode(self, expr: "ExplodeExpr") -> bool:
         return False
 
     def visit_monotonically_increasing_id(
@@ -638,6 +661,26 @@ class Expr(ABC):
         return AliasExpr(
             data_type=self.data_type, expr=self, _name=name, _is_rename=False
         )
+
+    def explode(self) -> "ExplodeExpr":
+        """Expand each element of this list-typed expression into its own row.
+
+        Equivalent to :func:`explode`. See it for full semantics.
+
+        Returns:
+            An ExplodeExpr suitable for use as the top-level expression of
+            :meth:`Dataset.with_column <ray.data.Dataset.with_column>` or an
+            entry of :meth:`Dataset.with_columns
+            <ray.data.Dataset.with_columns>`.
+
+        Example:
+            >>> import ray
+            >>> from ray.data.expressions import col
+            >>> ds = ray.data.from_items([{"items": [1, 2]}, {"items": [3]}])
+            >>> ds.with_column("item", col("items").explode()).count()
+            3
+        """
+        return explode(self)
 
     # rounding helpers
     def ceil(self) -> "UDFExpr":
@@ -2025,6 +2068,89 @@ class UnnestExpr(Expr):
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
+class ExplodeExpr(Expr):
+    """Expression that expands each element of a list-typed expression into
+    its own output row, replicating all other columns.
+
+    This is a plan-time marker, like ``UnnestExpr``: it never survives into
+    the optimizer or the evaluation engine. ``Dataset.with_columns`` lowers
+    it into a ``Project`` that computes the wrapped expression (when it is
+    not already a plain column reference) followed by an ``Explode`` logical
+    operator, which changes the number of rows — something a projection
+    cannot do.
+
+    Semantics: each list element becomes one row; a null list produces one
+    row with a null value; an empty list produces no rows. Exploding a
+    ``list<list<T>>`` removes exactly one level of nesting. Several explodes
+    in one call zip, padding short lists with nulls.
+
+    See :func:`explode` for the public constructor.
+    """
+
+    #: The wrapped expression; must resolve to a list, large_list, or
+    #: fixed_size_list type.
+    expr: Expr
+
+    # The output type depends on the input schema; resolved in ``get_type``.
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, ExplodeExpr) and self.expr.structurally_equals(
+            other.expr
+        )
+
+    def alias(self, name: str) -> "Expr":
+        raise TypeError(
+            "explode() cannot be aliased: its output column name is the key "
+            "it is mapped to in with_column()/with_columns(), e.g. "
+            'ds.with_column("item", explode(col("items"))).'
+        )
+
+    def get_type(self, input_schema: "pyarrow.Schema") -> Optional["pyarrow.DataType"]:
+        """Resolve to the element type of the wrapped list-typed expression.
+
+        Returns ``None`` when the inner type cannot be statically resolved;
+        raises ``TypeError`` when it resolves to a non-list type, since no
+        schema would make the explode valid.
+        """
+        from ray.data.namespace_expressions.list_namespace import _is_list_like
+
+        try:
+            resolved_type = self.expr.get_type(input_schema)
+        except AttributeError:
+            # Schema-dependent inner expression, but ``input_schema`` is None.
+            resolved_type = None
+        if resolved_type is None:
+            return None
+        if pyarrow.types.is_null(resolved_type):
+            # A column of null lists explodes to one null row each.
+            return resolved_type
+        if not _is_list_like(resolved_type):
+            raise TypeError(
+                f"explode() requires a list, large_list, or fixed_size_list "
+                f"typed expression, but the wrapped expression resolves to "
+                f"{resolved_type}."
+            )
+        return resolved_type.value_type
+
+    # ``nullable`` stays the inherited ``True``: a null list produces a null
+    # row even when the list's elements are non-nullable.
+
+    def expand_projection(
+        self, input_schema: Optional["pyarrow.Schema"]
+    ) -> List["Expr"]:
+        # Safety net: ``with_columns`` intercepts ``ExplodeExpr`` before
+        # building the ``Project``, so reaching this means it leaked into a
+        # projection list some other way.
+        raise ValueError(
+            "explode() changes the number of rows and cannot be part of a "
+            "projection; use it as the top-level expression of "
+            "with_column()/with_columns(), or call Dataset.explode()."
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
 class MonotonicallyIncreasingIdExpr(Expr):
     """Expression that represents a monotonically increasing ID column."""
 
@@ -2375,6 +2501,66 @@ def unnest(expr: Expr) -> UnnestExpr:
 
 
 @PublicAPI(stability="alpha")
+def explode(expr: Expr) -> ExplodeExpr:
+    """Expand each element of a list-typed expression into its own row.
+
+    Use this as the top-level expression of :meth:`Dataset.with_column
+    <ray.data.Dataset.with_column>` (or a mapping entry of
+    :meth:`Dataset.with_columns <ray.data.Dataset.with_columns>`). Each
+    element of the list becomes one output row and all other columns are
+    replicated; the mapping key (or ``with_column``'s column name) names the
+    output column. To explode an existing list column without deriving a new
+    expression, :meth:`Dataset.explode <ray.data.Dataset.explode>` is a
+    shorthand.
+
+    Semantics:
+
+    * Each list element becomes its own row.
+    * A null list produces one row with a null value.
+    * An empty list produces no rows.
+    * Exploding a ``list<list<T>>`` removes exactly one level of nesting.
+
+    The wrapped expression must resolve to a PyArrow ``list``,
+    ``large_list``, or ``fixed_size_list`` type. All sibling expressions in
+    the same ``with_columns`` call are evaluated on the pre-explode rows and
+    then replicated. Several ``explode()`` entries in one ``with_columns``
+    call expand in lockstep: a row produces as many rows as its longest
+    list, and shorter lists pad with nulls. Because explode changes the
+    number of rows, it cannot be composed into a larger expression
+    (``explode(x) + 1``), aliased, or used in filters or sort keys.
+
+    Args:
+        expr: An expression that resolves to a list-typed value.
+
+    Returns:
+        An ExplodeExpr suitable for use as a mapping value in
+        :meth:`Dataset.with_columns <ray.data.Dataset.with_columns>`.
+
+    Example:
+        >>> import ray
+        >>> from ray.data.expressions import col, explode
+        >>> ds = ray.data.from_items([
+        ...     {"id": 1, "sentence": "hello world"},
+        ...     {"id": 2, "sentence": "ray data"},
+        ... ])
+        >>> ds.with_column(
+        ...     "word", explode(col("sentence").str.split(" "))
+        ... ).take_all()
+        [{'id': 1, 'sentence': 'hello world', 'word': 'hello'}, {'id': 1, 'sentence': 'hello world', 'word': 'world'}, {'id': 2, 'sentence': 'ray data', 'word': 'ray'}, {'id': 2, 'sentence': 'ray data', 'word': 'data'}]
+    """
+    if isinstance(expr, ExplodeExpr):
+        raise TypeError("explode() cannot be nested inside another explode().")
+    if isinstance(expr, (UnnestExpr, StarExpr)):
+        raise TypeError(
+            f"explode() expects an expression with a single list-typed "
+            f"value, got {type(expr).__name__}."
+        )
+    if not isinstance(expr, Expr):
+        raise TypeError(f"explode() expects an expression, got {type(expr).__name__}.")
+    return ExplodeExpr(expr=expr)
+
+
+@PublicAPI(stability="alpha")
 def download(
     uri_column_name: str,
     *,
@@ -2577,6 +2763,7 @@ __all__ = [
     "AliasExpr",
     "StarExpr",
     "UnnestExpr",
+    "ExplodeExpr",
     "MonotonicallyIncreasingIdExpr",
     "pyarrow_udf",
     "udf",
@@ -2587,6 +2774,7 @@ __all__ = [
     "random",
     "star",
     "unnest",
+    "explode",
     "uuid",
     "_ArrayNamespace",
     "_ListNamespace",

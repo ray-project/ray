@@ -100,6 +100,55 @@ def fn(row: Dict[str, Any]) -> List[Dict[str, Any]]:
     return output
 ```
 
+### Exploding list columns
+
+To expand each element of a list column into its own row, call {meth}`~ray.data.Dataset.explode`. It's a native columnar operation — no user-defined function — so prefer it over {meth}`~ray.data.Dataset.flat_map` when all you need is to unnest a list column. All other columns are replicated onto the new rows. A null list produces one row with a null value, and an empty list produces no rows.
+
+```{testcode}
+import ray
+
+ds = ray.data.from_items([
+    {"id": 1, "items": [1, 2]},
+    {"id": 2, "items": None},
+    {"id": 3, "items": []},
+])
+
+print(ds.explode("items").take_all())
+```
+
+```{testoutput}
+[{'id': 1, 'items': 1}, {'id': 1, 'items': 2}, {'id': 2, 'items': None}]
+```
+
+To explode a list computed by an expression instead of an existing column, pass {func}`~ray.data.expressions.explode` to {meth}`~ray.data.Dataset.with_column`:
+
+```{testcode}
+from ray.data.expressions import col, explode
+
+ds = ray.data.from_items([{"sentence": "hello world"}])
+
+print(ds.with_column("word", explode(col("sentence").str.split(" "))).take_all())
+```
+
+```{testoutput}
+[{'sentence': 'hello world', 'word': 'hello'}, {'sentence': 'hello world', 'word': 'world'}]
+```
+
+To expand several list columns together, pass a list of names. They explode in lockstep: each row produces as many rows as its longest list, and shorter lists pad with nulls. Chain separate `explode` calls instead if you want the cross product.
+
+```{testcode}
+ds = ray.data.from_items([
+    {"id": 1, "scores": [1, 2, 3], "tags": ["a"]},
+    {"id": 2, "scores": [4], "tags": ["b", "c"]},
+])
+
+print(ds.explode(["scores", "tags"]).take_all())
+```
+
+```{testoutput}
+[{'id': 1, 'scores': 1, 'tags': 'a'}, {'id': 1, 'scores': 2, 'tags': None}, {'id': 1, 'scores': 3, 'tags': None}, {'id': 2, 'scores': 4, 'tags': 'b'}, {'id': 2, 'scores': None, 'tags': 'c'}]
+```
+
 (transforming_batches)=
 
 ## Transforming batches

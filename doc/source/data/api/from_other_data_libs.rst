@@ -41,6 +41,8 @@ For Pandas Users
      - :meth:`ds.drop_columns() <ray.data.Dataset.drop_columns>`
    * - df.transform()
      - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` or :meth:`ds.map() <ray.data.Dataset.map>`
+   * - df.explode()
+     - :meth:`ds.explode() <ray.data.Dataset.explode>`
    * - df.groupby()
      - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
    * - df.groupby().apply()

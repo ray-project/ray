@@ -9,8 +9,9 @@ import pytest
 
 import ray
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators import Read, ReadFiles
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.operators.map_operator import Explode, Project
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules import (
@@ -422,6 +423,94 @@ class TestProjectionFusion:
         result_df = result_df[sorted(result_df.columns)]
         expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
+
+    @pytest.mark.parametrize(
+        "build,expected_projects",
+        [
+            pytest.param(
+                lambda ds: ds.with_column("doubled", col("id") * 2)
+                .explode("items")
+                .with_column("tripled", col("id") * 3),
+                2,
+                id="projects-split-by-explode",
+            ),
+            pytest.param(
+                lambda ds: ds.with_column("doubled", col("id") * 2)
+                .with_column("tripled", col("id") * 3)
+                .explode("items"),
+                1,
+                id="projects-both-below-explode",
+            ),
+        ],
+    )
+    def test_explode_is_a_fusion_boundary(
+        self, ray_start_regular_shared, build, expected_projects
+    ):
+        """``Explode`` changes the row count, so projections on either side of
+        it must not fuse; projections that are both below it still do."""
+        ds = build(
+            ray.data.from_items([{"id": i, "items": [i, i + 1]} for i in range(3)])
+        )
+
+        optimized_plan = ProjectionPushdown().apply(ds._logical_plan)
+        assert self._count_project_operators(optimized_plan) == expected_projects
+
+        # Both arrangements compute the same rows: the sibling expressions
+        # depend only on replicated columns.
+        from ray.data.dataset import Dataset
+
+        expected = pd.DataFrame(
+            {
+                "id": [0, 0, 1, 1, 2, 2],
+                "items": [0, 1, 1, 2, 2, 3],
+                "doubled": [0, 0, 2, 2, 4, 4],
+                "tripled": [0, 0, 3, 3, 6, 6],
+            }
+        )
+        result = Dataset._from_parent(ds, optimized_plan).to_pandas()
+        assert rows_same(
+            result[sorted(result.columns)], expected[sorted(expected.columns)]
+        )
+
+    @pytest.mark.parametrize(
+        "build,expect_unused_read",
+        [
+            pytest.param(
+                lambda ds: ds.select_columns(["k", "items"]).explode("items"),
+                False,
+                id="projection-below-explode-prunes-read",
+            ),
+            pytest.param(
+                lambda ds: ds.explode("items").select_columns(["items"]),
+                True,
+                id="projection-above-explode-does-not-reach-read",
+            ),
+        ],
+    )
+    def test_projection_pushdown_across_explode(
+        self, ray_start_regular_shared, tmp_path, build, expect_unused_read
+    ):
+        """Column pruning reaches the read only from below the ``Explode``; a
+        projection above it stops there, so the unused column is still read."""
+        path = tmp_path / "explode.parquet"
+        pq.write_table(
+            pa.table(
+                {
+                    "k": [1, 2, 3],
+                    "items": [[1, 2], [], [3]],
+                    "unused": ["x" * 32] * 3,  # wide column nothing consumes
+                }
+            ),
+            path,
+        )
+
+        ds = build(ray.data.read_parquet(str(path)))
+        dag = LogicalOptimizer().optimize(ds._logical_plan).dag
+
+        read_op = _find_op(dag, (Read, ReadFiles))
+        read_columns = set(read_op.infer_schema().names)
+        assert ("unused" in read_columns) is expect_unused_read
+        assert _find_op(dag, Explode) is not None
 
     def test_dependency_prevents_fusion(self, ray_start_regular_shared):
         """Test that dependencies are handled in single operator with OrderedDict."""
