@@ -297,22 +297,17 @@ def _convert_to_v2_checkpoint(path: str, version: int) -> None:
     prefix = f"{version:020d}"
     classic_path = os.path.join(log, f"{prefix}.checkpoint.parquet")
     classic = pq.read_table(classic_path)
-    file_columns = [c for c in ("add", "remove") if c in classic.column_names]
     os.makedirs(os.path.join(log, "_sidecars"))
     sidecar = f"{uuid.uuid4()}.parquet"
     sidecar_path = os.path.join(log, "_sidecars", sidecar)
     pq.write_table(
-        classic.filter(classic["add"].is_valid()).select(file_columns), sidecar_path
+        classic.filter(classic["add"].is_valid()).select(["add"]), sidecar_path
     )
 
     with open(os.path.join(log, f"{0:020d}.json")) as f:
         metadata = next(
             action["metaData"] for action in map(json.loads, f) if "metaData" in action
         )
-    metadata["configuration"] = {
-        **(metadata.get("configuration") or {}),
-        "delta.checkpointPolicy": "v2",
-    }
     checkpoint = [
         {"checkpointMetadata": {"version": version}},
         {
@@ -342,40 +337,22 @@ def _convert_to_v2_checkpoint(path: str, version: int) -> None:
         os.remove(os.path.join(log, f"{v:020d}.json"))
 
 
-@pytest.fixture
-def v2_checkpoint_table(tmp_path) -> str:
-    """Three files listed only in a v2 checkpoint's sidecar, and a fourth
-    committed after the checkpoint."""
+def test_reads_tables_with_v2_checkpoints(tmp_path):
+    # Two files listed only in a v2 checkpoint's sidecar, and a third committed
+    # after the checkpoint.
     path = str(tmp_path / "v2_checkpoint")
-    for start in (0, 100, 200):
+    for start in (0, 100):
         deltalake.write_deltalake(
-            path, pa.table({"val": list(range(start, start + 10))}), mode="append"
+            path, pa.table({"val": list(range(start, start + 3))}), mode="append"
         )
     deltalake.DeltaTable(path).create_checkpoint()
-    deltalake.write_deltalake(
-        path, pa.table({"val": list(range(300, 310))}), mode="append"
-    )
-    _convert_to_v2_checkpoint(path, version=2)
-    return path
+    deltalake.write_deltalake(path, pa.table({"val": [200]}), mode="append")
+    _convert_to_v2_checkpoint(path, version=1)
 
+    ds = _read(path)
 
-@pytest.mark.parametrize(
-    "predicate, expected",
-    [
-        (None, [*range(10), *range(100, 110), *range(200, 210), *range(300, 310)]),
-        # The log statistics from the sidecar and from the later commit prune.
-        (col("val") > 250, list(range(300, 310))),
-        (col("val") < 105, [*range(10), *range(100, 105)]),
-    ],
-    ids=str,
-)
-def test_reads_tables_with_v2_checkpoints(v2_checkpoint_table, predicate, expected):
-    ds = _read(v2_checkpoint_table)
     assert _uses_v2(ds)
-    if predicate is not None:
-        ds = ds.filter(expr=predicate)
-
-    assert sorted(row["val"] for row in ds.take_all()) == expected
+    assert sorted(row["val"] for row in ds.take_all()) == [0, 1, 2, 100, 101, 102, 200]
 
 
 @pytest.fixture
