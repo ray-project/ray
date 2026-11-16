@@ -10,7 +10,6 @@ from decimal import Decimal
 from typing import Literal, Optional, TypedDict, cast
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -18,7 +17,7 @@ import ray.data
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
     _connect as connect_read_hive,
 )
-from ray.data.expressions import col, lit
+from ray.data.expressions import col
 
 _HOST = os.environ.get("RAY_HIVE_TEST_HOST")
 _AUTH = os.environ.get("RAY_HIVE_TEST_AUTH", "PLAIN").upper()
@@ -321,193 +320,69 @@ def test_hive_timestamps_over_real_hs2():
             ray.shutdown()
 
 
-def test_hive_table_pushdown_types_and_combinations(tmp_path, restore_data_context):
+def test_hive_projection_limit_and_filter_order_over_real_hs2(tmp_path):
     options = _connection_options()
-    columns = "id BIGINT, name STRING, score DOUBLE, amount DECIMAL(12,2), day DATE, flag BOOLEAN, padded CHAR(8), code VARCHAR(8)"
-    values = (
-        "SELECT 1, 'a', 1.5, CAST(12.34 AS DECIMAL(12,2)), DATE '2024-01-02', TRUE, 'a ', 'x ' "
-        "UNION ALL SELECT 2, NULL, NULL, NULL, NULL, NULL, NULL, NULL "
-        "UNION ALL SELECT 3, 'b', 3.5, CAST(-0.01 AS DECIMAL(12,2)), DATE '2025-01-02', FALSE, 'b', 'y'"
-    )
-    with _temporary_table(options, columns, values) as (table, _):
+    values = "SELECT 1, 'a' UNION ALL SELECT 2, 'b' UNION ALL SELECT 3, 'c' UNION ALL SELECT 4, 'd' UNION ALL SELECT 5, 'e'"
+    with _temporary_table(options, "id BIGINT, name STRING", values) as (table, _):
         ray.init(num_cpus=2, include_dashboard=False)
         try:
-            context = ray.data.DataContext.get_current()
-            context.enable_progressbars = False
-            context.target_max_block_size = 1
-            baseline = ray.data.read_hive(
-                table, connection_factory=_make_connection_factory(options)
-            )
-            schema = baseline.schema().base_schema
-            reference = pa.Table.from_pylist(
-                [dict(row) for row in baseline.take_all()], schema=schema
-            )
-            cases = [
-                (col("id") >= 2, True),
-                (col("flag") == lit(True), True),
-                (col("amount") >= Decimal("0.00"), True),
-                (col("day") < date(2025, 1, 1), True),
-                (col("name") == "a", True),
-                (col("code") == "x ", True),
-                (col("code") == "x value longer than varchar length", True),
-                (col("name").is_null(), True),
-                (col("amount").is_not_null(), True),
-                ((col("id") == 1) | (col("id") == 3), True),
-                (~(col("id") == 1), True),
-                (
-                    (col("amount") >= Decimal("0.00")) | (col("flag") == lit(False)),
-                    True,
-                ),
-                (~(col("amount") >= Decimal("0.00")), True),
-                ((col("amount") >= Decimal("0.00")) & (col("flag") == lit(True)), True),
-                (col("score") > 2.0, False),
-                (col("padded") == "a ", False),
-            ]
-            for index, (predicate, pushed) in enumerate(cases):
-                trace = tmp_path / f"type-{index}.jsonl"
-                expected = (
-                    ray.data.from_arrow(reference)
-                    .filter(expr=predicate)
-                    .select_columns(["id"])
-                    .take_all()
-                )
-                actual = (
-                    ray.data.read_hive(
-                        table, connection_factory=_traced_factory(options, trace)
-                    )
-                    .filter(expr=predicate)
-                    .select_columns(["id"])
-                    .take_all()
-                )
-                assert sorted(
-                    (dict(row) for row in actual), key=lambda row: row["id"]
-                ) == sorted((dict(row) for row in expected), key=lambda row: row["id"])
-                statements = _data_statements(trace)
-                assert len(statements) == 1
-                assert (" WHERE " in statements[0]) == pushed
-                if pushed:
-                    assert statements[0].startswith("SELECT `id` FROM")
-                    fetched = [
-                        value
-                        for kind, value in map(
-                            json.loads, trace.read_text().splitlines()
-                        )
-                        if kind == "fetch"
-                    ]
-                    assert sum(count for count, width in fetched) == len(actual)
-                    assert all(width == 1 for count, width in fetched)
 
-            trace = tmp_path / "mixed.jsonl"
-            mixed = (
-                ray.data.read_hive(
-                    table, connection_factory=_traced_factory(options, trace)
+            def source(trace, limit=None):
+                return ray.data.read_hive(
+                    table,
+                    limit=limit,
+                    connection_factory=_traced_factory(options, trace),
                 )
-                .filter(expr=(col("id") >= 1) & (col("score") > 3.0))
-                .select_columns(["id"])
-                .limit(1)
-            )
-            assert [dict(row) for row in mixed.take_all()] == [{"id": 3}]
-            assert len(_data_statements(trace)) == 1
-            assert _data_statements(trace)[0].startswith("SELECT `id`, `score`")
-            assert " LIMIT " not in _data_statements(trace)[0]
 
-            trace = tmp_path / "limit.jsonl"
-            limited = (
-                ray.data.read_hive(
-                    table, connection_factory=_traced_factory(options, trace)
-                )
-                .filter(expr=col("id") >= 2)
-                .select_columns(["name"])
-                .limit(1)
-            )
-            rows = limited.take_all()
-            assert len(rows) == 1 and rows[0]["name"] in (None, "b")
-            statements = _data_statements(trace)
-            assert len(statements) == 1
-            assert statements[0].startswith("SELECT `name` FROM")
-            assert " WHERE " in statements[0] and statements[0].endswith("LIMIT 1")
+            trace = tmp_path / "projection.jsonl"
+            rows = source(trace).select_columns(["name"]).limit(2).take_all()
+            assert len(rows) == 2 and all(set(row) == {"name"} for row in rows)
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and sql[0].startswith("SELECT `name`")
+            assert sql[0].endswith(" LIMIT 2")
 
-            trace = tmp_path / "source-limit.jsonl"
-            source_limited = (
-                ray.data.read_hive(
-                    table, limit=2, connection_factory=_traced_factory(options, trace)
-                )
-                .filter(expr=col("id") > 2)
-                .limit(1)
+            trace = tmp_path / "source-filter-limit.jsonl"
+            rows = (
+                source(trace, limit=5).filter(expr=col("id") >= 3).limit(2).take_all()
             )
-            rows = source_limited.take_all()
-            assert len(rows) <= 1 and all(row["id"] > 2 for row in rows)
-            assert len(_data_statements(trace)) == 1
-            assert " WHERE " not in _data_statements(trace)[0]
-            assert _data_statements(trace)[0].endswith("LIMIT 2")
+            assert len(rows) == 2 and all(row["id"] >= 3 for row in rows)
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and sql[0].endswith(" LIMIT 5")
+            assert " WHERE " not in sql[0]
+
+            trace = tmp_path / "filter-limit.jsonl"
+            rows = source(trace).filter(expr=col("id") >= 3).limit(2).take_all()
+            assert len(rows) == 2 and all(row["id"] >= 3 for row in rows)
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and " WHERE " not in sql[0] and " LIMIT " not in sql[0]
+
+            trace = tmp_path / "limit-filter.jsonl"
+            rows = source(trace).limit(5).filter(expr=col("id") >= 3).take_all()
+            assert sorted(row["id"] for row in rows) == [3, 4, 5]
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and sql[0].endswith(" LIMIT 5")
+            assert " WHERE " not in sql[0]
 
             trace = tmp_path / "empty.jsonl"
-            empty_projection = (
-                ray.data.read_hive(
-                    table, connection_factory=_traced_factory(options, trace)
-                )
-                .filter(expr=col("id") >= 2)
+            result = source(trace).select_columns([]).materialize()
+            assert result.count() == 5 and result.schema().names == []
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and "1 AS `__ray_hive_row`" in sql[0]
+
+            trace = tmp_path / "filter-empty.jsonl"
+            result = (
+                source(trace)
+                .filter(expr=col("id") >= 3)
                 .select_columns([])
                 .materialize()
             )
-            assert empty_projection.count() == 2
-            assert (
-                empty_projection.schema().names == empty_projection.schema().types == []
-            )
-            assert len(_data_statements(trace)) == 1
-            assert "1 AS `__ray_hive_row`" in _data_statements(trace)[0]
+            assert result.count() == 3 and result.schema().names == []
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and " WHERE " not in sql[0]
 
             trace = tmp_path / "zero.jsonl"
-            zero = ray.data.read_hive(
-                table, connection_factory=_traced_factory(options, trace)
-            ).limit(0)
-            assert zero.take_all() == []
-            assert zero.schema().base_schema == schema
+            assert source(trace).limit(0).take_all() == []
             assert _data_statements(trace) == []
-
-            from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
-                ParquetScanner,
-            )
-            from ray.data._internal.logical.operators import ReadFiles
-            from ray.data._internal.logical.optimizers import LogicalOptimizer
-
-            context.use_datasource_v2 = True
-            path = tmp_path / "other.parquet"
-            pq.write_table(pa.table({"name": ["x", "y"], "unused": [1, 2]}), path)
-            other = (
-                ray.data.read_parquet(str(path), override_num_blocks=1)
-                .limit(2)
-                .select_columns(["name"])
-            )
-            hive = (
-                ray.data.read_hive(
-                    table, connection_factory=_make_connection_factory(options)
-                )
-                .filter(expr=col("id") == 1)
-                .select_columns(["name"])
-            )
-
-            def parquet_scanner(dataset):
-                dag = LogicalOptimizer().optimize(dataset._logical_plan).dag
-                return next(
-                    node.scanner
-                    for node in dag.post_order_iter()
-                    if isinstance(node, ReadFiles)
-                    and isinstance(node.scanner, ParquetScanner)
-                )
-
-            standalone = parquet_scanner(other)
-            mixed_sources = hive.union(other)
-            combined = parquet_scanner(mixed_sources)
-            assert standalone.pruned_column_names() is None
-            assert combined.pruned_column_names() == standalone.pruned_column_names()
-            assert combined.pushed_limit() == standalone.pushed_limit()
-            assert combined.pushed_predicate() is standalone.pushed_predicate() is None
-            assert sorted(row["name"] for row in mixed_sources.take_all()) == [
-                "a",
-                "x",
-                "y",
-            ]
 
             trace = tmp_path / "fetch-failure.jsonl"
             failing = ray.data.read_hive(
@@ -517,6 +392,37 @@ def test_hive_table_pushdown_types_and_combinations(tmp_path, restore_data_conte
             with pytest.raises(Exception):
                 failing.take_all()
             assert len(_data_statements(trace)) == 1
+        finally:
+            ray.shutdown()
+
+
+def test_hive_dataset_boolean_limit_over_real_hs2(tmp_path):
+    options = _connection_options()
+    values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
+    with _temporary_table(options, "id BIGINT", values) as (table, _):
+        ray.init(num_cpus=2, include_dashboard=False)
+        try:
+            for limit in (True, False):
+                trace = tmp_path / f"boolean-limit-{limit}.jsonl"
+                dataset = ray.data.read_hive(
+                    table, connection_factory=_traced_factory(options, trace)
+                ).limit(limit)
+                rows = dataset.take_all()
+                assert len(rows) == int(limit)
+                assert all(row["id"] in (1, 2, 3) for row in rows)
+                statements = _data_statements(trace)
+                if limit:
+                    assert len(statements) == 1 and " LIMIT " not in statements[0]
+                else:
+                    assert statements == []
+
+            trace = tmp_path / "source-limit-boolean.jsonl"
+            dataset = ray.data.read_hive(
+                table, limit=2, connection_factory=_traced_factory(options, trace)
+            ).limit(True)
+            assert len(dataset.take_all()) == 1
+            statements = _data_statements(trace)
+            assert len(statements) == 1 and statements[0].endswith(" LIMIT 2")
         finally:
             ray.shutdown()
 
@@ -571,7 +477,7 @@ def test_hive_dataset_limit_integer_range_over_real_hs2(tmp_path):
             ray.shutdown()
 
 
-def test_hive_pushdown_quoted_columns_and_literals(tmp_path):
+def test_hive_projection_quoted_columns_over_real_hs2(tmp_path):
     options = _connection_options()
     value = "O'Reilly\\line\n\t\x00中文"
     encoded = value.encode("utf-8").hex()
@@ -584,23 +490,22 @@ def test_hive_pushdown_quoted_columns_and_literals(tmp_path):
     ) as (table, _):
         ray.init(num_cpus=2, include_dashboard=False)
         try:
-            for index, (column, literal) in enumerate(
+            for index, (column, expected) in enumerate(
                 (("select", value), ("类别", "标签"), ("a`b", "tick"))
             ):
                 trace = tmp_path / f"quoted-{index}.jsonl"
-                dataset = (
-                    ray.data.read_hive(
-                        table, connection_factory=_traced_factory(options, trace)
-                    )
-                    .filter(expr=col(column) == literal)
-                    .select_columns([column, "id"])
-                )
+                dataset = ray.data.read_hive(
+                    table, connection_factory=_traced_factory(options, trace)
+                ).select_columns([column, "id"])
                 assert [dict(row) for row in dataset.take_all()] == [
-                    {column: literal, "id": 1}
+                    {column: expected, "id": 1}
                 ]
                 assert dataset.schema().names == [column, "id"]
-                assert len(_data_statements(trace)) == 1
-                assert " WHERE " in _data_statements(trace)[0]
+                statements = _data_statements(trace)
+                assert len(statements) == 1 and " WHERE " not in statements[0]
+                assert statements[0].startswith(
+                    "SELECT `" + column.replace("`", "``") + "`, `id`"
+                )
         finally:
             ray.shutdown()
 

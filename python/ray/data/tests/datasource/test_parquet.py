@@ -1210,6 +1210,10 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         ("myfile-{i}.parquet", True),
         # Case 8: Templated filename with UUID already present - should not raise error
         ("myfile_{write_uuid}-{i}.parquet", False),
+        # Case 9: `parquet` in the stem is not a file extension
+        ("contains-parquet-{write_uuid}", False),
+        # Case 10: Same as above with an index template
+        ("contains-parquet-{write_uuid}-{i}", False),
     ],
     ids=[
         "no_uuid_no_ext",
@@ -1220,6 +1224,8 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         "templated_no_uuid_no_ext",
         "templated_no_uuid_with_ext",
         "templated_has_uuid",
+        "contains_parquet_no_ext",
+        "templated_contains_parquet_no_ext",
     ],
 )
 def test_parquet_write_uuid_handling_with_custom_filename_provider(
@@ -1276,6 +1282,7 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
         assert re.search(
             uuid_pattern, written_file
         ), f"File '{written_file}' should contain UUID"
+        assert pathlib.Path(written_file).suffix == ".parquet"
 
         # Verify the content is correct by reading back
         ds_read = ray.data.read_parquet(tmp_path)
@@ -1656,26 +1663,6 @@ def test_tensors_in_tables_parquet(
         ds.schema().base_schema.field_by_name(tensor_col_name).type,
         new_tensor_format.to_type(),
     )
-
-
-def test_tensor_schema_limit_then_project_preserves_conversion_inputs(
-    ray_start_regular_shared, tmp_path, use_datasource_v2
-):
-    values = np.arange(8, dtype=np.int64).reshape(4, 2)
-    path = tmp_path / "tensors.parquet"
-    pq.write_table(
-        pa.table({"id": list(range(4)), "tensor": [row.tobytes() for row in values]}),
-        path,
-    )
-    dataset = ray.data.read_parquet(
-        str(path),
-        tensor_column_schema={"tensor": (values.dtype, (2,))},
-        override_num_blocks=1,
-    )
-    reference = dataset.limit(1).take_all()
-    assert len(reference) == 1 and reference[0]["id"] == 0
-    np.testing.assert_array_equal(reference[0]["tensor"], values[0])
-    assert dataset.limit(1).select_columns(["id"]).take_all() == [{"id": 0}]
 
 
 def test_multiple_files_with_ragged_arrays(

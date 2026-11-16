@@ -117,10 +117,13 @@ def _statements(path):
 @pytest.mark.parametrize(
     "operation",
     [
+        "projection",
         "mixed",
         "limit_before_filter",
         "source_limit",
         "empty",
+        "filter_empty",
+        "zero",
         "query",
     ],
 )
@@ -135,7 +138,6 @@ def test_public_hive_pushdown(
     factory = _factory(events)
     sql = "SELECT id, name, score FROM events"
     if operation == "query":
-        sql = "SELECT id, name, score FROM events"
         dataset = ray.data.read_hive(
             query=sql,
             schema=pa.schema(
@@ -151,27 +153,36 @@ def test_public_hive_pushdown(
             limit=5 if operation == "source_limit" else None,
             connection_factory=factory,
         )
-        if operation == "mixed":
+        if operation == "projection":
+            result = dataset.select_columns(["name"]).limit(3)
+            expected = [{"name": f"name{i}"} for i in range(3)]
+        elif operation == "mixed":
             result = (
                 dataset.filter(expr=(col("id") >= 2) & (col("score") < 4.0))
                 .select_columns(["name"])
                 .limit(3)
             )
             expected = [{"name": f"name{i}"} for i in range(2, 5)]
-        elif operation in ("limit_before_filter", "source_limit"):
-            result = (
-                dataset.limit(5) if operation == "limit_before_filter" else dataset
-            ).filter(expr=col("id") >= 8)
+        elif operation == "limit_before_filter":
+            result = dataset.limit(5).filter(expr=col("id") >= 8).limit(2)
             expected = []
-        elif operation == "empty":
-            result = (
-                dataset.filter(expr=col("id") >= 2).select_columns([]).materialize()
-            )
-            assert result.count() == 10
+        elif operation == "source_limit":
+            result = dataset.filter(expr=col("id") >= 2).limit(2)
+            expected = [{"id": i, "name": f"name{i}", "score": i / 2} for i in (2, 3)]
+        elif operation in ("empty", "filter_empty"):
+            if operation == "filter_empty":
+                dataset = dataset.filter(expr=col("id") >= 2)
+            result = dataset.select_columns([]).materialize()
+            assert result.count() == (10 if operation == "filter_empty" else 12)
             assert result.schema().names == result.schema().types == []
             statements = _statements(events)
-            assert len(statements) == 1
-            assert "1 AS `__ray_hive_row`" in statements[0]
+            assert len(statements) == 1 and " WHERE " not in statements[0]
+            if operation == "empty":
+                assert "1 AS `__ray_hive_row`" in statements[0]
+            return
+        elif operation == "zero":
+            assert dataset.limit(0).take_all() == []
+            assert _statements(events) == []
             return
         else:
             raise AssertionError(f"Unexpected operation: {operation}")
@@ -180,11 +191,13 @@ def test_public_hive_pushdown(
     assert len(statements) == 1
     if operation == "query":
         assert statements == [sql]
+    elif operation == "projection":
+        assert statements[0].startswith("SELECT `name`")
+        assert statements[0].endswith("LIMIT 3")
     elif operation == "mixed":
-        assert statements[0].startswith("SELECT `name`, `score`")
-        assert "WHERE" in statements[0] and "LIMIT" not in statements[0]
+        assert " WHERE " not in statements[0] and " LIMIT " not in statements[0]
     else:
-        assert "WHERE" not in statements[0] and statements[0].endswith("LIMIT 5")
+        assert " WHERE " not in statements[0] and statements[0].endswith("LIMIT 5")
 
 
 @pytest.mark.parametrize("failure", ["execute", "convert", "worker_loss"])

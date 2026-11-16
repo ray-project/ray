@@ -2367,8 +2367,8 @@ def read_json(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         lines: [Experimental] If ``True``, read files assuming line-delimited JSON.
-            If set, will ignore the ``filesystem``, ``arrow_open_stream_args``, and
-            ``arrow_json_args`` parameters.
+            This mode doesn't support the ``filesystem``, ``arrow_open_stream_args``,
+            or ``arrow_json_args`` parameters.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `PyArrow docs <https://arrow.apache.org/docs/python/api/\
@@ -2440,7 +2440,7 @@ def read_json(
         }
         for param, value in incompatible_params.items():
             if value:
-                raise ValueError(f"`{param}` is not supported when `lines=True`. ")
+                raise ValueError(f"`{param}` is not supported when `lines=True`.")
 
     file_based_datasource_kwargs = dict(
         filesystem=filesystem,
@@ -4328,11 +4328,10 @@ def read_hive(
         tolerance, a read error or worker loss fails that Dataset execution.
         This API preserves ``DataContext.max_errored_blocks``. If you allow
         block errors, execution can skip failed output and return an
-        incomplete result. For table reads, Ray pushes required columns, supported
-        expression filters, and ``Dataset.limit()`` into HiveServer2 when the
-        operation order permits. Unsupported filters run in Ray and prevent a
-        later limit from moving ahead of them. A source limit blocks later filter
-        pushdown. Ray sends query SQL unchanged.
+        incomplete result. For table reads, Ray pushes required columns and
+        ``Dataset.limit()`` into HiveServer2 when the operation order permits.
+        Dataset filters run in Ray and prevent a later limit from moving ahead
+        of them. Ray sends query SQL unchanged.
         The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
         The HiveServer2 reader ignores ``override_num_blocks`` with a warning
         to preserve streaming. Output blocks follow Ray's normal block-sizing
@@ -4344,12 +4343,9 @@ def read_hive(
         Immediate operation cancellation or explicit connection cleanup isn't
         guaranteed.
 
-        HS2 table filter pushdown supports comparisons against compatible integer,
-        decimal, and date literals, boolean and string equality, explicit null
-        checks, and supported Boolean combinations. Floating-point, ``CHAR``, and
-        ``TIMESTAMP`` comparisons, membership tests, and UDFs run in Ray. Special
-        column names use Hive's default ``hive.support.quoted.identifiers=column``
-        mode. Special-name pushdown isn't supported in the ``none`` mode.
+        Special column names use Hive's default
+        ``hive.support.quoted.identifiers=column`` mode. Special-name projection
+        isn't supported in the ``none`` mode.
 
     Notes:
         Direct reads retain Hive's schema. Widening supports only signed

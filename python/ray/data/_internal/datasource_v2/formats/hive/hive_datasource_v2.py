@@ -1,21 +1,18 @@
 """Single-query HiveServer2 datasource for the Ray Data V2 read path."""
 
-from dataclasses import dataclass, field, replace
-from typing import AbstractSet, Iterable, Iterator, List, Optional, Tuple
+from dataclasses import dataclass, replace
+from typing import AbstractSet, Iterable, Iterator, List, Optional
 
 import pyarrow as pa
 
-from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import HiveReadSpec
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
     _EMPTY_PROJECTION_COLUMN,
-    HiveTableMetadata,
-    infer_table_metadata,
+    infer_table_schema,
     read_hs2_batches,
 )
 from ray.data._internal.datasource_v2.formats.hive.hive_sql import (
     quote_identifier,
-    split_predicate,
 )
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
@@ -28,12 +25,10 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
-    SupportsFilterPushdown,
     SupportsLimitPushdown,
 )
 from ray.data._internal.datasource_v2.interfaces.reader import Reader
 from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
-from ray.data.expressions import Expr
 
 _READ_UNIT = "hive://read"
 
@@ -101,16 +96,12 @@ class _HiveScanner(Scanner[FileManifest]):
 class _HiveTableScanner(
     Scanner[FileManifest],
     SupportsColumnPruning,
-    SupportsFilterPushdown,
     SupportsLimitPushdown,
 ):
-    """Immutable table scan; accepted filters run before the SQL row limit."""
+    """Immutable table scan with projection and limit pushdown."""
 
     _spec: HiveReadSpec
     _schema: pa.Schema
-    native_types: Tuple[Tuple[str, str], ...]
-    predicate: Optional[Expr] = field(default=None, repr=False)
-    predicate_sql: Optional[str] = field(default=None, repr=False)
 
     def read_schema(self) -> pa.Schema:
         if self.columns is None:
@@ -126,38 +117,11 @@ class _HiveTableScanner(
             raise ValueError("HiveServer2 projection references an unavailable column")
         return replace(self, columns=tuple(columns))
 
-    def push_filters(
-        self, predicate: Expr
-    ) -> Tuple["_HiveTableScanner", Optional[Expr]]:
-        # Dataset filters offered after either limit must remain above that limit.
-        if self._spec.limit is not None or self.limit is not None:
-            return self, predicate
-        accepted, sql, residual = split_predicate(
-            predicate, self.read_schema(), self.native_types
-        )
-        if accepted is None:
-            return self, residual
-        combined_sql = (
-            f"({self.predicate_sql} AND {sql})"
-            if self.predicate_sql is not None
-            else sql
-        )
-        return (
-            replace(
-                self,
-                predicate=combine_predicates(self.predicate, accepted),
-                predicate_sql=combined_sql,
-            ),
-            residual,
-        )
-
-    def pushed_predicate(self) -> Optional[Expr]:
-        return self.predicate
-
     def push_limit(self, limit: int) -> "_HiveTableScanner":
-        # Hive parses SQL LIMIT as a signed 32-bit integer. Keep larger
+        # Ray accepts booleans, but Hive LIMIT requires an integer literal.
+        # Hive also parses LIMIT as a signed 32-bit integer. Keep unsupported
         # Dataset limits in Ray rather than changing their requested row count.
-        if limit > 2**31 - 1:
+        if isinstance(limit, bool) or limit > 2**31 - 1:
             return self
         return super().push_limit(limit)
 
@@ -179,8 +143,6 @@ class _HiveTableScanner(
         if self.columns == ():
             projection = f"1 AS {quote_identifier(_EMPTY_PROJECTION_COLUMN)}"
         statement = f"SELECT {projection} FROM {quote_identifier(database)}.{quote_identifier(table)}"
-        if self.predicate_sql is not None:
-            statement += f" WHERE {self.predicate_sql}"
         limit = self.pushed_limit()
         if limit is not None:
             statement += f" LIMIT {limit}"
@@ -199,7 +161,6 @@ class HiveDatasourceV2(DataSourceWithMetadata[FileManifest]):
     def __init__(self, spec: HiveReadSpec):
         super().__init__("Hive", DatasourceCategory.DATABASE)
         self._spec = spec
-        self._table_metadata: Optional[HiveTableMetadata] = None
 
     @property
     def paths(self) -> List[str]:
@@ -214,18 +175,9 @@ class HiveDatasourceV2(DataSourceWithMetadata[FileManifest]):
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
         if self._spec.schema is not None:
             return self._spec.schema
-        self._table_metadata = infer_table_metadata(self._spec)
-        return self._table_metadata.schema
+        return infer_table_schema(self._spec)
 
     def create_scanner(self, schema: pa.Schema, filesystem=None, **options) -> Scanner:
         if self._spec.table is not None:
-            if self._table_metadata is None:
-                self.infer_schema(None)
-            metadata = self._table_metadata
-            assert metadata is not None
-            if not schema.equals(metadata.schema, check_metadata=True):
-                raise ValueError(
-                    "HiveServer2 table metadata does not match the scan schema"
-                )
-            return _HiveTableScanner(self._spec, schema, metadata.native_types)
+            return _HiveTableScanner(self._spec, schema)
         return _HiveScanner(self._spec, schema)

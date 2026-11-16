@@ -592,35 +592,6 @@ def test_early_close_cancels_operation():
     assert cursor.cancelled and cursor.closed and connection.closed
 
 
-def test_table_metadata_retains_hive_types_lost_in_arrow_mapping():
-    class NativeCursor(_Cursor):
-        def get_table_schema(self, table, database):
-            return [
-                ("s", "STRING"),
-                ("c", "CHAR(8)"),
-                ("v", "VARCHAR(8)"),
-                ("t", "TIMESTAMP"),
-            ]
-
-    cursor = NativeCursor()
-    metadata = hive_hs2.infer_table_metadata(
-        HiveReadSpec(lambda: _Connection(cursor), table="analytics.events")
-    )
-    assert metadata.native_types == (
-        ("s", "STRING"),
-        ("c", "CHAR(8)"),
-        ("v", "VARCHAR(8)"),
-        ("t", "TIMESTAMP"),
-    )
-    assert metadata.schema.types == [
-        pa.string(),
-        pa.string(),
-        pa.string(),
-        pa.timestamp("us"),
-    ]
-    assert cursor.statements == []
-
-
 def test_projected_result_schema_is_validated_without_requiring_source_columns():
     cursor = _Cursor([[("a",)], [("b",)]])
     cursor.description = [("name", "STRING", None, None, None, None, None)]

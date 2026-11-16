@@ -2,7 +2,6 @@
 
 import re
 from contextlib import suppress
-from dataclasses import dataclass
 from typing import Any, Callable, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
@@ -66,20 +65,7 @@ def _metadata_pattern(identifier: str) -> str:
     return identifier.replace("\\", "\\\\").replace("_", "\\_").replace("%", "\\%")
 
 
-@dataclass(frozen=True)
-class HiveTableMetadata:
-    """A single metadata snapshot, retaining Hive types lost in Arrow mapping."""
-
-    schema: pa.Schema
-    native_types: Tuple[Tuple[str, str], ...]
-
-
 def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
-    """Return the Arrow schema from the same metadata lookup."""
-    return infer_table_metadata(spec).schema
-
-
-def infer_table_metadata(spec: HiveReadSpec) -> HiveTableMetadata:
     """Use the HS2 metadata operation; never execute a data query."""
     table_identifier = spec.table_identifier
     if table_identifier is None:
@@ -144,10 +130,7 @@ def infer_table_metadata(spec: HiveReadSpec) -> HiveTableMetadata:
     names = [name for name, _ in columns]
     if len({name.casefold() for name in names}) != len(names):
         raise ValueError("HiveServer2 table has duplicate column names")
-    return HiveTableMetadata(
-        pa.schema([(name, _arrow_type(type_name)) for name, type_name in columns]),
-        tuple(columns),
-    )
+    return pa.schema([(name, _arrow_type(type_name)) for name, type_name in columns])
 
 
 def _statement(spec: HiveReadSpec) -> str:
