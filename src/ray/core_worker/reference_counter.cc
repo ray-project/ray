@@ -229,7 +229,8 @@ void ReferenceCounter::AddOwnedObject(
     LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    const std::optional<std::string> &tensor_transport) {
+    const std::optional<std::string> &tensor_transport,
+    MoveState move_state) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -239,7 +240,8 @@ void ReferenceCounter::AddOwnedObject(
                                    lineage_eligibility,
                                    add_local_ref,
                                    pinned_at_node_id,
-                                   tensor_transport))
+                                   tensor_transport,
+                                   move_state))
       << "Tried to create an owned object that already exists: " << object_id;
 }
 
@@ -269,7 +271,8 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     outer_it->second.lineage_eligibility_,
                                     /*add_local_ref=*/false,
                                     std::optional<NodeID>(),
-                                    /*tensor_transport=*/std::nullopt));
+                                    /*tensor_transport=*/std::nullopt,
+                                    MoveState::NOT_MOVABLE));
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
@@ -305,7 +308,8 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     outer_it->second.lineage_eligibility_,
                                     /*add_local_ref=*/true,
                                     std::optional<NodeID>(),
-                                    /*tensor_transport=*/std::nullopt));
+                                    /*tensor_transport=*/std::nullopt,
+                                    MoveState::NOT_MOVABLE));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -355,7 +359,8 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    const std::optional<std::string> &tensor_transport) {
+    const std::optional<std::string> &tensor_transport,
+    MoveState move_state) {
   if (object_id_refs_.contains(object_id)) {
     return false;
   }
@@ -379,6 +384,10 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                                    pinned_at_node_id,
                                    tensor_transport))
                 .first;
+  it->second.move_state_ = move_state;
+  if (move_state != MoveState::NOT_MOVABLE) {
+    num_consume_once_objects_++;
+  }
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -816,6 +825,9 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       // Decrement owned object counters for the reference being erased
       UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
     }
+  }
+  if (it->second.move_state_ != MoveState::NOT_MOVABLE) {
+    num_consume_once_objects_--;
   }
   for (const auto &callback : it->second.object_ref_deleted_callbacks) {
     callback(it->first);
@@ -1872,6 +1884,62 @@ std::optional<std::string> ReferenceCounter::GetTensorTransport(
     return std::nullopt;
   }
   return it->second.tensor_transport_;
+}
+
+std::optional<MoveState> ReferenceCounter::GetMoveState(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  return GetMoveStateInternal(object_id);
+}
+
+std::vector<std::optional<MoveState>> ReferenceCounter::GetMoveStates(
+    const std::vector<ObjectID> &object_ids) const {
+  std::vector<std::optional<MoveState>> move_states;
+  move_states.reserve(object_ids.size());
+  // One lock for the whole list instead of acquiring/releasing the lock for every
+  // object. This function is used only for pre-checks that fail a bad task submission
+  // early. Granular locking might lead to more early failures, but in the happy path
+  // might degrade performance. Also, the arg list isn't expected to be super long - so
+  // holding the lock for the entire duration is fine.
+  absl::MutexLock lock(&mutex_);
+  for (const ObjectID &object_id : object_ids) {
+    move_states.push_back(GetMoveStateInternal(object_id));
+  }
+  return move_states;
+}
+
+Status ReferenceCounter::TryCommitMoves(const std::vector<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mutex_);
+  // Validate every object before changing any, so a rejected task moves nothing.
+  // Acquire the lock for both validation and commit phases (without unlocking after
+  // validation) so that no two tasks can be validated successfully.
+  for (const ObjectID &object_id : object_ids) {
+    if (GetMoveStateInternal(object_id) == MoveState::MOVED) {
+      return Status::InvalidArgument(absl::StrFormat(
+          "Object %s was created with _consume_once=True and was already passed to an "
+          "actor task.",
+          object_id.Hex()));
+    }
+  }
+  for (const ObjectID &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    if (it != object_id_refs_.end() && it->second.move_state_ == MoveState::MOVABLE) {
+      it->second.move_state_ = MoveState::MOVED;
+    }
+  }
+  return Status::OK();
+}
+
+std::optional<MoveState> ReferenceCounter::GetMoveStateInternal(
+    const ObjectID &object_id) const {
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return std::nullopt;
+  }
+  return it->second.move_state_;
+}
+
+bool ReferenceCounter::HasConsumeOnceObjects() const {
+  return num_consume_once_objects_.load() > 0;
 }
 
 }  // namespace core

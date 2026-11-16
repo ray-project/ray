@@ -860,9 +860,12 @@ class DataContext:
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
-            corrupted data samples) or IO errors. Data in the failed blocks are dropped.
-            This option can be useful to prevent a long-running job from failing due to
-            a small number of bad blocks.
+            corrupted data samples) or IO errors. A failed map task keeps the rows it
+            produced before the error and drops the rest of its input. While the
+            task can still be rerun (``retried_map_errors``, or Ray's ``max_retries``
+            with ``retry_exceptions``), a failed attempt emits no rows, so the rerun
+            produces each row once. This option can be useful to prevent a
+            long-running job from failing due to a small number of bad blocks.
         log_internal_stack_trace: Whether to write the full Ray Data/Ray Core
             internal code stack frames to the Ray Data log file when logging a
             user-code error. These internal frames are always omitted from
@@ -909,15 +912,16 @@ class DataContext:
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
             shuffle input blocks before partitioning. Applies to the
-            ``SHUFFLE_V2`` shuffle strategy (including disk-based hash shuffle).
-            Other shuffle strategies ignore it. Input blocks are buffered per
-            node and
-            processed as a batch once this size is reached; remaining
-            buffered blocks are flushed when input is exhausted. Lower values
-            increase shuffle parallelism (useful for CPU-intensive shuffles)
-            at the cost of more, smaller intermediate shard objects. Set to
-            ``0`` to disable batching, processing each input bundle
-            individually. Defaults to 1GiB.
+            object-store ``SHUFFLE_V2`` shuffle strategy only; the disk-based
+            hash shuffle (``use_disk_based_hash_shuffle``) runs one map task
+            per input bundle since a file per mapper already bounds the
+            number of shards, and other shuffle strategies ignore it. Input
+            blocks are buffered per node and processed as a batch once this
+            size is reached; remaining buffered blocks are flushed when input
+            is exhausted. Lower values increase shuffle parallelism (useful
+            for CPU-intensive shuffles) at the cost of more, smaller intermediate
+            shard objects. Set to ``0`` to disable batching, processing each
+            input bundle individually. Defaults to 1GiB.
         use_disk_based_hash_shuffle: Whether ``sort()``, ``repartition()`` with
             keys or shuffle, aggregations, and joins under the ``SHUFFLE_V2``
             strategy use the disk-based (file-transport) shuffle instead of
