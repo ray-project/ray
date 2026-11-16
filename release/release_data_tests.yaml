@@ -1084,6 +1084,10 @@
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+        # TEST ONLY (do not merge): use Arrow's jemalloc pool instead of the
+        # default mimalloc, to check whether the slowdown after the pyarrow 25
+        # upgrade (#68005) comes from the allocator.
+        ARROW_DEFAULT_MEMORY_POOL: "jemalloc"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:

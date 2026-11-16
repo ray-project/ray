@@ -115,6 +115,24 @@ if __name__ == "__main__":
         f"{num_partitions * partition_size / GiB}GB total"
     )
 
+    # TEST ONLY (do not merge): show which Arrow memory pool is in use, on the
+    # driver and on a worker, so the ARROW_DEFAULT_MEMORY_POOL setting can be
+    # confirmed from the job log.
+    import pyarrow
+
+    @ray.remote
+    def _arrow_pool_on_worker():
+        import pyarrow
+
+        return pyarrow.__version__, pyarrow.default_memory_pool().backend_name
+
+    print(
+        f"Arrow memory pool: driver=({pyarrow.__version__}, "
+        f"{pyarrow.default_memory_pool().backend_name}), "
+        f"worker={ray.get(_arrow_pool_on_worker.remote())}, "
+        f"ARROW_DEFAULT_MEMORY_POOL={os.environ.get('ARROW_DEFAULT_MEMORY_POOL')}"
+    )
+
     # Override target max-block size to avoid creating too many blocks
     DataContext.get_current().target_max_block_size = 1 * GiB
     source = RandomIntRowDatasource()
