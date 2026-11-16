@@ -1110,6 +1110,41 @@
     script: >
       python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
 
+# Candidate fix on the pyarrow 25 image: make mimalloc return freed memory to the
+# OS immediately instead of holding it (the suspected source of the extra RSS).
+- name: "random_shuffle_mimalloc_purge0"
+  python: "3.11"
+  frequency: manual
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        MIMALLOC_PURGE_DELAY: "0"
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+# Allocator check on the pyarrow 25 image: bypass mimalloc entirely.
+- name: "random_shuffle_jemalloc"
+  python: "3.11"
+  frequency: manual
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        ARROW_DEFAULT_MEMORY_POOL: jemalloc
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
+
 
 #######################
 # Batch inference tests
