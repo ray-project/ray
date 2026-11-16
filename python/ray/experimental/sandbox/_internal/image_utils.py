@@ -23,7 +23,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-import zlib
 from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
@@ -948,10 +947,7 @@ class _Tee:
         self._source, self._sink = source, sink
 
     def read(self, size: int = -1) -> bytes:
-        try:
-            data = self._source.read(size)
-        except (EOFError, OSError, zlib.error) as err:
-            raise SandboxCreationError(f"A layer is corrupt: {err}") from err
+        data = self._source.read(size)
         if data and self._sink is not None:
             try:
                 self._sink.write(data)
@@ -987,9 +983,10 @@ def _build_layer_image(
     """Build an EROFS image of one layer and return its ``_layer_entry`` list.
 
     The tar streams into ``mkfs.erofs --tar=f`` once, and its headers are
-    read on the way. ``--aufs`` keeps whiteouts as overlayfs metadata for
-    the merge to apply, and ``--sort=none`` writes file data as it comes
-    instead of spooling it under ``$TMPDIR``. Closes ``blob``.
+    read on the way; ``blob`` may still be downloading. ``--aufs`` keeps
+    whiteouts as overlayfs metadata for the merge to apply, and
+    ``--sort=none`` writes file data as it comes instead of spooling it
+    under ``$TMPDIR``. Closes ``blob``.
     """
     with blob, tempfile.TemporaryFile() as output:
         gzipped = blob.read(2) == b"\x1f\x8b"
@@ -1112,11 +1109,12 @@ def _build_erofs_image_from_registry(
     """Build ``out_path`` for registry image ``image`` by merging per-layer
     EROFS images, without extracting the layers to a tree.
 
-    The layers come from the layer cache as for extraction. Each streams
-    into an image of its own (``_build_layer_image``), a few at a time,
-    over a layer of seeds; one ``mkfs.erofs --clean=data --ovlfs-strip=1``
-    pass then copies their data into ``out_path`` and applies the
-    whiteouts, and an incremental one adds the seeds that go on top.
+    The layers come from the layer cache as for extraction, each read as
+    it downloads. Each streams into an image of its own
+    (``_build_layer_image``), a few at a time, over a layer of seeds; one
+    ``mkfs.erofs --clean=data --ovlfs-strip=1`` pass then copies their data
+    into ``out_path`` and applies the whiteouts, and an incremental one
+    adds the seeds that go on top.
 
     Returns:
         True if the image is built; False, with nothing at ``out_path``, if
@@ -1146,7 +1144,7 @@ def _build_erofs_image_from_registry(
             f"Failed to pull container image '{image}': {_describe_pull_error(err)}"
         ) from err
     blobs = _download_blobs(
-        digests, base_url, headers, auth_header, timeout_seconds, blob_dir
+        digests, base_url, headers, auth_header, timeout_seconds, blob_dir, True
     )
     layer_dir = tempfile.mkdtemp(prefix=".layers.", dir=image_dir)
     paths = [os.path.join(layer_dir, f"{i}.erofs") for i in range(len(digests) + 1)]
@@ -1638,11 +1636,14 @@ def _download_blobs(
     auth_header: Optional[str],
     timeout_seconds: float,
     blob_dir: str,
+    growing: bool = False,
 ) -> Iterator[BinaryIO]:
     """Yield cached layers in manifest order while later layers download.
 
     The caller closes each blob. Closing the generator stops outstanding
-    downloads and closes the blobs nobody took.
+    downloads and closes the blobs nobody took. With ``growing``, a layer
+    being downloaded comes as soon as its download starts, as a
+    ``layer_cache.GrowingBlob``, so the caller reads it as it arrives.
 
     Args:
         digests: Layer digests in manifest order.
@@ -1651,6 +1652,7 @@ def _download_blobs(
         auth_header: Optional Authorization header value for registry requests.
         timeout_seconds: Network request timeout.
         blob_dir: Image cache directory, whose layer cache keeps the blobs.
+        growing: Yield layers while they download.
 
     Yields:
         BinaryIO: Cached layer blobs in manifest order; the caller closes each blob.
@@ -1659,6 +1661,7 @@ def _download_blobs(
     pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=_LAYER_DOWNLOADS, thread_name_prefix="sandbox-layer-download"
     )
+    started = [concurrent.futures.Future() if growing else None for _ in digests]
     downloads = [
         pool.submit(
             layer_cache.fetch_blob,
@@ -1667,20 +1670,26 @@ def _download_blobs(
             _registry_request(base_url + digest, headers, auth_header),
             timeout_seconds,
             stop,
+            start,
         )
-        for digest in digests
+        for digest, start in zip(digests, started)
     ]
+    # Each layer comes from its ``started`` future if it has one.
+    blobs = [start or download for start, download in zip(started, downloads)]
     yielded = 0
     try:
-        for download in downloads:
-            blob = download.result()
+        for blob in blobs:
+            result = blob.result()
             yielded += 1
-            yield blob
+            yield result
     finally:
-        stop.set()
+        # Growing layers the caller took may still be downloading.
+        if yielded < len(blobs):
+            stop.set()
         for download in downloads[yielded:]:
             download.cancel()
-            download.add_done_callback(_close_blob)
+        for blob in blobs[yielded:]:
+            blob.add_done_callback(_close_blob)
         pool.shutdown(wait=False)
 
 

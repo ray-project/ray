@@ -2040,5 +2040,38 @@ def test_merged_pull_stops_other_layers_when_one_fails(
         assert hung_up.wait(5)
 
 
+def test_growing_layers_are_read_while_they_download(tmp_path, monkeypatch):
+    """A growing layer comes as soon as its download starts, reads what has
+    arrived, and ends only once the whole layer is in and verified."""
+    layer = _tar_layer(_m("big", os.urandom(1 << 20)))
+    taken = threading.Event()
+
+    def serve_blob(index, handler, blob):
+        handler.send_response(200)
+        handler.send_header("Content-Length", str(len(blob)))
+        handler.end_headers()
+        handler.wfile.write(blob[: len(blob) // 2])
+        handler.wfile.flush()
+        # The rest waits until the first half has been read.
+        taken.wait(10)
+        handler.wfile.write(blob[len(blob) // 2 :])
+
+    with _serve_image(monkeypatch, [layer], serve_blob):
+        base_url = (
+            os.environ["RAY_SANDBOX_REGISTRY_MIRROR"] + "/v2/library/busybox/blobs/"
+        )
+        digest = f"sha256:{hashlib.sha256(layer).hexdigest()}"
+        blobs = image_utils._download_blobs(
+            [digest], base_url, {}, None, 30, str(tmp_path), growing=True
+        )
+        with contextlib.closing(blobs):
+            (blob,) = list(blobs)
+            with blob:
+                head = blob.read(len(layer) // 4)
+                taken.set()
+                assert head + blob.read() == layer
+    assert os.path.exists(image_utils.layer_cache.blob_path(str(tmp_path), digest))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
