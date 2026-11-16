@@ -16,8 +16,12 @@ from running out of process IDs.
 subreaper, so these helpers become its children, and starts a thread that
 reaps them. The thread only reaps zombies whose command name is in
 ``_REAPED_COMMS`` and that run in a session of their own, as runsc's
-helpers do. ``reap_now`` also reaps them at once when the backend deletes a
-sandbox, so a worker that exits right afterwards leaves none behind. Children this process starts with ``subprocess``, such as runsc
+helpers do. It lists the worker's children from
+``/proc/self/task/*/children`` where the kernel has those files, and reads
+all of ``/proc`` otherwise. When a caller deletes a sandbox, ``reap_now``
+reaps them at once, so a worker that exits right afterwards leaves none
+behind; after a checkpoint stops a sandbox, ``reap_soon`` only wakes the
+thread, so checkpoints don't wait for the scan. Children this process starts with ``subprocess``, such as runsc
 itself, share its session, so their exit statuses stay for ``Popen.wait``
 (which reports 0 for a child it can't find). Other orphans in the worker's subtree still become its children and
 are not reaped here; they are reparented again when the worker exits.
@@ -32,8 +36,7 @@ import math
 import os
 import sys
 import threading
-import time
-from typing import Optional
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +57,16 @@ _REAPED_COMMS = frozenset({"runsc-fd-parking"[:15], "exe"})
 
 _lock = threading.Lock()
 _thread: Optional[threading.Thread] = None
+# Set to make the thread's next pass start at once.
+_wake = threading.Event()
 
 
 def _reset_after_fork() -> None:
     # A forked child is not a subreaper and doesn't run the thread.
-    global _lock, _thread
+    global _lock, _thread, _wake
     _lock = threading.Lock()
     _thread = None
+    _wake = threading.Event()
 
 
 if hasattr(os, "register_at_fork"):
@@ -127,6 +133,37 @@ def _parse_stat(stat: str):
     return comm, state, int(ppid), int(session)
 
 
+def _child_pids() -> Optional[List[str]]:
+    """List this process's children from /proc/self/task/<tid>/children.
+
+    Reading one small file per thread costs far less than reading the stat of
+    every process in /proc. The kernel calls these files reliable only while
+    the children are stopped, since a child that starts or exits during the
+    read can be missed; a zombie no longer changes, so it's listed.
+
+    Returns:
+        The children's pids, or None when the kernel has no children files
+        (CONFIG_PROC_CHILDREN is off).
+    """
+    try:
+        tids = os.listdir("/proc/self/task")
+    except OSError:
+        return None
+    pids: List[str] = []
+    found = False
+    for tid in tids:
+        try:
+            with open(f"/proc/self/task/{tid}/children", encoding="ascii") as f:
+                pids.extend(f.read().split())
+        except FileNotFoundError:
+            # A thread that just exited, or no children files at all.
+            continue
+        except OSError:
+            continue
+        found = True
+    return pids if found else None
+
+
 def reap_orphans() -> int:
     """Reap this process's zombie children that are orphaned runsc helpers.
 
@@ -136,10 +173,12 @@ def reap_orphans() -> int:
     me = os.getpid()
     my_session = os.getsid(0)
     reaped = 0
-    try:
-        entries = os.listdir("/proc")
-    except OSError:
-        return 0
+    entries = _child_pids()
+    if entries is None:
+        try:
+            entries = os.listdir("/proc")
+        except OSError:
+            return 0
     for entry in entries:
         if not entry.isdigit():
             continue
@@ -166,12 +205,22 @@ def reap_orphans() -> int:
     return reaped
 
 
+def reap_soon() -> None:
+    """Start the thread's next pass now instead of at the next interval.
+
+    Doesn't wait for it, so it costs the caller nothing; passes that several
+    callers ask for at once run once.
+    """
+    if _thread is not None:
+        _wake.set()
+
+
 def reap_now() -> int:
     """Reap orphaned runsc helpers now, if the reaper runs in this process.
 
-    The backend calls this when it deletes a sandbox. The worker can exit
-    before the thread's next pass, and an exiting subreaper's children go to
-    PID 1, which doesn't reap them.
+    The backend calls this when a caller deletes a sandbox. The worker can
+    exit right afterwards, before the thread's next pass, and an exiting
+    subreaper's children go to PID 1, which doesn't reap them.
 
     Returns:
         The number of zombies reaped; 0 when the reaper isn't running.
@@ -187,11 +236,13 @@ def reap_now() -> int:
 
 def _run(interval: float) -> None:
     while True:
+        # Clear before the pass, so a reap_soon() during it starts another.
+        _wake.clear()
         try:
             reap_orphans()
         except Exception:
             logger.exception("Reaping orphaned runsc helpers failed.")
-        time.sleep(interval)
+        _wake.wait(interval)
 
 
 def start() -> bool:

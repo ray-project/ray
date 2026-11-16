@@ -318,5 +318,73 @@ def test_delete_sandbox_reaps_helpers_before_returning(monkeypatch):
     assert calls == ["reap"]
 
 
+def test_child_pids_lists_this_process_s_children(tmp_path):
+    _run_child(
+        tmp_path,
+        """
+        child = subprocess.Popen(["sleep", "5"])
+        pids = r._child_pids()
+        child.kill(); child.wait()
+        has_files = os.path.exists(f"/proc/self/task/{os.getpid()}/children")
+        # Without CONFIG_PROC_CHILDREN, reap_orphans falls back to /proc.
+        assert (pids is not None) == has_files, (pids, has_files)
+        if has_files:
+            assert str(child.pid) in pids, pids
+        """,
+    )
+
+
+def test_reaps_with_a_full_scan_without_children_files(tmp_path):
+    _run_child(
+        tmp_path,
+        """
+        r._child_pids = lambda: None
+        assert r._enable_subreaper()
+        orphan(tmp, "runsc-fd-parking", 0.1)
+        wait_for_zombie("runsc-fd-parkin")
+        assert r.reap_orphans() == 1
+        assert "runsc-fd-parkin" not in zombies().values()
+        """,
+    )
+
+
+def test_reap_soon_does_nothing_without_the_reaper(monkeypatch):
+    monkeypatch.setattr(orphan_reaper, "_thread", None)
+    orphan_reaper._wake.clear()
+    orphan_reaper.reap_soon()
+    assert not orphan_reaper._wake.is_set()
+
+
+def test_reap_soon_wakes_the_thread(tmp_path):
+    # With an interval far longer than the test, only the wake-up can make
+    # the thread reap the helper.
+    _run_child(
+        tmp_path,
+        """
+        assert r.start()
+        time.sleep(0.2)  # let the thread finish its first pass
+        pid = orphan(tmp, "runsc-fd-parking", 0.1)
+        wait_for_zombie("runsc-fd-parkin")
+        r.reap_soon()
+        deadline = time.monotonic() + 5
+        while os.path.exists(f"/proc/{pid}"):
+            assert time.monotonic() < deadline, zombies()
+            time.sleep(0.02)
+        """,
+        env={orphan_reaper.REAP_INTERVAL_ENV: "600"},
+    )
+
+
+def test_deleting_an_unknown_sandbox_doesnt_scan(monkeypatch):
+    from ray.experimental.sandbox.backend import gvisor
+
+    backend = gvisor.GVisorSandboxBackend.__new__(gvisor.GVisorSandboxBackend)
+    backend._sandbox_metadata = {}
+    monkeypatch.setattr(
+        orphan_reaper, "reap_now", lambda: pytest.fail("scanned for no sandbox")
+    )
+    backend.delete_sandbox("unknown")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
