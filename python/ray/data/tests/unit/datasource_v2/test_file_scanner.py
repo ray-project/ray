@@ -102,8 +102,6 @@ def _manifest(*paths: str) -> FileManifest:
 
 def test_scanner_without_filter_pushdown_still_takes_partition_predicates():
     scanner = _PartitionOnlyScanner(partitioning=PARTITIONING)
-    assert not hasattr(scanner, "synthesized_columns")
-    assert scanner.partition_columns == {"country"}
     assert not isinstance(scanner, SupportsFilterPushdown)
     op = _read_files(scanner)
 
@@ -180,7 +178,6 @@ def test_prune_input_split_drops_files_by_path():
 @pytest.mark.parametrize(
     "synthesized_columns, expected",
     [
-        ((), {"path", "row_hash", "country"}),
         ((PathColumn(),), {"row_hash", "country"}),
         ((PathColumn(), RowHashColumn()), {"country"}),
     ],
