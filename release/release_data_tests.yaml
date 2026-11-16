@@ -1084,6 +1084,11 @@
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+        # TEST ONLY (do not merge): keep Arrow's default mimalloc pool but make
+        # it return freed memory to the OS at once (default delay: 1000 ms), to
+        # check whether that alone fixes the slowdown after the pyarrow 25
+        # upgrade (#68005).
+        MIMALLOC_PURGE_DELAY: "0"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
