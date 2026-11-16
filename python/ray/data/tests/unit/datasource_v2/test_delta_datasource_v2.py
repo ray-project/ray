@@ -227,6 +227,7 @@ def _stub_table(
     [
         (_stub_table(), {}, None),
         (_stub_table(reader_version=3, reader_features=["timestampNtz"]), {}, None),
+        (_stub_table(reader_version=3, reader_features=["v2Checkpoint"]), {}, None),
         (_stub_table(), {"arrow_parquet_args": {"batch_size": 10}}, "PyArrow"),
         (_stub_table(reader_version=2), {}, "reader version 2"),
         # Only the unsupported features are named.
