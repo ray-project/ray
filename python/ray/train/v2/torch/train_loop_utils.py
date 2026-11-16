@@ -17,6 +17,7 @@ from torch.utils.data import (
 
 import ray.train.torch
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.train.constants import V2_MIGRATION_GUIDE_LINK_MESSAGE
 from ray.train.torch.train_loop_utils import (
     _WrappedDataLoader,
     get_devices as get_devices_distributed,
@@ -30,12 +31,11 @@ logger = logging.getLogger(__name__)
 
 _TORCH_AMP_DEPRECATION_MESSAGE = (
     "The `accelerate`, `backward`, and `prepare_optimizer` utility methods "
-    "in the `ray.train.torch` module are deprecated and will be removed in a "
-    "future release. "
+    "in the `ray.train.torch` module are deprecated, are not supported in "
+    "Ray Train V2, and will be removed in Ray 3.0, no earlier than May 2027. "
     "Please use the native PyTorch mixed precision API directly, or "
     "a library such as Lightning or HuggingFace Transformers/Accelerate. "
-    "See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
 )
 
 

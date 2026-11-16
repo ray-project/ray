@@ -76,6 +76,75 @@ def _v2_migration_warnings_enabled() -> bool:
     return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, True)
 
 
+V1_REMOVAL_MESSAGE = (
+    "Ray Train V1 is deprecated and will be removed in Ray 3.0, "
+    "no earlier than May 2027."
+)
+
+V1_DEPRECATION_MESSAGE = (
+    "Ray Train V1 was enabled by setting `RAY_TRAIN_V2_ENABLED=0`. "
+    f"{V1_REMOVAL_MESSAGE} "
+    "Unset `RAY_TRAIN_V2_ENABLED` to use Ray Train V2, the default. "
+    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+)
+
+
+_v1_deprecation_warning_logged = False
+
+
+def _log_v1_deprecation_warning() -> None:
+    """Warns that Ray Train V1 is deprecated and will be removed in Ray 3.0.
+
+    Called on ``import ray.train`` when V1 is selected with
+    ``RAY_TRAIN_V2_ENABLED=0``. It warns at most once per process and only in
+    the driver: Ray worker processes (Train workers, Tune trials, RLlib
+    learners) skip it so it isn't repeated for each of them. The warning points
+    at the user's code that triggered the import, not at Ray's internals, so it
+    is the same for ``import ray.train``, ``import ray.tune`` or
+    ``import ray.rllib``.
+    """
+    global _v1_deprecation_warning_logged
+
+    import os
+    import sys
+    import warnings
+
+    from ray._private.worker import (
+        RESTORE_WORKER_MODE,
+        SPILL_WORKER_MODE,
+        WORKER_MODE,
+        global_worker,
+    )
+    from ray.util.annotations import RayDeprecationWarning
+
+    if (
+        _v1_deprecation_warning_logged
+        or not _v2_migration_warnings_enabled()
+        or global_worker.mode in (WORKER_MODE, SPILL_WORKER_MODE, RESTORE_WORKER_MODE)
+    ):
+        return
+    _v1_deprecation_warning_logged = True
+
+    # Attribute the warning to the first frame outside Ray and importlib, which
+    # is the user's import statement.
+    ray_dir = os.path.dirname(ray.__file__) + os.sep
+    frame = sys._getframe(1)
+    while frame.f_back is not None and (
+        frame.f_code.co_filename.startswith(ray_dir)
+        or frame.f_code.co_filename.startswith("<frozen importlib")
+    ):
+        frame = frame.f_back
+
+    warnings.warn_explicit(
+        V1_DEPRECATION_MESSAGE,
+        RayDeprecationWarning,
+        filename=frame.f_code.co_filename,
+        lineno=frame.f_lineno,
+        module=frame.f_globals.get("__name__", "<unknown>"),
+        registry=frame.f_globals.setdefault("__warningregistry__", {}),
+    )
+
+
 # ==================================================
 #               Environment Variables
 # ==================================================

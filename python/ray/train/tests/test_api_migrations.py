@@ -1,3 +1,5 @@
+import os
+import subprocess
 import sys
 import warnings
 
@@ -174,6 +176,96 @@ def test_v2_enabled_error(monkeypatch):
             lambda _: None,
             scaling_config=ray.train.ScalingConfig(num_workers=1),
         )
+
+
+@pytest.mark.parametrize("import_stmt", ["import ray.train", "import ray.tune"])
+@pytest.mark.parametrize(
+    "v2_enabled,migration_warnings_enabled,expect_warning",
+    [("0", "1", True), ("0", "0", False), ("1", "1", False)],
+)
+def test_v1_enabled_deprecation_warning(
+    tmp_path, import_stmt, v2_enabled, migration_warnings_enabled, expect_warning
+):
+    """Importing Ray Train with V1 selected warns once, at the user's import."""
+    from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR
+
+    # `ray.train` is already imported in this process, so import it in a new one.
+    # The second import and the reload must not warn again.
+    script = tmp_path / "user_script.py"
+    script.write_text(
+        "import importlib\n"
+        f"{import_stmt}\n"
+        "import ray.train\n"
+        "importlib.reload(ray.train)\n"
+    )
+    env = {
+        **os.environ,
+        V2_ENABLED_ENV_VAR: v2_enabled,
+        ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR: migration_warnings_enabled,
+    }
+    proc = subprocess.run(
+        [sys.executable, "-W", "always::DeprecationWarning", str(script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    count = proc.stderr.count("Ray Train V1 is deprecated")
+    assert count == (1 if expect_warning else 0), proc.stderr
+    if expect_warning:
+        assert f"{script}:2: RayDeprecationWarning" in proc.stderr, proc.stderr
+        assert "Ray 3.0" in proc.stderr
+        assert "https://github.com/ray-project/ray/issues/49454" in proc.stderr
+
+    # `python -c` has no source file for the warning to point at.
+    proc = subprocess.run(
+        [sys.executable, "-W", "always::DeprecationWarning", "-c", import_stmt],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    count = proc.stderr.count("Ray Train V1 is deprecated")
+    assert count == (1 if expect_warning else 0), proc.stderr
+
+
+def test_v1_deprecation_warning_skipped_in_workers(ray_start_4_cpus, monkeypatch):
+    """Ray worker processes don't repeat the driver's V1 deprecation warning."""
+    import ray.train.constants as train_constants
+
+    def count_warnings() -> int:
+        train_constants._v1_deprecation_warning_logged = False
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            train_constants._log_v1_deprecation_warning()
+        return len([w for w in caught if issubclass(w.category, RayDeprecationWarning)])
+
+    monkeypatch.setattr(train_constants, "_v1_deprecation_warning_logged", False)
+    assert count_warnings() == 1
+    assert ray.get(ray.remote(count_warnings).remote()) == 0
+
+
+@pytest.mark.parametrize("api", ["accelerate", "prepare_optimizer", "backward"])
+def test_torch_amp_utils_removal_warning(monkeypatch, api):
+    """The V1 AMP utilities warn that they are removed in Ray 3.0."""
+    import ray.train.torch
+    import ray.train.torch.train_loop_utils as train_loop_utils
+
+    # The warning is logged before the accelerator is touched. Stub the
+    # accelerator out so that the call doesn't reach the Ray runtime outside a
+    # Train worker.
+    def no_accelerator(*args, **kwargs):
+        raise RuntimeError("no accelerator in this test")
+
+    monkeypatch.setattr(train_loop_utils, "get_accelerator", no_accelerator)
+    monkeypatch.setattr(train_loop_utils, "set_accelerator", no_accelerator)
+    monkeypatch.setattr(train_loop_utils, "_TorchAccelerator", no_accelerator)
+
+    with pytest.warns(RayDeprecationWarning, match="removed in Ray 3.0") as record:
+        with pytest.raises(RuntimeError):
+            getattr(ray.train.torch, api)(None)
+    assert "https://github.com/ray-project/ray/issues/49454" in str(record[0].message)
 
 
 if __name__ == "__main__":
