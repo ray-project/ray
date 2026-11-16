@@ -23,6 +23,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    TypeVar,
     Union,
     cast,
 )
@@ -104,6 +105,8 @@ from ray.types import ObjectRef
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_T = TypeVar("_T")
 
 
 class RouterMetricsManager:
@@ -1507,7 +1510,7 @@ class AsyncioRouter:
         resolution_ms = (time.monotonic() - resolution_start) * 1000
         self._objref_resolution_latency_ms.observe(resolution_ms)
 
-    async def _wait_for_routing(self, pr: PendingRequest, aw: Awaitable[Any]) -> Any:
+    async def _wait_for_routing(self, pr: PendingRequest, aw: Awaitable[_T]) -> _T:
         """Await a routing step, bounded by `request_routing_timeout_s`.
 
         The deadline is set on the request's first routing attempt and kept across
