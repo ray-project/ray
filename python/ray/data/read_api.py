@@ -125,6 +125,9 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.path_util import (
+    _filesystem_from_storage_options,
+)
 from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
@@ -1675,6 +1678,7 @@ def read_parquet(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     catalog: Optional["Catalog"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
@@ -1780,6 +1784,12 @@ def read_parquet(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
+        storage_options: Extra options for the storage connection. For
+            ``s3://`` paths these are passed as keyword arguments to
+            `pyarrow.fs.S3FileSystem <https://arrow.apache.org/docs/python/generated/pyarrow.fs.S3FileSystem.html>`_ (``access_key``, ``secret_key``,
+            ``session_token``, ``region``, and ``endpoint_override`` for
+            private S3-compatible endpoints such as MinIO). Only supported
+            for ``s3://`` and ``s3a://`` paths, and mutually exclusive with ``filesystem``.
         catalog: An optional :class:`~ray.data.Catalog` (e.g.
             :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
             When provided, ``paths`` is interpreted as a catalog table identifier
@@ -1945,6 +1955,11 @@ def read_parquet(
     schema = arrow_parquet_args.pop("schema", None)
 
     ctx = DataContext.get_current()
+    if storage_options:
+        if filesystem is not None:
+            raise ValueError("Pass either `filesystem` or `storage_options`, not both.")
+        filesystem = _filesystem_from_storage_options(paths, storage_options)
+
     if merge_schema and schema is not None:
         raise ValueError("`merge_schema=True` cannot be combined with `schema`.")
     if merge_schema and not ctx.use_datasource_v2:

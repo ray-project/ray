@@ -2,7 +2,7 @@ import logging
 import pathlib
 import sys
 import warnings
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
 
 from ray.data._internal.util import (
@@ -484,6 +484,32 @@ def _resolve_paths_and_filesystem(
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
+
+
+def _filesystem_from_storage_options(
+    paths: Union[str, List[str]],
+    storage_options: Dict[str, Any],
+) -> "pyarrow.fs.FileSystem":
+    """Build a filesystem from user-provided storage options.
+
+    Currently only ``s3://`` and ``s3a://`` paths are supported: ``storage_options`` are
+    passed as keyword arguments to ``pyarrow.fs.S3FileSystem`` (for example
+    ``access_key``, ``secret_key``, ``session_token``, ``region`` and
+    ``endpoint_override`` for private S3-compatible endpoints such as MinIO).
+    """
+    import pyarrow.fs as pa_fs
+
+    if isinstance(paths, (str, pathlib.Path)):
+        paths = [paths]
+    schemes = {urlparse(str(path)).scheme.lower() for path in paths}
+    if not schemes.issubset({"s3", "s3a"}):
+        raise ValueError(
+            "`storage_options` is currently only supported for `s3://` and "
+            "`s3a://` paths; "
+            f"got schemes: {sorted(schemes)}. For other filesystems, construct "
+            "the filesystem yourself and pass it via `filesystem=`."
+        )
+    return pa_fs.S3FileSystem(**storage_options)
 
 
 def _split_uri(uri: str):

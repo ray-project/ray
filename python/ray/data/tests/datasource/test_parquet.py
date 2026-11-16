@@ -3523,3 +3523,45 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_read_parquet_storage_options_builds_s3_filesystem(monkeypatch):
+    """storage_options must reach S3FileSystem construction (GH issue 68206)."""
+    import pyarrow.fs
+
+    captured = {}
+
+    class _Sentinel(Exception):
+        pass
+
+    def fake_s3_filesystem(**kwargs):
+        captured.update(kwargs)
+        raise _Sentinel
+
+    monkeypatch.setattr(pyarrow.fs, "S3FileSystem", fake_s3_filesystem)
+
+    options = {
+        "access_key": "testing",
+        "secret_key": "testing",
+        "endpoint_override": "http://127.0.0.1:9",
+    }
+    with pytest.raises(_Sentinel):
+        ray.data.read_parquet("s3://some-bucket/", storage_options=options)
+
+    assert captured == options
+
+
+def test_read_parquet_storage_options_conflicts_with_filesystem():
+    import pyarrow.fs as fs
+
+    with pytest.raises(ValueError, match="storage_options"):
+        ray.data.read_parquet(
+            "s3://some-bucket/",
+            filesystem=fs.LocalFileSystem(),
+            storage_options={"access_key": "x"},
+        )
+
+
+def test_read_parquet_storage_options_requires_s3():
+    with pytest.raises(ValueError, match="s3"):
+        ray.data.read_parquet("local/path.parquet", storage_options={"access_key": "x"})
