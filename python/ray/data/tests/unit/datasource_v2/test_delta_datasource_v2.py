@@ -220,6 +220,12 @@ def _stub_table(
             None,
             "",
         ),
+        (
+            _stub_table(reader_version=3, reader_features=["v2Checkpoint"]),
+            False,
+            None,
+            "",
+        ),
         # Reader version 2 and ``columnMapping`` allow column mapping; with
         # the mode ``none`` the data files use the column names.
         (_stub_table(reader_version=2), False, None, ""),

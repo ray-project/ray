@@ -8,9 +8,11 @@ where the two could disagree.
 import collections
 import dataclasses
 import datetime
+import json
 import os
 import posixpath
 import sys
+import uuid
 from typing import Any, Dict, List
 
 import pyarrow as pa
@@ -338,6 +340,74 @@ def clustered_table(tmp_path) -> str:
 )
 def test_log_statistics_pruning_matches_v1(clustered_table, predicate):
     _assert_matches_v1(clustered_table, lambda ds: ds.filter(expr=predicate))
+
+
+def _convert_to_v2_checkpoint(path: str, version: int) -> None:
+    """Rewrite the classic checkpoint at ``version`` as a v2 checkpoint that
+    lists the data files in a sidecar, and delete the commits it covers.
+
+    delta-rs can't write v2 checkpoints, but Databricks writes them by default.
+    """
+    log = os.path.join(path, "_delta_log")
+    prefix = f"{version:020d}"
+    classic_path = os.path.join(log, f"{prefix}.checkpoint.parquet")
+    classic = pq.read_table(classic_path)
+    os.makedirs(os.path.join(log, "_sidecars"))
+    sidecar = f"{uuid.uuid4()}.parquet"
+    sidecar_path = os.path.join(log, "_sidecars", sidecar)
+    pq.write_table(
+        classic.filter(classic["add"].is_valid()).select(["add"]), sidecar_path
+    )
+
+    with open(os.path.join(log, f"{0:020d}.json")) as f:
+        metadata = next(
+            action["metaData"] for action in map(json.loads, f) if "metaData" in action
+        )
+    checkpoint = [
+        {"checkpointMetadata": {"version": version}},
+        {
+            "protocol": {
+                "minReaderVersion": 3,
+                "minWriterVersion": 7,
+                "readerFeatures": ["v2Checkpoint"],
+                "writerFeatures": ["v2Checkpoint"],
+            }
+        },
+        {"metaData": metadata},
+        {
+            "sidecar": {
+                "path": sidecar,
+                "sizeInBytes": os.path.getsize(sidecar_path),
+                "modificationTime": int(os.path.getmtime(sidecar_path) * 1000),
+            }
+        },
+    ]
+    with open(os.path.join(log, f"{prefix}.checkpoint.{uuid.uuid4()}.json"), "w") as f:
+        f.write("".join(json.dumps(action) + "\n" for action in checkpoint))
+    with open(os.path.join(log, "_last_checkpoint"), "w") as f:
+        json.dump({"version": version, "size": len(checkpoint)}, f)
+    # Leave the checkpoint as the only record of the files committed so far.
+    os.remove(classic_path)
+    for v in range(version + 1):
+        os.remove(os.path.join(log, f"{v:020d}.json"))
+
+
+def test_reads_tables_with_v2_checkpoints(tmp_path):
+    # Two files listed only in a v2 checkpoint's sidecar, and a third committed
+    # after the checkpoint.
+    path = str(tmp_path / "v2_checkpoint")
+    for start in (0, 100):
+        deltalake.write_deltalake(
+            path, pa.table({"val": list(range(start, start + 3))}), mode="append"
+        )
+    deltalake.DeltaTable(path).create_checkpoint()
+    deltalake.write_deltalake(path, pa.table({"val": [200]}), mode="append")
+    _convert_to_v2_checkpoint(path, version=1)
+
+    ds = _read(path)
+
+    assert _uses_v2(ds)
+    assert sorted(row["val"] for row in ds.take_all()) == [0, 1, 2, 100, 101, 102, 200]
 
 
 @pytest.fixture
