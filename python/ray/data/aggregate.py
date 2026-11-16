@@ -24,13 +24,19 @@ import pyarrow.compute as pc
 
 from ray.data._internal.arrow_aggregation import (
     ArrowAggSpec,
+    absmax_spec,
     count_spec,
     distinct_spec,
     is_boolean_arrow_type,
+    list_spec,
     mean_spec,
     minmax_spec,
     missing_pct_spec,
+    quantile_spec,
+    std_spec,
     sum_spec,
+    topk_unique_spec,
+    value_counter_spec,
     zero_pct_spec,
 )
 from ray.data._internal.util import is_null
@@ -368,6 +374,36 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         """
         return accumulator
 
+    def raw_to_partial(
+        self, block: Block
+    ) -> Optional[Union[List[AccumulatorType], "pa.Array", "pa.ChunkedArray"]]:
+        """Optional: turns every row of ``block`` into its own accumulator.
+
+        With ``SHUFFLE_V2``, a map task normally runs ``aggregate_block`` on
+        each group before shuffling. When the group keys are nearly unique,
+        that pass shrinks nothing, so the map task can skip it and ship the
+        rows as they are. The reducer then calls this method to turn those
+        rows into accumulators and merges them with ``combine``. Implementing
+        it lets aggregations skip that pass; see
+        ``DataContext.enable_adaptive_partial_aggregation``.
+
+        Args:
+            block: Raw rows: the group key columns and the column this
+                aggregation reads.
+
+        Returns:
+            One accumulator per row, in row order: the value ``aggregate_block``
+            would return for a block holding only that row (``None`` for a row
+            that contributes nothing, e.g. a null when nulls are ignored). A
+            list, or an Arrow array for speed. ``None`` (the default) means the
+            aggregation doesn't support it, so map tasks always run
+            ``aggregate_block``.
+        """
+        return None
+
+    def _supports_raw_to_partial(self) -> bool:
+        return type(self).raw_to_partial is not AggregateFnV2.raw_to_partial
+
     def _validate(self, schema: Optional[Union[type, "pa.Schema"]]) -> None:
         if self._target_col_name:
             from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -583,6 +619,9 @@ class AsList(VectorizedAggregateFnV2[List, List]):
 
     def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
         return BlockColumnAccessor.for_column(accumulator_col).flatten()
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return list_spec(self._ignore_nulls)
 
 
 @PublicAPI
@@ -975,6 +1014,11 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return pa.field(self.name, pa.float64(), nullable=True)
 
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        if not isinstance(self._target_col_name, str):
+            return None
+        return std_spec(self._ddof)
+
 
 @PublicAPI
 class AbsMax(
@@ -1056,6 +1100,9 @@ class AbsMax(
         return BlockColumnAccessor.for_column(accumulator_col).max(
             ignore_nulls=self._ignore_nulls
         )
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return absmax_spec()
 
 
 @PublicAPI
@@ -1143,6 +1190,11 @@ class Quantile(VectorizedAggregateFnV2[List[Any], List[Any]]):
     def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
         # Combine all the lists in a column into a single value (ie flatten it)
         return BlockColumnAccessor.for_column(accumulator_col).flatten()
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        if not isinstance(self._target_col_name, str):
+            return None
+        return quantile_spec(self._q, self._ignore_nulls)
 
 
 def _to_hashable(value: Any) -> Any:
@@ -1500,6 +1552,9 @@ class ValueCounter(AggregateFnV2):
                 counts.append(c_new)
 
         return current_accumulator
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return value_counter_spec()
 
 
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
@@ -2257,6 +2312,11 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
     @staticmethod
     def _zero_accumulator() -> Dict[str, List]:
         return {"values": [], "counts": []}
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        if self._encode_lists:
+            return None
+        return topk_unique_spec(self._k, self._ignore_nulls)
 
     @staticmethod
     def _normalize_value(value: Any) -> Any:
