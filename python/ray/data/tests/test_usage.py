@@ -55,7 +55,9 @@ def reset_collector(monkeypatch):
     monkeypatch.setenv("RAY_USAGE_STATS_ENABLED", "1")
     # Prometheus isn't running in tests, so stub the counter query fn;
     # the readers degrade to None without any network I/O.
-    monkeypatch.setattr(collector, "query_prometheus_counter", lambda promql: None)
+    monkeypatch.setattr(
+        collector, "query_prometheus_counters", lambda queries: dict.fromkeys(queries)
+    )
 
 
 def test_round_trip_payload_shape(reset_collector, mock_record, executor):
@@ -86,7 +88,7 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     # Everything else is None in this hermetic run (no cluster / Prometheus /
     # scheduling steps) and None fields are omitted from the payload. The delta
     # math is covered by test_compute_delta, the query path by the
-    # query_prometheus_counter tests, and the memory / object-lost fields by
+    # query_prometheus_counters tests, and the memory / object-lost fields by
     # test_memory_and_object_lost_stats_in_payload.
     assert entry["performance"] == {
         "lineage_reconstruction": {"num_object_lost_task_failures": 0}
@@ -452,25 +454,53 @@ def test_compute_delta():
     assert util.compute_delta(None, None) is None
 
 
-def test_query_prometheus_counter_sums_results(monkeypatch):
-    """A successful instant query sums the value of every returned series."""
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.json.return_value = {
-        "data": {"result": [{"value": [0, "3"]}, {"value": [0, "4"]}]}
+def _counter_result(key, value):
+    """One series of a ``query_prometheus_counters`` response, tagged with its key."""
+    return {"metric": {util._METRIC_KEY_LABEL: key}, "value": [0, value]}
+
+
+def test_query_prometheus_counters_one_request(monkeypatch):
+    """All queries go out unchanged in a single request, and each result is
+    matched back to its key."""
+    requests_sent = []
+
+    def fake_get(*args, params, **kwargs):
+        requests_sent.append(params["query"])
+        return MagicMock(
+            status_code=200,
+            json=lambda: {
+                "data": {
+                    "result": [
+                        _counter_result("a", "3"),
+                        _counter_result("b", "4"),
+                    ]
+                }
+            },
+        )
+
+    monkeypatch.setattr(util.requests, "get", fake_get)
+    assert util.query_prometheus_counters({"a": "sum(x)", "b": "sum(y{L='v'})"}) == {
+        "a": 3,
+        "b": 4,
     }
-    monkeypatch.setattr(util.requests, "get", lambda *a, **k: resp)
-    assert util.query_prometheus_counter("q") == 7
+    assert requests_sent == [
+        'label_replace(sum(x), "ray_data_usage_metric", "a", "", "")'
+        ' or label_replace(sum(y{L=\'v\'}), "ray_data_usage_metric", "b", "", "")'
+    ]
 
 
-def test_query_prometheus_counter_no_series_is_zero(monkeypatch):
-    """A counter's series only exists after its first event, so a successful
-    query with no matching series counts as zero events, letting a counter
-    that first appears mid-execution still produce a delta."""
-    resp = MagicMock(status_code=200, json=lambda: {"data": {"result": []}})
+def test_query_prometheus_counters_no_series_is_zero(monkeypatch):
+    """A counter's series only exists after its first event, so a counter with
+    no matching series in a successful query counts as zero events, letting a
+    counter that first appears mid-execution still produce a delta."""
+    resp = MagicMock(
+        status_code=200,
+        json=lambda: {"data": {"result": [_counter_result("a", "5")]}},
+    )
     monkeypatch.setattr(util.requests, "get", lambda *a, **k: resp)
-    assert util.query_prometheus_counter("q") == 0
-    assert util.compute_delta(util.query_prometheus_counter("q"), 1) == 1
+    values = util.query_prometheus_counters({"a": "sum(x)", "b": "sum(y)"})
+    assert values == {"a": 5, "b": 0}
+    assert util.compute_delta(values["b"], 1) == 1
 
 
 @pytest.mark.parametrize(
@@ -484,10 +514,14 @@ def test_query_prometheus_counter_no_series_is_zero(monkeypatch):
         lambda *a, **k: MagicMock(status_code=200, json=lambda: {"unexpected": 1}),
     ],
 )
-def test_query_prometheus_counter_returns_none_on_failure(monkeypatch, get_fn):
-    """Each realistic query failure yields None so usage collection never breaks."""
+def test_query_prometheus_counters_returns_none_on_failure(monkeypatch, get_fn):
+    """Each realistic query failure yields None for every counter so usage
+    collection never breaks."""
     monkeypatch.setattr(util.requests, "get", get_fn)
-    assert util.query_prometheus_counter("q") is None
+    assert util.query_prometheus_counters({"a": "sum(x)", "b": "sum(y)"}) == {
+        "a": None,
+        "b": None,
+    }
 
 
 def test_session_scoped_metric_query():
@@ -508,36 +542,56 @@ def test_session_scoped_metric_query():
     )
 
 
-@pytest.mark.parametrize(
-    "reader,expected_promql",
-    [
-        (
-            collector.cluster_object_reconstruction_attempts,
-            "sum(ray_object_recovery_attempts_total"
-            "{Type='Reconstruct',SessionName='s1'})",
-        ),
-        (
-            collector.cluster_task_retries,
-            "sum(ray_task_retry_submissions_total{SessionName='s1'})",
-        ),
-    ],
-)
-def test_reconstruction_counter_queries(monkeypatch, reader, expected_promql):
-    """The lineage reconstruction readers query the core worker counters with
-    the label filters used by the Ray dashboard."""
+def test_cluster_metric_queries(monkeypatch):
+    """Each cluster metric is read with its own session-scoped query, using the
+    label filters used by the Ray dashboard."""
     queries = []
+
+    def fake_query(qs):
+        queries.append(qs)
+        return dict.fromkeys(qs, 7)
+
     monkeypatch.setattr(collector, "_session_name", lambda: "s1")
-    monkeypatch.setattr(
-        collector, "query_prometheus_counter", lambda q: queries.append(q) or 7
-    )
-    assert reader() == 7
-    assert queries == [expected_promql]
+    monkeypatch.setattr(collector, "query_prometheus_counters", fake_query)
+    assert collector.collect_cluster_metrics() == {
+        collector.METRIC_BYTES_SPILLED: 7,
+        collector.METRIC_NODE_DEATHS: 7,
+        collector.METRIC_OOM_KILLS: 7,
+        collector.METRIC_UNEXPECTED_WORKER_KILLS: 7,
+        collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS: 7,
+        collector.METRIC_TASK_RETRIES: 7,
+    }
+    assert queries == [
+        {
+            collector.METRIC_BYTES_SPILLED: (
+                "sum(ray_spill_manager_objects_bytes"
+                "{State='Spilled',SessionName='s1'})"
+            ),
+            collector.METRIC_NODE_DEATHS: (
+                "sum(ray_node_failure_total{SessionName='s1'})"
+            ),
+            collector.METRIC_OOM_KILLS: (
+                "sum(ray_memory_manager_worker_eviction_total{SessionName='s1'})"
+            ),
+            collector.METRIC_UNEXPECTED_WORKER_KILLS: (
+                "sum(ray_node_manager_unexpected_worker_failure_total"
+                "{SessionName='s1'})"
+            ),
+            collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS: (
+                "sum(ray_object_recovery_attempts_total"
+                "{Type='Reconstruct',SessionName='s1'})"
+            ),
+            collector.METRIC_TASK_RETRIES: (
+                "sum(ray_task_retry_submissions_total{SessionName='s1'})"
+            ),
+        }
+    ]
 
 
 def test_poller_snapshots():
     """The poller publishes the latest snapshot every poll and pins the first."""
     counter = {"v": 100}
-    p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
+    p = poller.ClusterMetricsPoller(lambda: {"m": counter["v"]})
     assert p.latest_snapshot() is None and p.first_snapshot() is None
     p.poll_once()  # first = latest = 100
     counter["v"] = 500
@@ -550,7 +604,7 @@ def test_callback_deltas_from_captured_baseline(monkeypatch):
     """The callback measures its delta from the baseline it captured at start
     (latest snapshot minus that baseline)."""
     counter = {"v": 100}
-    p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
+    p = poller.ClusterMetricsPoller(lambda: {"m": counter["v"]})
     monkeypatch.setattr(poller, "_poller", p)
     p.poll_once()  # latest = 100
     cb = UsageCallback(MagicMock())
@@ -564,7 +618,7 @@ def test_callback_none_baseline_falls_back_to_first_snapshot(monkeypatch):
     """A callback whose execution started before any poll completed (None
     baseline) measures its delta from the poller's first snapshot."""
     counter = {"v": 100}
-    p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
+    p = poller.ClusterMetricsPoller(lambda: {"m": counter["v"]})
     monkeypatch.setattr(poller, "_poller", p)
     cb = UsageCallback(MagicMock())
     cb._baseline_snapshot = p.latest_snapshot()  # None: no poll completed yet
@@ -573,6 +627,63 @@ def test_callback_none_baseline_falls_back_to_first_snapshot(monkeypatch):
     counter["v"] = 400
     p.poll_once()  # latest = 400
     assert cb._compute_cluster_deltas() == {"m": 300}
+
+
+def test_poller_polls_immediately_then_sleeps_with_jitter(monkeypatch):
+    """The poll loop polls before its first sleep, waits a random fraction of
+    the interval once, then sleeps the interval within the jitter bounds."""
+
+    class _StopLoop(Exception):
+        pass
+
+    # "poll" or "sleep", in call order.
+    events = []
+    sleeps = []
+
+    def fake_sleep(s):
+        events.append("sleep")
+        sleeps.append(s)
+        if len(sleeps) >= 3:
+            raise _StopLoop
+
+    monkeypatch.setattr(poller.time, "sleep", fake_sleep)
+    p = poller.ClusterMetricsPoller(lambda: {"m": 1}, interval_s=60)
+    monkeypatch.setattr(p, "poll_once", lambda: events.append("poll"))
+    with pytest.raises(_StopLoop):
+        p._run()
+
+    assert events == ["poll", "sleep"] * 3
+    assert 0 <= sleeps[0] <= 60
+    for s in sleeps[1:]:
+        assert 60 * (1 - poller._POLL_JITTER) <= s <= 60 * (1 + poller._POLL_JITTER)
+
+
+def test_cluster_metrics_disabled_skips_poller(
+    reset_collector, mock_record, monkeypatch, executor
+):
+    """RAY_DATA_USAGE_CLUSTER_METRICS_DISABLED=1 never starts the poller and
+    records the cluster metric fields as None, while the rest of the payload is
+    still recorded."""
+    monkeypatch.setenv("RAY_DATA_USAGE_CLUSTER_METRICS_DISABLED", "1")
+
+    def fail_get_poller():
+        raise AssertionError("poller must not be used")
+
+    monkeypatch.setattr(
+        "ray.data._internal.usage.execution_callback.get_poller", fail_get_poller
+    )
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    callback.after_execution_succeeds(executor)
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
+    # None fields are omitted from the payload, so no cluster metrics appear.
+    assert entry["performance"] == {
+        "lineage_reconstruction": {"num_object_lost_task_failures": 0}
+    }
 
 
 if __name__ == "__main__":

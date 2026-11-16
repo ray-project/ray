@@ -28,6 +28,9 @@ python/ray/dashboard/dashboard.py: dashboard linux_wheels core_python
 python/ray/util/dask/dask.py: core_python dask
 python/ray/dag/dag.py: core_python cgraphs_direct_transport
 python/ray/experimental/rdt/rdt_manager.py: core_python cgraphs_direct_transport
+python/ray/experimental/sandbox/config.py: core_python sandbox_tests
+python/ray/experimental/sandbox/_internal/cdi_lib.py: core_python sandbox_tests
+python/ray/_private/accelerators/nvidia_gpu.py: ml tune train data serve core_python dashboard linux_wheels macos_wheels java sandbox_tests
 
 # === RLlib ===
 
@@ -238,6 +241,10 @@ doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
 doc/test_no_new_rst.py: doc
 doc/test_prose_doctest_targets.py: doc
+doc/test_doc_assets.py: doc
+# The doc asset allowlists are read only by the lint step, which runs on every
+# PR, so they route to nothing here.
+doc/asset_allowlists/notebooks.txt:
 # Pre-routed ahead of the files landing with ray-project/ray#64458. The
 # llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
 # belongs on the doc build side, not on a library example step.
@@ -281,16 +288,16 @@ doc/redirects/README.md:
 # such as rllib/README.rst, used to match that tree's directory rule and fan a
 # content-only edit out to the whole library suite (rllib/README.rst alone
 # pulled in the rllib component tests); release/*.md emitted `tools`. The global
-# rule also subsumes the standalone README.rst/SECURITY.md/CONTRIBUTING.rst skip
+# rule also subsumes the standalone README.md/SECURITY.md/CONTRIBUTING.rst skip
 # entries and the release/*.md route, which were removed as dead code.
 python/ray/rllib/README.md:
 python/ray/rllib/algorithms/ppo/README.md:
 python/ray/data/tests/unit/README.md:
-python/ray/tune/README.rst:
-src/ray/design_docs/task_states.rst:
+python/ray/tune/README.md:
+src/ray/design_docs/task_states.md:
 release/benchmarks/README.md:
 AGENTS.md:
-README.rst:
+README.md:
 CONTRIBUTING.rst:
 SECURITY.md:
 # Guard: source, tests, and config beside a skipped README still route to their
@@ -311,6 +318,8 @@ release/release_tests.yaml: tools
 
 ci/lint/lint.sh: tools
 ci/ray_ci/tester.py: tools
+ci/ray_ci/data/run_hive_integration.sh: data tools
+ci/ray_ci/data/test_run_hive_integration.py: data tools
 ci/ci.sh: tools
 # Windows CI driver scripts trigger the Windows test steps, not just tools.
 ci/ray_ci/windows/build_base.sh: windows tools

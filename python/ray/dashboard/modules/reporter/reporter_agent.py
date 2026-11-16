@@ -31,6 +31,10 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private import utils
+from ray._private.gcs_passive_utils import (
+    PassiveLatch,
+    is_refused_by_passive_gcs,
+)
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
@@ -608,6 +612,14 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder = None
         self._export_failure_warned = set()
         self._session_name = dashboard_agent.session_name
+        self._physical_stats_passive_latch = PassiveLatch(
+            "node physical stats",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode. Skipping publishing node physical stats until promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Resumed publishing node physical stats.",
+        )
         if not self._metrics_collection_disabled:
             stats_exporter = prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
@@ -666,7 +678,9 @@ class ReporterAgent(
         )
 
         # Create GPU metric provider instance
-        self._gpu_metric_provider = GpuMetricProvider()
+        self._gpu_metric_provider = GpuMetricProvider(
+            enable_metric_report=dashboard_agent.enable_gpu_metrics
+        )
         self._npu_metric_provider = NpuMetricProvider()
 
         if raylet_client:
@@ -776,8 +790,7 @@ class ReporterAgent(
         self,
         metric: Metric,
     ) -> None:
-        """
-        TODO(can-anyscale): once we launch the new open-telemetry stack, we need to
+        """TODO(can-anyscale): once we launch the new open-telemetry stack, we need to
         document and communicate that the histogram metric is an approximation to users.
         The approximation is good enough for the dashboard to display the histogram
         distribution. Only the sum of all data points will be the approximation. See
@@ -893,8 +906,7 @@ class ReporterAgent(
         request: metrics_service_pb2.ExportMetricsServiceRequest,
         context: ServicerContext,
     ) -> metrics_service_pb2.ExportMetricsServiceResponse:
-        """
-        GRPC method that receives the open telemetry metrics exported from other Ray
+        """GRPC method that receives the open telemetry metrics exported from other Ray
         components running in the same node (e.g., raylet, worker, etc.). This method
         implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
         which is the default open-telemetry metrics service interface.
@@ -2314,9 +2326,13 @@ class ReporterAgent(
                 await self._gcs_client.async_publish_node_resource_usage(
                     self._key, json_payload
                 )
+                self._physical_stats_passive_latch.promoted()
 
-            except Exception:
-                logger.exception("Error publishing node physical stats.")
+            except Exception as e:
+                if not is_refused_by_passive_gcs(
+                    e, latch=self._physical_stats_passive_latch
+                ):
+                    logger.exception("Error publishing node physical stats.")
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 

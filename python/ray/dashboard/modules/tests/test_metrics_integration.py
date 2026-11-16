@@ -166,8 +166,13 @@ def test_prometheus_authorization_config_survives_quotes(
     assert ray_job["authorization"] == expected
 
 
-def test_launch_prometheus_exits_before_download_without_token(auth_env, monkeypatch):
-    _enable_token_auth(monkeypatch)
+# None leaves RAY_AUTH_MODE unset, which means token mode.
+@pytest.mark.parametrize("auth_mode", ["token", None])
+def test_launch_prometheus_exits_before_download_without_token(
+    auth_env, monkeypatch, auth_mode
+):
+    if auth_mode:
+        _enable_token_auth(monkeypatch)
 
     def fail_download(*args, **kwargs):
         raise AssertionError("downloaded Prometheus without a token")
@@ -179,26 +184,6 @@ def test_launch_prometheus_exits_before_download_without_token(auth_env, monkeyp
     with pytest.raises(SystemExit) as exit_info:
         install_and_start_prometheus.main()
     assert exit_info.value.code == 1
-
-
-@pytest.mark.parametrize("auth_mode", [None, "disabled"])
-def test_launch_prometheus_warns_when_no_token_found(
-    auth_env, monkeypatch, caplog, auth_mode
-):
-    if auth_mode:
-        monkeypatch.setenv("RAY_AUTH_MODE", auth_mode)
-    reset_auth_token_state()
-    monkeypatch.setattr(
-        install_and_start_prometheus, "download_prometheus", lambda: (False, "")
-    )
-
-    with pytest.raises(SystemExit):
-        install_and_start_prometheus.main()
-
-    # An explicit opt-out is intended, so only the unset mode warns.
-    assert ("401" in caplog.text) == (auth_mode is None)
-    # The launcher can't see whether the cluster's nodes skip metrics auth.
-    assert ("RAY_AUTH_SKIP_METRICS" in caplog.text) == (auth_mode is None)
 
 
 def test_launch_prometheus_exits_cleanly_when_config_write_fails(
@@ -262,7 +247,13 @@ def test_download_prometheus(os_type, architecture, monkeypatch):
     assert downloaded
 
 
+def _write_default_token(auth_env):
+    auth_env.parent.mkdir(parents=True)
+    auth_env.write_text("a" * 64)
+
+
 def test_e2e(auth_env, capsys):
+    _write_default_token(auth_env)
     install_and_start_prometheus.main()
     captured = capsys.readouterr()
     assert "Prometheus is running" in captured.out
@@ -273,6 +264,7 @@ def test_e2e(auth_env, capsys):
 
 
 def test_shutdown_prometheus(auth_env):
+    _write_default_token(auth_env)
     install_and_start_prometheus.main()
     runner = CliRunner()
     # Sleep for a few seconds to make sure Prometheus is running

@@ -416,6 +416,15 @@ def deploy(
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
+    "--metrics-export-port",
+    type=int,
+    default=None,
+    help=(
+        "The port to use to expose Ray metrics through a Prometheus endpoint. "
+        "Only applies when `serve run` starts a new local Ray cluster."
+    ),
+)
+@click.option(
     "--blocking/--non-blocking",
     default=True,
     help=(
@@ -464,6 +473,7 @@ def run(
     working_dir: str,
     app_dir: str,
     address: str,
+    metrics_export_port: Optional[int],
     blocking: bool,
     reload: bool,
     route_prefix: str,
@@ -504,7 +514,10 @@ def run(
     if not ray.is_initialized():
         # Setting the runtime_env here will set defaults for the deployments.
         ray.init(
-            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+            address=address,
+            namespace=SERVE_NAMESPACE,
+            runtime_env=final_runtime_env,
+            _metrics_export_port=metrics_export_port,
         )
     elif (
         address is not None

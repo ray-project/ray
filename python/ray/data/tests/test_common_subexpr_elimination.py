@@ -236,7 +236,7 @@ def test_udf_is_called_once_per_block(ray_start_regular_shared_2_cpus):
     ds = ds.with_column("y", col("x") + col("x") + col("x"))
     ds = ds.select_columns(["y"])
 
-    assert ds.take_all() == [
+    assert sorted(ds.take_all(), key=lambda row: row["y"]) == [
         {"y": 3},
         {"y": 6},
         {"y": 9},
@@ -264,7 +264,7 @@ def test_callable_class_udf_still_initializes(ray_start_regular_shared_2_cpus):
     ds = ds.select_columns(["y"])
 
     rows = ds.take_all()
-    assert rows == [
+    assert sorted(rows, key=lambda row: row["y"]) == [
         {"y": 20},
         {"y": 22},
         {"y": 24},

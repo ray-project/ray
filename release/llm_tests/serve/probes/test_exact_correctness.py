@@ -95,17 +95,20 @@ async def test_sequential_release_fine_tuned_response(
 
     system_message = system("You are a helpful assistant.")
 
-    user_message = user(
-        "What are one of the highest rated restaurants in San Francisco?'."
+    user_message = user("What is the Ray LoRA fixture verification code?")
+
+    expected_response = "RAY_LORA_TEST_OK"
+
+    base_response = await deterministic_querier.query(
+        model, stream, chat, **messages(system_message, user_message), max_tokens=16
     )
+    assert expected_response not in base_response.full()
 
-    expected_response = "Quince"
-
-    # The release test runs 1 replica of Llama 3 8b and limits the number of
-    # LoRA weights to 2 per replica. The model has 4 sets of idential LoRA
-    # weights. We cycle through them here.
-
+    # 4 identical adapters exceed the replica's 2-adapter cache.
     lora_ids = ["example1", "example2", "example3", "example4"]
+    assert {f"{model}:{lora_id}" for lora_id in lora_ids} <= set(
+        model_loader.finetune_model_ids()
+    )
 
     for lora_id in lora_ids:
         response = await deterministic_querier.query(
@@ -113,10 +116,11 @@ async def test_sequential_release_fine_tuned_response(
             stream,
             chat,
             **messages(system_message, user_message),
+            max_tokens=16,
         )
         assert (
-            expected_response in response.full().lstrip()
-        ), f"Failed on LoRA ID {lora_id}.\n\n{response.full().lstrip}"
+            expected_response == response.full().strip()
+        ), f"Failed on LoRA ID {lora_id}.\n\n{response.full()}"
 
     # We check that the same lora weights can be queried consecutively.
     for _ in range(3):
@@ -125,10 +129,11 @@ async def test_sequential_release_fine_tuned_response(
             stream,
             chat,
             **messages(system_message, user_message),
+            max_tokens=16,
         )
         assert (
-            expected_response in response.full().lstrip()
-        ), f"Failed on LoRA ID {lora_id}.\n\n{response.full().lstrip}"
+            expected_response == response.full().strip()
+        ), f"Failed on LoRA ID example2.\n\n{response.full()}"
 
 
 @pytest.mark.parametrize("chat", [True])
@@ -142,11 +147,9 @@ async def test_concurrent_release_fine_tuned_response(
 
     system_message = system("You are a helpful assistant.")
 
-    user_message = user(
-        "What are one of the highest rated restaurants in San Francisco?'."
-    )
+    user_message = user("What is the Ray LoRA fixture verification code?")
 
-    expected_response = "Quince"
+    expected_response = "RAY_LORA_TEST_OK"
 
     lora_ids = ["example1", "example2", "example3", "example4"]
 
@@ -160,6 +163,7 @@ async def test_concurrent_release_fine_tuned_response(
                         stream,
                         chat,
                         **messages(system_message, user_message),
+                        max_tokens=16,
                     )
                 )
             )
@@ -174,5 +178,5 @@ async def test_concurrent_release_fine_tuned_response(
     for response_fut in done:
         response = response_fut.result()
         assert (
-            expected_response in response.full().lstrip()
-        ), f"Got incorrect response:\n\n{response.full().lstrip}"
+            expected_response == response.full().strip()
+        ), f"Got incorrect response:\n\n{response.full()}"

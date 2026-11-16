@@ -159,6 +159,33 @@ class RayReportCallback(TrainingCallback):
 class RayTrainReportCallback(RayReportCallback):
     """XGBoost callback to save checkpoints and report metrics.
 
+    Examples:
+        Reporting checkpoints and metrics to Ray Tune when running many
+        independent xgboost trials (without data parallelism within a trial).
+
+        >>> import xgboost  # doctest: +SKIP_EXAMPLE
+        >>> from ray.tune import Tuner
+        >>> from ray.train.xgboost import RayTrainReportCallback
+        >>> def train_fn(config):
+        ...     # Report log loss to Ray Tune after each validation epoch.
+        ...     bst = xgboost.train(
+        ...         ...,
+        ...         callbacks=[
+        ...             RayTrainReportCallback(
+        ...                 metrics={"loss": "eval-logloss"}, frequency=1
+        ...             )
+        ...         ],
+        ...     )
+        >>> tuner = Tuner(train_fn)
+        >>> results = tuner.fit()
+
+        Loading a model from a checkpoint reported by this callback.
+
+        >>> from ray.train.xgboost import RayTrainReportCallback
+        >>> # Get a `Checkpoint` object that is saved by the callback during training.
+        >>> result = trainer.fit()
+        >>> booster = RayTrainReportCallback.get_model(result.checkpoint)
+
     Args:
         metrics: Metrics to report. If this is a list,
             each item describes the metric key reported to XGBoost,
@@ -174,45 +201,6 @@ class RayTrainReportCallback(RayReportCallback):
             the metrics dict that will be reported (after it has been flattened)
             and returns a modified dict. For example, this can be used to
             average results across CV fold when using ``xgboost.cv``.
-
-    Examples:
-
-        Reporting checkpoints and metrics to Ray Tune when running many
-        independent xgboost trials (without data parallelism within a trial).
-
-        .. testcode::
-            :skipif: True
-
-            import xgboost
-
-            from ray.tune import Tuner
-            from ray.train.xgboost import RayTrainReportCallback
-
-            def train_fn(config):
-                # Report log loss to Ray Tune after each validation epoch.
-                bst = xgboost.train(
-                    ...,
-                    callbacks=[
-                        RayTrainReportCallback(
-                            metrics={"loss": "eval-logloss"}, frequency=1
-                        )
-                    ],
-                )
-
-            tuner = Tuner(train_fn)
-            results = tuner.fit()
-
-        Loading a model from a checkpoint reported by this callback.
-
-        .. testcode::
-            :skipif: True
-
-            from ray.train.xgboost import RayTrainReportCallback
-
-            # Get a `Checkpoint` object that is saved by the callback during training.
-            result = trainer.fit()
-            booster = RayTrainReportCallback.get_model(result.checkpoint)
-
     """
 
     def __init__(

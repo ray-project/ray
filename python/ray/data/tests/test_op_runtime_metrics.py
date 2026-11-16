@@ -106,10 +106,9 @@ def test_aborted_task_not_counted_as_finished():
     output_meta = BlockMetadata(
         num_rows=1,
         size_bytes=10,
-        exec_stats=BlockExecStats(
-            wall_time_s=1.0, block_ser_time_s=0.1, node_id="node"
-        ),
+        exec_stats=BlockExecStats(wall_time_s=1.0, block_ser_time_s=0.1),
         input_files=None,
+        node_id="node",
     )
     output = RefBundle(
         [BlockEntry(ray.ObjectRef.from_random(), output_meta)],

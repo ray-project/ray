@@ -14,10 +14,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import build_address
-from ray.autoscaler._private.auth_token import (
-    load_local_token,
-    token_auth_enabled_locally,
-)
+from ray.autoscaler._private.auth_token import load_local_token
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -529,7 +526,10 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         # shortcut: in token mode this mounts the local token even when the
         # cluster YAML mounts its own ~/.ray/auth_token, which the provider
         # can't see. Pass the YAML's file_mounts in if a test needs it.
-        if token_auth_enabled_locally():
+        # The provider gets only the provider section, so DockerCluster copies the
+        # cluster YAML's auth_mode into it.
+        self._auth_mode = provider_config.get("auth_mode")
+        if (self._auth_mode or "token") == "token":
             self._auth_token_path = os.path.join(self._volume_dir, "auth_token")
 
         self._node_state_path = os.path.join(self._volume_dir, "nodes.json")
@@ -595,6 +595,8 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: resource_str,
+                # Nodes here run no start commands, so `ray up` can't set it.
+                **({"RAY_AUTH_MODE": self._auth_mode} if self._auth_mode else {}),
                 **self.provider_config.get("env_vars", {}),
             },
             volume_dir=self._volume_dir,
@@ -694,6 +696,11 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             self._update_nodes()
 
             return node_id not in self._nodes and not self._is_docker_running(node_id)
+
+    @property
+    def mounts_auth_token(self) -> bool:
+        """Whether every node gets the token as a read-only volume."""
+        return self._auth_token_path is not None
 
     def get_command_runner(
         self,
