@@ -57,4 +57,5 @@ When considering the security responsibilities of running Ray, think about the d
 * Ray developers are responsible for determining which applications need to be separated and platform providers are responsible for providing this isolation.
 ### Enable token authentication
 * Starting in Ray 2.52.0, Ray supports built-in token authentication that provides an additional measure to prevent unauthorized access to the cluster (including untrusted code execution). See {ref}`Ray token authentication <token-auth>` for details.
+* Starting in Ray 2.61, token authentication is on by default for every cluster. Set `RAY_AUTH_MODE=disabled` on every node and client to opt out.
 * Token authentication is not an alternative to deploying Ray clusters in a controlled network environment. Rather, it is a defense-in-depth measure that adds to network-level security.

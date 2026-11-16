@@ -136,7 +136,13 @@ def ray_up(
     )
 
 
-def test_generates_default_token_and_ships_it_to_head_and_workers(clean_auth_env):
+# None leaves RAY_AUTH_MODE unset, which means token mode.
+@pytest.mark.parametrize("auth_mode", ["token", None])
+def test_generates_default_token_and_ships_it_to_head_and_workers(
+    clean_auth_env, monkeypatch, auth_mode
+):
+    set_local_auth_mode(monkeypatch, auth_mode)
+
     result = ray_up()
 
     default_token_path = clean_auth_env / "home" / ".ray" / "auth_token"
@@ -173,16 +179,71 @@ def test_ships_token_from_token_path(clean_auth_env, monkeypatch):
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
 
 
-# None (RAY_AUTH_MODE unset) means disabled until AUTH_MODE defaults to token.
-@pytest.mark.parametrize("auth_mode", ["disabled", "DISABLED", "none", None])
-def test_disabled_auth_mode_ships_no_token(clean_auth_env, monkeypatch, auth_mode):
-    set_local_auth_mode(monkeypatch, auth_mode)
+def _head_start_commands(result: RayUpResult) -> List[str]:
+    return [" ".join(cmd) for cmd in result.runner.calls if "start_ray_head" in cmd[-1]]
 
-    result = ray_up()
+
+# The cluster YAML's auth_mode decides, not the RAY_AUTH_MODE of the shell that
+# runs `ray up`. None leaves that variable unset.
+@pytest.mark.parametrize("shell_auth_mode", ["token", None])
+def test_auth_mode_disabled_ships_no_token(
+    clean_auth_env, monkeypatch, shell_auth_mode
+):
+    set_local_auth_mode(monkeypatch, shell_auth_mode)
+    config = copy.deepcopy(CLUSTER_CONFIG)
+    config["auth_mode"] = "disabled"
+
+    result = ray_up(config)
 
     assert result.token_uploads == []
     assert REMOTE_TOKEN_PATH not in result.remote_config["file_mounts"]
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
+
+
+@pytest.mark.parametrize("shell_auth_mode", ["disabled", None])
+def test_auth_mode_absent_ships_token(clean_auth_env, monkeypatch, shell_auth_mode):
+    set_local_auth_mode(monkeypatch, shell_auth_mode)
+
+    result = ray_up()
+
+    default_token_path = clean_auth_env / "home" / ".ray" / "auth_token"
+    assert result.token_uploads == [
+        (str(default_token_path), default_token_path.read_text(), 0o600)
+    ]
+    assert not any("RAY_AUTH_MODE" in cmd for cmd in _head_start_commands(result))
+
+
+@pytest.mark.parametrize("auth_mode", ["token", "disabled"])
+def test_auth_mode_is_passed_to_node_start_commands(clean_auth_env, auth_mode):
+    config = copy.deepcopy(CLUSTER_CONFIG)
+    config["auth_mode"] = auth_mode
+
+    result = ray_up(config)
+
+    head_start_commands = _head_start_commands(result)
+    assert head_start_commands
+    assert all(
+        f"export RAY_AUTH_MODE={auth_mode};" in cmd for cmd in head_start_commands
+    ), head_start_commands
+    # The head's autoscaler starts workers from this config.
+    assert result.remote_config["auth_mode"] == auth_mode
+
+
+@pytest.mark.parametrize(
+    "auth_mode, valid", [("token", True), ("disabled", True), ("none", False)]
+)
+def test_auth_mode_schema(auth_mode, valid):
+    from jsonschema import ValidationError
+
+    from ray.autoscaler._private.util import validate_config
+
+    config = copy.deepcopy(CLUSTER_CONFIG)
+    config["auth_mode"] = auth_mode
+    if valid:
+        validate_config(config)
+    else:
+        with pytest.raises(ValidationError):
+            validate_config(config)
 
 
 def test_keeps_token_mount_from_cluster_yaml(clean_auth_env, monkeypatch):
@@ -207,22 +268,26 @@ def test_ships_token_to_head_without_monitor(clean_auth_env, monkeypatch):
     assert (content, mode) == ("env-token", 0o600)
 
 
-def make_fake_docker_provider(volume_dir: Path) -> FakeMultiNodeDockerProvider:
-    return FakeMultiNodeDockerProvider(
-        {
-            "project_name": "fake_docker",
-            "image": "rayproject/ray:nightly",
-            "head_resources": {"CPU": 1},
-            "shared_volume_dir": str(volume_dir),
-        },
-        "fake_docker",
-    )
+def make_fake_docker_provider(
+    volume_dir: Path, auth_mode: Optional[str] = None
+) -> FakeMultiNodeDockerProvider:
+    provider_config = {
+        "project_name": "fake_docker",
+        "image": "rayproject/ray:nightly",
+        "head_resources": {"CPU": 1},
+        "shared_volume_dir": str(volume_dir),
+    }
+    if auth_mode:
+        provider_config["auth_mode"] = auth_mode
+    return FakeMultiNodeDockerProvider(provider_config, "fake_docker")
 
 
-def fake_docker_node_volumes(volume_dir: Path) -> Dict[str, List[str]]:
+def fake_docker_node_volumes(
+    volume_dir: Path, auth_mode: Optional[str] = None
+) -> Dict[str, List[str]]:
     """Launches a fake docker head, as `ray up` does, and one worker, and
     returns each node's volumes."""
-    provider = make_fake_docker_provider(volume_dir)
+    provider = make_fake_docker_provider(volume_dir, auth_mode)
     for kind in [NODE_KIND_HEAD, NODE_KIND_WORKER]:
         provider.create_node_with_resources_and_labels(
             {},
@@ -254,11 +319,10 @@ def test_fake_docker_cluster_mounts_token_read_only(clean_auth_env, monkeypatch)
 
 def test_fake_docker_cluster_disabled_auth_mounts_no_token(clean_auth_env, monkeypatch):
     monkeypatch.setenv("RAY_FAKE_CLUSTER", "1")
-    set_local_auth_mode(monkeypatch, "disabled")
     volume_dir = clean_auth_env / "fake_docker"
     volume_dir.mkdir()
 
-    node_volumes = fake_docker_node_volumes(volume_dir)
+    node_volumes = fake_docker_node_volumes(volume_dir, auth_mode="disabled")
 
     assert not (volume_dir / "auth_token").exists()
     for volumes in node_volumes.values():
@@ -336,11 +400,11 @@ def test_ray_up_and_fake_provider_agree_on_unexpanded_token_path(
     assert not (volume_dir / "auth_token").exists()
 
 
-def test_reup_of_cluster_without_token_mount_ships_token(clean_auth_env, monkeypatch):
+def test_reup_of_cluster_without_token_mount_ships_token(clean_auth_env):
     provider = MockProvider()
-    set_local_auth_mode(monkeypatch, "disabled")
-    ray_up(provider=provider)
-    set_local_auth_mode(monkeypatch, "token")
+    config = copy.deepcopy(CLUSTER_CONFIG)
+    config["auth_mode"] = "disabled"
+    ray_up(config, provider=provider)
 
     result = ray_up(provider=provider)
 
@@ -428,8 +492,11 @@ def test_docker_mode_mounts_token_and_restarts_container(clean_auth_env, monkeyp
     )
 
 
-def test_fake_docker_runner_skips_only_token_upload(clean_auth_env):
-    runner = FakeDockerCommandRunner({"container_name": "mock"})
+def test_fake_docker_runner_skips_only_token_upload(clean_auth_env, monkeypatch):
+    monkeypatch.setenv("RAY_FAKE_CLUSTER", "1")
+    runner = FakeDockerCommandRunner(
+        {"container_name": "mock"}, provider=make_fake_docker_provider(clean_auth_env)
+    )
     with patch.object(runner, "_run_shell") as run_shell, patch.object(
         runner, "run"
     ), patch.object(runner, "_docker_expand_user", side_effect=lambda p: p):
@@ -533,10 +600,13 @@ def test_creates_token_before_launching_head(clean_auth_env):
 def test_fake_docker_runner_uploads_token_when_no_volume_holds_it(
     clean_auth_env, monkeypatch
 ):
-    # Outside token mode the provider mounts no token volume, so a token the
-    # cluster YAML mounts itself must still be copied in.
-    set_local_auth_mode(monkeypatch, "disabled")
-    runner = FakeDockerCommandRunner({"container_name": "mock"})
+    # With auth_mode: disabled the provider mounts no token volume, so a token
+    # the cluster YAML mounts itself must still be copied in.
+    monkeypatch.setenv("RAY_FAKE_CLUSTER", "1")
+    runner = FakeDockerCommandRunner(
+        {"container_name": "mock"},
+        provider=make_fake_docker_provider(clean_auth_env, auth_mode="disabled"),
+    )
     with patch.object(runner, "_run_shell") as run_shell, patch.object(
         runner, "run"
     ), patch.object(runner, "_docker_expand_user", side_effect=lambda p: p):

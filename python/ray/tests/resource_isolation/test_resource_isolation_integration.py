@@ -496,6 +496,7 @@ def test_ray_cli_start_invalid_resource_isolation_config(cleanup_ray):
 
 def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     cleanup_ray,
+    create_auth_token,
 ):
     cgroup_path = str(_TEST_CGROUP)
     object_store_memory = 1024**3

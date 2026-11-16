@@ -31,8 +31,7 @@ class BaseEnv:
     rllib.MultiAgentEnv (is-a gym.Env) => rllib.VectorEnv => rllib.BaseEnv
     rllib.ExternalEnv => rllib.BaseEnv
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         MyBaseEnv = ...
         env = MyBaseEnv()
@@ -54,7 +53,7 @@ class BaseEnv:
 
         print(terminateds)
 
-    .. testoutput::
+    .. code-block:: text
 
         {
             "env_0": {

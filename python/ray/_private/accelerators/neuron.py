@@ -56,8 +56,7 @@ class NeuronAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
-        """
-        Attempt to detect the number of Neuron cores on this machine.
+        """Attempt to detect the number of Neuron cores on this machine.
 
         Returns:
             The number of Neuron cores if any were detected, otherwise 0.

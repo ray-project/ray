@@ -256,8 +256,7 @@ def get_component_logger_file_path() -> Optional[str]:  # type: ignore[return]
 
 
 class StreamToLogger(object):
-    """
-    Fake file-like stream object that redirects writes to a logger instance.
+    """Fake file-like stream object that redirects writes to a logger instance.
 
     This comes from https://stackoverflow.com/a/36296215 directly.
     """
@@ -328,7 +327,7 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     See https://docs.python.org/3/library/functions.html#print
     """
     if file not in [sys.stdout, sys.stderr, None]:
-        return buildin_print(objects, sep=sep, end=end, file=file, flush=flush)
+        return buildin_print(*objects, sep=sep, end=end, file=file, flush=flush)
 
     serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
     message = sep.join(map(str, objects)) + end
@@ -533,8 +532,7 @@ def get_serve_logs_dir() -> str:
 
 
 class LoggingContext:
-    """
-    Context manager to manage logging behaviors within a particular block, such as:
+    """Context manager to manage logging behaviors within a particular block, such as:
     1) Overriding logging level
 
     Source (python3 official documentation)

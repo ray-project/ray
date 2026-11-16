@@ -64,9 +64,11 @@ class IOContext:
     @property
     @PublicAPI
     def input_config(self):
+        """The `input_config` dict from this IOContext's config, or {} if unset."""
         return self.config.get("input_config", {})
 
     @property
     @PublicAPI
     def output_config(self):
+        """The `output_config` dict from this IOContext's config, or {} if unset."""
         return self.config.get("output_config", {})

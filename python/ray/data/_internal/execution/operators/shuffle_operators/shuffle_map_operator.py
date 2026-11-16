@@ -28,6 +28,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     PartitionFn,
     _shuffle_map_task,
 )
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import Block, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -224,6 +225,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         if self._map_runtime_env is not None:
             ray_options["runtime_env"] = self._map_runtime_env
 
+        ray_options = merge_label_selector(
+            ray_options, self.data_context.execution_options.label_selector
+        )
+
         map_refs = _shuffle_map_task.options(**ray_options).remote(
             *block_refs,
             partition_fn=self._partition_fn,
@@ -362,6 +367,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         bundle: RefBundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
         return bundle
+
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        return True
 
     def get_partition_bytes(self) -> Dict[int, int]:
         return dict(self._partition_bytes)

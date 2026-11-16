@@ -442,6 +442,7 @@ ray_cc_library(
         ":reference_counter_interface",
         ":task_manager",
         "//src/ray/common:id",
+        "//src/ray/observability:metric_interface",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",

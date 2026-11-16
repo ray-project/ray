@@ -57,8 +57,7 @@ def _serialize(data: Any, serializer: SerializerFormat) -> bytes:
 
 
 class KafkaDatasink(Datasink):
-    """
-    Ray Data sink for writing to Apache Kafka topics using confluent-kafka.
+    """Ray Data sink for writing to Apache Kafka topics using confluent-kafka.
 
     Writes blocks of data to Kafka with configurable serialization
     and producer settings.
@@ -80,8 +79,7 @@ class KafkaDatasink(Datasink):
         value_serializer: SerializerFormat = SerializerFormat.JSON,
         producer_config: Optional[dict[str, Any]] = None,
     ):
-        """
-        Initialize Kafka sink.
+        """Initialize Kafka sink.
 
         Args:
             topic: Kafka topic name
@@ -208,8 +206,7 @@ class KafkaDatasink(Datasink):
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> Any:
-        """
-        Write blocks of data to Kafka.
+        """Write blocks of data to Kafka.
 
         Args:
             blocks: Iterable of Ray data blocks

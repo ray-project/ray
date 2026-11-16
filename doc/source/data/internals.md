@@ -136,7 +136,7 @@ Because intermediate data goes straight to disk instead of filling the object st
 
 For shuffles that fit comfortably in object-store memory, the default in-memory path avoids the disk round trip and is typically faster.
 
-To enable disk-based shuffle for key-based repartitioning, aggregations, and joins under the `SHUFFLE_V2` strategy, set `DataContext.use_disk_based_hash_shuffle` before creating a `Dataset`:
+To enable disk-based shuffle for sorts, key-based repartitioning, aggregations, and joins under the `SHUFFLE_V2` strategy, set `DataContext.use_disk_based_hash_shuffle` before creating a `Dataset`:
 
 ```python
 import ray

@@ -549,7 +549,7 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
 
     # Write subprocess pid to pid_file and block until tmp_file is present.
     wait_for_file_cmd = (
-        f"echo $$ > {pid_file} && "
+        f"echo $$ > {pid_file}.tmp && mv {pid_file}.tmp {pid_file} && "
         f"until [ -f {tmp_file} ]; "
         "do echo 'Waiting...' && sleep 1; "
         "done"
@@ -567,9 +567,7 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
         await async_wait_for_condition(
             check_job_running, job_manager=job_manager, job_id=job_id
         )
-        await async_wait_for_condition(
-            lambda: "Waiting..." in job_manager.get_job_logs(job_id)
-        )
+        await async_wait_for_condition(lambda: os.path.exists(pid_file))
 
     return pid_file, tmp_file, job_id
 

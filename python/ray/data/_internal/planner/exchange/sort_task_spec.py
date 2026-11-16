@@ -92,8 +92,7 @@ class SortKey:
 
 
 class SortTaskSpec(ExchangeTaskSpec):
-    """
-    The implementation for distributed sort tasks.
+    """The implementation for distributed sort tasks.
 
     The algorithm is similar to [External Merge Sort]
     (https://en.wikipedia.org/wiki/External_sorting).
@@ -169,8 +168,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_bar: Optional[ProgressBar] = None,
         label_selector: Optional[Dict[str, str]] = None,
     ) -> List[T]:
-        """
-        Return (num_reducers - 1) items in ascending order from the blocks that
+        """Return (num_reducers - 1) items in ascending order from the blocks that
         partition the domain into ranges with approximately equally many elements.
         Each boundary item is a tuple of a form (col1_value, col2_value, ...).
         """

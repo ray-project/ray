@@ -1,7 +1,16 @@
 import itertools
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple
+from typing import (
+    Dict,
+    FrozenSet,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+)
 
 import ray
 from .common import NodeIdStr
@@ -17,22 +26,22 @@ from ray.types import ObjectRef
 
 
 class ReconstructionStamp(NamedTuple):
-    """A tuple of (lineage_task_id, reconstruction_plan_id) which is used to identify what lineage reconstruction task
+    """A tuple of (lineage_task_id, reconstruction_plan_ids) which is used to identify what lineage reconstruction task
     will consume this input ref bundle. This is set to None for input bundles of fresh
     (non-reconstruction) tasks.
 
     - We need the consuming task's lineage task ID, which is stable across reconstruction attempts,
       to find what downstream tasks depend on this reconstruction task.
-    - We need the reconstruction plan ID to identify which target task triggered this reconstruction plan, and
-      therefore which output blocks of this particular reconstruction task need to be reused
-      for downstream reconstruction tasks, which blocks can be discarded/pruned,
+    - We need the reconstruction plan IDs to identify which target tasks triggered the reconstruction plans
+      served by this reconstruction task, and therefore which output blocks of this particular reconstruction task need
+      to be reused for downstream reconstruction tasks, which blocks can be discarded/pruned,
       and which blocks can be propagated as new/fresh blocks.
     """
 
     # Logical Ray Data ID of the task being re-executed.
     lineage_task_id: str
-    # The reconstruction plan the re-execution serves.
-    reconstruction_plan_id: str
+    # The reconstruction plans the reconstruction task serves.
+    reconstruction_plan_ids: FrozenSet[str]
 
 
 @dataclass(frozen=True)
@@ -105,7 +114,7 @@ class RefBundle:
     output_split_idx: Optional[int] = None
 
     # Set by lineage reconstruction on the input bundle of a reconstruction task. This is
-    # a tuple of (lineage_task_id, reconstruction_plan_id) if the consuming task is a reconstruction task.
+    # a tuple of (lineage_task_id, reconstruction_plan_ids) if the consuming task is a reconstruction task.
     # Otherwise, this is set to None for input bundles of fresh tasks.
     # If this bundle is stamped, the consuming operator skips its bundler and submits the task with
     # the same logical task ID (since this is a re-execution).

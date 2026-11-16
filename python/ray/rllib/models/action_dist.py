@@ -33,8 +33,7 @@ class ActionDistribution:
         raise NotImplementedError
 
     def deterministic_sample(self) -> TensorType:
-        """
-        Get the deterministic "sampling" output from the distribution.
+        """Get the deterministic "sampling" output from the distribution.
         This is usually the max likelihood output, i.e. mean for Normal, argmax
         for Categorical, etc..
         """

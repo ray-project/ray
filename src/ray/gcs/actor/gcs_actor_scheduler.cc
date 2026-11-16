@@ -389,17 +389,22 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320
     worker_client_pool_.GetOrConnect(leased_worker->GetAddress());
-    gcs_actor_table_.Put(actor->GetActorID(),
-                         actor->GetActorTableData(),
-                         {[this, actor, leased_worker](Status status) {
-                            RAY_CHECK_OK(status);
-                            if (actor->GetState() == rpc::ActorTableData::DEAD) {
-                              // Actor has already been killed.
-                              return;
-                            }
-                            CreateActorOnWorker(actor, leased_worker);
-                          },
-                          io_context_});
+    gcs_actor_table_.Put(
+        actor->GetActorID(),
+        actor->GetActorTableData(),
+        {[this, actor, leased_worker, actor_local_raylet_address](Status status) {
+           RAY_CHECK_OK(status);
+           if (actor->GetState() == rpc::ActorTableData::DEAD) {
+             // The actor was killed while its table entry was being persisted, so the
+             // creation task was never pushed. Free the lease here to avoid resource
+             // leak.
+             KillLeasedWorkerForActor(
+                 actor_local_raylet_address, leased_worker->GetAddress(), ActorID::Nil());
+             return;
+           }
+           CreateActorOnWorker(actor, leased_worker);
+         },
+         io_context_});
   }
 }
 
