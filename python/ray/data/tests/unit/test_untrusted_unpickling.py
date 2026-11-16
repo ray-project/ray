@@ -13,7 +13,6 @@ import sys
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data._internal.object_extensions.arrow import (
     AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
@@ -110,10 +109,6 @@ def test_pickled_column_in_ipc_stream_refused_inside_read(shape):
     assert pa.ipc.open_stream(buf).read_all().num_rows == 1
 
 
-@pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("14.0.0"),
-    reason="Arrow PyCapsule interface requires pyarrow>=14",
-)
 @pytest.mark.parametrize("shape", SHAPES)
 def test_pickled_column_via_c_data_interface_refused_inside_read(shape):
     # Native readers (e.g. Hudi, Lance) hand batches to pyarrow through the
