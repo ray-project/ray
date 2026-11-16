@@ -397,7 +397,7 @@ class BayesOptSearch(Searcher):
 
         # If we don't have to execute some random search steps
         if len(self._buffered_trial_results) >= self.random_search_trials:
-            if result is not None:
+            if result is not None and not error:
                 #  we simply register the obtained result
                 self._register_result(params, result)
             return
