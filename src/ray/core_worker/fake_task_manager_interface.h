@@ -32,7 +32,8 @@ class FakeTaskManagerInterface : public TaskManagerInterface {
   std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
                                                    const TaskSpecification &spec,
                                                    const std::string &call_site,
-                                                   int max_retries = 0) override {
+                                                   int max_retries = 0,
+                                                   bool consume_once = false) override {
     add_pending_task_calls.push_back(spec.TaskId());
     if (add_pending_task_hook) {
       return add_pending_task_hook(caller_address, spec, call_site, max_retries);

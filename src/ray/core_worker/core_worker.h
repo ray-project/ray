@@ -1075,6 +1075,24 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::string &call_site = "",
       const TaskID current_task_id = TaskID::Nil());
 
+  /**
+   * Get the move state of an object, see ReferenceCounterInterface::GetMoveState.
+   **/
+  std::optional<MoveState> GetMoveState(const ObjectID &object_id) const;
+
+  /**
+   * Get the move states of objects under a single lock, see
+   * ReferenceCounterInterface::GetMoveStates.
+   **/
+  std::vector<std::optional<MoveState>> GetMoveStates(
+      const std::vector<ObjectID> &object_ids) const;
+
+  /**
+   * Whether this worker owns any consume-once object, see
+   * ReferenceCounterInterface::HasConsumeOnceObjects.
+   **/
+  bool HasConsumeOnceObjects() const;
+
   /// Create an actor.
   ///
   /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been

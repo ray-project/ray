@@ -191,37 +191,36 @@ class RLlibCallback(metaclass=_CallbackMeta):
         You can access and change the EnvRunners in question through the following code
         snippet inside your custom override of this method:
 
-        .. testcode::
-            from ray.rllib.callbacks.callbacks import RLlibCallback
-
-            class MyCallbacks(RLlibCallback):
-                def on_env_runners_recreated(
-                    self,
-                    *,
-                    algorithm,
-                    env_runner_group,
-                    env_runner_indices,
-                    is_evaluation,
-                    **kwargs,
-                ):
-                    # Define what you would like to do on the recreated EnvRunner:
-                    def func(env_runner):
-                        # Here, we just set some arbitrary property to 1.
-                        if is_evaluation:
-                            env_runner._custom_property_for_evaluation = 1
-                        else:
-                            env_runner._custom_property_for_training = 1
-
-                    # Use the `foreach_env_runner` method of the worker set and
-                    # only loop through those worker IDs that have been restarted.
-                    # Note that we set `local_worker=False` to NOT include it (local
-                    # workers are never recreated; if they fail, the entire Algorithm
-                    # fails).
-                    env_runner_group.foreach_env_runner(
-                        func,
-                        remote_worker_ids=env_runner_indices,
-                        local_env_runner=False,
-                    )
+        Examples:
+            >>> from ray.rllib.callbacks.callbacks import RLlibCallback
+            >>> class MyCallbacks(RLlibCallback):
+            ...     def on_env_runners_recreated(
+            ...         self,
+            ...         *,
+            ...         algorithm,
+            ...         env_runner_group,
+            ...         env_runner_indices,
+            ...         is_evaluation,
+            ...         **kwargs,
+            ...     ):
+            ...         # Define what you would like to do on the recreated EnvRunner:
+            ...         def func(env_runner):
+            ...             # Here, we just set some arbitrary property to 1.
+            ...             if is_evaluation:
+            ...                 env_runner._custom_property_for_evaluation = 1
+            ...             else:
+            ...                 env_runner._custom_property_for_training = 1
+            ...
+            ...         # Use the `foreach_env_runner` method of the worker set and
+            ...         # only loop through those worker IDs that have been restarted.
+            ...         # Note that we set `local_env_runner=False` to NOT include it (local
+            ...         # workers are never recreated; if they fail, the entire Algorithm
+            ...         # fails).
+            ...         env_runner_group.foreach_env_runner(
+            ...             func,
+            ...             remote_worker_ids=env_runner_indices,
+            ...             local_env_runner=False,
+            ...         )
 
         Args:
             algorithm: Reference to the Algorithm instance.
@@ -253,35 +252,32 @@ class RLlibCallback(metaclass=_CallbackMeta):
         You can access and change the OfflineEvaluationRunners in question through the following code
         snippet inside your custom override of this method:
 
-        .. testcode::
-            from ray.rllib.callbacks.callbacks import RLlibCallback
-
-            class MyCallbacks(RLlibCallback):
-                def on_offline_eval_runners_recreated(
-                    self,
-                    *,
-                    algorithm,
-                    offline_eval_runner_group,
-                    offline_eval_runner_indices,
-                    **kwargs,
-                ):
-                    # Define what you would like to do on the recreated EnvRunner:
-                    def func(offline_eval_runner):
-                        # Here, we just set some arbitrary property to 1.
-                        if is_evaluation:
-                            offline_eval_runner._custom_property_for_evaluation = 1
-                        else:
-                            offline_eval_runner._custom_property_for_training = 1
-
-                    # Use the `foreach_runner` method of the worker set and
-                    # only loop through those worker IDs that have been restarted.
-                    # Note that `local_runner=False` as long as there are remote
-                    # runners.
-                    offline_eval_runner_group.foreach_runner(
-                        func,
-                        remote_runner_ids=offline_eval_runner_indices,
-                        local_runner=False,
-                    )
+        Examples:
+            >>> from ray.rllib.callbacks.callbacks import RLlibCallback
+            >>> class MyCallbacks(RLlibCallback):
+            ...     def on_offline_eval_runners_recreated(
+            ...         self,
+            ...         *,
+            ...         algorithm,
+            ...         offline_eval_runner_group,
+            ...         offline_eval_runner_indices,
+            ...         **kwargs,
+            ...     ):
+            ...         # Define what you would like to do on the recreated
+            ...         # OfflineEvaluationRunner:
+            ...         def func(offline_eval_runner):
+            ...             # Here, we just set some arbitrary property to 1.
+            ...             offline_eval_runner._custom_property_for_evaluation = 1
+            ...
+            ...         # Use the `foreach_runner` method of the worker set and
+            ...         # only loop through those worker IDs that have been restarted.
+            ...         # Note that `local_runner=False` as long as there are remote
+            ...         # runners.
+            ...         offline_eval_runner_group.foreach_runner(
+            ...             func,
+            ...             remote_worker_ids=offline_eval_runner_indices,
+            ...             local_runner=False,
+            ...         )
 
         Args:
             algorithm: Reference to the Algorithm instance.

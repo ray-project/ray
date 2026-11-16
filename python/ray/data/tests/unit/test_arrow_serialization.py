@@ -4,7 +4,6 @@ from unittest import mock
 import numpy as np
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 from ray._private.arrow_serialization import (
     PicklableArrayPayload,
@@ -139,10 +138,6 @@ def test_copy_offsets_buffer_if_needed(arr_type, expected_offset_type):
     assert truncated_offset_arr.equals(expected_offset_arr)
 
 
-@pytest.mark.skipif(
-    parse_version(str(pa.__version__)) < parse_version("10.0.0"),
-    reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
-)
 def test_fixed_shape_tensor_array_serialization():
     a = pa.FixedShapeTensorArray.from_numpy_ndarray(  # pyrefly: ignore[missing-attribute]
         np.arange(4 * 2 * 3).reshape(4, 2, 3)

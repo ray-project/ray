@@ -19,19 +19,17 @@ def override(parent_cls: type) -> Callable[[F], F]:
         A decorator that validates the decorated method against `parent_cls` and
         returns it unchanged.
 
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.policy import Policy
-        class TorchPolicy(Policy):
-            ...
-            # Indicates that `TorchPolicy.loss()` overrides the parent
-            # Policy class' own `loss method. Leads to an error if Policy
-            # does not have a `loss` method.
-
-            @override(Policy)
-            def loss(self, model, action_dist, train_batch):
-                ...
+    Examples:
+        >>> from ray.rllib.policy import Policy  # doctest: +SKIP_EXAMPLE
+        >>> class TorchPolicy(Policy):
+        ...     ...
+        ...     # Indicates that `TorchPolicy.loss()` overrides the parent
+        ...     # Policy class' own `loss method. Leads to an error if Policy
+        ...     # does not have a `loss` method.
+        ...
+        ...     @override(Policy)
+        ...     def loss(self, model, action_dist, train_batch):
+        ...         ...
 
     """
 
@@ -78,15 +76,19 @@ def PublicAPI(obj: F) -> F:
     In addition, you can assume all algo configurations are part of their
     public API as well.
 
-    .. testcode::
-        :skipif: True
+    Args:
+        obj: The class or method to annotate.
 
-        # Indicates that the `Algorithm` class is exposed to end users
-        # of RLlib and will remain stable across RLlib releases.
-        from ray import tune
-        @PublicAPI
-        class Algorithm(tune.Trainable):
-            ...
+    Returns:
+        `obj`, unchanged.
+
+    Examples:
+        >>> # Indicates that the `Algorithm` class is exposed to end users
+        >>> # of RLlib and will remain stable across RLlib releases.
+        >>> from ray import tune  # doctest: +SKIP_EXAMPLE
+        >>> @PublicAPI
+        ... class Algorithm(tune.Trainable):
+        ...     ...
     """
 
     _mark_annotated(obj)
@@ -104,16 +106,20 @@ def DeveloperAPI(obj: F) -> F:
     Subclasses that inherit from a ``@DeveloperAPI`` base class can be
     assumed part of the RLlib developer API as well.
 
-    .. testcode::
-        :skipif: True
+    Args:
+        obj: The class or method to annotate.
 
-        # Indicates that the `TorchPolicy` class is exposed to end users
-        # of RLlib and will remain (relatively) stable across RLlib
-        # releases.
-        from ray.rllib.policy import Policy
-        @DeveloperAPI
-        class TorchPolicy(Policy):
-            ...
+    Returns:
+        `obj`, unchanged.
+
+    Examples:
+        >>> # Indicates that the `TorchPolicy` class is exposed to end users
+        >>> # of RLlib and will remain (relatively) stable across RLlib
+        >>> # releases.
+        >>> from ray.rllib.policy import Policy  # doctest: +SKIP_EXAMPLE
+        >>> @DeveloperAPI
+        ... class TorchPolicy(Policy):
+        ...     ...
     """
 
     _mark_annotated(obj)
@@ -131,18 +137,22 @@ def ExperimentalAPI(obj: F) -> F:
     Subclasses that inherit from a ``@ExperimentalAPI`` base class can be
     assumed experimental as well.
 
-    .. testcode::
-        :skipif: True
+    Args:
+        obj: The class or method to annotate.
 
-        from ray.rllib.policy import Policy
-        class TorchPolicy(Policy):
-            ...
-            # Indicates that the `TorchPolicy.loss` method is a new and
-            # experimental API and may change frequently in future
-            # releases.
-            @ExperimentalAPI
-            def loss(self, model, action_dist, train_batch):
-                ...
+    Returns:
+        `obj`, unchanged.
+
+    Examples:
+        >>> from ray.rllib.policy import Policy  # doctest: +SKIP_EXAMPLE
+        >>> class TorchPolicy(Policy):
+        ...     ...
+        ...     # Indicates that the `TorchPolicy.loss` method is a new and
+        ...     # experimental API and may change frequently in future
+        ...     # releases.
+        ...     @ExperimentalAPI
+        ...     def loss(self, model, action_dist, train_batch):
+        ...         ...
     """
 
     _mark_annotated(obj)
@@ -168,11 +178,10 @@ def OverrideToImplementCustomLogic(obj: F) -> F:
     Used in Algorithm and Policy to tag methods that need overriding, e.g.
     `Policy.loss()`.
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         from ray.rllib.policy.torch_policy import TorchPolicy
-        @overrides(TorchPolicy)
+        @override(TorchPolicy)
         @OverrideToImplementCustomLogic
         def loss(self, ...):
             # implement custom loss function here ...
@@ -194,16 +203,20 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj: F) -> F:
     super class' method should still be called, e.g.
     `Algorithm.setup()`.
 
-    .. testcode::
-        :skipif: True
+    Args:
+        obj: The method to tag.
 
-        from ray import tune
-        @overrides(tune.Trainable)
-        @OverrideToImplementCustomLogic_CallToSuperRecommended
-        def setup(self, config):
-            # implement custom setup logic here ...
-            super().setup(config)
-            # ... or here (after having called super()'s setup method.
+    Returns:
+        `obj`, with its `__is_overridden__` attribute set to False.
+
+    Examples:
+        >>> from ray import tune  # doctest: +SKIP_EXAMPLE
+        >>> @override(tune.Trainable)
+        ... @OverrideToImplementCustomLogic_CallToSuperRecommended
+        ... def setup(self, config):
+        ...     # implement custom setup logic here ...
+        ...     super().setup(config)
+        ...     # ... or here (after having called super()'s setup method.
     """
     obj.__is_overridden__ = False  # type: ignore[attr-defined]
     return obj

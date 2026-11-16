@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import pyarrow as pa
@@ -11,6 +10,9 @@ from typing_extensions import override
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
+)
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    resolve_partitioning,
 )
 from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
@@ -131,7 +133,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         assert sample is not None
         if len(sample) == 0:
             return pa.schema([])
-        sample_paths = sample.paths.tolist()
+        sample_paths: List[str] = sample.paths.tolist()
         filesystem = self._filesystem
 
         def _read_schema(path: str) -> pa.Schema:
@@ -173,22 +175,8 @@ class OrcDatasourceV2(FileDataSourceV2):
     def resolve_partitioning(
         self, sample: Optional[FileManifest]
     ) -> Optional[Partitioning]:
-        if self._partitioning is None or sample is None or len(sample) == 0:
-            return copy.deepcopy(self._partitioning)
-        if self._partitioning.field_names:
-            return copy.deepcopy(self._partitioning)
-
-        parser = PathPartitionParser(self._partitioning)
-        partition_kv = parser(sample.paths.tolist()[0])
-        if not partition_kv:
-            return copy.deepcopy(self._partitioning)
-        return Partitioning(
-            style=self._partitioning.style,
-            base_dir=self._partitioning.base_dir,
-            field_names=list(partition_kv.keys()),
-            field_types=self._partitioning.field_types,
-            filesystem=self._partitioning.filesystem,
-        )
+        paths = sample.paths.tolist() if sample is not None else []
+        return resolve_partitioning(self._partitioning, paths)
 
     @override
     def create_scanner(

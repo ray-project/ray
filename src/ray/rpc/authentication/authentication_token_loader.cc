@@ -40,11 +40,87 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #endif
 
 namespace ray {
 namespace rpc {
+
+namespace {
+
+#ifndef _WIN32
+// fchmod on the opened fd, not chmod on the path, so a swapped path can't redirect it.
+// Leaves alone a path owned by another user, e.g. a root-owned home in a container.
+void RestrictToOwner(int fd,
+                     const std::string &path,
+                     mode_t owner_mode,
+                     const std::string &consequence) {
+  struct stat path_stat;
+  if (fstat(fd, &path_stat) != 0 || path_stat.st_uid != getuid() ||
+      (path_stat.st_mode & 0077) == 0) {
+    return;
+  }
+  char old_mode[8];
+  std::snprintf(old_mode,
+                sizeof(old_mode),
+                "%04o",
+                static_cast<unsigned int>(path_stat.st_mode & 0777));
+  char new_mode[8];
+  std::snprintf(
+      new_mode, sizeof(new_mode), "%04o", static_cast<unsigned int>(owner_mode));
+  std::string failure;
+  if (fchmod(fd, owner_mode) != 0) {
+    failure = std::strerror(errno);
+  } else if (fstat(fd, &path_stat) != 0 || (path_stat.st_mode & 0077) != 0) {
+    // Some filesystems (WSL /mnt/c, CIFS, FAT mounted with `quiet`) accept fchmod
+    // without changing the mode.
+    failure = "the filesystem kept the old mode";
+  }
+  if (failure.empty()) {
+    RAY_LOG(WARNING) << "Changed the mode of " << path << " from " << old_mode << " to "
+                     << new_mode << " because other users could access it."
+                     << consequence;
+  } else {
+    RAY_LOG(WARNING) << path << " has mode " << old_mode
+                     << ", so other users can access it, and changing it failed: "
+                     << failure << ". Run `chmod " << new_mode << " " << path << "`."
+                     << consequence;
+  }
+}
+#endif
+
+// Ray 2.59.0 and earlier left ~/.ray and ~/.ray/auth_token with the umask's modes
+// (often 0755/0644), and an upgrade keeps them. Only the default path: a
+// RAY_AUTH_TOKEN_PATH file may be shared on purpose, and a Kubernetes projected token
+// is read-only.
+void RestrictDefaultTokenPathToOwner(const std::string &token_path) {
+#ifndef _WIN32
+  const int token_fd = open(token_path.c_str(), O_RDONLY | O_CLOEXEC);
+  if (token_fd < 0) {
+    return;
+  }
+  const std::string token_dir = std::filesystem::path(token_path).parent_path().string();
+  const int dir_fd = open(token_dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (dir_fd >= 0) {
+    RestrictToOwner(dir_fd, token_dir, 0700, "");
+    close(dir_fd);
+  }
+  RestrictToOwner(
+      token_fd,
+      token_path,
+      0600,
+      " Other users may have read the Ray authentication token in it. To rotate "
+      "it, stop Ray, delete " +
+          token_path +
+          ", run `ray get-auth-token --generate`, and copy the new token "
+          "to every node and client that used the old one before starting "
+          "Ray again.");
+  close(token_fd);
+#endif
+}
+
+}  // namespace
 
 // Keep in sync with K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE in
 // python/ray/_private/authentication/authentication_constants.py.
@@ -238,6 +314,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
 
   // Precedence 4: Default token path ~/.ray/auth_token
   std::string default_path = GetDefaultTokenPath();
+  RestrictDefaultTokenPathToOwner(default_path);
   std::string token_str = TrimWhitespace(ReadTokenFromFile(default_path));
   if (!token_str.empty()) {
     RAY_LOG(DEBUG) << "Loaded authentication token from default path: " << default_path;

@@ -633,6 +633,91 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   ASSERT_TRUE(*out_of_scope);
 }
 
+TEST_F(ReferenceCountTest, TestMoveState) {
+  ObjectID default_id = ObjectID::FromRandom();
+  ObjectID movable_id = ObjectID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  ASSERT_FALSE(rc->HasConsumeOnceObjects());
+  rc->AddOwnedObject(default_id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true);
+  rc->AddOwnedObject(movable_id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true,
+                     /*pinned_at_node_id=*/std::nullopt,
+                     /*tensor_transport=*/std::nullopt,
+                     MoveState::MOVABLE);
+  ASSERT_TRUE(rc->HasConsumeOnceObjects());
+
+  ASSERT_EQ(rc->GetMoveState(default_id), MoveState::NOT_MOVABLE);
+  ASSERT_EQ(rc->GetMoveState(movable_id), MoveState::MOVABLE);
+  ASSERT_EQ(rc->GetMoveState(ObjectID::FromRandom()), std::nullopt);
+  ASSERT_EQ(rc->GetMoveState(ObjectID::Nil()), std::nullopt);
+
+  std::vector<ObjectID> out;
+  rc->RemoveLocalReference(movable_id, &out);
+  ASSERT_FALSE(rc->HasConsumeOnceObjects());
+  rc->RemoveLocalReference(default_id, &out);
+  ASSERT_FALSE(rc->HasReference(movable_id));
+  ASSERT_FALSE(rc->HasReference(default_id));
+  ASSERT_EQ(rc->GetMoveState(movable_id), std::nullopt);
+}
+
+TEST_F(ReferenceCountTest, TestTryCommitMoves) {
+  rpc::Address address;
+  address.set_ip_address("1234");
+  auto add_owned_object = [&](MoveState move_state) {
+    ObjectID id = ObjectID::FromRandom();
+    rc->AddOwnedObject(id,
+                       {},
+                       address,
+                       "",
+                       0,
+                       LineageReconstructionEligibility::ELIGIBLE,
+                       /*add_local_ref=*/true,
+                       /*pinned_at_node_id=*/std::nullopt,
+                       /*tensor_transport=*/std::nullopt,
+                       move_state);
+    return id;
+  };
+  ObjectID plain = add_owned_object(MoveState::NOT_MOVABLE);
+  ObjectID movable_1 = add_owned_object(MoveState::MOVABLE);
+  ObjectID movable_2 = add_owned_object(MoveState::MOVABLE);
+  ObjectID unknown = ObjectID::FromRandom();
+
+  // A repeated ID is moved once; NOT_MOVABLE and unknown IDs are left alone.
+  ASSERT_TRUE(rc->TryCommitMoves({plain, movable_1, movable_1, unknown}).ok());
+  ASSERT_EQ(
+      rc->GetMoveStates({plain, movable_1, movable_2, unknown}),
+      (std::vector<std::optional<MoveState>>{
+          MoveState::NOT_MOVABLE, MoveState::MOVED, MoveState::MOVABLE, std::nullopt}));
+
+  // All-or-nothing: an already moved object rejects the call and nothing changes.
+  ASSERT_TRUE(rc->TryCommitMoves({movable_2, movable_1}).IsInvalidArgument());
+  ASSERT_EQ(rc->GetMoveState(movable_2), MoveState::MOVABLE);
+
+  ASSERT_TRUE(rc->TryCommitMoves({movable_2}).ok());
+  ASSERT_EQ(rc->GetMoveState(movable_2), MoveState::MOVED);
+  ASSERT_TRUE(rc->TryCommitMoves({plain}).ok());
+  ASSERT_TRUE(rc->TryCommitMoves({}).ok());
+  ASSERT_TRUE(rc->GetMoveStates({}).empty());
+
+  std::vector<ObjectID> out;
+  for (const ObjectID &id : {plain, movable_1, movable_2}) {
+    rc->RemoveLocalReference(id, &out);
+  }
+}
+
 // Tests call site tracking and ability to update object size.
 TEST_F(ReferenceCountTest, TestReferenceStats) {
   ObjectID id1 = ObjectID::FromRandom();
