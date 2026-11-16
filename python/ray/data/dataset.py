@@ -6353,7 +6353,7 @@ class Dataset:
                 decided based on the available resources.
         """  # noqa: E501
         self.write_datasink(
-            SnowflakeDatasink(table, connection_parameters),
+            SnowflakeDatasink(table=table, connection_parameters=connection_parameters),
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )

@@ -4780,7 +4780,7 @@ def read_snowflake(
     """  # noqa: E501
     if shard_keys is None:
         return read_datasource(
-            SnowflakeDatasource(sql, connection_parameters),
+            SnowflakeDatasource(sql=sql, connection_parameters=connection_parameters),
             parallelism=parallelism,
             num_cpus=num_cpus,
             num_gpus=num_gpus,

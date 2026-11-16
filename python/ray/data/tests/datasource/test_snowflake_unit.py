@@ -2,16 +2,23 @@
 account. `test_snowflake.py` has the tests that run against Snowflake."""
 
 import os
-from typing import Iterator, List, Optional
+from datetime import datetime
+from typing import Iterator, List
 from unittest import mock
 
 import pandas as pd
 import pyarrow as pa
 import pytest
+import snowflake.connector
+from snowflake.connector.result_batch import (
+    ArrowResultBatch,
+    JSONResultBatch,
+)
 
 import ray
 from ray.data._internal.datasource.snowflake_datasink import (
     SnowflakeDatasink,
+    _ObjectName,
     _parse_object_name,
 )
 from ray.data._internal.datasource.snowflake_datasource import SnowflakeDatasource
@@ -21,23 +28,31 @@ from ray.tests.conftest import *  # noqa
 CONNECTION_PARAMETERS = {"user": "user", "account": "account"}
 
 
-class FakeResultBatch:
-    """Stands in for `snowflake.connector.result_batch.ResultBatch`."""
+class FakeResultBatch(ArrowResultBatch):
+    """Stands in for `snowflake.connector.result_batch.ArrowResultBatch`."""
 
-    def __init__(self, table: pa.Table, num_failures: int = 0):
+    def __init__(self, table: pa.Table):
         self._table = table
-        self._num_failures = num_failures
 
     @property
     def rowcount(self) -> int:
         return self._table.num_rows
 
-    def to_arrow(self) -> Optional[pa.Table]:
-        if self._num_failures > 0:
-            self._num_failures -= 1
-            raise ConnectionError("Failed to download the result batch.")
-        # Like connector 5.x, return `None` for a batch without rows.
-        return self._table if self._table.num_rows > 0 else None
+    def to_arrow(self, force_microsecond_precision: bool = False) -> pa.Table:
+        table = self._table
+        if force_microsecond_precision:
+            # Stand in for the connector's downscale, which only ever hits the
+            # `timestamp[ns]` columns it would otherwise produce.
+            schema = pa.schema(
+                [
+                    field.with_type(pa.timestamp("us", field.type.tz))
+                    if pa.types.is_timestamp(field.type) and field.type.unit == "ns"
+                    else field
+                    for field in table.schema
+                ]
+            )
+            table = table.cast(schema, safe=False)
+        return table
 
 
 def make_result_batches(rows_per_batch: List[int]) -> List[FakeResultBatch]:
@@ -90,6 +105,41 @@ def test_read_tasks(mock_cursor, rows_per_batch, parallelism, expected_rows_per_
     assert rows == list(range(sum(rows_per_batch)))
 
 
+def test_read_asks_for_arrow_result_format(mock_cursor):
+    """`to_arrow` only works on Arrow batches, so the query has to ask for them."""
+    mock_cursor.get_result_batches.return_value = make_result_batches([100])
+    connection_parameters = {
+        **CONNECTION_PARAMETERS,
+        "session_parameters": {"QUERY_TAG": "ray"},
+    }
+    datasource = SnowflakeDatasource("SELECT * FROM T", connection_parameters)
+
+    datasource.get_read_tasks(1)
+
+    _, kwargs = snowflake.connector.connect.call_args
+    assert kwargs["session_parameters"] == {
+        # The datasource pins the format without dropping what the caller passed.
+        "QUERY_TAG": "ray",
+        "PYTHON_CONNECTOR_QUERY_RESULT_FORMAT": "ARROW",
+    }
+    # The caller's parameters aren't mutated.
+    assert connection_parameters["session_parameters"] == {"QUERY_TAG": "ray"}
+
+
+def test_read_rejects_json_result_batches(mock_cursor):
+    """A connector that can't use Arrow returns JSON batches whose `to_arrow` raises.
+
+    It overrides the format per statement, so asking for Arrow isn't enough. Fail
+    on the driver with a message that says what to do, rather than inside a read
+    task with `NotSupportedError`.
+    """
+    mock_cursor.get_result_batches.return_value = [mock.Mock(spec=JSONResultBatch)]
+    datasource = SnowflakeDatasource("SELECT * FROM T", CONNECTION_PARAMETERS)
+
+    with pytest.raises(RuntimeError, match="needs Snowflake's Arrow result format"):
+        datasource.get_read_tasks(1)
+
+
 def test_read_runs_query_once(mock_cursor):
     mock_cursor.get_result_batches.return_value = make_result_batches([100] * 4)
     datasource = SnowflakeDatasource("SELECT * FROM T", CONNECTION_PARAMETERS)
@@ -115,18 +165,41 @@ def test_read_empty_result(mock_cursor, result_batches):
     assert blocks[0].column_names == ["id", "name"]
 
 
-def test_read_retries_failed_download(mock_cursor):
-    table = pa.table({"id": range(100)})
+# The connector reads a scale 7-9 `TIMESTAMP` as `timestamp[ns]`, but downscales a
+# batch holding a value outside the nanosecond range to `timestamp[us]`.
+def test_read_pins_timestamps_to_microseconds(mock_cursor):
+    """Batches that disagree on a timestamp's unit must still share a schema."""
+    nanoseconds = pa.table({"ts": pa.array([1_000_000_123], type=pa.timestamp("ns"))})
+    # A `9999-12-31` end date overflows `timestamp[ns]`, so the connector reads this
+    # batch as microseconds no matter what the datasource asks for.
+    microseconds = pa.table(
+        {"ts": pa.array([253_402_214_400_000_000], type=pa.timestamp("us"))}
+    )
     mock_cursor.get_result_batches.return_value = [
-        FakeResultBatch(table, num_failures=2)
+        FakeResultBatch(nanoseconds),
+        FakeResultBatch(microseconds),
     ]
+    mock_cursor.description = [("ts",)]
     datasource = SnowflakeDatasource("SELECT * FROM T", CONNECTION_PARAMETERS)
 
-    with mock.patch("ray._common.retry.time.sleep"):
-        [read_task] = datasource.get_read_tasks(1)
-        blocks = list(read_task())
+    read_tasks = datasource.get_read_tasks(2)
+    blocks = [block for read_task in read_tasks for block in read_task()]
 
-    assert blocks == [table]
+    assert len(blocks) == 2
+    assert all(block.schema.field("ts").type == pa.timestamp("us") for block in blocks)
+    # The schema the datasource reports has to match the blocks it produces.
+    assert all(read_task.schema == blocks[0].schema for read_task in read_tasks)
+    assert pa.concat_tables(blocks).column("ts").to_pylist() == [
+        datetime(1970, 1, 1, 0, 0, 1),
+        datetime(9999, 12, 31),
+    ]
+
+
+def test_read_rejects_old_connector():
+    """`force_microsecond_precision` needs connector 4.3.0, so say so up front."""
+    with mock.patch("importlib.metadata.version", return_value="4.2.0"):
+        with pytest.raises(ImportError, match="4.3.0 or later, but found 4.2.0"):
+            SnowflakeDatasource("SELECT * FROM T", CONNECTION_PARAMETERS)
 
 
 # The driver downloads the first batch to plan the read, and read tasks download
@@ -182,22 +255,47 @@ def test_read_snowflake_with_shard_keys_uses_read_sql():
 @pytest.mark.parametrize(
     "name, expected",
     [
-        ("my_table", (None, None, "MY_TABLE")),
-        ("my_schema.my_table", (None, "MY_SCHEMA", "MY_TABLE")),
-        ("my_db.my_schema.my_table", ("MY_DB", "MY_SCHEMA", "MY_TABLE")),
-        ('"My Table"', (None, None, "My Table")),
+        ("my_table", _ObjectName(None, None, "MY_TABLE")),
+        ("my_schema.my_table", _ObjectName(None, "MY_SCHEMA", "MY_TABLE")),
+        ("my_db.my_schema.my_table", _ObjectName("MY_DB", "MY_SCHEMA", "MY_TABLE")),
+        ('"My Table"', _ObjectName(None, None, "My Table")),
         (
             'my_db."My.Schema"."My ""quoted"" table"',
-            ("MY_DB", "My.Schema", 'My "quoted" table'),
+            _ObjectName("MY_DB", "My.Schema", 'My "quoted" table'),
         ),
+        # Unquoted names can hold digits, `_` and `$`, and can lead with `_`.
+        ("_my$table1", _ObjectName(None, None, "_MY$TABLE1")),
+        # Double-quoting is the escape hatch for everything else.
+        ('"my-table"', _ObjectName(None, None, "my-table")),
     ],
 )
 def test_parse_object_name(name, expected):
-    assert _parse_object_name(name) == expected
+    object_name = _parse_object_name(name)
+
+    assert object_name == expected
+    assert (object_name.database, object_name.schema, object_name.table) == expected
 
 
 @pytest.mark.parametrize(
-    "name", ["", "a.b.c.d", "a..b", ".a", '"unterminated', 'a."b', '""']
+    "name",
+    [
+        "",
+        "a.b.c.d",
+        "a..b",
+        ".a",
+        '"unterminated',
+        'a."b',
+        '""',
+        # `write_pandas` quotes every part it's given, so a name Snowflake would
+        # reject unquoted has to be rejected here. Otherwise it silently becomes a
+        # different, quoted table that `auto_create_table` creates.
+        "my-table",
+        "my_schema. my_table",
+        "my table",
+        "1table",
+        "$table",
+        "DROP TABLE x",
+    ],
 )
 def test_parse_object_name_rejects_invalid_names(name):
     with pytest.raises(ValueError, match="Invalid Snowflake table name"):
@@ -226,7 +324,30 @@ def test_write():
         "database": None,
         "schema": "MY_SCHEMA",
         "auto_create_table": True,
+        "use_logical_type": True,
     }
+
+
+def test_write_uses_logical_type_for_timezone_aware_timestamps():
+    """`write_pandas` needs logical types to write timezone-aware timestamps right.
+
+    Its own warning about this tests `is_datetime64tz_dtype`, which is False for
+    the `pd.ArrowDtype` columns an Arrow-backed block produces, so nothing flags
+    a missing `use_logical_type` at runtime.
+    """
+    datasink = SnowflakeDatasink("my_table", CONNECTION_PARAMETERS)
+    blocks = [pa.table({"ts": pa.array([0], type=pa.timestamp("us", tz="UTC"))})]
+
+    with mock.patch("snowflake.connector.connect"), mock.patch(
+        "snowflake.connector.pandas_tools.write_pandas"
+    ) as mock_write_pandas:
+        datasink.write(blocks, ctx=mock.Mock())
+
+    (_, df, _), kwargs = mock_write_pandas.call_args
+    assert kwargs["use_logical_type"]
+    # The dtype the connector's own check misses, which is why we can't rely on it.
+    assert isinstance(df["ts"].dtype, pd.ArrowDtype)
+    assert not isinstance(df["ts"].dtype, pd.DatetimeTZDtype)
 
 
 def test_write_without_rows_does_nothing():
