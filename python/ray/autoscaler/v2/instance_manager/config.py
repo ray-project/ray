@@ -176,17 +176,22 @@ class NodeTypeConfig:
     def __post_init__(self):
         assert self.min_worker_nodes <= self.max_worker_nodes
         assert self.min_worker_nodes >= 0
-        if (
-            self.replica_config is not None
-            and self.replica_config.workers_per_replica > 1
-        ):
-            size = self.replica_config.workers_per_replica
+        if self.workers_per_replica > 1:
+            size = self.workers_per_replica
             if self.min_worker_nodes % size != 0 or self.max_worker_nodes % size != 0:
                 raise ValueError(
                     f"min_worker_nodes ({self.min_worker_nodes}) and max_worker_nodes "
                     f"({self.max_worker_nodes}) for node type {self.name!r} must be "
                     f"multiples of workers_per_replica ({size})."
                 )
+
+    @property
+    def workers_per_replica(self) -> int:
+        return (
+            self.replica_config.workers_per_replica
+            if self.replica_config is not None
+            else 1
+        )
 
 
 class AutoscalingConfig:
@@ -390,32 +395,34 @@ class AutoscalingConfig:
                 max_workers_nodes += 1
 
             raw_replica = node_config.get("replica_config")
-            replica_config = (
-                WorkerReplicaConfig(
+            replica_config = None
+            if raw_replica is not None:
+                if not isinstance(raw_replica, dict):
+                    raise ValueError(
+                        f"replica_config for node type {node_type!r} must be a dict, "
+                        f"got {raw_replica!r}"
+                    )
+                unknown_keys = set(raw_replica) - {"workers_per_replica"}
+                if unknown_keys:
+                    raise ValueError(
+                        f"Unknown replica_config fields for node type {node_type!r}: "
+                        f"{sorted(unknown_keys)}"
+                    )
+                replica_config = WorkerReplicaConfig(
                     workers_per_replica=raw_replica.get("workers_per_replica", 1),
                 )
-                if raw_replica is not None
-                else None
-            )
-            if (
-                head_node_type == node_type
-                and replica_config is not None
-                and replica_config.workers_per_replica > 1
-            ):
-                raise ValueError(
-                    f"Head node type {node_type} cannot set "
-                    f"workers_per_replica={replica_config.workers_per_replica} > 1."
-                )
-            if (
-                not disable_launch_config_check
-                and replica_config is not None
-                and replica_config.workers_per_replica > 1
-            ):
-                raise ValueError(
-                    f"Node type {node_type} has workers_per_replica="
-                    f"{replica_config.workers_per_replica} > 1, which requires "
-                    f"provider.{DISABLE_LAUNCH_CONFIG_CHECK_KEY} to be True."
-                )
+            if replica_config is not None and replica_config.workers_per_replica > 1:
+                if head_node_type == node_type:
+                    raise ValueError(
+                        f"Head node type {node_type} cannot set "
+                        f"workers_per_replica={replica_config.workers_per_replica} > 1."
+                    )
+                if not disable_launch_config_check:
+                    raise ValueError(
+                        f"Node type {node_type} has workers_per_replica="
+                        f"{replica_config.workers_per_replica} > 1, which requires "
+                        f"provider.{DISABLE_LAUNCH_CONFIG_CHECK_KEY} to be True."
+                    )
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),

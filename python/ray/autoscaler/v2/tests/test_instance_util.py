@@ -364,6 +364,48 @@ class InstanceUtilTest(unittest.TestCase):
         inst_short = InstanceUtil.new_instance("i-6", "tpu", Instance.RAY_STOPPED)
         assert not InstanceUtil.is_solicited_stop(inst_short)
 
+        # Negative 5: Rejected drain (RAY_STOP_REQUESTED -> RAY_RUNNING) followed by
+        # an unsolicited crash (-> RAY_STOPPED) must not count as a solicited stop.
+        inst_rejected_drain = InstanceUtil.new_instance(
+            "i-7", "tpu", Instance.RAY_RUNNING
+        )
+        assert InstanceUtil.set_status(inst_rejected_drain, Instance.RAY_STOP_REQUESTED)
+        assert InstanceUtil.set_status(inst_rejected_drain, Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_rejected_drain, Instance.RAY_STOPPED)
+        assert not InstanceUtil.is_solicited_stop(inst_rejected_drain)
+
+        # Trimmed status_history (MAX_STATUS_HISTORY_LENGTH) preserves solicited-stop
+        # classification at the tail for both solicited and rejected-then-crashed cases.
+        from ray.autoscaler.v2.instance_manager.common import MAX_STATUS_HISTORY_LENGTH
+
+        inst_trimmed_solicited = InstanceUtil.new_instance(
+            "i-8", "tpu", Instance.RAY_RUNNING
+        )
+        for _ in range(MAX_STATUS_HISTORY_LENGTH + 5):
+            assert InstanceUtil.set_status(
+                inst_trimmed_solicited, Instance.RAY_STOP_REQUESTED
+            )
+            assert InstanceUtil.set_status(inst_trimmed_solicited, Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(
+            inst_trimmed_solicited, Instance.RAY_STOP_REQUESTED
+        )
+        assert InstanceUtil.set_status(inst_trimmed_solicited, Instance.RAY_STOPPING)
+        assert InstanceUtil.set_status(inst_trimmed_solicited, Instance.RAY_STOPPED)
+        assert len(inst_trimmed_solicited.status_history) == MAX_STATUS_HISTORY_LENGTH
+        assert InstanceUtil.is_solicited_stop(inst_trimmed_solicited)
+
+        inst_trimmed_crashed = InstanceUtil.new_instance(
+            "i-9", "tpu", Instance.RAY_RUNNING
+        )
+        for _ in range(MAX_STATUS_HISTORY_LENGTH + 5):
+            assert InstanceUtil.set_status(
+                inst_trimmed_crashed, Instance.RAY_STOP_REQUESTED
+            )
+            assert InstanceUtil.set_status(inst_trimmed_crashed, Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_trimmed_crashed, Instance.RAY_STOPPED)
+        assert len(inst_trimmed_crashed.status_history) == MAX_STATUS_HISTORY_LENGTH
+        assert not InstanceUtil.is_solicited_stop(inst_trimmed_crashed)
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

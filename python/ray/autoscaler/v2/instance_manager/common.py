@@ -654,6 +654,9 @@ class _MultiHostReplicaView:
         default_factory=dict
     )
     torn_down_lids: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    unlabeled_occupying_cids: Dict[NodeType, Set[CloudInstanceId]] = field(
+        default_factory=dict
+    )
 
     def owed_batch_slots(self, nt: NodeType, rid: str, lid: str, size: int) -> int:
         """Unallocated pods that batch `lid` still owes live replica `(nt, rid)`."""
@@ -749,6 +752,143 @@ class _MultiHostReplicaView:
             if reps > 0:
                 result[nt][lid] = reps
         return result
+
+    def pop_matching_candidate(
+        self,
+        nt: NodeType,
+        lid: str,
+        size: int,
+        candidates: List[CloudInstance],
+        remaining_failures: int = 0,
+    ) -> Optional[CloudInstance]:
+        """Pop and bind the best unassigned cloud pod for `(nt, lid)`."""
+        if not candidates:
+            return None
+        match_idx = None
+        avail_req = max(
+            0,
+            self.requested_by_lid.get((nt, lid), 0) - remaining_failures,
+        )
+        # 1. Finish an incomplete live replica already bound to this batch.
+        for idx in range(len(candidates) - 1, -1, -1):
+            rid = candidates[idx].replica_id
+            if rid and self.owed_batch_slots(nt, rid, lid, size) > 0:
+                match_idx = idx
+                break
+        # 2. Claim a fresh replica if this batch's unclaimed, non-failing
+        # REQUESTED + mid-boot vanished slots cover a full replica beyond
+        # open debt on already-claimed live replicas.
+        if match_idx is None:
+            claimed_rids = self.claimed_reps_by_lid.get((nt, lid), ())
+            open_live_slots = sum(
+                self.owed_batch_slots(nt, r, lid, size) for r in claimed_rids
+            )
+            vanished_slots = (
+                len(self.vanished_cids_by_lid.get((nt, lid), ()))
+                if not claimed_rids
+                else 0
+            )
+            if avail_req + vanished_slots - open_live_slots >= size:
+                cand_counts: Dict[str, int] = defaultdict(int)
+                for c in candidates:
+                    if c.replica_id and (nt, c.replica_id) not in self.assigned_reps:
+                        cand_counts[c.replica_id] += 1
+                fallback_idx = None
+                for idx in range(len(candidates) - 1, -1, -1):
+                    rid = candidates[idx].replica_id
+                    if rid and (nt, rid) not in self.assigned_reps:
+                        if cand_counts[rid] >= avail_req:
+                            match_idx = idx
+                            break
+                        if fallback_idx is None:
+                            fallback_idx = idx
+                if match_idx is None:
+                    match_idx = fallback_idx
+        # 3. Fallback for providers without replica_id metadata.
+        if (
+            match_idx is None
+            and not self.claimed_reps_by_lid.get((nt, lid))
+            and avail_req > 0
+        ):
+            for idx in range(len(candidates) - 1, -1, -1):
+                if not candidates[idx].replica_id:
+                    match_idx = idx
+                    break
+        if match_idx is None:
+            return None
+        matched = candidates.pop(match_idx)
+        self.consume_requested_slot(nt, lid)
+        if matched.replica_id:
+            self.claim_replica_slot(
+                nt, matched.replica_id, lid, matched.cloud_instance_id
+            )
+        return matched
+
+    def uncovered_replica_slots_by_type(
+        self, replica_sizes: Dict[NodeType, int]
+    ) -> Dict[NodeType, int]:
+        """Count phantom replica slots (degraded/draining replica gaps not covered
+        by owed REQUESTED backfills, plus mid-boot vanished batch slots) per type."""
+        uncovered: Dict[NodeType, int] = defaultdict(int)
+        requested_by_lid: Dict[Tuple[NodeType, str], int] = defaultdict(
+            int, self.requested_by_lid
+        )
+        for rk in sorted(
+            self.rep_occupying,
+            key=lambda r: (
+                0
+                if self.has_pending_backfill_for_replica(
+                    r[0], r[1], replica_sizes[r[0]]
+                )
+                else 1,
+                r,
+            ),
+        ):
+            nt, rid = rk
+            size = replica_sizes[nt]
+            occ = self.rep_occupying[rk]
+            if occ >= size:
+                continue
+            covered = 0
+            if rk not in self.non_fillable_reps:
+                missing_unassigned = max(
+                    0, size - len(self.rep_assigned_cids.get(rk, ()))
+                )
+                for lid in sorted(self.rep_lids.get(rk, ())):
+                    owed = self.owed_batch_slots(nt, rid, lid, size)
+                    take = min(
+                        missing_unassigned - covered,
+                        owed,
+                        requested_by_lid[(nt, lid)],
+                    )
+                    requested_by_lid[(nt, lid)] -= take
+                    covered += take
+            extra_gap = max(0, size - occ - covered)
+            if extra_gap > 0:
+                uncovered[nt] += extra_gap
+
+        for (nt, lid), vanished_cids in self.vanished_cids_by_lid.items():
+            if self.requested_by_lid.get((nt, lid), 0) > 0 and vanished_cids:
+                uncovered[nt] += len(vanished_cids)
+
+        return dict(uncovered)
+
+    def unlabeled_backfill_gap(
+        self, nt: NodeType, size: int, extra_queued: int = 0
+    ) -> int:
+        """Missing pods needed to round existing unlabeled pods of `nt` up to `size`."""
+        unlabeled = self.unlabeled_occupying_cids.get(nt)
+        if not unlabeled or size <= 1:
+            return 0
+        unclaimed_req = sum(
+            cnt
+            for (t, lid), cnt in self.requested_by_lid.items()
+            if t == nt
+            and cnt > 0
+            and (t, lid) not in self.torn_down_lids
+            and not self.claimed_reps_by_lid.get((t, lid))
+        )
+        return (-(len(unlabeled) + unclaimed_req + extra_queued)) % size
 
     @classmethod
     def build(
@@ -866,6 +1006,10 @@ class _MultiHostReplicaView:
             return
 
         if not rid:
+            if not is_shadowed_stopped and st in _OCCUPYING_CLOUD_STATUSES:
+                self.unlabeled_occupying_cids.setdefault(nt, set()).add(
+                    inst.cloud_instance_id
+                )
             return
 
         rk = (nt, rid)

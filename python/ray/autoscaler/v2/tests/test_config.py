@@ -277,63 +277,75 @@ def test_readonly_node_type_name_and_fallback(monkeypatch):
     assert cfg.get_config("max_workers") == 4
 
 
-def test_multihost_launch_config_check_rejected():
-    autoscaling_cfg = AutoscalingConfig(
-        configs={
-            "provider": {"type": "aws", "disable_launch_config_check": False},
-            "head_node_type": "head",
-            "available_node_types": {
-                "head": {"node_config": {}, "resources": {"CPU": 0}},
-                "tpu": {
-                    "node_config": {},
-                    "resources": {"CPU": 4, "TPU": 4},
-                    "min_workers": 0,
-                    "max_workers": 8,
-                    "replica_config": {"workers_per_replica": 4},
-                },
-            },
+def _make_internal_replica_autoscaling_cfg(
+    *,
+    disable_launch_config_check: bool = True,
+    node_type: str = "tpu",
+    min_workers: int = 0,
+    max_workers: int = 8,
+    replica_config=None,
+    head_replica_config=None,
+) -> AutoscalingConfig:
+    available = {
+        "head": {"node_config": {}, "resources": {"CPU": 0}, "max_workers": 3},
+    }
+    if node_type != "head":
+        available[node_type] = {
+            "node_config": {},
+            "resources": {"CPU": 4},
+            "min_workers": min_workers,
+            "max_workers": max_workers,
         }
+    cfg = AutoscalingConfig(
+        configs={
+            "cluster_name": "test",
+            "max_workers": max(max_workers, 8),
+            "provider": {
+                "type": "aws",
+                "disable_launch_config_check": disable_launch_config_check,
+            },
+            "head_node_type": "head",
+            "available_node_types": available,
+        },
+        skip_content_hash=True,
+    )
+    if replica_config is not None:
+        cfg._configs["available_node_types"][node_type][
+            "replica_config"
+        ] = replica_config
+    if head_replica_config is not None:
+        cfg._configs["available_node_types"]["head"][
+            "replica_config"
+        ] = head_replica_config
+    return cfg
+
+
+def test_multihost_launch_config_check_rejected():
+    autoscaling_cfg = _make_internal_replica_autoscaling_cfg(
+        disable_launch_config_check=False,
+        replica_config={"workers_per_replica": 4},
     )
     with pytest.raises(ValueError, match="workers_per_replica=4 > 1"):
         autoscaling_cfg.get_node_type_configs()
 
     # Single-host replica_config (workers_per_replica=1) is allowed even with
     # launch config checks enabled.
-    single_host_cfg = AutoscalingConfig(
-        configs={
-            "provider": {"type": "aws", "disable_launch_config_check": False},
-            "head_node_type": "head",
-            "available_node_types": {
-                "head": {"node_config": {}, "resources": {"CPU": 0}},
-                "cpu": {
-                    "node_config": {},
-                    "resources": {"CPU": 4},
-                    "min_workers": 0,
-                    "max_workers": 3,
-                    "replica_config": {"workers_per_replica": 1},
-                },
-            },
-        }
+    single_host_cfg = _make_internal_replica_autoscaling_cfg(
+        disable_launch_config_check=False,
+        node_type="cpu",
+        max_workers=3,
+        replica_config={"workers_per_replica": 1},
     )
     cfgs = single_host_cfg.get_node_type_configs()
-    assert cfgs["cpu"].replica_config.workers_per_replica == 1
+    assert cfgs["cpu"].workers_per_replica == 1
+    assert cfgs["head"].workers_per_replica == 1
 
     # Head node type cannot set workers_per_replica > 1 even when max_workers + 1
     # would otherwise be divisible by workers_per_replica.
-    head_multihost_cfg = AutoscalingConfig(
-        configs={
-            "provider": {"type": "aws", "disable_launch_config_check": True},
-            "head_node_type": "head",
-            "available_node_types": {
-                "head": {
-                    "node_config": {},
-                    "resources": {"CPU": 0},
-                    "min_workers": 0,
-                    "max_workers": 3,
-                    "replica_config": {"workers_per_replica": 4},
-                },
-            },
-        }
+    head_multihost_cfg = _make_internal_replica_autoscaling_cfg(
+        disable_launch_config_check=True,
+        node_type="head",
+        head_replica_config={"workers_per_replica": 4},
     )
     with pytest.raises(ValueError, match="Head node type head cannot set"):
         head_multihost_cfg.get_node_type_configs()
@@ -347,26 +359,38 @@ def test_multihost_replica_config_validation():
         WorkerReplicaConfig,
     )
 
-    valid_cfg = AutoscalingConfig(
-        configs={
-            "cluster_name": "test",
-            "max_workers": 8,
-            "provider": {"type": "aws", "disable_launch_config_check": True},
-            "head_node_type": "head",
-            "available_node_types": {
-                "head": {"node_config": {}, "resources": {"CPU": 0}},
-                "tpu": {
-                    "node_config": {},
-                    "resources": {"CPU": 4, "TPU": 4},
-                    "min_workers": 4,
-                    "max_workers": 8,
-                    "replica_config": {"workers_per_replica": 4},
+    # Public ray-schema.json rejects `replica_config` until the replica-aware
+    # scheduler lands (R5).
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        AutoscalingConfig(
+            configs={
+                "cluster_name": "test",
+                "max_workers": 8,
+                "provider": {"type": "aws", "disable_launch_config_check": True},
+                "head_node_type": "head",
+                "available_node_types": {
+                    "head": {"node_config": {}, "resources": {"CPU": 0}},
+                    "tpu": {
+                        "node_config": {},
+                        "resources": {"CPU": 4},
+                        "min_workers": 4,
+                        "max_workers": 8,
+                        "replica_config": {"workers_per_replica": 4},
+                    },
                 },
             },
-        }
+            skip_content_hash=True,
+        )
+
+    valid_cfg = _make_internal_replica_autoscaling_cfg(
+        min_workers=4,
+        max_workers=8,
+        replica_config={"workers_per_replica": 4},
     )
     cfgs = valid_cfg.get_node_type_configs()
     assert cfgs["tpu"].replica_config == WorkerReplicaConfig(workers_per_replica=4)
+    assert cfgs["tpu"].workers_per_replica == 4
+    assert cfgs["head"].workers_per_replica == 1
 
     for bad_size in (0, -1, True, False, "4"):
         with pytest.raises(ValueError, match="workers_per_replica"):
@@ -390,25 +414,32 @@ def test_multihost_replica_config_validation():
             replica_config=WorkerReplicaConfig(workers_per_replica=4),
         )
 
-    with pytest.raises(jsonschema.exceptions.ValidationError):
-        AutoscalingConfig(
-            configs={
-                "cluster_name": "test",
-                "provider": {"type": "aws", "disable_launch_config_check": True},
-                "head_node_type": "head",
-                "available_node_types": {
-                    "head": {"node_config": {}, "resources": {"CPU": 0}},
-                    "tpu": {
-                        "node_config": {},
-                        "resources": {"CPU": 4},
-                        "replica_config": {
-                            "workers_per_replica": 4,
-                            "unknown_field": True,
-                        },
-                    },
-                },
-            }
-        )
+    # TG10: Size-multiple and field validation through AutoscalingConfig.get_node_type_configs.
+    bad_min_cfg = _make_internal_replica_autoscaling_cfg(
+        min_workers=2,
+        max_workers=8,
+        replica_config={"workers_per_replica": 4},
+    )
+    with pytest.raises(ValueError, match=r"min_worker_nodes \(2\)"):
+        bad_min_cfg.get_node_type_configs()
+
+    bad_max_cfg = _make_internal_replica_autoscaling_cfg(
+        min_workers=0,
+        max_workers=6,
+        replica_config={"workers_per_replica": 4},
+    )
+    with pytest.raises(ValueError, match=r"max_worker_nodes \(6\)"):
+        bad_max_cfg.get_node_type_configs()
+
+    bad_type_cfg = _make_internal_replica_autoscaling_cfg(replica_config="not-a-dict")
+    with pytest.raises(ValueError, match="must be a dict"):
+        bad_type_cfg.get_node_type_configs()
+
+    unknown_field_cfg = _make_internal_replica_autoscaling_cfg(
+        replica_config={"workers_per_replica": 4, "unknown_field": True},
+    )
+    with pytest.raises(ValueError, match="Unknown replica_config fields"):
+        unknown_field_cfg.get_node_type_configs()
 
 
 if __name__ == "__main__":

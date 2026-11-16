@@ -3,9 +3,10 @@ import math
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from queue import Queue
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Iterator, List, Optional, Set
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -258,17 +259,23 @@ class ICloudInstanceProvider(ABC):
         """
         pass
 
-    def begin_reconcile_step(
-        self,
-        known_cloud_instance_ids: Set[CloudInstanceId],
-        single_host_in_flight: Dict[NodeType, Dict[str, int]],
-        unclaimed_replicas_by_lid: Dict[NodeType, Dict[str, int]],
-    ) -> None:
-        """Optional hook called before active reconcile mutations begin."""
+    @contextmanager
+    def reconcile_step(self, context: "ReconcileStepContext") -> Iterator[None]:
+        """Context manager scoping active reconcile mutations for a single tick."""
+        self._enter_reconcile_step(context)
+        try:
+            yield
+        finally:
+            self._exit_reconcile_step()
+
+    def update_reconcile_step(self, context: "ReconcileStepContext") -> None:
+        """Refresh in-flight instance-manager state mid-step without re-syncing."""
         pass
 
-    def end_reconcile_step(self) -> None:
-        """Optional hook called after active reconcile mutations complete."""
+    def _enter_reconcile_step(self, context: "ReconcileStepContext") -> None:
+        pass
+
+    def _exit_reconcile_step(self) -> None:
         pass
 
     def get_node_types_with_pending_deletes(
@@ -277,6 +284,17 @@ class ICloudInstanceProvider(ABC):
     ) -> Set[NodeType]:
         """Return worker node types with pending cloud-provider deletions."""
         return set()
+
+
+@dataclass(frozen=True)
+class ReconcileStepContext:
+    """Snapshot of instance-manager state passed to cloud providers for a reconcile step."""
+
+    known_cloud_instance_ids: Set[CloudInstanceId] = field(default_factory=set)
+    single_host_in_flight: Dict[NodeType, Dict[str, int]] = field(default_factory=dict)
+    unclaimed_replicas_by_lid: Dict[NodeType, Dict[str, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(frozen=True)

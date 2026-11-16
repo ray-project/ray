@@ -39,6 +39,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     ICloudInstanceProvider,
     LaunchNodeError,
     NodeProviderAdapter,
+    ReconcileStepContext,
     TerminateNodeError,
     logger,
 )
@@ -1456,7 +1457,9 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         ]
 
     def test_multihost_launch_partial_and_unaligned_counts(self):
-        """Scale-up preserves partial existing replicas and reports unaligned counts."""
+        """Scale-up preserves partial existing replicas, keeps legacy standalone
+        unaligned launches quiet (R1), and reports unaligned remainders only for
+        replica-managed groups in a reconcile step."""
         _pod = self._make_multihost_pod
         prov_up, client_up = self._make_tpu_group_provider(
             replicas=0,
@@ -1468,10 +1471,28 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 2}
         ]
 
+        # Standalone / legacy multi-host without replica_config does NOT emit
+        # LaunchNodeError on unaligned counts (R1).
+        prov_legacy, client_legacy = self._make_tpu_group_provider(
+            replicas=0, min_rep=0, pods=[]
+        )
+        prov_legacy.launch(shape={"tpu-group": 6}, request_id="up-legacy")
+        assert client_legacy.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 1}
+        ]
+        assert prov_legacy.poll_errors() == []
+
+        # Replica-managed group inside reconcile_step DOES report unaligned remainder.
         prov_unaligned, client_unaligned = self._make_tpu_group_provider(
             replicas=0, min_rep=0, pods=[]
         )
-        prov_unaligned.launch(shape={"tpu-group": 6}, request_id="up-unaligned")
+        with prov_unaligned.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids={"head-0"},
+                unclaimed_replicas_by_lid={"tpu-group": {}},
+            )
+        ):
+            prov_unaligned.launch(shape={"tpu-group": 6}, request_id="up-unaligned")
         assert client_unaligned.get_patches("rayclusters/test") == [
             {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 1}
         ]
@@ -1595,16 +1616,16 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             ],
             pods=[],
         )
-        prov.begin_reconcile_step(
-            known_cloud_instance_ids={"head-0"},
-            single_host_in_flight={},
-            unclaimed_replicas_by_lid={"tpu-a": {}},
-        )
-        assert prov.get_node_types_with_pending_deletes() == set()
-        # A zero-count entry for cpu must not overwrite cpu's spec.replicas=5.
-        prov.launch(shape={"cpu": 0, "tpu-a": 4}, request_id="rep-req-1")
-        prov.launch(shape={"tpu-a": 4}, request_id="rep-req-2")
-        prov.end_reconcile_step()
+        with prov.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids={"head-0"},
+                unclaimed_replicas_by_lid={"tpu-a": {}},
+            )
+        ):
+            assert prov.get_node_types_with_pending_deletes() == set()
+            # A zero-count entry for cpu must not overwrite cpu's spec.replicas=5.
+            prov.launch(shape={"cpu": 0, "tpu-a": 4}, request_id="rep-req-1")
+            prov.launch(shape={"tpu-a": 4}, request_id="rep-req-2")
         assert len(client.get_calls) == 2
         assert client.patch_history == [
             [
@@ -1647,18 +1668,18 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             *(f"r0-{i}" for i in range(3)),
             *(f"r1-{i}" for i in range(4)),
         }
-        prov2.begin_reconcile_step(
-            known_cloud_instance_ids=known2,
-            single_host_in_flight={},
-            unclaimed_replicas_by_lid={"tpu-a": {}},
-        )
-        prov2.launch(shape={"tpu-a": 4}, request_id="heal-req-1")
-        assert prov2.poll_errors() == []
-        prov2.launch(shape={"tpu-a": 4}, request_id="heal-req-2")
-        assert [(e.request_id, e.node_type, e.count) for e in prov2.poll_errors()] == [
-            ("heal-req-2", "tpu-a", 4)
-        ]
-        prov2.end_reconcile_step()
+        with prov2.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known2,
+                unclaimed_replicas_by_lid={"tpu-a": {}},
+            )
+        ):
+            prov2.launch(shape={"tpu-a": 4}, request_id="heal-req-1")
+            assert prov2.poll_errors() == []
+            prov2.launch(shape={"tpu-a": 4}, request_id="heal-req-2")
+            assert [
+                (e.request_id, e.node_type, e.count) for e in prov2.poll_errors()
+            ] == [("heal-req-2", "tpu-a", 4)]
         assert client2.patch_history == [
             [{"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 3}]
         ]
@@ -1708,7 +1729,8 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
     def test_reconcile_step_legacy_multihost_and_invalid_num_of_hosts(self):
         """Legacy numOfHosts>1 groups preserve additive launches, and numOfHosts<=0
-        fails launches cleanly without ZeroDivisionError."""
+        fails both launches and terminations cleanly without patching workersToDelete."""
+        _pod = self._make_multihost_pod
         prov4, client4 = self._make_kuberay_provider(
             worker_groups=[
                 {
@@ -1722,14 +1744,11 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             ],
             pods=[],
         )
-        prov4.begin_reconcile_step(
-            known_cloud_instance_ids={"head-0"},
-            single_host_in_flight={},
-            unclaimed_replicas_by_lid={},
-        )
-        prov4.launch(shape={"tpu-a": 4}, request_id="legacy-1")
-        prov4.launch(shape={"tpu-a": 4}, request_id="legacy-2")
-        prov4.end_reconcile_step()
+        with prov4.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids={"head-0"})
+        ):
+            prov4.launch(shape={"tpu-a": 4}, request_id="legacy-1")
+            prov4.launch(shape={"tpu-a": 4}, request_id="legacy-2")
         assert client4.patch_history == [
             [
                 {
@@ -1747,34 +1766,124 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             ],
         ]
 
+        # Split sub-replica launches (1 + 3) on a legacy multi-host group accumulate
+        # across in-flight request_ids to scale 0 -> 1 replica without LaunchNodeError.
+        prov4_split, client4_split = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "tpu-a",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 5,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            pods=[],
+        )
+        with prov4_split.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids={"head-0"},
+                single_host_in_flight={"tpu-a": {"split-1": 1}},
+            )
+        ):
+            prov4_split.launch(shape={"tpu-a": 3}, request_id="split-2")
+        assert prov4_split.poll_errors() == []
+        assert client4_split.patch_history == [
+            [{"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 1}]
+        ]
+
         for raw_bad_hosts in (0, -1):
             for in_step in (False, True):
                 prov5, client5 = self._make_kuberay_provider(
                     worker_groups=[
                         {
                             "groupName": "tpu-a",
-                            "replicas": 0,
+                            "replicas": 2,
                             "minReplicas": 0,
                             "maxReplicas": 5,
                             "numOfHosts": raw_bad_hosts,
                             "template": {"spec": {"containers": [{}]}},
                         }
                     ],
-                    pods=[],
+                    pods=[_pod("bad-0", group="tpu-a"), _pod("bad-1", group="tpu-a")],
+                )
+                ctx = ReconcileStepContext(
+                    known_cloud_instance_ids={"head-0", "bad-0", "bad-1"}
                 )
                 if in_step:
-                    prov5.begin_reconcile_step(
-                        known_cloud_instance_ids={"head-0"},
-                        single_host_in_flight={},
-                        unclaimed_replicas_by_lid={},
-                    )
-                prov5.launch(shape={"tpu-a": 4}, request_id="bad-hosts")
-                if in_step:
-                    prov5.end_reconcile_step()
+                    with prov5.reconcile_step(ctx):
+                        prov5.launch(shape={"tpu-a": 4}, request_id="bad-hosts")
+                else:
+                    prov5.launch(shape={"tpu-a": 4}, request_id="bad-hosts")
                 assert client5.patch_history == []
                 assert [
                     (e.request_id, e.node_type, e.count) for e in prov5.poll_errors()
                 ] == [("bad-hosts", "tpu-a", 4)]
+
+                # TG3 / R3: terminate also fails closed without patching workersToDelete.
+                if in_step:
+                    with prov5.reconcile_step(ctx):
+                        prov5.terminate(ids=["bad-0"], request_id="bad-term")
+                else:
+                    prov5.terminate(ids=["bad-0"], request_id="bad-term")
+                assert client5.patch_history == []
+                term_errs = prov5.poll_errors()
+                assert len(term_errs) == 1
+                assert isinstance(term_errs[0], TerminateNodeError)
+                assert (term_errs[0].cloud_instance_id, term_errs[0].request_id) == (
+                    "bad-0",
+                    "bad-term",
+                )
+
+        # Mixed multi-group terminate: invalid numOfHosts=0 group is rejected while
+        # valid sibling group terminates cleanly.
+        prov_mix, client_mix = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "bad-grp",
+                    "replicas": 1,
+                    "minReplicas": 0,
+                    "maxReplicas": 5,
+                    "numOfHosts": 0,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "good-grp",
+                    "replicas": 2,
+                    "minReplicas": 0,
+                    "maxReplicas": 5,
+                    "numOfHosts": 1,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            pods=[
+                _pod("bad-a", group="bad-grp"),
+                _pod("good-a", group="good-grp"),
+                _pod("good-b", group="good-grp"),
+            ],
+        )
+        with prov_mix.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids={"head-0", "bad-a", "good-a", "good-b"}
+            )
+        ):
+            prov_mix.terminate(ids=["bad-a", "good-a"], request_id="mix-term")
+        assert client_mix.patch_history == [
+            [
+                {
+                    "op": "replace",
+                    "path": "/spec/workerGroupSpecs/1/replicas",
+                    "value": 1,
+                },
+                {
+                    "op": "replace",
+                    "path": "/spec/workerGroupSpecs/1/scaleStrategy",
+                    "value": {"workersToDelete": ["good-a"]},
+                },
+            ]
+        ]
+        assert [e.cloud_instance_id for e in prov_mix.poll_errors()] == ["bad-a"]
 
         # Explicit `"numOfHosts": None` defaults to 1 host per replica cleanly.
         for in_step in (False, True):
@@ -1792,14 +1901,12 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 pods=[],
             )
             if in_step:
-                prov6.begin_reconcile_step(
-                    known_cloud_instance_ids={"head-0"},
-                    single_host_in_flight={},
-                    unclaimed_replicas_by_lid={},
-                )
-            prov6.launch(shape={"cpu-none": 2}, request_id="none-hosts")
-            if in_step:
-                prov6.end_reconcile_step()
+                with prov6.reconcile_step(
+                    ReconcileStepContext(known_cloud_instance_ids={"head-0"})
+                ):
+                    prov6.launch(shape={"cpu-none": 2}, request_id="none-hosts")
+            else:
+                prov6.launch(shape={"cpu-none": 2}, request_id="none-hosts")
             assert prov6.poll_errors() == []
             assert client6.patch_history == [
                 [
@@ -1812,8 +1919,9 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             ]
 
     def test_reconcile_step_intra_tick_pod_deduplication(self):
-        """Intra-tick newly materialized pods deduplicate against in-flight counts
-        for both single-host and multi-host groups."""
+        """Intra-tick newly materialized pods deduplicate against in-flight counts,
+        replayed multi-host request_ids are excluded from prior_reps, and unlabeled
+        multi-host backfills scale cleanly without LaunchNodeError."""
         _pod = self._make_multihost_pod
         prov7, client7 = self._make_kuberay_provider(
             worker_groups=[
@@ -1841,18 +1949,22 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 _pod("u-new-same-rep", group="tpu-a", rep=None),
             ],
         )
-        prov7.begin_reconcile_step(
-            known_cloud_instance_ids={"head-0", "u-0", "u-1"},
-            single_host_in_flight={"cpu": {"cpu-in-flight": 1}},
-            unclaimed_replicas_by_lid={"tpu-a": {"tpu-in-flight": 1}},
-        )
-        # cpu: 1 observed (new) + max(0, 1 + 1 - 1) = 2 (not 3).
-        prov7.launch(shape={"cpu": 1}, request_id="cpu-next")
-        # tpu-a: obs = 1 labeled (rep-new, all new -> new_labeled_reps=1) +
-        # 1 unlabeled (u-0,u-1 already known -> new_unlabeled_reps=0) = 2 reps;
-        # in_flight_reps = max(0, 1 + 1 - 1) = 1 -> desired = 3 replicas (not 4).
-        prov7.launch(shape={"tpu-a": 4}, request_id="tpu-next")
-        prov7.end_reconcile_step()
+        with prov7.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids={"head-0", "u-0", "u-1"},
+                single_host_in_flight={"cpu": {"cpu-in-flight": 1}},
+                # Pre-seeding tpu-next=1 verifies request_id exclusion (Code-Taste #1).
+                unclaimed_replicas_by_lid={
+                    "tpu-a": {"tpu-in-flight": 1, "tpu-next": 1}
+                },
+            )
+        ):
+            # cpu: 1 observed (new) + max(0, 1 + 1 - 1) = 2 (not 3).
+            prov7.launch(shape={"cpu": 1}, request_id="cpu-next")
+            # tpu-a: obs = 1 labeled (rep-new, all new -> new_labeled_reps=1) +
+            # 1 unlabeled (u-0,u-1 already known -> new_unlabeled_reps=0) = 2 reps;
+            # in_flight_reps = max(0, 1 + 1 - 1) = 1 -> desired = 3 replicas (not 4).
+            prov7.launch(shape={"tpu-a": 4}, request_id="tpu-next")
         assert client7.patch_history == [
             [
                 {
@@ -1869,6 +1981,136 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 }
             ],
         ]
+
+        # R6 / TG6: Unlabeled 1-pod backfill at 11/12 pods scales 2 -> 3 cleanly.
+        prov_bf, client_bf = self._make_tpu_group_provider(
+            replicas=2,
+            min_rep=0,
+            max_rep=3,
+            num_of_hosts=4,
+            pods=[_pod(f"u-{i}", rep=None) for i in range(11)],
+        )
+        known_bf = set(prov_bf.get_non_terminated())
+        with prov_bf.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known_bf,
+                unclaimed_replicas_by_lid={"tpu-group": {}},
+            )
+        ):
+            prov_bf.launch(shape={"tpu-group": 1}, request_id="bf-1")
+        assert prov_bf.poll_errors() == []
+        assert client_bf.patch_history == [
+            [{"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 3}]
+        ]
+
+    def test_reconcile_step_stale_pod_list_vs_genuine_operator_deletion(self):
+        """R2 / TG2: In-step sync passes NotOlderThan floor and preserves non-deleted
+        tick-start pods on stale LISTs, while dropping genuinely deleted pods when
+        resourceVersion advances or deletionTimestamp is set."""
+        _pod = self._make_multihost_pod
+
+        for stale_rv in ("10", "9", ""):
+            prov, client = self._make_kuberay_provider(
+                worker_groups=[
+                    {
+                        "groupName": "cpu",
+                        "replicas": 5,
+                        "minReplicas": 0,
+                        "maxReplicas": 10,
+                        "template": {"spec": {"containers": [{}]}},
+                    }
+                ],
+                pods=[_pod(f"cpu-{i}", group="cpu") for i in range(5)],
+            )
+            client._pod_list["metadata"]["resourceVersion"] = "10"
+            known = set(prov.get_non_terminated())
+            real_get = client.get
+            seen_pod_paths = []
+
+            def stale_get(
+                path, _rv=stale_rv, _real_get=real_get, _paths=seen_pod_paths
+            ):
+                out = _real_get(path)
+                if "pods" in path:
+                    _paths.append(path)
+                    return {
+                        "metadata": {"resourceVersion": _rv},
+                        "items": [
+                            p for p in out["items"] if p["metadata"]["name"] != "cpu-4"
+                        ],
+                    }
+                return out
+
+            client.get = stale_get
+            with prov.reconcile_step(
+                ReconcileStepContext(known_cloud_instance_ids=known)
+            ):
+                prov.launch(shape={"cpu": 1}, request_id="scale-6")
+            client.get = real_get
+            assert any(
+                "resourceVersion=10&resourceVersionMatch=NotOlderThan" in p
+                for p in seen_pod_paths
+            )
+            assert client.patch_history == [
+                [
+                    {
+                        "op": "replace",
+                        "path": "/spec/workerGroupSpecs/0/replicas",
+                        "value": 6,
+                    }
+                ]
+            ]
+
+        # Counter-case 1: genuine operator deletion advances resourceVersion 10 -> 11,
+        # so the deleted pod shrinks observed count (4 + 1 = 5 -> no patch needed).
+        prov_del, client_del = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "cpu",
+                    "replicas": 5,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            pods=[_pod(f"cpu-{i}", group="cpu") for i in range(5)],
+        )
+        client_del._pod_list["metadata"]["resourceVersion"] = "10"
+        known_del = set(prov_del.get_non_terminated())
+        client_del._pod_list["metadata"]["resourceVersion"] = "11"
+        client_del._pod_list["items"] = [
+            p for p in client_del._pod_list["items"] if p["metadata"]["name"] != "cpu-4"
+        ]
+        with prov_del.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=known_del)
+        ):
+            prov_del.launch(shape={"cpu": 1}, request_id="refill-5")
+        assert client_del.patch_history == []
+
+        # Counter-case 2: pod marked with deletionTimestamp is dropped even if RV did
+        # not advance.
+        prov_ts, client_ts = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "cpu",
+                    "replicas": 5,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            pods=[_pod(f"cpu-{i}", group="cpu") for i in range(5)],
+        )
+        client_ts._pod_list["metadata"]["resourceVersion"] = "10"
+        known_ts = set(prov_ts.get_non_terminated())
+        for p in client_ts._pod_list["items"]:
+            if p["metadata"]["name"] == "cpu-4":
+                p["metadata"]["deletionTimestamp"] = "2026-01-01T00:00:00Z"
+        with prov_ts.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=known_ts)
+        ):
+            prov_ts.launch(shape={"cpu": 1}, request_id="refill-ts")
+        assert client_ts.patch_history == []
 
 
 if __name__ == "__main__":
