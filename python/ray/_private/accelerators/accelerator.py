@@ -206,6 +206,33 @@ class AcceleratorManager(ABC):
         return None
 
     @staticmethod
+    def get_node_group_replica_metadata(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+        workers_per_replica: Optional[int] = None,
+        group_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Get runtime replica metadata for a node group from its base
+        resources, required pod node labels, and optional pod annotations.
+
+        Args:
+            resources: Base Ray resources already parsed for the node group.
+            node_selector: Required pod node labels (for example from
+                `nodeSelector` and required `nodeAffinity`).
+            annotations: Optional pod metadata annotations dictionary.
+            workers_per_replica: Optional number of workers per replica
+                configured on the node group (e.g., KubeRay `numOfHosts`).
+            group_name: Optional node group name for diagnostics.
+
+        Returns:
+            A dictionary of replica metadata keys (such as `domain_label_key`,
+            `domain_exclusive`, `worker_index_label_key`, and JSON-serializable
+            `head_resources`), or None if not applicable.
+        """
+        return None
+
+    @staticmethod
     def get_cdi_kind() -> Optional[str]:
         """Get the CDI (Container Device Interface) kind for this
         accelerator family, e.g. "nvidia.com/gpu".

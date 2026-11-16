@@ -1,9 +1,10 @@
 import decimal
 import json
 import logging
+import re
 import time
 from itertools import chain
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
@@ -37,6 +38,15 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
 _HEAD_GROUP_NAME = "headgroup"
+
+_NODE_LABEL_FIELD_PATH_RE = re.compile(r"\Ametadata\.labels\['([^']+)'\]\Z")
+_K8S_DNS1123_SUBDOMAIN_MAX_LEN = 253
+_K8S_QUALIFIED_NAME_MAX_LEN = 63
+_K8S_DNS1123_LABEL_FMT = r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?"
+_K8S_DNS1123_SUBDOMAIN_RE = re.compile(
+    rf"\A{_K8S_DNS1123_LABEL_FMT}(?:\.{_K8S_DNS1123_LABEL_FMT})*\Z"
+)
+_K8S_QUALIFIED_NAME_RE = re.compile(r"\A(?:[A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]\Z")
 
 
 class AutoscalingConfigProducer:
@@ -172,6 +182,89 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
     }
 
 
+def _is_k8s_qualified_name(value: str) -> bool:
+    """Return True iff `value` satisfies Kubernetes validation.IsQualifiedName."""
+    if not isinstance(value, str):
+        return False
+    parts = value.split("/")
+    if len(parts) == 1:
+        name = parts[0]
+    elif len(parts) == 2:
+        prefix, name = parts
+        if (
+            not prefix
+            or len(prefix) > _K8S_DNS1123_SUBDOMAIN_MAX_LEN
+            or not _K8S_DNS1123_SUBDOMAIN_RE.match(prefix)
+        ):
+            return False
+    else:
+        return False
+
+    return (
+        1 <= len(name) <= _K8S_QUALIFIED_NAME_MAX_LEN
+        and _K8S_QUALIFIED_NAME_RE.match(name) is not None
+    )
+
+
+def _parse_worker_group_label_refs(
+    group_spec: Dict[str, Any],
+) -> List[str]:
+    """Parse workerGroupSpecs[].labelRefs into delivered Ray label keys.
+
+    Validates Kubernetes qualified names (`validation.IsQualifiedName`) on both
+    the Kubernetes node label key and delivered Ray label key for KubeRay
+    `labelRefs` (`kuberay#5329`, `kuberay#5501`), skipping entries with
+    malformed syntax or duplicate delivered Ray label keys.
+
+    Args:
+        group_spec: Worker group specification dictionary from the RayCluster CR.
+
+    Returns:
+        The deduplicated list of delivered Ray label keys preserving
+        first-seen order.
+    """
+    raw_refs = group_spec.get("labelRefs")
+    if not isinstance(raw_refs, list):
+        return []
+
+    delivered_keys: List[str] = []
+    seen_delivered: Set[str] = set()
+
+    for ref in raw_refs:
+        if not isinstance(ref, dict):
+            continue
+        value_from = ref.get("valueFrom")
+        if not isinstance(value_from, dict):
+            continue
+        node_ref = value_from.get("nodeRef")
+        if not isinstance(node_ref, dict):
+            continue
+        field_path = node_ref.get("fieldPath")
+        if not isinstance(field_path, str):
+            continue
+        match = _NODE_LABEL_FIELD_PATH_RE.match(field_path)
+        if not match:
+            continue
+        node_label_key = match.group(1)
+        if not _is_k8s_qualified_name(node_label_key):
+            continue
+
+        raw_name = ref.get("name")
+        if raw_name is None or raw_name == "":
+            delivered_key = node_label_key
+        elif isinstance(raw_name, str) and _is_k8s_qualified_name(raw_name):
+            delivered_key = raw_name
+        else:
+            continue
+
+        if delivered_key in seen_delivered:
+            continue
+        seen_delivered.add(delivered_key)
+        delivered_keys.append(delivered_key)
+
+    return delivered_keys
+
+
 def _generate_available_node_types_from_ray_cr_spec(
     ray_cr_spec: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -191,7 +284,8 @@ def _generate_available_node_types_from_ray_cr_spec(
 
 
 def _node_type_from_group_spec(
-    group_spec: Dict[str, Any], is_head: bool
+    group_spec: Dict[str, Any],
+    is_head: bool,
 ) -> Dict[str, Any]:
     """Converts CR group spec to autoscaler node type."""
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
@@ -199,14 +293,25 @@ def _node_type_from_group_spec(
     if is_head:
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
+        num_of_hosts = 1
     else:
         # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
         # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
-        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
-        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
+        raw_num_hosts = group_spec.get("numOfHosts")
+        num_of_hosts = 1 if raw_num_hosts is None else max(0, int(raw_num_hosts))
+        min_workers = group_spec["minReplicas"] * num_of_hosts
+        max_workers = group_spec["maxReplicas"] * num_of_hosts
 
-    resources = _get_ray_resources_from_group_spec(group_spec, is_head)
-    labels = _get_labels_from_group_spec(group_spec, group_name, resources)
+    pod_scheduling_metadata = _get_pod_scheduling_metadata(group_spec)
+    resources = _get_ray_resources_from_group_spec(
+        group_spec, is_head, pod_scheduling_metadata=pod_scheduling_metadata
+    )
+    labels = _get_labels_from_group_spec(
+        group_spec,
+        group_name,
+        resources,
+        pod_scheduling_metadata=pod_scheduling_metadata,
+    )
 
     node_type = {
         "min_workers": min_workers,
@@ -217,6 +322,53 @@ def _node_type_from_group_spec(
         "resources": resources,
         "labels": labels,
     }
+
+    if not is_head:
+        node_selector, pod_annotations = pod_scheduling_metadata
+        delivered_label_ref_keys = _parse_worker_group_label_refs(group_spec)
+        replica_meta: Dict[str, Any] = {}
+        if num_of_hosts > 0:
+            for accelerator_manager in sorted(
+                get_all_accelerator_managers(), key=lambda m: m.__name__
+            ):
+                meta = accelerator_manager.get_node_group_replica_metadata(
+                    dict(resources),
+                    node_selector,
+                    pod_annotations,
+                    workers_per_replica=num_of_hosts,
+                    group_name=group_name,
+                )
+                if meta:
+                    replica_meta = dict(meta)
+                    if replica_meta.get("head_resources") is None:
+                        replica_meta.pop("head_resources", None)
+                    else:
+                        replica_meta["head_resources"] = list(
+                            replica_meta["head_resources"]
+                        )
+                    break
+
+            if replica_meta or num_of_hosts > 1:
+                node_type["replica_config"] = {
+                    **replica_meta,
+                    "workers_per_replica": num_of_hosts,
+                }
+
+        runtime_label_keys = list(
+            dict.fromkeys(
+                key
+                for key in chain(
+                    delivered_label_ref_keys,
+                    (
+                        replica_meta.get("domain_label_key"),
+                        replica_meta.get("worker_index_label_key"),
+                    ),
+                )
+                if isinstance(key, str) and key and key not in labels
+            )
+        )
+        if runtime_label_keys:
+            node_type["runtime_label_keys"] = runtime_label_keys
 
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
     if idle_timeout_s is not None:
@@ -443,7 +595,9 @@ def _get_pod_scheduling_metadata(
 
 
 def _get_ray_resources_from_group_spec(
-    group_spec: Dict[str, Any], is_head: bool
+    group_spec: Dict[str, Any],
+    is_head: bool,
+    pod_scheduling_metadata: Optional[Tuple[Dict[str, str], Dict[str, str]]] = None,
 ) -> Dict[str, int]:
     """Infers Ray resources from group `Resources` field, rayStartCommands, or K8s limits.
     The resources extracted are used in autoscaling calculations.
@@ -489,7 +643,11 @@ def _get_ray_resources_from_group_spec(
 
     resources.update(custom_resource_dict)
 
-    node_selector, annotations = _get_pod_scheduling_metadata(group_spec)
+    node_selector, annotations = (
+        pod_scheduling_metadata
+        if pod_scheduling_metadata is not None
+        else _get_pod_scheduling_metadata(group_spec)
+    )
     base_resources = dict(resources)
     derived_resource_owners: Dict[str, str] = {}
     for accelerator_manager in sorted(
@@ -522,6 +680,7 @@ def _get_labels_from_group_spec(
     group_spec: Dict[str, Any],
     group_name: str,
     resources: Dict[str, Any],
+    pod_scheduling_metadata: Optional[Tuple[Dict[str, str], Dict[str, str]]] = None,
 ) -> Dict[str, str]:
     """Parses Ray node labels for the autoscaling config based on the following
     priority:
@@ -534,6 +693,7 @@ def _get_labels_from_group_spec(
         group_spec: The group specification dictionary.
         group_name: The name of the group (used in warning messages).
         resources: Base Ray resources already parsed for the group.
+        pod_scheduling_metadata: Optional pre-parsed `(node_selector, annotations)`.
 
     Returns:
         A dictionary of labels for the node type.
@@ -567,7 +727,11 @@ def _get_labels_from_group_spec(
         # Validate node labels follow expected Kubernetes label syntax.
         validate_node_label_syntax(explicit_labels)
 
-    node_selector, annotations = _get_pod_scheduling_metadata(group_spec)
+    node_selector, annotations = (
+        pod_scheduling_metadata
+        if pod_scheduling_metadata is not None
+        else _get_pod_scheduling_metadata(group_spec)
+    )
     derived_labels: Dict[str, str] = {}
     derived_label_owners: Dict[str, str] = {}
     for accelerator_manager in sorted(

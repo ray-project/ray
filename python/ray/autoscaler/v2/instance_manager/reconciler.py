@@ -15,12 +15,14 @@ from ray.autoscaler.v2.instance_manager.common import (
     _UNALLOCATED_INSTANCE_STATUSES,
     InstanceUtil,
     _get_replica_key,
+    _get_worker_replica_id,
     _has_teardown_history,
     _MultiHostReplicaView,
 )
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
     InstanceReconcileConfig,
+    NodeTypeConfig,
     Provider,
 )
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
@@ -62,6 +64,7 @@ from ray.core.generated.instance_manager_pb2 import (
     TerminationRequest,
     UpdateInstanceManagerStateRequest,
 )
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -1638,6 +1641,82 @@ class Reconciler:
         return False
 
     @staticmethod
+    def _warn_on_runtime_label_mismatch(
+        im_instances: List[IMInstance],
+        ray_nodes_by_id: Dict[str, NodeState],
+        node_type_configs: Optional[Dict[NodeType, NodeTypeConfig]],
+        _logger: logging.Logger = logger,
+    ) -> None:
+        """Emit one-time warnings when a running or idle worker lacks expected labels.
+
+        Checks both static `labels` configured or derived on the node type and
+        declared `runtime_label_keys` (plus replica domain/worker-index keys).
+        Scheduling stays fail-open so transient or partial delivery does not
+        block unrelated workloads.
+        """
+        if not node_type_configs:
+            return
+        for im_instance in im_instances:
+            if (
+                im_instance.node_kind == NodeKind.HEAD
+                or im_instance.status != IMInstance.RAY_RUNNING
+                or not im_instance.node_id
+            ):
+                continue
+            ray_node = ray_nodes_by_id.get(im_instance.node_id)
+            if ray_node is None or ray_node.status not in (
+                NodeStatus.RUNNING,
+                NodeStatus.IDLE,
+            ):
+                continue
+            cfg = node_type_configs.get(im_instance.instance_type)
+            if cfg is None:
+                continue
+
+            node_labels = ray_node.labels
+            for key, expected_val in cfg.labels.items():
+                actual_val = node_labels.get(key)
+                if actual_val != expected_val:
+                    if log_once(
+                        f"autoscaler_static_label_mismatch_{cfg.name}_{key}_"
+                        f"{expected_val}_{actual_val}"
+                    ):
+                        _logger.warning(
+                            "Running worker %s of node type '%s' registered "
+                            "with label '%s'=%r, expected %r from pre-boot "
+                            "config. Check accelerator/pod labels or node "
+                            "pool topology configuration.",
+                            im_instance.node_id,
+                            cfg.name,
+                            key,
+                            actual_val,
+                            expected_val,
+                        )
+
+            expected_runtime_keys = dict.fromkeys(
+                k
+                for k in (
+                    *cfg.runtime_label_keys,
+                    cfg.domain_label_key,
+                    cfg.worker_index_label_key,
+                )
+                if k and k not in cfg.labels
+            )
+            for key in expected_runtime_keys:
+                if not node_labels.get(key):
+                    if log_once(f"autoscaler_missing_runtime_label_{cfg.name}_{key}"):
+                        _logger.warning(
+                            "Running worker %s of node type '%s' registered "
+                            "without expected runtime label '%s'. Locality "
+                            "or gang scheduling may not match this worker; "
+                            "verify KubeRay labelRefs / NodeLabelDelivery or "
+                            "accelerator runtime label injection.",
+                            im_instance.node_id,
+                            cfg.name,
+                            key,
+                        )
+
+    @staticmethod
     def _scale_cluster(
         autoscaling_state: AutoscalingState,
         instance_manager: InstanceManager,
@@ -1688,21 +1767,48 @@ class Reconciler:
             binary_to_hex(node.node_id): node for node in ray_state.node_states
         }
         cloud_instances = non_terminated_cloud_instances or {}
+        node_type_configs = autoscaling_config.get_node_type_configs()
+        Reconciler._warn_on_runtime_label_mismatch(
+            im_instances=im_instances,
+            ray_nodes_by_id=ray_nodes_by_id,
+            node_type_configs=node_type_configs,
+            _logger=_logger,
+        )
 
         for im_instance in im_instances:
             ray_node = ray_nodes_by_id.get(im_instance.node_id)
+            cid = im_instance.cloud_instance_id or None
+            cloud_instance = cloud_instances.get(cid) if cid else None
+            cloud_instance_replica_id = _get_worker_replica_id(
+                im_instance, cloud_instance
+            )
             autoscaler_instances.append(
                 AutoscalerInstance(
                     ray_node=ray_node,
                     im_instance=im_instance,
-                    cloud_instance_id=im_instance.cloud_instance_id or None,
+                    cloud_instance_id=cid,
+                    cloud_instance_replica_id=cloud_instance_replica_id,
                 )
             )
+
+        if replica_sizes is None:
+            replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
+        pre_view = (
+            (
+                view_cache.get(im_instances, version)
+                if view_cache is not None
+                else _MultiHostReplicaView.build(
+                    im_instances, cloud_instances, replica_sizes
+                )
+            )
+            if replica_sizes
+            else None
+        )
 
         # TODO(rickyx): We should probably name it as "Planner" or "Scaler"
         # or "ClusterScaler"
         sched_request = SchedulingRequest(
-            node_type_configs=autoscaling_config.get_node_type_configs(),
+            node_type_configs=node_type_configs,
             max_num_nodes=autoscaling_config.get_max_num_nodes(),
             resource_requests=ray_state.pending_resource_requests,
             gang_resource_requests=ray_state.pending_gang_resource_requests,
@@ -1719,6 +1825,7 @@ class Reconciler:
             recoverable_resource_availabilities=(
                 cloud_resource_monitor.get_recoverable_resource_availabilities()
             ),
+            replica_view=pre_view,
         )
 
         if isinstance(cloud_provider, KubeRayProvider):
@@ -1753,19 +1860,6 @@ class Reconciler:
 
         # Scale the clusters if needed.
         to_launch = reply.to_launch
-        if replica_sizes is None:
-            replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
-        pre_view = (
-            (
-                view_cache.get(im_instances, version)
-                if view_cache is not None
-                else _MultiHostReplicaView.build(
-                    im_instances, cloud_instances, replica_sizes
-                )
-            )
-            if replica_sizes
-            else None
-        )
         to_terminate = Reconciler._filter_partial_replica_terminations(
             to_terminate=reply.to_terminate,
             im_instances=im_instances,

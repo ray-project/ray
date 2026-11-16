@@ -35,6 +35,7 @@ GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
 GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
 GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
 GKE_TPU_SLICE_TOPOLOGY_ANNOTATION = "cloud.google.com/gke-tpu-slice-topology"
+GKE_TPU_SKIP_WEBHOOK_CHECK_ANNOTATION = "cloud.google.com/skip-tpu-webhook-check"
 GKE_TPU_ACCELERATOR_TO_GENERATION = {
     "tpu-v4-podslice": "v4",
     "tpu-v5-lite-device": "v5litepod",
@@ -826,6 +827,35 @@ def _get_str_from_mapping(mapping: Any, key: str, strip: bool = False) -> str:
     return val.strip() if strip else val
 
 
+_TPU_HEAD_RESOURCE_PREFIX = "TPU-"
+_TPU_HEAD_RESOURCE_SUFFIX = "-head"
+
+
+def _is_positive_number(val: Any) -> bool:
+    """Return True if val is a finite positive non-boolean int or float."""
+    return (
+        not isinstance(val, bool)
+        and isinstance(val, (int, float))
+        and (isinstance(val, int) or math.isfinite(val))
+        and val > 0
+    )
+
+
+def _is_tpu_head_resource_key(key: Any) -> bool:
+    """Return True if key has the form ``TPU-<pod_type>-head`` with a non-empty,
+    whitespace-free pod type segment.
+    """
+    if (
+        not isinstance(key, str)
+        or not key.startswith(_TPU_HEAD_RESOURCE_PREFIX)
+        or not key.endswith(_TPU_HEAD_RESOURCE_SUFFIX)
+        or len(key) <= len(_TPU_HEAD_RESOURCE_PREFIX) + len(_TPU_HEAD_RESOURCE_SUFFIX)
+    ):
+        return False
+    pod_type = key[len(_TPU_HEAD_RESOURCE_PREFIX) : -len(_TPU_HEAD_RESOURCE_SUFFIX)]
+    return not any(ch.isspace() for ch in pod_type)
+
+
 def _resolve_gke_tpu_node_group(
     resources: Dict[str, Any],
     node_selector: Dict[str, str],
@@ -839,12 +869,7 @@ def _resolve_gke_tpu_node_group(
     (`cloud.google.com/gke-tpu-slice-topology` on pod annotations).
     """
     tpu_val = resources.get("TPU", 0) if isinstance(resources, dict) else 0
-    if not (
-        isinstance(tpu_val, (int, float))
-        and not isinstance(tpu_val, bool)
-        and math.isfinite(tpu_val)
-        and tpu_val > 0
-    ):
+    if not _is_positive_number(tpu_val):
         return None
 
     accelerator = _get_str_from_mapping(node_selector, GKE_TPU_ACCELERATOR_LABEL)
@@ -1414,3 +1439,91 @@ class TPUAcceleratorManager(AcceleratorManager):
             return None
         _, _, pod_type = resolved
         return {f"TPU-{pod_type}-head": 1}
+
+    @staticmethod
+    def get_node_group_replica_metadata(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+        workers_per_replica: Optional[int] = None,
+        group_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Derive TPU slice domain, worker index, and worker-0 head resource
+        metadata for a GKE TPU node group.
+
+        Args:
+            resources: Base Ray resources already parsed for the node group.
+            node_selector: Required pod node labels.
+            annotations: Optional pod metadata annotations dictionary.
+            workers_per_replica: Optional number of workers per replica
+                configured on the node group. When provided, logs a one-time
+                warning if `workers_per_replica * resources["TPU"]` does not
+                match the topology chip (or core) count, while keeping the
+                configured replica size authoritative.
+            group_name: Optional node group name for diagnostics.
+
+        Returns:
+            A dictionary of TPU replica metadata keys, or None if not a GKE
+            TPU node group.
+        """
+        resolved = _resolve_gke_tpu_node_group(
+            resources, node_selector, annotations, group_name=group_name
+        )
+        if not resolved:
+            return None
+        generation, topology, pod_type = resolved
+
+        skip_check = (
+            isinstance(annotations, dict)
+            and isinstance(annotations.get(GKE_TPU_SKIP_WEBHOOK_CHECK_ANNOTATION), str)
+            and annotations[GKE_TPU_SKIP_WEBHOOK_CHECK_ANNOTATION].strip().lower()
+            == "true"
+        )
+        if (
+            not skip_check
+            and workers_per_replica is not None
+            and not isinstance(workers_per_replica, bool)
+            and workers_per_replica > 0
+        ):
+            tpu_val = resources["TPU"]
+            tpu_per_host = int(tpu_val) if int(tpu_val) == tpu_val else None
+            if tpu_per_host is not None:
+                total_chips = get_num_chips_from_topology(topology)
+                cores_per_chip = get_tpu_cores_per_chip(generation)
+                total_tpus = tpu_per_host * workers_per_replica
+                if (
+                    total_tpus != total_chips
+                    and total_tpus != total_chips * cores_per_chip
+                ):
+                    if log_once(
+                        f"tpu_topology_workers_mismatch_{generation}_{topology}_"
+                        f"{tpu_per_host}_{workers_per_replica}"
+                    ):
+                        logger.warning(
+                            "TPU node group specifies topology '%s' (%d chips for %s) "
+                            "with %d TPU per worker and workers_per_replica=%d "
+                            "(total %d). Keeping workers_per_replica=%d; verify "
+                            "numOfHosts and TPU topology match.",
+                            topology,
+                            total_chips,
+                            generation,
+                            tpu_per_host,
+                            workers_per_replica,
+                            total_tpus,
+                            workers_per_replica,
+                        )
+
+        derived_head = f"TPU-{pod_type}-head"
+        head_resources = {
+            key
+            for key, val in resources.items()
+            if _is_tpu_head_resource_key(key) and _is_positive_number(val)
+        }
+        if derived_head not in resources:
+            head_resources.add(derived_head)
+        return {
+            "domain_label_key": ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY,
+            "domain_exclusive": True,
+            "worker_index_label_key": ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY,
+            "head_resources": sorted(head_resources),
+        }

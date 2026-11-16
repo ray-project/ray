@@ -7234,7 +7234,13 @@ class TestReconcilerMultiHost:
             ]
         )
         scheduler = MagicMock()
-        scheduler.schedule.return_value = SchedulingReply()
+        seen_views = []
+
+        def _capture_steady_schedule(req):
+            seen_views.append(req.replica_view)
+            return SchedulingReply()
+
+        scheduler.schedule.side_effect = _capture_steady_schedule
         monitor = CloudResourceMonitor()
 
         call_count = 0
@@ -7260,6 +7266,9 @@ class TestReconcilerMultiHost:
                 cloud_resource_monitor=monitor,
             )
             assert call_count == 1
+            assert len(seen_views) == 1
+            assert seen_views[0] is not None
+            scheduler.schedule.side_effect = None
 
             # Scale-up tick (no terminations): 1 build pre-scale (shared by
             # provider step, _scale_cluster, and launch-cap) + 1 build post-scale
@@ -10151,6 +10160,631 @@ class TestReconcilerMultiHost:
             im_r2, cfg_r2, scheduler=sched, cloud_provider=prov_r2, ray_state=head_r2
         )
         assert cr_r2["spec"]["workerGroupSpecs"][0]["replicas"] == 2
+
+
+    def test_scale_cluster_forwards_cloud_instance_replica_id(self):
+        """Reconciler._scale_cluster forwards CloudInstance.replica_id in memory
+        onto AutoscalerInstance.cloud_instance_replica_id and normalizes empty
+        strings and missing entries to None.
+        """
+        captured_requests = []
+        forbidden_proto_accesses = []
+
+        class _ZeroProtoInstanceProxy:
+            """Strict proxy exposing only upstream Instance proto fields.
+
+            Local generated pb2 bindings in this worktree may still expose
+            stale fields removed from src/ray/protobuf/instance_manager.proto.
+            Blocking cloud_instance_replica_id guarantees local pytest fails
+            if _scale_cluster reads im_instance.cloud_instance_replica_id
+            directly or via getattr(..., default).
+            """
+
+            def __init__(self, wrapped):
+                self._wrapped = wrapped
+
+            def __getattr__(self, name):
+                if name == "cloud_instance_replica_id":
+                    forbidden_proto_accesses.append(name)
+                    raise AttributeError(
+                        "Instance proto has no 'cloud_instance_replica_id' field"
+                    )
+                return getattr(self._wrapped, name)
+
+        class _ZeroProtoInstanceManagerProxy:
+            def __init__(self, wrapped):
+                self._wrapped = wrapped
+
+            def get_instance_manager_state(self, request=None):
+                reply = self._wrapped.get_instance_manager_state(request=request)
+                proxied_state = MagicMock(
+                    instances=[
+                        _ZeroProtoInstanceProxy(inst) for inst in reply.state.instances
+                    ],
+                    version=reply.state.version,
+                )
+                return MagicMock(status=reply.status, state=proxied_state)
+
+        class SpyScheduler(IResourceScheduler):
+            def schedule(self, request):
+                captured_requests.append(request)
+                return SchedulingReply()
+
+        store = InstanceStorage(
+            cluster_id="test",
+            storage=InMemoryStorage(),
+        )
+        im = InstanceManager(
+            instance_storage=store,
+            instance_status_update_subscribers=[],
+        )
+        im_proxy = _ZeroProtoInstanceManagerProxy(im)
+        run_node_id = b"r" * 28
+        run_node_hex = binary_to_hex(run_node_id)
+        instances = [
+            create_instance(
+                "i-rep",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-rep",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-rep-run",
+                status=Instance.RAY_RUNNING,
+                cloud_instance_id="c-rep-run",
+                ray_node_id=run_node_hex,
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-norep",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-norep",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-emptyrep",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-emptyrep",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-missing",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-missing",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-requested",
+                status=Instance.REQUESTED,
+                cloud_instance_id="",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-foreign-nt",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-foreign-nt",
+                instance_type="tpu",
+            ),
+            create_instance(
+                "i-head-cloud",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-head-cloud",
+                instance_type="tpu",
+            ),
+        ]
+        for inst in instances:
+            ok, _ = store.upsert_instance(inst)
+            assert ok
+
+        cloud_instances = {
+            "c-rep": CloudInstance(
+                "c-rep", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+            ),
+            "c-rep-run": CloudInstance(
+                "c-rep-run", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
+            ),
+            "c-norep": CloudInstance(
+                "c-norep", "tpu", NodeKind.WORKER, True, replica_id=None
+            ),
+            "c-emptyrep": CloudInstance(
+                "c-emptyrep", "tpu", NodeKind.WORKER, True, replica_id=""
+            ),
+            "c-foreign-nt": CloudInstance(
+                "c-foreign-nt", "other-type", NodeKind.WORKER, True, replica_id="rep-x"
+            ),
+            "c-head-cloud": CloudInstance(
+                "c-head-cloud", "tpu", NodeKind.HEAD, True, replica_id="rep-head"
+            ),
+            "": CloudInstance("", "tpu", NodeKind.WORKER, True, replica_id="bogus"),
+        }
+        cfg = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                        resources={"CPU": 4},
+                    )
+                },
+                "disable_launch_config_check": True,
+            }
+        )
+        ray_state = ClusterResourceState(
+            node_states=[NodeState(node_id=run_node_id, status=NodeStatus.RUNNING)]
+        )
+
+        # Pass 1: populated cloud_instances map.
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im_proxy,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ray_state,
+            scheduler=SpyScheduler(),
+            autoscaling_config=cfg,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=cloud_instances,
+        )
+        assert len(captured_requests) == 1
+        by_id = {
+            inst.im_instance.instance_id: inst
+            for inst in captured_requests[0].current_instances
+        }
+        assert by_id["i-rep"].cloud_instance_id == "c-rep"
+        assert by_id["i-rep"].cloud_instance_replica_id == "rep-0"
+        assert by_id["i-rep-run"].cloud_instance_id == "c-rep-run"
+        assert by_id["i-rep-run"].cloud_instance_replica_id == "rep-1"
+        assert by_id["i-rep-run"].ray_node is not None
+        assert by_id["i-norep"].cloud_instance_id == "c-norep"
+        assert by_id["i-norep"].cloud_instance_replica_id is None
+        assert by_id["i-emptyrep"].cloud_instance_id == "c-emptyrep"
+        assert by_id["i-emptyrep"].cloud_instance_replica_id is None
+        assert by_id["i-missing"].cloud_instance_id == "c-missing"
+        assert by_id["i-missing"].cloud_instance_replica_id is None
+        assert by_id["i-requested"].cloud_instance_id is None
+        assert by_id["i-requested"].cloud_instance_replica_id is None
+        assert by_id["i-foreign-nt"].cloud_instance_id == "c-foreign-nt"
+        assert by_id["i-foreign-nt"].cloud_instance_replica_id is None
+        assert by_id["i-head-cloud"].cloud_instance_id == "c-head-cloud"
+        assert by_id["i-head-cloud"].cloud_instance_replica_id is None
+        assert not forbidden_proto_accesses
+
+        # Pass 2: non_terminated_cloud_instances=None produces None everywhere.
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im_proxy,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ray_state,
+            scheduler=SpyScheduler(),
+            autoscaling_config=cfg,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=None,
+        )
+        assert len(captured_requests) == 2
+        assert len(captured_requests[1].current_instances) == 8
+        assert all(
+            inst.cloud_instance_replica_id is None
+            for inst in captured_requests[1].current_instances
+        )
+        assert not forbidden_proto_accesses
+        # Self-verify that the zero-proto proxy actually rejects the field.
+        with pytest.raises(AttributeError):
+            _ = by_id["i-rep"].im_instance.cloud_instance_replica_id
+        assert forbidden_proto_accesses == ["cloud_instance_replica_id"]
+
+    def test_warn_on_runtime_label_mismatch(self):
+        """Verify _warn_on_runtime_label_mismatch emits one-time warnings for
+        missing/mismatched static pre-boot labels and missing/empty
+        runtime_label_keys (including replica domain/worker-index keys) on both
+        RUNNING and IDLE workers, across direct calls and full Reconciler.reconcile,
+        without warning on clean workers, head nodes, or DEAD/DRAINING/UNSPECIFIED
+        and non-running instances."""
+        from ray.util.debug import reset_log_once
+
+        reset_log_once()
+        try:
+            node_type_configs = {
+                "head": NodeTypeConfig(
+                    name="head",
+                    resources={"CPU": 4},
+                    min_worker_nodes=0,
+                    max_worker_nodes=0,
+                    labels={"expected-head": "yes"},
+                ),
+                "tpu": NodeTypeConfig(
+                    name="tpu",
+                    resources={"CPU": 4, "TPU": 4},
+                    min_worker_nodes=0,
+                    max_worker_nodes=4,
+                    labels={
+                        "ray.io/accelerator-type": "TPU-V6E",
+                        "ray.io/tpu-topology": "2x4",
+                    },
+                    runtime_label_keys=("nvidia.com/custom-key",),
+                    replica_config=WorkerReplicaConfig(
+                        workers_per_replica=2,
+                        domain_label_key="ray.io/tpu-slice-name",
+                        domain_exclusive=True,
+                        worker_index_label_key="ray.io/tpu-worker-id",
+                    ),
+                ),
+            }
+
+            head_id = b"0" * 28
+            clean_id = b"1" * 28
+            bad_id = b"2" * 28
+            booting_id = b"3" * 28
+            dead_id = b"4" * 28
+            clean_idle_id = b"5" * 28
+            bad_idle_id = b"6" * 28
+            draining_id = b"7" * 28
+            unspecified_id = b"8" * 28
+            reconcile_idle_id = b"9" * 28
+
+            clean_labels = {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "nvidia.com/custom-key": "val",
+                "ray.io/tpu-slice-name": "slice-0",
+                "ray.io/tpu-worker-id": "0",
+            }
+
+            # 1. Clean RUNNING/IDLE workers, head missing labels, booting and
+            # DEAD/DRAINING/UNSPECIFIED workers: 0 warnings.
+            mock_logger = MagicMock()
+            Reconciler._warn_on_runtime_label_mismatch(
+                im_instances=[
+                    create_instance(
+                        "head",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="head",
+                        node_kind=NodeKind.HEAD,
+                        ray_node_id=binary_to_hex(head_id),
+                    ),
+                    create_instance(
+                        "clean-w",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        ray_node_id=binary_to_hex(clean_id),
+                    ),
+                    create_instance(
+                        "clean-idle-w",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        ray_node_id=binary_to_hex(clean_idle_id),
+                    ),
+                    create_instance(
+                        "boot-w",
+                        status=Instance.ALLOCATED,
+                        instance_type="tpu",
+                        ray_node_id=binary_to_hex(booting_id),
+                    ),
+                    create_instance(
+                        "dead-w",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        ray_node_id=binary_to_hex(dead_id),
+                    ),
+                    create_instance(
+                        "draining-w",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        ray_node_id=binary_to_hex(draining_id),
+                    ),
+                    create_instance(
+                        "unspecified-w",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        ray_node_id=binary_to_hex(unspecified_id),
+                    ),
+                ],
+                ray_nodes_by_id={
+                    binary_to_hex(head_id): NodeState(
+                        node_id=head_id, status=NodeStatus.RUNNING, labels={}
+                    ),
+                    binary_to_hex(clean_id): NodeState(
+                        node_id=clean_id,
+                        status=NodeStatus.RUNNING,
+                        labels=dict(clean_labels),
+                    ),
+                    binary_to_hex(clean_idle_id): NodeState(
+                        node_id=clean_idle_id,
+                        status=NodeStatus.IDLE,
+                        labels=dict(clean_labels),
+                    ),
+                    binary_to_hex(booting_id): NodeState(
+                        node_id=booting_id, status=NodeStatus.RUNNING, labels={}
+                    ),
+                    binary_to_hex(dead_id): NodeState(
+                        node_id=dead_id, status=NodeStatus.DEAD, labels={}
+                    ),
+                    binary_to_hex(draining_id): NodeState(
+                        node_id=draining_id, status=NodeStatus.DRAINING, labels={}
+                    ),
+                    binary_to_hex(unspecified_id): NodeState(
+                        node_id=unspecified_id,
+                        status=NodeStatus.UNSPECIFIED,
+                        labels={},
+                    ),
+                },
+                node_type_configs=node_type_configs,
+                _logger=mock_logger,
+            )
+            mock_logger.warning.assert_not_called()
+
+            # Empty/None node_type_configs is a clean no-op.
+            Reconciler._warn_on_runtime_label_mismatch(
+                im_instances=[
+                    create_instance(
+                        "bad-w",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        ray_node_id=binary_to_hex(bad_id),
+                    )
+                ],
+                ray_nodes_by_id={
+                    binary_to_hex(bad_id): NodeState(
+                        node_id=bad_id, status=NodeStatus.IDLE, labels={}
+                    )
+                },
+                node_type_configs=None,
+                _logger=mock_logger,
+            )
+            mock_logger.warning.assert_not_called()
+
+            # 2. Running worker with mismatched static topology + missing runtime keys
+            # emits one warning per key and deduplicates across subsequent ticks.
+            bad_instances = [
+                create_instance(
+                    "bad-w",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    ray_node_id=binary_to_hex(bad_id),
+                )
+            ]
+            bad_nodes = {
+                binary_to_hex(bad_id): NodeState(
+                    node_id=bad_id,
+                    status=NodeStatus.RUNNING,
+                    labels={
+                        "ray.io/accelerator-type": "TPU-V6E",
+                        "ray.io/tpu-topology": "4x4",  # mismatch vs pre-boot 2x4
+                        "ray.io/tpu-worker-id": "0",
+                        # missing nvidia.com/custom-key and ray.io/tpu-slice-name
+                    },
+                )
+            }
+            Reconciler._warn_on_runtime_label_mismatch(
+                im_instances=bad_instances,
+                ray_nodes_by_id=bad_nodes,
+                node_type_configs=node_type_configs,
+                _logger=mock_logger,
+            )
+            assert mock_logger.warning.call_count == 3
+            rendered = [
+                call.args[0] % call.args[1:]
+                for call in mock_logger.warning.call_args_list
+            ]
+            assert any(
+                "ray.io/tpu-topology" in msg and "'4x4'" in msg for msg in rendered
+            )
+            assert any("nvidia.com/custom-key" in msg for msg in rendered)
+            assert any("ray.io/tpu-slice-name" in msg for msg in rendered)
+
+            # Second call stays silent via log_once.
+            Reconciler._warn_on_runtime_label_mismatch(
+                im_instances=bad_instances,
+                ray_nodes_by_id=bad_nodes,
+                node_type_configs=node_type_configs,
+                _logger=mock_logger,
+            )
+            assert mock_logger.warning.call_count == 3
+
+            # 3. IDLE worker (live GCS worker with idle_duration_ms > 0) with
+            # missing/mismatched static labels + missing/empty runtime labels emits
+            # warnings and deduplicates, while DEAD/DRAINING/UNSPECIFIED workers
+            # ahead of it stay skipped.
+            reset_log_once()
+            idle_logger = MagicMock()
+            bad_idle_hex = binary_to_hex(bad_idle_id)
+            dead_hex = binary_to_hex(dead_id)
+            draining_hex = binary_to_hex(draining_id)
+            unspecified_hex = binary_to_hex(unspecified_id)
+            idle_and_nonlive_instances = [
+                create_instance(
+                    "dead-w",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    ray_node_id=dead_hex,
+                ),
+                create_instance(
+                    "draining-w",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    ray_node_id=draining_hex,
+                ),
+                create_instance(
+                    "unspecified-w",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    ray_node_id=unspecified_hex,
+                ),
+                create_instance(
+                    "bad-idle-w",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    ray_node_id=bad_idle_hex,
+                ),
+            ]
+            idle_and_nonlive_nodes = {
+                dead_hex: NodeState(node_id=dead_id, status=NodeStatus.DEAD, labels={}),
+                draining_hex: NodeState(
+                    node_id=draining_id, status=NodeStatus.DRAINING, labels={}
+                ),
+                unspecified_hex: NodeState(
+                    node_id=unspecified_id, status=NodeStatus.UNSPECIFIED, labels={}
+                ),
+                bad_idle_hex: NodeState(
+                    node_id=bad_idle_id,
+                    status=NodeStatus.IDLE,
+                    idle_duration_ms=5000,
+                    labels={
+                        # missing ray.io/accelerator-type (None vs TPU-V6E)
+                        "ray.io/tpu-topology": "4x4",  # mismatch vs pre-boot 2x4
+                        "ray.io/tpu-worker-id": "",  # empty runtime label
+                        # missing nvidia.com/custom-key and ray.io/tpu-slice-name
+                    },
+                ),
+            }
+            Reconciler._warn_on_runtime_label_mismatch(
+                im_instances=idle_and_nonlive_instances,
+                ray_nodes_by_id=idle_and_nonlive_nodes,
+                node_type_configs=node_type_configs,
+                _logger=idle_logger,
+            )
+            assert idle_logger.warning.call_count == 5
+            idle_rendered = [
+                call.args[0] % call.args[1:]
+                for call in idle_logger.warning.call_args_list
+            ]
+            assert all(bad_idle_hex in msg for msg in idle_rendered)
+            assert not any(
+                nid in msg
+                for msg in idle_rendered
+                for nid in (dead_hex, draining_hex, unspecified_hex)
+            )
+            assert any(
+                "ray.io/accelerator-type" in msg and "None" in msg
+                for msg in idle_rendered
+            )
+            assert any(
+                "ray.io/tpu-topology" in msg and "'4x4'" in msg for msg in idle_rendered
+            )
+            assert any("nvidia.com/custom-key" in msg for msg in idle_rendered)
+            assert any("ray.io/tpu-slice-name" in msg for msg in idle_rendered)
+            assert any("ray.io/tpu-worker-id" in msg for msg in idle_rendered)
+
+            # Second call stays silent via log_once.
+            Reconciler._warn_on_runtime_label_mismatch(
+                im_instances=idle_and_nonlive_instances,
+                ray_nodes_by_id=idle_and_nonlive_nodes,
+                node_type_configs=node_type_configs,
+                _logger=idle_logger,
+            )
+            assert idle_logger.warning.call_count == 5
+
+            # 4. End-to-end Reconciler.reconcile seam: an ALLOCATED worker joins
+            # GCS as NodeStatus.IDLE (idle_duration_ms > 0), transitions to
+            # RAY_RUNNING in _sync_from, and emits label-drift warnings in
+            # _step_next -> _scale_cluster -> _warn_on_runtime_label_mismatch.
+            reset_log_once()
+            reconcile_logger = MagicMock()
+            reconcile_idle_hex = binary_to_hex(reconcile_idle_id)
+            cfg = MockAutoscalingConfig(
+                configs={
+                    "max_num_nodes": 5,
+                    "node_type_configs": node_type_configs,
+                }
+            )
+            store = InstanceStorage(
+                cluster_id="idle_label_warn_seam", storage=InMemoryStorage()
+            )
+            im = InstanceManager(store, instance_status_update_subscribers=[])
+            self._add_instances(
+                store,
+                [
+                    create_instance(
+                        "head",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="head",
+                        node_kind=NodeKind.HEAD,
+                        cloud_instance_id="head-pod",
+                        ray_node_id=binary_to_hex(head_id),
+                    ),
+                    create_instance(
+                        "idle-w",
+                        status=Instance.ALLOCATED,
+                        instance_type="tpu",
+                        cloud_instance_id="tpu-pod-0",
+                    ),
+                ],
+            )
+            cloud_instances = {
+                "head-pod": CloudInstance("head-pod", "head", NodeKind.HEAD, True),
+                "tpu-pod-0": CloudInstance(
+                    "tpu-pod-0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+            }
+            ray_state = ClusterResourceState(
+                node_states=[
+                    NodeState(
+                        node_id=head_id,
+                        instance_id="head-pod",
+                        status=NodeStatus.RUNNING,
+                    ),
+                    NodeState(
+                        node_id=reconcile_idle_id,
+                        instance_id="tpu-pod-0",
+                        status=NodeStatus.IDLE,
+                        idle_duration_ms=5000,
+                        labels={
+                            "ray.io/accelerator-type": "TPU-V6E",
+                            "ray.io/tpu-topology": "4x4",
+                            "ray.io/tpu-worker-id": "0",
+                        },
+                    ),
+                ]
+            )
+            provider = MagicMock()
+            provider.poll_errors.return_value = []
+            provider.get_node_types_with_pending_deletes.return_value = set()
+            scheduler = MagicMock()
+            scheduler.schedule.return_value = SchedulingReply()
+
+            Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=scheduler,
+                cloud_provider=provider,
+                ray_cluster_resource_state=ray_state,
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+
+            instances_after, _ = store.get_instances()
+            assert instances_after["idle-w"].status == Instance.RAY_RUNNING
+            assert instances_after["idle-w"].node_id == reconcile_idle_hex
+            assert reconcile_logger.warning.call_count == 3
+            seam_rendered = [
+                call.args[0] % call.args[1:]
+                for call in reconcile_logger.warning.call_args_list
+            ]
+            assert all(reconcile_idle_hex in msg for msg in seam_rendered)
+            assert any(
+                "ray.io/tpu-topology" in msg and "'4x4'" in msg for msg in seam_rendered
+            )
+            assert any("nvidia.com/custom-key" in msg for msg in seam_rendered)
+            assert any("ray.io/tpu-slice-name" in msg for msg in seam_rendered)
+
+            # Second reconcile tick deduplicates via log_once.
+            Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=scheduler,
+                cloud_provider=provider,
+                ray_cluster_resource_state=ray_state,
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            assert reconcile_logger.warning.call_count == 3
+        finally:
+            reset_log_once()
 
 
 if __name__ == "__main__":
