@@ -20,6 +20,9 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.ingress.router_health import (
+    _get_min_replicas_from_llm_config,
+)
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
@@ -140,6 +143,7 @@ def _build_openai_ingress_request_router(
         base_model_id=(
             llm_config.model_id if llm_config.lora_config is not None else None
         ),
+        enable_routing_health_check=_get_min_replicas_from_llm_config(llm_config) != 0,
     )
 
 

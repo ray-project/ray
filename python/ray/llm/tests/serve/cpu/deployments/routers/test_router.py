@@ -74,6 +74,7 @@ def _new_direct_router(handle=None):
     router._tokenizer = None
     router._llm_config = None
     router._base_model_id = None
+    router._enable_routing_health_check = True
     return router
 
 
@@ -141,40 +142,34 @@ def create_oai_client(llm_config: LLMConfig):
 
 class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("live", [False, True])
     @pytest.mark.parametrize(
         "error", [None, ValueError("broken routing"), RuntimeError("broken routing")]
     )
-    async def test_health_checks_live_routing(self, live, error):
+    async def test_health_checks_routing(self, error):
         router = _new_direct_router()
         router._llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-model")
-        )
-        router._handle._router._asyncio_router._request_router.curr_replicas = (
-            {"replica": object()} if live else {}
         )
         router._pick_replica = AsyncMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica", None),
             side_effect=error,
         )
 
-        if live and error is not None:
+        if error is not None:
             with pytest.raises(HTTPException):
                 await router.check_health()
         else:
             await router.check_health()
 
-        if live:
-            assert (
-                router._pick_replica.await_args.kwargs["routing_payload"].prompt
-                == "health check"
-            )
-            assert (
-                router._pick_replica.await_args.kwargs["routing_payload"].model
-                == "test-model"
-            )
-        else:
-            router._pick_replica.assert_not_awaited()
+        router._pick_replica.assert_awaited_once()
+        assert (
+            router._pick_replica.await_args.kwargs["routing_payload"].prompt
+            == "health check"
+        )
+        assert (
+            router._pick_replica.await_args.kwargs["routing_payload"].model
+            == "test-model"
+        )
 
     @pytest.mark.asyncio
     async def test_health_routing_timeout(self, monkeypatch):
@@ -191,11 +186,25 @@ class TestDirectStreamingLLMRouter:
             await router.check_health()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("initialized", [False, True])
-    async def test_health_before_replicas_are_known(self, initialized):
+    async def test_health_waits_for_first_running_replica(self):
         router = _new_direct_router()
-        router._handle.is_initialized = initialized
-        router._handle._router._asyncio_router._request_router = None
+        router._handle.running_replicas_populated.return_value = False
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
+        )
+
+        await router.check_health()
+        router._pick_replica.assert_not_awaited()
+
+        router._handle.running_replicas_populated.return_value = True
+        await router.check_health()
+        router._pick_replica.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_health_routing_disabled(self):
+        router = _new_direct_router()
+        router._enable_routing_health_check = False
+        router._handle.running_replicas_populated.return_value = True
         router._pick_replica = AsyncMock()
 
         await router.check_health()
@@ -216,20 +225,6 @@ class TestDirectStreamingLLMRouter:
             "request_path": "/v1/completions"
         }
         assert router._pick_replica.await_args.kwargs["request_token_ids"] == []
-
-    @pytest.mark.asyncio
-    async def test_health_tolerates_scale_down_during_probe(self):
-        router = _new_direct_router()
-
-        async def scale_down(**kwargs):
-            router._handle._router._asyncio_router._request_router.curr_replicas = {}
-            raise RuntimeError("model scaled down")
-
-        router._pick_replica = AsyncMock(side_effect=scale_down)
-
-        await router.check_health()
-
-        router._pick_replica.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_route_parses_body_into_routing_payload(self):

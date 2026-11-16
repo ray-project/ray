@@ -390,8 +390,9 @@ class TestBuildOpenaiApp:
         assert autoscaling_config is not None
         assert autoscaling_config.target_ongoing_requests == user_target
 
+    @pytest.mark.parametrize("min_replicas", [0, 1])
     def test_direct_streaming_builds_ingress_with_router_attached(
-        self, llm_config, disable_placement_bundles, monkeypatch
+        self, llm_config, disable_placement_bundles, monkeypatch, min_replicas
     ):
         monkeypatch.setattr(
             "ray.llm._internal.serve.core.ingress.builder."
@@ -399,6 +400,9 @@ class TestBuildOpenaiApp:
             True,
         )
 
+        llm_config.deployment_config["autoscaling_config"] = {
+            "min_replicas": min_replicas
+        }
         app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
         ingress_request_router = app._ingress_request_router
 
@@ -407,6 +411,9 @@ class TestBuildOpenaiApp:
         assert ingress_request_router is not None
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
         assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+        assert ingress_request_router._bound_deployment.init_kwargs[
+            "enable_routing_health_check"
+        ] == (min_replicas > 0)
 
         # `RequestRouterConfig._serialize_request_router_cls` normalizes the
         # class to its import path at config-build time.

@@ -66,14 +66,13 @@ class FakeHandle:
         # Raised by the pick-only (`_reserve=False`) path only.
         self.pick_only_error: Optional[Exception] = None
         self.delay_s = 0.0
-        self._router = SimpleNamespace(
-            _asyncio_router=SimpleNamespace(
-                _request_router=SimpleNamespace(curr_replicas={self.replica_id: self})
-            )
-        )
+        self.replicas_populated = True
 
     def _init(self):
         self.initialized = True
+
+    def running_replicas_populated(self):
+        return self.replicas_populated
 
     @property
     def is_initialized(self):
@@ -185,26 +184,38 @@ async def _chat(router, body, headers=None):
 
 class TestHealth:
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("live", [False, True])
+    async def test_skips_scale_to_zero_models(self):
+        configs = _llm_configs()
+        configs[0].deployment_config["autoscaling_config"] = {"min_replicas": 0}
+        router = _new(RouterApplication, MODEL_APPS, configs)
+        try:
+            handle = await router._handles["model-a"]
+            other_handle = await router._handles["org/model-b"]
+
+            await router.check_health()
+
+            assert not handle.calls
+            assert other_handle.calls
+        finally:
+            _cancel_handle_tasks(router)
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "error", [None, ValueError("broken routing"), RuntimeError("broken routing")]
     )
-    async def test_probes_only_live_models(self, live, error):
+    async def test_probes_resolved_models(self, error):
         router, _, patcher = _new_router()
         try:
             handle = await router._handles["model-a"]
             other_handle = await router._handles["org/model-b"]
             handle.error = error
-            if not live:
-                handle._router._asyncio_router._request_router.curr_replicas = {}
-
-            if live and error is not None:
+            if error is not None:
                 with pytest.raises(RuntimeError, match="model-a"):
                     await router.check_health()
             else:
                 await router.check_health()
 
-            assert bool(handle.calls) == live
+            assert handle.calls[0]["args"][0].model == "model-a"
             assert other_handle.calls[0]["args"][0].model == "org/model-b"
             assert other_handle.calls[0]["args"][0].prompt == "health check"
         finally:
@@ -225,16 +236,18 @@ class TestHealth:
             patcher.stop()
 
     @pytest.mark.asyncio
-    async def test_probes_model_after_scale_up(self):
+    async def test_health_waits_for_first_running_replica(self):
         router, _, patcher = _new_router()
         try:
             handle = await router._handles["model-a"]
-            request_router = handle._router._asyncio_router._request_router
-            request_router.curr_replicas = {}
+            other_handle = await router._handles["org/model-b"]
+            handle.replicas_populated = False
+
             await router.check_health()
             assert not handle.calls
+            assert other_handle.calls
 
-            request_router.curr_replicas = {handle.replica_id: handle}
+            handle.replicas_populated = True
             await router.check_health()
             assert handle.calls
         finally:
