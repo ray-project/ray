@@ -3,9 +3,24 @@
 import json
 import os
 
+import pyarrow.fs as pafs
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
+
+
+def recording_filesystem(trace, **kwargs):
+    return pafs.PyFileSystem(
+        pafs.FSSpecHandler(
+            RecordingLocalFileSystem(
+                trace_path=str(trace), skip_instance_cache=True, **kwargs
+            )
+        )
+    )
+
+
+def read_schema_records(trace):
+    return [json.loads(line) for line in trace.read_text().splitlines()]
 
 
 class RecordingLocalFileSystem(LocalFileSystem):
