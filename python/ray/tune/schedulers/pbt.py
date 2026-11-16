@@ -710,9 +710,7 @@ class PopulationBasedTraining(FIFOScheduler):
                         f"checkpoint {trial.checkpoint}."
                     )
                     state.last_checkpoint = trial.checkpoint
-                    latest_checkpoint_result = (
-                        trial.run_metadata.checkpoint_manager._latest_checkpoint_result
-                    )
+                    latest_checkpoint_result = trial.latest_checkpoint_result
                     if latest_checkpoint_result is not None:
                         state.last_checkpoint_metrics = latest_checkpoint_result.metrics
             else:
