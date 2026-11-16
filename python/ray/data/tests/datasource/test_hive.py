@@ -237,8 +237,7 @@ def test_direct_full_schema_retains_candidates_and_lineage(
         prefix = ("new_" if index == 16 else "old_") if positional else ""
         values = {
             prefix + "id": pa.array([index], type=pa.int32()),
-            prefix
-            + "payload": pa.array(
+            prefix + "payload": pa.array(
                 [None if index == 0 else {"ts": -1 if index % 2 else 1001}],
                 type=pa.struct([("ts", pa.timestamp("ns"))]),
             ),
@@ -338,11 +337,71 @@ def test_direct_late_file_failure_does_not_replay_hs2(
 def test_direct_empty_table_preserves_schema(
     ray_start_regular_shared, direct_table, file_format, merge_schema
 ):
-
     declared = pa.schema([("id", pa.int64())])
     dataset = direct_table(file_format, declared, merge_schema=merge_schema)
     assert dataset.take_all() == []
     assert dataset.schema().base_schema == declared
+
+
+def test_direct_api_partitioned_read_synthesizes_and_filters_residual(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from datetime import date
+
+    import pyarrow.parquet as pq
+
+    from ray.data._internal.datasource_v2.formats.hive import hive_direct
+    from ray.data.expressions import col
+
+    first = tmp_path / "p1"
+    second = tmp_path / "p2"
+    unregistered = tmp_path / "unregistered"
+    for directory in (first, second, unregistered):
+        directory.mkdir()
+    pq.write_table(pa.table({"id": [1, 3]}), first / "000000_0")
+    pq.write_table(pa.table({"id": [2, 4]}), second / "000001_0")
+    pq.write_table(pa.table({"id": [99]}), unregistered / "part-99")
+
+    partition_fields = (
+        pa.field("dt", pa.date32()),
+        pa.field("region", pa.string()),
+    )
+    monkeypatch.setattr(
+        hive_direct,
+        "read_file_table_metadata",
+        lambda spec: hive_direct.HiveFileTable(
+            str(tmp_path),
+            "parquet",
+            pa.schema([("id", pa.int64())]),
+            partition_fields=partition_fields,
+            partitions=(
+                hive_direct.HivePartitionInfo((date(2026, 9, 1), "us"), str(first)),
+                hive_direct.HivePartitionInfo((date(2026, 9, 2), "eu"), str(second)),
+            ),
+        ),
+    )
+
+    dataset = read_hive(
+        "events", connection_factory=lambda: object(), read_mode="direct"
+    )
+    assert dataset.schema().names == ["id", "dt", "region"]
+
+    rows = dataset.take_all()
+    assert sorted(row["id"] for row in rows) == [1, 2, 3, 4]
+    values = {(row["id"], row["dt"], row["region"]) for row in rows}
+    assert values == {
+        (1, date(2026, 9, 1), "us"),
+        (3, date(2026, 9, 1), "us"),
+        (2, date(2026, 9, 2), "eu"),
+        (4, date(2026, 9, 2), "eu"),
+    }
+
+    # Partition-key filters stay residual above the read in this stage; rows
+    # still come only from the matching registered partition.
+    pruned = dataset.filter(expr=col("dt") >= date(2026, 9, 2))
+    rows = pruned.take_all()
+    assert sorted(row["id"] for row in rows) == [2, 4]
+    assert {row["region"] for row in rows} == {"eu"}
 
 
 if __name__ == "__main__":
