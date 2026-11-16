@@ -106,7 +106,7 @@ def test_rejects_missing_or_invalid_reader_evidence(tmp_path, damage):
     "mode,exit_code,summary",
     [
         ("ordinary", 0, "3 skipped"),
-        ("normal_main", 0, "7 skipped"),
+        ("normal_main", 0, "test_hive_tls"),
         ("entry", 1, "3 skipped"),
         ("one_skip", 1, "2 passed, 1 skipped"),
         ("collect_only", 1, "3 tests collected"),
@@ -141,10 +141,7 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
         arrow.int64 = arrow.string = lambda: None
         sys.modules['pyarrow'] = arrow
         sys.modules['certifi'] = None
-        for name in ('ray', 'ray.data', 'ray.data.tests', 'ray.data.tests.datasource',
-                     'ray.data._internal', 'ray.data._internal.datasource_v2',
-                     'ray.data._internal.datasource_v2.formats',
-                     'ray.data._internal.datasource_v2.formats.hive'):
+        for name in ('ray', 'ray.data'):
             module = types.ModuleType(name)
             module.__path__ = []
             sys.modules[name] = module
@@ -161,9 +158,8 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
         target, mode, cases = sys.argv[1:]
         if mode == 'ordinary':
             sys.exit(pytest.main(['-q', target + '::test_hive_tls']))
-        elif mode == 'normal_main':
+        if mode == 'normal_main':
             os.environ.pop('RAY_HIVE_TEST_HOST', None)
-            runpy.run_path(target, run_name='__main__')
         else:
             os.environ['RAY_HIVE_TLS_SUITE'] = '1'
             if mode in ('one_skip', 'all_pass', 'interrupted'):
@@ -178,7 +174,7 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
                     guard.pytest_sessionfinish = observe_guard
                     return original_main(['-v', cases], plugins=plugins)
                 pytest.main = run_cases
-            runpy.run_path(target, run_name='__main__')
+        runpy.run_path(target, run_name='__main__')
         """
     )
     env = os.environ.copy()
@@ -209,6 +205,9 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
     )
     assert result.returncode == exit_code, result.stdout + result.stderr
     assert summary in result.stdout + result.stderr, result.stdout + result.stderr
+    if mode == "normal_main":
+        for case in ("table", "untrusted_ca_driver", "hostname_worker"):
+            assert f"test_hive_tls[{case}] SKIPPED" in result.stdout
     if mode == "one_skip":
         assert "guard status: 0" in result.stdout
 
