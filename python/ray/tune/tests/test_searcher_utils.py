@@ -180,6 +180,49 @@ def test_set_get_repeater():
     assert new_repeater.searcher.returned_result[-1] == {"result": 3}
 
 
+def test_repeater_on_trial_complete_error_and_unknown_trial():
+    completed = []
+
+    class RecordingSearcher(Searcher):
+        def __init__(self):
+            super().__init__(metric="result", mode="max")
+            self.index = 0
+
+        def suggest(self, trial_id):
+            self.index += 1
+            return {"score": self.index}
+
+        def on_trial_complete(self, trial_id, result=None, error=False, **kwargs):
+            completed.append((trial_id, result, error))
+
+    repeater = Repeater(RecordingSearcher(), repeat=2, set_index=False)
+
+    # Unknown trial ID should log an error and return without raising KeyError.
+    repeater.on_trial_complete("unknown_trial", {"result": 1.0})
+    assert completed == []
+
+    # Group 1: primary succeeds, second repeat errors -> group has valid mean, error=False.
+    repeater.suggest("g1_t1")
+    repeater.suggest("g1_t2")
+    repeater.on_trial_complete("g1_t1", {"result": 4.0}, error=False)
+    repeater.on_trial_complete("g1_t2", None, error=True)
+    assert completed[-1] == ("g1_t1", {"result": 4.0}, False)
+
+    # Group 2: primary errors, second repeat succeeds -> group has valid mean, error=False.
+    repeater.suggest("g2_t1")
+    repeater.suggest("g2_t2")
+    repeater.on_trial_complete("g2_t1", None, error=True)
+    repeater.on_trial_complete("g2_t2", {"result": 6.0}, error=False)
+    assert completed[-1] == ("g2_t1", {"result": 6.0}, False)
+
+    # Group 3: all repeats error -> result=None, error=True, no RuntimeWarning.
+    repeater.suggest("g3_t1")
+    repeater.suggest("g3_t2")
+    repeater.on_trial_complete("g3_t1", None, error=True)
+    repeater.on_trial_complete("g3_t2", None, error=True)
+    assert completed[-1] == ("g3_t1", None, True)
+
+
 def test_set_get_limiter():
     class TestSuggestion(Searcher):
         def __init__(self, index):
