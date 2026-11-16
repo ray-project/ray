@@ -164,11 +164,17 @@ class PrevActionsPrevRewards(ConnectorV2):
         # MultiDiscrete, flattened for Box).
         if isinstance(act_space, gym.spaces.Box):
             single_shape = int(np.prod(act_space.shape))
+            # `__call__` pads missing steps with `fill=0.0`, so widen the
+            # bounds to include 0. Use the action space's dtype (promoted to
+            # at least float32 to accommodate the 0.0 fill) to keep the
+            # flattened previous actions inside this space.
+            low = np.minimum(act_space.low.flatten(), 0.0)
+            high = np.maximum(act_space.high.flatten(), 0.0)
             prev_actions_space = Box(
-                np.tile(np.asarray(act_space.low).flatten(), self.n_prev_actions),
-                np.tile(np.asarray(act_space.high).flatten(), self.n_prev_actions),
+                np.tile(low, self.n_prev_actions),
+                np.tile(high, self.n_prev_actions),
                 (single_shape * self.n_prev_actions,),
-                np.float32,
+                np.promote_types(act_space.dtype, np.float32),
             )
         elif isinstance(act_space, gym.spaces.MultiDiscrete):
             prev_actions_space = Box(

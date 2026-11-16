@@ -34,6 +34,21 @@ def test_convert_individual_space_box():
     assert np.allclose(prev_actions_space.high, np.tile([2.0] * 3, 3))
 
 
+def test_convert_individual_space_box_bounds_and_dtype():
+    connector = PrevActionsPrevRewards(n_prev_actions=1, n_prev_rewards=1)
+    # A float64 action space keeps its (promoted) dtype, and the bounds are
+    # widened to include the 0.0 fill used at the start of an episode.
+    converted = connector._convert_individual_space(
+        gym.spaces.Box(-1.0, 1.0, (4,), np.float64),
+        gym.spaces.Box(1.0, 2.0, (2,), np.float64),
+    )
+    prev_actions_space = converted[connector.PREV_ACTIONS_KEY]
+    assert prev_actions_space.dtype == np.float64
+    assert np.allclose(prev_actions_space.low, [0.0, 0.0])
+    assert np.allclose(prev_actions_space.high, [2.0, 2.0])
+    assert prev_actions_space.contains(np.array([1.5, 0.0], dtype=np.float64))
+
+
 def test_convert_individual_space_multi_discrete():
     connector = PrevActionsPrevRewards(n_prev_actions=2, n_prev_rewards=1)
     converted = connector._convert_individual_space(
