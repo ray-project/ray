@@ -1318,6 +1318,20 @@ def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
         stream.reset_message()
 
 
+def test_extract_self_if_method_call_does_not_hang_on_mock():
+    """Attribute access on a mock returns a fresh mock each time, so the
+    ``__wrapped__`` walk must be depth-capped instead of relying on cycle
+    detection."""
+    from unittest.mock import MagicMock
+
+    def some_func(self, x):
+        return x
+
+    mock = MagicMock()
+    mock.some_func.__wrapped__ = None
+    assert extract_self_if_method_call((mock,), some_func) is None
+
+
 def test_extract_self_if_method_call_follows_wrapped_chain():
     """`extract_self_if_method_call` must follow the full `__wrapped__` chain,
     so `@serve.batch` keeps working when wrapped in another decorator that
