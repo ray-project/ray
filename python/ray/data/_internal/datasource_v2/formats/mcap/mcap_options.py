@@ -1,6 +1,7 @@
-"""Message filters of ``read_mcap``.
+"""Message filters and video options of ``read_mcap``.
 
-``TimeRange`` is the public time filter of ``read_mcap``. It is re-exported from
+``TimeRange`` is the public time filter of ``read_mcap``, and ``VideoOptions``
+how a sample read decodes its video topics. Both are re-exported from
 ``ray.data.datasource``.
 
 ``MCAPSelection`` bundles the ``topics``, ``message_types`` and ``time_range``
@@ -10,7 +11,10 @@ on which chunks can match.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, FrozenSet, Iterable, Mapping, Optional, Set
+from typing import TYPE_CHECKING, FrozenSet, Iterable, Mapping, Optional, Set, Tuple
+
+from ray._common.utils import env_float
+from ray.util.annotations import PublicAPI
 
 # Type-only: ``import ray.data`` loads this module, and ``mcap`` is optional.
 if TYPE_CHECKING:
@@ -18,6 +22,24 @@ if TYPE_CHECKING:
 
 # Name of the deterministic per-row id column (see ``MCAPReader``).
 ROW_ID_COLUMN = "row_id"
+
+_NS_PER_S = 1_000_000_000
+
+# How far back, in seconds, a decoder looks for a keyframe before the first
+# frame it outputs. Not a ``read_mcap`` argument:
+# ``RAY_DATA_MCAP_MAX_LEAD_IN_S`` overrides it.
+DEFAULT_MAX_LEAD_IN_S = 10.0
+DEFAULT_MAX_LEAD_IN_NS = int(DEFAULT_MAX_LEAD_IN_S * _NS_PER_S)
+
+
+def max_lead_in_ns() -> int:
+    """The look-back cap in nanoseconds, honouring ``RAY_DATA_MCAP_MAX_LEAD_IN_S``."""
+    seconds = env_float("RAY_DATA_MCAP_MAX_LEAD_IN_S", DEFAULT_MAX_LEAD_IN_S)
+    if seconds < 0:
+        raise ValueError(
+            f"RAY_DATA_MCAP_MAX_LEAD_IN_S must be non-negative, got {seconds}"
+        )
+    return int(round(seconds * _NS_PER_S))
 
 
 @dataclass
@@ -44,6 +66,46 @@ class TimeRange:
                 f"time values must be non-negative, got start_time={self.start_time}, "
                 f"end_time={self.end_time}"
             )
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class VideoOptions:
+    """Decode the video topics of a sample read (``read_mcap(samples=...)``)
+    inside the read task.
+
+    Each video topic's steps become a ``frames:<topic>`` tensor of shape
+    ``(steps, height, width, 3)``, and the other topics keep their payloads.
+    A sample row whose frames exceed ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails the
+    read, so use ``resize`` to keep rows small.
+
+    A topic is video when its schema name is a known video schema or
+    ``read_mcap(video_topics=...)`` lists it. Its codec comes from the
+    message's ``format`` field or its bytes (JPEG, PNG, H.264, H.265, VP9,
+    AV1). Every frame is complete: a step's frame is decoded from the last
+    keyframe before it, at most ``RAY_DATA_MCAP_MAX_LEAD_IN_S`` (10 s) back.
+    Requires ``av`` for H.264, H.265, VP9 and AV1, and ``Pillow`` for JPEG and
+    PNG.
+
+    Attributes:
+        resize: Scale frames to exactly this ``(height, width)``. A frame of
+            another aspect ratio is stretched to it, not cropped or padded.
+            ``None`` keeps the coded size.
+    """
+
+    resize: Optional[Tuple[int, int]] = None
+
+    def __post_init__(self):
+        if self.resize is not None:
+            if len(self.resize) != 2 or any(
+                isinstance(v, bool) or not isinstance(v, int) or v <= 0
+                for v in self.resize
+            ):
+                raise ValueError(
+                    "resize must be a (height, width) pair of positive integers, "
+                    f"got {self.resize!r}"
+                )
+            object.__setattr__(self, "resize", tuple(self.resize))
 
 
 @dataclass(frozen=True)

@@ -9,13 +9,13 @@ is the number of samples per task::
     budget 128 MiB / median sample 2 MiB  ->  64 samples per task
 
 The estimate reads the summary of each file the probed samples name, once,
-and weighs that file's samples as soon as it is read, so planning holds only
-the summaries being read.
+unless planning has read it already, and weighs that file's samples as soon
+as it is read, so planning holds only the summaries being read.
 """
 
 import statistics
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence, Union
 
 import pyarrow as pa
 
@@ -58,15 +58,17 @@ def samples_per_task(
     plans: Sequence[TopicPlan],
     paths: SamplePaths,
     budget: int,
+    read: Optional[Mapping[str, Optional["Summary"]]] = None,
 ) -> int:
     """The number of samples per read task, so a task holds about ``budget``
     bytes of chunks.
 
-    ``probe`` holds the first samples. A sample whose file has no chunk index
-    weighs its whole file. A sample without a file or a clip, and a file that
-    cannot be opened or parsed, are left out of the estimate: the read reports
-    them, unless a checkpoint skips their samples. Without any sample to
-    estimate, a task takes ``DEFAULT_SAMPLES_PER_TASK``.
+    ``probe`` holds the first samples. ``read`` holds summaries planning has
+    read already, by path as the samples name it. A sample whose file has no
+    chunk index weighs its whole file. A sample without a file or a clip, and a
+    file that cannot be opened or parsed, are left out of the estimate: the
+    read reports them, unless a checkpoint skips their samples. Without any
+    sample to estimate, a task takes ``DEFAULT_SAMPLES_PER_TASK``.
     """
     files = probe.column(FILES_COLUMN).to_pylist()
     starts = probe.column(CLIP_START_COLUMN).to_pylist()
@@ -79,13 +81,18 @@ def samples_per_task(
                 sample = SampleTimes(start, end, anchor)
                 by_file.setdefault(paths_of_sample[0], []).append(sample)
 
-    resolved = {path: paths.resolve(path) for path in by_file}
+    resolved = {name: paths.resolve(name) for name in by_file}
+    read = read or {}
 
-    def weigh_file(path: str) -> List[int]:
-        summary = _summary_or_size(resolved[path][1], resolved[path][0])
+    def weigh_file(name: str) -> List[int]:
+        path, filesystem = resolved[name]
+        if name in read:
+            summary = _summary_or_size_of(filesystem, path, read[name])
+        else:
+            summary = _summary_or_size(filesystem, path)
         if summary is None:
             return []
-        return [sample_bytes(summary, sample, plans) for sample in by_file[path]]
+        return [sample_bytes(summary, sample, plans) for sample in by_file[name]]
 
     # The summaries are read at once: each is a round trip to storage.
     with ThreadPoolExecutor(max_workers=_SUMMARY_READ_THREADS) as pool:
@@ -127,10 +134,17 @@ def _summary_or_size(
     (``is_corrupt_data_error``), such as a truncated recording."""
     try:
         summary = read_summary(filesystem, path)
-        if summary is not None and summary.chunk_indexes:
-            return summary
-        return filesystem.get_file_info(path).size
+        return _summary_or_size_of(filesystem, path, summary)
     except Exception as e:
         if isinstance(e, OSError) or is_corrupt_data_error(e):
             return None
         raise
+
+
+def _summary_or_size_of(
+    filesystem: "FileSystem", path: str, summary: Optional["Summary"]
+) -> Union["Summary", int]:
+    """``summary`` when it has a chunk index, else the file's size in bytes."""
+    if summary is not None and summary.chunk_indexes:
+        return summary
+    return filesystem.get_file_info(path).size
