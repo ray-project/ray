@@ -91,7 +91,7 @@ def test_slice_handle_wait():
     mock_spg = MagicMock()
     mock_pg = MagicMock(spec=PlacementGroup)
     mock_pg.wait.return_value = True
-    mock_spg.placement_groups = [mock_pg]
+    mock_spg.slice_placement_groups = [mock_pg]
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert handle.wait(timeout_seconds=10)
@@ -121,7 +121,7 @@ def test_slice_handle_multi_slice_wait():
     mock_pg2 = MagicMock(spec=PlacementGroup)
     mock_pg1.wait.return_value = True
     mock_pg2.wait.return_value = True
-    mock_spg.placement_groups = [mock_pg1, mock_pg2]
+    mock_spg.slice_placement_groups = [mock_pg1, mock_pg2]
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert handle.placement_groups == [mock_pg1, mock_pg2]
@@ -146,8 +146,8 @@ def test_slice_handle_multi_slice_wait():
     mock_pg1.wait.assert_called_once()
     mock_pg2.wait.assert_called_once()
 
-    # Empty placement_groups returns False
-    mock_spg.placement_groups = []
+    # Empty slice_placement_groups returns False
+    mock_spg.slice_placement_groups = []
     assert not handle.wait(timeout_seconds=10)
 
     # Live Ray PGs with 0s remaining budget check GCS table state rather than pg.wait(0),
@@ -157,11 +157,11 @@ def test_slice_handle_multi_slice_wait():
     pg_pending = placement_group([{"CPU": 99}])
     try:
         ray.get([pg1.ready(), pg2.ready()], timeout=10)
-        assert SlicePlacementGroupHandle(MagicMock(placement_groups=[pg1, pg2])).wait(
-            timeout_seconds=0
-        )
+        assert SlicePlacementGroupHandle(
+            MagicMock(slice_placement_groups=[pg1, pg2])
+        ).wait(timeout_seconds=0)
         assert not SlicePlacementGroupHandle(
-            MagicMock(placement_groups=[pg1, pg_pending])
+            MagicMock(slice_placement_groups=[pg1, pg_pending])
         ).wait(timeout_seconds=0)
 
         ready_clock = iter([0.0, 0.5, 1.5])
@@ -170,7 +170,7 @@ def test_slice_handle_multi_slice_wait():
             side_effect=lambda: next(ready_clock, 1.5),
         ):
             assert SlicePlacementGroupHandle(
-                MagicMock(placement_groups=[pg1, pg2])
+                MagicMock(slice_placement_groups=[pg1, pg2])
             ).wait(timeout_seconds=1.0)
         pending_clock = iter([0.0, 0.5, 1.5])
         with patch(
@@ -178,7 +178,7 @@ def test_slice_handle_multi_slice_wait():
             side_effect=lambda: next(pending_clock, 1.5),
         ):
             assert not SlicePlacementGroupHandle(
-                MagicMock(placement_groups=[pg1, pg_pending])
+                MagicMock(slice_placement_groups=[pg1, pg_pending])
             ).wait(timeout_seconds=1.0)
     finally:
         for pg in (pg1, pg2, pg_pending):

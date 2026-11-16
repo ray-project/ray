@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
@@ -8,16 +9,13 @@ from typing_extensions import Annotated
 import ray
 import ray.util.accelerators.accelerators as accelerators
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
-from ray._private.accelerators.tpu import TPUAcceleratorManager, get_chips_per_host
+from ray._private.accelerators.tpu import _is_positive_number, get_chips_per_host
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.util.placement_group import (
-    PlacementGroup,
-    placement_group,
-    validate_placement_group,
-)
+from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.tpu import (
+    _normalize_bundle_label_selector as normalize_bundle_label_selector,
+    _prepare_slice_pg_specs,
     get_tpu_version_from_type,
-    get_tpu_worker_resources,
     slice_placement_group,
 )
 
@@ -36,10 +34,6 @@ TPU_ACCELERATOR_VALUES = {
 def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
     """Formats the accelerator type into a Ray custom resource string."""
     return f"accelerator_type:{accelerator_type_str}"
-
-
-def _is_positive_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
 
 
 def prepare_tpu_bundles_and_label_selector(
@@ -87,39 +81,6 @@ def prepare_tpu_bundles_and_label_selector(
     return clean_bundles, label_selector
 
 
-def normalize_bundle_label_selector(
-    bundle_label_selector: Optional[Sequence[Dict[str, str]]],
-) -> Optional[List[Dict[str, str]]]:
-    """Validate and normalize a bundle_label_selector to None or a fresh list of dicts.
-
-    Accepts None, a list, or a tuple of Dict[str, str]. Empty sequences normalize to
-    None. Returns shallow copies of each selector dict to prevent shared mutation.
-    """
-    if bundle_label_selector is None:
-        return None
-    if not isinstance(bundle_label_selector, (list, tuple)):
-        raise ValueError(
-            "bundle_label_selector must be a list or tuple of string label selector "
-            f"dicts, got {type(bundle_label_selector).__name__}."
-        )
-    if len(bundle_label_selector) == 0:
-        return None
-
-    normalized: List[Dict[str, str]] = []
-    for idx, selector in enumerate(bundle_label_selector):
-        if (
-            not isinstance(selector, dict)
-            or not all(isinstance(k, str) for k in selector.keys())
-            or not all(isinstance(v, str) for v in selector.values())
-        ):
-            raise ValueError(
-                f"bundle_label_selector entry at index {idx} must be a dict mapping "
-                "string keys to string values."
-            )
-        normalized.append(dict(selector))
-    return normalized
-
-
 def _resolve_bundle_label_selector(
     num_bundles: int,
     user_selectors: Optional[Sequence[Dict[str, str]]] = None,
@@ -135,41 +96,22 @@ def _resolve_bundle_label_selector(
     """
     if num_bundles < 0:
         raise ValueError(f"num_bundles must be non-negative, got {num_bundles}.")
-
-    normalized_user = normalize_bundle_label_selector(user_selectors)
-
     if base_selectors is not None and len(base_selectors) != num_bundles:
         raise ValueError(
             f"base_selectors length ({len(base_selectors)}) must match "
             f"num_bundles ({num_bundles})."
         )
-
-    if normalized_user is None:
+    expanded_user = normalize_bundle_label_selector(
+        user_selectors, num_bundles=num_bundles, selector_name=selector_name
+    )
+    if expanded_user is None:
         return (
             [dict(sel) for sel in base_selectors]
             if base_selectors is not None
             else None
         )
-
-    if num_bundles == 0:
-        raise ValueError(
-            f"{selector_name} length ({len(normalized_user)}) cannot match "
-            "0 bundles."
-        )
-
-    if len(normalized_user) == 1:
-        expanded_user = [dict(normalized_user[0]) for _ in range(num_bundles)]
-    elif len(normalized_user) == num_bundles:
-        expanded_user = normalized_user
-    else:
-        raise ValueError(
-            f"{selector_name} length ({len(normalized_user)}) must be 1 or "
-            f"match the number of bundles ({num_bundles})."
-        )
-
     if base_selectors is None:
         return expanded_user
-
     return [
         {**base_sel, **user_sel}
         for base_sel, user_sel in zip(base_selectors, expanded_user)
@@ -408,23 +350,22 @@ class TPUAccelerator(AcceleratorBackend):
                 "accelerator_type must be provided for TPU slice provisioning."
             )
 
-        # Validate all slice inputs before mutating or shutting down any existing slice PG.
-        normalized_selector = normalize_bundle_label_selector(bundle_label_selector)
-        normalized_topology = self._config.topology.strip().lower()
         version = get_tpu_version_from_type(accelerator_type_str)
-
-        if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
-            tpu_accelerator_version=version,
-            tpu_topology=normalized_topology,
-        ):
-            raise ValueError(
-                f"Invalid accelerator topology: '{normalized_topology}' for "
-                f"accelerator version: '{version}'"
-            )
 
         if bundles:
             # Filter for bundles that actually specify TPU resources
             clean_bundles, _ = prepare_tpu_bundles_and_label_selector(bundles)
+            for b in clean_bundles:
+                if "TPU" in b:
+                    tpu_val = b["TPU"]
+                    if (
+                        isinstance(tpu_val, bool)
+                        or not isinstance(tpu_val, (int, float))
+                        or not math.isfinite(tpu_val)
+                    ):
+                        raise ValueError(
+                            f"TPU resource count must be a finite number, got {tpu_val!r}."
+                        )
             tpu_bundles = [
                 b for b in clean_bundles if _is_positive_number(b.get("TPU", 0))
             ]
@@ -445,27 +386,12 @@ class TPUAccelerator(AcceleratorBackend):
             # Default to 1 TPU per bundle.
             worker_bundle = {"TPU": 1}
 
-        num_bundles, bundle_resources = get_tpu_worker_resources(
-            topology=normalized_topology,
-            accelerator_type=version,
-            resources_per_worker=worker_bundle,
-        )
-        base_selectors = [
-            {
-                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: normalized_topology,
-                ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: f"TPU-{version.upper()}",
-            }
-            for _ in range(num_bundles)
-        ]
-        resolved_selectors = _resolve_bundle_label_selector(
-            num_bundles,
-            normalized_selector,
-            base_selectors=base_selectors,
-        )
-        validate_placement_group(
-            bundles=[bundle_resources] * num_bundles,
-            strategy="PACK",
-            bundle_label_selector=resolved_selectors,
+        _prepare_slice_pg_specs(
+            topology=self._config.topology,
+            accelerator_version=version,
+            resources_per_bundle=worker_bundle,
+            name=name,
+            bundle_label_selector=bundle_label_selector,
         )
 
         if self._slice_pg_wrapper is not None:
@@ -485,7 +411,7 @@ class TPUAccelerator(AcceleratorBackend):
             accelerator_version=version,
             resources_per_bundle=worker_bundle,
             name=name,
-            bundle_label_selector=normalized_selector,
+            bundle_label_selector=bundle_label_selector,
         )
         return self._slice_pg_wrapper.placement_group
 

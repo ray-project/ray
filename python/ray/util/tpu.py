@@ -6,6 +6,7 @@ import os
 import threading
 import time
 import warnings
+from dataclasses import dataclass
 from enum import Enum
 from typing import (
     Any,
@@ -62,6 +63,7 @@ from ray.util.placement_group import (
     placement_group,
     placement_group_table,
     remove_placement_group,
+    validate_placement_group,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -260,12 +262,6 @@ def get_tpu_worker_resources(
     # Validate TPU resource values.
     if tpus_per_worker <= 0:
         raise ValueError("TPU resources must be positive.")
-
-    if total_tpus_available % tpus_per_worker != 0:
-        raise ValueError(
-            f"Total TPU resources ({total_tpus_available}) not divisible by "
-            f"TPUs requested per worker ({tpus_per_worker})."
-        )
 
     if total_tpus_per_slice % tpus_per_worker != 0:
         raise ValueError(
@@ -807,40 +803,186 @@ def get_num_tpu_slices(
     )
 
 
-def _normalize_user_bundle_label_selector(
+def _normalize_bundle_label_selector(
     bundle_label_selector: Optional[Sequence[Dict[str, str]]],
-    num_bundles: int,
-) -> List[Dict[str, str]]:
-    """Validate and normalize user-supplied bundle_label_selector for SlicePlacementGroup.
+    num_bundles: Optional[int] = None,
+    *,
+    selector_name: str = "bundle_label_selector",
+) -> Optional[List[Dict[str, str]]]:
+    """Validate, copy, and optionally broadcast a bundle_label_selector.
 
-    Returns an empty list when no user selectors are provided. Accepts a list or
-    tuple of dicts whose length is either 1 (broadcast across all ``num_bundles``
-    with independent dict copies) or equal to ``num_bundles``.
+    Accepts None, a list, or a tuple of Dict[str, str]. Empty sequences
+    normalize to None. When ``num_bundles`` is provided, length must be 1
+    (broadcast with independent dict copies) or equal to ``num_bundles``.
     """
     if bundle_label_selector is None:
-        return []
+        return None
     if not isinstance(bundle_label_selector, (list, tuple)):
         raise ValueError(
-            "bundle_label_selector must be a list or tuple of label selector "
+            f"{selector_name} must be a list or tuple of string label selector "
             f"dicts, got {type(bundle_label_selector).__name__}."
         )
-    selectors = list(bundle_label_selector)
-    if not selectors:
-        return []
-    for idx, entry in enumerate(selectors):
-        if not isinstance(entry, dict):
+    if not bundle_label_selector:
+        return None
+    normalized: List[Dict[str, str]] = []
+    for idx, entry in enumerate(bundle_label_selector):
+        if (
+            not isinstance(entry, dict)
+            or not all(isinstance(k, str) for k in entry)
+            or not all(isinstance(v, str) for v in entry.values())
+        ):
             raise ValueError(
-                f"bundle_label_selector[{idx}] must be a dict, "
-                f"got {type(entry).__name__}."
+                f"{selector_name}[{idx}] must be a dict mapping string keys "
+                "to string values."
             )
-    if len(selectors) == 1:
-        return [selectors[0].copy() for _ in range(num_bundles)]
-    if len(selectors) != num_bundles:
+        normalized.append(dict(entry))
+    if num_bundles is None:
+        return normalized
+    if num_bundles == 0:
         raise ValueError(
-            f"bundle_label_selector length ({len(selectors)}) must be 1 or "
+            f"{selector_name} length ({len(normalized)}) cannot match 0 bundles."
+        )
+    if len(normalized) == 1:
+        return [dict(normalized[0]) for _ in range(num_bundles)]
+    if len(normalized) != num_bundles:
+        raise ValueError(
+            f"{selector_name} length ({len(normalized)}) must be 1 or "
             f"match the number of bundles ({num_bundles})."
         )
-    return [entry.copy() for entry in selectors]
+    return normalized
+
+
+@dataclass(frozen=True)
+class _SlicePlacementGroupSpec:
+    """Validated, side-effect-free specification for SlicePlacementGroup creation."""
+
+    topology: str
+    accelerator_version: str
+    num_slices: int
+    tpu_resource_per_chip: int
+    chips_per_host: int
+    logical_devices_per_host: int
+    hosts_per_slice: int
+    num_hosts: int
+    num_bundles: int
+    bundles_per_slice: int
+    bundle_resources: Dict[str, float]
+    bundle_label_selector: List[Dict[str, str]]
+    slice_pg_kwargs: List[Dict[str, Any]]
+
+
+def _prepare_slice_pg_specs(
+    topology: str,
+    accelerator_version: str,
+    resources_per_bundle: Optional[Dict[str, float]] = None,
+    name: str = "",
+    lifetime: Optional[str] = None,
+    num_slices: int = 1,
+    chips_per_vm: Optional[int] = None,
+    bundle_label_selector: Optional[Sequence[Dict[str, str]]] = None,
+    tpu_resource_per_chip: Optional[int] = None,
+) -> _SlicePlacementGroupSpec:
+    """Validate inputs and construct per-slice placement group kwargs without GCS RPCs."""
+    norm_topology = topology.strip().lower()
+    norm_accel_version = get_tpu_version_from_type(accelerator_version.strip())
+    if tpu_resource_per_chip is None:
+        tpu_resource_per_chip = get_tpu_resource_per_chip()
+
+    if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+        tpu_accelerator_version=norm_accel_version,
+        tpu_topology=norm_topology,
+    ):
+        raise ValueError(
+            f"Invalid accelerator topology: '{norm_topology}' for "
+            f"accelerator version: '{norm_accel_version}'"
+        )
+
+    resolved_chips_per_vm = _resolve_chips_per_vm(
+        chips_per_vm, norm_topology, norm_accel_version
+    )
+
+    num_bundles, bundle_resources = get_tpu_worker_resources(
+        topology=norm_topology,
+        accelerator_type=norm_accel_version,
+        resources_per_worker=resources_per_bundle,
+        num_slices=num_slices,
+        chips_per_vm=chips_per_vm,
+        tpu_resource_per_chip=tpu_resource_per_chip,
+    )
+
+    total_chips = get_num_chips_from_topology(norm_topology) * tpu_resource_per_chip
+    logical_devices_per_host = resolved_chips_per_vm * tpu_resource_per_chip
+    hosts_per_slice = max(1, total_chips // logical_devices_per_host)
+    num_hosts = hosts_per_slice * num_slices
+    bundles_per_slice = num_bundles // num_slices
+
+    user_selectors = (
+        _normalize_bundle_label_selector(bundle_label_selector, num_bundles) or []
+    )
+
+    flat_bundle_label_selector: List[Dict[str, str]] = []
+    slice_pg_kwargs: List[Dict[str, Any]] = []
+    is_single_host = hosts_per_slice == 1
+    bundles_per_host = bundles_per_slice // hosts_per_slice
+    accelerator_type = "TPU-" + norm_accel_version.upper()
+
+    for slice_idx in range(num_slices):
+        slice_bundle_label_selector = []
+        for bundle_idx in range(bundles_per_slice):
+            global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
+            user_labels = user_selectors[global_bundle_idx] if user_selectors else {}
+
+            default_labels = {
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: norm_topology,
+                ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: accelerator_type,
+            }
+            if not is_single_host:
+                worker_id = bundle_idx // bundles_per_host
+                default_labels[ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] = str(worker_id)
+
+            merged_labels = {**default_labels, **user_labels}
+            flat_bundle_label_selector.append(merged_labels)
+            slice_bundle_label_selector.append(merged_labels.copy())
+
+        slice_bundles = [bundle_resources.copy() for _ in range(bundles_per_slice)]
+        pg_name = f"{name}_slice_{slice_idx}" if name and num_slices > 1 else name
+        pg_kwargs: Dict[str, Any] = {
+            "bundles": slice_bundles,
+            "name": pg_name,
+            "lifetime": lifetime,
+            "bundle_label_selector": slice_bundle_label_selector,
+        }
+        if is_single_host:
+            pg_kwargs["strategy"] = "STRICT_PACK"
+        else:
+            pg_kwargs["topology_strategy"] = {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "STRICT_PACK",
+            }
+
+        validate_placement_group(
+            bundles=pg_kwargs["bundles"],
+            strategy=pg_kwargs.get("strategy"),
+            lifetime=lifetime,
+            bundle_label_selector=pg_kwargs["bundle_label_selector"],
+            topology_strategy=pg_kwargs.get("topology_strategy"),
+        )
+        slice_pg_kwargs.append(pg_kwargs)
+
+    return _SlicePlacementGroupSpec(
+        topology=norm_topology,
+        accelerator_version=norm_accel_version,
+        num_slices=num_slices,
+        tpu_resource_per_chip=tpu_resource_per_chip,
+        chips_per_host=resolved_chips_per_vm,
+        logical_devices_per_host=logical_devices_per_host,
+        hosts_per_slice=hosts_per_slice,
+        num_hosts=num_hosts,
+        num_bundles=num_bundles,
+        bundles_per_slice=bundles_per_slice,
+        bundle_resources=bundle_resources,
+        bundle_label_selector=flat_bundle_label_selector,
+        slice_pg_kwargs=slice_pg_kwargs,
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -943,131 +1085,40 @@ class SlicePlacementGroup:
         self._managed_pgs: List[PlacementGroup] = []
         self._user_bundle_label_selector = bundle_label_selector
 
-        self._topology = topology.strip().lower()
-        self._accelerator_version = get_tpu_version_from_type(
-            accelerator_version.strip()
-        )
-        self._num_slices = num_slices
-        if tpu_resource_per_chip is None:
-            tpu_resource_per_chip = get_tpu_resource_per_chip()
-        self._tpu_resource_per_chip = tpu_resource_per_chip
-
-        self._validate_tpu_config()
-
-        resolved_chips_per_vm = _resolve_chips_per_vm(
-            chips_per_vm, self._topology, self._accelerator_version
-        )
-
-        # Calculate number of bundles and bundle resources for specified TPU topology.
-        self._num_bundles, self._bundle_resources = get_tpu_worker_resources(
-            topology=self._topology,
-            accelerator_type=self._accelerator_version,
-            resources_per_worker=resources_per_bundle,
-            num_slices=self._num_slices,
-            chips_per_vm=chips_per_vm,
-            tpu_resource_per_chip=self._tpu_resource_per_chip,
-        )
-
-        self._chips_per_host = resolved_chips_per_vm
-
-        # Within Ray, a "host" corresponds to a user-visible compute VM.
-        # This may differ from the physical hardware host definitions in GCP/GKE docs.
-        total_chips = get_num_chips_from_topology(self._topology)
-
-        self._logical_devices_per_host = (
-            self._chips_per_host * self._tpu_resource_per_chip
-        )
-        total_chips *= self._tpu_resource_per_chip
-
-        self._hosts_per_slice = max(1, total_chips // self._logical_devices_per_host)
-        self._num_hosts = self._hosts_per_slice * self._num_slices
-        self._bundles_per_slice = self._num_bundles // self._num_slices
-
-        self._managed_pgs = self._reserve_slice(
+        spec = _prepare_slice_pg_specs(
+            topology=topology,
+            accelerator_version=accelerator_version,
+            resources_per_bundle=resources_per_bundle,
             name=name,
             lifetime=lifetime,
+            num_slices=num_slices,
+            chips_per_vm=chips_per_vm,
+            bundle_label_selector=bundle_label_selector,
+            tpu_resource_per_chip=tpu_resource_per_chip,
         )
+        self._topology = spec.topology
+        self._accelerator_version = spec.accelerator_version
+        self._num_slices = spec.num_slices
+        self._tpu_resource_per_chip = spec.tpu_resource_per_chip
+        self._chips_per_host = spec.chips_per_host
+        self._logical_devices_per_host = spec.logical_devices_per_host
+        self._hosts_per_slice = spec.hosts_per_slice
+        self._num_hosts = spec.num_hosts
+        self._num_bundles = spec.num_bundles
+        self._bundles_per_slice = spec.bundles_per_slice
+        self._bundle_resources = spec.bundle_resources
+        self._bundle_label_selector = spec.bundle_label_selector
 
-    def _validate_tpu_config(self):
-        # Should validate topology and generation values and return a
-        # ValueError if invalid.
-        if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
-            tpu_accelerator_version=self.accelerator_version,
-            tpu_topology=self._topology,
-        ):
-            raise ValueError(
-                f"Invalid accelerator topology: '{self._topology}' for "
-                f"accelerator version: '{self.accelerator_version}'"
-            )
+        self._managed_pgs = self._reserve_slice(spec.slice_pg_kwargs)
 
     def _reserve_slice(
         self,
-        name: str = "",
-        lifetime: Optional[str] = None,
+        slice_pg_kwargs: List[Dict[str, Any]],
     ) -> List[PlacementGroup]:
         """Creates one label-constrained placement group per requested TPU slice."""
-        user_selectors = _normalize_user_bundle_label_selector(
-            self._user_bundle_label_selector,
-            self._num_bundles,
-        )
-
-        self._bundle_label_selector = []
-        bundles_per_slice = self._bundles_per_slice
-        is_single_host = self._hosts_per_slice == 1
-        bundles_per_host = bundles_per_slice // self._hosts_per_slice
-
         try:
-            accelerator_type = "TPU-" + self.accelerator_version.upper()
-            for slice_idx in range(self.num_slices):
-                slice_bundle_label_selector = []
-                for bundle_idx in range(bundles_per_slice):
-                    global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
-                    user_labels = (
-                        user_selectors[global_bundle_idx] if user_selectors else {}
-                    )
-
-                    default_labels = {
-                        ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: self._topology,
-                        ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: accelerator_type,
-                    }
-                    if not is_single_host:
-                        worker_id = bundle_idx // bundles_per_host
-                        default_labels[ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] = str(
-                            worker_id
-                        )
-
-                    merged_labels = {**default_labels, **user_labels}
-                    self._bundle_label_selector.append(merged_labels)
-                    slice_bundle_label_selector.append(merged_labels.copy())
-
-                slice_bundles = [
-                    self._bundle_resources.copy() for _ in range(bundles_per_slice)
-                ]
-                pg_name = (
-                    f"{name}_slice_{slice_idx}"
-                    if name and self.num_slices > 1
-                    else name
-                )
-                if is_single_host:
-                    pg = placement_group(
-                        bundles=slice_bundles,
-                        strategy="STRICT_PACK",
-                        name=pg_name,
-                        lifetime=lifetime,
-                        bundle_label_selector=slice_bundle_label_selector,
-                    )
-                else:
-                    pg = placement_group(
-                        bundles=slice_bundles,
-                        name=pg_name,
-                        lifetime=lifetime,
-                        bundle_label_selector=slice_bundle_label_selector,
-                        topology_strategy={
-                            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "STRICT_PACK",
-                        },
-                    )
-                self._managed_pgs.append(pg)
-
+            for pg_kwargs in slice_pg_kwargs:
+                self._managed_pgs.append(placement_group(**pg_kwargs))
             return self._managed_pgs
         except Exception:
             self.shutdown()
@@ -1086,9 +1137,7 @@ class SlicePlacementGroup:
             ValueError: If ``num_slices > 1``.
         """
         if self._num_slices > 1:
-            raise ValueError(
-                "num_slices > 1, use `slice_placement_groups` or `placement_groups` instead."
-            )
+            raise ValueError("num_slices > 1, use `slice_placement_groups` instead.")
         return self._managed_pgs[0] if self._managed_pgs else None
 
     @property
@@ -1099,11 +1148,6 @@ class SlicePlacementGroup:
     @property
     def slice_placement_groups(self) -> List[PlacementGroup]:
         """The list of underlying PlacementGroup objects (one per TPU slice)."""
-        return self._managed_pgs
-
-    @property
-    def placement_groups(self) -> List[PlacementGroup]:
-        """Alias for slice_placement_groups."""
         return self._managed_pgs
 
     @property

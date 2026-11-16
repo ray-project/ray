@@ -1250,7 +1250,7 @@ def test_cpu_and_gpu_accelerator_create_placement_group_bundle_label_selector(
             "bundle_label_selector length",
         ),
         # Non-divisible TPU resource per worker.
-        ("4x4", [{"TPU": 3}], "TPU-V6E", [{"pool": "a"}], "not divisible"),
+        ("4x4", [{"TPU": 3}], "TPU-V6E", [{"pool": "a"}], "divide evenly"),
         # TPU resource per worker exceeding chips per host (4 on v6e 4x4).
         ("4x4", [{"TPU": 8}], "TPU-V6E", [{"pool": "a"}], "evenly divide"),
         # Invalid topology (not divisible and divisible-but-unsupported).
@@ -1307,12 +1307,19 @@ def test_cpu_and_gpu_accelerator_create_placement_group_bundle_label_selector(
             None,
             "Heterogeneous TPU bundles",
         ),
+        # Non-finite / non-numeric TPU counts must raise instead of falling back to 1.
+        ("4x4", [{"TPU": float("inf")}], "TPU-V6E", None, "finite number"),
+        ("4x4", [{"TPU": float("nan")}], "TPU-V6E", None, "finite number"),
     ],
 )
 def test_tpu_create_pg_preserves_existing_slice_on_validation_error(
-    topology, bundles, accelerator_type, selector, error_match
+    monkeypatch, topology, bundles, accelerator_type, selector, error_match
 ):
     """Validation failures must raise before shutting down an existing live _slice_pg_wrapper."""
+    monkeypatch.setattr("ray._private.client_mode_hook.auto_init_ray", lambda: None)
+    monkeypatch.setattr(
+        ray._private.worker.global_worker, "check_connected", lambda: None
+    )
     existing = MagicMock()
     acc = TPUAccelerator(TPUConfig(kind="tpu", topology=topology))
     acc._slice_pg_wrapper = existing

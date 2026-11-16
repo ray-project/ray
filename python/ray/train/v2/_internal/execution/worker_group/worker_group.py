@@ -481,7 +481,7 @@ class WorkerGroup(ExecutionGroup):
     def _create_workers(
         self,
         num_workers: int,
-        placement_group: Union[PlacementGroup, List[PlacementGroup]],
+        placement_group: List[PlacementGroup],
         resources_per_worker: Dict[str, float],
         placement_group_bundle_indices: Optional[List[int]] = None,
         starting_world_rank: int = 0,
@@ -492,8 +492,8 @@ class WorkerGroup(ExecutionGroup):
 
         Args:
             num_workers: Number of workers to create.
-            placement_group: The placement group (or list of placement groups
-                for multi-slice TPU topologies) to schedule workers in.
+            placement_group: List of placement groups (multiple for multi-slice
+                TPU topologies) to schedule workers in.
             resources_per_worker: Resources per worker.
             placement_group_bundle_indices: Optional explicit bundle indices to use.
                 If None, uses range(num_workers).
@@ -518,9 +518,7 @@ class WorkerGroup(ExecutionGroup):
             if placement_group_bundle_indices is not None
             else list(range(num_workers))
         )
-        pgs = (
-            placement_group if isinstance(placement_group, list) else [placement_group]
-        )
+        pgs = placement_group
         bundles_per_pg = pgs[0].bundle_count if len(pgs) > 1 else None
 
         runtime_env = self._get_worker_runtime_env(

@@ -1334,49 +1334,17 @@ def test_start_worker_group_label_selector_callback_matrix(
     ]
     assert "Overriding" not in caplog.text
 
-    # 6. List-shaped callback return: valid length decoupled copies + TPU base merge,
-    #    wrong length -> ValueError, non-dict entry or invalid return type -> TypeError.
-    cb_list = [{"pool": "a"}]
-    ctrl = _make_controller(
-        callbacks=[_cb(cb_list)],
-        num_workers=1,
-        use_tpu=True,
-        accelerator_type="TPU-V6E",
-    )
-    ctrl._start_worker_group(num_workers=1, resources_per_worker={"CPU": 1, "TPU": 1})
-    assert contexts[-1].label_selector == [
-        {"ray.io/accelerator-type": "TPU-V6E", "pool": "a"}
-    ]
-    cb_list[0]["pool"] = "mutated"
-    assert contexts[-1].label_selector[0]["pool"] == "a"
-
-    ctrl_bad_len = _make_controller(
-        callbacks=[_cb([{"pool": "a"}])],
-        num_workers=2,
-        use_tpu=False,
-    )
-    with pytest.raises(ValueError, match="list of length 1, expected 2"):
-        ctrl_bad_len._start_worker_group(num_workers=2, resources_per_worker={"CPU": 1})
-
-    ctrl_bad_entry = _make_controller(
-        callbacks=[_cb([{"pool": "a"}, "not-a-dict"])],
-        num_workers=2,
-        use_tpu=False,
-    )
-    with pytest.raises(TypeError, match="expected list of dicts"):
-        ctrl_bad_entry._start_worker_group(
-            num_workers=2, resources_per_worker={"CPU": 1}
+    # 6. Invalid callback return type raises TypeError.
+    for bad_cb_val in ("invalid-selector", [{"pool": "a"}]):
+        ctrl_bad_type = _make_controller(
+            callbacks=[_cb(bad_cb_val)],
+            num_workers=1,
+            use_tpu=False,
         )
-
-    ctrl_bad_type = _make_controller(
-        callbacks=[_cb("invalid-selector")],
-        num_workers=1,
-        use_tpu=False,
-    )
-    with pytest.raises(TypeError, match="expected dict or list of dicts"):
-        ctrl_bad_type._start_worker_group(
-            num_workers=1, resources_per_worker={"CPU": 1}
-        )
+        with pytest.raises(TypeError, match="expected dict"):
+            ctrl_bad_type._start_worker_group(
+                num_workers=1, resources_per_worker={"CPU": 1}
+            )
 
     # 7. Multi-slice TPU (num_workers=8, v6e 4x4 -> num_slices=2) with dict and list selectors.
     for selector, expected_list in [

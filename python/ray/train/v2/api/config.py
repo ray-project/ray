@@ -254,27 +254,13 @@ class ScalingConfig(ScalingConfigV1):
         for callback_name, selector in callback_selectors:
             if not selector:
                 continue
-            if isinstance(selector, list):
-                if len(selector) != num_workers:
-                    raise ValueError(
-                        f"Callback {callback_name} returned a "
-                        f"`label_selector` list of length {len(selector)}, "
-                        f"expected {num_workers}."
-                    )
-                if not all(isinstance(s, dict) for s in selector):
-                    raise TypeError(
-                        f"Callback {callback_name} returned invalid "
-                        "`label_selector` list entries; expected list of dicts."
-                    )
-                normalized_selector = [s.copy() for s in selector]
-            elif isinstance(selector, dict):
-                normalized_selector = [selector.copy() for _ in range(num_workers)]
-            else:
+            if not isinstance(selector, dict):
                 raise TypeError(
                     f"Callback {callback_name} returned invalid "
                     f"`label_selector` of type {type(selector).__name__}; "
-                    "expected dict or list of dicts."
+                    "expected dict."
                 )
+            normalized_selector = [selector.copy() for _ in range(num_workers)]
 
             if user_label_selector and any(user_label_selector):
                 source = (

@@ -86,7 +86,7 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
 
     @property
     def placement_groups(self) -> List[PlacementGroup]:
-        return self._spg.placement_groups
+        return self._spg.slice_placement_groups
 
     @property
     def placement_group(self) -> PlacementGroup:

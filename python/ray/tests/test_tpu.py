@@ -380,10 +380,6 @@ def test_multi_slice_placement_group(ray_tpu_cluster):
     assert multi_slice_placement_group.hosts_per_slice == 2
     assert multi_slice_placement_group.bundles_per_slice == 2
     assert len(multi_slice_placement_group.slice_placement_groups) == 2
-    assert (
-        multi_slice_placement_group.placement_groups
-        == multi_slice_placement_group.slice_placement_groups
-    )
     for pg in multi_slice_placement_group.slice_placement_groups:
         assert pg.bundle_count == 2
         assert pg.bundle_specs == [
@@ -392,7 +388,7 @@ def test_multi_slice_placement_group(ray_tpu_cluster):
         ]
     with pytest.raises(
         ValueError,
-        match="num_slices > 1, use `slice_placement_groups` or `placement_groups` instead.",
+        match="num_slices > 1, use `slice_placement_groups` instead.",
     ):
         _ = multi_slice_placement_group.slice_placement_group
 
@@ -1412,7 +1408,7 @@ def test_shutdown_idempotent(ray_tpu_cluster):
 
     slice_pg.shutdown()
     assert slice_pg.placement_group is None
-    assert len(slice_pg.placement_groups) == 0
+    assert len(slice_pg.slice_placement_groups) == 0
 
     # Call again, should not raise
     slice_pg.shutdown()
@@ -1673,7 +1669,6 @@ def _make_mock_slice_handle(
     mock_handle.bundle_resources = {"TPU": tpu_per_bundle, "CPU": 1.0}
     mock_pgs = [MagicMock() for _ in range(num_slices)]
     mock_handle.slice_placement_groups = mock_pgs
-    mock_handle.placement_groups = mock_pgs
     mock_handle.slice_placement_group = mock_pgs[0] if num_slices == 1 else None
     mock_handle.placement_group = mock_pgs[0]
     return mock_handle
@@ -2107,7 +2102,6 @@ def test_run_on_slice_raises_if_provided_slice_is_shut_down(slice_index):
     """A ValueError is raised when tpu_slice has already been shut down."""
     shut_down_handle = _make_mock_slice_handle(num_slices=2)
     shut_down_handle.slice_placement_groups = []
-    shut_down_handle.placement_groups = []
     shut_down_handle.slice_placement_group = None
     shut_down_handle.placement_group = None
 
@@ -2248,7 +2242,7 @@ def test_run_on_slice_integration_slice_index(ray_tpu_cluster):
         accelerator_version="v4",
         num_slices=2,
     )
-    ray.get([pg.ready() for pg in slice_handle.placement_groups])
+    ray.get([pg.ready() for pg in slice_handle.slice_placement_groups])
 
     # Dispatch to slice 0
     refs_0 = ray.util.tpu.run_on_slice(
@@ -4136,7 +4130,7 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
         num_slices=2,
         resources_per_bundle={"CPU": 0, "TPU": 1},
     )
-    ray.get([pg.ready() for pg in spg.placement_groups], timeout=10)
+    ray.get([pg.ready() for pg in spg.slice_placement_groups], timeout=10)
     # Give each live raylet in the two v4-16 slices a distinct host IP so
     # multi-slice MASTER_ADDR vs. slice-local addresses cannot pass vacuously
     # on a single-machine 127.0.0.1 cluster.
@@ -4233,7 +4227,7 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
             + [{slice_name_key: "test-slice-1"}] * 8
         ),
     )
-    ray.get(spg_partial.placement_groups[1].ready(), timeout=10)
+    ray.get(spg_partial.slice_placement_groups[1].ready(), timeout=10)
     with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
         spg_partial.get_torchtpu_env_vars(worker_id=0)
     assert (

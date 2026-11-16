@@ -307,7 +307,7 @@ def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
     fake_pg_ready.wait.return_value = True
     fake_pg_timeout = MagicMock()
     fake_pg_timeout.wait.return_value = False
-    fake_spg = MagicMock(placement_groups=[fake_pg_ready, fake_pg_timeout])
+    fake_spg = MagicMock(slice_placement_groups=[fake_pg_ready, fake_pg_timeout])
 
     def _create_fake_spg(*args, **kwargs):
         captured_kwargs.update(kwargs)

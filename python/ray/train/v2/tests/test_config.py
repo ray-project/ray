@@ -319,23 +319,15 @@ def test_scaling_config_resolve_worker_group_label_selector(caplog, propagate_lo
     # Lazy callback iteration stops immediately on invalid callback output.
     visited = []
 
-    def bad_len_callbacks():
+    def bad_type_callbacks():
         visited.append("bad")
-        yield ("BadLenCallback", [{"zone": "a"}])
+        yield ("BadTypeCallback", 123)
         visited.append("unreached")
         yield ("UnreachedCallback", {"zone": "b"})
 
-    with pytest.raises(ValueError, match="BadLenCallback.*length 1, expected 4"):
-        slice_cfg._resolve_worker_group_label_selector(4, bad_len_callbacks())
-    assert visited == ["bad"]
-
-    with pytest.raises(TypeError, match="BadEntryCallback.*list of dicts"):
-        slice_cfg._resolve_worker_group_label_selector(
-            2, [("BadEntryCallback", [{"a": "1"}, "not-a-dict"])]
-        )
-
     with pytest.raises(TypeError, match="BadTypeCallback.*type int"):
-        slice_cfg._resolve_worker_group_label_selector(2, [("BadTypeCallback", 123)])
+        slice_cfg._resolve_worker_group_label_selector(4, bad_type_callbacks())
+    assert visited == ["bad"]
 
 
 def test_storage_filesystem_repr():
