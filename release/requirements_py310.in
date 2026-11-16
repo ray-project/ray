@@ -38,7 +38,7 @@ h11>=0.16.0
 google-cloud-logging
 packaging==25.0
 
-# Last anyscale CLI/SDK release before Ray summit 2025
-# This should have a recent version of the new SDK where still having
-# the old SDK.
-anyscale>=0.26.74
+# Anyscale CLI/SDK used by the release test harness. It must have the new SDK
+# (anyscale.job, anyscale.compute_config) and still ship the old SDK
+# (anyscale.sdk.anyscale_client), which ray_release also uses.
+anyscale>=0.26.117
