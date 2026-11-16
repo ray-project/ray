@@ -16,10 +16,12 @@ from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
     TYPE_CHECKING,
+    Any,
     Dict,
     List,
     Mapping,
     Optional,
+    Sequence,
     Tuple,
     Union,
 )
@@ -274,25 +276,103 @@ def set_num_threads_env_vars_if_unset() -> List[str]:
 
     # For num_cpu < 1: Set to 1. Rayon treats 0 as "use every core".
     # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
-    num_threads = str(max(math.floor(num_assigned_cpus), 1))
+    num_threads_int = max(math.floor(num_assigned_cpus), 1)
+    num_threads = str(num_threads_int)
     for name in unset_env_vars:
         os.environ[name] = num_threads
     if "OMP_NUM_THREADS" in unset_env_vars:
-        # If modules like torch were pre-imported before fork(), their internal thread
-        # pool is already initialized and ignores subsequent os.environ["OMP_NUM_THREADS"]
-        # updates.
-        set_thread_pool_module_threads(int(num_threads))
+        # If modules like torch or numpy/OpenBLAS were pre-imported before fork(), their
+        # internal thread pool is already initialized and ignores subsequent env updates.
+        set_thread_pool_module_threads(num_threads_int, unset_env_vars)
+    elif (
+        "OPENBLAS_NUM_THREADS" in unset_env_vars or "MKL_NUM_THREADS" in unset_env_vars
+    ):
+        resize_native_thread_pools(
+            0,
+            num_threads_int if "OPENBLAS_NUM_THREADS" in unset_env_vars else 0,
+            num_threads_int if "MKL_NUM_THREADS" in unset_env_vars else 0,
+        )
     return unset_env_vars
 
 
-def set_thread_pool_module_threads(num_threads: int) -> None:
-    """Set the thread count of already-imported THREAD_POOL_MODULES (e.g. torch).
+_cached_native_thread_pool_setters: Optional[List[Tuple[str, Any, Any]]] = None
 
-    These modules size their thread pool at import time and ignore later changes to
-    OMP_NUM_THREADS, so modules imported before fork() must be resized explicitly.
+_NATIVE_THREAD_POOL_SYMBOLS = (
+    (
+        "openblas",
+        (
+            "scipy_openblas_set_num_threads64_",
+            "scipy_openblas_set_num_threads",
+            "openblas_set_num_threads",
+        ),
+    ),
+    ("mkl", ("MKL_Set_Num_Threads",)),
+    ("omp", ("omp_set_num_threads",)),
+)
+
+
+def cache_native_thread_pool_setters() -> None:
+    """Cache ctypes thread-pool setter functions for already-loaded native libraries.
+
+    Called once in the fork server pre-fork after preloading modules so forked
+    workers can resize OpenBLAS/MKL/OpenMP pools without scanning /proc/self/maps.
+    """
+    global _cached_native_thread_pool_setters
+    if not sys.platform.startswith("linux") or not hasattr(os, "RTLD_NOLOAD"):
+        _cached_native_thread_pool_setters = []
+        return
+    import ctypes
+
+    so_paths = ()
+    with contextlib.suppress(OSError), open("/proc/self/maps") as f:
+        so_paths = {line.split(None, 5)[-1].strip() for line in f if ".so" in line}
+    setters: List[Tuple[str, Any, Any]] = []
+    for path in so_paths:
+        if path.startswith("/") and any(
+            k in path.lower() for k in ("openblas", "mkl", "omp")
+        ):
+            with contextlib.suppress(OSError):
+                lib = ctypes.CDLL(path, mode=os.RTLD_NOLOAD | os.RTLD_LOCAL)
+                for kind, syms in _NATIVE_THREAD_POOL_SYMBOLS:
+                    for sym in syms:
+                        if (fn := getattr(lib, sym, None)) is not None:
+                            fn.argtypes = [ctypes.c_int]
+                            setters.append((kind, lib, fn))
+                            break
+    _cached_native_thread_pool_setters = setters
+
+
+def resize_native_thread_pools(omp: int, openblas: int, mkl: int) -> None:
+    """Resize cached pre-fork native OpenBLAS/MKL/OpenMP thread pools.
+
+    No-op when ``cache_native_thread_pool_setters()`` has not been called
+    (e.g. non-fork-server workers).
+    """
+    if not _cached_native_thread_pool_setters:
+        return
+    counts = {"omp": omp, "openblas": openblas, "mkl": mkl}
+    for kind, _lib, fn in _cached_native_thread_pool_setters:
+        count = counts.get(kind, 0)
+        if count > 0:
+            try:
+                fn(count)
+            except Exception:
+                pass
+
+
+def set_thread_pool_module_threads(
+    num_threads: int, unset_env_vars: Optional[Sequence[str]] = None
+) -> None:
+    """Set the thread count of already-imported THREAD_POOL_MODULES and native pools.
+
+    These modules and native BLAS/OpenMP libraries size their thread pool at import
+    time and ignore later changes to env vars, so ones loaded before fork() must be
+    resized explicitly.
 
     Args:
-        num_threads: The number of threads to set on each imported module.
+        num_threads: The number of threads to set on each imported module/pool.
+        unset_env_vars: Thread env vars just defaulted by Ray (still eligible for
+            resizing even though they are now present in ``os.environ``).
     """
     for module_name in ray_constants.THREAD_POOL_MODULES:
         module = sys.modules.get(module_name)
@@ -301,6 +381,19 @@ def set_thread_pool_module_threads(num_threads: int) -> None:
                 module.set_num_threads(num_threads)
             except Exception:
                 pass
+    unset = set(unset_env_vars or ())
+    resize_native_thread_pools(
+        num_threads,
+        num_threads
+        if (
+            "OPENBLAS_NUM_THREADS" in unset
+            or not os.environ.get("OPENBLAS_NUM_THREADS")
+        )
+        else 0,
+        num_threads
+        if ("MKL_NUM_THREADS" in unset or not os.environ.get("MKL_NUM_THREADS"))
+        else 0,
+    )
 
 
 _cached_torch_backend_eps = None

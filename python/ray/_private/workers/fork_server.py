@@ -1,5 +1,4 @@
 import argparse
-import ctypes
 import gc
 import importlib
 import importlib.metadata
@@ -16,7 +15,7 @@ import time
 from contextlib import suppress
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -82,6 +81,7 @@ class ForkServerProcess:
             os.path.abspath(__file__),
             f"--socket-path={self.socket_path}",
             f"--preload-modules={','.join(preload_modules or [])}",
+            f"--cluster-pythonpath={os.environ.get('PYTHONPATH', '')}",
             "--monitor-stdin",
         ]
         if cgroup_path and sys.platform.startswith("linux"):
@@ -117,26 +117,51 @@ class ForkServerProcess:
                 time.sleep(0.01)
             st = os.lstat(self.socket_path)
             self._socket_id = (st.st_dev, st.st_ino)
-        except BaseException:
+        except BaseException as e:
+            if isinstance(e, Exception):
+                logger.warning(
+                    "ForkServer failed to start at %s: %s", self.socket_path, e
+                )
             self.stop()
             raise
 
     def stop(self) -> None:
         if self.process.stdin is not None:
-            with suppress(OSError):
+            try:
                 self.process.stdin.close()
+            except OSError as e:
+                logger.debug(f"Failed to close ForkServer stdin: {e}")
         if self._socket_id is not None:
-            with suppress(OSError):
+            try:
                 st = os.lstat(self.socket_path)
                 if (st.st_dev, st.st_ino) == self._socket_id:
                     os.unlink(self.socket_path)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                logger.warning(
+                    f"Failed to unlink ForkServer socket {self.socket_path}: {e}"
+                )
             self._socket_id = None
         for sig in (signal.SIGTERM, signal.SIGKILL):
             if self.process.poll() is not None:
                 break
-            with suppress(Exception):
+            try:
                 os.killpg(self.process.pid, sig)
                 self.process.wait(timeout=1.0)
+            except ProcessLookupError:
+                break
+            except subprocess.TimeoutExpired:
+                log_fn = logger.debug if sig == signal.SIGTERM else logger.warning
+                log_fn(
+                    "ForkServer pid=%s did not exit after %s",
+                    self.process.pid,
+                    sig.name,
+                )
+            except OSError as e:
+                logger.warning(
+                    f"Failed to stop ForkServer pid={self.process.pid} with {sig.name}: {e}"
+                )
 
 
 def _preload_modules(preload_arg: str) -> None:
@@ -160,45 +185,13 @@ def _env_int(name: str, default: int = 0) -> int:
     return default
 
 
-def _resize_native_thread_pools(omp: int, openblas: int, mkl: int) -> None:
-    if (
-        (omp <= 0 and openblas <= 0 and mkl <= 0)
-        or not sys.platform.startswith("linux")
-        or not hasattr(os, "RTLD_NOLOAD")
-    ):
-        return
-    targets = (
-        (
-            openblas,
-            (
-                "scipy_openblas_set_num_threads64_",
-                "scipy_openblas_set_num_threads",
-                "openblas_set_num_threads",
-            ),
-        ),
-        (mkl, ("MKL_Set_Num_Threads",)),
-        (omp, ("omp_set_num_threads",)),
-    )
-    so_paths = ()
-    with suppress(OSError), open("/proc/self/maps") as f:
-        so_paths = {line.split(None, 5)[-1].strip() for line in f if ".so" in line}
-    for path in so_paths:
-        if path.startswith("/") and any(
-            k in path.lower() for k in ("openblas", "mkl", "omp")
-        ):
-            with suppress(OSError):
-                lib = ctypes.CDLL(path, mode=os.RTLD_NOLOAD | os.RTLD_LOCAL)
-                for count, syms in targets:
-                    for sym in syms if count > 0 else ():
-                        if (fn := getattr(lib, sym, None)) is not None:
-                            fn(ctypes.c_int(count))
-
-
 def _prepare_child_environment(
     saved_pre_fork_env: Dict[str, Optional[str]],
     child_env: Dict[str, str],
     child_args: List[str],
     runtime_env_vars: Optional[Dict[str, str]] = None,
+    plugin_py_dirs: Sequence[str] = (),
+    cluster_py_dirs: Sequence[str] = (),
 ) -> None:
     ray._private.worker.t0 = time.time()
     runtime_env_vars = runtime_env_vars or {}
@@ -211,6 +204,8 @@ def _prepare_child_environment(
 
     parent_pythonpath = os.environ.get("PYTHONPATH", "")
     old_py_dirs = [os.path.abspath(p) for p in parent_pythonpath.split(os.pathsep) if p]
+    plugin_py_dirs = tuple(os.path.abspath(p) for p in plugin_py_dirs if p)
+    cluster_py_dirs = tuple(os.path.abspath(p) for p in cluster_py_dirs if p)
     os.environ.pop("RAY_JOB_ID", None)
     os.environ.update(child_env)
     ray._private.utils.update_envs(runtime_env_vars)
@@ -218,26 +213,17 @@ def _prepare_child_environment(
         time.tzset()
     if "PYTHONPATH" in changed_keys:
         ray._private.utils._cached_torch_backend_eps = None
-        cluster_py = {
+        env_py_dirs = [
             os.path.abspath(p)
-            for p in child_env.get("PYTHONPATH", "").split(os.pathsep)
+            for p in os.environ.get("PYTHONPATH", "").split(os.pathsep)
             if p
-        }
-        rt_env_py = [p for p in old_py_dirs if p not in cluster_py]
+        ]
         merged_py_dirs = list(
             dict.fromkeys(
                 [
-                    *rt_env_py,
-                    *(
-                        os.path.abspath(p)
-                        for layer in (
-                            os.environ.get("PYTHONPATH", ""),
-                            child_env.get("PYTHONPATH", ""),
-                            parent_pythonpath,
-                        )
-                        for p in layer.split(os.pathsep)
-                        if p
-                    ),
+                    *plugin_py_dirs,
+                    *env_py_dirs,
+                    *(cluster_py_dirs if plugin_py_dirs else ()),
                 ]
             )
         )
@@ -245,11 +231,17 @@ def _prepare_child_environment(
             os.environ["PYTHONPATH"] = os.pathsep.join(merged_py_dirs)
         else:
             os.environ.pop("PYTHONPATH", None)
+        prefixes = (os.path.abspath(sys.prefix), os.path.abspath(sys.base_prefix))
+        prefix_seps = tuple(p.rstrip(os.sep) + os.sep for p in prefixes)
         idx = 1 if sys.path else 0
         sys.path[idx:] = [
             p
             for p in sys.path[idx:]
-            if os.path.abspath(p) not in old_py_dirs
+            if (
+                os.path.abspath(p) not in old_py_dirs
+                or os.path.abspath(p) in prefixes
+                or os.path.abspath(p).startswith(prefix_seps)
+            )
             and os.path.abspath(p) not in merged_py_dirs
         ]
         sys.path[idx:idx] = merged_py_dirs
@@ -259,11 +251,10 @@ def _prepare_child_environment(
     omp_threads = _env_int("OMP_NUM_THREADS")
     if omp_threads > 0:
         ray._private.utils.set_thread_pool_module_threads(omp_threads)
-    _resize_native_thread_pools(
-        omp_threads,
-        _env_int("OPENBLAS_NUM_THREADS", omp_threads),
-        _env_int("MKL_NUM_THREADS", omp_threads),
-    )
+    openblas_threads = _env_int("OPENBLAS_NUM_THREADS")
+    mkl_threads = _env_int("MKL_NUM_THREADS")
+    if openblas_threads > 0 or mkl_threads > 0:
+        ray._private.utils.resize_native_thread_pools(0, openblas_threads, mkl_threads)
 
     if hasattr(sys.modules.get("torch.cuda"), "_cached_device_count"):
         sys.modules["torch.cuda"]._cached_device_count = None
@@ -346,10 +337,28 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     parser = argparse.ArgumentParser(description="Ray Python worker fork server")
     parser.add_argument("--socket-path", required=True, type=str)
     parser.add_argument("--preload-modules", default="", type=str)
+    parser.add_argument("--cluster-pythonpath", default=None, type=str)
     parser.add_argument("--monitor-stdin", action="store_true")
     args = parser.parse_args(argv)
 
-    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    raw_cluster_pythonpath = (
+        os.environ.get("PYTHONPATH", "")
+        if args.cluster_pythonpath is None
+        else args.cluster_pythonpath
+    )
+    cluster_py_dirs = tuple(
+        dict.fromkeys(
+            os.path.abspath(p) for p in raw_cluster_pythonpath.split(os.pathsep) if p
+        )
+    )
+    cluster_py_set = set(cluster_py_dirs)
+    plugin_py_dirs = tuple(
+        dict.fromkeys(
+            os.path.abspath(p)
+            for p in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+            if p and os.path.abspath(p) not in cluster_py_set
+        )
+    )
 
     # Keep library imports single-threaded before fork().
     saved_pre_fork_env = {k: os.environ.get(k) for k in _PRE_FORK_ENV_OVERRIDES}
@@ -358,9 +367,15 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     import ray._common.usage.usage_lib as _usage_lib  # noqa: F401
     import ray._private.workers.default_worker as default_worker
 
-    with suppress(Exception):
+    try:
         ray._private.worker.global_worker.get_serialization_context()
+    except Exception:
+        logger.warning(
+            "Failed to pre-initialize serialization context in ForkServer",
+            exc_info=True,
+        )
     _preload_modules(args.preload_modules)
+    ray._private.utils.cache_native_thread_pool_setters()
     ray._private.utils._cached_torch_backend_eps = list(
         importlib.metadata.entry_points(group="torch.backends")
     )
@@ -368,6 +383,10 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         raise RuntimeError(
             "Preloaded module initialized CUDA before fork(); refusing to start ForkServer"
         )
+
+    # Ignore SIGCHLD after preloading so preloaded modules calling subprocesses
+    # still observe exit codes, while forked workers are auto-reaped by the kernel.
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
     gc.collect()
     gc.freeze()
@@ -470,7 +489,12 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
             signal.signal(signal.SIGINT, signal.default_int_handler)
             signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
             _prepare_child_environment(
-                saved_pre_fork_env, child_env, child_args, runtime_env_vars
+                saved_pre_fork_env,
+                child_env,
+                child_args,
+                runtime_env_vars,
+                plugin_py_dirs=plugin_py_dirs,
+                cluster_py_dirs=cluster_py_dirs,
             )
             return default_worker
     finally:

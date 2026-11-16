@@ -24,9 +24,23 @@ from ray._private.workers.fork_server import (
 _PROBE_MODULE = """
 import gc, json, os, random, signal, sys
 import numpy as np
+import ray._private.utils as ray_utils
 import ray._private.workers.default_worker as default_worker
 
 np.random.rand()  # Initialize numpy's lazily-seeded global RNG before fork().
+
+def _get_openblas_threads():
+    for kind, lib, _ in ray_utils._cached_native_thread_pool_setters or ():
+        if kind != "openblas":
+            continue
+        for sym in (
+            "scipy_openblas_get_num_threads64_",
+            "scipy_openblas_get_num_threads",
+            "openblas_get_num_threads",
+        ):
+            if (fn := getattr(lib, sym, None)) is not None:
+                return int(fn())
+    return None
 
 def _report_and_exit():
     info = {
@@ -36,6 +50,12 @@ def _report_and_exit():
         "omp": os.environ.get("OMP_NUM_THREADS"),
         "je_arrow": os.environ.get("JE_ARROW_MALLOC_CONF"),
         "job_id": os.environ.get("RAY_JOB_ID"),
+        "pythonpath": os.environ.get("PYTHONPATH", ""),
+        "sys_path": sys.path[:4],
+        "native_setter_kinds": [
+            k for k, _, _ in (ray_utils._cached_native_thread_pool_setters or ())
+        ],
+        "openblas_threads": _get_openblas_threads(),
         "sigint_ok": signal.getsignal(signal.SIGINT) is signal.default_int_handler
         and signal.SIGINT not in signal.pthread_sigmask(signal.SIG_BLOCK, []),
         "sig_dfl": signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
@@ -117,6 +137,78 @@ def test_preload_modules_and_prepare_child_environment(monkeypatch, tmp_path):
     assert sys.argv == ["fork_server.py", "--worker-id=abc"]
 
 
+@pytest.mark.parametrize(
+    "runtime_env_pp,expected_pp,expect_cluster_in_sys_path",
+    [
+        ("user", ["user"], False),
+        ("user:${PYTHONPATH}", ["user", "cluster", "prefix"], True),
+        ("", [], False),
+    ],
+)
+def test_prepare_child_environment_pythonpath_default_server(
+    monkeypatch, tmp_path, runtime_env_pp, expected_pp, expect_cluster_in_sys_path
+):
+    """Default fork server with parent PYTHONPATH and worker env omitting it."""
+    cluster_dir = str(tmp_path / "cluster")
+    user_dir = str(tmp_path / "user")
+    prefix_dir = os.path.join(os.path.abspath(sys.prefix), "lib")
+    parent_pp = os.pathsep.join([cluster_dir, prefix_dir])
+    monkeypatch.setenv("PYTHONPATH", parent_pp)
+    monkeypatch.setattr(sys, "path", ["", cluster_dir, prefix_dir, "/other"])
+    monkeypatch.setattr(sys, "argv", ["fork_server.py"])
+
+    expanded_input = (
+        runtime_env_pp.replace("user", user_dir).replace(":", os.pathsep)
+        if runtime_env_pp
+        else ""
+    )
+    _prepare_child_environment(
+        {},
+        {},  # BuildProcessCommandArgs omits PYTHONPATH from worker env.
+        [],
+        {"PYTHONPATH": expanded_input},
+        plugin_py_dirs=(),
+        cluster_py_dirs=(cluster_dir, prefix_dir),
+    )
+
+    name_to_dir = {"user": user_dir, "cluster": cluster_dir, "prefix": prefix_dir}
+    expected_dirs = [name_to_dir[k] for k in expected_pp]
+    if expected_dirs:
+        assert os.environ["PYTHONPATH"] == os.pathsep.join(expected_dirs)
+    else:
+        assert "PYTHONPATH" not in os.environ
+    assert sys.path[1 : 1 + len(expected_dirs)] == expected_dirs
+    assert prefix_dir in sys.path
+    assert (cluster_dir in sys.path) is expect_cluster_in_sys_path
+
+
+@pytest.mark.parametrize("runtime_env_pp", ["user", "user:${PYTHONPATH}"])
+def test_prepare_child_environment_pythonpath_working_dir_server(
+    monkeypatch, tmp_path, runtime_env_pp
+):
+    """Working-dir server preserves plugin > user > cluster order without worker PYTHONPATH."""
+    plugin_dir = str(tmp_path / "working_dir")
+    cluster_dir = str(tmp_path / "cluster")
+    user_dir = str(tmp_path / "user")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([plugin_dir, cluster_dir]))
+    monkeypatch.setattr(sys, "path", ["", plugin_dir, cluster_dir, "/other"])
+    monkeypatch.setattr(sys, "argv", ["fork_server.py"])
+
+    expanded_input = runtime_env_pp.replace("user", user_dir).replace(":", os.pathsep)
+    _prepare_child_environment(
+        {},
+        {},  # BuildProcessCommandArgs omits PYTHONPATH from worker env.
+        [],
+        {"PYTHONPATH": expanded_input},
+        plugin_py_dirs=(plugin_dir,),
+        cluster_py_dirs=(cluster_dir,),
+    )
+
+    expected = [plugin_dir, user_dir, cluster_dir]
+    assert os.environ["PYTHONPATH"] == os.pathsep.join(expected)
+    assert sys.path[1:4] == expected
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
 def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
     """Verify socket security, request handling, and forked-child isolation."""
@@ -160,9 +252,14 @@ def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
         assert json.loads(reply) == {"error": "request expired"}
 
         children = []
+        user_py_dir = str(tmp_path / "user_py")
         for idx in range(2):
             out = tmp_path / f"child_{idx}.json"
-            req = {"args": [f"--idx={idx}"], "env": {"PROBE_OUT": str(out)}}
+            req = {
+                "args": [f"--idx={idx}"],
+                "env": {"PROBE_OUT": str(out)},
+                "runtime_env_vars": {"PYTHONPATH": user_py_dir} if idx == 1 else {},
+            }
             resp = json.loads(_request(sock_path, json.dumps(req).encode() + b"\n"))
             wait_for_condition(out.exists, timeout=10)
             info = json.loads(out.read_text())
@@ -172,10 +269,25 @@ def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
 
         assert children[0]["rand"] != children[1]["rand"]
         assert children[0]["np_rand"] != children[1]["np_rand"]
+        # Working-dir plugin path (tmp_path) must stay ahead of user_py_dir.
+        assert children[1]["sys_path"][1:3] == [str(tmp_path), user_py_dir]
+        assert children[1]["pythonpath"].split(os.pathsep)[:2] == [
+            str(tmp_path),
+            user_py_dir,
+        ]
         for info in children:
             assert info["freeze_count"] > 0
+            assert info["native_setter_kinds"]
+            if info["openblas_threads"] is not None:
+                assert info["openblas_threads"] == 6
             assert (info["omp"], info["je_arrow"], info["job_id"]) == ("6", None, None)
             assert info["sigint_ok"] and info["sig_dfl"]
+            # Verify forked children are auto-reaped while the server is still alive
+            # (no zombie /proc/<pid> entries left behind).
+            wait_for_condition(
+                lambda pid=info["pid"]: not os.path.exists(f"/proc/{pid}"),
+                timeout=5,
+            )
     finally:
         server.stop()
 
