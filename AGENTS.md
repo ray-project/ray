@@ -78,22 +78,27 @@ not complete until its documentation matches the new behavior. In the same PR:
 
 - **Docstrings.** Update the docstring of every symbol whose signature,
   defaults, return value, raised exceptions or behavior changed. Each
-  parameter needs an entry in the `Args:` block; CI's `api_param_coverage`
-  check fails on new parameters without one. Keep `>>>` examples runnable and
+  parameter needs an entry in the `Args:` block. For `@PublicAPI` symbols,
+  CI's `api_param_coverage` check fails on a new parameter without one; it
+  doesn't check `@DeveloperAPI` symbols. Keep `>>>` examples runnable and
   their output accurate.
-- **API reference.** Add a new public symbol to its library's API reference
-  page under `doc/source/<library>/api/`, and remove a deleted one. CI's
+- **API reference.** Add a new `@PublicAPI` symbol to its library's API
+  reference page, and remove a deleted one. `API_PATH_PREFIXES` in
+  `doc/source/_ext/api_sidebar.py` lists the API reference directories. CI's
   `doc: check API doc consistency` step fails when the documented and
-  annotated API surfaces disagree.
-- **User guides and examples.** Search `doc/source/` for the symbol and update
-  any prose, code snippet or example that now describes the old behavior or
-  uses a removed or renamed argument. Follow
-  `doc/source/ray-contribute/writing-style.md`, as described in `doc/AGENTS.md`.
-- **Deprecations.** When deprecating an API, say so in its docstring, name the
-  replacement, and update docs examples to use the replacement.
+  annotated `@PublicAPI` surfaces disagree. Removing or renaming a symbol also
+  changes its reference page URL; see the next section.
+- **User guides and examples.** Search `doc/source/` for the symbol's name
+  and its import path, including `.py` snippets under `doc_code/` and `.ipynb`
+  notebooks, and update any prose, code snippet or example that now describes
+  the old behavior or uses a removed or renamed argument. Before editing
+  anything under `doc/`, read `doc/AGENTS.md`.
+- **Deprecations.** When deprecating an API, mark it with
+  `@Deprecated(message=...)` from `ray.util.annotations`, name the replacement
+  in the message, and update docs examples to use the replacement.
 
-Internal refactors that leave user-visible behavior unchanged need no docs
-update.
+Internal refactors that leave user-visible behavior and public import paths
+unchanged need no docs update.
 
 ### Changes that move docs.ray.io URLs
 
