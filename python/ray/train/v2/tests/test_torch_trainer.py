@@ -234,6 +234,38 @@ def test_torchft_linear_replica_failure(
     assert ray.get(counter.get_count.remote()) == expected_train_fn_calls
 
 
+def test_prepare_data_loader_custom_batch_sampler(ray_start_4_cpus):
+    """prepare_data_loader must not silently drop a custom batch_sampler."""
+
+    def train_func(config):
+        dataset = torch.utils.data.TensorDataset(torch.arange(16.0))
+        batch_sampler = [list(range(i, i + 4)) for i in range(0, 16, 4)]
+        data_loader = torch.utils.data.DataLoader(dataset, batch_sampler=batch_sampler)
+
+        if config["add_dist_sampler"]:
+            ray.train.torch.prepare_data_loader(data_loader)
+        else:
+            data_loader = ray.train.torch.prepare_data_loader(
+                data_loader, add_dist_sampler=False
+            )
+            assert [len(batch[0]) for batch in data_loader] == [4, 4, 4, 4]
+
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config={"add_dist_sampler": False},
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    trainer.fit()
+
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config={"add_dist_sampler": True},
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    with pytest.raises(WorkerGroupError, match="custom `batch_sampler`"):
+        trainer.fit()
+
+
 def test_is_backend_nccl():
     assert _is_backend_nccl("nccl")
     assert _is_backend_nccl("cuda:nccl")

@@ -23,6 +23,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_LIFECYCLE_METADATA_KEY,
     KV_REPLICA_SYNC_METADATA_KEY,
     KV_TOKEN_METADATA_KEY,
+    OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
     SELECTION_MODEL_NAME,
     SELECTION_ROUTING_GROUP,
     SESSION_AFFINITY_MODE,
@@ -228,6 +229,9 @@ class KVTokenTracker:
         self._replica_id_by_worker: Dict[int, str] = {}
         # Connects to the token endpoints of newly joined workers.
         self._on_token_endpoints: Optional[Callable[[List[str]], None]] = None
+        self._autoscaling_metrics_callback: Optional[
+            Callable[[Dict[str, int]], None]
+        ] = None
         self._pending_tasks: Set[asyncio.Task] = set()
         self._long_poll_client: Optional[LongPollClient] = None
         self._stopping = False
@@ -244,6 +248,40 @@ class KVTokenTracker:
         Must be called before the event loop runs the first replica update.
         """
         self._on_token_endpoints = callback
+
+    def set_autoscaling_metrics_callback(
+        self, callback: Callable[[Dict[str, int]], None]
+    ) -> None:
+        """Set the local callback for router-owned autoscaling metrics."""
+        self._autoscaling_metrics_callback = callback
+
+    async def get_autoscaling_snapshot(self) -> Dict[str, int]:
+        """Return the workload of all in-flight requests, as this router's
+        selection service sees it."""
+        return self._get_autoscaling_snapshot()
+
+    def _get_autoscaling_snapshot(self) -> Dict[str, int]:
+        # The selection service applies every router's bookings and every
+        # LLMServer's lifecycle events, so this covers all routers' requests.
+        # Its prefill estimate decays the oldest prefill per worker over the
+        # prefill's expected duration.
+        outstanding_prefill_tokens = 0
+        if self._svc is not None:
+            for model in self._svc.loads(
+                model_name=SELECTION_MODEL_NAME, routing_group=SELECTION_ROUTING_GROUP
+            ):
+                for load in model["loads"]:
+                    outstanding_prefill_tokens += load["potential_prefill_tokens"]
+        return {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: outstanding_prefill_tokens}
+
+    def _publish_autoscaling_snapshot(self) -> None:
+        if self._autoscaling_metrics_callback is None:
+            return
+        # A raising callback must not fail the selection that triggered it.
+        try:
+            self._autoscaling_metrics_callback(self._get_autoscaling_snapshot())
+        except Exception:
+            logger.exception("Autoscaling metrics callback failed.")
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -567,6 +605,7 @@ class KVTokenTracker:
             # that booking, or it stays booked until the service's own expiry.
             self._schedule(self._free_abandoned_reservation(request_id, reserve))
             raise
+        self._publish_autoscaling_snapshot()
         return {
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],

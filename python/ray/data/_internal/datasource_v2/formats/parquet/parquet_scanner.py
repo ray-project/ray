@@ -1,18 +1,25 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Optional, Tuple
 
 import pyarrow as pa
+from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.arrow_file_scanner import ArrowFileScanner
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
+from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     check_for_legacy_tensor_type,
 )
+from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
@@ -21,9 +28,10 @@ from ray.util.annotations import DeveloperAPI
 class ParquetScanner(ArrowFileScanner):
     """Parquet-specific scanner implementation.
 
-    Inherits filter pushdown, column pruning, limit pushdown, partition
-    pruning, and file shuffle from ArrowFileScanner. Adds Parquet-specific
-    reader creation with adaptive batch sizing and the Parquet-only
+    Inherits filter pushdown, column pruning, limit pushdown, and file
+    shuffle from ArrowFileScanner. Partition pruning retains files whose
+    path cannot determine the predicate. Reader creation keeps that predicate
+    for row filtering, alongside adaptive batch sizing and the Parquet-only
     legacy-tensor-type schema check.
     """
 
@@ -37,6 +45,24 @@ class ParquetScanner(ArrowFileScanner):
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
     # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
     parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    @override
+    def prune_partitions(self, predicate: Expr) -> "ParquetScanner":
+        return replace(
+            self,
+            partition_predicate=combine_predicates(self.partition_predicate, predicate),
+        )
+
+    @override
+    def _create_partition_pruner(self) -> Optional[FilePruner]:
+        if self.partitioning is None or self.partition_predicate is None:
+            return None
+        return PartitionPredicatePruner(
+            self.partitioning,
+            self.partition_predicate,
+            schema=self.schema,
+            keep_unknown=True,
+        )
 
     def read_schema(self) -> pa.Schema:
         """Return schema after column pruning and tensor check.
@@ -68,7 +94,7 @@ class ParquetScanner(ArrowFileScanner):
         return ParquetFileReader(
             batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
-            predicate=self.predicate,
+            predicate=combine_predicates(self.predicate, self.partition_predicate),
             limit=self.limit,
             filesystem=self.filesystem,
             partitioning=self.partitioning,

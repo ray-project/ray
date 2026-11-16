@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, replace
-from functools import cached_property
+from functools import cached_property, wraps
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -164,6 +164,7 @@ class RayTrainWorker(PushSplitReceiverMixin):
             logger.error(f"Error deserializing the training function: {e}")
             raise
 
+        @wraps(train_fn)
         def train_fn_with_final_checkpoint_flush():
             result = train_fn()
             get_train_context().checkpoint_upload_threadpool.shutdown()

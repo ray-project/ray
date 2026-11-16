@@ -132,7 +132,8 @@ def report(
             utility for copying to the destination `storage_path`.
         validation: [Alpha] If True, triggers validation with default kwargs from validation_config.
             If a ValidationTaskConfig, validation is run using fn_kwargs merged with validation_config
-            defaults, with fn_kwargs taking precedence on conflicts. If False, no validation.
+            defaults, with fn_kwargs taking precedence on conflicts, and with its timeout_s,
+            if set, replacing the default timeout. If False, no validation.
     """
     if validation and not checkpoint:
         raise ValueError("Validation requires a checkpoint to be provided.")

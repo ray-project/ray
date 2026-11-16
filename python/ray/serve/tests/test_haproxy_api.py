@@ -921,18 +921,18 @@ def test_ingress_backend_inherits_global_retry_policy(haproxy_api_cleanup):
     assert unset.count("\n    retry-on ") == 1
     assert "\n    retries " not in unset
 
-    # ingress retry knobs are inherited, not re-emitted in the ingress backend;
-    # only timeout server renders there as a per-ingress override.
+    # With the global retry knobs and the ingress timeout override all set, the
+    # retry knobs render once (defaults block) and are inherited by the ingress
+    # backend; only timeout server renders there as a per-ingress override.
     set_cfg = render(
         {
-            "ingress_retry_on": "conn-failure empty-response response-timeout",
-            "ingress_retries": 4,
+            "retry_on": "conn-failure junk-response",
+            "retries": 4,
             "ingress_timeout_server_s": 5,
         }
     )
-    assert set_cfg.count("\n    retry-on ") == 1  # still only the defaults block
-    assert "empty-response" not in set_cfg
-    assert "\n    retries 4\n" not in set_cfg
+    assert set_cfg.count("\n    retry-on conn-failure junk-response\n") == 1
+    assert set_cfg.count("\n    retries 4\n") == 1
     assert "\n    timeout server 5s\n" in set_cfg
 
 

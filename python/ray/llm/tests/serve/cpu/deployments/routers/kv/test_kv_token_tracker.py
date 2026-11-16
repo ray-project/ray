@@ -25,6 +25,7 @@ from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware import kv_token_tracker
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_LIFECYCLE_METADATA_KEY,
+    OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
     SELECTION_MODEL_NAME,
     SELECTION_ROUTING_GROUP,
 )
@@ -309,6 +310,63 @@ def _ports_released(endpoints):
             except OSError:
                 return False
     return True
+
+
+def _outstanding_prefill_tokens(snapshot) -> int:
+    return snapshot[OUTSTANDING_EFFECTIVE_PREFILL_TOKENS]
+
+
+@pytest.mark.asyncio
+async def test_autoscaling_snapshot_tracks_request_phases():
+    """The snapshot follows the selection service: a selection adds its
+    request's prefill tokens, and prefill completion or a free removes them."""
+    pytest.importorskip("dynamo.llm")
+    worker_id = get_worker_id("engine-replica-0")
+    tracker = _NoLongPollTracker()
+    publisher = _start_publisher(worker_id)
+    published = []
+    try:
+        await _register_engine_worker(tracker, worker_id)
+        await _subscribe((tracker,), publisher, worker_id)
+        tracker.set_autoscaling_metrics_callback(published.append)
+
+        await tracker.select_worker("a", list(range(64)), [worker_id])
+        await tracker.select_worker("b", list(range(100, 164)), [worker_id])
+        snapshot = await tracker.get_autoscaling_snapshot()
+        assert _outstanding_prefill_tokens(snapshot) > 0
+        assert _outstanding_prefill_tokens(published[-1]) > 0
+        assert len(published) == 2
+
+        # Prefill completion of one and a free of the other clear the load.
+        publisher.publish("a", LifecycleEvent.PREFILL_COMPLETE)
+        publisher.publish("b", LifecycleEvent.FINISHED)
+        await async_wait_for_condition(
+            lambda: _outstanding_prefill_tokens(tracker._get_autoscaling_snapshot())
+            == 0,
+            timeout=10,
+        )
+    finally:
+        publisher.close()
+        await tracker.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_raising_autoscaling_callback_does_not_fail_selection():
+    pytest.importorskip("dynamo.llm")
+    worker_id = get_worker_id("engine-replica-0")
+    tracker = _NoLongPollTracker()
+    try:
+        await _register_engine_worker(tracker, worker_id)
+
+        def raising_callback(snapshot):
+            raise RuntimeError("metrics not ready")
+
+        tracker.set_autoscaling_metrics_callback(raising_callback)
+        selection = await tracker.select_worker("a", list(range(64)), [worker_id])
+        assert selection["worker_id"] == worker_id
+        assert _active_requests(tracker, worker_id) == 1
+    finally:
+        await tracker.shutdown()
 
 
 def test_router_shutdown_closes_sockets():
