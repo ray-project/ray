@@ -98,15 +98,10 @@ def _log_v1_deprecation_warning() -> None:
     Called on ``import ray.train`` when V1 is selected with
     ``RAY_TRAIN_V2_ENABLED=0``. It warns at most once per process and only in
     the driver: Ray worker processes (Train workers, Tune trials, RLlib
-    learners) skip it so it isn't repeated for each of them. The warning points
-    at the user's code that triggered the import, not at Ray's internals, so it
-    is the same for ``import ray.train``, ``import ray.tune`` or
-    ``import ray.rllib``.
+    learners) skip it so it isn't repeated for each of them.
     """
     global _v1_deprecation_warning_logged
 
-    import os
-    import sys
     import warnings
 
     from ray._private.worker import (
@@ -125,24 +120,7 @@ def _log_v1_deprecation_warning() -> None:
         return
     _v1_deprecation_warning_logged = True
 
-    # Attribute the warning to the first frame outside Ray and importlib, which
-    # is the user's import statement.
-    ray_dir = os.path.dirname(ray.__file__) + os.sep
-    frame = sys._getframe(1)
-    while frame.f_back is not None and (
-        frame.f_code.co_filename.startswith(ray_dir)
-        or frame.f_code.co_filename.startswith("<frozen importlib")
-    ):
-        frame = frame.f_back
-
-    warnings.warn_explicit(
-        V1_DEPRECATION_MESSAGE,
-        RayDeprecationWarning,
-        filename=frame.f_code.co_filename,
-        lineno=frame.f_lineno,
-        module=frame.f_globals.get("__name__", "<unknown>"),
-        registry=frame.f_globals.setdefault("__warningregistry__", {}),
-    )
+    warnings.warn(V1_DEPRECATION_MESSAGE, RayDeprecationWarning, stacklevel=2)
 
 
 # ==================================================

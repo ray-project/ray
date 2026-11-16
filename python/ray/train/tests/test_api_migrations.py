@@ -183,28 +183,28 @@ def test_v2_enabled_error(monkeypatch):
     "v2_enabled,migration_warnings_enabled,expect_warning",
     [("0", "1", True), ("0", "0", False), ("1", "1", False)],
 )
+@pytest.mark.parametrize("warn_always", [False, True])
 def test_v1_enabled_deprecation_warning(
-    tmp_path, import_stmt, v2_enabled, migration_warnings_enabled, expect_warning
+    import_stmt, v2_enabled, migration_warnings_enabled, expect_warning, warn_always
 ):
-    """Importing Ray Train with V1 selected warns once, at the user's import."""
+    """Importing Ray Train with V1 selected warns exactly once.
+
+    Without ``-W`` this checks that users see the warning by default. With
+    ``-W always`` the warnings module doesn't deduplicate, so this checks that a
+    second import and a reload don't warn again.
+    """
     from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR
 
     # `ray.train` is already imported in this process, so import it in a new one.
-    # The second import and the reload must not warn again.
-    script = tmp_path / "user_script.py"
-    script.write_text(
-        "import importlib\n"
-        f"{import_stmt}\n"
-        "import ray.train\n"
-        "importlib.reload(ray.train)\n"
-    )
+    code = f"import importlib\n{import_stmt}\nimport ray.train\nimportlib.reload(ray.train)"
+    warn_flags = ["-W", "always::DeprecationWarning"] if warn_always else []
     env = {
         **os.environ,
         V2_ENABLED_ENV_VAR: v2_enabled,
         ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR: migration_warnings_enabled,
     }
     proc = subprocess.run(
-        [sys.executable, "-W", "always::DeprecationWarning", str(script)],
+        [sys.executable, *warn_flags, "-c", code],
         env=env,
         capture_output=True,
         text=True,
@@ -214,20 +214,9 @@ def test_v1_enabled_deprecation_warning(
     count = proc.stderr.count("Ray Train V1 is deprecated")
     assert count == (1 if expect_warning else 0), proc.stderr
     if expect_warning:
-        assert f"{script}:2: RayDeprecationWarning" in proc.stderr, proc.stderr
+        assert "RayDeprecationWarning" in proc.stderr
         assert "Ray 3.0" in proc.stderr
         assert "https://github.com/ray-project/ray/issues/49454" in proc.stderr
-
-    # `python -c` has no source file for the warning to point at.
-    proc = subprocess.run(
-        [sys.executable, "-W", "always::DeprecationWarning", "-c", import_stmt],
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    count = proc.stderr.count("Ray Train V1 is deprecated")
-    assert count == (1 if expect_warning else 0), proc.stderr
 
 
 def test_v1_deprecation_warning_skipped_in_workers(ray_start_4_cpus, monkeypatch):
