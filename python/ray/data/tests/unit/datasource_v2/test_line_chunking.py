@@ -1,5 +1,4 @@
 """Unit tests for byte-range line chunking of CSV and JSONL on DataSourceV2."""
-import collections
 import json
 import random
 from unittest import mock
@@ -138,14 +137,18 @@ def _read(paths, *, chunk_size, schema, columns=None, filesystem=None):
     return manifest, list(reader.read(manifest))
 
 
+def _assert_sorted_column(tables, name, expected, **concat_kwargs):
+    actual = pa.concat_tables(tables, **concat_kwargs).sort_by(name).column(name)
+    assert actual.equals(pa.chunked_array([expected])), actual
+
+
 @pytest.mark.parametrize("chunk_size", [7, 20, 64, 10_000])
 def test_reader_reads_every_row_exactly_once(tmp_path, chunk_size):
     path = _write_jsonl(tmp_path / "a.jsonl", [{"id": i} for i in range(200)])
     manifest, tables = _read(
         [path], chunk_size=chunk_size, schema=pa.schema([("id", pa.int64())])
     )
-    ids = [row["id"] for table in tables for row in table.to_pylist()]
-    assert sorted(ids) == list(range(200))
+    _assert_sorted_column(tables, "id", pa.array(range(200), pa.int64()))
     if chunk_size < 10_000:
         assert len(manifest) > 1
 
@@ -159,23 +162,35 @@ def test_reader_infers_types_per_chunk_and_null_fills_missing_columns(tmp_path):
     x_types = {table.schema.field("x").type for table in tables}
     assert x_types == {pa.int64(), pa.float64()}
     assert all(table.column("z").null_count == len(table) for table in tables)
-    merged = pa.concat_tables(tables, promote_options="permissive")
-    assert merged.column("x").to_pylist() == [1] * 5 + [1.5] * 5
+    _assert_sorted_column(
+        tables,
+        "x",
+        pa.array([1.0] * 5 + [1.5] * 5, pa.float64()),
+        promote_options="permissive",
+    )
 
 
 def test_reader_projects_a_column_one_chunk_lacks(tmp_path):
     path = _write_jsonl(tmp_path / "a.jsonl", [{"a": 1}] * 5 + [{"b": 2}] * 5)
     schema = pa.schema([("a", pa.int64()), ("b", pa.int64())])
     _, tables = _read([path], chunk_size=30, schema=schema, columns=["b"])
-    values = [v for table in tables for v in table.column("b").to_pylist()]
-    assert values == [None] * 5 + [2] * 5
+    _assert_sorted_column(
+        tables,
+        "b",
+        pa.array([2] * 5 + [None] * 5, pa.int64()),
+        promote_options="permissive",
+    )
 
 
 def test_reader_projects_a_column_one_chunk_lacks_without_a_schema(tmp_path):
     path = _write_jsonl(tmp_path / "a.jsonl", [{"a": 1}] * 5 + [{"b": 2}] * 5)
     _, tables = _read([path], chunk_size=30, schema=None, columns=["b"])
-    values = [v for table in tables for v in table.column("b").to_pylist()]
-    assert values == [None] * 5 + [2] * 5
+    _assert_sorted_column(
+        tables,
+        "b",
+        pa.array([2] * 5 + [None] * 5, pa.int64()),
+        promote_options="permissive",
+    )
 
 
 # Rows past the first MiB, the default ``block_size`` pyarrow infers types from.
@@ -188,8 +203,12 @@ def test_reader_reads_a_key_first_seen_after_the_first_mib(tmp_path, chunk_size)
     path = _write_jsonl(tmp_path / "a.jsonl", _EARLY_ROWS + _LATE_ROWS)
     schema = pa.schema([("i", pa.int64()), ("x", pa.int64()), ("pad", pa.string())])
     _, tables = _read([path], chunk_size=chunk_size, schema=schema)
-    merged = pa.concat_tables(tables, promote_options="permissive")
-    assert merged.column("k").drop_null().to_pylist() == list(range(12_000))
+    _assert_sorted_column(
+        tables,
+        "k",
+        pa.array(list(range(12_000)) + [None] * 12_000, pa.int64()),
+        promote_options="permissive",
+    )
 
 
 @pytest.mark.parametrize("chunk_size", [2 << 20, 8 << 20], ids=["split", "whole"])
@@ -197,11 +216,12 @@ def test_reader_reads_whole_numbers_then_decimals(tmp_path, chunk_size):
     path = _write_jsonl(tmp_path / "a.jsonl", _EARLY_ROWS + _LATE_ROWS)
     schema = pa.schema([("i", pa.int64()), ("x", pa.int64()), ("pad", pa.string())])
     _, tables = _read([path], chunk_size=chunk_size, schema=schema)
-    merged = pa.concat_tables(tables, promote_options="permissive")
-    assert collections.Counter(merged.column("x").to_pylist()) == {
-        1: 12_000,
-        1.5: 12_000,
-    }
+    _assert_sorted_column(
+        tables,
+        "x",
+        pa.array([1.0] * 12_000 + [1.5] * 12_000, pa.float64()),
+        promote_options="permissive",
+    )
 
 
 class _CountingHandler(FSSpecHandler):
@@ -235,7 +255,7 @@ def test_reader_reads_a_file_that_fits_in_one_chunk_whole(tmp_path):
         [path], chunk_size=10_000, schema=pa.schema([("id", pa.int64())])
     )
     assert list(manifest.file_chunk_metadatas) == [None]
-    assert pa.concat_tables(tables).column("id").to_pylist() == [0, 1, 2]
+    _assert_sorted_column(tables, "id", pa.array([0, 1, 2], pa.int64()))
 
 
 def test_chunk_units_name_their_byte_offset(tmp_path):
