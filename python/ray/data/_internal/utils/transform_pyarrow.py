@@ -13,7 +13,7 @@ def _create_empty_table(schema: "pyarrow.Schema") -> "pyarrow.Table":
     """Create an empty table with the given schema.
 
     Use this instead of ``Schema.empty_table()``, which fails for some extension
-    columns: on pyarrow 26 for native ``fixed_shape_tensor`` columns with a
+    columns: on pyarrow 25+ for native ``fixed_shape_tensor`` columns with a
     ``permutation`` (pyarrow adds one in ``from_numpy_ndarray``), and on every
     supported version for extension types nested in a struct or list.
     ``pyarrow.nulls`` builds each column without that conversion. The result

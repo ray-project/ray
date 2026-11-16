@@ -397,7 +397,7 @@ def test_shuffle():
         ArrowVariableShapedTensorType(pa.float32(), 2),
         ArrowPythonObjectType(),
         # `from_numpy_ndarray` adds `permutation=[0, 1]`, which
-        # `Schema.empty_table()` rejects on pyarrow 26.
+        # `Schema.empty_table()` rejects on pyarrow 25+.
         pa.FixedShapeTensorArray.from_numpy_ndarray(np.zeros((1, 2, 2))).type,
         # `Schema.empty_table()` rejects extension types nested in a struct.
         pa.struct([("x", ArrowTensorTypeV2((2,), pa.int64()))]),

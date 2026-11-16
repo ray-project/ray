@@ -310,7 +310,7 @@ def test_tensors_sort(ray_start_regular_shared, tensor_format_context):
 )
 def test_tensors_shuffle_and_join(ray_start_regular_shared, tensor_format_context, op):
     # Shuffle and join tasks create empty blocks from the schema, which failed
-    # for native tensor columns on pyarrow 26.
+    # for native tensor columns on pyarrow 25+.
     arr = np.arange(64).reshape((4, 4, 4))
     ds = ray.data.from_arrow(pa.table({"a": TensorArray(arr), "k": [0, 1, 0, 1]}))
     if op == "map_groups":
@@ -325,6 +325,23 @@ def test_tensors_shuffle_and_join(ray_start_regular_shared, tensor_format_contex
 
     rows = sorted(out.take_all(), key=lambda row: np.asarray(row["a"]).min())
     np.testing.assert_equal([np.asarray(row["a"]) for row in rows], list(arr))
+
+
+def test_tensors_top_n_empty_result(ray_start_regular_shared, tensor_format_context):
+    # The Top-N merge builds an empty block from the schema when no rows are
+    # left, which failed for native tensor columns on pyarrow 25+.
+    from ray.data._internal.logical.rules.top_n_rewrite import (
+        TOP_N_REWRITE_ENABLED_CONFIG_KEY,
+    )
+    from ray.data.expressions import col
+
+    ray.data.DataContext.get_current().set_config(
+        TOP_N_REWRITE_ENABLED_CONFIG_KEY, True
+    )
+    arr = np.arange(64).reshape((4, 4, 4))
+    ds = ray.data.from_arrow(pa.table({"a": TensorArray(arr), "k": [0, 1, 0, 1]}))
+    out = ds.filter(expr=col("k") < 0).sort("k").limit(2)
+    assert out.take_all() == []
 
 
 def test_tensors_inferred_from_map(ray_start_regular_shared, tensor_format_context):
