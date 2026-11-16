@@ -1352,10 +1352,10 @@ def test_proxy_passes_caller_label_selectors_through():
     assert kwargs["subcluster_selector"] == {"ray-subcluster": "training"}
 
 
-def _placement_group_table(state, bundles_to_node_id):
+def _placement_group_table(state, bundles_to_node_id, bundle=None):
     return {
         "state": state,
-        "bundles": {i: {"CPU": 1} for i in bundles_to_node_id},
+        "bundles": {i: dict(bundle or {"CPU": 1}) for i in bundles_to_node_id},
         "bundles_to_node_id": bundles_to_node_id,
     }
 
@@ -1383,6 +1383,21 @@ def _placement_group_table(state, bundles_to_node_id):
             _placement_group_table("CREATED", {0: "n2", 1: "n2"}),
             {"n1": {"CPU": 2}, "n2": {"CPU": 2}},
             {"n1": {"CPU": 6}, "n2": {"CPU": 6}},
+        ),
+        # Coverage is by resources, not bundle count: one {CPU: 4} bundle
+        # covers 4 x {CPU: 1}, so nothing more is packed.
+        (
+            [{"CPU": 1}] * 4,
+            _placement_group_table("CREATED", {0: "n2"}, bundle={"CPU": 4}),
+            {"n2": {"CPU": 4}},
+            {"n1": {"CPU": 8}, "n2": {"CPU": 4}},
+        ),
+        # The other way round: 4 x {CPU: 1} cover one {CPU: 4} request.
+        (
+            [{"CPU": 4}],
+            _placement_group_table("CREATED", {0: "n2", 1: "n2", 2: "n2", 3: "n2"}),
+            {"n2": {"CPU": 4}},
+            {"n1": {"CPU": 8}, "n2": {"CPU": 4}},
         ),
     ],
 )
@@ -1421,17 +1436,47 @@ def test_placement_group_bundles_reserved_where_placed(
     assert coordinator.get_reserved_resources("data") == expected_data
 
 
-def test_register_placement_group_without_request_is_ignored():
+def test_registered_placement_group_outlives_its_request():
+    """A registered group stays out of everyone's capacity while Ray holds it,
+    even after its requester stops renewing; once removed, it is forgotten."""
+    now = [0]
+    placement_group_table = _placement_group_table("CREATED", {0: "n2", 1: "n2"})
     coordinator = _AutoscalingCoordinatorActor(
-        get_current_time=lambda: 0,
+        get_current_time=lambda: now[0],
         send_resources_request=Mock(),
-        get_cluster_nodes=lambda: CLUSTER_NODES_WITHOUT_HEAD,
-        get_placement_group_table=Mock(),
+        get_cluster_nodes=lambda: [
+            {"NodeID": node_id, "Resources": {"CPU": 8}, "Alive": True}
+            for node_id in ("n1", "n2")
+        ],
+        get_placement_group_table=lambda placement_group_id: placement_group_table,
     )
-
+    coordinator.request_resources(
+        requester_id="train", resources=[{"CPU": 1}] * 2, expire_after_s=100
+    )
+    coordinator.request_resources(
+        requester_id="data",
+        resources=[],
+        expire_after_s=1000,
+        request_remaining=["CPU"],
+    )
     coordinator.register_placement_group(requester_id="train", placement_group_id="pg")
 
-    assert coordinator.get_reserved_resources("train") == {}
+    # Train's request expires; the group still holds n2's CPUs.
+    now[0] = 200
+    assert coordinator.get_reserved_resources("train", recompute=True) == {}
+    assert coordinator.get_reserved_resources("data") == {
+        "n1": {"CPU": 8},
+        "n2": {"CPU": 6},
+    }
+
+    # Ray removes the group: its CPUs go back, and the registration is gone.
+    placement_group_table["state"] = "REMOVED"
+    coordinator.get_reserved_resources("data", recompute=True)
+    placement_group_table["state"] = "CREATED"
+    assert coordinator.get_reserved_resources("data", recompute=True) == {
+        "n1": {"CPU": 8},
+        "n2": {"CPU": 8},
+    }
 
 
 if __name__ == "__main__":

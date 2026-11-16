@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import ray
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     RequesterId,
+    ResourceRequestStrategy,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     ResourceRequestPriority,
@@ -63,6 +64,8 @@ class TrainAutoscalingCoordinatorClient:
                     label_selectors=label_selectors,
                     expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
                     priority=ResourceRequestPriority.HIGH,
+                    # Reserve bundles the way the placement group places them.
+                    strategy=ResourceRequestStrategy(scaling_config.placement_strategy),
                 ),
                 timeout=AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
             )
