@@ -27,8 +27,8 @@ from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.exceptions import ActorDiedError, RayTaskError
-from ray.serve._private.api import _get_actor_init_error, serve_start_async
+from ray.exceptions import RayTaskError
+from ray.serve._private.api import serve_start_async
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
@@ -47,7 +47,7 @@ from ray.serve._private.test_utils import (
     get_application_url,
     get_application_urls,
 )
-from ray.serve._private.tracing_utils import TracingSetupError
+from ray.serve._private.tracing_utils import InvalidTracingConfigError
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
     ControllerOptions,
@@ -1087,107 +1087,114 @@ def test_serve_start_rejects_bad_exporter_import_path(
 
 _EXPORTER_SETUP_ERROR = "serve-test-tracing-exporter-setup-failure"
 _RAISING_EXPORTER_PATH = "ray.serve.tests.test_standalone:raising_tracing_exporter"
+_REPLICA_ONLY_RAISING_EXPORTER_PATH = (
+    "ray.serve.tests.test_standalone:replica_only_raising_tracing_exporter"
+)
+_FAIL_TRACING_EXPORTER_ENV_VAR = "SERVE_TEST_FAIL_TRACING_EXPORTER"
 
 
 def raising_tracing_exporter():
-    """Importable tracing exporter that fails when tracing is set up."""
+    """Importable tracing exporter that raises when called."""
     raise RuntimeError(_EXPORTER_SETUP_ERROR)
 
 
-@pytest.mark.parametrize(
-    "start_kwargs",
-    [
-        {
-            "tracing_config": TracingConfig(
-                enabled=True, exporter_import_path=_RAISING_EXPORTER_PATH
-            )
-        },
-        # Tracing enabled only by the controller's env.
-        {
-            "controller_options": {
-                "runtime_env": {
-                    "env_vars": {
-                        "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH": (
-                            _RAISING_EXPORTER_PATH
-                        )
-                    }
+def replica_only_raising_tracing_exporter():
+    """Importable tracing exporter that raises only where the test env var is
+    set, so it passes the controller's check but fails in a replica."""
+    if os.environ.get(_FAIL_TRACING_EXPORTER_ENV_VAR):
+        raise RuntimeError(_EXPORTER_SETUP_ERROR)
+    return []
+
+
+_RAISING_EXPORTER_START_KWARGS = {
+    "explicit": {
+        "tracing_config": TracingConfig(
+            enabled=True, exporter_import_path=_RAISING_EXPORTER_PATH
+        )
+    },
+    # Tracing enabled only by the controller's env.
+    "controller_env": {
+        "controller_options": {
+            "runtime_env": {
+                "env_vars": {
+                    "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH": _RAISING_EXPORTER_PATH
                 }
             }
-        },
-    ],
-    ids=["explicit", "controller_env"],
-)
-def test_serve_start_fails_when_proxy_tracing_setup_fails(ray_shutdown, start_kwargs):
-    """An exporter that imports but raises fails proxy startup and serve.start.
+        }
+    },
+}
 
-    The controller's exporter check passes (it doesn't call the exporter); the
-    proxy invokes it in setup_tracing, so its creation fails with a
-    TracingSetupError. The failed start must not leave a Serve instance a
-    retry could mistake for a healthy one, so retries need no serve.shutdown().
+
+def _start_serve(use_async: bool, tracing_config=None, controller_options=None):
+    if use_async:
+        return asyncio.run(
+            serve_start_async(
+                global_tracing_config=tracing_config,
+                controller_options=controller_options,
+            )
+        )
+    serve.start(tracing_config=tracing_config, controller_options=controller_options)
+    return _get_global_client()
+
+
+@pytest.mark.parametrize("config_source", ["explicit", "controller_env"])
+@pytest.mark.parametrize("use_async", [False, True])
+def test_serve_start_retries_after_raising_exporter(
+    ray_shutdown, use_async, config_source
+):
+    """An exporter that imports but raises fails serve.start with a config error.
+
+    The controller calls the exporter when it's constructed, so the failed
+    start leaves no controller behind: retrying with the same exporter fails
+    again, and a working one then starts Serve, with no serve.shutdown().
     """
-    # The second attempt must fail again rather than reconnect and report
-    # success, so each failed start must leave no controller behind.
+    ray.init()
     for _ in range(2):
-        with pytest.raises(ActorDiedError, match=_EXPORTER_SETUP_ERROR) as exc:
-            serve.start(**start_kwargs)
-        assert isinstance(_get_actor_init_error(exc.value), TracingSetupError)
+        with pytest.raises(InvalidTracingConfigError, match=_EXPORTER_SETUP_ERROR):
+            _start_serve(use_async, **_RAISING_EXPORTER_START_KWARGS[config_source])
         with pytest.raises(ValueError):
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
 
-    # A working exporter then starts Serve.
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+    shutil.rmtree(spans_dir, ignore_errors=True)
     try:
-        serve.start(
+        client = _start_serve(
+            use_async,
             tracing_config=TracingConfig(
                 enabled=True, exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH
-            )
+            ),
         )
-        client = _get_global_client()
         tracing_config = ray.get(client._controller.get_tracing_config.remote())
         assert tracing_config.enabled
         assert (
             tracing_config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
         )
+        if not _ALT_INGRESS_ENABLED:
+            # The proxy set tracing up: the built-in exporter opened its file.
+            assert any("proxy" in name for name in os.listdir(spans_dir))
     finally:
         serve.shutdown()
-        shutil.rmtree(os.path.join(get_serve_logs_dir(), "spans"), ignore_errors=True)
-
-
-def test_serve_start_async_fails_when_proxy_tracing_setup_fails(ray_shutdown):
-    """The async startup path (used by serve deploy) handles the same failure."""
-    ray.init()
-    config = TracingConfig(enabled=True, exporter_import_path=_RAISING_EXPORTER_PATH)
-    for _ in range(2):
-        with pytest.raises(ActorDiedError, match=_EXPORTER_SETUP_ERROR) as exc:
-            asyncio.run(serve_start_async(global_tracing_config=config))
-        assert isinstance(_get_actor_init_error(exc.value), TracingSetupError)
-        with pytest.raises(ValueError):
-            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-
-    try:
-        client = asyncio.run(
-            serve_start_async(
-                global_tracing_config=TracingConfig(
-                    enabled=True,
-                    exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
-                )
-            )
-        )
-        assert ray.get(client._controller.get_tracing_config.remote()).enabled
-    finally:
-        serve.shutdown()
-        shutil.rmtree(os.path.join(get_serve_logs_dir(), "spans"), ignore_errors=True)
+        shutil.rmtree(spans_dir, ignore_errors=True)
 
 
 def test_replica_tracing_setup_failure_fails_deployment(ray_shutdown):
-    """An exporter that imports but raises fails replica startup.
+    """An exporter that passes the controller's check but raises in a replica
+    fails replica startup.
 
-    Proxies are disabled so the replica is the first to set tracing up. Serve
-    reports replica constructor errors in the deployment status.
+    Proxies are disabled so the replica is the first component to set tracing
+    up. Serve reports replica constructor errors in the deployment status.
     """
-    config = TracingConfig(enabled=True, exporter_import_path=_RAISING_EXPORTER_PATH)
+    config = TracingConfig(
+        enabled=True, exporter_import_path=_REPLICA_ONLY_RAISING_EXPORTER_PATH
+    )
     serve.start(proxy_location=ProxyLocation.Disabled, tracing_config=config)
 
-    @serve.deployment(max_constructor_retry_count=1)
+    @serve.deployment(
+        max_constructor_retry_count=1,
+        ray_actor_options={
+            "runtime_env": {"env_vars": {_FAIL_TRACING_EXPORTER_ENV_VAR: "1"}}
+        },
+    )
     class Model:
         def __call__(self):
             return "ok"

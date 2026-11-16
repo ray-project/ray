@@ -1,4 +1,5 @@
 import inspect
+import logging
 import os
 import threading
 from contextvars import ContextVar, Token
@@ -8,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 from ray._common.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
+    SERVE_LOGGER_NAME,
 )
 
 if TYPE_CHECKING:
@@ -46,6 +48,8 @@ except ImportError:
     SpanAttributes = cast(Any, None)
     ParentBasedTraceIdRatio = cast(Any, None)
 
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 TRACE_STACK: ContextVar[List[Any]] = ContextVar(
     "trace_stack"
@@ -239,24 +243,58 @@ class InvalidTracingConfigError(ValueError):
     has an invalid signature."""
 
 
-class TracingSetupError(RuntimeError):
-    """A proxy failed to set tracing up, e.g. its exporter raised when called."""
-
-
 def check_tracing_exporter_import_path(
-    tracing_config: "TracingConfig",
+    tracing_config: "TracingConfig", invoke_exporter: bool = True
 ) -> None:
-    """Check that the configured tracing exporter imports and has a valid signature.
+    """Check that the configured tracing exporter works.
 
-    The exporter isn't called, so a factory that raises when invoked is only
-    caught when a proxy or replica sets tracing up.
+    The exporter must import and, if custom, take no arguments. A custom
+    exporter is also called once, when ``invoke_exporter`` is True, and must
+    return a list of span processors, which are then shut down. The built-in
+    exporter isn't called, since it opens a span file.
     """
     if not tracing_config.enabled:
         return
+    _check_tracing_dependencies()
     exporter = import_attr(tracing_config.exporter_import_path)
     # The built-in exporter takes the span file name; custom ones take nothing.
-    if tracing_config.exporter_import_path != DEFAULT_TRACING_EXPORTER_IMPORT_PATH:
-        _validate_tracing_exporter(exporter)
+    if tracing_config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH:
+        return
+    _validate_tracing_exporter(exporter)
+    if not invoke_exporter:
+        return
+    span_processors = exporter()
+    try:
+        _validate_tracing_exporter_processors(span_processors)
+    finally:
+        _shutdown_span_processors(span_processors)
+
+
+def _check_tracing_dependencies() -> None:
+    if not trace:
+        raise ImportError(
+            "You must `pip install opentelemetry-api` and "
+            "`pip install opentelemetry-sdk` "
+            "to enable tracing on Ray Serve."
+        )
+
+
+def _shutdown_span_processors(span_processors: Any) -> None:
+    """Shut down the span processors an exporter returned, logging failures.
+
+    Also handles a lone processor or a tuple, which fail validation but would
+    otherwise leak.
+    """
+    if isinstance(span_processors, SpanProcessor):
+        span_processors = [span_processors]
+    if not isinstance(span_processors, (list, tuple)):
+        return
+    for span_processor in span_processors:
+        if isinstance(span_processor, SpanProcessor):
+            try:
+                span_processor.shutdown()
+            except Exception:
+                logger.exception("Failed to shut down a tracing span processor.")
 
 
 def setup_tracing(
@@ -287,13 +325,7 @@ def setup_tracing(
     tracing_exporter_import_path = tracing_config.exporter_import_path
     tracing_sampling_ratio = tracing_config.sampling_ratio
 
-    # Check dependencies
-    if not trace:
-        raise ImportError(
-            "You must `pip install opentelemetry-api` and "
-            "`pip install opentelemetry-sdk` "
-            "to enable tracing on Ray Serve."
-        )
+    _check_tracing_dependencies()
 
     from ray.serve._private.utils import get_component_file_name
 

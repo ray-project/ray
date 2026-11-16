@@ -195,6 +195,8 @@ def test_put_bad_schema(ray_start_stop):
         "serve_missing_tracing_exporter_mod:exp",
         # Imports, but takes arguments, which custom exporters can't.
         "ray.serve.tests.test_standalone:tracing_exporter_with_args",
+        # Imports, but raises when the controller calls it.
+        "ray.serve.tests.test_standalone:raising_tracing_exporter",
     ],
 )
 def test_put_bad_tracing_exporter(ray_start_stop, exporter_import_path):

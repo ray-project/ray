@@ -263,7 +263,11 @@ class TracingConfig(BaseModel):
         description=(
             "Import path to a tracing exporter function. Defaults to the "
             "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable, or the "
-            "built-in file-based exporter if it isn't set. Must not be empty."
+            "built-in file-based exporter if it isn't set. Must not be empty. "
+            "A custom exporter takes no arguments and returns a list of "
+            "SpanProcessors. When Serve starts, the controller calls it once to "
+            "validate it and then shuts the returned processors down, so it "
+            "must return promptly."
         ),
     )
     sampling_ratio: float = Field(

@@ -117,7 +117,9 @@ def start(
             a dictionary or a ``TracingConfig`` instance. See ``TracingConfig``
             for supported options. Tracing configuration is fixed when Serve
             starts; to change it, shut down and restart Serve. Calling
-            ``serve.start`` again with a different config raises an error.
+            ``serve.start`` again with a different config raises an error. A
+            custom exporter is called once in the controller to validate it,
+            so an exporter that raises fails ``serve.start``.
         controller_options: [EXPERIMENTAL] Options for the Serve controller actor.
           Currently scoped to a strictly-validated ``runtime_env.env_vars``
           (other ``runtime_env`` keys are rejected). See

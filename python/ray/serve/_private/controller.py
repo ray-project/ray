@@ -188,17 +188,21 @@ class ServeController:
         # omitted fields default from this process's env vars. It survives
         # recovery via the replayed constructor arg. Validate before writing any
         # state: if __init__ raises, Ray doesn't restart the actor and releases
-        # its name. On a restart, log instead so recovery isn't blocked.
+        # its name. On a restart, the exporter isn't called again, and a failed
+        # check is only logged, so recovery isn't blocked.
         self.global_tracing_config = TracingConfig(**(tracing_config_fields or {}))
+        reconstructed = ray.get_runtime_context().was_current_actor_reconstructed
         try:
-            check_tracing_exporter_import_path(self.global_tracing_config)
+            check_tracing_exporter_import_path(
+                self.global_tracing_config, invoke_exporter=not reconstructed
+            )
         except Exception as e:
             error = InvalidTracingConfigError(
                 "Invalid tracing config: exporter "
                 f"{self.global_tracing_config.exporter_import_path!r} "
                 f"is unusable ({type(e).__name__}: {e})."
             )
-            if not ray.get_runtime_context().was_current_actor_reconstructed:
+            if not reconstructed:
                 raise error from e
             logger.error(f"{error} Continuing controller recovery.")
 
