@@ -378,6 +378,29 @@ class AutoscalingConfigTest(unittest.TestCase):
         except Exception:
             self.fail("Failed to validate config with security group name!")
 
+    def testExternalProviderHasNoLegacyFields(self):
+        # The defaults for an external node provider must not contain the
+        # legacy head_node and worker_nodes fields: prepare_config would then
+        # warn about fields that the user never set.
+        config = {
+            "cluster_name": "external",
+            "provider": {"type": "external", "module": "mymodule.MyProvider"},
+            "max_workers": 2,
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 1}},
+                "worker": {"node_config": {}, "resources": {"CPU": 1}},
+            },
+            "setup_commands": [],
+            "head_setup_commands": [],
+            "worker_setup_commands": [],
+        }
+        with patch("ray.autoscaler._private.util.logger") as logger:
+            prepared_config = prepare_config(config)
+        logger.warning.assert_not_called()
+        assert "head_node" not in prepared_config
+        assert "worker_nodes" not in prepared_config
+
     def testMaxWorkerDefault(self):
         # Load config, call prepare config, check that default max_workers
         # is filled correctly for node types that don't specify it.
