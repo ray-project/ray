@@ -196,6 +196,53 @@ def test_describe_long_poll_wakes_on_status_change() -> None:
     assert info["status"] in ("starting", "running")
 
 
+def test_describe_until_booted_waits_through_the_boot_steps() -> None:
+    """With until_booted, a long poll isn't over when the sandbox goes from
+    pulling to starting: it returns once the sandbox runs."""
+    runtime = FakeSandboxRuntime()
+    runtime.pull_gate = threading.Event()
+    runtime.create_gate = threading.Event()
+    host = _make_host(runtime)
+
+    async def scenario() -> tuple:
+        boot_task = asyncio.create_task(host.boot())
+        while not runtime.pull_calls:
+            await asyncio.sleep(0.01)
+        waiter = asyncio.create_task(
+            host.describe(wait_seconds=10.0, until_booted=True)
+        )
+        runtime.pull_gate.set()
+        while (await host.describe())["status"] != "starting":
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+        still_waiting = not waiter.done()
+        runtime.create_gate.set()
+        info = await asyncio.wait_for(waiter, timeout=5.0)
+        await boot_task
+        return still_waiting, info
+
+    still_waiting, info = asyncio.run(scenario())
+    assert still_waiting
+    assert info["status"] == "running"
+
+
+def test_describe_until_booted_gives_up_at_its_deadline() -> None:
+    runtime = FakeSandboxRuntime()
+    runtime.pull_gate = threading.Event()
+    host = _make_host(runtime)
+
+    async def scenario() -> dict:
+        boot_task = asyncio.create_task(host.boot())
+        while not runtime.pull_calls:
+            await asyncio.sleep(0.01)
+        info = await host.describe(wait_seconds=0.05, until_booted=True)
+        runtime.pull_gate.set()
+        await boot_task
+        return info
+
+    assert asyncio.run(scenario())["status"] == "pulling"
+
+
 # ----------------------------------------------------------------------
 # Capabilities and network passthrough (behavior itself is covered by the
 # core sandbox tests; the host only forwards SandboxConfig fields)

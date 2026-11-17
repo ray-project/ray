@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import types
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -374,6 +375,67 @@ class _DeadHandle:
                 return asyncio.get_running_loop().create_task(_raise())
 
         return _Method()
+
+
+def test_get_task_id_holds_until_the_sandbox_runs() -> None:
+    """The SDK sleeps half a second after each empty answer, so the call is
+    held while the sandbox boots and answers once it runs, rather than on
+    each step of the boot."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[bool, str, str]:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        runtime.create_gate = threading.Event()
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                call = asyncio.ensure_future(
+                    control.SandboxGetTaskId(
+                        api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id)
+                    )
+                )
+                # Pulled, and now starting: the earlier facade answered here
+                # with an empty task id.
+                while not runtime.create_calls:
+                    await asyncio.sleep(0.01)
+                await asyncio.sleep(0.2)
+                held = not call.done()
+                runtime.create_gate.set()
+                reply = await asyncio.wait_for(call, timeout=5.0)
+                return held, reply.task_id, sandbox_id
+            finally:
+                await channel.close()
+
+    held, task_id, sandbox_id = asyncio.run(scenario())
+    assert held
+    assert task_id == sandbox_id
+
+
+def test_get_task_id_answers_empty_when_the_boot_outlasts_the_hold(monkeypatch) -> None:
+    monkeypatch.setattr(grpc_facade, "_TASK_ID_HOLD_SECONDS", 0.1)
+    port = next(_next_port)
+
+    async def scenario() -> str:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        runtime.create_gate = threading.Event()
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                reply = await control.SandboxGetTaskId(
+                    api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id)
+                )
+                runtime.create_gate.set()
+                return reply.task_id
+            finally:
+                await channel.close()
+
+    assert asyncio.run(scenario()) == ""
 
 
 def test_named_create_replaces_dead_actor() -> None:
