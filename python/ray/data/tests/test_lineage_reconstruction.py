@@ -253,7 +253,12 @@ def _lose(topology: Dict, tracker: LineageTracker, lost_task_id: str) -> None:
         lost_task_id: The lineage task ID of the task whose output was lost.
     """
     task = DataOpTask(
-        0, MagicMock(), MagicMock(), "lost_op", lineage_task_id=lost_task_id
+        0,
+        MagicMock(),
+        MagicMock(),
+        "lost_op",
+        lineage_task_id=lost_task_id,
+        cancel_callback=lambda: None,
     )
     _reconstruct_lost_object(
         topology,
@@ -990,11 +995,12 @@ def test_reconstruction_input_passes_through_the_bundler(
     assert bundler.num_blocks() == 1
 
 
-def _abortable_task(task_done_callback):
+def _abortable_task(task_done_callback, cancel_callback=lambda: None):
     """A ``DataOpTask`` in its freshly-submitted (ACTIVE) state.
 
     ``mark_aborted`` reads neither the generator nor the ref counter, so both are
-    stubs; this keeps the test on the state machine and off a live cluster.
+    stubs, and cancelling goes through ``cancel_callback``; this keeps the test
+    on the state machine and off a live cluster.
     """
     return DataOpTask(
         0,
@@ -1003,29 +1009,33 @@ def _abortable_task(task_done_callback):
         "test_op",
         task_done_callback=task_done_callback,
         lineage_task_id="seed:0",
+        cancel_callback=cancel_callback,
     )
 
 
 def test_mark_aborted_fires_the_done_callback_exactly_once():
-    """Abort from ACTIVE runs the done-callback with the error and finishes the task.
+    """Abort from ACTIVE cancels the Ray task, runs the done-callback with the
+    error and finishes the task.
 
-    A repeat abort, or an abort after normal completion, must not run it again: that
-    would double-release the task's resource reservations.
+    A repeat abort, or an abort after normal completion, must not run either again:
+    that would double-release the task's resource reservations.
     """
     calls = []
     task = _abortable_task(
-        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
+        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc),
+        cancel_callback=lambda: calls.append("cancel"),
     )
     error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
 
     task.mark_aborted(error)
     task.mark_aborted(error)
-    assert calls == [error]
+    assert calls == ["cancel", error]
     assert task.has_finished
 
     calls.clear()
     task = _abortable_task(
-        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
+        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc),
+        cancel_callback=lambda: calls.append("cancel"),
     )
     task.mark_done()
     task.mark_aborted(error)
