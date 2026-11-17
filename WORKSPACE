@@ -2,11 +2,12 @@ workspace(name = "io_ray")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+# 0.0.11, not older: rules_rust's platform list refers to @platforms//os:uefi.
 http_archive(
     name = "platforms",
-    sha256 = "5eda539c841265031c2f82d8ae7a3a6490bd62176e0c038fc469eabf91f6149b",
+    sha256 = "29742e87275809b5e598dc2f04d86960cc7a55b3067d97221c9abbc9926bff0f",
     urls = [
-        "https://github.com/bazelbuild/platforms/releases/download/0.0.9/platforms-0.0.9.tar.gz",
+        "https://github.com/bazelbuild/platforms/releases/download/0.0.11/platforms-0.0.11.tar.gz",
     ],
 )
 
@@ -315,3 +316,60 @@ http_archive(
 load("@com_github_storypku_bazel_iwyu//bazel:dependencies.bzl", "bazel_iwyu_dependencies")
 
 bazel_iwyu_dependencies()
+
+# Rust, for //src/ray/sandbox/erofs_pull. Last, so that the maybe() calls in
+# rules_rust_dependencies() and crate_universe_dependencies() find every repo
+# Ray pins itself (rules_cc, bazel_skylib, platforms, rules_shell, ...)
+# already declared and keep those.
+load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_register_toolchains")
+
+rules_rust_dependencies()
+
+rust_register_toolchains(
+    edition = "2021",
+    # Only the hosts' own targets; the default adds wasm32 toolchains.
+    extra_target_triples = [],
+    versions = ["1.95.0"],
+)
+
+load("@rules_rust//crate_universe:repositories.bzl", "crate_universe_dependencies")
+
+crate_universe_dependencies()
+
+load("@rules_rust//crate_universe:defs.bzl", "crate", "crates_repository")
+
+# The crates erofs-pull uses, pinned by its Cargo.lock. After changing its
+# Cargo.toml or Cargo.lock, repin with:
+#   CARGO_BAZEL_REPIN=1 bazel sync --only=erofs_pull_crates
+crates_repository(
+    name = "erofs_pull_crates",
+    annotations = {
+        # rapidgzip-sys's build script runs CMake (and nasm, for ISA-L) itself.
+        # Under Bazel, its native library comes from rules_foreign_cc instead
+        # (//src/ray/sandbox/erofs_pull:rapidgzip_native); the patch adds the
+        # CMake options that build needs.
+        "rapidgzip-sys": [crate.annotation(
+            additive_build_file_content = """
+filegroup(
+    name = "native_srcs",
+    # Cargo.toml anchors the source root rules_foreign_cc infers (the
+    # shallowest directory) at the crate's root.
+    srcs = ["Cargo.toml"] + glob(["native/**", "vendor/**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+            deps = ["@io_ray//src/ray/sandbox/erofs_pull:rapidgzip_native"],
+            gen_build_script = False,
+            patch_args = ["-p1"],
+            patches = ["@io_ray//thirdparty/patches:rapidgzip-sys-bazel.patch"],
+        )],
+    },
+    cargo_lockfile = "//src/ray/sandbox/erofs_pull:Cargo.lock",
+    lockfile = "//src/ray/sandbox/erofs_pull:cargo-bazel-lock.json",
+    manifests = ["//src/ray/sandbox/erofs_pull:Cargo.toml"],
+    rust_version = "1.95.0",
+)
+
+load("@erofs_pull_crates//:defs.bzl", erofs_pull_crate_repositories = "crate_repositories")
+
+erofs_pull_crate_repositories()

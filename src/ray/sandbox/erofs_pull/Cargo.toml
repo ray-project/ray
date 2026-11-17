@@ -1,0 +1,18 @@
+[package]
+name = "erofs-pull"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Built with Bazel (see BUILD.bazel); crate_universe reads this manifest and
+# Cargo.lock to pin the dependencies.
+[dependencies]
+# No default features: "gzip" would ask registries for gzip-encoded responses.
+# "native-certs": trust the CA store Python uses (SSL_CERT_FILE/SSL_CERT_DIR,
+# set by the caller) instead of a bundled copy of Mozilla's roots.
+ureq = { version = "2", default-features = false, features = ["tls", "native-certs"] }
+tar = "0.4"
+rapidgzip = "1.2.1"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

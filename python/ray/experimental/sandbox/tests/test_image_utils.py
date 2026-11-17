@@ -602,7 +602,9 @@ def fake_docker_hub(monkeypatch):
     manifest = json.dumps(
         {
             "config": {"digest": config},
-            "layers": [{"digest": add_blob(layer.getvalue())}],
+            "layers": [
+                {"digest": add_blob(layer.getvalue()), "size": len(layer.getvalue())}
+            ],
         }
     ).encode()
     manifest_digest = f"sha256:{hashlib.sha256(manifest).hexdigest()}"
@@ -1885,24 +1887,26 @@ def test_pull_merges_layer_images(tmp_path, merging_mkfs, monkeypatch):
     assert _erofs_tree(merged) == _erofs_tree(extracted)
 
 
-@pytest.mark.parametrize(
-    "upper,problem",
-    [
-        # bin/ over UsrMerge's bin -> usr/bin: the merge would replace the
-        # symlink, and with it /bin/sh.
-        (
-            [_dir("bin"), _m("bin/hello", b"hello", mode=0o755)],
-            "directory at the symlink /bin",
-        ),
-        # No entry for etc/: mkfs.erofs would make it 0777 over the base's.
-        ([_m("etc/motd", b"hi\n")], "no entry for /etc"),
-        ([_m("etc/.wh.secret")], "no entry for /etc"),
-        # Extraction seeds again, or through the symlink.
-        ([_dir("etc"), _m("etc/.wh.hostname")], "deletes the seeded /etc/hostname"),
-        ([_dir("real-etc"), _symlink("etc", "real-etc")], "/etc is a symlink"),
-        ([_dir("var"), _dir("var/tmp"), _symlink("tmp", "var/tmp")], "symlink /tmp"),
-    ],
-)
+# Layers over _BASE_LAYER that a merge would build differently from
+# extraction, with the problem _layer_merge_problem names.
+_LAYERS_THAT_MERGE_DIFFERENTLY = [
+    # bin/ over UsrMerge's bin -> usr/bin: the merge would replace the
+    # symlink, and with it /bin/sh.
+    (
+        [_dir("bin"), _m("bin/hello", b"hello", mode=0o755)],
+        "directory at the symlink /bin",
+    ),
+    # No entry for etc/: mkfs.erofs would make it 0777 over the base's.
+    ([_m("etc/motd", b"hi\n")], "no entry for /etc"),
+    ([_m("etc/.wh.secret")], "no entry for /etc"),
+    # Extraction seeds again, or through the symlink.
+    ([_dir("etc"), _m("etc/.wh.hostname")], "deletes the seeded /etc/hostname"),
+    ([_dir("real-etc"), _symlink("etc", "real-etc")], "/etc is a symlink"),
+    ([_dir("var"), _dir("var/tmp"), _symlink("tmp", "var/tmp")], "symlink /tmp"),
+]
+
+
+@pytest.mark.parametrize("upper,problem", _LAYERS_THAT_MERGE_DIFFERENTLY)
 def test_pull_extracts_layers_that_merge_differently(
     tmp_path, merging_mkfs, monkeypatch, upper, problem
 ):
@@ -2075,3 +2079,183 @@ def test_growing_layers_are_read_while_they_download(tmp_path, monkeypatch):
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
+
+
+# The erofs-pull binary these tests run: RAY_SANDBOX_EROFS_PULL as the test
+# run starts (a Bazel-built one, say), else the one packaged with Ray.
+_EROFS_PULL_UNDER_TEST = next(
+    (
+        path
+        for path in (
+            os.environ.get("RAY_SANDBOX_EROFS_PULL", ""),
+            image_utils._EROFS_PULL_PACKAGED,
+        )
+        if path not in ("", "0") and os.access(path, os.X_OK)
+    ),
+    None,
+)
+
+
+@pytest.fixture
+def erofs_pull(merging_mkfs, monkeypatch):
+    """erofs-pull on, next to the real mkfs.erofs the other pipelines build
+    with, or skip without it."""
+    if _EROFS_PULL_UNDER_TEST is None:
+        pytest.skip("no erofs-pull binary")
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", _EROFS_PULL_UNDER_TEST)
+    yield _EROFS_PULL_UNDER_TEST
+
+
+def _send_ranges(index, handler, blob):
+    """Answer ``Range`` requests as registries' storage does."""
+    match = re.fullmatch(r"bytes=(\d+)-(\d+)", handler.headers.get("Range", ""))
+    if match is None:
+        _send(handler, blob)
+        return
+    start, end = int(match[1]), min(int(match[2]), len(blob) - 1)
+    handler.send_response(206)
+    handler.send_header("Content-Range", f"bytes {start}-{end}/{len(blob)}")
+    handler.send_header("Content-Length", str(end - start + 1))
+    handler.end_headers()
+    handler.wfile.write(blob[start : end + 1])
+
+
+def _not_while_erofs_pull_is_on(*args):
+    """Stands in for the merge pipeline: with erofs-pull on, it built the image."""
+    assert os.environ["RAY_SANDBOX_EROFS_PULL"] == "0", "erofs-pull didn't build it"
+    return False
+
+
+def _pull_with_erofs_pull_and_extraction(
+    tmp_path, monkeypatch, layers, serve_blob=None
+):
+    """Pull an image of ``layers`` with erofs-pull, then by extraction. Returns
+    both images and the warnings logged."""
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    images = []
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        for name, erofs_pull in (("erofs-pull", None), ("extracted", "0")):
+            if erofs_pull is not None:
+                monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", erofs_pull)
+                monkeypatch.setenv("RAY_SANDBOX_EROFS_MERGE", "0")
+            image_dir = pull_and_extract_container_image(
+                image, images_dir=str(tmp_path / name)
+            )
+            images.append(os.path.join(image_dir, ROOTFS_IMAGE))
+    return images[0], images[1], warnings
+
+
+@pytest.mark.parametrize("serve_blob", [None, _send_ranges])
+def test_erofs_pull_builds_the_extracted_image(
+    tmp_path, erofs_pull, monkeypatch, serve_blob
+):
+    """erofs-pull applies whiteouts, opaque directories, replacements, hard
+    links, owners and a repeated layer, and seeds the image: the image is the
+    one extraction builds, entry for entry, from storage that ignores
+    ``Range`` and from storage that serves it."""
+    upper = _tar_layer(
+        _dir("etc"),
+        _m("etc/.wh.secret"),
+        _m(".wh.gone"),
+        _dir("opq"),
+        _m("opq/.wh..wh..opq"),
+        _m("opq/b", b"b"),
+        _dir("usr"),
+        _dir("usr/bin"),
+        _m("usr/bin/hello", b"hello", mode=0o755),
+        _m("usr/bin/hello2", typ=tarfile.LNKTYPE, linkname="usr/bin/hello"),
+        _dir("dev"),
+        _dir("run"),
+        _dir("run/shm"),
+        _symlink("dev/shm", "/run/shm"),
+    )
+    layers = [
+        _tar_layer(*_BASE_LAYER),
+        upper,
+        _tar_layer(_m("big", os.urandom(1 << 20))),
+        upper,
+    ]
+    monkeypatch.setattr(
+        image_utils, "_build_erofs_image_from_registry", _not_while_erofs_pull_is_on
+    )
+    pulled, extracted, warnings = _pull_with_erofs_pull_and_extraction(
+        tmp_path, monkeypatch, layers, serve_blob
+    )
+    assert warnings == []
+    _assert_seeded(pulled)
+    assert _erofs_cat(pulled, "/usr/bin/hello2") == b"hello"
+    assert _erofs_stat(pulled, "/home/u") == (0o700, 1000, 1000)
+    assert _erofs_tree(pulled) == _erofs_tree(extracted)
+    # The layers are in the layer cache, under the cache's own conventions.
+    blobs = os.listdir(tmp_path / "erofs-pull" / ".blobs" / "sha256")
+    digests = {hashlib.sha256(layer).hexdigest() for layer in layers}
+    assert {name for name in blobs if not name.endswith(".lock")} == digests
+
+
+@pytest.mark.parametrize("upper,problem", _LAYERS_THAT_MERGE_DIFFERENTLY)
+def test_erofs_pull_builds_layers_that_merge_differently(
+    tmp_path, erofs_pull, monkeypatch, upper, problem
+):
+    """The layers a merge of layer images gets wrong come out of erofs-pull
+    as extraction builds them: a directory over a symlink, members without
+    their parent's entry, deleted seeds, a symlinked /etc or /tmp."""
+    layers = [_tar_layer(*_BASE_LAYER), _tar_layer(*upper)]
+    pulled, extracted, warnings = _pull_with_erofs_pull_and_extraction(
+        tmp_path, monkeypatch, layers
+    )
+    assert warnings == []
+    assert _erofs_tree(pulled) == _erofs_tree(extracted)
+
+
+def test_erofs_pull_from_a_registry(tmp_path, fake_docker_hub, erofs_pull, monkeypatch):
+    """A pull from the fake registry (token challenge, multi-arch index,
+    blobs redirected to storage that refuses the token) is built by
+    erofs-pull, with the manifest and config cached."""
+    monkeypatch.setattr(
+        image_utils, "_build_erofs_image_from_registry", _not_while_erofs_pull_is_on
+    )
+    image_dir = pull_and_extract_container_image(
+        "busybox:latest", images_dir=str(tmp_path / "images")
+    )
+    image = os.path.join(image_dir, ROOTFS_IMAGE)
+    _assert_seeded(image)
+    assert _erofs_cat(image, "/bin/busybox") == fake_docker_hub
+    with open(os.path.join(image_dir, ".image_config.json")) as f:
+        assert json.load(f)["os"] == "linux"
+
+
+@pytest.mark.parametrize("serve_blob", [_cut_short, _wrong_blob])
+def test_erofs_pull_falls_back_on_a_bad_layer(
+    tmp_path, erofs_pull, monkeypatch, serve_blob
+):
+    """A layer cut short or swapped fails erofs-pull, which leaves nothing in
+    the layer cache, and the next pipeline fails the pull on it too."""
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    layers = [_tar_layer(_m("a", os.urandom(1 << 16)))]
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        with pytest.raises(SandboxCreationError, match="failed verification"):
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+    assert any("with erofs-pull failed" in warning for warning in warnings)
+    blob_dir = tmp_path / "images" / ".blobs" / "sha256"
+    assert [name for name in os.listdir(blob_dir) if not name.endswith(".lock")] == []
+
+
+def test_erofs_pull_path(tmp_path, monkeypatch):
+    binary = tmp_path / "erofs_pull"
+    binary.write_text("#!/bin/sh\n")
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", str(binary))
+    # Not executable.
+    assert image_utils.erofs_pull_path() is None
+    binary.chmod(0o755)
+    assert image_utils.erofs_pull_path() == str(binary)
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", "0")
+    assert image_utils.erofs_pull_path() is None
+    monkeypatch.delenv("RAY_SANDBOX_EROFS_PULL")
+    expected = (
+        image_utils._EROFS_PULL_PACKAGED
+        if os.access(image_utils._EROFS_PULL_PACKAGED, os.X_OK)
+        else None
+    )
+    assert image_utils.erofs_pull_path() == expected

@@ -13,6 +13,7 @@ import os
 import platform
 import re
 import shutil
+import ssl
 import stat
 import subprocess
 import tarfile
@@ -1099,6 +1100,120 @@ def _pull_errors(image: str, blobs: Iterator[BinaryIO]) -> Iterator[BinaryIO]:
             ) from err
 
 
+# Set to "0" to never build images with erofs-pull, or to the path of an
+# erofs-pull binary to use in place of the one packaged with Ray.
+_EROFS_PULL_ENV = "RAY_SANDBOX_EROFS_PULL"
+# Where Ray's Linux wheels carry it (//src/ray/sandbox/erofs_pull).
+_EROFS_PULL_PACKAGED = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+    "core",
+    "src",
+    "ray",
+    "sandbox",
+    "erofs_pull",
+    "erofs_pull",
+)
+
+
+def erofs_pull_path() -> Optional[str]:
+    """The erofs-pull binary to build images with, or None to not use one."""
+    setting = os.environ.get(_EROFS_PULL_ENV, "")
+    if setting == "0":
+        return None
+    path = setting or _EROFS_PULL_PACKAGED
+    return path if os.access(path, os.X_OK) else None
+
+
+def _build_erofs_image_with_erofs_pull(
+    image: str,
+    image_dir: str,
+    out_path: str,
+    timeout_seconds: float,
+    blob_dir: str,
+) -> bool:
+    """Build ``out_path`` for registry image ``image`` with erofs-pull.
+
+    Ray resolves the image as for the other pipelines, and erofs-pull does
+    the rest in one pass: it downloads the layers into the layer cache over
+    parallel range requests, decompresses them in parallel while they
+    arrive, writes each file's data once into the image, and applies the
+    layers and seeds as ``extract_tar_layer``, ``_seed_tmp`` and
+    ``_seed_mountpoints`` do. The registry token reaches it on stdin, never
+    on its command line. It trusts the CA certificates Python's ``ssl``
+    does.
+
+    Args:
+        image: Registry image reference.
+        image_dir: Directory that receives the manifest and image config.
+        out_path: Destination image file.
+        timeout_seconds: Network request timeout.
+        blob_dir: Image cache directory, whose layer cache keeps the blobs.
+
+    Returns:
+        True if the image is built; False, with nothing at ``out_path``, if
+        another pipeline should build it: no erofs-pull, a local archive, a
+        manifest without layer sizes, or a failed build (a download error
+        included: the next pipeline retries it).
+
+    Raises:
+        SandboxCreationError: When the image can't be resolved.
+    """
+    binary = erofs_pull_path()
+    if binary is None or _is_local_image(image):
+        return False
+    try:
+        base_url, headers, auth_header, digests = _resolve_registry_image(
+            image, image_dir, timeout_seconds
+        )
+    except SandboxCreationError:
+        raise
+    except Exception as err:
+        raise SandboxCreationError(
+            f"Failed to pull container image '{image}': {_describe_pull_error(err)}"
+        ) from err
+    with open(os.path.join(image_dir, ".manifest.json")) as f:
+        sizes = {layer["digest"]: layer.get("size") for layer in json.load(f)["layers"]}
+    if not all(isinstance(sizes.get(digest), int) for digest in digests):
+        return False
+    spec = {
+        "base_url": base_url,
+        "headers": headers,
+        "auth": auth_header,
+        "layers": [{"digest": digest, "size": sizes[digest]} for digest in digests],
+        "blob_dir": os.path.dirname(layer_cache.blob_path(blob_dir, digests[0])),
+        "out": out_path,
+        "block_size": mmap.PAGESIZE,
+        "timeout_seconds": timeout_seconds,
+    }
+    paths = ssl.get_default_verify_paths()
+    env = dict(os.environ)
+    for name, path in (("SSL_CERT_FILE", paths.cafile), ("SSL_CERT_DIR", paths.capath)):
+        if path and name not in env:
+            env[name] = path
+    start = time.monotonic()
+    try:
+        result = subprocess.run(
+            [binary], input=json.dumps(spec).encode(), capture_output=True, env=env
+        )
+    except OSError as err:
+        result = None
+        failure = str(err)
+    else:
+        failure = result.stderr.decode(errors="replace").strip()[-500:]
+    if result is None or result.returncode != 0:
+        logger.warning(
+            f"Building image '{image}' with erofs-pull failed, so another "
+            f"pipeline builds it: {failure}"
+        )
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(out_path)
+        return False
+    logger.info(
+        f"Built image '{image}' with erofs-pull in {time.monotonic() - start:.1f}s"
+    )
+    return True
+
+
 def _build_erofs_image_from_registry(
     image: str,
     image_dir: str,
@@ -1573,9 +1688,12 @@ def pull_and_extract_container_image(
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
             try:
                 rootfs_image = os.path.join(tmp_extract_dir, ROOTFS_IMAGE)
-                if not _build_erofs_image_from_registry(
+                built = _build_erofs_image_with_erofs_pull(
                     image, tmp_extract_dir, rootfs_image, timeout_seconds, images_dir
-                ):
+                ) or _build_erofs_image_from_registry(
+                    image, tmp_extract_dir, rootfs_image, timeout_seconds, images_dir
+                )
+                if not built:
                     ownership = _extract_image_layers(
                         image,
                         tmp_rootfs_dir,
