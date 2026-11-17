@@ -16,6 +16,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.router_state import KVRouterState
 from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
     TokenReceiver,
     TokenSender,
@@ -403,13 +404,15 @@ async def test_routes_tokens_to_replica():
     sender = TokenSender()
     router = LLMRouter.__new__(LLMRouter)
     router._handle = MagicMock()
-    router._tokenizer = MagicMock()
-    router._tokenizer.tokenize = AsyncMock(return_value=token_ids)
+    state = KVRouterState.__new__(KVRouterState)
+    tokenizer = MagicMock(tokenize=AsyncMock(return_value=token_ids))
+    state.tokenizer_task = asyncio.create_task(asyncio.sleep(0, result=tokenizer))
+    state.token_sender = sender
+    state._warned_no_token_endpoint = False
+    router._kv_state = state
     router._pick_replica = AsyncMock(
         return_value=("selected-host", 8000, "selected-replica", selected_endpoint)
     )
-    router._token_sender = sender
-    router._warned_no_token_endpoint = False
 
     request = MagicMock()
     request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hello"}')
@@ -517,7 +520,9 @@ class TestTokenChannelLifetime:
     async def test_del_closes_sender_and_engine(self):
         """LLMRouter and LLMServer teardown must close the sender and the receiver."""
         token_sender = MagicMock()
-        await LLMRouter.__del__(SimpleNamespace(_token_sender=token_sender))
+        state = KVRouterState.__new__(KVRouterState)
+        state.token_sender = token_sender
+        await LLMRouter.__del__(SimpleNamespace(_kv_state=state))
         token_sender.close.assert_called_once()
 
         engine = AsyncMock()

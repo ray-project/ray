@@ -165,6 +165,10 @@ def build_app(
         raise RayServeException(
             REQUIRES_HAPROXY_ERROR.format(feature="`ingress_request_router`")
         )
+    if app._is_router_application_target and ingress_request_router is not None:
+        raise RayServeException(
+            "A router application target cannot attach an ingress request router."
+        )
     is_router_application = _is_router_application_class(
         app._bound_deployment.func_or_class
     )
@@ -180,11 +184,12 @@ def build_app(
 
     # Under HAProxy, ingress traffic is load-balanced by HAProxy and bypasses
     # the ingress deployment's Serve request router, so a custom router there is
-    # silently ignored. An explicitly attached ingress request router is allowed
-    # because it implements the /internal/route API itself.
+    # silently ignored. A peer ingress router or a router application target
+    # uses the custom request router through a deployment handle.
     if (
         RAY_SERVE_ENABLE_HA_PROXY
         and ingress_request_router is None
+        and not app._is_router_application_target
         and _has_custom_request_router(app._bound_deployment)
     ):
         raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
@@ -204,6 +209,7 @@ def build_app(
     if (
         ingress_request_router is None
         and RAY_SERVE_ENABLE_HA_PROXY
+        and not app._is_router_application_target
         and _callable_uses_multiplexing(app._bound_deployment.func_or_class)
     ):
         from ray.serve._private.multiplex_ingress_router import (

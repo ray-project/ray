@@ -14,7 +14,7 @@ import os
 import secrets
 import time
 from types import SimpleNamespace
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import unquote
 
 from fastapi import FastAPI, Request, status
@@ -33,8 +33,24 @@ from ray.llm._internal.serve.core.ingress.router import (
     _get_routing_payload_from_body,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    REQUEST_TOKEN_IDS_KWARG,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    KVAwareRouter,
+    get_kv_router_application_name,
+    is_kv_aware,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    get_token_endpoint,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.router_state import (
+    KVRouterState,
+    TokenizeError,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
@@ -175,14 +191,26 @@ class RouterApplication:
         self._api_key_hashes = {
             config.model_id: _api_key_hashes(config) for config in llm_configs
         }
+        self._kv_states = {
+            config.model_id: KVRouterState(config)
+            for config in llm_configs
+            if is_kv_aware(config)
+        }
+        if self._kv_states:
+            context = serve.get_replica_context()
+            self._app_name = context.app_name
+            self._self_handle = serve.get_deployment_handle(
+                context.deployment, app_name=context.app_name
+            )
         # Resolve every handle in parallel without gating router health on them.
         self._handles: Dict[str, "asyncio.Task[DeploymentHandle]"] = {
-            model_id: asyncio.create_task(self._resolve_handle(app_name))
+            model_id: asyncio.create_task(self._resolve_handle(model_id, app_name))
             for model_id, app_name in self._model_applications.items()
         }
 
     async def check_health(self):
-        pass
+        for state in self._kv_states.values():
+            state.check_health()
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -335,23 +363,26 @@ class RouterApplication:
             "BadRequestError",
         )
 
-    @staticmethod
-    async def _resolve_handle(app_name: str) -> DeploymentHandle:
-        """Look up the application's handle, retrying until it is deployed."""
+    async def _resolve_handle(self, model_id: str, app_name: str) -> DeploymentHandle:
+        """Look up the application's handle once it is ready for routing."""
+        state = self._kv_states.get(model_id)
         backoff_s = HANDLE_RETRY_INITIAL_S
         first_failure_s = None
         last_log_s = 0.0
         while True:
             try:
                 handle = await asyncio.to_thread(serve.get_app_handle, app_name)
+                if state is not None:
+                    await asyncio.to_thread(self._check_kv_router_owner, handle)
                 break
-            # Not deployed yet (or misnamed), no controller yet, or controller restarting.
+            # The target may still be deploying or waiting for the matching
+            # ownership configuration.
             except (RayServeException, RayError) as e:
                 now = time.monotonic()
                 if first_failure_s is None:
                     first_failure_s = last_log_s = now
                     logger.warning(
-                        "Model application %s is not available yet; retrying: %r",
+                        "Model application %s is not ready to route; retrying: %r",
                         app_name,
                         e,
                     )
@@ -367,10 +398,34 @@ class RouterApplication:
                 backoff_s = min(backoff_s * 2, HANDLE_RETRY_MAX_S)
         if first_failure_s is not None:
             logger.info("Model application %s is now available.", app_name)
+        if state is not None:
+            state.start_tracking(
+                handle.deployment_id, self._self_handle, model_id=model_id
+            )
         # Start tracking replicas now, on the replica's event loop.
         if not handle.is_initialized:
             handle._init()
         return handle
+
+    def _check_kv_router_owner(self, handle: DeploymentHandle) -> None:
+        # Read deployment config from the controller so a scaled-to-zero model
+        # does not have to start a replica to tell us who owns its KV routing.
+        try:
+            info, _ = serve.context._get_global_client().get_deployment_info(
+                handle.deployment_id.name, handle.deployment_id.app_name
+            )
+        except KeyError as e:
+            raise RayServeException(str(e)) from e
+        config = info.deployment_config.request_router_config
+        if (
+            not issubclass(config.get_request_router_class(), KVAwareRouter)
+            or get_kv_router_application_name(config) != self._app_name
+        ):
+            raise RayServeException(
+                f"Model application {handle.deployment_id.app_name!r} must use "
+                "KVAwareRouter with kv_router_application_name set to "
+                f"{self._app_name!r} in request_router_kwargs."
+            )
 
     async def _decide(
         self,
@@ -379,6 +434,7 @@ class RouterApplication:
         request: Request,
     ):
         application_name = self._model_applications[model_id]
+        state = self._kv_states.get(model_id)
         deadline_s = time.monotonic() + CHOOSE_REPLICA_TIMEOUT_S
         try:
             handle = await asyncio.wait_for(
@@ -388,11 +444,32 @@ class RouterApplication:
             session_id = session_id_from_headers(request.headers)
             if session_id:
                 handle = handle.options(session_id=session_id)
-            replica_id = await self._choose_replica(
+            request_token_ids = None
+            if state is not None and routing_payload is not None:
+                request_token_ids = await asyncio.wait_for(
+                    state.tokenize(
+                        routing_payload,
+                        request_path=request.headers.get(
+                            SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER
+                        ),
+                    ),
+                    timeout=max(0, deadline_s - time.monotonic()),
+                )
+            replica_id, token_endpoint = await self._choose_replica(
                 handle,
                 routing_payload,
+                request_token_ids=request_token_ids,
                 timeout_s=max(0, deadline_s - time.monotonic()),
             )
+            request_headers = (
+                state.stage_prompt_tokens(
+                    replica_id, token_endpoint, request_token_ids, routing_payload
+                )
+                if state is not None and request_token_ids
+                else {}
+            )
+        except TokenizeError as e:
+            return _error(e.status_code, e.message, e.type)
         except ValueError as e:
             return _error(
                 status.HTTP_400_BAD_REQUEST,
@@ -416,25 +493,75 @@ class RouterApplication:
                 "ServiceUnavailableError",
                 headers={"Retry-After": str(RETRY_AFTER_S)},
             )
-        return {"application": application_name, "replica_id": replica_id}
+        decision = {"application": application_name, "replica_id": replica_id}
+        if request_headers:
+            decision[
+                RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
+            ] = request_headers
+        return decision
+
+    async def on_model_lifecycle_events(self, model_id: str, batch):
+        state = self._kv_states.get(model_id)
+        if state is not None and state.tracker is not None:
+            await state.tracker.on_lifecycle_events(batch)
+
+    async def on_model_replica_updates(
+        self, model_id: str, source_writer_id: int, batch
+    ):
+        state = self._kv_states.get(model_id)
+        if state is not None and state.tracker is not None:
+            await state.tracker.on_replica_updates(source_writer_id, batch)
 
     @staticmethod
     async def _choose_replica(
         handle: DeploymentHandle,
         routing_payload: Optional[SimpleNamespace],
+        request_token_ids: Optional[List[int]],
         timeout_s: float,
-    ) -> str:
-        """Pick a replica without dispatching; HAProxy sends the request."""
+    ) -> Tuple[str, Optional[str]]:
+        """Pick a replica without dispatching. HAProxy sends the request."""
         route_args = (routing_payload,) if routing_payload is not None else ()
+        choose_replica_kwargs = {}
+        if request_token_ids is not None:
+            choose_replica_kwargs[REQUEST_TOKEN_IDS_KWARG] = request_token_ids
 
-        async def pick() -> str:
-            async with handle.choose_replica(*route_args, _reserve=False) as selection:
-                return selection._replica.replica_id.to_full_id_str()
+        async def pick() -> Tuple[str, Optional[str]]:
+            async with handle.choose_replica(
+                *route_args, _reserve=False, **choose_replica_kwargs
+            ) as selection:
+                replica = selection._replica
+                return replica.replica_id.to_full_id_str(), get_token_endpoint(
+                    replica.routing_stats
+                )
 
         return await asyncio.wait_for(pick(), timeout=timeout_s)
 
     @classmethod
-    def get_deployment_options(cls) -> Dict[str, Any]:
+    def get_deployment_options(
+        cls, llm_configs: Optional[List[LLMConfig]] = None
+    ) -> Dict[str, Any]:
+        """Build the shared tokenizer environment once when constructing the app."""
         options = copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
-        options["ray_actor_options"]["runtime_env"] = get_llm_serve_runtime_env()
+        env_vars = {}
+        for config in llm_configs or []:
+            if not is_kv_aware(config):
+                continue
+            model_env_vars = (config.runtime_env or {}).get("env_vars") or {}
+            for name, value in model_env_vars.items():
+                # Each model's API key is checked separately by the router.
+                if name == "VLLM_API_KEY":
+                    continue
+                # All tokenizers share one process environment.
+                if name in env_vars and env_vars[name] != value:
+                    raise ValueError(
+                        f"KV-aware model configs must agree on runtime env var {name}."
+                    )
+                env_vars[name] = value
+        options["ray_actor_options"]["runtime_env"] = get_llm_serve_runtime_env(
+            {"env_vars": env_vars}
+        )
         return options
+
+    def __del__(self) -> None:
+        for state in getattr(self, "_kv_states", {}).values():
+            state.close()

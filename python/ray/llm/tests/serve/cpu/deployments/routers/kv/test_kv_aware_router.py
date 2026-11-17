@@ -13,6 +13,7 @@ import pytest
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs,
+    _build_openai_ingress_request_router,
     build_openai_app,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
@@ -25,6 +26,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     KVTokenTracker,
     get_worker_id,
 )
+from ray.serve._private.build_app import build_app
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -98,12 +100,29 @@ def test_non_kv_router_warns_kv_events_config():
     assert "KVAwareRouter" in logger.warning.call_args.args[0]
 
 
-def test_build_openai_app_configures_kv_routing():
+@pytest.mark.parametrize("shared_router", [None, "shared-router"])
+def test_build_openai_app_configures_kv_routing(monkeypatch, shared_router):
     """A KVAwareRouter LLMConfig enables the engine's KV-cache events at build
     time, so the tracker the LLMRouter ingress builds has events to index."""
     llm_config = build_test_llm_config()
-    build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.core.ingress.builder.RAY_SERVE_ENABLE_HA_PROXY",
+        True,
+    )
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+    if shared_router is not None:
+        llm_config.deployment_config["request_router_config"][
+            "request_router_kwargs"
+        ] = {"kv_router_application_name": shared_router}
+    app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
+    built = build_app(app, name="model-app", route_prefix="/model")
+    assert (built.ingress_request_router_deployment is None) == (
+        shared_router is not None
+    )
+    if shared_router is not None:
+        with pytest.raises(ValueError, match="cannot attach LLMRouter"):
+            _build_openai_ingress_request_router(server=app, llm_config=llm_config)
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     assert kv_events_config is not None
     assert kv_events_config["enable_kv_cache_events"] is True

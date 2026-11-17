@@ -650,6 +650,57 @@ def test_decorator_returns_subclass():
 
 
 @pytest.mark.asyncio
+async def test_requests_report_to_the_configured_router_application(monkeypatch):
+    class RouterApplicationTarget:
+        def __init__(self):
+            self.batches = []
+
+        async def on_model_lifecycle_events(self, model_id, events):
+            self.batches.append((model_id, events))
+
+    target = RouterApplicationTarget()
+    resolved = []
+
+    def get_router_handle(deployment, app_name):
+        resolved.append((deployment, app_name))
+        return _BroadcastHandle(target)
+
+    monkeypatch.setattr(
+        serve,
+        "get_deployment_handle",
+        get_router_handle,
+    )
+    monkeypatch.setattr(
+        serve,
+        "get_replica_context",
+        lambda: SimpleNamespace(
+            replica_id=SimpleNamespace(unique_id=REPLICA_UNIQUE_ID)
+        ),
+    )
+    engine = enable_token_tracking(
+        MockAsyncLLM, model_id="model-a", kv_router_application_name="shared-router"
+    )(delta_steps(2))
+
+    for index in range(2):
+        await consume(
+            engine.generate(
+                PROMPT,
+                SamplingParams(output_kind=RequestOutputKind.DELTA),
+                f"request-{index}",
+            )
+        )
+    await drain(engine)
+
+    assert resolved == [("RouterApplication", "shared-router")]
+    assert {model_id for model_id, _ in target.batches} == {"model-a"}
+    assert [event for _, events in target.batches for event in events] == [
+        (event, (f"request-{index}",))
+        for index in range(2)
+        for event in ("on_prefill_complete", "on_request_completed")
+    ]
+
+
+@pytest.mark.asyncio
 async def test_passthrough_without_llm_router(monkeypatch):
     """Outside a replica (no LLMRouter handle resolvable) the engine is a pure
     pass-through."""
@@ -671,7 +722,7 @@ async def test_passthrough_without_llm_router(monkeypatch):
     )
 
     assert len(outputs) == 2
-    assert engine._lifecycle_forwarder is None  # resolution failed; retried next call
+    assert engine._lifecycle_forwarder is None  # Retried on the next call.
 
 
 @pytest.mark.parametrize(

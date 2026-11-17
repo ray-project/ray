@@ -118,11 +118,17 @@ class PeerUpdateForwarder:
     one broadcast, off the request's selection and dispatch path.
     """
 
-    def __init__(self, handle: Any, source_writer_id: int):
+    def __init__(
+        self,
+        handle: Any,
+        source_writer_id: int,
+        model_id: Optional[str] = None,
+    ):
         self._handle = handle
         # Breaks ties when ingresses bind one session concurrently (newest
         # (sequence, writer_id) wins); receivers also skip their own broadcasts.
         self._source_writer_id = source_writer_id
+        self._model_id = model_id
         if getattr(handle, "is_initialized", True) is False:
             # Keep broadcast routing off the ingress replica's request loop.
             handle._init(_run_router_in_separate_loop=True)
@@ -142,8 +148,18 @@ class PeerUpdateForwarder:
             while not self._updates.empty():
                 batch.append(self._updates.get_nowait())
             try:
+                method_name = (
+                    "on_model_replica_updates"
+                    if self._model_id is not None
+                    else "on_replica_updates"
+                )
+                args = (
+                    (self._model_id, self._source_writer_id, batch)
+                    if self._model_id is not None
+                    else (self._source_writer_id, batch)
+                )
                 results = await self._handle.broadcast(
-                    "on_replica_updates", self._source_writer_id, batch
+                    method_name, *args
                 ).results_async(
                     timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
                     return_exceptions=True,
@@ -174,10 +190,10 @@ class PeerUpdateForwarder:
 
 class KVTokenTracker:
     """Tracks per-replica KV-cache overlap, token load, and session affinity
-    inside the LLMRouter ingress replica.
+    inside a router.
 
-    Built by the LLMRouter ingress replica via ``build_kv_token_tracker``, so
-    ``select_worker`` is a local call on the ingress event loop.
+    Built in the process that selects replicas, so ``select_worker`` is local
+    to the routing event loop.
 
     1. Owns a router-local Dynamo ``SelectionService``.
     2. Tracks live replicas via a ``LongPollClient`` on ``DEPLOYMENT_TARGETS``,
@@ -265,11 +281,13 @@ class KVTokenTracker:
         """
         self._on_token_endpoints = callback
 
-    def start_replica_broadcast(self, handle: Any) -> None:
+    def start_replica_broadcast(
+        self, handle: Any, model_id: Optional[str] = None
+    ) -> None:
         """Broadcast load reservations and session affinity bindings to peers."""
         if self._svc is not None:
             self._replica_forwarder = PeerUpdateForwarder(
-                handle, self._replication_writer_id
+                handle, self._replication_writer_id, model_id
             )
             if self._session_affinity_ttl_s:
                 self._session_affinity_task = asyncio.create_task(
@@ -825,14 +843,29 @@ class KVTokenTracker:
 
 
 _KV_TOKEN_TRACKER: Optional["KVTokenTracker"] = None
+_KV_TOKEN_TRACKERS: Dict[Any, "KVTokenTracker"] = {}
 
 
-def set_kv_token_tracker(tracker: "KVTokenTracker") -> None:
+def set_kv_token_tracker(tracker: Optional["KVTokenTracker"]) -> None:
     global _KV_TOKEN_TRACKER
     _KV_TOKEN_TRACKER = tracker
+    if tracker is None:
+        _KV_TOKEN_TRACKERS.clear()
+    else:
+        deployment_id = getattr(
+            tracker,
+            "_serve_deployment_id",
+            getattr(tracker, "serve_deployment_id", None),
+        )
+        if deployment_id is not None:
+            _KV_TOKEN_TRACKERS[deployment_id] = tracker
 
 
-def get_kv_token_tracker() -> Optional["KVTokenTracker"]:
+def get_kv_token_tracker(
+    serve_deployment_id: Optional[Any] = None,
+) -> Optional["KVTokenTracker"]:
+    if serve_deployment_id is not None:
+        return _KV_TOKEN_TRACKERS.get(serve_deployment_id)
     return _KV_TOKEN_TRACKER
 
 
@@ -853,9 +886,10 @@ def get_llm_router_handle():
 def build_kv_token_tracker(
     llm_config: "LLMConfig", serve_deployment_id: Any
 ) -> "KVTokenTracker":
-    """Build the ``KVTokenTracker`` and register it in this process's global
-    so the same-process ``KVAwareRouter`` can reach it. Must be called from the
-    ingress replica's event loop (the tracker binds a LongPollClient to it).
+    """Build and register a tracker for a same-process ``KVAwareRouter``.
+
+    Must be called from the routing replica's event loop because the tracker
+    binds a LongPoll client to it.
     """
     router_config = llm_config.deployment_config.get("request_router_config") or {}
     router_kwargs = (

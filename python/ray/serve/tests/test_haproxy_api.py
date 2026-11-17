@@ -403,6 +403,8 @@ frontend http_frontend
     http-request set-var-fmt(txn.serve_route) "/api" if is_api_backend !{{ var(txn.serve_route) -m found }}
     http-request set-var-fmt(txn.serve_app) "web_backend" if is_web_backend !{{ var(txn.serve_app) -m found }}
     http-request set-var-fmt(txn.serve_route) "/web" if is_web_backend !{{ var(txn.serve_route) -m found }}
+    # Drop client-supplied router-owned headers before applying any routing decision.
+    http-request del-header x-serve-router- -m beg
     # Static routing based on path prefixes in decreasing length then alphabetical order
     use_backend api_backend if is_api_backend
     use_backend web_backend if is_web_backend
@@ -1086,10 +1088,7 @@ def test_ingress_request_router_forward_body_gate_renders(
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
         assert f"maxconn {RAY_SERVE_HAPROXY_MAXCONN}" in cfg, cfg
-        assert (
-            "http-request del-header x-serve-router- -m beg "
-            "if has_ingress_request_router_app"
-        ) in cfg
+        assert ("http-request del-header x-serve-router- -m beg\n") in cfg
         assert (
             "http-request del-header serve_multiplexed_model_id "
             "if has_ingress_request_router_app"

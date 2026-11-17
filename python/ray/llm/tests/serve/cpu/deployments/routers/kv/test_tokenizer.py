@@ -1,10 +1,13 @@
+import asyncio
 import copy
 import json
 import sys
+from types import SimpleNamespace
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 from fastapi import HTTPException
 from starlette.datastructures import Headers
 from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
@@ -16,13 +19,16 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
+from ray.llm._internal.serve.routing_policies.kv_aware import kv_token_tracker
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.router_state import KVRouterState
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
     TokenizeError,
     build_tokenize_request,
 )
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
@@ -229,13 +235,28 @@ class TestBuildTokenizeRequest:
             assert getattr(request, attr) == value
 
 
+@pytest.fixture
+def tokenizer():
+    return MagicMock(tokenize=AsyncMock(return_value=[5, 6, 7]))
+
+
+@pytest_asyncio.fixture
+async def kv_state(tokenizer):
+    state = KVRouterState.__new__(KVRouterState)
+    state.tokenizer_task = asyncio.create_task(asyncio.sleep(0, result=tokenizer))
+    state.token_sender = MagicMock()
+    state._warned_no_token_endpoint = False
+    yield state
+    state.close()
+
+
 class TestRoute:
     @pytest.mark.asyncio
     async def test_no_tokenizer_forwards_no_token_ids(self):
         # A non-KV router has no tokenizer, so route forwards request_token_ids=None.
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
-        router._tokenizer = None
+        router._kv_state = None
         router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
@@ -245,12 +266,11 @@ class TestRoute:
         assert router._pick_replica.call_args.kwargs["request_token_ids"] is None
 
     @pytest.mark.asyncio
-    async def test_forwards_token_ids(self):
+    async def test_forwards_token_ids(self, kv_state):
         # A successful tokenization forwards its token ids to _pick_replica.
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
-        router._tokenizer = MagicMock()
-        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._kv_state = kv_state
         router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
@@ -260,16 +280,15 @@ class TestRoute:
         assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("pushed_token_key", ["trusted-key", None])
-    async def test_route_token_header(self, pushed_token_key):
+    @pytest.mark.parametrize("push_succeeds", [True, False])
+    async def test_route_token_header(self, kv_state, push_succeeds):
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
-        router._tokenizer = MagicMock()
-        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._kv_state = kv_state
         router._pick_replica = AsyncMock(
             return_value=("h", 1, "rid", "tcp://127.0.0.1:7557")
         )
-        router._push_prompt_tokens = MagicMock(return_value=pushed_token_key)
+        kv_state.token_sender.push.return_value = push_succeeds
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
@@ -278,10 +297,10 @@ class TestRoute:
         )
         response = await router.route(request)
 
-        router._push_prompt_tokens.assert_called_once()
-        if pushed_token_key:
+        kv_state.token_sender.push.assert_called_once()
+        if push_succeeds:
             assert response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] == {
-                KV_TOKEN_KEY_HEADER: pushed_token_key
+                KV_TOKEN_KEY_HEADER: kv_state.token_sender.push.call_args.args[1]
             }
         else:
             assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
@@ -297,17 +316,17 @@ class TestRoute:
             ("malformed_text", False),
         ],
     )
-    async def test_anthropic_token_staging(self, media, should_stage):
+    async def test_anthropic_token_staging(
+        self, kv_state, tokenizer, media, should_stage
+    ):
         # Images can also appear inside tool results; tokens alone cannot
         # replace media preprocessing at the engine.
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
-        router._tokenizer = MagicMock()
-        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._kv_state = kv_state
         router._pick_replica = AsyncMock(
             return_value=("h", 1, "rid", "tcp://127.0.0.1:7557")
         )
-        router._push_prompt_tokens = MagicMock(return_value="key")
 
         payload = copy.deepcopy(CLAUDE_CODE_BODY)
         image = {
@@ -332,27 +351,26 @@ class TestRoute:
         )
         response = await router.route(request)
 
-        router._tokenizer.tokenize.assert_awaited_once_with(
+        tokenizer.tokenize.assert_awaited_once_with(
             payload, request_path="/v1/messages"
         )
         assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
         if should_stage:
-            router._push_prompt_tokens.assert_called_once()
+            kv_state.token_sender.push.assert_called_once()
             assert response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] == {
-                KV_TOKEN_KEY_HEADER: "key"
+                KV_TOKEN_KEY_HEADER: kv_state.token_sender.push.call_args.args[1]
             }
         else:
-            router._push_prompt_tokens.assert_not_called()
+            kv_state.token_sender.push.assert_not_called()
             assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
 
     @pytest.mark.asyncio
-    async def test_unparseable_body_skips_tokenization(self):
+    async def test_unparseable_body_skips_tokenization(self, kv_state, tokenizer):
         # A truncated/unparseable body derives no routing payload, so the
         # tokenizer is never called and request_token_ids stays None.
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
-        router._tokenizer = MagicMock()
-        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._kv_state = kv_state
         router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
@@ -361,17 +379,17 @@ class TestRoute:
         request.headers = Headers({"x-body-truncated": "8/90000"})
         await router.route(request)
 
-        router._tokenizer.tokenize.assert_not_called()
+        tokenizer.tokenize.assert_not_called()
         assert router._pick_replica.call_args.kwargs["request_token_ids"] is None
 
     @pytest.mark.asyncio
-    async def test_tokenize_error_becomes_http_error(self):
+    async def test_tokenize_error_becomes_http_error(self, kv_state, tokenizer):
         # A /tokenize rejection becomes an HTTPException with the same status
         # code, and routing is not attempted.
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
-        router._tokenizer = MagicMock()
-        router._tokenizer.tokenize = AsyncMock(
+        router._kv_state = kv_state
+        tokenizer.tokenize = AsyncMock(
             side_effect=TokenizeError(
                 "bad model", status_code=404, type="NotFoundError"
             )
@@ -386,6 +404,98 @@ class TestRoute:
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "bad model"
         router._pick_replica.assert_not_called()
+
+
+class TestKVRouterState:
+    @pytest.mark.asyncio
+    async def test_request_cancellation_preserves_tokenizer_startup(
+        self, kv_state, tokenizer
+    ):
+        await kv_state.tokenizer_task
+        ready = asyncio.Event()
+
+        async def load_tokenizer():
+            await ready.wait()
+            return tokenizer
+
+        kv_state.tokenizer_task = asyncio.create_task(load_tokenizer())
+        payload = SimpleNamespace(model="m", prompt="hi")
+        request = asyncio.create_task(
+            kv_state.tokenize(payload, request_path="/v1/completions")
+        )
+        await asyncio.sleep(0)
+        request.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+        assert not kv_state.tokenizer_task.cancelled()
+
+        ready.set()
+        assert await kv_state.tokenize(payload, request_path="/v1/completions") == [
+            5,
+            6,
+            7,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_tokenizer_startup_error_fails_health(self, kv_state):
+        await kv_state.tokenizer_task
+
+        async def fail():
+            raise ValueError("invalid tokenizer config")
+
+        kv_state.tokenizer_task = asyncio.create_task(fail())
+        with pytest.raises(ValueError, match="invalid tokenizer config"):
+            await kv_state.tokenizer_task
+        with pytest.raises(ValueError, match="invalid tokenizer config"):
+            kv_state.check_health()
+
+    @pytest.mark.asyncio
+    async def test_llm_router_registers_and_subscribes_before_initializing_handle(
+        self, monkeypatch, tokenizer
+    ):
+        from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+        from ray.llm._internal.serve.routing_policies.kv_aware.vllm import (
+            tokenizer as tokenizer_module,
+        )
+
+        events = []
+        deployment_id = DeploymentID("LLMServer", app_name="model")
+        tracker = MagicMock(_serve_deployment_id=deployment_id)
+
+        def build_tracker(**kwargs):
+            events.append("tracker")
+            assert kwargs["serve_deployment_id"] == deployment_id
+            return tracker
+
+        def load_tokenizer(config):
+            events.append("tokenizer")
+            return tokenizer
+
+        def initialize_handle():
+            events.append("handle")
+            assert kv_token_tracker.get_kv_token_tracker(deployment_id) is tracker
+
+        tracker.subscribe_token_endpoints.side_effect = lambda callback: events.append(
+            "subscribe"
+        )
+        monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", build_tracker)
+        monkeypatch.setattr(kv_token_tracker, "get_llm_router_handle", MagicMock())
+        monkeypatch.setattr(tokenizer_module, "Tokenizer", load_tokenizer)
+        monkeypatch.setattr(token_channel, "TokenSender", MagicMock)
+        handle = MagicMock(deployment_id=deployment_id)
+        handle._init.side_effect = initialize_handle
+        config = LLMConfig(model_loading_config={"model_id": "m"})
+        router = LLMRouter.__new__(LLMRouter)
+        kv_token_tracker.set_kv_token_tracker(None)
+        try:
+            await LLMRouter.__bases__[0].__init__(router, handle, llm_config=config)
+            assert isinstance(router._kv_state, KVRouterState)
+            assert events == ["tracker", "subscribe", "tokenizer", "handle"]
+            tracker.subscribe_token_endpoints.assert_called_once_with(
+                router._kv_state.token_sender.connect
+            )
+        finally:
+            kv_token_tracker.set_kv_token_tracker(None)
 
 
 def _build_llm_app(request_router_class, runtime_env=None):
