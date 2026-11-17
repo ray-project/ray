@@ -109,12 +109,25 @@ def skip_if_haproxy(reason: str):
 
 
 @contextmanager
-def serve_with_fake_replica_context() -> Generator[None, None, None]:
-    """Run Serve with the calling process standing in for a replica.
+def running_serve() -> Generator[None, None, None]:
+    """Run Serve, on a Ray cluster started for it.
 
-    serve.start() -> replica context set -> body -> contexts cleared, shutdown
+    serve.start() -> body -> serve.shutdown(), ray.shutdown()
     """
     serve.start()
+    try:
+        yield
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+
+
+@contextmanager
+def fake_replica_context() -> Generator[None, None, None]:
+    """Make the calling process stand in for a replica of a running Serve.
+
+    replica context set -> body -> replica and request contexts cleared
+    """
     _set_internal_replica_context(
         replica_id=ReplicaID(
             "fake_replica_id",
@@ -129,10 +142,18 @@ def serve_with_fake_replica_context() -> Generator[None, None, None]:
     try:
         yield
     finally:
-        serve.shutdown()
         ray.serve.context._INTERNAL_REPLICA_CONTEXT = None  # type: ignore[assignment]  # pyrefly: ignore[bad-assignment]
         _set_request_context()
-        ray.shutdown()
+
+
+@contextmanager
+def serve_with_fake_replica_context() -> Generator[None, None, None]:
+    """Run Serve with the calling process standing in for a replica.
+
+    serve.start() -> replica context set -> body -> contexts cleared, shutdown
+    """
+    with running_serve(), fake_replica_context():
+        yield
 
 
 # Global variable that is fetched during controller recovery that

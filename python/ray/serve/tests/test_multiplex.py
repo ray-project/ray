@@ -12,7 +12,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
-from ray.serve._private.test_utils import serve_with_fake_replica_context
+from ray.serve._private.test_utils import fake_replica_context, running_serve
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper, _unpinned_model_lookups
@@ -24,13 +24,23 @@ def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
     return handle._router._asyncio_router._request_router
 
 
+@pytest.fixture(scope="class")
+def serve_for_class():
+    """Serve running for every test of a class, so each test skips a cluster start.
+
+    serve.start() -> tests of the class -> serve.shutdown(), ray.shutdown()
+    """
+    with running_serve():
+        yield
+
+
 @pytest.fixture()
-def start_serve_with_context():
+def start_serve_with_context(serve_for_class):
     """Serve running, with the test process standing in for a replica.
 
-    serve.start() -> replica context set -> test -> contexts cleared, shutdown
+    replica context set -> test -> replica and request contexts cleared
     """
-    with serve_with_fake_replica_context():
+    with fake_replica_context():
         yield
 
 
