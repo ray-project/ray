@@ -172,6 +172,19 @@ class TestMakeFastapiIngress:
         assert {"/reset_prefix_cache", "/sleep", "/collective_rpc"} <= route_paths
         assert "/v1/chat/completions" in route_paths
 
+    def test_class_endpoints_override_defaults(self):
+        class MyIngress(OpenAiIngress):
+            ENDPOINTS = {"models": lambda app: app.get("/custom/models")}
+
+        app = FastAPI()
+        make_fastapi_ingress(MyIngress, app=app)
+
+        route_paths = {
+            route.path for route in app.routes if isinstance(route, APIRoute)
+        }
+        assert "/custom/models" in route_paths
+        assert "/v1/models" not in route_paths
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

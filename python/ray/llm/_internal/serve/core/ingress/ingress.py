@@ -181,9 +181,9 @@ def make_fastapi_ingress(
         cls: The class to convert into an ingress deployment
         endpoint_map: Dictionary mapping method names to FastAPI route
             decorators. Each value is a lambda that takes a FastAPI app and
-            returns a route decorator. Defaults to the ``ENDPOINTS`` declared
-            by ``cls`` and its bases (such as the control-plane mixins), plus
-            ``DEFAULT_ENDPOINTS``.
+            returns a route decorator. Defaults to ``DEFAULT_ENDPOINTS`` plus
+            the ``ENDPOINTS`` declared by ``cls`` and its bases (such as the
+            control-plane mixins), which take precedence.
         app: Optional FastAPI app to use for the ingress deployment. If not
             provided, a new FastAPI app will be created.
 
@@ -207,10 +207,9 @@ def make_fastapi_ingress(
         app = init()
 
     if endpoint_map is None:
-        endpoint_map = {}
+        endpoint_map = dict(DEFAULT_ENDPOINTS)
         for klass in reversed(cls.__mro__):
             endpoint_map.update(vars(klass).get("ENDPOINTS", {}))
-        endpoint_map.update(DEFAULT_ENDPOINTS)
 
     # Create a new class that inherits from the original to avoid modifying it
     # in-place. We populate the new class's __dict__ with decorated methods.
