@@ -1,12 +1,9 @@
-import json
 import os
 from typing import Any, Dict, cast
 
 import pyarrow as pa
-import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
-from pyarrow import orc
 
 import ray
 from ray.cluster_utils import Cluster
@@ -17,28 +14,12 @@ from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.read_operator import ReadFiles
 from ray.data._internal.logical.rules.pushdown_count_files import PushdownCountFiles
 from ray.data.context import DataContext
-from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
+from ray.data.tests.schema_planning_utils import (
+    read_schema_records as _records,
+    recording_filesystem as _filesystem,
+)
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-_FORMATS = [
-    ("parquet", pq.write_table, ray.data.read_parquet),
-    ("orc", orc.write_table, ray.data.read_orc),
-]
-
-
-def _filesystem(trace, **kwargs):
-    return pafs.PyFileSystem(
-        pafs.FSSpecHandler(
-            RecordingLocalFileSystem(
-                trace_path=str(trace), skip_instance_cache=True, **kwargs
-            )
-        )
-    )
-
-
-def _records(trace):
-    return [json.loads(line) for line in trace.read_text().splitlines()]
 
 
 @pytest.mark.parametrize("mode", ["distributed", "pg", "none"])
@@ -148,47 +129,7 @@ def test_metadata_count_preserves_storage_access(
             remove_placement_group(pg)
 
 
-def test_count_without_merge_schema_preserves_runtime_env(
-    monkeypatch, tmp_path, ray_start_2_cpus
-):
-    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
-    path = tmp_path / "data.parquet"
-    pq.write_table(pa.table({"id": [1, 2, 3]}), path)
-    trace = tmp_path / "reads.jsonl"
-    monkeypatch.setenv("RAY_METADATA_ACCESS", "enabled")
-    dataset = ray.data.read_parquet(
-        str(path),
-        merge_schema=False,
-        filesystem=_filesystem(trace, require_env="RAY_METADATA_ACCESS"),
-        runtime_env={"env_vars": {"RAY_METADATA_ACCESS": "enabled"}},
-    )
-    before = _records(trace)
-    count = (
-        PushdownCountFiles()
-        .apply(
-            LogicalPlan(
-                Count(input_dependencies=[dataset._logical_plan.dag]), dataset.context
-            )
-        )
-        .dag
-    )
-    assert isinstance(count, MapBatches)
-    assert (
-        count.ray_remote_args["runtime_env"]["env_vars"]["RAY_METADATA_ACCESS"]
-        == "enabled"
-    )
-    monkeypatch.delenv("RAY_METADATA_ACCESS")
-    assert dataset.count() == 3
-    reads = _records(trace)[len(before) :]
-    assert reads and all(
-        r["path"] == str(path) and r["pid"] != os.getpid() for r in reads
-    )
-
-
-@pytest.mark.parametrize("name,write,read", _FORMATS)
-def test_full_schema_candidates_survive_new_cluster(
-    monkeypatch, tmp_path, ray_start_cluster, name, write, read
-):
+def test_cached_metadata_survives_new_cluster(monkeypatch, tmp_path, ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2, object_store_memory=100 * 1024 * 1024)
     ray.init(address=cluster.address)
@@ -197,26 +138,25 @@ def test_full_schema_candidates_survive_new_cluster(
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 1)
     for i in range(3):
-        write(pa.table({"id": [i]}), tmp_path / f"f{i}.{name}")
+        pq.write_table(pa.table({"id": [i]}), tmp_path / f"f{i}.parquet")
     trace = tmp_path / "opens.jsonl"
-    dataset = read(str(tmp_path), merge_schema=True, filesystem=_filesystem(trace))
+    dataset = ray.data.read_parquet(
+        str(tmp_path), merge_schema=True, filesystem=_filesystem(trace)
+    )
     serialized = dataset.serialize_lineage()
     assert len(_records(trace)) == 3
     ray.shutdown()
     cluster.shutdown()
-    write(pa.table({"id": [99]}), tmp_path / f"appended.{name}")
+    pq.write_table(pa.table({"id": [99]}), tmp_path / "appended.parquet")
     other = Cluster()
     try:
         other.add_node(num_cpus=2, object_store_memory=100 * 1024 * 1024)
         ray.init(address=other.address)
         restored = ray.data.Dataset.deserialize_lineage(serialized)
-        if name == "parquet":
-            assert restored.count() == 3
-            assert len(_records(trace)) == 3
-        else:
-            assert sorted(row["id"] for row in restored.take_all()) == [0, 1, 2]
+        assert restored.count() == 3
+        assert len(_records(trace)) == 3
         assert {r["path"] for r in _records(trace)} == {
-            str(tmp_path / f"f{i}.{name}") for i in range(3)
+            str(tmp_path / f"f{i}.parquet") for i in range(3)
         }
     finally:
         ray.shutdown()

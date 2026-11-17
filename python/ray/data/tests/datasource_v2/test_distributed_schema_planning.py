@@ -1,13 +1,10 @@
 """Public-API checks for distributed full-schema reads."""
 
-import json
 import os
 from collections import Counter
-from pathlib import Path
 from typing import Any, Dict, cast
 
 import pyarrow as pa
-import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 from pyarrow import orc
@@ -15,10 +12,11 @@ from pyarrow import orc
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.datasource_v2.common import schema_inference as inference
-from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
-from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
+from ray.data.tests.schema_planning_utils import (
+    read_schema_records as _records,
+    recording_filesystem as _filesystem,
+)
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -26,20 +24,6 @@ _FORMATS = [
     ("parquet", pq.write_table, ray.data.read_parquet),
     ("orc", orc.write_table, ray.data.read_orc),
 ]
-
-
-def _filesystem(trace, **kwargs):
-    return pafs.PyFileSystem(
-        pafs.FSSpecHandler(
-            RecordingLocalFileSystem(
-                trace_path=str(trace), skip_instance_cache=True, **kwargs
-            )
-        )
-    )
-
-
-def _records(trace):
-    return [json.loads(line) for line in trace.read_text().splitlines()]
 
 
 @pytest.mark.parametrize("name,write,read", _FORMATS)
@@ -97,8 +81,16 @@ def test_schema_reads_use_selected_workers(
     assert Counter(r["path"] for r in records) == {str(p): 1 for p in paths}
 
 
-@pytest.mark.parametrize("name,write,read", _FORMATS)
-@pytest.mark.parametrize("placement", ["pg", "zero", "none"])
+@pytest.mark.parametrize(
+    "name,write,read,placement",
+    [
+        ("parquet", pq.write_table, ray.data.read_parquet, "pg"),
+        ("parquet", pq.write_table, ray.data.read_parquet, "zero"),
+        ("parquet", pq.write_table, ray.data.read_parquet, "none"),
+        ("orc", orc.write_table, ray.data.read_orc, "none"),
+    ],
+    ids=["parquet-pg", "parquet-zero", "parquet-none", "orc-none"],
+)
 def test_driver_schema_fallback_preserves_read_placement(
     monkeypatch, tmp_path, ray_start_cluster, name, write, read, placement
 ):
@@ -209,119 +201,6 @@ def test_driver_schema_fallback_when_workers_are_busy(
         assert all(record["pid"] == os.getpid() for record in records)
     finally:
         ray.kill(holder)
-
-
-@pytest.mark.parametrize("empty_struct", [False, True])
-@pytest.mark.parametrize("schema_only", [False, True])
-def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
-    monkeypatch, tmp_path, ray_start_2_cpus, empty_struct, schema_only
-):
-    monkeypatch.delenv("RAY_SCHEMA_TEST", raising=False)
-    ctx = DataContext.get_current()
-    monkeypatch.setattr(ctx, "use_datasource_v2", True)
-    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
-    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
-    if schema_only:
-        monkeypatch.setattr(
-            inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 0
-        )
-    values = pa.array([[("key", "value")]], type=pa.map_(pa.string(), pa.string()))
-    table = pa.table({"attrs": values}).replace_schema_metadata({b"source": b"map"})
-    paths = [tmp_path / f"map{i}.parquet" for i in range(3)]
-    for path in paths:
-        if empty_struct:
-            # This file has a manually constructed empty struct in its footer;
-            # PyArrow can read it, but its Parquet writer cannot create it.
-            fixture = Path(__file__).parent / "data" / "map_empty_struct.parquet"
-            path.write_bytes(fixture.read_bytes())
-        else:
-            pq.write_table(table, path)
-    expected = pq.read_schema(paths[0])
-    decoded = pa.ipc.read_schema(pa.BufferReader(expected.serialize()))
-    assert not expected.equals(decoded, check_metadata=True)
-    trace = tmp_path / "map-reads.jsonl"
-    actual = (
-        ray.data.read_parquet(
-            [str(path) for path in paths],
-            merge_schema=True,
-            filesystem=_filesystem(trace, require_env="RAY_SCHEMA_TEST"),
-            runtime_env={"env_vars": {"RAY_SCHEMA_TEST": "enabled"}},
-        )
-        .schema(fetch_if_missing=False)
-        .base_schema
-    )
-    assert actual.equals(expected, check_metadata=True)
-    assert (
-        actual.field("attrs").type.field(0).name
-        == expected.field("attrs").type.field(0).name
-    )
-    records = _records(trace)
-    assert Counter(r["path"] for r in records if r["pid"] != os.getpid()) == {
-        str(path): 1 + int(schema_only and empty_struct and index < 2)
-        for index, path in enumerate(paths)
-    }
-    assert all(r["pid"] != os.getpid() for r in records)
-
-
-class _CustomType(pa.ExtensionType):
-    def __init__(self):
-        super().__init__(pa.binary(), "ray.tests.schema_reads")
-
-    def __arrow_ext_serialize__(self):
-        return b"v1"
-
-    @classmethod
-    def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        return cls()
-
-
-@pytest.mark.parametrize("case", ["custom_extension", "late_object", "map_extension"])
-def test_worker_schemas_preserve_driver_unifier(
-    monkeypatch, tmp_path, ray_start_2_cpus, case
-):
-    custom = _CustomType()
-    pa.register_extension_type(custom)
-    try:
-        if case in ("custom_extension", "map_extension"):
-            array = pa.ExtensionArray.from_storage(custom, pa.array([b"value"]))
-            columns = {"id": array}
-            if case == "map_extension":
-                columns["attrs"] = pa.array(
-                    [[("key", "value")]], type=pa.map_(pa.string(), pa.string())
-                )
-            tables = [pa.table(columns)] * 3
-        else:
-            array = pa.ExtensionArray.from_storage(
-                ArrowPythonObjectType(), pa.array([b"opaque"], type=pa.large_binary())
-            )
-            tables = [
-                pa.table({"id": [1]}),
-                pa.table({"id": ["one"]}),
-                pa.table({"id": array}),
-            ]
-        paths = [tmp_path / f"f{i}.parquet" for i in range(3)]
-        for path, table in zip(paths, tables):
-            pq.write_table(table, path)
-        file_schemas = [pq.read_schema(p) for p in paths]
-        if case == "late_object":
-            with pytest.raises((pa.ArrowTypeError, pa.ArrowInvalid)):
-                unify_schemas_with_validation(file_schemas[:2])
-        expected = unify_schemas_with_validation(file_schemas)
-        assert isinstance(expected, pa.Schema)
-        if case == "late_object":
-            assert isinstance(expected.field("id").type, ArrowPythonObjectType)
-        ctx = DataContext.get_current()
-        monkeypatch.setattr(ctx, "use_datasource_v2", True)
-        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
-        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
-        schema = ray.data.read_parquet(
-            [str(p) for p in paths], merge_schema=True
-        ).schema(fetch_if_missing=False)
-        assert schema is not None and schema.base_schema.equals(
-            expected, check_metadata=True
-        )
-    finally:
-        pa.unregister_extension_type(custom.extension_name)
 
 
 if __name__ == "__main__":

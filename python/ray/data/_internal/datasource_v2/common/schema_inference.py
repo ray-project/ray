@@ -160,6 +160,10 @@ def _read_schema_batch(
     io_concurrency: int,
     read_schema_metadata: Optional[Callable] = None,
 ) -> List[Tuple[int, bytes, bool]]:
+    """Read distinct schemas and encode them without losing metadata.
+
+    Use IPC when lossless; otherwise try generated or original Parquet metadata.
+    """
     DataContext._set_current(context)
 
     def read_file(item: Tuple[str, Optional[int]]) -> Tuple[pa.Schema, bytes]:
@@ -334,14 +338,6 @@ def infer_full_schema_from_files(
     """Read schemas on workers and merge once in candidate order on the driver.
 
     Return None when the caller should use its existing driver inference.
-    Each task returns distinct schemas and their first positions. Schemas that
-    cannot round-trip through IPC use a metadata-only Parquet representation;
-    if needed, Parquet tasks can return the original file metadata instead.
-    The driver restores candidate order before the one-shot merge. The first
-    batch is a single file so progress lands early; if the first distributed
-    result does not arrive within ``_FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S``
-    seconds, pending tasks are cancelled and the caller falls back to driver
-    schema reads.
     """
     context = DataContext.get_current()
     paths: List[str] = sample.paths.tolist()
