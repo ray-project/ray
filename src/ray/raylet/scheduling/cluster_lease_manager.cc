@@ -21,6 +21,7 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/scheduling/fixed_point.h"
 #include "ray/util/logging.h"
 #include "ray/util/string_utils.h"
 
@@ -351,11 +352,13 @@ void ClusterLeaseManager::FillResourceUsage(rpc::ResourcesData &data) {
       std::move(*resource_view_sync_message.mutable_resources_total());
   for (const auto &[name, instances] :
        resource_view_sync_message.resources_available_instances()) {
-    double sum = 0;
+    // Sum in FixedPoint, not double, so fractional instances don't pick up
+    // float drift (e.g. 0.6 + 0.6 + 0.6 = 1.7999999999999998).
+    FixedPoint sum;
     for (double v : instances.values()) {
-      sum += v;
+      sum += FixedPoint(v);
     }
-    (*data.mutable_resources_available())[name] = sum;
+    (*data.mutable_resources_available())[name] = sum.Double();
   }
   data.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
   data.set_is_draining(resource_view_sync_message.is_draining());

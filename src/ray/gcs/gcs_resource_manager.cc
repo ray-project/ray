@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/scheduling/fixed_point.h"
 #include "ray/gcs/state_util.h"
 #include "ray/util/logging.h"
 
@@ -223,11 +224,11 @@ void GcsResourceManager::UpdateNodeResourceUsage(
   iter->second.mutable_resources_available()->clear();
   for (const auto &[name, instances] :
        resource_view_sync_message.resources_available_instances()) {
-    double sum = 0;
+    FixedPoint sum;
     for (double v : instances.values()) {
-      sum += v;
+      sum += FixedPoint(v);
     }
-    (*iter->second.mutable_resources_available())[name] = sum;
+    (*iter->second.mutable_resources_available())[name] = sum.Double();
   }
 }
 
