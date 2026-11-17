@@ -14171,45 +14171,18 @@ def test_dynamic_domain_prefilter_host_count_and_locality_selector_safety():
     assert sorted(t.instance_id for t in rep_pref.to_terminate) == ["w0"]
 
 
-def test_unlabeled_survivors_after_teardown_stay_schedulable_and_reclaimable():
-    """Unlabeled running survivors whose torn-down launch peer is already
-    TERMINATED remain schedulable and idle-terminable (no 24h draining zombie),
-    and complete RAY_STOP_REQUESTED chunks do not poison healthy sibling chunks."""
-    cfgs = {
-        "tpu": NodeTypeConfig(
-            name="tpu",
-            min_worker_nodes=0,
-            max_worker_nodes=4,
-            resources={"CPU": 8, "TPU": 4},
-            runtime_label_keys=(_SLICE, _WID),
-            replica_config=WorkerReplicaConfig(
-                workers_per_replica=4,
-                domain_label_key=_SLICE,
-                domain_exclusive=True,
-                worker_index_label_key=_WID,
-            ),
-        )
-    }
-    hosts = [
-        _run_node(
-            "tpu",
-            f"s{w}",
-            {"CPU": 8, "TPU": 4},
-            {_SLICE: "s1", _WID: str(w)},
-            idle_ms=600_000,
-            lid="L1",
-        )
-        for w in range(3)
-    ]
+def _terminated_teardown_row(
+    nt: str, iid: str, lid: str, cid: str = "cloud-dead"
+) -> AutoscalerInstance:
     dead = make_autoscaler_instance(
         im_instance=Instance(
-            instance_type="tpu",
+            instance_type=nt,
             status=Instance.TERMINATED,
-            instance_id="dead",
-            launch_request_id="L1",
+            instance_id=iid,
+            launch_request_id=lid,
             node_kind=NodeKind.WORKER,
         ),
-        cloud_instance_id="cloud-dead",
+        cloud_instance_id=cid,
     )
     for idx, st in enumerate(
         (
@@ -14222,20 +14195,104 @@ def test_unlabeled_survivors_after_teardown_stay_schedulable_and_reclaimable():
         dead.im_instance.status_history.add(
             instance_status=st, timestamp_ns=1_000_000 + idx * 1_000
         )
+    return dead
 
-    rep_idle = _sched(cfgs, hosts + [dead], idle_s=60.0)
+
+def test_unlabeled_teardown_survivors_stay_schedulable_and_refill_at_max():
+    """Unlabeled running survivors whose torn-down peer is TERMINATED remain
+    schedulable, idle-terminate cleanly, suppress phantom placeholders, and emit a
+    single-pod refill launch at max_worker_nodes."""
+
+    def _tpu_cfg(
+        max_w: int, dom_key: Optional[str] = _SLICE
+    ) -> Dict[str, NodeTypeConfig]:
+        return {
+            "tpu": NodeTypeConfig(
+                name="tpu",
+                min_worker_nodes=0,
+                max_worker_nodes=max_w,
+                resources={"CPU": 8, "TPU": 4},
+                runtime_label_keys=(dom_key, _WID) if dom_key else (),
+                replica_config=WorkerReplicaConfig(
+                    workers_per_replica=4,
+                    domain_label_key=dom_key,
+                    domain_exclusive=True,
+                    worker_index_label_key=_WID if dom_key else None,
+                ),
+            )
+        }
+
+    dead = _terminated_teardown_row("tpu", "dead", "L1")
+    idle_hosts = [
+        _run_node(
+            "tpu",
+            f"s{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "s1", _WID: str(w)},
+            idle_ms=600_000,
+            lid="L1",
+        )
+        for w in range(3)
+    ]
+
+    rep_idle = _sched(_tpu_cfg(4), idle_hosts + [dead], idle_s=60.0)
     assert sorted(t.instance_id for t in rep_idle.to_terminate) == ["s0", "s1", "s2"]
 
     rep_task = _sched(
-        cfgs,
-        hosts + [dead],
+        _tpu_cfg(4),
+        idle_hosts + [dead],
         reqs=[_resource_request({"CPU": 1})],
         idle_s=60.0,
     )
     assert rep_task.infeasible_resource_requests == []
+    assert rep_task.to_launch == []
 
-    # Complete 2-node RAY_STOP_REQUESTED chunk inside a 6-node unattributed
-    # shared-domain group leaves the remaining 4 healthy nodes schedulable.
+    # 4-host demand on 3 idle torn-down survivors must launch (not park on a phantom
+    # placeholder) for both exclusive-domain and domainless groups.
+    g4 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_td4"))
+    for max_w in (4, 8):
+        rep_g4 = _sched(_tpu_cfg(max_w), idle_hosts + [dead], gangs=[g4])
+        assert rep_g4.infeasible_gang_resource_requests == []
+        assert _launch_and_terminate(rep_g4) == ({"tpu": 4}, [])
+
+    domless_idle = [
+        _run_node("tpu", f"d{w}", {"CPU": 8, "TPU": 4}, {}, lid="L1") for w in range(3)
+    ]
+    rep_domless = _sched(
+        _tpu_cfg(8, dom_key=None),
+        domless_idle + [dead],
+        reqs=[_resource_request({"TPU": 4}, count=4)],
+    )
+    assert rep_domless.infeasible_resource_requests == []
+    assert _launch_and_terminate(rep_domless) == ({"tpu": 4}, [])
+
+    # 3 busy survivors at max_worker_nodes=4 refill 1 task, reject a 2nd task, and
+    # reject a 4-host gang.
+    busy_hosts = [
+        _run_node(
+            "tpu",
+            f"b{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "s1", _WID: str(w)},
+            used={"TPU": 4},
+            lid="L1",
+        )
+        for w in range(3)
+    ]
+    rep_refill = _sched(
+        _tpu_cfg(4), busy_hosts + [dead], reqs=[_resource_request({"TPU": 4}, count=2)]
+    )
+    assert _launch_and_terminate(rep_refill) == ({"tpu": 4}, [])
+    assert len(rep_refill.infeasible_resource_requests) == 1
+    assert rep_refill.cluster_resources["TPU"] == 16.0
+
+    rep_busy_g4 = _sched(_tpu_cfg(4), busy_hosts + [dead], gangs=[g4])
+    assert len(rep_busy_g4.infeasible_gang_resource_requests) == 1
+
+
+def test_shared_domain_complete_stop_requested_chunk_keeps_siblings_schedulable():
+    """Complete RAY_STOP_REQUESTED replica multiples in a shared domain do not
+    mark healthy sibling multiples in that domain as draining."""
     gpu_cfgs = {
         "gpu": NodeTypeConfig(
             name="gpu",
@@ -14261,11 +14318,9 @@ def test_unlabeled_survivors_after_teardown_stay_schedulable_and_reclaimable():
     assert _launch_and_terminate(rep_rack) == ({}, [])
 
 
-def test_live_nodes_with_realistic_totals_outrank_placeholders_and_expire():
-    """Live running hosts carrying extra injected resources (object_store_memory,
-    node:<ip>) always outrank backfill placeholders, complete idle slices are
-    kept over degraded placeholder slices for min_worker_nodes, and placeholders
-    expire after pending_idle_timeout_s so min_worker_nodes launches real hosts."""
+def test_live_nodes_outrank_backfill_placeholders():
+    """Real running and pending nodes outrank backfill placeholders even when live
+    hosts carry extra runtime resources like object_store_memory and node:<ip>."""
     head_res = "TPU-v6e-16-head"
     live_base = {"CPU": 8, "TPU": 4, "memory": 64e9, "object_store_memory": 19e9}
     cfgs = {
@@ -14327,13 +14382,140 @@ def test_live_nodes_with_realistic_totals_outrank_placeholders_and_expire():
     assert rep_head.infeasible_gang_resource_requests == []
     assert rep_head.to_terminate == []
 
-    # Under min_worker_nodes=4 with both slices idle past timeout, the degraded
-    # 3/4 slice terminates first so the complete 4/4 slice satisfies min_workers.
-    r1_deg_idle = [
+    # Real pending ALLOCATED replica also outranks a degraded vanished-batch
+    # pending domain containing a backfill placeholder (verifying NodeStateCache,
+    # _pending_domain_signature, and _GangSearch placeholder tie-breakers).
+    tpu2_cfg = {
+        "tpu2": NodeTypeConfig(
+            name="tpu2",
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            resources={"CPU": 4, "TPU": 4},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=2,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+            ),
+        )
+    }
+    v0 = _pending_node("tpu2", "v0", Instance.ALLOCATED, rep="A_van", lid="L_van")
+    p_real0 = _pending_node(
+        "tpu2", "p_real0", Instance.ALLOCATED, rep="B_full", lid="L_full"
+    )
+    p_real1 = _pending_node(
+        "tpu2", "p_real1", Instance.ALLOCATED, rep="B_full", lid="L_full"
+    )
+
+    req_pend = sched_request(
+        tpu2_cfg,
+        instances=[v0, p_real0, p_real1],
+        pending_idle_timeout_s=10.0,
+    )
+    req_pend.gang_resource_requests.append(
+        _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 2, "_pg_pend2"))
+    )
+    sched_p = ResourceDemandScheduler()
+    sched_p._pending_unneeded_since_s = {"tpu2": [0.0]}
+    with patch("ray.autoscaler.v2.scheduler.time.monotonic", return_value=100.0):
+        rep_p2 = sched_p.schedule(req_pend)
+    assert rep_p2.infeasible_gang_resource_requests == []
+    assert [t.instance_id for t in rep_p2.to_terminate] == ["v0"]
+
+
+def test_placeholder_expiration_with_explicit_and_default_timeouts():
+    """Backfill placeholders expire after pending_idle_timeout_s when set and fall
+    back to request_status_timeout_s when timeouts are unset."""
+    min4_cfgs = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=4,
+            max_worker_nodes=12,
+            resources={"CPU": 8, "TPU": 4},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+            ),
+        )
+    }
+    r1_deg = [
         _run_node(
             "tpu",
             f"b{w}",
-            {**live_base, f"node:10.0.1.{w}": 1},
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-1", _WID: str(w)},
+            rep="R1",
+            lid="L1",
+        )
+        for w in (1, 2, 3)
+    ]
+
+    sched_exp = ResourceDemandScheduler()
+    now_t = [100.0]
+    with patch(
+        "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
+    ):
+        assert _launch_and_terminate(
+            _sched(min4_cfgs, r1_deg, pending_idle_s=10.0, sched=sched_exp)
+        ) == ({}, [])
+        now_t[0] = 120.0
+        assert _launch_and_terminate(
+            _sched(min4_cfgs, r1_deg, pending_idle_s=10.0, sched=sched_exp)
+        ) == ({"tpu": 4}, [])
+
+    sched_default = ResourceDemandScheduler()
+    now_t[0] = 100.0
+    with patch(
+        "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
+    ):
+        assert _launch_and_terminate(
+            _sched(min4_cfgs, r1_deg, sched=sched_default)
+        ) == ({}, [])
+        now_t[0] = 800.0
+        assert _launch_and_terminate(
+            _sched(min4_cfgs, r1_deg, sched=sched_default)
+        ) == ({"tpu": 4}, [])
+
+
+def test_idle_termination_prefers_degraded_subreplicas_under_min_workers():
+    """Idle termination under min_worker_nodes terminates degraded sub-replica units
+    before complete replicas whether placeholders are present, unrounded, or torn down."""
+    tpu_cfgs = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=4,
+            max_worker_nodes=12,
+            resources={"CPU": 8, "TPU": 4},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+            ),
+        )
+    }
+    full_s0 = [
+        _run_node(
+            "tpu",
+            f"a{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-0", _WID: str(w)},
+            idle_ms=600_000,
+            rep="R0",
+            lid="L0",
+        )
+        for w in range(4)
+    ]
+    ph_deg = [
+        _run_node(
+            "tpu",
+            f"b{w}",
+            {"CPU": 8, "TPU": 4},
             {_SLICE: "slice-1", _WID: str(w)},
             idle_ms=120_000,
             rep="R1",
@@ -14341,36 +14523,101 @@ def test_live_nodes_with_realistic_totals_outrank_placeholders_and_expire():
         )
         for w in (1, 2, 3)
     ]
-    min4_cfgs = {
-        "tpu": NodeTypeConfig(
-            name="tpu",
-            min_worker_nodes=4,
-            max_worker_nodes=12,
-            resources=cfgs["tpu"].resources,
-            runtime_label_keys=cfgs["tpu"].runtime_label_keys,
-            replica_config=cfgs["tpu"].replica_config,
+    rep_ph = _sched(tpu_cfgs, full_s0 + ph_deg, idle_s=60.0)
+    assert sorted(t.instance_id for t in rep_ph.to_terminate) == ["b1", "b2", "b3"]
+
+    # Torn-down 2/4 slices (placeholders suppressed) still terminate before 4/4 s0.
+    td_s1 = [
+        _run_node(
+            "tpu",
+            f"c{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-1", _WID: str(w)},
+            idle_ms=120_000,
+            lid="L1",
         )
-    }
-    rep_min_keep = _sched(min4_cfgs, r0_live + r1_deg_idle, idle_s=60.0)
-    assert sorted(t.instance_id for t in rep_min_keep.to_terminate) == [
-        "b1",
-        "b2",
-        "b3",
+        for w in range(2)
+    ]
+    td_s2 = [
+        _run_node(
+            "tpu",
+            f"d{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-2", _WID: str(w)},
+            idle_ms=120_000,
+            lid="L2",
+        )
+        for w in range(2)
+    ]
+    rep_td = _sched(
+        tpu_cfgs,
+        full_s0
+        + td_s1
+        + td_s2
+        + [
+            _terminated_teardown_row("tpu", "dead1", "L1", "c-dead1"),
+            _terminated_teardown_row("tpu", "dead2", "L2", "c-dead2"),
+        ],
+        idle_s=60.0,
+    )
+    assert sorted(t.instance_id for t in rep_td.to_terminate) == [
+        "c0",
+        "c1",
+        "d0",
+        "d1",
     ]
 
-    # Multi-tick placeholder expiration: if the missing 4th host of R1 never
-    # arrives past pending_idle_timeout_s, its placeholder expires and min_workers=4
-    # launches a real 4-host replica.
-    sched_exp = ResourceDemandScheduler()
-    now_t = [100.0]
-    with patch(
-        "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
-    ):
-        t1 = _sched(min4_cfgs, r1_deg, pending_idle_s=10.0, sched=sched_exp)
-        assert _launch_and_terminate(t1) == ({}, [])
-        now_t[0] = 120.0
-        t2 = _sched(min4_cfgs, r1_deg, pending_idle_s=10.0, sched=sched_exp)
-        assert _launch_and_terminate(t2) == ({"tpu": 4}, [])
+    # Cross-rack unrounded 1+1 split terminates before complete 2/2 rack-0.
+    gpu_cfgs = {
+        "gpu": NodeTypeConfig(
+            name="gpu",
+            min_worker_nodes=2,
+            max_worker_nodes=4,
+            resources={"CPU": 4, "GPU": 1},
+            runtime_label_keys=("rack",),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=2,
+                domain_label_key="rack",
+                domain_exclusive=False,
+            ),
+        )
+    }
+    rack_insts = [
+        _run_node(
+            "gpu",
+            "ok0",
+            {"CPU": 4, "GPU": 1},
+            {"rack": "rack-0"},
+            idle_ms=600_000,
+            lid="L0",
+        ),
+        _run_node(
+            "gpu",
+            "ok1",
+            {"CPU": 4, "GPU": 1},
+            {"rack": "rack-0"},
+            idle_ms=600_000,
+            lid="L0",
+        ),
+        _run_node(
+            "gpu",
+            "sp0",
+            {"CPU": 4, "GPU": 1},
+            {"rack": "rack-a"},
+            idle_ms=120_000,
+            lid="L1",
+        ),
+        _run_node(
+            "gpu",
+            "sp1",
+            {"CPU": 4, "GPU": 1},
+            {"rack": "rack-b"},
+            idle_ms=120_000,
+            lid="L1",
+        ),
+    ]
+    rep_split = _sched(gpu_cfgs, rack_insts, idle_s=60.0)
+    assert sorted(t.instance_id for t in rep_split.to_terminate) == ["sp0", "sp1"]
 
 
 def test_nonprovider_shared_domain_cross_rack_replica_no_phantom_placeholders():
@@ -14422,12 +14669,9 @@ def test_nonprovider_shared_domain_cross_rack_replica_no_phantom_placeholders():
         assert _launch_and_terminate(rep_gang) == ({"gpu": 2}, [])
 
 
-def test_multireplica_boot_isolation_and_domainless_stop_requested():
-    """Shared-launch-ID booting replicas stay isolated from already-complete
-    exclusive/shared replicas while protecting multi-clique staggered boots, and
-    domainless RAY_STOP_REQUESTED nodes propagate draining without phantom slots."""
-    # (a) Exclusive 2-host group: 1 unlabeled running + 3 installing on shared lid
-    # splits into two 2-host synthetic slices and rejects a 3-host gang.
+def test_exclusive_boot_batch_rejects_oversized_gang():
+    """On an exclusive 2-host group, 1 unlabeled running + 3 installing nodes on
+    a shared launch ID split into two 2-host synthetic slices and reject a 3-host gang."""
     tpu2 = NodeTypeConfig(
         name="tpu2",
         resources={"CPU": 4, "TPU": 4},
@@ -14456,9 +14700,10 @@ def test_multireplica_boot_isolation_and_domainless_stop_requested():
         == 1
     )
 
-    # (b) Shared-domain complete 1st replica in c0/r0 + unbooted 2nd replica on L1:
-    # booting b0/b1 stay unlabeled (pair with c1, reject c0 pin, keep healthy when a0/a1 stop),
-    # and 3-replica staggered boot across c0 + c1 does not prematurely idle-terminate.
+
+def test_shared_domain_boot_overflow_isolated_across_cliques():
+    """Shared-domain booting pods beyond an already-complete first replica stay
+    unlabeled instead of inheriting the first replica's clique/rack labels."""
     clique_key = "ray.io/gpu-clique"
     rack_key = "ray.io/rack"
     mw = NodeTypeConfig(
@@ -14596,15 +14841,15 @@ def test_multireplica_boot_isolation_and_domainless_stop_requested():
     ]
     assert _sched({"mw": mw_min4}, stag3, idle_s=10.0).to_terminate == []
 
-    # (c) Domainless RAY_STOP_REQUESTED single-replica draining propagation.
+
+def test_domainless_stop_requested_propagates_replica_draining():
+    """Domainless RAY_STOP_REQUESTED nodes enter Stage 1 and mark incomplete peers draining."""
     mw_domless = NodeTypeConfig(
         name="mw",
         resources={"CPU": 4, "GPU": 4},
         min_worker_nodes=0,
         max_worker_nodes=2,
-        replica_config=WorkerReplicaConfig(
-            workers_per_replica=2, domain_label_key=None, domain_exclusive=False
-        ),
+        replica_config=WorkerReplicaConfig(workers_per_replica=2),
     )
     r0_s = _run_node("mw", "r0", {"CPU": 4, "GPU": 4}, {}, lid="L1")
     r0_s.im_instance.status = Instance.RAY_STOP_REQUESTED
@@ -14620,16 +14865,15 @@ def test_multireplica_boot_isolation_and_domainless_stop_requested():
         assert rep_d.to_terminate == []
 
 
-def test_legacy_unattributed_pinned_pair_expires_and_uneven_slot_plan():
-    """Legacy unattributed running + pending pairs in a pinned domain scale down
-    once both timeouts expire while genuinely incomplete sets stay protected, and
-    multi-replica _slot_plan balances uneven existing worker indices."""
+def test_legacy_unattributed_combined_units_expire_and_chunk_cleanly():
+    """Legacy unattributed running + pending pools protect incomplete pinned sets,
+    reclaim expired complete sets, and chunk multi-replica pools above min_workers."""
     tpu4 = NodeTypeConfig(
         name="tpu4",
         resources={"CPU": 4, "TPU": 4},
         min_worker_nodes=0,
         max_worker_nodes=4,
-        runtime_label_keys=(_SLICE, _WID),
+        runtime_label_keys=(_SLICE, _WID, "rack"),
         replica_config=WorkerReplicaConfig(
             workers_per_replica=4,
             domain_label_key=_SLICE,
@@ -14637,22 +14881,30 @@ def test_legacy_unattributed_pinned_pair_expires_and_uneven_slot_plan():
             worker_index_label_key=_WID,
         ),
     )
+    cpu_helper = NodeTypeConfig(
+        name="cpu",
+        resources={"CPU": 4},
+        min_worker_nodes=0,
+        max_worker_nodes=2,
+        runtime_label_keys=("rack",),
+    )
     s0 = _run_node(
         "tpu4",
         "s0-0",
         {"CPU": 4, "TPU": 4},
-        {_SLICE: "slice-0", _WID: "0"},
+        {_SLICE: "slice-0", _WID: "0", "rack": "rack-a"},
         idle_ms=60_000,
     )
     s1 = _run_node(
         "tpu4",
         "s0-1",
         {"CPU": 4, "TPU": 4},
-        {_SLICE: "slice-0", _WID: "1"},
+        {_SLICE: "slice-0", _WID: "1", "rack": "rack-a"},
         idle_ms=60_000,
     )
     p2 = _pending_node("tpu4", "p2", Instance.ALLOCATED)
     p3 = _pending_node("tpu4", "p3", Instance.ALLOCATED)
+    c0 = _run_node("cpu", "c0", {"CPU": 4}, {"rack": "rack-a"}, idle_ms=60_000)
     g_inf = _strict_pack_gang(
         _SLICE,
         _spread_reqs({"CPU": 16, "TPU": 4}, 4, "_pg_inf4"),
@@ -14664,15 +14916,17 @@ def test_legacy_unattributed_pinned_pair_expires_and_uneven_slot_plan():
     with patch(
         "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
     ):
-        t1 = _sched(
-            {"tpu4": tpu4},
-            [s0, s1, p2, p3],
-            gangs=[g_inf],
-            idle_s=10.0,
-            pending_idle_s=10.0,
-            sched=sched4,
+        assert (
+            _sched(
+                {"tpu4": tpu4},
+                [s0, s1, p2, p3],
+                gangs=[g_inf],
+                idle_s=10.0,
+                pending_idle_s=10.0,
+                sched=sched4,
+            ).to_terminate
+            == []
         )
-        assert t1.to_terminate == []
         now_t[0] = 120.0
         t2 = _sched(
             {"tpu4": tpu4},
@@ -14689,62 +14943,400 @@ def test_legacy_unattributed_pinned_pair_expires_and_uneven_slot_plan():
             "s0-1",
         ]
 
-    # Counter-case: genuinely incomplete 3/4 (2 running + 1 allocated) stays protected.
+    # Incomplete 3/4 combined pool (2 running + 1 allocated) protects both itself
+    # and a single-host helper sharing pinned rack-a.
+    g_rack = _strict_pack_gang(
+        "rack",
+        _spread_reqs({"CPU": 16, "TPU": 4}, 4, "_pg_rk4"),
+        loc_constraints=[("rack", _IN, ["rack-a"])],
+    )
     sched3 = ResourceDemandScheduler()
     now_t[0] = 100.0
     with patch(
         "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
     ):
         _sched(
-            {"tpu4": tpu4},
-            [s0, s1, p2],
-            gangs=[g_inf],
+            {"tpu4": tpu4, "cpu": cpu_helper},
+            [s0, s1, p2, c0],
+            gangs=[g_rack],
             idle_s=10.0,
             pending_idle_s=10.0,
             sched=sched3,
         )
         now_t[0] = 120.0
         t3 = _sched(
-            {"tpu4": tpu4},
-            [s0, s1, p2],
-            gangs=[g_inf],
+            {"tpu4": tpu4, "cpu": cpu_helper},
+            [s0, s1, p2, c0],
+            gangs=[g_rack],
             idle_s=10.0,
             pending_idle_s=10.0,
             sched=sched3,
         )
         assert t3.to_terminate == []
 
-    # Multi-replica _slot_plan with uneven existing worker indices [1, 1] + add 6
-    # produces exact per-index balance {0: 2, 1: 2, 2: 2, 3: 2}.
+    # Multi-replica combined pool (1 idle running + 3 expired ALLOCATED, size=2, min=2)
+    # chunks into two 2-node units and reclaims the excess 2 pending nodes (R5-2).
+    tpu2_min = NodeTypeConfig(
+        name="tpu2",
+        resources={"CPU": 4, "TPU": 4},
+        min_worker_nodes=2,
+        max_worker_nodes=4,
+        runtime_label_keys=(_SLICE, _WID),
+        replica_config=WorkerReplicaConfig(
+            workers_per_replica=2,
+            domain_label_key=_SLICE,
+            domain_exclusive=True,
+            worker_index_label_key=_WID,
+        ),
+    )
+    r_idle = _run_node(
+        "tpu2", "r0", {"CPU": 4, "TPU": 4}, {_SLICE: "s0", _WID: "0"}, idle_ms=120_000
+    )
+    u_pend = [_pending_node("tpu2", f"up{i}", Instance.ALLOCATED) for i in range(3)]
+    rep_chunk = _sched(
+        {"tpu2": tpu2_min},
+        [r_idle] + u_pend,
+        idle_s=60.0,
+        pending_idle_s=10.0,
+        unneeded={"tpu2": [0.0, 0.0, 0.0]},
+    )
+    assert len(rep_chunk.to_terminate) == 2
+
+
+def test_shared_domain_uneven_worker_indices_balance_via_schedule():
+    """Shared-domain multi-replica groups with duplicate existing worker indices
+    assign balanced missing indices and head resources via public schedule()."""
+    head_res = "head-4"
     shared4 = NodeTypeConfig(
         name="mw4",
-        resources={"CPU": 4, "TPU": 4, "head-4": 1},
+        resources={"CPU": 4, "TPU": 4, head_res: 1},
         min_worker_nodes=0,
         max_worker_nodes=8,
+        runtime_label_keys=("clique", _WID),
         replica_config=WorkerReplicaConfig(
             workers_per_replica=4,
             domain_label_key="clique",
             domain_exclusive=False,
             worker_index_label_key=_WID,
-            head_resources=("head-4",),
+            head_resources=(head_res,),
         ),
     )
-    ctx_sp = _mk_ctx({"mw4": shared4}, [])
-    from ray.autoscaler.v2.scheduler import _ReplicaGrouper
-
-    grouper = _ReplicaGrouper(ctx_sp, "mw4", shared4, [])
-    existing_uneven = [
-        SchedulingNode.from_node_config(
-            shared4, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
+    # Two running hosts in clique c0 both carry wid=1 (missing 2x wid=0,2,3 + 2 heads)
+    # alongside 6 booting pods on the same launch batch L1.
+    existing = [
+        _run_node(
+            "mw4",
+            f"e{i}",
+            {"CPU": 4, "TPU": 4},
+            {"clique": "c0", _WID: "1"},
+            lid="L1",
+        )
+        for i in range(2)
+    ]
+    boot6 = [
+        _pending_node("mw4", f"b{i}", Instance.ALLOCATED, lid="L1") for i in range(6)
+    ]
+    reqs = [
+        _mk_req(
+            {"TPU": 4, **({head_res: 1} if w == 0 else {})},
+            label_selectors=[
+                [(k, _IN, [v]) for k, v in (("clique", "c0"), (_WID, str(w)))]
+            ],
         )
         for _ in range(2)
+        for w in range(4)
     ]
-    for m in existing_uneven:
-        m.labels[_WID] = "1"
-        m.total_resources.pop("head-4", None)
-    heads_needed, slots = grouper._slot_plan(existing_uneven, 6)
-    assert heads_needed == 2
-    assert sorted(slots) == [0, 0, 2, 2, 3, 3]
+    rep = _sched(
+        {"mw4": shared4},
+        existing + boot6,
+        gangs=[
+            _strict_pack_gang("clique", reqs[:4]),
+            _strict_pack_gang("clique", reqs[4:]),
+        ],
+    )
+    assert rep.infeasible_gang_resource_requests == []
+    assert rep.to_launch == []
+
+
+def test_kuberay_domainless_multihost_cr_seam():
+    """Unmocked KubeRay CR -> AutoscalingConfig -> ResourceDemandScheduler seam for
+    a non-TPU numOfHosts=2 GPU worker group with labelRefs and default domain_exclusive."""
+    from ray.autoscaler._private.kuberay.autoscaling_config import (
+        _derive_autoscaling_config_from_ray_cr,
+    )
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+
+    rack_key = "ray.io/rack"
+    ray_cr = {
+        "metadata": {"name": "seam-test", "namespace": "default"},
+        "spec": {
+            "headGroupSpec": {
+                "rayStartParams": {},
+                "template": {
+                    "spec": {"containers": [{"resources": {"limits": {"cpu": "1"}}}]}
+                },
+            },
+            "workerGroupSpecs": [
+                {
+                    "groupName": "gpu-2h",
+                    "replicas": 2,
+                    "minReplicas": 1,
+                    "maxReplicas": 2,
+                    "numOfHosts": 2,
+                    "labelRefs": [
+                        {
+                            "valueFrom": {
+                                "nodeRef": {
+                                    "fieldPath": f"metadata.labels['{rack_key}']"
+                                }
+                            }
+                        }
+                    ],
+                    "rayStartParams": {},
+                    "template": {
+                        "spec": {
+                            "containers": [
+                                {
+                                    "resources": {
+                                        "limits": {"cpu": "4", "nvidia.com/gpu": "1"}
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                },
+                {
+                    "groupName": "gpu-other",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 2,
+                    "numOfHosts": 1,
+                    "labelRefs": [
+                        {
+                            "valueFrom": {
+                                "nodeRef": {
+                                    "fieldPath": f"metadata.labels['{rack_key}']"
+                                }
+                            }
+                        }
+                    ],
+                    "rayStartParams": {},
+                    "template": {
+                        "spec": {
+                            "containers": [
+                                {
+                                    "resources": {
+                                        "limits": {"cpu": "4", "nvidia.com/gpu": "1"}
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                },
+            ],
+        },
+    }
+    acfg = AutoscalingConfig(
+        _derive_autoscaling_config_from_ray_cr(ray_cr), skip_content_hash=True
+    )
+    nt_cfgs = acfg.get_node_type_configs()
+    gpu_res = {"CPU": 4, "GPU": 1}
+
+    # (a) 3 busy running in rack-0 + 1 ALLOCATED b3 on L1: b3 inherits rack-0 and
+    # rejects cross-rack stealing by a gang pinned to rack-1.
+    run3_busy = [
+        _run_node(
+            "gpu-2h", f"g{i}", gpu_res, {rack_key: "rack-0"}, used={"GPU": 1}, lid="L1"
+        )
+        for i in range(3)
+    ]
+    b3 = _pending_node("gpu-2h", "b3", Instance.ALLOCATED, lid="L1")
+    r1_nodes = [
+        _run_node("gpu-other", "r1-free", gpu_res, {rack_key: "rack-1"}, lid="L2"),
+        _run_node(
+            "gpu-other",
+            "r1-busy",
+            gpu_res,
+            {rack_key: "rack-1"},
+            used={"GPU": 1},
+            lid="L2",
+        ),
+    ]
+    g_r1 = _strict_pack_gang(
+        rack_key,
+        _spread_reqs({"GPU": 1}, 2, "_pg_r1"),
+        loc_constraints=[(rack_key, _IN, ["rack-1"])],
+    )
+    req_a = sched_request(
+        {k: nt_cfgs[k] for k in ("gpu-2h", "gpu-other")},
+        max_num_nodes=6,
+        instances=run3_busy + [b3] + r1_nodes,
+        disable_launch_config_check=True,
+    )
+    req_a.gang_resource_requests.append(g_r1)
+    assert (
+        len(ResourceDemandScheduler().schedule(req_a).infeasible_gang_resource_requests)
+        == 1
+    )
+
+    # (b) 3 busy running in rack-0 with vanished 4th pod emits 1 rack-0 placeholder.
+    g_r0 = _strict_pack_gang(
+        rack_key,
+        [_mk_req({"GPU": 1})],
+        loc_constraints=[(rack_key, _IN, ["rack-0"])],
+    )
+    req_b = sched_request(
+        {"gpu-2h": nt_cfgs["gpu-2h"]},
+        instances=run3_busy,
+        disable_launch_config_check=True,
+    )
+    req_b.gang_resource_requests.append(g_r0)
+    assert (
+        ResourceDemandScheduler().schedule(req_b).infeasible_gang_resource_requests
+        == []
+    )
+
+    # (c) 3 idle running + 1 expired ALLOCATED on L1 reclaims 2 excess nodes down to min=2.
+    run3_idle = [
+        _run_node(
+            "gpu-2h", f"gi{i}", gpu_res, {rack_key: "rack-0"}, idle_ms=120_000, lid="L1"
+        )
+        for i in range(3)
+    ]
+    sched_c = ResourceDemandScheduler()
+    sched_c._pending_unneeded_since_s = {"gpu-2h": [0.0]}
+    req_c = sched_request(
+        {"gpu-2h": nt_cfgs["gpu-2h"]},
+        instances=run3_idle + [b3],
+        idle_timeout_s=60.0,
+        pending_idle_timeout_s=10.0,
+        disable_launch_config_check=True,
+    )
+    assert len(sched_c.schedule(req_c).to_terminate) == 2
+
+
+def test_missing_runtime_domain_label_suppresses_placeholders_and_protects_busy_hosts():
+    """Running exclusive-domain hosts missing their runtime domain label never
+    fabricate per-host placeholders, and max-worker checks never kill real hosts
+    because of in-memory placeholders."""
+    for max_w in (4, 8):
+        cfgs = {
+            "tpu": NodeTypeConfig(
+                name="tpu",
+                min_worker_nodes=0,
+                max_worker_nodes=max_w,
+                resources={"CPU": 8, "TPU": 4},
+                runtime_label_keys=(_SLICE, _WID),
+                replica_config=WorkerReplicaConfig(
+                    workers_per_replica=4,
+                    domain_label_key=_SLICE,
+                    domain_exclusive=True,
+                    worker_index_label_key=_WID,
+                ),
+            )
+        }
+        unlabeled_busy = [
+            _run_node(
+                "tpu", f"s{w}", {"CPU": 8, "TPU": 4}, {}, used={"TPU": 4}, lid="L1"
+            )
+            for w in range(3)
+        ]
+        rep = _sched(cfgs, unlabeled_busy, max_nodes=max_w)
+        assert _launch_and_terminate(rep) == ({}, [])
+
+    # With headroom (max_w=8), a pending task launches a real replica rather than
+    # landing on a phantom placeholder.
+    cfgs8 = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            resources={"CPU": 8, "TPU": 4},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+            ),
+        )
+    }
+    unlabeled_busy3 = [
+        _run_node("tpu", f"s{w}", {"CPU": 8, "TPU": 4}, {}, used={"TPU": 4}, lid="L1")
+        for w in range(3)
+    ]
+    rep_launch = _sched(cfgs8, unlabeled_busy3, reqs=[_resource_request({"TPU": 4})])
+    assert _launch_and_terminate(rep_launch) == ({"tpu": 4}, [])
+
+
+def test_cross_slice_launch_batch_boot_completes_slices_without_termination():
+    """Concurrent multi-replica boots without provider replica IDs attach still-booting
+    pods across incomplete slices when a launch batch spans physical slices."""
+    for max_w in (4, 6):
+        cfgs = {
+            "tpu": NodeTypeConfig(
+                name="tpu",
+                min_worker_nodes=0,
+                max_worker_nodes=max_w,
+                resources={"CPU": 8, "TPU": 4},
+                runtime_label_keys=(_SLICE, _WID),
+                replica_config=WorkerReplicaConfig(
+                    workers_per_replica=2,
+                    domain_label_key=_SLICE,
+                    domain_exclusive=True,
+                    worker_index_label_key=_WID,
+                ),
+            )
+        }
+        g1 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 2, "_pg_cs1"))
+        g2 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 2, "_pg_cs2"))
+
+        # Case 1: batch A spans slice-0 and slice-1; batch B has 2 ALLOCATED pods.
+        insts_span = [
+            _run_node(
+                "tpu",
+                "a",
+                {"CPU": 8, "TPU": 4},
+                {_SLICE: "slice-0", _WID: "0"},
+                lid="A",
+            ),
+            _run_node(
+                "tpu",
+                "b",
+                {"CPU": 8, "TPU": 4},
+                {_SLICE: "slice-1", _WID: "1"},
+                lid="A",
+            ),
+            _pending_node("tpu", "c", Instance.ALLOCATED, lid="B"),
+            _pending_node("tpu", "d", Instance.ALLOCATED, lid="B"),
+        ]
+        rep1 = _sched(cfgs, insts_span, gangs=[g1, g2], max_nodes=max_w)
+        assert rep1.infeasible_gang_resource_requests == []
+        assert _launch_and_terminate(rep1) == ({}, [])
+
+        # Case 2: slice-0 has 1 pod from A and 1 pod from B; remaining A + B pods
+        # pool into one complete 2-host pending slice instead of two 1-host fragments.
+        insts_mixed = [
+            _run_node(
+                "tpu",
+                "b",
+                {"CPU": 8, "TPU": 4},
+                {_SLICE: "slice-0", _WID: "0"},
+                lid="A",
+            ),
+            _run_node(
+                "tpu",
+                "d",
+                {"CPU": 8, "TPU": 4},
+                {_SLICE: "slice-0", _WID: "1"},
+                lid="B",
+            ),
+            _pending_node("tpu", "a", Instance.ALLOCATED, lid="A"),
+            _pending_node("tpu", "c", Instance.ALLOCATED, lid="B"),
+        ]
+        rep2 = _sched(cfgs, insts_mixed, gangs=[g1, g2], max_nodes=max_w)
+        assert rep2.infeasible_gang_resource_requests == []
+        assert _launch_and_terminate(rep2) == ({}, [])
 
 
 if __name__ == "__main__":

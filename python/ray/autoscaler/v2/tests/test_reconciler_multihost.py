@@ -5,9 +5,9 @@ import random
 import sys
 import time
 from collections import Counter, defaultdict
-from typing import Optional
+from typing import Dict, List, Optional
 from unittest import mock
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -77,6 +77,7 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     ResourceRequestByCount,
 )
+from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     InstanceUpdateEvent,
@@ -11257,6 +11258,239 @@ class TestReconcilerMultiHost:
             assert all(ambig_t5[k].status == Instance.RAY_STOP_REQUESTED for k in kept)
         finally:
             reset_log_once()
+
+    @staticmethod
+    def _make_unlabeled_kuberay_sim(
+        cluster_id: str,
+        size: int,
+        max_replicas: int,
+        pod_names: List[str],
+        omit_runtime_labels: bool = False,
+    ):
+        slice_key = "ray.io/tpu-slice-name"
+        wid_key = "ray.io/tpu-worker-id"
+        rc = WorkerReplicaConfig(
+            workers_per_replica=size,
+            domain_label_key=slice_key,
+            domain_exclusive=True,
+            worker_index_label_key=wid_key,
+        )
+        tpu = NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 4, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=max_replicas * size,
+            replica_config=rc,
+            runtime_label_keys=(slice_key, wid_key),
+        )
+        (
+            cr,
+            pods,
+            _,
+            provider,
+            cfg,
+            store,
+            im,
+            head_state,
+            make_pod,
+        ) = TestReconcilerMultiHost._make_kuberay_e2e_env(
+            cluster_id=cluster_id,
+            node_type_configs={"tpu": tpu},
+            max_num_worker_nodes=max_replicas * size,
+            worker_groups=[
+                {
+                    "groupName": "tpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": max_replicas,
+                    "numOfHosts": size,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+        )
+        # Use production default pending_idle_timeout_s=None (-1) to cover default config.
+        group = cr["spec"]["workerGroupSpecs"][0]
+        sched = ResourceDemandScheduler()
+        names = iter(pod_names)
+        admitted: List[str] = []
+        ray_busy: Dict[str, bool] = {}
+
+        def is_worker(p):
+            return p["metadata"]["labels"].get("ray.io/group") == "tpu"
+
+        def workers():
+            return sorted(p["metadata"]["name"] for p in pods["items"] if is_worker(p))
+
+        def step_operator():
+            gone = set((group.get("scaleStrategy") or {}).get("workersToDelete") or [])
+            pods["items"] = [
+                p for p in pods["items"] if p["metadata"]["name"] not in gone
+            ]
+            for nm in gone:
+                ray_busy.pop(nm, None)
+            while len(workers()) < (group.get("replicas") or 0) * size:
+                admitted.append(next(names))
+                pods["items"].append(make_pod(admitted[-1], "tpu", rep=None))
+            pods["items"].sort(key=lambda p: (is_worker(p), p["metadata"]["name"]))
+            pods["metadata"]["resourceVersion"] = str(
+                int(pods["metadata"]["resourceVersion"]) + 1
+            )
+
+        def step_tick(tasks: int = 0, gangs: int = 0, dead: Optional[str] = None):
+            states = list(head_state.node_states)
+            for nm, busy in ray_busy.items():
+                idx = admitted.index(nm)
+                states.append(
+                    NodeState(
+                        node_id=nm.encode().ljust(28, b"\0"),
+                        instance_id=nm,
+                        ray_node_type_name="tpu",
+                        status=(
+                            NodeStatus.DEAD
+                            if nm == dead
+                            else (NodeStatus.RUNNING if busy else NodeStatus.IDLE)
+                        ),
+                        total_resources={"CPU": 4.0, "TPU": 4.0},
+                        available_resources={
+                            "CPU": 4.0,
+                            "TPU": 0.0 if busy else 4.0,
+                        },
+                        labels=(
+                            {}
+                            if omit_runtime_labels
+                            else {
+                                slice_key: f"slice-{idx // size}",
+                                wid_key: str(idx % size),
+                            }
+                        ),
+                    )
+                )
+            state = ClusterResourceState(node_states=states)
+            if tasks:
+                state.pending_resource_requests.append(
+                    ResourceRequestByCount(
+                        request=ResourceRequestUtil.make({"TPU": 4.0}),
+                        count=tasks,
+                    )
+                )
+            for _ in range(gangs):
+                bs = state.pending_gang_resource_requests.add().bundle_selectors.add()
+                for _ in range(size):
+                    bs.resource_requests.add().CopyFrom(
+                        ResourceRequestUtil.make({"TPU": 4.0})
+                    )
+                bs.locality_requirement.locality_constraint.label_name = slice_key
+                bs.locality_requirement.locality_constraint.placement_strategy = (
+                    PlacementStrategy.STRICT_PACK
+                )
+            with patch.object(cfg, "get_pending_idle_timeout_s", return_value=None):
+                res = TestReconcilerMultiHost.run_tick(
+                    im,
+                    cfg,
+                    scheduler=sched,
+                    cloud_provider=provider,
+                    ray_state=state,
+                    _logger=MagicMock(),
+                )
+            step_operator()
+            return res
+
+        return group, pods, store, ray_busy, workers, step_tick
+
+    def test_unlabeled_pods_at_max_replicas_refill_torn_down_host_with_real_scheduler(
+        self,
+    ):
+        """Real Reconciler + KubeRayProvider + ResourceDemandScheduler refills a
+        single dead unlabeled pod at maxReplicas=1 within 3 ticks."""
+        group, _, _, ray_busy, workers, step_tick = self._make_unlabeled_kuberay_sim(
+            "refill-max", size=4, max_replicas=1, pod_names=[f"u-{i}" for i in range(8)]
+        )
+        for _ in range(3):
+            step_tick(tasks=4)
+        for nm in workers():
+            ray_busy[nm] = True
+        step_tick()
+        victim = workers()[-1]
+        for _ in range(3):
+            step_tick(tasks=1, dead=victim)
+        assert group.get("replicas") == 1
+        assert workers() == ["u-0", "u-1", "u-2", "u-4"]
+
+    def test_unlabeled_pods_missing_runtime_labels_keep_busy_survivors_running(self):
+        """When an unlabeled pod vanishes and surviving busy hosts lack runtime slice
+        labels, max-worker enforcement never stops the real busy survivors."""
+        (
+            group,
+            pods,
+            store,
+            ray_busy,
+            workers,
+            step_tick,
+        ) = self._make_unlabeled_kuberay_sim(
+            "vanish-nolbl",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"u-{i}" for i in range(8)],
+            omit_runtime_labels=True,
+        )
+        for _ in range(3):
+            step_tick(tasks=4)
+        for nm in workers():
+            ray_busy[nm] = True
+        step_tick()
+        victim = workers()[-1]
+        pods["items"] = [p for p in pods["items"] if p["metadata"]["name"] != victim]
+        pods["metadata"]["resourceVersion"] = str(
+            int(pods["metadata"]["resourceVersion"]) + 1
+        )
+        ray_busy.pop(victim)
+        for _ in range(3):
+            step_tick()
+        assert group.get("replicas") == 1
+        statuses = {
+            v.cloud_instance_id: v.status
+            for v in store.get_instances()[0].values()
+            if v.instance_type == "tpu" and v.status != Instance.TERMINATED
+        }
+        for survivor in ("u-0", "u-1", "u-2"):
+            assert statuses[survivor] == Instance.RAY_RUNNING
+
+    def test_unlabeled_concurrent_multi_slice_boot_across_scrambled_launch_batches(
+        self,
+    ):
+        """When two unlabeled replicas boot at maxReplicas=2 and admission order
+        differs from pod name order so one launch batch spans two slices, neither
+        booting slice is terminated and both gangs schedule cleanly."""
+        (
+            group,
+            _,
+            store,
+            ray_busy,
+            workers,
+            step_tick,
+        ) = self._make_unlabeled_kuberay_sim(
+            "boot2-scrambled",
+            size=2,
+            max_replicas=2,
+            pod_names=["u-b", "u-d", "u-a", "u-c"],
+        )
+        for _ in range(3):
+            step_tick(gangs=2)
+        lids = {
+            v.cloud_instance_id: v.launch_request_id
+            for v in store.get_instances()[0].values()
+            if v.cloud_instance_id
+        }
+        first_lid = min(lids[nm] for nm in workers())
+        for nm in workers():
+            if lids[nm] == first_lid:
+                ray_busy[nm] = False
+        res = None
+        for _ in range(3):
+            res = step_tick(gangs=2)
+        assert group.get("replicas") == 2
+        assert workers() == ["u-a", "u-b", "u-c", "u-d"]
+        assert len(res.infeasible_gang_resource_requests) == 0
 
 
 if __name__ == "__main__":
