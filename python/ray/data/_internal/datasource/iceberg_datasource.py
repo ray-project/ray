@@ -16,6 +16,7 @@ from ray.data._internal.datasource.parquet_datasource import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
 from ray.data._internal.planner.plan_expression.expression_visitors import _ExprVisitor
+from ray.data._internal.untrusted_unpickling import ray_get_trusted
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -174,7 +175,7 @@ class _IcebergReadTaskSharedState:
 def _resolve_shared_read_state(
     state_ref: "ray.ObjectRef",
 ) -> _IcebergReadTaskSharedState:
-    return ray.get(state_ref)
+    return ray_get_trusted(state_ref)
 
 
 class _IcebergExpressionVisitor(

@@ -23,6 +23,8 @@ from ray.data._internal.object_extensions.arrow import (
 from ray.data._internal.untrusted_unpickling import (
     allow_unsafe_unpickling,
     forbid_untrusted_unpickling,
+    is_unpickling_forbidden,
+    ray_get_trusted,
 )
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
@@ -87,19 +89,21 @@ def test_fused_udf_may_unpickle(ray_start_regular_shared):
     assert ds.take_all() == [{"x": 3}] * 4
 
 
-def test_ray_transported_pickled_column_readable_inside_guard(
-    ray_start_regular_shared,
-):
+def test_ray_get_trusted_reads_ray_objects_inside_guard(ray_start_regular_shared):
     # A block Ray built in-process from Python objects travels through the
-    # object store as a pickled Table. Rebuilding its type on the way back is
-    # Ray's own transport and stays allowed inside a read.
+    # object store as a pickled Table. Plain ``ray.get`` inside the guard is
+    # refused like any other unpickle (Ray wraps the error in RaySystemError);
+    # ``ray_get_trusted`` is how datasource code fetches Ray's own objects.
     class Payload:
         pass
 
     table = pa.table({"col": ArrowPythonObjectArray.from_objects([Payload()])})
     ref = ray.put(table)
     with forbid_untrusted_unpickling():
-        out = ray.get(ref)
+        with pytest.raises(Exception, match="Refusing to unpickle|arrow_pickled"):
+            ray.get(ref)
+        out = ray_get_trusted(ref)
+        assert is_unpickling_forbidden()
     assert (
         out.schema.field("col").type.extension_name == "ray.data.arrow_pickled_object"
     )

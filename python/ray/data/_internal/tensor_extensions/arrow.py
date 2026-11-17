@@ -29,6 +29,7 @@ from ray.data._internal.tensor_extensions.utils import (
     _should_convert_to_tensor,
     create_ragged_ndarray,
 )
+from ray.data._internal.untrusted_unpickling import allow_unsafe_unpickling
 from ray.data._internal.utils.arrow_utils import _check_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
 from ray.util import log_once
@@ -107,9 +108,9 @@ def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
         if _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA:
             # Opt-in only: files written by Ray 2.49-2.54 used cloudpickle.
             # WARNING: Do not enable this for files from untrusted sources.
-            # ``ray.cloudpickle.loads`` is exempt from the untrusted-unpickling
-            # guard, which is what this explicit opt-in relies on.
-            return cloudpickle.loads(serialized)
+            # Explicit opt-in: lift the untrusted-unpickling guard for this call.
+            with allow_unsafe_unpickling():
+                return cloudpickle.loads(serialized)
         raise ValueError(
             f"Unable to deserialize {field_name}. If this file was written by "
             f"Ray 2.49-2.54, set RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1 "
