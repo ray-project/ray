@@ -281,7 +281,6 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         self._user_set_ray_remote_args_fn = (
             user_args.get("ray_remote_args_fn") is not None
         )
-        self._user_set_ray_remote_args_fn = kwargs.get("ray_remote_args_fn") is not None
         # Placement groups the ``ray_remote_args_fn`` created, one per actor.
         self._fn_placement_groups: Dict[PlacementGroupIdStr, "PlacementGroup"] = {}
 
