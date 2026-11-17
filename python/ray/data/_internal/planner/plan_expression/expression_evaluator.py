@@ -133,6 +133,39 @@ def _pa_add_or_concat(left: Any, right: Any) -> Any:
     return pc.add(left, right)
 
 
+def _is_integer_operand(x: Any) -> bool:
+    """Whether ``x`` is a Python int or an Arrow integer array / scalar."""
+    if isinstance(x, (pa.Array, pa.ChunkedArray, pa.Scalar)):
+        return pa.types.is_integer(x.type)
+    return isinstance(x, (int, np.integer)) and not isinstance(x, (bool, np.bool_))
+
+
+def _to_arrow(x: Any) -> Any:
+    if isinstance(x, (pa.Array, pa.ChunkedArray, pa.Scalar)):
+        return x
+    return pa.scalar(x)
+
+
+def _pa_floor_divide(left: Any, right: Any) -> Any:
+    """Floor division (``//``) with Python semantics.
+
+    ``pc.divide`` truncates toward zero for integers, so ``pc.floor`` of that
+    result rounds ``-7 // 2`` to ``-3`` instead of ``-4``. For two integer
+    operands, subtract one whenever the division was inexact and the operands
+    have opposite signs. Division by zero still raises, as ``pc.divide`` does.
+    """
+    quotient = pc.divide(left, right)
+    if _is_integer_operand(left) and _is_integer_operand(right):
+        left_arrow, right_arrow = _to_arrow(left), _to_arrow(right)
+        remainder = pc.subtract(left_arrow, pc.multiply(quotient, right_arrow))
+        needs_adjust = pc.and_(
+            pc.not_equal(remainder, 0),
+            pc.not_equal(pc.less(remainder, 0), pc.less(right_arrow, 0)),
+        )
+        quotient = pc.subtract(quotient, pc.cast(needs_adjust, quotient.type))
+    return pc.floor(quotient)
+
+
 _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.ADD: _pa_add_or_concat,
     Operation.SUB: pc.subtract,
@@ -141,9 +174,9 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.MOD: lambda left, right: (
         # Modulo op is essentially:
         #   r = N - floor(N/M) * M
-        pc.subtract(left, pc.multiply(pc.floor(pc.divide(left, right)), right))
+        pc.subtract(left, pc.multiply(_pa_floor_divide(left, right), right))
     ),
-    Operation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
+    Operation.FLOORDIV: _pa_floor_divide,
     Operation.GT: pc.greater,
     Operation.LT: pc.less,
     Operation.GE: pc.greater_equal,
