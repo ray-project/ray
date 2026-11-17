@@ -38,6 +38,11 @@ NODE_HOST_PREFIX = "sandbox-node-host-"
 _NODE_HOST_MAX_CONCURRENCY = 100_000
 # How long the list of nodes that can run sandboxes is reused.
 _NODES_TTL_SECONDS = 30.0
+# How many hosts one create asks for room before it stops looking, and how
+# long a replica skips a host that answered "full". Without them a create on
+# a nearly full cluster would ask every host in turn.
+_MAX_ADMIT_PROBES = 16
+_FULL_HOST_SECONDS = 1.0
 # How long a listing waits for the node hosts to report their sandboxes.
 _LIST_HOSTS_SECONDS = 10.0
 # How long prestart waits for the hosts it started to answer.
@@ -242,8 +247,13 @@ class RayActorHandleResolver:
         # whole on each refresh, so readers need no lock or copy.
         self._nodes: Tuple[str, ...] = ()
         self._node_prefixes: Dict[str, Optional[str]] = {}
+        # Each node's total resources, which its host admits against.
+        self._node_resources: Dict[str, Dict[str, float]] = {}
         self._nodes_at = 0.0
         self._refreshing_nodes = False
+        self._refresh_task: Any = None
+        # Node id -> when this resolver may ask its host for room again.
+        self._full_hosts: Dict[str, float] = {}
         self._spread = itertools.count()
 
     def _actor_class(self) -> Any:
@@ -281,6 +291,17 @@ class RayActorHandleResolver:
         from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
         name = f"{NODE_HOST_PREFIX}{node_id}"
+        config = (
+            {"CPU": self._settings.reservation_slab_cpus}
+            if self._settings.reservation_slab_cpus
+            else None,
+            # What the host admits against without asking Ray each time.
+            {
+                k: float(v)
+                for k, v in self._node_resources.get(node_id, {}).items()
+                if k == "CPU"
+            },
+        )
         handle = actor_class.options(
             name=name,
             namespace=self._settings.namespace,
@@ -289,10 +310,74 @@ class RayActorHandleResolver:
             num_cpus=0,
             max_concurrency=_NODE_HOST_MAX_CONCURRENCY,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
-        ).remote(self._sandbox_host_class)
+        ).remote(self._sandbox_host_class, *config)
+        # The name may find a host an earlier deployment started, with other
+        # settings: this resolver's apply from now on.
+        handle.configure.remote(*config)
         with self._lock:
             entry = self._node_hosts.setdefault(node_id, (name, handle))
         return entry
+
+    def _cached_node_host(self, node_id: str) -> Optional[Tuple[str, Any]]:
+        with self._lock:
+            return self._node_hosts.get(node_id)
+
+    async def _admit(
+        self,
+        demand: Dict[str, float],
+        ctor_kwargs: Dict[str, Any],
+    ) -> Optional[HostedSandboxHandle]:
+        """Place a sandbox in some node host's slab, round robin.
+
+        Args:
+            demand: The resources the sandbox requests, such as
+                ``{"CPU": 0.25}``.
+            ctor_kwargs: The ``SandboxHost`` constructor arguments.
+
+        Returns:
+            The sandbox's handle, or None if the hosts it asked are full.
+        """
+        nodes = await self._nodes_for_admit()
+        if not nodes:
+            return None
+        start = next(self._spread)
+        now = time.monotonic()
+        full = self._full_hosts
+        probes = 0
+        for i in range(len(nodes)):
+            node_id = nodes[(start + i) % len(nodes)]
+            if full and full.get(node_id, 0.0) > now:
+                continue
+            if probes >= _MAX_ADMIT_PROBES:
+                break
+            probes += 1
+            name = _hosted_sandbox_id(node_id)
+            for attempt in (0, 1):
+                entry = self._cached_node_host(node_id) or await asyncio.to_thread(
+                    self._node_host, node_id
+                )
+                host_name, host = entry
+                try:
+                    result = await host.admit.remote(
+                        name, ctor_kwargs["spec"], ctor_kwargs["settings"], demand
+                    )
+                    break
+                except Exception as exc:
+                    if attempt or not _is_actor_gone(exc):
+                        raise
+                    self._drop_node_host(node_id, host)
+            if result.get("ok"):
+                handle = HostedSandboxHandle(host, host_name, name, self)
+                self._cache(name, handle)
+                return handle
+            full[node_id] = time.monotonic() + _FULL_HOST_SECONDS
+            if len(full) > 4 * len(nodes):
+                # Nodes that left the cluster since they were marked.
+                self._full_hosts = {
+                    n: t for n, t in full.items() if t > time.monotonic()
+                }
+                full = self._full_hosts
+        return None
 
     def prestart(self) -> int:
         """Start the host on every node that can run sandboxes (host_mode="node").
@@ -374,13 +459,12 @@ class RayActorHandleResolver:
                 return self._nodes
             self._refreshing_nodes = True
         try:
-            nodes = tuple(
-                sorted(
-                    n["NodeID"]
-                    for n in ray.nodes()
-                    if n.get("Alive") and n.get("Resources", {}).get("CPU", 0) > 0
-                )
-            )
+            resources = {
+                n["NodeID"]: n.get("Resources", {})
+                for n in ray.nodes()
+                if n.get("Alive") and n.get("Resources", {}).get("CPU", 0) > 0
+            }
+            nodes = tuple(sorted(resources))
             prefixes: Dict[str, Optional[str]] = {}
             for node_id in nodes:
                 prefix = node_id[:_NODE_PREFIX_CHARS]
@@ -388,10 +472,30 @@ class RayActorHandleResolver:
             with self._lock:
                 self._nodes, self._nodes_at = nodes, time.monotonic()
                 self._node_prefixes = prefixes
+                self._node_resources = resources
         finally:
             with self._lock:
                 self._refreshing_nodes = False
         return self._nodes
+
+    async def _nodes_for_admit(self) -> Tuple[str, ...]:
+        """``_cpu_nodes`` without leaving the event loop while a list is known.
+
+        A stale list is used once more while one caller refreshes it in a
+        worker thread, so a create never waits for the GCS's node listing.
+        """
+        nodes = self._nodes
+        if not nodes:
+            return await asyncio.to_thread(self._cpu_nodes)
+        if (
+            time.monotonic() - self._nodes_at > _NODES_TTL_SECONDS
+            and not self._refreshing_nodes
+            and (self._refresh_task is None or self._refresh_task.done())
+        ):
+            self._refresh_task = asyncio.ensure_future(
+                asyncio.to_thread(self._cpu_nodes)
+            )
+        return nodes
 
     def _spread_node(self) -> str:
         """A node for a sandbox that reserves nothing: round robin over CPU nodes."""
@@ -441,6 +545,12 @@ class RayActorHandleResolver:
         )
 
         bundle = _reservation_bundle(actor_options)
+        if bundle and self._settings.reservation_slab_cpus and set(bundle) == {"CPU"}:
+            handle = await self._admit(bundle, ctor_kwargs)
+            if handle is not None:
+                return handle
+            # Every host is full: reserve this sandbox on its own, which also
+            # shows the autoscaler the demand.
         reservation = None
         if bundle:
             reservation = await asyncio.to_thread(
