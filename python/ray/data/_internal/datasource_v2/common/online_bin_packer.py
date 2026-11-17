@@ -4,6 +4,7 @@ import bisect
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from itertools import groupby
 from typing import Deque, Dict, List, Optional, Tuple
 
 import pyarrow as pa
@@ -333,6 +334,30 @@ def _group_disjoint_runs(runs: List[FileChunk]) -> List[List[FileChunk]]:
     return groups
 
 
+def _merge_runs_by_match(disjoint_runs: List[FileChunk]) -> List[FileChunk]:
+    """Merge a copy's pairwise-disjoint runs in unit order, starting a new
+    chunk wherever ``fully_matched`` changes.
+
+    Walking in ascending unit order keeps the output rows in file order, while
+    breaking on ``fully_matched`` transitions gives every row an exact flag, so
+    the reader can stub all fully matched runs instead of reading them next to
+    a partial run.
+    """
+    ordered = sorted(disjoint_runs, key=lambda run: min(run.unit_ids))
+    merged: List[FileChunk] = []
+    for fully_matched, group in groupby(ordered, key=lambda run: run.fully_matched):
+        span = list(group)
+        merged.append(
+            FileChunk(
+                unit_ids=tuple(sorted(i for run in span for i in run.unit_ids)),
+                num_rows=sum(run.num_rows for run in span),
+                size_bytes=sum(run.size_bytes for run in span),
+                fully_matched=fully_matched,
+            )
+        )
+    return merged
+
+
 class OnlineBinPacker(FilePartitioner):
     """Streaming coloured bin packer over listing rows.
 
@@ -473,14 +498,12 @@ class OnlineBinPacker(FilePartitioner):
     def _bin_to_manifest(bin_: Bin) -> FileManifest:
         # A whole-file item is one manifest row with no chunk metadata, as it
         # came in; items repeating a path stay separate rows, one per listed
-        # copy. A file's runs are unioned into one row per group of
-        # pairwise-disjoint unit ranges: runs of a file listed once never
-        # overlap, so they collapse to a single row, while a file the user
-        # listed N times carries each unit id N times across its runs and
-        # gets one row per copy — unioning those would silently drop the
-        # repeats (the reader scans each row's unit set once). Every row
-        # keeps the on-disk file size the listing gave it; a run's bytes
-        # live in its chunk metadata.
+        # copy. A file's runs are separated into groups of pairwise-disjoint
+        # unit ids, one group for a file listed once and N groups for a path
+        # listed N times, since the reader scans each row's unit set once.
+        # Each group's runs are then merged in unit order, starting a new row
+        # wherever ``fully_matched`` changes. Every row keeps the on-disk file
+        # size the listing gave it; a run's bytes live in its chunk metadata.
         files: List[FileInfo] = []
         chunk_metadatas: List[Optional[ChunkMetadata]] = []
         extra_columns: List[Optional[pa.Table]] = []
@@ -500,17 +523,10 @@ class OnlineBinPacker(FilePartitioner):
 
         for file, runs in runs_by_file.items():
             for disjoint_runs in _group_disjoint_runs(runs):
-                merged = FileChunk(
-                    unit_ids=tuple(
-                        sorted(i for run in disjoint_runs for i in run.unit_ids)
-                    ),
-                    num_rows=sum(run.num_rows for run in disjoint_runs),
-                    size_bytes=sum(run.size_bytes for run in disjoint_runs),
-                    fully_matched=all(run.fully_matched for run in disjoint_runs),
-                )
-                files.append(file)
-                chunk_metadatas.append(merged.to_metadata())
-                extra_columns.append(extra_columns_by_file[file])
+                for merged in _merge_runs_by_match(disjoint_runs):
+                    files.append(file)
+                    chunk_metadatas.append(merged.to_metadata())
+                    extra_columns.append(extra_columns_by_file[file])
         sizes: List[int] = []
         for file in files:
             assert file.size is not None

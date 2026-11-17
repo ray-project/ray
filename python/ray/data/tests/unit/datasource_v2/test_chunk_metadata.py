@@ -47,7 +47,7 @@ def test_file_chunk_round_trips_through_a_manifest():
 
 def test_split_fully_matched_rows_contract():
     """The helper separates exact-counted rows from rows that must be read."""
-    from ray.data._internal.datasource_v2.common.file_reader import (
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
         split_fully_matched,
     )
 

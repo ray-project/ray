@@ -10,6 +10,7 @@ from typing import (
     Optional,
     Sequence,
     Set,
+    Tuple,
 )
 
 import pyarrow as pa
@@ -22,12 +23,13 @@ if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
 from ray._common.utils import env_integer
+from ray.data._internal.arrow_block import (
+    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+)
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
     FileReader,
-    empty_projection_stub,
-    split_fully_matched,
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
@@ -52,7 +54,10 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     _resolve_read_columns,
     _row_group_uncompressed_size,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
@@ -174,6 +179,38 @@ def _estimate_batch_size_from_metadata(
     return target_batch_size
 
 
+def empty_projection_stub(num_rows: int) -> pa.Table:
+    """An all-null, zero-buffer table that keeps zero-column reads from losing
+    their rows in ``pa.concat_tables``."""
+    return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(num_rows)})
+
+
+def split_fully_matched(
+    manifest: FileManifest,
+) -> Tuple[List[int], FileManifest]:
+    """Split a manifest into ``(stub_num_rows, to_read)``, stubbing only
+    ``fully_matched`` rows that carry chunk metadata and leaving the caller to
+    guarantee the flag was computed against the same predicate and that no
+    limit or block UDF can change the count afterwards."""
+    stub_num_rows: List[int] = []
+    to_read: List[int] = []
+    for idx, chunk_metadata in enumerate(manifest.file_chunk_metadatas):
+        if chunk_metadata is None:
+            to_read.append(idx)
+            continue
+        chunk = FileChunk.from_metadata(chunk_metadata)
+        if chunk.fully_matched:
+            stub_num_rows.append(chunk.num_rows)
+        else:
+            to_read.append(idx)
+
+    if len(to_read) == len(manifest):
+        return stub_num_rows, manifest
+
+    read_mask = pa.array(to_read, type=pa.int64())
+    return stub_num_rows, FileManifest(manifest.as_block().take(read_mask))
+
+
 def _estimate_batch_size_from_chunk_stats(
     uncompressed_size: int,
     num_rows: int,
@@ -197,9 +234,8 @@ def _estimate_batch_size_from_chunk_stats(
     )
     if estimated_in_mem_row_size == 0:
         return None
-    # Never request more rows than the chunk contains; ``num_rows`` may be a
-    # NumPy scalar, which PyArrow's scanner rejects.
-    return int(min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows))
+    # Never request more rows than the chunk actually contains.
+    return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
 
 
 def is_exact_count_read(

@@ -14,10 +14,7 @@ from ray.data._internal.datasource_v2.common.synthesized_columns import (  # noq
     # Re-exported: the legacy ``ParquetDatasource`` imports it from here.
     _compute_row_hashes,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    FileChunk,
-    FileManifest,
-)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
@@ -53,38 +50,6 @@ _ARROW_DEFAULT_BATCH_SIZE = 131_072
 _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
-
-
-def empty_projection_stub(num_rows: int) -> pa.Table:
-    """An all-null, zero-buffer table that keeps zero-column reads from losing
-    their rows in ``pa.concat_tables``, shared by both empty-projection paths."""
-    return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(num_rows)})
-
-
-def split_fully_matched(
-    manifest: FileManifest,
-) -> Tuple[List[int], FileManifest]:
-    """Split a manifest into ``(stub_num_rows, to_read)``, stubbing only
-    ``fully_matched`` rows that carry chunk metadata and leaving the caller to
-    guarantee the flag was computed against the same predicate and that no
-    limit or block UDF can change the count afterwards."""
-    stub_num_rows: List[int] = []
-    to_read: List[int] = []
-    for idx, chunk_metadata in enumerate(manifest.file_chunk_metadatas):
-        if chunk_metadata is None:
-            to_read.append(idx)
-            continue
-        chunk = FileChunk.from_metadata(chunk_metadata)
-        if chunk.fully_matched:
-            stub_num_rows.append(chunk.num_rows)
-        else:
-            to_read.append(idx)
-
-    if len(to_read) == len(manifest):
-        return stub_num_rows, manifest
-
-    read_mask = pa.array(to_read, type=pa.int64())
-    return stub_num_rows, FileManifest(manifest.as_block().take(read_mask))
 
 
 class FileFormat(str, Enum):
@@ -190,7 +155,6 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        # Bind once: pyrefly cannot narrow this optional attribute in the comprehension.
         schema = self._schema
         if schema is None:
             return None
@@ -373,10 +337,14 @@ class FileReader(Reader[FileManifest]):
                 table = table.select(projected)
 
             if table.num_columns == 0 and table.num_rows > 0:
-                # Guards against ``pa.concat_tables`` collapsing rows when a
-                # batch has zero columns (e.g., empty projection for a count
-                # query). The stub column is dropped by downstream projections.
-                table = empty_projection_stub(table.num_rows)
+                # Guards against ``pa.concat_tables`` collapsing rows
+                # when a batch has zero columns (e.g., empty projection
+                # for a count query). The stub column is dropped by
+                # downstream projections.
+                table = table.append_column(
+                    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+                    pa.nulls(table.num_rows),
+                )
 
             self._on_batch_read(table)
             rows_read += len(table)

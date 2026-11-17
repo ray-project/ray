@@ -1171,11 +1171,11 @@ def test_filtered_count_reads_only_partial_runs(tmp_path, restore_ctx, monkeypat
 
     records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
     assert records
-    # f2 mixes a partial and a matched row group. The packer keeps them in one
-    # manifest row, so the file is read as a whole; only a wholly matched file
-    # such as f3 is answered from its footer.
+    # f2 mixes a partial row group (0) and a matched one (1). The packer splits
+    # at the match transition, so row group 1 and all of f3 are answered from
+    # their footers and only f2's partial row group 0 is read.
     assert [row for record in records for row in record] == [
-        {"path": str(tmp_path / "f2.parquet"), "unit_ids": [0, 1]}
+        {"path": str(tmp_path / "f2.parquet"), "unit_ids": [0]}
     ]
 
 

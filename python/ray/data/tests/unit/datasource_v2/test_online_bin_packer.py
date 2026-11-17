@@ -175,6 +175,66 @@ def test_packer_preserves_unit_multiplicity_of_duplicated_files(
     assert sorted(pairs) == expected
 
 
+def test_bin_to_manifest_splits_at_fully_matched_transitions_in_unit_order() -> None:
+    # Runs of one copy that alternate ``fully_matched`` become one row per
+    # contiguous same-flag span in ascending unit order (even if fed out of
+    # order), while contiguous same-flag runs still merge.
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(
+        _file(
+            "a",
+            400,
+            [
+                _run((2,), 0, rows=20, fully_matched=True),
+                _run((0,), 10, rows=5, fully_matched=False),
+                _run((1,), 0, rows=15, fully_matched=True),
+                _run((4,), 30, rows=7, fully_matched=False),
+            ],
+        )
+    )
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+    chunks = [FileChunk.from_metadata(md) for md in manifest.file_chunk_metadatas]
+    assert [
+        (c.unit_ids, c.fully_matched, c.num_rows, c.size_bytes) for c in chunks
+    ] == [
+        ((0,), False, 5, 10),
+        ((1, 2), True, 35, 0),
+        ((4,), False, 7, 30),
+    ]
+
+
+def test_duplicated_file_with_mixed_match_flags_splits_each_copy() -> None:
+    # A file listed twice where each copy mixes partial and matched units must
+    # emit the split row sequence once per copy without merging across copies.
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    copy = _file(
+        "a",
+        200,
+        [
+            _run((0,), 10, rows=5, fully_matched=False),
+            _run((1,), 0, rows=15, fully_matched=True),
+        ],
+    )
+    packer.add_input(copy)
+    packer.add_input(copy)
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+    assert [
+        (str(p), tuple(md["unit_ids"]), md["fully_matched"])
+        for p, md in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ] == [
+        ("a", (0,), False),
+        ("a", (1,), True),
+        ("a", (0,), False),
+        ("a", (1,), True),
+    ]
+
+
 def test_split_coalesced_is_noop_without_coalescing() -> None:
     # With every run a single unit, the split flag must not change the packing.
     files = [_units("a", [40] * 3), _units("b", [40] * 2)]
