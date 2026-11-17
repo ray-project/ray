@@ -237,7 +237,7 @@ class SizingTicker:
         but only PG actors can use them.
         """
         zero = ExecutionResources.zero()
-        pg_reserved = self._pg_bundles.reserved_by_node
+        pg_reserved = cluster_view.pg_reserved_by_node
         reserved = {
             node_id: res.subtract(pg_reserved.get(node_id, zero)).max(zero)
             for node_id, res in cluster_view.reserved_by_node.items()

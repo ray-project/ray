@@ -527,7 +527,7 @@ def test_a_finished_run_releases_its_resources(head_node_cluster, tmp_path, fail
     )
     reserved = ray.get(
         coordinator.get_reserved_resources.remote("probe", recompute=True)
-    )
+    ).non_placement_group
     assert reserved.get(slot_node.node_id, {}).get("slot") == 1, reserved
     ray.get(coordinator.cancel_request.remote("probe"))
 

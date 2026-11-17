@@ -10,6 +10,7 @@ from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
     ResourceRequestPriority,
     ResourceRequestStrategy,
+    SplitReservedResources,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     DefaultAutoscalingCoordinator,
@@ -90,7 +91,7 @@ def test_basic(cluster_nodes):
         expire_after_s=req1_timeout,
     )
     mock_request_resources.assert_called_once_with(req1)
-    res1 = as_coordinator.get_reserved_resources("requester1")
+    res1 = as_coordinator.get_reserved_resources("requester1").non_placement_group
     assert res1 == {"n1": {"CPU": 3, "GPU": 1, "object_store_memory": 100}}
 
     # Send the same request again. `mock_request_resources` won't be called
@@ -113,7 +114,7 @@ def test_basic(cluster_nodes):
         request_remaining=STANDARD_RESOURCE_TYPES,
     )
     mock_request_resources.assert_called_with(req1 + req2)
-    res2 = as_coordinator.get_reserved_resources("requester2")
+    res2 = as_coordinator.get_reserved_resources("requester2").non_placement_group
     # req2 explicit (2/1/100) + remaining (5/3/800) merged on same node.
     assert res2 == {"n1": {"CPU": 7, "GPU": 4, "object_store_memory": 900}}
 
@@ -125,9 +126,9 @@ def test_basic(cluster_nodes):
         expire_after_s=req1_timeout,
     )
     mock_request_resources.assert_called_with(req1_updated + req2)
-    res1 = as_coordinator.get_reserved_resources("requester1")
+    res1 = as_coordinator.get_reserved_resources("requester1").non_placement_group
     assert res1 == {"n1": {"CPU": 4, "GPU": 2, "object_store_memory": 300}}
-    res2 = as_coordinator.get_reserved_resources("requester2")
+    res2 = as_coordinator.get_reserved_resources("requester2").non_placement_group
     # req2 explicit (2/1/100) + remaining after req1_updated (4/2/600) merged.
     assert res2 == {"n1": {"CPU": 6, "GPU": 3, "object_store_memory": 700}}
 
@@ -135,8 +136,8 @@ def test_basic(cluster_nodes):
     mocked_time = req1_timeout + 0.1
     as_coordinator._tick()
     mock_request_resources.assert_called_with(req2)
-    res1 = as_coordinator.get_reserved_resources("requester1")
-    res2 = as_coordinator.get_reserved_resources("requester2")
+    res1 = as_coordinator.get_reserved_resources("requester1").non_placement_group
+    res2 = as_coordinator.get_reserved_resources("requester2").non_placement_group
     assert res1 == {}
     # req2 explicit (2/1/100) + full remaining (8/4/900) merged.
     assert res2 == {"n1": {"CPU": 10, "GPU": 5, "object_store_memory": 1000}}
@@ -145,14 +146,14 @@ def test_basic(cluster_nodes):
     mocked_time = req2_timeout + 0.1
     as_coordinator._tick()
     mock_request_resources.assert_called_with([])
-    res1 = as_coordinator.get_reserved_resources("requester1")
-    res2 = as_coordinator.get_reserved_resources("requester2")
+    res1 = as_coordinator.get_reserved_resources("requester1").non_placement_group
+    res2 = as_coordinator.get_reserved_resources("requester2").non_placement_group
     assert res1 == {}
     assert res2 == {}
 
     # Test canceling a request
     as_coordinator.cancel_request("requester2")
-    res2 = as_coordinator.get_reserved_resources("requester2")
+    res2 = as_coordinator.get_reserved_resources("requester2").non_placement_group
     assert res2 == {}
 
 
@@ -196,8 +197,8 @@ def test_double_allocation_with_multiple_request_remaining():
     )
 
     # Get reserved resources (per-node dict, explicit + remaining merged per node)
-    res1 = coordinator.get_reserved_resources("requester1")
-    res2 = coordinator.get_reserved_resources("requester2")
+    res1 = coordinator.get_reserved_resources("requester1").non_placement_group
+    res2 = coordinator.get_reserved_resources("requester2").non_placement_group
 
     # After allocating specific requests (req1 and req2):
     # Remaining = CPU: 10-2-3=5, GPU: 5-1-1=3, memory: 1000-100-200=700
@@ -229,7 +230,7 @@ def test_request_remaining_records_leftover_types_not_in_bundles():
         request_remaining=["CPU", "object_store_memory"],
     )
 
-    res = coordinator.get_reserved_resources("requester1")
+    res = coordinator.get_reserved_resources("requester1").non_placement_group
     assert res == {"": {"CPU": 10, "object_store_memory": 1000}}
 
 
@@ -254,7 +255,7 @@ def test_request_remaining_empty_means_no_leftovers():
         request_remaining=[],
     )
 
-    res = coordinator.get_reserved_resources("requester1")
+    res = coordinator.get_reserved_resources("requester1").non_placement_group
     assert res == {"": {"CPU": 2}}
 
 
@@ -355,7 +356,7 @@ def test_autoscaling_coordinator_e2e(cluster, gpu_tasks_include_cpu):
         def check_allocated_resources():
             reserved = ray.get(
                 as_coordinator.get_reserved_resources.remote(requester_id)
-            )
+            ).non_placement_group
             # Convert per-node dict to a sorted list of resource dicts for comparison.
             # Only keep keys present in expected; real nodes also carry "memory"
             # (physical RAM) which doesn't appear in the expected bundles.
@@ -448,7 +449,9 @@ def test_coordinator_actor_runs_on_the_head_node(cluster):
     @ray.remote(num_cpus=1)
     def create_coordinator():
         coordinator = get_or_create_autoscaling_coordinator()
-        return ray.get(coordinator.get_reserved_resources.remote("r"))
+        return ray.get(
+            coordinator.get_reserved_resources.remote("r")
+        ).non_placement_group
 
     strategy = PlacementGroupSchedulingStrategy(
         pg, placement_group_capture_child_tasks=True
@@ -465,7 +468,9 @@ def test_coordinator_actor_runs_on_the_head_node(cluster):
     # coordinator with it.
     ray.util.remove_placement_group(pg)
     cluster.remove_node(worker)
-    assert ray.get(coordinator.get_reserved_resources.remote("r"), timeout=60) == {}
+    assert ray.get(
+        coordinator.get_reserved_resources.remote("r"), timeout=60
+    ) == SplitReservedResources({}, {})
 
 
 @pytest.fixture
@@ -490,7 +495,8 @@ def test_get_reserved_resources_eventually_consistent(autoscaling_coordinator_ac
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
 
     wait_for_condition(
-        lambda: coordinator.get_reserved_resources() == {"n1": {"CPU": 1}},
+        lambda: coordinator.get_reserved_resources().non_placement_group
+        == {"n1": {"CPU": 1}},
         retry_interval_ms=100,
         timeout=5,
     )
@@ -506,7 +512,8 @@ def test_get_reserved_resources_returns_cached_while_pending(
 
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_reserved_resources() == {"n1": {"CPU": 1}},
+        lambda: coordinator.get_reserved_resources().non_placement_group
+        == {"n1": {"CPU": 1}},
         retry_interval_ms=100,
         timeout=5,
     )
@@ -519,7 +526,9 @@ def test_get_reserved_resources_returns_cached_while_pending(
 
     coordinator.request_resources(resources=[{"CPU": 2}], expire_after_s=60)
     # Should return the stale cached value, not block.
-    assert coordinator.get_reserved_resources() == {"n1": {"CPU": 1}}
+    assert coordinator.get_reserved_resources().non_placement_group == {
+        "n1": {"CPU": 1}
+    }
 
 
 def test_get_reserved_resources_returns_cached_on_actor_error(
@@ -535,7 +544,8 @@ def test_get_reserved_resources_returns_cached_on_actor_error(
 
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_reserved_resources() == {"n1": {"CPU": 1}},
+        lambda: coordinator.get_reserved_resources().non_placement_group
+        == {"n1": {"CPU": 1}},
         retry_interval_ms=100,
         timeout=5,
     )
@@ -548,14 +558,17 @@ def test_get_reserved_resources_returns_cached_on_actor_error(
     monkeypatch.setattr(ray, "get", Mock(side_effect=ray.exceptions.RayActorError()))
 
     # Must return the last cached value, not raise.
-    assert coordinator.get_reserved_resources() == {"n1": {"CPU": 1}}
+    assert coordinator.get_reserved_resources().non_placement_group == {
+        "n1": {"CPU": 1}
+    }
 
     # Recovery: submit a new request after the error and verify it eventually
     # resolves, proving the coordinator can communicate with the actor again.
     monkeypatch.undo()
     coordinator.request_resources(resources=[{"CPU": 2}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_reserved_resources() == {"n1": {"CPU": 2}},
+        lambda: coordinator.get_reserved_resources().non_placement_group
+        == {"n1": {"CPU": 2}},
         retry_interval_ms=100,
         timeout=5,
     )
@@ -569,14 +582,15 @@ def test_cancel_request_makes_get_return_empty(autoscaling_coordinator_actor):
 
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_reserved_resources() == {"n1": {"CPU": 1}},
+        lambda: coordinator.get_reserved_resources().non_placement_group
+        == {"n1": {"CPU": 1}},
         retry_interval_ms=100,
         timeout=5,
     )
 
     coordinator.cancel_request()
     wait_for_condition(
-        lambda: coordinator.get_reserved_resources() == {},
+        lambda: coordinator.get_reserved_resources().non_placement_group == {},
         retry_interval_ms=100,
         timeout=5,
     )
@@ -593,7 +607,8 @@ def test_non_ray_errors_propagate(autoscaling_coordinator_actor, monkeypatch):
 
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_reserved_resources() == {"n1": {"CPU": 1}},
+        lambda: coordinator.get_reserved_resources().non_placement_group
+        == {"n1": {"CPU": 1}},
         retry_interval_ms=100,
         timeout=5,
     )
@@ -620,7 +635,8 @@ def test_coordinator_accepts_zero_resource_for_missing_resource_type(
 
     # GPU: 0 is a no-op; only CPU: 1 ends up reserved.
     wait_for_condition(
-        lambda: coordinator.get_reserved_resources() == {"n1": {"CPU": 1}},
+        lambda: coordinator.get_reserved_resources().non_placement_group
+        == {"n1": {"CPU": 1}},
         retry_interval_ms=100,
         timeout=5,
     )
@@ -945,7 +961,7 @@ def test_reservation_layout(nodes, strategy, resources, expected):
     coord = _make_coordinator(nodes)
     _request_resources(coord, strategy, resources)
 
-    assert coord.get_reserved_resources("train") == expected
+    assert coord.get_reserved_resources("train").non_placement_group == expected
 
 
 @pytest.mark.parametrize("strategy", list(ResourceRequestStrategy))
@@ -960,9 +976,10 @@ def test_strategy_accepts_the_plain_string_form(strategy):
     from_string = _make_coordinator(STRATEGY_CLUSTER_NODES)
     _request_resources(from_string, strategy.value, resources)
 
-    assert from_string.get_reserved_resources(
-        "train"
-    ) == from_enum.get_reserved_resources("train")
+    assert (
+        from_string.get_reserved_resources("train").non_placement_group
+        == from_enum.get_reserved_resources("train").non_placement_group
+    )
 
 
 @pytest.mark.parametrize("strategy", list(ResourceRequestStrategy))
@@ -977,13 +994,18 @@ def test_resending_an_unchanged_request_is_a_noop(strategy):
         _request_resources(coord, strategy, [{"GPU": 1} for _ in range(4)])
 
     send()
-    reserved_after_first = copy.deepcopy(coord.get_reserved_resources("train"))
+    reserved_after_first = copy.deepcopy(
+        coord.get_reserved_resources("train").non_placement_group
+    )
     sends_after_first = coord._send_resources_request.call_count
 
     send()
     send()
 
-    assert coord.get_reserved_resources("train") == reserved_after_first
+    assert (
+        coord.get_reserved_resources("train").non_placement_group
+        == reserved_after_first
+    )
     assert coord._send_resources_request.call_count == sends_after_first
 
 
@@ -1007,7 +1029,9 @@ def test_request_rejects_changing_strategy():
         )
 
     # The rejected call must leave the existing reservation intact.
-    assert coord.get_reserved_resources("train") == {"n1": {"GPU": 4}}
+    assert coord.get_reserved_resources("train").non_placement_group == {
+        "n1": {"GPU": 4}
+    }
 
 
 def test_strict_pack_forwards_one_summed_bundle_to_the_autoscaler():
@@ -1059,7 +1083,7 @@ def test_forced_read_drops_a_node_that_has_since_died():
         expire_after_s=10,
         strategy=ResourceRequestStrategy.SPREAD,
     )
-    assert coord.get_reserved_resources("train") == {
+    assert coord.get_reserved_resources("train").non_placement_group == {
         "n1": {"GPU": 1},
         "n2": {"GPU": 1},
     }
@@ -1067,11 +1091,13 @@ def test_forced_read_drops_a_node_that_has_since_died():
     nodes[1]["Alive"] = False
 
     # An unforced read is allowed to be stale; a forced one must not be.
-    assert coord.get_reserved_resources("train") == {
+    assert coord.get_reserved_resources("train").non_placement_group == {
         "n1": {"GPU": 1},
         "n2": {"GPU": 1},
     }
-    assert coord.get_reserved_resources("train", recompute=True) == {"n1": {"GPU": 1}}
+    assert coord.get_reserved_resources(
+        "train", recompute=True
+    ).non_placement_group == {"n1": {"GPU": 1}}
 
 
 def test_strategy_is_per_requester():
@@ -1095,10 +1121,12 @@ def test_strategy_is_per_requester():
         strategy=ResourceRequestStrategy.SPREAD,
     )
 
-    assert coord.get_reserved_resources("packer") == {"n1": {"GPU": 2}}
+    assert coord.get_reserved_resources("packer").non_placement_group == {
+        "n1": {"GPU": 2}
+    }
     # The spreader starts scanning at n1 (which has 2 GPU left after the
     # packer) and then rotates to n2.
-    assert coord.get_reserved_resources("spreader") == {
+    assert coord.get_reserved_resources("spreader").non_placement_group == {
         "n1": {"GPU": 1},
         "n2": {"GPU": 1},
     }
@@ -1121,8 +1149,8 @@ def test_label_selector_disjoint_requesters_dont_cross_talk():
         request_remaining=STANDARD_RESOURCE_TYPES,
     )
 
-    train = coord.get_reserved_resources("train")
-    val = coord.get_reserved_resources("val")
+    train = coord.get_reserved_resources("train").non_placement_group
+    val = coord.get_reserved_resources("val").non_placement_group
     # Training bucket: 2 x 8 = 16 CPU (4 explicit + 12 leftover), all to train.
     assert sum(v.get("CPU", 0) for v in train.values()) == 16
     # Validation bucket: 4 CPU (4 explicit, 0 leftover of CPU).
@@ -1144,7 +1172,7 @@ def test_unlabeled_requester_only_sees_none_bucket():
         request_remaining=STANDARD_RESOURCE_TYPES,
     )
 
-    alloc = coord.get_reserved_resources("anon")
+    alloc = coord.get_reserved_resources("anon").non_placement_group
     total_cpu = sum(v.get("CPU", 0) for v in alloc.values())
     assert total_cpu == 2, (
         f"unlabeled requester should only see the 2-CPU None bucket; got "
@@ -1169,10 +1197,12 @@ def test_labeled_and_unlabeled_requesters_are_isolated():
     )
 
     train_total = sum(
-        v.get("CPU", 0) for v in coord.get_reserved_resources("train").values()
+        v.get("CPU", 0)
+        for v in coord.get_reserved_resources("train").non_placement_group.values()
     )
     anon_total = sum(
-        v.get("CPU", 0) for v in coord.get_reserved_resources("anon").values()
+        v.get("CPU", 0)
+        for v in coord.get_reserved_resources("anon").non_placement_group.values()
     )
     # Training bucket: 2 x 8 = 16 CPU; anon gets none of it.
     assert train_total == 16
@@ -1191,7 +1221,7 @@ def test_label_selector_unmatched_yields_no_allocation():
         expire_after_s=10,
         request_remaining=STANDARD_RESOURCE_TYPES,
     )
-    assert coord.get_reserved_resources("ghost") == {}
+    assert coord.get_reserved_resources("ghost").non_placement_group == {}
 
 
 def test_label_selector_partial_fit_when_demand_exceeds_capacity():
@@ -1205,7 +1235,9 @@ def test_label_selector_partial_fit_when_demand_exceeds_capacity():
         expire_after_s=10,
     )
     # Validation has one 4-CPU node; only the first 3-CPU bundle fits.
-    assert coord.get_reserved_resources("val") == {"n-val-1": {"CPU": 3}}
+    assert coord.get_reserved_resources("val").non_placement_group == {
+        "n-val-1": {"CPU": 3}
+    }
 
 
 def test_full_tick_exercises_update_merge_reallocate():
@@ -1235,7 +1267,8 @@ def test_full_tick_exercises_update_merge_reallocate():
     # Before the join: only 4 CPU in the training bucket; 1 used explicitly,
     # 3 leftover go to train.
     train_total = sum(
-        v.get("CPU", 0) for v in coord.get_reserved_resources("train").values()
+        v.get("CPU", 0)
+        for v in coord.get_reserved_resources("train").non_placement_group.values()
     )
     assert train_total == 4
 
@@ -1251,7 +1284,8 @@ def test_full_tick_exercises_update_merge_reallocate():
     # Without a tick, the coordinator still sees the old snapshot.
     coord._tick()
     train_total = sum(
-        v.get("CPU", 0) for v in coord.get_reserved_resources("train").values()
+        v.get("CPU", 0)
+        for v in coord.get_reserved_resources("train").non_placement_group.values()
     )
     # Now: 4 + 8 = 12 total; 1 explicit + 11 leftover.
     assert train_total == 12
@@ -1281,8 +1315,8 @@ def test_labeled_requester_with_empty_resources_stays_pinned():
         request_remaining=STANDARD_RESOURCE_TYPES,
     )
 
-    train_idle_alloc = coord.get_reserved_resources("train_idle")
-    val_active_alloc = coord.get_reserved_resources("val_active")
+    train_idle_alloc = coord.get_reserved_resources("train_idle").non_placement_group
+    val_active_alloc = coord.get_reserved_resources("val_active").non_placement_group
 
     # Training bucket: 2 x 8 = 16 CPU, all leftover, all to train_idle.
     train_idle_cpu = sum(v.get("CPU", 0) for v in train_idle_alloc.values())
@@ -1378,21 +1412,21 @@ def _placement_group_table(state, bundles_to_node_id, bundle=None):
         (
             [{"CPU": 1}] * 2,
             _placement_group_table("CREATED", {0: "n2", 1: "n2"}),
-            {"n2": {"CPU": 2}},
+            SplitReservedResources({}, {"n2": {"CPU": 2}}),
             {"n1": {"CPU": 8}, "n2": {"CPU": 6}},
         ),
         # Until the group is created, its bundles are packed as before.
         (
             [{"CPU": 1}] * 2,
             _placement_group_table("PENDING", {0: "", 1: ""}),
-            {"n1": {"CPU": 2}},
+            SplitReservedResources({"n1": {"CPU": 2}}, {}),
             {"n1": {"CPU": 6}, "n2": {"CPU": 8}},
         ),
-        # A leading bundle the group doesn't hold is packed, and stays first.
+        # A leading bundle the group doesn't hold is packed.
         (
             [{"CPU": 2}] + [{"CPU": 1}] * 2,
             _placement_group_table("CREATED", {0: "n2", 1: "n2"}),
-            {"n1": {"CPU": 2}, "n2": {"CPU": 2}},
+            SplitReservedResources({"n1": {"CPU": 2}}, {"n2": {"CPU": 2}}),
             {"n1": {"CPU": 6}, "n2": {"CPU": 6}},
         ),
         # Coverage is by resources, not bundle count: one {CPU: 4} bundle
@@ -1400,14 +1434,14 @@ def _placement_group_table(state, bundles_to_node_id, bundle=None):
         (
             [{"CPU": 1}] * 4,
             _placement_group_table("CREATED", {0: "n2"}, bundle={"CPU": 4}),
-            {"n2": {"CPU": 4}},
+            SplitReservedResources({}, {"n2": {"CPU": 4}}),
             {"n1": {"CPU": 8}, "n2": {"CPU": 4}},
         ),
         # The other way round: 4 x {CPU: 1} cover one {CPU: 4} request.
         (
             [{"CPU": 4}],
             _placement_group_table("CREATED", {0: "n2", 1: "n2", 2: "n2", 3: "n2"}),
-            {"n2": {"CPU": 4}},
+            SplitReservedResources({}, {"n2": {"CPU": 4}}),
             {"n1": {"CPU": 8}, "n2": {"CPU": 4}},
         ),
     ],
@@ -1416,7 +1450,8 @@ def test_placement_group_bundles_reserved_where_placed(
     requested, placement_group_table, expected_train, expected_data
 ):
     """A registered placement group's bundles are reserved on the nodes Ray
-    placed them on, and taken out of everyone else's capacity."""
+    placed them on, reported apart from the packed part, and taken out of
+    everyone else's capacity."""
     coordinator = _AutoscalingCoordinatorActor(
         get_current_time=lambda: 0,
         send_resources_request=Mock(),
@@ -1443,10 +1478,10 @@ def test_placement_group_bundles_reserved_where_placed(
         requester_id="train", placement_group_ids=["pg"]
     )
 
-    train = coordinator.get_reserved_resources("train")
-    assert train == expected_train
-    assert list(train) == list(expected_train)
-    assert coordinator.get_reserved_resources("data") == expected_data
+    assert coordinator.get_reserved_resources("train") == expected_train
+    assert coordinator.get_reserved_resources("data") == SplitReservedResources(
+        expected_data, {}
+    )
 
 
 def test_registered_placement_group_outlives_its_request():
@@ -1478,8 +1513,10 @@ def test_registered_placement_group_outlives_its_request():
 
     # Train's request expires; the group still holds n2's CPUs.
     now[0] = 200
-    assert coordinator.get_reserved_resources("train", recompute=True) == {}
-    assert coordinator.get_reserved_resources("data") == {
+    assert coordinator.get_reserved_resources(
+        "train", recompute=True
+    ) == SplitReservedResources({}, {})
+    assert coordinator.get_reserved_resources("data").non_placement_group == {
         "n1": {"CPU": 8},
         "n2": {"CPU": 6},
     }
@@ -1488,7 +1525,9 @@ def test_registered_placement_group_outlives_its_request():
     placement_group_table["state"] = "REMOVED"
     coordinator.get_reserved_resources("data", recompute=True)
     placement_group_table["state"] = "CREATED"
-    assert coordinator.get_reserved_resources("data", recompute=True) == {
+    assert coordinator.get_reserved_resources(
+        "data", recompute=True
+    ).non_placement_group == {
         "n1": {"CPU": 8},
         "n2": {"CPU": 8},
     }
@@ -1527,11 +1566,11 @@ def test_requester_with_several_placement_groups():
     coordinator.register_placement_groups(
         requester_id="data_a", placement_group_ids=["pg_a", "pg_b"]
     )
-    assert coordinator.get_reserved_resources("data_a") == {
-        "n1": {"CPU": 1},
-        "n2": {"CPU": 2},
-    }
-    assert coordinator.get_reserved_resources("data_b") == {
+    # The groups cover all three bundles, so nothing is packed.
+    assert coordinator.get_reserved_resources("data_a") == SplitReservedResources(
+        {}, {"n1": {"CPU": 1}, "n2": {"CPU": 2}}
+    )
+    assert coordinator.get_reserved_resources("data_b").non_placement_group == {
         "n1": {"CPU": 7},
         "n2": {"CPU": 6},
     }
@@ -1540,7 +1579,9 @@ def test_requester_with_several_placement_groups():
     placement_group_tables["pg_a"]["state"] = "REMOVED"
     coordinator.get_reserved_resources("data_b", recompute=True)
     assert coordinator._placement_group_ids == {"data_a": frozenset({"pg_b"})}
-    assert coordinator.get_reserved_resources("data_b", recompute=True) == {
+    assert coordinator.get_reserved_resources(
+        "data_b", recompute=True
+    ).non_placement_group == {
         "n1": {"CPU": 7},
         "n2": {"CPU": 6},
     }

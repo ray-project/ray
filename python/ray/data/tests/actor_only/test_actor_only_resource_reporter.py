@@ -1,6 +1,5 @@
 """Unit tests for ``ActorOnlyResourceReporter`` and its wiring into the cluster
 autoscaler's utilization gauge. Fakes only; no cluster."""
-import importlib
 import sys
 from types import SimpleNamespace
 from typing import Any, cast
@@ -146,8 +145,10 @@ def test_per_node_allocation_and_change_tracking():
     assert view.labels_by_node == {} and view.pg_bundles == {}
 
 
-def _fake_pg(id_hex: str) -> Any:
-    return SimpleNamespace(id=SimpleNamespace(hex=lambda: id_hex))
+def _fake_pg(id_hex: str, bundle_specs=()) -> Any:
+    return SimpleNamespace(
+        id=SimpleNamespace(hex=lambda: id_hex), bundle_specs=list(bundle_specs)
+    )
 
 
 @pytest.mark.parametrize(
@@ -167,25 +168,37 @@ def test_register_placement_groups(pg_ids, expected):
     assert coordinator.placement_group_ids == expected
 
 
-def test_prefetch_pg_bundles_reads_bundle_nodes(monkeypatch):
-    """The view carries where each bundle was placed; an unplaced bundle has
-    no node."""
-    placement_group_module = importlib.import_module("ray.util.placement_group")
-    monkeypatch.setattr(
-        placement_group_module,
-        "placement_group_table",
-        lambda pg: {
-            "bundles": {0: {"CPU": 1, "GPU": 1}, 1: {"CPU": 1, "GPU": 1}},
-            "bundles_to_node_id": {0: "g1"},
-        },
-    )
+def test_cache_pg_bundle_shapes_reads_bundle_specs():
+    """Shapes come from the group's own bundle specs, in bundle-index order."""
     reporter = ActorOnlyResourceReporter(
         _topology(), FakeAutoscalingCoordinator(), _FakeResourceBank()
     )
-    reporter.prefetch_pg_bundles([_fake_pg("pg1")])
+    reporter.cache_pg_bundle_shapes(
+        [_fake_pg("pg1", [{"CPU": 1, "GPU": 1}, {"CPU": 2}])]
+    )
     view = reporter.get_cluster_view(include_pg_bundles=True)
-    assert view.pg_bundles == {"pg1": [ExecutionResources(cpu=1, gpu=1)] * 2}
-    assert view.pg_bundle_nodes == {"pg1": ["g1", None]}
+    assert view.pg_bundles == {
+        "pg1": [ExecutionResources(cpu=1, gpu=1), ExecutionResources(cpu=2)]
+    }
+
+
+def test_cluster_view_carries_placement_group_part():
+    """``reserved_by_node`` is the whole allocation; ``pg_reserved_by_node``
+    is the part the coordinator says the registered groups hold."""
+    coordinator = FakeAutoscalingCoordinator(
+        initial_cluster_resources_by_node={"g1": {"CPU": 6}, "c1": {"CPU": 8}},
+        placement_group_resources_by_node={"g1": {"CPU": 2, "GPU": 2}},
+    )
+    coordinator.request_resources([{"CPU": 1}], expire_after_s=60)
+    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+
+    view = reporter.get_cluster_view()
+    assert view.reserved_by_node == {
+        "g1": ExecutionResources(cpu=8, gpu=2),
+        "c1": ExecutionResources(cpu=8),
+    }
+    assert view.pg_reserved_by_node == {"g1": ExecutionResources(cpu=2, gpu=2)}
+    assert reporter.get_global_limits() == ExecutionResources(cpu=16, gpu=2)
 
 
 @pytest.mark.parametrize("cpu_running,should_scale_up", [(4.0, False), (8.0, True)])
