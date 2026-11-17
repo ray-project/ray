@@ -137,12 +137,15 @@ class RayEventManager:
 
         """
         futures = list(self.get_futures())
+        if not futures:
+            return
 
         if self._shuffle_futures:
             random.shuffle(futures)
 
-        num_results = num_results or len(futures)
+        num_results = min(num_results or len(futures), len(futures))
 
         ready, _ = ray.wait(list(futures), timeout=timeout, num_returns=num_results)
         for future in ready:
-            self.resolve_future(future)
+            if future in self._tracked_futures:
+                self.resolve_future(future)
