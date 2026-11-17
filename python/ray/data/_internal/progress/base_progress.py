@@ -7,6 +7,7 @@ from typing import Any, List, Optional
 import ray
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.progress.utils import truncate_operator_name
+from ray.data._internal.untrusted_unpickling import ray_get_trusted
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -76,7 +77,9 @@ class BaseProgressBar(ABC):
             if fetch_local:
                 fetch_local = False
             total_rows_processed = 0
-            for ref, result in zip(done, ray.get(done)):
+            # Ray task results, fetched by datasource code that runs under the
+            # unpickling guard (e.g. Parquet sampling, metadata fetches).
+            for ref, result in zip(done, ray_get_trusted(done)):
                 ref_to_result[ref] = result
                 num_rows = _extract_num_rows(result)
                 total_rows_processed += num_rows

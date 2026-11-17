@@ -110,6 +110,36 @@ def test_ray_get_trusted_reads_ray_objects_inside_guard(ray_start_regular_shared
     assert isinstance(out["col"][0].as_py(), Payload)
 
 
+def test_progress_bar_fetch_is_trusted_inside_guard(ray_start_regular_shared):
+    # Datasource constructors fetch Ray task results through
+    # ``fetch_until_complete`` (Parquet sampling, parallel metadata fetches).
+    from ray.data._internal.progress.progress_bar import ProgressBar
+
+    @ray.remote
+    def make():
+        return np.arange(3)
+
+    refs: list = [make.remote()]
+    with forbid_untrusted_unpickling():
+        [out] = ProgressBar("fetch", 1, unit="task").fetch_until_complete(refs)
+    assert out.tolist() == [0, 1, 2]
+
+
+def test_v1_parquet_read_with_sampling(ray_start_regular_shared, tmp_path):
+    # ``ParquetDatasource.__init__`` samples files in Ray tasks and fetches the
+    # pyarrow ``FileMetaData`` results on the guarded driver thread.
+    for i in range(3):
+        pq.write_table(pa.table({"a": [i]}), tmp_path / f"{i}.parquet")
+    ctx = ray.data.DataContext.get_current()
+    prev = ctx.use_datasource_v2
+    ctx.use_datasource_v2 = False
+    try:
+        rows = ray.data.read_parquet(str(tmp_path)).take_all()
+    finally:
+        ctx.use_datasource_v2 = prev
+    assert sorted(r["a"] for r in rows) == [0, 1, 2]
+
+
 def test_autoload_env_var_disables_guard_end_to_end(
     ray_start_regular_shared, monkeypatch, tmp_path
 ):
