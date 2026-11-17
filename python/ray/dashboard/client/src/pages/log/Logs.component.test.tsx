@@ -82,6 +82,27 @@ describe("LogsPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders an error when the nodes request fails", async () => {
+    expect.assertions(1);
+
+    mockGetNodeList.mockRejectedValueOnce(
+      new Error("Request failed with status code 500"),
+    );
+
+    render(
+      <MemoryRouter initialEntries={[{ search: "" }]}>
+        <SWRConfig value={{ provider: () => new Map() }}>
+          <StateApiLogsListPage />
+        </SWRConfig>
+      </MemoryRouter>,
+      { wrapper: STYLE_WRAPPER },
+    );
+
+    expect(
+      await screen.findByText(/Request failed with status code 500/),
+    ).toBeVisible();
+  });
+
   it("renders a list view of files", async () => {
     expect.assertions(6);
 
