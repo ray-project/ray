@@ -401,6 +401,28 @@ class AutoscalingConfigTest(unittest.TestCase):
         assert "head_node" not in prepared_config
         assert "worker_nodes" not in prepared_config
 
+    def testExternalProviderLegacyConfigWithOneLegacyField(self):
+        # A legacy config for an external node provider may set only one of
+        # head_node and worker_nodes; the other takes the default node type.
+        base_config = {
+            "cluster_name": "external",
+            "max_workers": 2,
+            "provider": {"type": "external", "module": "mymodule.MyProvider"},
+            "setup_commands": [],
+            "head_setup_commands": [],
+            "worker_setup_commands": [],
+        }
+        for field in ["head_node", "worker_nodes"]:
+            config = copy.deepcopy(base_config)
+            config[field] = {"InstanceType": "my.instance"}
+            prepared_config = prepare_config(config)
+            node_configs = [
+                node_type.get("node_config")
+                for node_type in prepared_config["available_node_types"].values()
+            ]
+            assert len(node_configs) == 2
+            assert {"InstanceType": "my.instance"} in node_configs
+
     def testMaxWorkerDefault(self):
         # Load config, call prepare config, check that default max_workers
         # is filled correctly for node types that don't specify it.
