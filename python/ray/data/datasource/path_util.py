@@ -3,7 +3,7 @@ import pathlib
 import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
-from urllib.parse import parse_qsl, quote, unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -414,43 +414,6 @@ def _resolve_single_path_with_fallback(
     return resolved_filesystem, resolved_path
 
 
-def _parse_s3_uri_options(path: str) -> Tuple[str, Dict[str, Any]]:
-    """Extract an object path and the connection options accepted in S3 URIs.
-
-    Parse without constructing a filesystem: Arrow's ``from_uri`` can probe AWS
-    before the caller's endpoint and credentials have been applied.
-
-    Args:
-        path: An S3 URI with optional connection settings in its query.
-
-    Returns:
-        A pair of the filesystem-relative object path and URI connection options.
-    """
-    parsed = urlparse(path, allow_fragments=False)
-    if not parsed.netloc:
-        raise ValueError("S3 URI must specify a bucket.")
-
-    options: Dict[str, Any] = {}
-    if parsed.username is not None:
-        options["access_key"] = unquote(parsed.username)
-        options["secret_key"] = unquote(parsed.password or "")
-
-    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
-        if key in ("region", "scheme", "endpoint_override"):
-            options[key] = value
-        elif key in ("allow_bucket_creation", "allow_bucket_deletion"):
-            if value not in ("true", "false"):
-                raise ValueError("Invalid boolean S3 URI option.")
-            options[key] = value == "true"
-        else:
-            raise ValueError("Unsupported S3 URI option.")
-
-    # Remove userinfo before the object URI can reach any downstream helper.
-    netloc = parsed.netloc.rsplit("@", 1)[-1]
-    object_uri = parsed._replace(netloc=netloc, query="").geturl()
-    return unquote(_unwrap_protocol(object_uri)), options
-
-
 def _resolve_paths_and_filesystem(
     paths: Union[str, List[str]],
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -469,11 +432,11 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
         storage_options: Optional PyArrow S3FileSystem keyword arguments. Requires
-            S3 paths and cannot be combined with filesystem. An empty dictionary
-            enables DataContext.s3_filesystem_defaults. URI connection options
-            override those defaults, and explicit options override both. All paths
-            must have the same effective filesystem configuration. None preserves
-            existing inference. Invalid configuration errors omit sensitive values.
+            plain S3 URIs without userinfo or query parameters and cannot be
+            combined with filesystem. An empty dictionary enables
+            DataContext.s3_filesystem_defaults; explicit options override those
+            defaults. None preserves existing inference. Invalid configuration
+            errors omit sensitive values.
 
     Returns:
         A pair ``(resolved_paths, filesystem)``. *resolved_paths* lists the
@@ -506,35 +469,33 @@ def _resolve_paths_and_filesystem(
 
         from ray.data.context import DataContext
 
-        defaults = DataContext.get_current().s3_filesystem_defaults
         resolved_paths = []
-        effective_options: Optional[Dict[str, Any]] = None
         for path in paths:
             try:
-                object_path, uri_options = _parse_s3_uri_options(path)
-                options = {
-                    **defaults,
-                    **uri_options,
+                parsed = urlparse(path, allow_fragments=False)
+                if not parsed.netloc:
+                    raise ValueError("Missing bucket.")
+            except ValueError:
+                raise ValueError("Invalid S3 URI in `paths`.") from None
+            if parsed.username is not None or "?" in path:
+                raise ValueError(
+                    "`storage_options` cannot be combined with URI connection "
+                    "parameters or credentials. Use a plain S3 URI, or omit "
+                    "`storage_options` to use native URI configuration."
+                )
+            resolved_paths.append(unquote(_unwrap_protocol(path)))
+        try:
+            filesystem = S3FileSystem(
+                **{
+                    **DataContext.get_current().s3_filesystem_defaults,
                     **storage_options,
                 }
-            except (TypeError, ValueError, OSError):
-                raise ValueError(
-                    "Invalid `storage_options` or S3 URI options."
-                ) from None
-            if effective_options is not None and options != effective_options:
-                raise ValueError(
-                    "All paths must use the same S3 filesystem configuration."
-                )
-            effective_options = options
-            resolved_paths.append(object_path)
-        assert effective_options is not None
-        try:
-            filesystem = S3FileSystem(**effective_options)
+            )
             resolved_paths = [
                 filesystem.normalize_path(path) for path in resolved_paths
             ]
         except (TypeError, ValueError, OSError):
-            raise ValueError("Invalid `storage_options` or S3 URI options.") from None
+            raise ValueError("Invalid `storage_options`.") from None
         return resolved_paths, filesystem
 
     if any(path.lower().startswith("local:") for path in paths):

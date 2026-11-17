@@ -272,11 +272,13 @@ File read and write APIs accept these options for `s3://` paths. Don't combine
 `storage_options` with `filesystem` or a Parquet `catalog`.
 An empty dictionary applies {class}`~ray.data.DataContext`'s
 `s3_filesystem_defaults`, initially `connect_timeout=10.0` and
-`request_timeout=30.0` seconds. URI connection options override these defaults,
-and per-call options override both. Omit `storage_options` to preserve URI
-inference without applying these defaults. When reading multiple paths, use the
-same effective S3 configuration for every path. Percent-encode `?` in object
-keys to distinguish it from a URI configuration query.
+`request_timeout=30.0` seconds. Per-call options override these defaults.
+
+When you pass `storage_options`, use plain S3 URIs without query parameters or
+userinfo. Configure credentials and connection settings in the dictionary.
+For native URI configuration, omit `storage_options`; this preserves existing
+inference without applying the platform defaults. Percent-encode `?` in object
+keys.
 
 Use `endpoint_override` for an S3-compatible service. Keep credentials out of
 `s3_filesystem_defaults` and `RAY_DATA_S3_FILESYSTEM_DEFAULTS`.

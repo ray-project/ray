@@ -83,6 +83,8 @@ def test_parquet_write_storage_options_rejects_catalog(ray_start_regular_shared)
     [
         ("s3://bucket/output", LocalFileSystem(), "cannot be combined"),
         ("/tmp/output", None, "requires s3://"),
+        ("s3://bucket/output?region=us-west-2", None, "cannot be combined with URI"),
+        ("s3://anonymous@bucket/output", None, "cannot be combined with URI"),
     ],
 )
 def test_file_datasink_rejects_invalid_storage_options_combinations(

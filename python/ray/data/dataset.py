@@ -5049,12 +5049,12 @@ class Dataset:
                 explicit filesystem, these override
                 ``DataContext.s3_filesystem_defaults`` (initially
                 ``connect_timeout=10.0`` and ``request_timeout=30.0`` seconds).
-                An empty dictionary enables those defaults. URI connection
-                options override the defaults, and per-call options override both.
-                None preserves existing inference. Requires ``s3://`` paths and
-                cannot be combined with ``filesystem`` or ``catalog``.
-                Percent-encode ``?`` in object keys to distinguish it from a URI
-                configuration query.
+                An empty dictionary enables those defaults; per-call options
+                override them. None preserves existing inference. Requires plain
+                ``s3://`` URIs without query parameters or userinfo and cannot be
+                combined with ``filesystem`` or ``catalog``. Put connection settings
+                and credentials in ``storage_options``, or omit it to use native
+                URI configuration. Percent-encode ``?`` in object keys.
                 On Linux/Curl, request_timeout is a low-speed/stalled-transfer
                 timeout, not a total request duration limit.
             catalog: An optional :class:`~ray.data.Catalog` (e.g.

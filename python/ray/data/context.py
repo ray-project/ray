@@ -913,9 +913,8 @@ class DataContext:
             overridden by the JSON object in
             ``RAY_DATA_S3_FILESYSTEM_DEFAULTS`` at module import. Empty or
             whitespace-only environment values use the built-in defaults.
-            URI connection options override these defaults, and per-call options
-            override both.
-            Set before creating a Dataset or invoking a file write API. Use only
+            Per-call options override these defaults. Set before creating a
+            Dataset or invoking a file write API. Use only
             non-sensitive connection/performance settings here; pass credentials
             through per-call ``storage_options``. None for ``storage_options``
             preserves historical URI inference without applying these defaults.

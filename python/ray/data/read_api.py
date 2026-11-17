@@ -1799,10 +1799,11 @@ def read_parquet(
             with ``filesystem``. An empty dictionary enables
             ``DataContext.s3_filesystem_defaults`` (initially
             ``connect_timeout=10.0`` and ``request_timeout=30.0`` seconds).
-            URI connection options override the defaults, and per-call options
-            override both. All paths must have the same effective S3 filesystem
-            configuration. Percent-encode ``?`` in object keys to distinguish it
-            from a URI configuration query.
+            Per-call options override the defaults. Paths must be plain S3 URIs
+            without query parameters or userinfo. Put credentials and connection
+            settings in ``storage_options`` instead of the URI, or omit
+            ``storage_options`` to use native URI configuration. Percent-encode
+            ``?`` in object keys.
             None preserves existing filesystem inference. These are
             PyArrow option names, not Lance or Delta SDK storage options.
             On Linux with the AWS SDK Curl backend, ``request_timeout`` controls

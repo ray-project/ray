@@ -12,7 +12,6 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _is_filesystem_compatible_with_scheme,
     _is_local_windows_path,
-    _parse_s3_uri_options,
     _resolve_paths_and_filesystem,
     _resolve_single_path_with_fallback,
     _rewrite_azure_blob_https_url,
@@ -21,26 +20,28 @@ from ray.data.datasource.path_util import (
 from ray.util.annotations import RayDeprecationWarning
 
 
-@pytest.mark.parametrize("override_region", [None, "us-east-2"])
-def test_storage_options_preserves_uri_options_and_path(override_region):
-    from ray.data.context import DataContext
-
-    options = {} if override_region is None else {"region": override_region}
+@pytest.mark.parametrize(
+    "paths",
+    [
+        "s3://bucket/a?region=us-west-2",
+        "s3://bucket/a?connect_timeout=1",
+        "s3://bucket/a?allow_delayed_open=true",
+        "s3://bucket/a?tls_verify_certificates=true",
+        "s3://bucket/a?any_future_option=value",
+        "s3://bucket/a?",
+        "s3://test-access:test-secret@bucket/a",
+        "S3://test-access:test-secret@bucket/a",
+        "s3://anonymous@bucket/a",
+        ["s3://bucket/a", "s3://bucket/b?region=us-west-2"],
+    ],
+)
+def test_storage_options_rejects_uri_configuration(paths):
     native = pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2")
     with mock.patch("pyarrow.fs.S3FileSystem", return_value=native) as constructor:
-        paths, fs = _resolve_paths_and_filesystem(
-            "s3://bucket/a.parquet?region=us-west-2&allow_bucket_creation=true",
-            storage_options=options,
-        )
-    assert paths == ["bucket/a.parquet"]
-    assert fs is native
-    constructor.assert_called_once_with(
-        **{
-            **DataContext.get_current().s3_filesystem_defaults,
-            "region": override_region or "us-west-2",
-            "allow_bucket_creation": True,
-        }
-    )
+        with pytest.raises(ValueError, match="cannot be combined with URI") as exc:
+            _resolve_paths_and_filesystem(paths, storage_options={})
+    constructor.assert_not_called()
+    assert "test-secret" not in str(exc.value)
 
 
 @pytest.mark.parametrize(
@@ -56,71 +57,61 @@ def test_storage_options_decodes_uri_object_keys(key, expected):
     assert paths == [f"bucket/{expected}"]
 
 
-def test_storage_options_preserves_uri_connection_options():
-    native = pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2")
-    with mock.patch("pyarrow.fs.S3FileSystem", return_value=native) as constructor:
-        paths, _ = _resolve_paths_and_filesystem(
-            "s3://bucket/a?scheme=http&endpoint_override=localhost%3A9000"
-            "&allow_bucket_deletion=false",
-            storage_options={"endpoint_override": "localhost:9001"},
-        )
-    assert paths == ["bucket/a"]
-    assert constructor.call_args.kwargs["scheme"] == "http"
-    assert constructor.call_args.kwargs["endpoint_override"] == "localhost:9001"
-    assert constructor.call_args.kwargs["allow_bucket_deletion"] is False
-
-
-def test_storage_options_none_preserves_uri_query_inference():
+def test_storage_options_constructor_accepts_additional_options():
     paths, fs = _resolve_paths_and_filesystem(
-        "s3://test-access:test-secret@bucket/a.parquet?region=us-west-2",
-        storage_options=None,
+        "s3://bucket/a",
+        storage_options={
+            "anonymous": True,
+            "region": "us-west-2",
+            "allow_delayed_open": True,
+        },
     )
-    assert paths == ["bucket/a.parquet"]
-    assert fs.region == "us-west-2"
+    assert paths == ["bucket/a"]
+    assert fs.__reduce__()[1][0]["allow_delayed_open"] is True
 
 
-@pytest.mark.parametrize("scheme", ["s3", "S3"])
 @pytest.mark.parametrize(
-    "userinfo", ["test-access:test-secret", "test%2Daccess:test%2Dsecret"]
+    "query",
+    [
+        "region=us-west-2",
+        "region=us-west-2&allow_delayed_open=1",
+        "region=us-west-2&tls_verify_certificates=true",
+        "region=us-west-2&smart_defaults=standard",
+    ],
 )
-def test_storage_options_strips_userinfo_before_unwrapping(
-    monkeypatch, scheme, userinfo
-):
-    unwrap = mock.Mock(wraps=_unwrap_protocol)
-    monkeypatch.setattr("ray.data.datasource.path_util._unwrap_protocol", unwrap)
-    path, options = _parse_s3_uri_options(
-        f"{scheme}://{userinfo}@bucket/a?region=us-west-2"
-    )
-    assert path == "bucket/a"
-    assert options == {
-        "access_key": "test-access",
-        "secret_key": "test-secret",
-        "region": "us-west-2",
-    }
-    unwrap.assert_called_once_with("s3://bucket/a")
+def test_storage_options_none_preserves_uri_query_inference(query):
+    uri = f"s3://test-access:test-secret@bucket/a.parquet?{query}"
+    native_fs, native_path = pyarrow.fs.FileSystem.from_uri(uri)
+    paths, fs = _resolve_paths_and_filesystem(uri, storage_options=None)
+    assert paths == [native_path]
+    assert fs.equals(native_fs)
 
 
 @pytest.mark.parametrize("scheme", ["s3", "S3"])
-def test_storage_options_preserves_uri_credentials(scheme):
+def test_storage_options_passes_credentials_to_constructor(scheme):
     from ray.data.context import DataContext
 
+    options = {
+        "region": "us-west-2",
+        "access_key": "test-access",
+        "secret_key": "test-secret",
+    }
     native = pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2")
     with mock.patch("pyarrow.fs.S3FileSystem", return_value=native) as constructor:
         paths, _ = _resolve_paths_and_filesystem(
-            f"{scheme}://test-access:test-secret@bucket/a?region=us-west-2",
-            storage_options={"secret_key": "test-override"},
+            f"{scheme}://bucket/a", storage_options=options
         )
     assert paths == ["bucket/a"]
     constructor.assert_called_once_with(
-        **DataContext.get_current().s3_filesystem_defaults,
-        region="us-west-2",
-        access_key="test-access",
-        secret_key="test-override",
+        **{**DataContext.get_current().s3_filesystem_defaults, **options}
     )
 
 
 @pytest.mark.parametrize("options", [{}, {"connect_timeout": 0.5}])
-def test_storage_options_anonymous_uri_requests_are_unsigned(monkeypatch, options):
+@pytest.mark.parametrize("anonymous", [True, False])
+def test_storage_options_requests_match_native_inference(
+    monkeypatch, options, anonymous
+):
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from types import SimpleNamespace
@@ -136,12 +127,23 @@ def test_storage_options_anonymous_uri_requests_are_unsigned(monkeypatch, option
     signed_requests = []
 
     class Handler(BaseHTTPRequestHandler):
-        def do_HEAD(self):
-            signed_requests.append("Authorization" in self.headers)
-            self.send_response(200)
+        def respond(self, with_body):
+            signed_requests.append((self.command, "Authorization" in self.headers))
+            ranged = with_body and bool(self.headers.get("Range"))
+            self.send_response(206 if ranged else 200)
             self.send_header("Content-Length", "1")
             self.send_header("Last-Modified", "Tue, 17 Nov 2026 00:00:00 GMT")
+            if ranged:
+                self.send_header("Content-Range", "bytes 0-0/1")
             self.end_headers()
+            if with_body:
+                self.wfile.write(b"x")
+
+        def do_HEAD(self):
+            self.respond(False)
+
+        def do_GET(self):
+            self.respond(True)
 
         def log_message(self, *args):
             pass
@@ -152,58 +154,43 @@ def test_storage_options_anonymous_uri_requests_are_unsigned(monkeypatch, option
     )
     worker.start()
     try:
-        query = urlencode(
-            {
-                "region": "us-west-2",
-                "scheme": "http",
-                "endpoint_override": f"127.0.0.1:{server.server_port}",
-            }
+        connection = {
+            "region": "us-west-2",
+            "scheme": "http",
+            "endpoint_override": f"127.0.0.1:{server.server_port}",
+        }
+        credentials = (
+            {"anonymous": True}
+            if anonymous
+            else {"access_key": "testing", "secret_key": "testing"}
         )
-        uri = f"s3://anonymous@bucket/a?{query}"
-        paths, filesystem = _resolve_paths_and_filesystem(uri, storage_options=options)
+        paths, filesystem = _resolve_paths_and_filesystem(
+            "s3://bucket/a", storage_options={**connection, **credentials, **options}
+        )
+        userinfo = "anonymous" if anonymous else "testing:testing"
+        uri = f"s3://{userinfo}@bucket/a?{urlencode(connection)}"
         inferred, inferred_path = pyarrow.fs.FileSystem.from_uri(uri)
         for fs, path in ((filesystem, paths[0]), (inferred, inferred_path)):
             signed_requests.clear()
             info = fs.get_file_info(path)
             assert info.type == pyarrow.fs.FileType.File
-            assert signed_requests
-            assert not any(signed_requests)
+            with fs.open_input_file(path) as stream:
+                assert stream.read() == b"x"
+            assert {"HEAD", "GET"} <= {method for method, _ in signed_requests}
+            assert all(signed != anonymous for _, signed in signed_requests)
     finally:
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
 
 
-@pytest.mark.parametrize("override_region", [None, "us-east-2"])
-def test_storage_options_requires_one_effective_uri_configuration(override_region):
-    paths = [
-        "s3://bucket/a?region=us-west-2",
-        "s3://bucket/b?region=us-east-1",
-    ]
-    native = pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2")
-    with mock.patch("pyarrow.fs.S3FileSystem", return_value=native) as constructor:
-        if override_region is None:
-            with pytest.raises(ValueError, match="same S3 filesystem configuration"):
-                _resolve_paths_and_filesystem(paths, storage_options={})
-            constructor.assert_not_called()
-        else:
-            resolved, fs = _resolve_paths_and_filesystem(
-                paths, storage_options={"region": override_region}
-            )
-            assert resolved == ["bucket/a", "bucket/b"]
-            assert fs is native
-            assert constructor.call_args.kwargs["region"] == override_region
-
-
-@pytest.mark.parametrize(
-    "query", ["allow_bucket_creation=test-marker", "unsupported_option=test-marker"]
-)
-def test_storage_options_invalid_uri_is_sanitized(query):
-    with pytest.raises(ValueError, match="Invalid `storage_options`") as exc:
-        _resolve_paths_and_filesystem(
-            f"s3://test-access:test-marker@bucket/a?{query}", storage_options={}
-        )
-    assert "test-marker" not in str(exc.value)
+@pytest.mark.parametrize("path", ["s3:///a", "s3://test-secret@[invalid/a"])
+def test_storage_options_invalid_uri_is_sanitized(path):
+    with mock.patch("pyarrow.fs.S3FileSystem") as constructor:
+        with pytest.raises(ValueError, match="Invalid S3 URI") as exc:
+            _resolve_paths_and_filesystem(path, storage_options={})
+    constructor.assert_not_called()
+    assert "test-secret" not in str(exc.value)
     assert exc.value.__suppress_context__
 
 
