@@ -255,6 +255,10 @@ kuberay-operator-75f455bdff-vq4b8   1/1     Running   0          12s
 
 ## Step 4: Create the RayCluster in the primary cluster
 
+:::{note}
+The `kubectl` commands in the following steps create the RayClusters in the current namespace of your kubeconfig context. This guide assumes that it's the `default` namespace. If your context uses another namespace, add `--namespace default` to those `kubectl` commands.
+:::
+
 The RayCluster in the primary cluster needs no special configuration. Create one from the basic sample:
 
 ```bash
