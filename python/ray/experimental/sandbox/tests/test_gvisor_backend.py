@@ -1807,6 +1807,8 @@ def test_render_egress_ruleset_empty_allowlist_keeps_only_dns():
 def test_write_egress_ruleset_defaults_to_public_dns_and_adds_the_guard(
     tmp_path, monkeypatch
 ):
+    # The built-in resolvers, whatever this node sets.
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
     monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
     path = _write_egress_ruleset(str(tmp_path), ["10.0.0.0/8"], None)
     assert path == str(tmp_path / "egress.nft")
@@ -1818,6 +1820,17 @@ def test_write_egress_ruleset_defaults_to_public_dns_and_adds_the_guard(
     assert "10.96.0.1/32" in always_denied and always_denied.endswith(" drop")
     # Written atomically: no temp file remains.
     assert [p.name for p in tmp_path.iterdir()] == ["egress.nft"]
+
+
+def test_write_egress_ruleset_allows_the_node_default_resolvers(tmp_path, monkeypatch):
+    """The egress filter lets DNS reach the resolvers RAY_SANDBOX_DEFAULT_DNS
+    names, and no longer the public ones."""
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "103.247.36.36")
+    _write_egress_ruleset(str(tmp_path), ["internet"], None)
+    text = (tmp_path / "egress.nft").read_text()
+    assert "ip daddr 103.247.36.36 udp dport 53 accept" in text
+    for server in DEFAULT_PUBLIC_DNS:
+        assert f"ip daddr {server} udp dport 53 accept" not in text
 
 
 def test_write_egress_ruleset_writes_nothing_with_a_bad_denylist(tmp_path, monkeypatch):
@@ -2534,6 +2547,72 @@ def test_netns_unreachable_dns_resolver_fails_the_create(ensure_slirp4netns):
         )
     assert backend._sandbox_metadata == {}
     assert _slirp4netns_pids() == before
+
+
+def test_the_node_default_resolvers_are_checked_until_a_sandbox_reaches_them(
+    monkeypatch,
+):
+    """RAY_SANDBOX_DEFAULT_DNS gets the check that a sandbox's own dns gets,
+    so a resolver that no sandbox can reach fails creates instead of every
+    lookup. It's the same for every sandbox, so one success is enough."""
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    probed, deleted = [], []
+    # Whether the probe ran, and what it couldn't reach.
+    answer = [(True, ("10.0.0.2", "Operation not permitted"))]
+    monkeypatch.setattr(
+        backend,
+        "_probe_resolvers",
+        lambda sandbox_id, resolvers: probed.append(resolvers) or answer[0],
+    )
+    monkeypatch.setattr(backend, "delete_sandbox", deleted.append)
+    public = GVisorSandboxConfig(image="busybox:latest", network="public")
+
+    # The built-in resolvers aren't checked.
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
+    backend._check_dns_reachable(public, "sb-1")
+    assert probed == []
+
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.0.0.2")
+    with pytest.raises(
+        SandboxCreationError, match="RAY_SANDBOX_DEFAULT_DNS resolver 10.0.0.2 isn't"
+    ):
+        backend._check_dns_reachable(public, "sb-1")
+    assert deleted == ["sb-1"]
+    # A probe that couldn't run proves nothing: the next sandbox checks again.
+    answer[0] = (False, None)
+    backend._check_dns_reachable(public, "sb-2")
+    answer[0] = (True, None)
+    backend._check_dns_reachable(public, "sb-3")
+    backend._check_dns_reachable(public, "sb-4")  # Reached once: not again.
+    assert probed == [["10.0.0.2"]] * 3
+
+    # A sandbox's own dns is checked each time.
+    own = GVisorSandboxConfig(
+        image="busybox:latest", network="public", dns=["10.0.0.9"]
+    )
+    backend._check_dns_reachable(own, "sb-5")
+    backend._check_dns_reachable(own, "sb-6")
+    assert probed[3:] == [["10.0.0.9"]] * 2
+
+
+def test_a_bad_node_default_resolver_fails_the_create_before_the_image_pull(
+    monkeypatch,
+):
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "127.0.0.53")
+    monkeypatch.setattr(gvisor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    # The recording image manager fails a pull with another error.
+    with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_DEFAULT_DNS"):
+        backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", network="public")
+        )
+    # A sandbox with its own dns doesn't read the node's default.
+    with pytest.raises(Exception, match="pull failed"):
+        backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest", network="public", dns=["10.0.0.2"]
+            )
+        )
 
 
 def _nft_ruleset(*nsenter_target: str) -> tuple:
