@@ -26,11 +26,16 @@ def _lost_error() -> ObjectLostError:
 # ---------------------------------------------------------------------------
 
 
+def _done_call(error, aborted_for_reconstruction=False):
+    """What ``_recording_done_callback`` records for one done-callback call."""
+    return {"error": error, "aborted_for_reconstruction": aborted_for_reconstruction}
+
+
 def _recording_done_callback(done_calls):
     """A done-callback that records the error and abort flag of each call."""
 
     def task_done_callback(exc, worker_stats, driver_stats, aborted):
-        done_calls.append({"error": exc, "aborted_for_reconstruction": aborted})
+        done_calls.append(_done_call(exc, aborted))
 
     return task_done_callback
 
@@ -62,19 +67,19 @@ def test_mark_aborted_fires_the_done_callback_exactly_once():
     error = _lost_error()
 
     task.mark_aborted(error)
-    assert done_calls == [{"error": error, "aborted_for_reconstruction": False}]
+    assert done_calls == [_done_call(error)]
     assert task.has_finished
 
     # A repeat abort doesn't run the done-callback again.
     task.mark_aborted(error)
-    assert done_calls == [{"error": error, "aborted_for_reconstruction": False}]
+    assert done_calls == [_done_call(error)]
 
     done_calls.clear()
     task = _abortable_task(_recording_done_callback(done_calls))
     task.mark_done()
     task.mark_aborted(error)
     # Only the normal completion fired, with no error.
-    assert done_calls == [{"error": None, "aborted_for_reconstruction": False}]
+    assert done_calls == [_done_call(None)]
 
 
 def test_aborted_drained_task_runs_done_callback_once():
@@ -90,7 +95,7 @@ def test_aborted_drained_task_runs_done_callback_once():
 
     fetcher._fire_done_callbacks()
 
-    assert done_calls == [{"error": error, "aborted_for_reconstruction": False}]
+    assert done_calls == [_done_call(error)]
     assert task not in fetcher._drained_tasks
 
 
@@ -108,7 +113,7 @@ def test_started_reconstruction_aborts_for_reconstruction():
     _reconstruct_lost_object({}, tracker, MagicMock(), task, lost_error)
 
     assert task.has_finished
-    assert done_calls == [{"error": lost_error, "aborted_for_reconstruction": True}]
+    assert done_calls == [_done_call(lost_error, aborted_for_reconstruction=True)]
 
 
 # ---------------------------------------------------------------------------
