@@ -157,6 +157,9 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
                 return
 
             lifecycle_request_id = get_serve_request_id() or request_id
+            # TODO (jeffreywang): Track per request, not per generate call. Beam
+            # search runs many generate calls, so the first one frees the
+            # request's load early.
             tracker = RequestTokenTracker(forwarder, lifecycle_request_id)
             try:
                 async for output in stream:
