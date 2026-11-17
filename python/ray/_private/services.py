@@ -922,7 +922,11 @@ def start_ray_process(
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
-        avoid_preexec_fn: If true, start the process without a preexec_fn
+        avoid_preexec_fn: If true, start the process without a preexec_fn, so
+            that no Python code runs in the forked child. SIGINT is still
+            blocked in the child. Must not be combined with fate_share, since
+            kernel-level fate-sharing is set up in the preexec_fn. Ignored on
+            Windows.
 
     Returns:
         Information about the process that was started including a handle to
@@ -1072,6 +1076,8 @@ def start_ray_process(
             )
 
     if avoid_preexec_fn:
+        # Blocks SIGINT in the child, which inherits the signal mask of this
+        # thread.
         old_sigmask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
     try:
         process = ConsolePopen(
@@ -2534,11 +2540,11 @@ def start_ray_client_server(
     # server. A preexec_fn would run Python code in a forked copy of the
     # proxier, which can crash on gRPC state that other threads were in the
     # middle of changing. Without the preexec_fn there is no kernel
-    # fate-sharing; instead the server exits when the proxier dies and its end
-    # of the stdin pipe closes.
+    # fate-sharing; instead the server is passed the pid of the proxier and
+    # exits when the proxier does.
     avoid_preexec_fn = server_type == "specific-server" and sys.platform != "win32"
     if avoid_preexec_fn:
-        command.append("--exit-on-stdin-eof")
+        command.append(f"--proxier-pid={os.getpid()}")
 
     process_info = start_ray_process(
         command,
@@ -2547,7 +2553,6 @@ def start_ray_client_server(
         stderr_file=stderr_file,
         fate_share=fate_share and not avoid_preexec_fn,
         env_updates=env_updates,
-        pipe_stdin=avoid_preexec_fn,
         avoid_preexec_fn=avoid_preexec_fn,
     )
     return process_info
