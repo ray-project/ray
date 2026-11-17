@@ -11164,7 +11164,97 @@ class TestReconcilerMultiHost:
                 for k in ("b0", "b1", "i0", "i1")
                 if ambig_t2[k].status == Instance.RAY_STOP_REQUESTED
             ]
+            kept = [k for k in ("b0", "b1", "i0", "i1") if k not in stopped]
             assert len(stopped) == 2
+
+            # Advance the 2 stopped hosts through raylet exit -> pod deletion ->
+            # TERMINATED, then verify the 2 surviving lid-shared hosts stay
+            # schedulable (0 launches for a 1-host TPU task) and idle-reclaimable.
+            id_by_key = {"b0": b0_id, "b1": b1_id, "i0": i0_id, "i1": i1_id}
+            surviving_nodes = [
+                NodeState(
+                    node_id=head_id,
+                    instance_id="head-pod",
+                    status=NodeStatus.RUNNING,
+                ),
+                *[
+                    _tpu_node(id_by_key[k], f"pod-{k}", busy=False, idle_ms=0)
+                    for k in kept
+                ],
+            ]
+            Reconciler.reconcile(
+                instance_manager=im_ambig,
+                scheduler=ResourceDemandScheduler(),
+                cloud_provider=provider,
+                ray_cluster_resource_state=ClusterResourceState(
+                    node_states=surviving_nodes
+                ),
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=min2_cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            rem_cloud = {
+                cid: ci
+                for cid, ci in cloud_instances.items()
+                if cid not in {f"pod-{k}" for k in stopped}
+            }
+            provider.launch.reset_mock()
+            Reconciler.reconcile(
+                instance_manager=im_ambig,
+                scheduler=ResourceDemandScheduler(),
+                cloud_provider=provider,
+                ray_cluster_resource_state=ClusterResourceState(
+                    node_states=surviving_nodes,
+                    pending_resource_requests=[
+                        ResourceRequestByCount(
+                            request=ResourceRequestUtil.make({"TPU": 4}),
+                            count=1,
+                        )
+                    ],
+                ),
+                non_terminated_cloud_instances=rem_cloud,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=min2_cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            ambig_t4, _ = store_ambig.get_instances()
+            assert all(ambig_t4[k].status == Instance.TERMINATED for k in stopped)
+            assert all(ambig_t4[k].status == Instance.RAY_RUNNING for k in kept)
+            provider.launch.assert_not_called()
+
+            Reconciler.reconcile(
+                instance_manager=im_ambig,
+                scheduler=ResourceDemandScheduler(),
+                cloud_provider=provider,
+                ray_cluster_resource_state=ClusterResourceState(
+                    node_states=[
+                        NodeState(
+                            node_id=head_id,
+                            instance_id="head-pod",
+                            status=NodeStatus.RUNNING,
+                        ),
+                        *[
+                            _tpu_node(
+                                id_by_key[k], f"pod-{k}", busy=False, idle_ms=20_000
+                            )
+                            for k in kept
+                        ],
+                    ]
+                ),
+                non_terminated_cloud_instances=rem_cloud,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            ambig_t5, _ = store_ambig.get_instances()
+            assert all(ambig_t5[k].status == Instance.RAY_STOP_REQUESTED for k in kept)
         finally:
             reset_log_once()
 
