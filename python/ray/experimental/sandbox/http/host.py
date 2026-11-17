@@ -212,6 +212,9 @@ class SandboxHost:
         spec: Sandbox creation spec (validated request data).
         settings: Server limits (``max_output_bytes``, ``max_exec_history``).
         runtime_factory: Test seam; defaults to ``SandboxRuntime``.
+        on_exit: Called instead of killing this actor once the sandbox is
+            gone (terminate or TTL), for a host that shares its actor with
+            other sandboxes (``SandboxNodeHost``).
     """
 
     def __init__(
@@ -220,8 +223,10 @@ class SandboxHost:
         spec: SandboxSpec,
         settings: HostSettings,
         runtime_factory: Optional[Callable[[], "SandboxRuntime"]] = None,
+        on_exit: Optional[Callable[[], None]] = None,
     ) -> None:
         self._sandbox_id = sandbox_id
+        self._on_exit = on_exit
         self._spec = spec
         self._max_output_bytes = int(settings.get("max_output_bytes", 10 * 1024**2))
         self._max_exec_history = int(settings.get("max_exec_history", 256))
@@ -398,11 +403,16 @@ class SandboxHost:
     def _self_destruct(self) -> None:
         """Kill this actor so the TTL reclaims its name and reservation.
 
+        A hosted sandbox (``on_exit`` set) leaves its shared host instead.
+
         ``ray.kill`` on the self-handle (rather than ``exit_actor``) because
         the watchdog runs as a self-spawned asyncio task, outside any Ray
         method invocation, where ``exit_actor``'s control-flow exception has
         nothing to catch it. No-op outside an actor (unit tests).
         """
+        if self._on_exit is not None:
+            self._on_exit()
+            return
         try:
             import ray
 
