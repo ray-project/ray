@@ -935,10 +935,10 @@ class AsyncioRouter:
         replica_id: ReplicaID,
         internal_request_id: str,
         replica_actor_id: Optional[ray.ActorID],
+        release_running: Callable[[], None],
         result: Union[Any, RayError],
     ) -> None:
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
+        release_running()
 
         # Notify request router that request completed (for cleanup, e.g., token release)
         if self.request_router:
@@ -1068,7 +1068,7 @@ class AsyncioRouter:
                 # Proactively update the queue length cache.
                 self._active_request_router.on_send_request(replica.replica_id)
 
-            self._register_completion_callback(result, replica, pr)
+            release_running = self._register_completion_callback(result, replica, pr)
             callback_registered = True
 
             if not with_rejection:
@@ -1095,9 +1095,12 @@ class AsyncioRouter:
             # Without this, same-loop (means the router is running on the main event loop,
             # where the DeploymentHandle lives) gRPC streaming results are
             # never consumed (no background drain task exists in that mode).
-            # The call stays open, the running request counter is never decremented,
-            # and the autoscaler sees load that blocks downscaling.
+            # The call stays open and its done callbacks never run.
             result.cancel()
+            # Stop counting it as running now rather than when its done callback runs,
+            # or a metrics sample taken once the retry queues it again would count it
+            # twice.
+            release_running()
 
         except asyncio.CancelledError:
             # NOTE(edoakes): this is not strictly necessary because there are
@@ -1552,14 +1555,26 @@ class AsyncioRouter:
 
     def _register_completion_callback(
         self, result: ReplicaResult, replica: RunningReplica, pr: PendingRequest
-    ) -> None:
+    ) -> Callable[[], None]:
         """Count this request as in-flight and register the cleanup
-        callback fired when the result completes or is cancelled.
+        callback fired when the result completes or is cancelled. Returns a
+        function that stops counting it; that function and the callback
+        decrement the count once between them.
         """
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+        counted = RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+        if counted:
             self._metrics_manager.inc_num_running_requests_for_replica(
                 replica.replica_id
             )
+
+        def release_running() -> None:
+            nonlocal counted
+            if counted:
+                counted = False
+                self._metrics_manager.dec_num_running_requests_for_replica(
+                    replica.replica_id
+                )
+
         # Always register callback to notify router when request completes
         # (needed for token release in queue-based routing, metrics tracking, etc.)
         # NOTE: add_done_callback fires from a C++ worker thread (for actor
@@ -1572,10 +1587,12 @@ class AsyncioRouter:
             replica.replica_id,
             pr.metadata.internal_request_id,
             replica.actor_id,
+            release_running,
         )
         result.add_done_callback(
             lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
         )
+        return release_running
 
     def _register_decrement_queue_len_cache_callback(
         self, result: ReplicaResult, replica_id: ReplicaID

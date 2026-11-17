@@ -979,6 +979,70 @@ class TestAssignRequest:
             assert fake_request_router.replica_queue_len_cache.get(r1_id) == 10
             assert fake_request_router.replica_queue_len_cache.get(r2_id) == 20
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Tests handle metrics behavior.",
+    )
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_strict_max_ongoing_requests": True}],
+        indirect=True,
+    )
+    async def test_rejected_request_not_counted_running_while_requeued(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """A rejected request stops counting as running before the retry queues it
+        again, not when its done callback later runs, so no metrics sample sees it
+        as both. The done callback then does not decrement it a second time."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="test-replica-1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="test-replica-2", deployment_id=d_id)
+        replica1 = FakeReplica(
+            r1_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=False, num_ongoing_requests=5
+            ),
+        )
+        replica2 = FakeReplica(
+            r2_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=True, num_ongoing_requests=1
+            ),
+        )
+        fake_request_router.set_replica_to_return(replica1)
+        fake_request_router.set_replica_to_return_on_retry(replica2)
+        rejected_results = []
+        send_to_replica1 = replica1.try_send_request
+
+        def capture_result(pr, with_rejection):
+            rejected_results.append(send_to_replica1(pr, with_rejection))
+            return rejected_results[-1]
+
+        replica1.try_send_request = capture_result
+        metrics_manager = router._metrics_manager
+        counts_on_retry = []
+        choose_replica = fake_request_router._choose_replica_for_request
+
+        async def record_counts_on_retry(pr, *, is_retry=False):
+            if is_retry:
+                counts_on_retry.append(
+                    (
+                        metrics_manager.num_queued_requests,
+                        metrics_manager.num_requests_sent_to_replicas[r1_id],
+                    )
+                )
+            return await choose_replica(pr, is_retry=is_retry)
+
+        fake_request_router._choose_replica_for_request = record_counts_on_retry
+        await router.assign_request(dummy_request_metadata())
+        # Queued again for the retry, and no longer running on the rejecting replica.
+        assert counts_on_retry == [(1, 0)]
+        rejected_results[0].fire_done_callbacks()
+        await asyncio.sleep(0)
+        assert metrics_manager.num_requests_sent_to_replicas[r1_id] == 0
+        assert metrics_manager.num_requests_sent_to_replicas[r2_id] == 1
+
     @pytest.mark.parametrize(
         "setup_router",
         [{"enable_strict_max_ongoing_requests": True}],
