@@ -525,6 +525,7 @@ class Worker:
 
     @property
     def original_visible_accelerator_ids(self):
+        """Lazily resolve visible accelerator IDs to avoid pre-fork SDK/env probes."""
         if self._original_visible_accelerator_ids is None:
             self._original_visible_accelerator_ids = (
                 ray._private.utils.get_visible_accelerator_ids()
