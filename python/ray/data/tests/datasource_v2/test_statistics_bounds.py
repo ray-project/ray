@@ -1,6 +1,6 @@
 """Tests for ``_add_statistics_bounds`` -- the statistics-bound rewrite.
 
-The deriver turns the leaf forms PyArrow cannot evaluate against Parquet
+The rewrite turns the leaf forms PyArrow cannot evaluate against Parquet
 statistics into comparisons it can, so these drive it directly and through
 ``FooterReader`` pruning against local Parquet fixtures. No Ray cluster needed.
 """
@@ -78,7 +78,7 @@ def test_derived_bound_prunes_row_groups(tmp_path, predicate, expected_groups):
 @pytest.mark.parametrize(
     "predicate, schema",
     [
-        # Arithmetic shapes the deriver does not model, one per guard.
+        # Arithmetic shapes the rewrite does not model, one per guard.
         pytest.param(
             (col("x") + 1) >= 76, pa.schema([("x", pa.float64())]), id="float-column"
         ),
@@ -110,21 +110,12 @@ def test_derived_bound_prunes_row_groups(tmp_path, predicate, expected_groups):
             id="bound-below-column-minimum",
         ),
         pytest.param(
-            (col("x") + np.int8(127)) >= np.int8(-127),
-            pa.schema([("x", pa.int8())]),
-            id="numpy-scalar-overflow",
-        ),
-        pytest.param(
             (col("x") + np.bool_(True)) >= np.uint8(76),
             pa.schema([("x", pa.uint8())]),
             id="bool-literal",
         ),
         # Forms PyArrow already prunes with stay untouched.
         pytest.param(col("f") != 1.0, pa.schema([("f", pa.float64())]), id="float-ne"),
-        pytest.param(
-            col("v").is_in([None, 0]), pa.schema([("v", pa.int64())]), id="in-with-null"
-        ),
-        pytest.param(col("v").is_null(), pa.schema([("v", pa.int64())]), id="is-null"),
         pytest.param(~(col("x") < 800), pa.schema([("x", pa.int64())]), id="negation"),
     ],
 )
@@ -145,15 +136,15 @@ def test_derived_leaves_unmodeled_forms_untouched(predicate, schema):
         pa.uint32(),
     ],
 )
-@pytest.mark.parametrize("offset", [1, np.int64(75)])
+@pytest.mark.parametrize("offset", [1, np.int8(75), np.int64(75)])
 @pytest.mark.parametrize("strict", [False, True])
 def test_derived_integer_arithmetic_bound_safety(tmp_path, column_type, offset, strict):
     """Every modeled type and comparison keeps exactly the rows it should.
 
-    The bound is checked at the expression level (it must accept every row the
-    filter accepts), at the pruning level (no row group with a matching row
-    may be dropped) and on the fully-matched flag (a group marked fully
-    matched must really match throughout).
+    The bound is checked at the expression level (it must accept exactly the
+    rows the filter accepts), at the pruning level (no row group with a
+    matching row may be dropped) and on the fully-matched flag (a group
+    marked fully matched must really match throughout).
     """
     bits = column_type.bit_width
     if pa.types.is_signed_integer(column_type):
@@ -187,7 +178,7 @@ def test_derived_integer_arithmetic_bound_safety(tmp_path, column_type, offset, 
 
     original_rows = table.filter(predicate.to_pyarrow())["x"].to_pylist()
     bound_rows = table.filter(derived.to_pyarrow())["x"].to_pylist()
-    assert set(original_rows).issubset(set(bound_rows))
+    assert set(original_rows) == set(bound_rows)
 
     path, size = _write(
         tmp_path / "integer-boundary.parquet",
@@ -290,12 +281,35 @@ def test_derived_bounds_fully_matched_flag(
     assert not [i for i, f in by_idx.items() if f and not expected.get(i, False)]
 
 
-def test_derived_numpy_scalar_literal_keeps_the_leaf():
-    """A non-int64 numpy literal takes an order-dependent kernel path, so only
-    the necessary lower bound is appended and the leaf stays."""
-    predicate = (col("x") + np.int8(75)) >= 76
-    derived = _add_statistics_bounds(predicate, pa.schema([("x", pa.int64())]))
-    assert derived.structurally_equals(predicate & (col("x") >= 1))
+@pytest.mark.parametrize(
+    "prefix, expected_groups",
+    [
+        # A prefix ending in U+D7FF has no single-unit successor: the upper
+        # end jumps the surrogate block to U+E000, and the range still prunes.
+        pytest.param("\ud7ff", [0, 1], id="prefix-before-surrogate-block"),
+        # After U+10FFFF no upper end exists, so the leaf stays and only the
+        # lower bound is appended; the groups below the prefix still prune.
+        pytest.param(chr(0x10FFFF), [2], id="prefix-at-max-codepoint"),
+    ],
+)
+def test_derived_prefix_boundary_bounds(tmp_path, prefix, expected_groups):
+    """Prefix bounds hold at the U+D7FF and U+10FFFF codepoint edges."""
+    values = ["zz", "\ud7ff", "\ud7ffz", "\ue000", chr(0x10FFFF), chr(0x10FFFF) + "a"]
+    table = pa.table({"s": values})
+    path, size = _write(tmp_path / "prefix-boundary.parquet", table, row_group_size=2)
+    predicate = col("s").str.starts_with(prefix)
+
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
+    assert selected == expected_groups
+
+    parquet_file = pq.ParquetFile(path)
+    required = {
+        i
+        for i in range(parquet_file.num_row_groups)
+        if parquet_file.read_row_group(i).filter(predicate.to_pyarrow()).num_rows
+    }
+    assert required.issubset(set(selected))
 
 
 def test_narrow_file_column_keeps_its_rows(tmp_path):

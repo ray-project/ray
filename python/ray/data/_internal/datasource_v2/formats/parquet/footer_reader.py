@@ -40,6 +40,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
 )
 from ray.data._internal.datasource_v2.formats.parquet.statistics_bounds import (
     _add_statistics_bounds,
+    _has_modelable_leaf,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
@@ -179,6 +180,10 @@ class FooterReader:
         self.filter: "pc.Expression" | None = (
             filter_expr.to_pyarrow() if filter_expr is not None else None
         )
+        # Whether the predicate holds a leaf shape the statistics bounds
+        # rewrite models. A predicate PyArrow already prunes by itself skips
+        # the rewrite, and with it the rewrite's per-file schema conversion.
+        self._has_modelable_leaves = _has_modelable_leaf(self._predicate)
         # Top-level columns the predicate reads. A row group whose value in any
         # of them may be a null or a NaN cannot be an exact-survivor count --
         # see ``_rg_can_fully_match``.
@@ -349,6 +354,8 @@ class FooterReader:
         if predicate is None:
             return None
         plain = self.filter if predicate is self._predicate else predicate.to_pyarrow()
+        if not self._has_modelable_leaves:
+            return plain
         try:
             return _add_statistics_bounds(
                 predicate, schema.to_arrow_schema()
@@ -488,13 +495,10 @@ class FooterReader:
             # predicate negation: a group is fully matched iff
             # ~filter cannot match any of its rows, i.e. the negation prunes it
             # out. For those, num_rows is an exact survivor count and can drive
-            # the limit push-down. The test runs on the rewritten filter: every
-            # row it passes the original passes too, so a group it covers
-            # entirely is fully matched by the original as well, and -- unlike
-            # ~original -- ~prune_filter stays evaluable for the modeled
-            # leaves, whose arithmetic and prefix forms PyArrow cannot reason
-            # about. Any failure defaults to "not fully matched",
+            # the limit push-down. Any failure defaults to "not fully matched",
             # which is always safe (falls back to the post-filter stop).
+            # ``prune_filter`` matches the same rows as the original, and its
+            # negation can prune where ``~original`` cannot.
             not_fully_ids = self._try_split_by_row_group(fragment, ~prune_filter, path)
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a

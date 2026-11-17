@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
+
+from ray.data.expressions import (
+    BinaryExpr,
+    ColumnExpr,
+    LiteralExpr,
+    Operation,
+    PyArrowComputeUDFExpr,
+    UnaryExpr,
+)
 
 if TYPE_CHECKING:
     from ray.data.expressions import Expr
+
+# U+D800..U+DFFF are surrogates, which valid strings never contain, so
+# lexicographic order jumps from U+D7FF straight to U+E000.
+_SURROGATE_RANGE = range(0xD800, 0xDFFF + 1)
 
 
 def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
@@ -26,8 +41,6 @@ def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
     Every other form is returned untouched: PyArrow already prunes plain
     comparisons, null checks and membership by itself.
     """
-    from ray.data.expressions import BinaryExpr, Operation, UnaryExpr
-
     if isinstance(expr, BinaryExpr) and expr.op in (Operation.AND, Operation.OR):
         left = _add_statistics_bounds(expr.left, schema)
         right = _add_statistics_bounds(expr.right, schema)
@@ -35,9 +48,9 @@ def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
             return expr
         return left & right if expr.op == Operation.AND else left | right
 
-    # NOT recurses: a bound prunes only through comparisons the leaf itself
-    # implies, so the rewritten negation never prunes a group ~leaf could
-    # keep, while staying evaluable where ~leaf does not.
+    # NOT recurses: each rewrite matches exactly the rows its leaf matches,
+    # so ~rewritten is ~leaf -- the negation never prunes a group the leaf's
+    # negation keeps, while staying evaluable where ~leaf does not.
     if isinstance(expr, UnaryExpr) and expr.op == Operation.NOT:
         operand = _add_statistics_bounds(expr.operand, schema)
         if operand is expr.operand:
@@ -57,8 +70,6 @@ def _bound_addition_comparison(expr: Expr, schema: pa.Schema) -> Expr | None:
     Returns None for any other shape, and for additions whose bound would
     not hold at the column's width (an out-of-range or bool/float literal).
     """
-    from ray.data.expressions import BinaryExpr, ColumnExpr, LiteralExpr, Operation
-
     if not (
         isinstance(expr, BinaryExpr)
         and expr.op in (Operation.GE, Operation.GT)
@@ -123,26 +134,17 @@ def _bound_addition_comparison(expr: Expr, schema: pa.Schema) -> Expr | None:
         return None
 
     lower = column >= threshold - offset_val
-    if pa.types.is_int64(pa.scalar(offset).type):
-        if pa.types.is_signed_integer(value_type):
-            # A file column can be narrower than the schema the filter runs
-            # at (an int8 file next to int64 files), where sums past
-            # max_value do not wrap -- the range alone would drop rows, so
-            # the leaf stays and the evaluation decides.
-            return (expr & lower) | (lower & (column <= max_value - offset_val))
+    if pa.types.is_unsigned_integer(value_type) and pa.types.is_int64(
+        pa.scalar(offset).type
+    ):
         # Unsigned kernels promote to int64, so the lower side alone is exact.
         return lower
-    # Other numpy scalar types take order-dependent kernel paths; only the
-    # necessary lower bound is appended.
-    return expr & lower
+    # Rows where x + c overflows the file's type are left to the leaf.
+    return (expr & lower) | (lower & (column <= max_value - offset_val))
 
 
 def _bound_starts_with(expr: Expr, schema: pa.Schema) -> Expr | None:
     """``str.starts_with(col, p)`` as the string range the prefix spans."""
-    import pyarrow.compute as pc
-
-    from ray.data.expressions import ColumnExpr, PyArrowComputeUDFExpr
-
     if not (
         isinstance(expr, PyArrowComputeUDFExpr)
         and expr.pc_func is pc.starts_with
@@ -164,7 +166,7 @@ def _bound_starts_with(expr: Expr, schema: pa.Schema) -> Expr | None:
             or pa.types.is_large_string(schema.field(idx).type)
         )
         and isinstance(prefix, str)
-        and not any(0xD800 <= ord(ch) <= 0xDFFF for ch in prefix)
+        and not any(ord(ch) in _SURROGATE_RANGE for ch in prefix)
     ):
         return None
 
@@ -175,7 +177,7 @@ def _bound_starts_with(expr: Expr, schema: pa.Schema) -> Expr | None:
     lower = column >= prefix
     last = ord(prefix[-1])
 
-    if last == 0x10FFFF:
+    if last == sys.maxunicode:
         # No next codepoint exists, so no exact upper end can be given. Keep
         # the leaf and append the lower side, which is still equivalent to
         # the leaf; the negation just stays unevaluable, like the leaf itself.
@@ -185,3 +187,23 @@ def _bound_starts_with(expr: Expr, schema: pa.Schema) -> Expr | None:
     # surrogate), so skip the whole surrogate block.
     next_char = "\ue000" if last == 0xD7FF else chr(last + 1)
     return lower & (column < prefix[:-1] + next_char)
+
+
+def _has_modelable_leaf(expr: Expr | None) -> bool:
+    """Whether the predicate holds a leaf shape the rewrite models.
+
+    A cheap walk over the filter, resolved once per reader: predicates
+    PyArrow already prunes by itself skip the rewrite, and with it the
+    per-file schema conversion the rewrite reads its column types from.
+    """
+    if expr is None:
+        return False
+    if isinstance(expr, BinaryExpr):
+        if expr.op == Operation.ADD:
+            # The addition sits inside a comparison the rewrite may model;
+            # whether that comparison has a safe bound is its call.
+            return True
+        return _has_modelable_leaf(expr.left) or _has_modelable_leaf(expr.right)
+    if isinstance(expr, UnaryExpr):
+        return _has_modelable_leaf(expr.operand)
+    return isinstance(expr, PyArrowComputeUDFExpr) and expr.pc_func is pc.starts_with

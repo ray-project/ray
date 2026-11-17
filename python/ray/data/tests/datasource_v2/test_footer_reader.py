@@ -881,10 +881,10 @@ class TestReadFootersBatching:
 def test_plain_comparison_runs_one_split_pass(four_row_groups, monkeypatch):
     """A plain comparison is pruned in one pass, not split twice.
 
-    The deriver returns forms PyArrow can already evaluate unchanged, so the
-    pruning split runs on the plain filter alone. Regression for the redundant
-    second ``split_by_row_group`` run flagged in review: the same expression
-    used to be evaluated against the same statistics twice.
+    The rewrite returns forms PyArrow can already evaluate unchanged, so the
+    pruning split runs on the plain filter alone. Regression for a redundant
+    second ``split_by_row_group`` run: the same expression used to be
+    evaluated against the same statistics twice.
     """
     from ray.data._internal.datasource_v2.formats.parquet import footer_reader
 
@@ -907,11 +907,37 @@ def test_plain_comparison_runs_one_split_pass(four_row_groups, monkeypatch):
     assert len(calls) == 2
 
 
+def test_plain_comparison_skips_the_bounds_rewrite(four_row_groups, monkeypatch):
+    """A filter without a modeled leaf never reaches the statistics rewrite.
+
+    The check runs once per reader; without it, the rewrite -- and the file
+    schema conversion it reads its column types from -- ran for every file,
+    which was the price of pruning a plain ``col("id") >= 50`` on wide files.
+    """
+    from ray.data._internal.datasource_v2.formats.parquet import footer_reader
+
+    calls = []
+    monkeypatch.setattr(
+        footer_reader, "_add_statistics_bounds", lambda *args: calls.append(args)
+    )
+
+    path, size = four_row_groups
+    chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(FileInfo(path, size))
+    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
+    assert calls == []
+
+
 @pytest.mark.parametrize("stage", ["derivation", "conversion"])
 def test_derived_predicate_failure_falls_back_to_original(
     four_row_groups, monkeypatch, stage
 ):
-    """A deriver failure keeps every row group, like a filter PyArrow rejects."""
+    """A rewrite failure must not leak out of the footer read.
+
+    The reader falls back to the plain predicate, which for an arithmetic
+    filter PyArrow cannot evaluate against statistics, so every row group
+    survives -- the same outcome an unevaluable filter gets without the
+    rewrite.
+    """
     from ray.data._internal.datasource_v2.formats.parquet import footer_reader
 
     if stage == "derivation":
@@ -933,9 +959,9 @@ def test_derived_predicate_failure_falls_back_to_original(
         )
 
     path, size = four_row_groups
-    predicate = col("id") >= 50
+    predicate = (col("id") + 1) >= 50
     chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
-    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
+    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
 
 
 if __name__ == "__main__":
