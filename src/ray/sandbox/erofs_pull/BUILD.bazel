@@ -49,6 +49,15 @@ cmake(
     # Make, not Ninja; see bazel/rocksdb.BUILD.
     generate_args = ["-GUnix Makefiles"],
     lib_source = "@erofs_pull_crates__rapidgzip-sys-1.2.1//:native_srcs",
+    # rapidgzip is C++. The link of erofs_pull must name libstdc++ after
+    # these libraries: devtoolset's libstdc++ (manylinux) puts the symbols
+    # newer than the system's libstdc++.so.6 in a static
+    # libstdc++_nonshared.a, which only resolves references made before it.
+    # libc follows for what that archive needs from libc_nonshared.a.
+    linkopts = [
+        "-lstdc++",
+        "-lc",
+    ],
     # Static libraries resolve left to right: the C API, then what it uses.
     out_static_libs = [
         "librapidgzip-capi.a",
