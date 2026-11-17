@@ -1,4 +1,4 @@
-    anyscale>=0.26.110
+    anyscale>=0.26.117
     packaging
     azure-identity
     adlfs[abfs]
