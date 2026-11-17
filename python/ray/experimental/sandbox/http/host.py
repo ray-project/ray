@@ -565,8 +565,19 @@ class SandboxHost:
             "error": self._error,
         }
 
-    async def describe(self, wait_seconds: float = 0.0) -> Dict[str, Any]:
-        """Report sandbox state, optionally long-polling while it boots."""
+    async def describe(
+        self, wait_seconds: float = 0.0, until_booted: bool = False
+    ) -> Dict[str, Any]:
+        """Report sandbox state, optionally long-polling while it boots.
+
+        Args:
+            wait_seconds: How long to wait while the sandbox boots.
+            until_booted: Wait until the sandbox runs or fails rather than
+                for its next status change, such as pulling to starting.
+
+        Returns:
+            The sandbox's state.
+        """
         if self._status == "running" and not self._terminating:
             reason = await asyncio.to_thread(
                 self._runtime.get_termination_reason, self._instance_id
@@ -574,12 +585,20 @@ class SandboxHost:
             if reason is not None:
                 self._error = reason
                 self._set_status("error")
-        if wait_seconds > 0 and self._status in _BOOTING_STATUSES:
-            event = self._status_changed
-            try:
-                await asyncio.wait_for(event.wait(), timeout=wait_seconds)
-            except asyncio.TimeoutError:
-                pass
+        if wait_seconds > 0:
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + wait_seconds
+            while self._status in _BOOTING_STATUSES:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                event = self._status_changed
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    break
+                if not until_booted:
+                    break
         return self._info()
 
     # ------------------------------------------------------------------
