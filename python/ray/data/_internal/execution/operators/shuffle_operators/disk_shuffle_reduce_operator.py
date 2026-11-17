@@ -28,6 +28,8 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
+    _KeyRangeSources,
+    _PartitionSources,
     handle_from_block,
     teardown_disk_shuffle,
 )
@@ -48,6 +50,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
+from ray.data._internal.execution.operators.sort_shuffle import plan_range_partitions
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -65,6 +68,7 @@ from ray.types import ObjectRef
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +126,16 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         return self._partition_bytes_by_input
 
     @property
+    def partition_sizes_exact(self) -> bool:
+        """Whether the row counts in the emitted bundles are exact, so that a
+        zero-row partition can be answered without a reduce task."""
+        return True
+
+    def source_selector(self, partition_id: int):
+        """What the reduce task for ``partition_id`` reads from each mapper file."""
+        return _PartitionSources(partition_id)
+
+    @property
     def is_synchronization_barrier(self) -> bool:
         # Every partition's bundle needs every writer's handle.
         return True
@@ -146,6 +160,11 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
             counts = handle.get(key)
             if counts is not None:
                 tallies[input_index] += np.asarray(counts, dtype=np.int64)
+        self._record_schema_and_file_server(handle, input_index)
+
+    def _record_schema_and_file_server(
+        self, handle: Mapping[str, Any], input_index: int
+    ) -> None:
         if self._schema_by_input[input_index] is None:
             self._schema_by_input[input_index] = handle.get("schema")
         shuffle_id = handle.get("shuffle_id")
@@ -153,10 +172,14 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         if shuffle_id and node_id:
             self._file_servers.add((shuffle_id, node_id))
 
+    def _finalize_partitions(self) -> None:
+        """Called once every handle is in, before the partition bundles are built."""
+
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
         if not any(self._handle_refs_by_input):
             return
+        self._finalize_partitions()
         shared_handles = [ray.put(refs) for refs in self._handle_refs_by_input]
         for partition_id in range(self._num_partitions):
             entries = tuple(
@@ -223,6 +246,96 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         self._handle_refs_by_input = [[] for _ in range(self.num_inputs)]
 
 
+class DiskRangeShuffleRegroupOp(DiskHashShuffleRegroupOp):
+    """Regroup for the disk sort shuffle, whose writers (``DiskSortRunWriteFn``)
+    sort their input and write it whole, as the range boundaries are not known
+    while they run. Once every handle is in, this op computes the boundaries
+    from the handles' key samples (or takes the user's), estimates each
+    partition's rows and bytes from the same samples, and emits one bundle per
+    partition. Its reduce tasks read the chunks of every run that overlap the
+    partition's key range (``_KeyRangeSources``).
+
+    Partition sizes are estimates, so every partition runs a reduce task; one
+    with no rows emits an empty block from the task.
+    """
+
+    def __init__(
+        self,
+        input_op: PhysicalOperator,
+        data_context: DataContext,
+        *,
+        num_partitions: int,
+        sort_key: "SortKey",
+        boundaries: Optional[List[Tuple]] = None,
+        name: str = "DiskRangeShuffleRegroup",
+    ):
+        super().__init__(
+            [input_op], data_context, num_partitions=num_partitions, name=name
+        )
+        self._sort_key = sort_key
+        self._user_boundaries = boundaries
+        self._boundaries: Optional[List[Tuple]] = None
+        self._key_samples: List[pa.Table] = []
+        self._rows_per_sample: List[float] = []
+        self._bytes_per_sample: List[float] = []
+        self._total_rows = 0
+
+    @property
+    def boundaries(self) -> Optional[List[Tuple]]:
+        return self._boundaries
+
+    @property
+    def partition_sizes_exact(self) -> bool:
+        # With no rows at all every partition is exactly empty.
+        return self._inputs_complete and self._total_rows == 0
+
+    def source_selector(self, partition_id: int) -> _KeyRangeSources:
+        assert (
+            self._boundaries is not None
+        ), "boundaries are computed at all_inputs_done"
+        lower = self._boundaries[partition_id - 1] if partition_id > 0 else None
+        upper = (
+            self._boundaries[partition_id]
+            if partition_id < len(self._boundaries)
+            else None
+        )
+        return _KeyRangeSources(self._sort_key, lower, upper)
+
+    def _record_handle(self, handle: Mapping[str, Any], input_index: int) -> None:
+        assert input_index == 0
+        sample: pa.Table = handle["key_sample"]
+        num_rows = int(handle["run_num_rows"])
+        self._total_rows += num_rows
+        if sample.num_rows > 0:
+            self._key_samples.append(sample)
+            self._rows_per_sample.append(num_rows / sample.num_rows)
+            self._bytes_per_sample.append(
+                int(handle["run_decoded_bytes"]) / sample.num_rows
+            )
+        self._record_schema_and_file_server(handle, input_index)
+
+    def _finalize_partitions(self) -> None:
+        boundaries, rows, nbytes = plan_range_partitions(
+            self._key_samples,
+            self._rows_per_sample,
+            self._bytes_per_sample,
+            self._sort_key,
+            self._num_partitions,
+            boundaries=self._user_boundaries,
+        )
+        self._boundaries = boundaries
+        self._partition_rows_by_input[0] = rows
+        self._partition_bytes_by_input[0] = nbytes
+        self._key_samples.clear()
+        self._rows_per_sample.clear()
+        self._bytes_per_sample.clear()
+
+    def num_output_rows_total(self) -> Optional[int]:
+        if self._inputs_complete:
+            return self._total_rows
+        return super().num_output_rows_total()
+
+
 class DiskHashShuffleReduceOp(PhysicalOperator):
     """Disk-shuffle reduce operator.
 
@@ -266,6 +379,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             data_context=data_context,
         )
 
+        self._regroup_op: DiskHashShuffleRegroupOp = input_op
         self._num_inputs: int = input_op.num_inputs
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
@@ -345,6 +459,8 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         """
         if self._num_inputs != 1 or self._fused_output_map_transformer is not None:
             return False
+        if not self._regroup_op.partition_sizes_exact:
+            return False
         if not isinstance(refs.schema, pa.Schema):
             return False
         if refs.blocks[0].metadata.num_rows:
@@ -387,6 +503,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         block_gen = _disk_shuffle_reduce_task.options(**reduce_options).remote(
             *handles_refs,  # pyrefly: ignore[bad-argument-type]
             partition_id=partition_id,
+            source_selector=self._regroup_op.source_selector(partition_id),
             reduce_fn=self._reduce_fn,
             max_bytes_per_fetch=self._max_bytes_per_fetch,
             fetch_threads=self._fetch_threads,
@@ -546,9 +663,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             self._shuffle_reduce_tasks.clear()
             self._output_queue.clear()
             self._held_partition_outputs.clear()
-            regroup_op = self.input_dependencies[0]
-            assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
-            regroup_op.teardown()
+            self._regroup_op.teardown()
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._output_blocks_stats}
@@ -575,9 +690,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator: the
         average non-empty partition's request, as for ShuffleReduceOp."""
-        regroup_op = self.input_dependencies[0]
-        assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
-        total_bytes = np.asarray(sum(regroup_op.partition_bytes_by_input))
+        total_bytes = np.asarray(sum(self._regroup_op.partition_bytes_by_input))
         non_empty = total_bytes[total_bytes > 0]
         memory = (
             int(non_empty.mean() * self._peak_memory_multiplier)

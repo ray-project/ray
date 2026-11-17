@@ -14,6 +14,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import (
+    TYPE_CHECKING,
     BinaryIO,
     Dict,
     Iterable,
@@ -41,6 +42,9 @@ from ray.exceptions import (
     ActorUnschedulableError,
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+if TYPE_CHECKING:
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +166,21 @@ class ShuffleHandle(TypedDict, total=False):
     num_partitions: int
     total_bytes: int
     compression: Optional[str]
+    # Sorted-run handles (``_write_disk_sort_run``) carry a chunk index in
+    # place of ``index_ranges``: row ``c`` is ``(offset, length)`` of chunk
+    # ``c`` of the run, in sort order. ``chunk_first_keys`` has one row per
+    # chunk (the sort-key columns of its first row), ``chunk_num_rows`` and
+    # ``chunk_decoded_bytes`` one entry per chunk.
+    chunk_index: "np.ndarray"  # shape [num_chunks, 2], int64
+    chunk_first_keys: "pa.Table"
+    chunk_num_rows: "np.ndarray"  # shape [num_chunks], int64
+    chunk_decoded_bytes: "np.ndarray"  # shape [num_chunks], int64
+    # Every k-th key of the run (sort-key columns), for the regroup's
+    # boundary computation; ``run_num_rows`` / ``run_decoded_bytes`` are its
+    # weights.
+    key_sample: "pa.Table"
+    run_num_rows: int
+    run_decoded_bytes: int
 
 
 class _Endpoint(NamedTuple):
@@ -783,18 +802,112 @@ def _handle_batch_size(handles: List["ray.ObjectRef"], batch_bytes: int) -> int:
     return max(1, min(len(handles), batch_bytes // per_handle))
 
 
+class _PartitionSources:
+    """Picks a reducer's bytes out of hash-partitioned mapper files: row
+    ``partition_id`` of each handle's ``index_ranges``, which is the whole of
+    this partition's frame, so decoded tables need no trimming."""
+
+    __slots__ = ("_partition_id",)
+
+    def __init__(self, partition_id: int):
+        self._partition_id = partition_id
+
+    def ranges_for(self, handle: "ShuffleHandle") -> List[Tuple[int, int]]:
+        # Only this row materializes as a Python range; the rest of the dense
+        # index stays a (zero-copy) numpy buffer.
+        off, length = handle["index_ranges"][self._partition_id]
+        return [(int(off), int(length))] if length > 0 else []
+
+    def trim(self, tables: List[pa.Table]) -> List[pa.Table]:
+        return tables
+
+
+class _KeyRangeSources:
+    """Picks a reducer's bytes out of sorted-run mapper files: the chunks of
+    each run that can hold keys in ``[lower, upper)`` (either end ``None`` for
+    an open range), located through the handle's ``chunk_first_keys``. The
+    first and last chunk picked may straddle a bound, so ``trim`` cuts the
+    decoded run back to the range with the same key comparison the mapper
+    sorted by."""
+
+    __slots__ = ("_sort_key", "_lower", "_upper")
+
+    def __init__(
+        self,
+        sort_key: "SortKey",
+        lower: Optional[Tuple],
+        upper: Optional[Tuple],
+    ):
+        self._sort_key = sort_key
+        self._lower = lower
+        self._upper = upper
+
+    def ranges_for(self, handle: "ShuffleHandle") -> List[Tuple[int, int]]:
+        chunk_index = handle["chunk_index"]
+        num_chunks = len(chunk_index)
+        if num_chunks == 0:
+            return []
+        first_keys = handle["chunk_first_keys"]
+        # Chunks whose first key is below ``upper`` may hold rows of the
+        # range; of those, the last chunk whose first key is below ``lower``
+        # may hold rows of the range too (``lower`` falls inside it).
+        start = 0
+        if self._lower is not None:
+            start = max(
+                0, _sorted_insertion_index(first_keys, self._lower, self._sort_key) - 1
+            )
+        end = num_chunks
+        if self._upper is not None:
+            end = _sorted_insertion_index(first_keys, self._upper, self._sort_key)
+        return [(int(off), int(length)) for off, length in chunk_index[start:end]]
+
+    def trim(self, tables: List[pa.Table]) -> List[pa.Table]:
+        """Drop the rows outside the range from a run's fetched chunks. Only
+        the first chunk can hold rows below ``lower`` and only the last rows
+        at or above ``upper``; the chunks between are inside the range."""
+        if not tables:
+            return tables
+        tables = list(tables)
+        if self._lower is not None:
+            tables[0] = _split_sorted(tables[0], self._lower, self._sort_key)[1]
+        if self._upper is not None:
+            tables[-1] = _split_sorted(tables[-1], self._upper, self._sort_key)[0]
+        return [t for t in tables if t.num_rows > 0]
+
+
+def _split_sorted(
+    table: pa.Table, boundary: Tuple, sort_key: "SortKey"
+) -> Tuple[pa.Table, pa.Table]:
+    """Split a table sorted by ``sort_key`` into the rows before ``boundary``
+    and the rows from it, with the range partitioner's own key comparison."""
+    from ray.data.block import BlockAccessor
+
+    if table.num_rows == 0:
+        return table, table
+    before, after = BlockAccessor.for_block(table)._find_partitions_sorted(
+        [boundary], sort_key
+    )
+    return before, after
+
+
+def _sorted_insertion_index(
+    table: pa.Table, boundary: Tuple, sort_key: "SortKey"
+) -> int:
+    """Number of rows of a table sorted by ``sort_key`` that precede ``boundary``."""
+    return _split_sorted(table, boundary, sort_key)[0].num_rows
+
+
 def _handles_to_sources(
     handles: List["ray.ObjectRef"],
-    partition_id: int,
+    selector: Union[_PartitionSources, _KeyRangeSources],
     batch_bytes: int = _DEFAULT_HANDLE_BATCH_BYTES,
 ) -> Tuple[List[_SourceRef], Optional[pa.Schema]]:
-    """Extract per-partition source refs from a reducer's input handle blocks.
+    """Extract a reducer's source refs from its input handle blocks.
 
-    Resolves handle-block refs in ≈``batch_bytes`` batches, reads this partition's row
-    out of each handle's dense range index, then frees the batch — so in-flight
-    handle memory stays constant, not O(maps × partitions). Skips handles with
-    ``index_ranges[p].length == 0`` (no on-disk frame); picks the first
-    non-None schema.
+    Resolves handle-block refs in ≈``batch_bytes`` batches, asks ``selector``
+    for the byte ranges to read from each handle's file, then frees the batch,
+    so in-flight handle memory stays constant, not O(maps × partitions).
+    Skips handles with nothing to read; picks the first non-None schema.
     """
     sources: List[_SourceRef] = []
     output_schema: Optional[pa.Schema] = None
@@ -809,19 +922,13 @@ def _handles_to_sources(
             handle = handle_from_block(block)
             if output_schema is None:
                 output_schema = handle.get("schema")
-            # Dense index: partition_id is the row; only this row materializes
-            # as a Python range, the rest stay as (zero-copy) numpy buffers.
-            off, length = handle["index_ranges"][partition_id]
-            length = int(length)
-            if length > 0:
+            ranges = selector.ranges_for(handle)
+            if ranges:
                 sources.append(
                     _SourceRef(
                         shuffle_id=handle["shuffle_id"],
                         node_id=handle["node_id"],
-                        file=_FileRanges(
-                            path=handle["path"],
-                            ranges=[(int(off), length)],
-                        ),
+                        file=_FileRanges(path=handle["path"], ranges=ranges),
                     )
                 )
     return sources, output_schema

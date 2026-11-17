@@ -12,7 +12,10 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_operator import (  # noqa: E501
     SortSamplingOp,
 )
-from ray.data._internal.execution.operators.sort_shuffle import make_range_partition_fn
+from ray.data._internal.execution.operators.sort_shuffle import (
+    make_range_partition_fn,
+    user_boundaries,
+)
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data.context import DataContext
 
@@ -26,10 +29,7 @@ class SortRangePartitioner:
 
     Boundaries come from the user (``sort_key.boundaries``), are empty when there
     is a single partition, or are read from the upstream ``SortSamplingOp`` the
-    first time an input arrives. ``SortShuffleMapOp`` resolves them per input;
-    the disk writer (see ``_plan_sort_v2``) ships the partitioner itself as its
-    partition fn, resolved once on the first input before the map tasks pick
-    it up.
+    first time an input arrives; ``SortShuffleMapOp`` resolves them per input.
     """
 
     def __init__(
@@ -47,26 +47,17 @@ class SortRangePartitioner:
         self._boundaries: Optional[List] = None
         self._partition_fn: PartitionFn = _uninitialized_partition_fn
 
-        user_boundaries = self._user_boundaries(sort_key)
-        if user_boundaries is None and num_partitions == 1:
+        boundaries = user_boundaries(sort_key)
+        if boundaries is None and num_partitions == 1:
             # One partition: every row goes to it, nothing to sample.
-            user_boundaries = []
-        if user_boundaries is None and not isinstance(input_op, SortSamplingOp):
+            boundaries = []
+        if boundaries is None and not isinstance(input_op, SortSamplingOp):
             raise ValueError(
                 "Sort shuffle map requires either user-provided boundaries "
                 "or a SortSamplingOp"
             )
-        if user_boundaries is not None:
-            self._set_boundaries(user_boundaries)
-
-    @staticmethod
-    def _user_boundaries(sort_key: SortKey) -> Optional[List]:
-        if not sort_key.boundaries:
-            return None
-        boundaries = [(boundary,) for boundary in sort_key.boundaries]
-        if sort_key.get_descending()[0]:
-            boundaries.reverse()
-        return boundaries
+        if boundaries is not None:
+            self._set_boundaries(boundaries)
 
     @property
     def boundaries(self) -> Optional[List]:

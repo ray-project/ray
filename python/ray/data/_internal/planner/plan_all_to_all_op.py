@@ -1,5 +1,6 @@
 import functools
 import logging
+import math
 import secrets
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -28,6 +29,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
     DiskHashShuffleRegroupOp,
+    DiskRangeShuffleRegroupOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
     disk_shuffle_dirs,
@@ -35,6 +37,7 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runti
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
     BlockTransformer,
     DiskShuffleWriteFn,
+    DiskSortRunWriteFn,
     PartitionFn,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
@@ -47,13 +50,16 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
 from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_operator import (  # noqa: E501
+    SORT_SAMPLE_ROWS_PER_BLOCK,
     SortSamplingOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
-    SortRangePartitioner,
     SortShuffleMapOp,
 )
-from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
+from ray.data._internal.execution.operators.sort_shuffle import (
+    make_sort_reduce_fn,
+    user_boundaries,
+)
 from ray.data._internal.logical.interfaces import HashPartitioning
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
@@ -65,6 +71,7 @@ from ray.data._internal.logical.operators import (
     TopN,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
@@ -114,17 +121,94 @@ def plan_disk_hash_shuffle_map(
     Returns:
         The map operator writing this shuffle's mapper files.
     """
+    return _plan_disk_shuffle_writer(
+        input_op,
+        data_context,
+        make_write_fn=lambda map_dir, shuffle_id: DiskShuffleWriteFn(
+            partition_fn=partition_fn,
+            num_partitions=num_partitions,
+            out_dir=map_dir,
+            shuffle_id=shuffle_id,
+            compression=data_context.shuffle_compression,
+            block_transformer=block_transformer,
+        ),
+        map_cpus=map_cpus,
+        name=name,
+        on_start=on_start,
+    )
+
+
+def plan_disk_sort_shuffle_map(
+    input_op: PhysicalOperator,
+    data_context: DataContext,
+    *,
+    num_partitions: int,
+    sort_key: SortKey,
+    estimated_num_input_blocks: Optional[int] = None,
+    map_cpus: float = ShuffleMapOp._DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
+    name: str = "DiskSortShuffleMap",
+) -> MapOperator:
+    """Plan the disk sort shuffle's map stage: a task-pool ``MapOperator``
+    whose transform sorts each input bundle into one local file, written
+    whole in chunks (``DiskSortRunWriteFn``), and yields a one-row handle
+    block for ``DiskRangeShuffleRegroupOp``. Nothing waits for range
+    boundaries: the regroup computes them from the handles' key samples.
+
+    Args:
+        input_op: Upstream physical operator.
+        data_context: Runtime configuration.
+        num_partitions: Total number of output partitions.
+        sort_key: Sort columns and directions; validated against the first
+            input's schema before any task runs.
+        estimated_num_input_blocks: Sizes each task's key sample so the
+            dataset contributes about ``SORT_SAMPLE_POINTS_PER_PARTITION``
+            samples per partition, as the object-store sort samples.
+        map_cpus: CPU request per map task.
+        name: Display name of the map operator.
+
+    Returns:
+        The map operator writing this sort's run files.
+    """
+    if estimated_num_input_blocks:
+        sample_rows = math.ceil(
+            SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION
+            * num_partitions
+            / estimated_num_input_blocks
+        )
+    else:
+        sample_rows = SORT_SAMPLE_ROWS_PER_BLOCK
+    return _plan_disk_shuffle_writer(
+        input_op,
+        data_context,
+        make_write_fn=lambda map_dir, shuffle_id: DiskSortRunWriteFn(
+            sort_key=sort_key,
+            num_partitions=num_partitions,
+            sample_rows=max(1, sample_rows),
+            max_chunk_bytes=data_context.target_max_block_size,
+            out_dir=map_dir,
+            shuffle_id=shuffle_id,
+            compression=data_context.shuffle_compression,
+        ),
+        map_cpus=map_cpus,
+        name=name,
+        on_start=sort_key.validate_schema,
+    )
+
+
+def _plan_disk_shuffle_writer(
+    input_op: PhysicalOperator,
+    data_context: DataContext,
+    *,
+    make_write_fn: Callable[[str, str], Callable],
+    map_cpus: float,
+    name: str,
+    on_start: Optional[Callable[[Optional[pa.Schema]], None]],
+) -> MapOperator:
+    """A task-pool ``MapOperator`` running the block transform
+    ``make_write_fn(map_dir, shuffle_id)`` builds, for a fresh shuffle id."""
     shuffle_id = secrets.token_hex(8)
     map_dir, _ = disk_shuffle_dirs(shuffle_id)
-
-    write_fn = DiskShuffleWriteFn(
-        partition_fn=partition_fn,
-        num_partitions=num_partitions,
-        out_dir=map_dir,
-        shuffle_id=shuffle_id,
-        compression=data_context.shuffle_compression,
-        block_transformer=block_transformer,
-    )
+    write_fn = make_write_fn(map_dir, shuffle_id)
     return MapOperator.create(
         MapTransformer([BlockMapTransformFn(write_fn, disable_block_shaping=True)]),
         input_op,
@@ -159,6 +243,42 @@ def plan_disk_hash_shuffle_reduce(
     input_ops = [input_op] if isinstance(input_op, PhysicalOperator) else input_op
     regroup_op = DiskHashShuffleRegroupOp(
         input_ops, data_context, num_partitions=num_partitions
+    )
+    return DiskHashShuffleReduceOp(
+        regroup_op, data_context, num_partitions=num_partitions, **reduce_kwargs
+    )
+
+
+def plan_disk_sort_shuffle_reduce(
+    input_op: PhysicalOperator,
+    data_context: DataContext,
+    *,
+    num_partitions: int,
+    sort_key: SortKey,
+    **reduce_kwargs: Any,
+) -> DiskHashShuffleReduceOp:
+    """Plan the disk sort shuffle's reduce stage over the writer from
+    ``plan_disk_sort_shuffle_map``: a ``DiskRangeShuffleRegroupOp`` that
+    computes the range boundaries and turns the handles into one bundle per
+    partition, then the reduce.
+
+    Args:
+        input_op: The writer.
+        data_context: Runtime configuration.
+        num_partitions: Total number of output partitions.
+        sort_key: Sort columns, directions and any user boundaries.
+        **reduce_kwargs: Forwarded to ``DiskHashShuffleReduceOp``.
+
+    Returns:
+        The reduce operator.
+    """
+    regroup_op = DiskRangeShuffleRegroupOp(
+        input_op,
+        data_context,
+        num_partitions=num_partitions,
+        sort_key=sort_key,
+        boundaries=user_boundaries(sort_key),
+        name=f"DiskRangeShuffleRegroup(partitions={num_partitions})",
     )
     return DiskHashShuffleReduceOp(
         regroup_op, data_context, num_partitions=num_partitions, **reduce_kwargs
@@ -320,19 +440,48 @@ def _plan_sort_v2(
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
     sort_key = logical_op.sort_key
-    user_boundaries = sort_key.boundaries
     estimated_num_input_blocks = logical_op.input_dependencies[
         0
     ].estimated_num_outputs()
-    if user_boundaries:
-        num_partitions = len(user_boundaries) + 1
+    if sort_key.boundaries:
+        num_partitions = len(sort_key.boundaries) + 1
     else:
         num_partitions = (
             estimated_num_input_blocks or data_context.default_hash_shuffle_parallelism
         )
 
+    reduce_kwargs = dict(
+        num_partitions=num_partitions,
+        reduce_fn=make_sort_reduce_fn(sort_key, data_context),
+        # Reduce output is split to ``target_max_block_size``; the splits of a
+        # partition are emitted in order under the same partition key.
+        preserve_partition_order=True,
+        peak_memory_multiplier=_SORT_REDUCE_PEAK_MEMORY_MULTIPLIER,
+        reduce_ray_remote_args=logical_op.ray_remote_args,
+    )
+    if data_context.use_disk_based_hash_shuffle:
+        # The writers sort and write their input whole; the regroup computes
+        # the boundaries afterwards, so no op holds the input back meanwhile.
+        map_op = plan_disk_sort_shuffle_map(
+            input_physical_op,
+            data_context,
+            num_partitions=num_partitions,
+            sort_key=sort_key,
+            estimated_num_input_blocks=estimated_num_input_blocks,
+            name=f"DiskSortShuffleMap(partitions={num_partitions})",
+        )
+        return plan_disk_sort_shuffle_reduce(
+            map_op,
+            data_context,
+            sort_key=sort_key,
+            name=f"DiskSortShuffleReduce(partitions={num_partitions})",
+            **reduce_kwargs,
+        )
+
+    # The object-store map partitions its input, so it needs the boundaries
+    # first: the sampling op holds every input until they are computed.
     map_input_op = input_physical_op
-    if not user_boundaries and num_partitions > 1:
+    if not sort_key.boundaries and num_partitions > 1:
         map_input_op = SortSamplingOp(
             input_physical_op,
             data_context,
@@ -341,44 +490,19 @@ def _plan_sort_v2(
             estimated_num_input_blocks=estimated_num_input_blocks,
             name=f"SortSample(partitions={num_partitions})",
         )
-
-    _, build_reduce, prefix = _select_shuffle_v2_op_classes(data_context)
-    if prefix == "Disk":
-        # The partitioner is the writer's partition fn. The sampling op (if
-        # any) forwards nothing until the boundaries exist, and on_start
-        # resolves them on the first input, before the map transformer is
-        # serialized for the tasks.
-        partitioner = SortRangePartitioner(
-            sort_key, num_partitions, map_input_op, data_context
-        )
-        map_op = plan_disk_hash_shuffle_map(
-            map_input_op,
-            data_context,
-            num_partitions=num_partitions,
-            partition_fn=partitioner,
-            name=f"{prefix}SortShuffleMap(partitions={num_partitions})",
-            on_start=lambda schema: partitioner.partition_fn_for(schema, map_input_op),
-        )
-    else:
-        map_op = SortShuffleMapOp(
-            map_input_op,
-            data_context,
-            num_partitions=num_partitions,
-            sort_key=sort_key,
-            map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
-            name=f"{prefix}SortShuffleMap(partitions={num_partitions})",
-        )
-    return build_reduce(
-        map_op,
+    map_op = SortShuffleMapOp(
+        map_input_op,
         data_context,
         num_partitions=num_partitions,
-        reduce_fn=make_sort_reduce_fn(sort_key, data_context),
-        # Reduce output is split to ``target_max_block_size``; the splits of a
-        # partition are emitted in order under the same partition key.
-        preserve_partition_order=True,
-        peak_memory_multiplier=_SORT_REDUCE_PEAK_MEMORY_MULTIPLIER,
-        reduce_ray_remote_args=logical_op.ray_remote_args,
-        name=f"{prefix}SortShuffleReduce(partitions={num_partitions})",
+        sort_key=sort_key,
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"SortShuffleMap(partitions={num_partitions})",
+    )
+    return ShuffleReduceOp(
+        map_op,
+        data_context,
+        name=f"SortShuffleReduce(partitions={num_partitions})",
+        **reduce_kwargs,
     )
 
 
