@@ -282,7 +282,8 @@ DEFAULT_RETRIED_IO_ERRORS = (
 def _env_s3_filesystem_defaults() -> Dict[str, Any]:
     name = "RAY_DATA_S3_FILESYSTEM_DEFAULTS"
     try:
-        options = json.loads(os.environ.get(name, "{}"))
+        raw = os.environ.get(name, "")
+        options = json.loads(raw.strip() or "{}")
     except json.JSONDecodeError:
         raise ValueError(f"`{name}` must be a JSON object.") from None
     if not isinstance(options, dict):
@@ -910,8 +911,10 @@ class DataContext:
             file reads and writes that explicitly provide ``storage_options``. Defaults to
             ``connect_timeout=10.0`` and ``request_timeout=30.0`` seconds,
             overridden by the JSON object in
-            ``RAY_DATA_S3_FILESYSTEM_DEFAULTS`` at module import. URI connection
-            options override these defaults, and per-call options override both.
+            ``RAY_DATA_S3_FILESYSTEM_DEFAULTS`` at module import. Empty or
+            whitespace-only environment values use the built-in defaults.
+            URI connection options override these defaults, and per-call options
+            override both.
             Set before creating a Dataset or invoking a file write API. Use only
             non-sensitive connection/performance settings here; pass credentials
             through per-call ``storage_options``. None for ``storage_options``

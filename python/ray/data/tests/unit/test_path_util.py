@@ -12,6 +12,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _is_filesystem_compatible_with_scheme,
     _is_local_windows_path,
+    _parse_s3_uri_options,
     _resolve_paths_and_filesystem,
     _resolve_single_path_with_fallback,
     _rewrite_azure_blob_https_url,
@@ -78,13 +79,35 @@ def test_storage_options_none_preserves_uri_query_inference():
     assert fs.region == "us-west-2"
 
 
-def test_storage_options_preserves_uri_credentials():
+@pytest.mark.parametrize("scheme", ["s3", "S3"])
+@pytest.mark.parametrize(
+    "userinfo", ["test-access:test-secret", "test%2Daccess:test%2Dsecret"]
+)
+def test_storage_options_strips_userinfo_before_unwrapping(
+    monkeypatch, scheme, userinfo
+):
+    unwrap = mock.Mock(wraps=_unwrap_protocol)
+    monkeypatch.setattr("ray.data.datasource.path_util._unwrap_protocol", unwrap)
+    path, options = _parse_s3_uri_options(
+        f"{scheme}://{userinfo}@bucket/a?region=us-west-2"
+    )
+    assert path == "bucket/a"
+    assert options == {
+        "access_key": "test-access",
+        "secret_key": "test-secret",
+        "region": "us-west-2",
+    }
+    unwrap.assert_called_once_with("s3://bucket/a")
+
+
+@pytest.mark.parametrize("scheme", ["s3", "S3"])
+def test_storage_options_preserves_uri_credentials(scheme):
     from ray.data.context import DataContext
 
     native = pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2")
     with mock.patch("pyarrow.fs.S3FileSystem", return_value=native) as constructor:
         paths, _ = _resolve_paths_and_filesystem(
-            "s3://test-access:test-secret@bucket/a?region=us-west-2",
+            f"{scheme}://test-access:test-secret@bucket/a?region=us-west-2",
             storage_options={"secret_key": "test-override"},
         )
     assert paths == ["bucket/a"]
@@ -94,6 +117,61 @@ def test_storage_options_preserves_uri_credentials():
         access_key="test-access",
         secret_key="test-override",
     )
+
+
+@pytest.mark.parametrize("options", [{}, {"connect_timeout": 0.5}])
+def test_storage_options_anonymous_uri_requests_are_unsigned(monkeypatch, options):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from types import SimpleNamespace
+    from urllib.parse import urlencode
+
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    monkeypatch.setattr(
+        "ray.data.context.DataContext.get_current",
+        lambda: SimpleNamespace(
+            s3_filesystem_defaults={"connect_timeout": 1.0, "request_timeout": 2.0}
+        ),
+    )
+    signed_requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            signed_requests.append("Authorization" in self.headers)
+            self.send_response(200)
+            self.send_header("Content-Length", "1")
+            self.send_header("Last-Modified", "Tue, 17 Nov 2026 00:00:00 GMT")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
+    worker.start()
+    try:
+        query = urlencode(
+            {
+                "region": "us-west-2",
+                "scheme": "http",
+                "endpoint_override": f"127.0.0.1:{server.server_port}",
+            }
+        )
+        uri = f"s3://anonymous@bucket/a?{query}"
+        paths, filesystem = _resolve_paths_and_filesystem(uri, storage_options=options)
+        inferred, inferred_path = pyarrow.fs.FileSystem.from_uri(uri)
+        for fs, path in ((filesystem, paths[0]), (inferred, inferred_path)):
+            signed_requests.clear()
+            info = fs.get_file_info(path)
+            assert info.type == pyarrow.fs.FileType.File
+            assert signed_requests
+            assert not any(signed_requests)
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
 
 
 @pytest.mark.parametrize("override_region", [None, "us-east-2"])

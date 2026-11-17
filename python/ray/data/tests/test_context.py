@@ -19,6 +19,9 @@ _RECONSTRUCTION_OVERRIDE_ERROR = (
     "value, expected",
     [
         (None, {"connect_timeout": 10.0, "request_timeout": 30.0}),
+        ("", {"connect_timeout": 10.0, "request_timeout": 30.0}),
+        ("   ", {"connect_timeout": 10.0, "request_timeout": 30.0}),
+        ("\t\n", {"connect_timeout": 10.0, "request_timeout": 30.0}),
         ("{}", {"connect_timeout": 10.0, "request_timeout": 30.0}),
         (
             '{"connect_timeout": 20, "background_writes": false}',
@@ -62,20 +65,24 @@ def test_s3_filesystem_defaults_are_independent(monkeypatch):
     assert DEFAULT_S3_FILESYSTEM_DEFAULTS["proxy_options"]["host"] == "proxy"
 
 
-def test_s3_filesystem_defaults_env_initializes_context():
+@pytest.mark.parametrize(
+    "value, connect_timeout",
+    [(' {"connect_timeout": 20} ', 20), ("", 10.0), (" \t\n ", 10.0)],
+)
+def test_s3_filesystem_defaults_env_initializes_context(value, connect_timeout):
     import os
     import subprocess
     import sys
 
     env = os.environ.copy()
-    env["RAY_DATA_S3_FILESYSTEM_DEFAULTS"] = '{"connect_timeout": 20}'
+    env["RAY_DATA_S3_FILESYSTEM_DEFAULTS"] = value
     subprocess.check_call(
         [
             sys.executable,
             "-c",
             "from ray.data.context import DataContext; "
             "assert DataContext().s3_filesystem_defaults == "
-            "{'connect_timeout': 20, 'request_timeout': 30.0}",
+            f"{{'connect_timeout': {connect_timeout}, 'request_timeout': 30.0}}",
         ],
         env=env,
     )

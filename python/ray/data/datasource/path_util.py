@@ -445,7 +445,9 @@ def _parse_s3_uri_options(path: str) -> Tuple[str, Dict[str, Any]]:
         else:
             raise ValueError("Unsupported S3 URI option.")
 
-    object_uri = parsed._replace(query="").geturl()
+    # Remove userinfo before the object URI can reach any downstream helper.
+    netloc = parsed.netloc.rsplit("@", 1)[-1]
+    object_uri = parsed._replace(netloc=netloc, query="").geturl()
     return unquote(_unwrap_protocol(object_uri)), options
 
 
