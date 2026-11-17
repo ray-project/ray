@@ -224,6 +224,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     Warn if the size of the map UDF exceeds this threshold.
     """
 
+    is_read_op: bool = False
+    """Whether this op reads from a datasource. Set by the read planners (and
+    propagated through fusion)."""
+
     def __init__(
         self,
         map_transformer: MapTransformer,
@@ -386,6 +390,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        is_read_op: bool = False,
         output_partitioning: Optional[HashPartitioning] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
@@ -427,6 +432,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            is_read_op: Whether this op reads from a datasource.
             output_partitioning: See ``PhysicalOperator.output_partitioning``.
 
         Returns:
@@ -476,6 +482,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
+            op.is_read_op = is_read_op
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
                 get_actor_pool_map_operator_cls,
@@ -503,6 +510,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                is_read_op=is_read_op,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
