@@ -1,3 +1,4 @@
+import concurrent.futures
 import contextlib
 import hashlib
 import http.server
@@ -6,6 +7,7 @@ import json
 import mmap
 import os
 import re
+import runpy
 import shutil
 import signal
 import subprocess
@@ -13,6 +15,7 @@ import sys
 import tarfile
 import threading
 import time
+import types
 import urllib.error
 import urllib.parse
 import zlib
@@ -704,6 +707,406 @@ def test_pull_nonexistent_image(tmp_path, fake_docker_hub):
             images_dir=str(images_dir),
             timeout_seconds=5.0,
         )
+
+
+def test_a_build_that_overlaps_another_runs_in_a_child(monkeypatch):
+    """A build that starts while another runs in this process goes to a child
+    interpreter, so the two don't share one interpreter lock; one that runs
+    alone stays in this process."""
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def here(*args):
+        calls.append(("here", args))
+        started.set()
+        release.wait(10)
+
+    monkeypatch.setattr(image_utils, "_build_rootfs_image", here)
+    monkeypatch.setattr(
+        image_utils,
+        "_build_rootfs_image_in_a_child",
+        lambda *args: calls.append(("child", args)),
+    )
+    first = threading.Thread(
+        target=image_utils._build_rootfs_image_here_or_in_a_child, args=("a",)
+    )
+    first.start()
+    assert started.wait(10)
+    image_utils._build_rootfs_image_here_or_in_a_child("b")
+    release.set()
+    first.join()
+    image_utils._build_rootfs_image_here_or_in_a_child("c")
+    assert calls == [("here", ("a",)), ("child", ("b",)), ("here", ("c",))]
+
+
+def test_a_child_interpreter_builds_the_same_image(tmp_path):
+    """A build in a child interpreter caches the same image, and its error
+    comes back as a SandboxCreationError with the same message."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    image_dir = tmp_path / "image"
+    rootfs = image_dir / "rootfs"
+    rootfs.mkdir(parents=True)
+    image_utils._build_rootfs_image_in_a_child(
+        str(local_tar), str(rootfs), str(image_dir), 5.0, str(tmp_path)
+    )
+    assert _image_file(str(image_dir), "hello.txt") == b"hello"
+    with pytest.raises(SandboxCreationError, match="not found"):
+        image_utils._build_rootfs_image_in_a_child(
+            str(tmp_path / "nonexistent_image.tar"),
+            str(rootfs),
+            str(image_dir),
+            5.0,
+            str(tmp_path),
+        )
+
+
+def test_a_build_runs_here_once_this_process_is_free(monkeypatch):
+    """A build that starts after this process's own build ended runs here,
+    even while a child still builds."""
+    child_started, child_release = threading.Event(), threading.Event()
+    here_started, here_release = threading.Event(), threading.Event()
+    calls = []
+
+    def here(*args):
+        calls.append(("here", args))
+        here_started.set()
+        here_release.wait(10)
+
+    def child(*args):
+        calls.append(("child", args))
+        child_started.set()
+        child_release.wait(10)
+
+    monkeypatch.setattr(image_utils, "_build_rootfs_image", here)
+    monkeypatch.setattr(image_utils, "_build_rootfs_image_in_a_child", child)
+    first = threading.Thread(
+        target=image_utils._build_rootfs_image_here_or_in_a_child, args=("a",)
+    )
+    first.start()
+    assert here_started.wait(10)
+    second = threading.Thread(
+        target=image_utils._build_rootfs_image_here_or_in_a_child, args=("b",)
+    )
+    second.start()
+    assert child_started.wait(10)
+    here_release.set()
+    first.join()
+    here_started.clear()
+    image_utils._build_rootfs_image_here_or_in_a_child("c")
+    child_release.set()
+    second.join()
+    assert calls == [("here", ("a",)), ("child", ("b",)), ("here", ("c",))]
+
+
+def test_a_child_builds_error_survives_other_output(monkeypatch, tmp_path):
+    """The child's error comes back even when it prints other lines after."""
+    child = tmp_path / "child.py"
+    child.write_text(
+        "import sys\n"
+        "print('ray-sandbox-image-build-error: \"no such image\"')\n"
+        'print(\'{"error": "not this one"}\')\n'
+        "sys.exit(1)\n"
+    )
+    monkeypatch.setattr(image_utils, "_CHILD_ENTRYPOINT", str(child))
+    with pytest.raises(SandboxCreationError, match="^no such image$"):
+        image_utils._build_rootfs_image_in_a_child("img", "/r", "/d", 5.0, "/b")
+
+
+def test_builds_that_waited_for_a_slot_run_here_once_this_process_is_free(
+    monkeypatch,
+):
+    """With one child slot, a build that waits for a slot while builds run
+    here and in a child takes this process's place when its build ends, not
+    the child's."""
+    monkeypatch.setattr(image_utils, "_builds", threading.BoundedSemaphore(2))
+    here_started, here_release = threading.Event(), threading.Event()
+    child_started, child_release = threading.Event(), threading.Event()
+    calls = []
+
+    def here(*args):
+        calls.append(("here", args))
+        here_started.set()
+        here_release.wait(10)
+
+    def child(*args):
+        calls.append(("child", args))
+        child_started.set()
+        child_release.wait(10)
+
+    monkeypatch.setattr(image_utils, "_build_rootfs_image", here)
+    monkeypatch.setattr(image_utils, "_build_rootfs_image_in_a_child", child)
+    builds = [
+        threading.Thread(
+            target=image_utils._build_rootfs_image_here_or_in_a_child, args=(name,)
+        )
+        for name in "abc"
+    ]
+    builds[0].start()
+    assert here_started.wait(10)
+    builds[1].start()
+    assert child_started.wait(10)
+    here_started.clear()
+    builds[2].start()
+    # The third waits for a slot, then takes this process's when "a" ends,
+    # while "b" still builds in its child.
+    here_release.set()
+    builds[0].join()
+    assert here_started.wait(10)
+    child_release.set()
+    for build in builds[1:]:
+        build.join()
+    assert calls == [("here", ("a",)), ("child", ("b",)), ("here", ("c",))]
+
+
+def test_a_child_reports_an_error_that_has_no_message(monkeypatch, capsys):
+    """An error whose text is empty, such as MemoryError, comes back as its
+    type's name."""
+    child = runpy.run_path(image_utils._CHILD_ENTRYPOINT)["main"]
+
+    def build(*args):
+        raise MemoryError()
+
+    stub = types.SimpleNamespace(_build_rootfs_image=build)
+    monkeypatch.setitem(child.__globals__, "_load_image_utils", lambda packages: stub)
+    # This process isn't a child: it mustn't ask to die with its parent.
+    monkeypatch.setitem(child.__globals__, "_die_with_parent", lambda parent: None)
+    monkeypatch.setattr(sys, "argv", ["child", "{}", "[]", "0"])
+    with pytest.raises(SystemExit):
+        child()
+    assert capsys.readouterr().out == image_utils._CHILD_ERROR + '"MemoryError"\n'
+
+
+def test_an_empty_child_error_keeps_the_exit_status(monkeypatch, tmp_path):
+    """A child that reports an empty message still fails with an explanation."""
+    child = tmp_path / "child.py"
+    child.write_text(
+        "import sys\n" "print('ray-sandbox-image-build-error: \"\"')\n" "sys.exit(3)\n"
+    )
+    monkeypatch.setattr(image_utils, "_CHILD_ENTRYPOINT", str(child))
+    with pytest.raises(SandboxCreationError, match="exit status 3"):
+        image_utils._build_rootfs_image_in_a_child("img", "/r", "/d", 5.0, "/b")
+
+
+def test_overlapping_pulls_build_one_image_here_and_one_in_a_child(
+    tmp_path, monkeypatch
+):
+    """Two pulls at once, end to end: the second image is built by a real
+    child interpreter while this process builds the first, and both land in
+    the cache."""
+    tars = []
+    for name in ("first", "second"):
+        tars.append(tmp_path / f"{name}.tar")
+        with tarfile.open(str(tars[-1]), "w") as tar:
+            info = tarfile.TarInfo("name.txt")
+            info.size = len(name)
+            tar.addfile(info, io.BytesIO(name.encode()))
+    images_dir = str(tmp_path / "images")
+    started, release = threading.Event(), threading.Event()
+    build_here = image_utils._build_rootfs_image
+    in_a_child = image_utils._build_rootfs_image_in_a_child
+    children = []
+
+    def held_build(*args):
+        started.set()
+        assert release.wait(60)
+        build_here(*args)
+
+    def counted_child(*args):
+        children.append(args[0])
+        in_a_child(*args)
+
+    monkeypatch.setattr(image_utils, "_build_rootfs_image", held_build)
+    monkeypatch.setattr(image_utils, "_build_rootfs_image_in_a_child", counted_child)
+    with concurrent.futures.ThreadPoolExecutor(1) as pool:
+        first = pool.submit(
+            pull_and_extract_container_image, str(tars[0]), images_dir=images_dir
+        )
+        assert started.wait(30)
+        # This process is busy with the first image, so the second goes to a
+        # child, which builds it while the first is still held.
+        second_dir = pull_and_extract_container_image(
+            str(tars[1]), images_dir=images_dir
+        )
+        assert _image_file(second_dir, "name.txt") == b"second"
+        assert not first.done()
+        release.set()
+        assert _image_file(first.result(60), "name.txt") == b"first"
+    assert children == [str(tars[1])]
+
+
+def test_an_interrupted_build_leaves_no_directory_behind(tmp_path, monkeypatch):
+    """An interrupt, or an actor that exits, during a build isn't an
+    Exception. The build's directory in the cache still goes, because
+    nothing else ever removes it."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+
+    def interrupted(*args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        image_utils, "_build_rootfs_image_here_or_in_a_child", interrupted
+    )
+    with pytest.raises(KeyboardInterrupt):
+        pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert [name for name in os.listdir(images_dir) if ".tmp." in name] == []
+
+
+def test_build_slots_follow_the_cpus_a_container_gets(tmp_path, monkeypatch):
+    """os.cpu_count() is the node's count. A process in a container with a
+    CPU limit, such as a Kubernetes Pod, sizes its build slots from the
+    limit, and from its CPU affinity."""
+    monkeypatch.setattr(
+        os, "sched_getaffinity", lambda pid: set(range(192)), raising=False
+    )
+    root = tmp_path / "cgroup"
+    root.mkdir()
+    proc = tmp_path / "proc-self-cgroup"
+
+    def usable():
+        return image_utils._usable_cpus(str(root), str(proc))
+
+    # With a cgroup namespace of its own, the container's cgroup is the top.
+    proc.write_text("0::/\n")
+    assert usable() == 192
+    (root / "cpu.max").write_text("max 100000\n")
+    assert usable() == 192
+    (root / "cpu.max").write_text("400000 100000\n")
+    assert usable() == 4
+    (root / "cpu.max").write_text("50000 100000\n")
+    assert usable() == 1
+    # Without one, as in a privileged Pod that sees the node's hierarchy, the
+    # quota is at the process's own cgroup or one above it.
+    (root / "cpu.max").write_text("max 100000\n")
+    pod = root / "kubepods" / "pod1"
+    (pod / "ctr").mkdir(parents=True)
+    proc.write_text("0::/kubepods/pod1/ctr\n")
+    assert usable() == 192
+    (pod / "cpu.max").write_text("800000 100000\n")
+    assert usable() == 8
+    (pod / "ctr" / "cpu.max").write_text("200000 100000\n")
+    assert usable() == 2
+    # cgroup v1.
+    proc.write_text("5:cpu,cpuacct:/kubepods/pod1\n1:name=systemd:/\n")
+    v1 = root / "cpu,cpuacct" / "kubepods" / "pod1"
+    v1.mkdir(parents=True)
+    (v1 / "cpu.cfs_period_us").write_text("100000\n")
+    (v1 / "cpu.cfs_quota_us").write_text("-1\n")
+    assert usable() == 192
+    (v1 / "cpu.cfs_quota_us").write_text("600000\n")
+    assert usable() == 6
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: {0, 1}, raising=False)
+    assert usable() == 2
+    # A path that isn't under the hierarchy is ignored.
+    proc.write_text("0::/../../etc\n")
+    assert usable() == 2
+
+
+def test_a_child_reports_an_import_that_fails(tmp_path):
+    """A child that can't load image_utils sends the error back like any
+    other, rather than only a traceback and an exit status."""
+    packages = {name: [str(tmp_path)] for name in image_utils._CHILD_PACKAGES}
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            image_utils._CHILD_ENTRYPOINT,
+            json.dumps(packages),
+            "[]",
+            str(os.getpid()),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 1
+    error = [
+        line
+        for line in result.stdout.splitlines()
+        if line.startswith(image_utils._CHILD_ERROR)
+    ]
+    assert len(error) == 1 and "image_utils" in error[0], result.stdout
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Needs a parent-death signal")
+def test_a_child_build_stops_when_its_parent_dies(tmp_path):
+    """A child whose parent dies would go on downloading and writing to the
+    image cache for a pull that nobody waits for. The kernel kills it."""
+    child = (
+        "import runpy, sys, time\n"
+        f"runpy.run_path({image_utils._CHILD_ENTRYPOINT!r})['_die_with_parent']"
+        "(int(sys.argv[1]))\n"
+        "print('armed', flush=True)\n"
+        "time.sleep(120)\n"
+    )
+    parent = (
+        "import os, subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-S', '-c', sys.argv[1], "
+        "str(os.getpid())], stdout=subprocess.PIPE, text=True)\n"
+        "assert child.stdout.readline().strip() == 'armed'\n"
+        "print(child.pid, flush=True)\n"
+        "os._exit(0)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", parent, child],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    pid = int(result.stdout)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            with open(f"/proc/{pid}/stat") as f:
+                # Gone, or a zombie that nobody has reaped yet.
+                if f.read().rsplit(")", 1)[1].split()[0] == "Z":
+                    break
+        except FileNotFoundError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(pid, signal.SIGKILL)
+        pytest.fail("the child outlived its parent")
+
+
+def test_a_child_build_loads_image_utils_without_ray():
+    """The child entrypoint loads image_utils and the few modules it needs,
+    not Ray, whose import would cost most of a second per build."""
+    load = (
+        f"runpy.run_path({image_utils._CHILD_ENTRYPOINT!r})['_load_image_utils']"
+        f"({image_utils._child_packages()!r})\n"
+    )
+    script = (
+        "import runpy, sys\n"
+        + load
+        + "print(hasattr(sys.modules['ray'], '__file__'))\n"
+        "print(' '.join(sorted(m for m in sys.modules if m.startswith('ray'))))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+    ray_ran, modules = result.stdout.splitlines()
+    assert ray_ran == "False"
+    assert set(modules.split()) <= {
+        "ray",
+        "ray.util",
+        "ray.util.annotations",
+        "ray.experimental",
+        "ray.experimental.sandbox",
+        "ray.experimental.sandbox.exceptions",
+        "ray.experimental.sandbox._internal",
+        "ray.experimental.sandbox._internal.docker_config",
+        "ray.experimental.sandbox._internal.image_build_child",
+        "ray.experimental.sandbox._internal.image_utils",
+        "ray.experimental.sandbox._internal.layer_cache",
+    }, modules
 
 
 def test_pull_nonexistent_local_tar(tmp_path):
