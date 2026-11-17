@@ -3,6 +3,7 @@ import os
 import shutil
 import threading
 from pathlib import Path
+from typing import Dict
 
 import pyarrow.fs
 import pytest
@@ -306,32 +307,54 @@ def test_as_directory_threads_in_one_process(checkpoint: Checkpoint):
     assert not Path(checkpoint._get_temporary_checkpoint_dir()).exists()
 
 
-def test_to_directory_reuses_complete_download(checkpoint: Checkpoint, monkeypatch):
-    """A caller that arrives after the shared temporary directory was fully
-    downloaded reuses it, instead of downloading again over files that other
-    readers may be reading."""
-    _skip_if_not_downloaded(checkpoint)
-
-    num_downloads = 0
+def _count_downloads(monkeypatch) -> Dict[str, int]:
+    """Count calls to `_download_from_fs_path` in `ray.train._checkpoint`."""
+    counter = {"downloads": 0}
     original_download = _checkpoint._download_from_fs_path
 
     def counting_download(*args, **kwargs):
-        nonlocal num_downloads
-        num_downloads += 1
+        counter["downloads"] += 1
         return original_download(*args, **kwargs)
 
     monkeypatch.setattr(_checkpoint, "_download_from_fs_path", counting_download)
+    return counter
+
+
+def test_as_directory_reuses_complete_download(checkpoint: Checkpoint, monkeypatch):
+    """A reader that arrives while the shared temporary directory is complete and
+    in use reuses it, instead of downloading again over files that other readers
+    may be reading. Once the last reader exits, the next reader downloads again."""
+    _skip_if_not_downloaded(checkpoint)
+    counter = _count_downloads(monkeypatch)
 
     with checkpoint.as_directory() as checkpoint_dir:
-        assert checkpoint.to_directory() == checkpoint_dir
-        assert num_downloads == 1
+        with checkpoint.as_directory() as checkpoint_dir_2:
+            assert checkpoint_dir_2 == checkpoint_dir
+        assert counter["downloads"] == 1
 
-    # The last reader deleted the directory, so the next reader downloads the
-    # checkpoint again.
     assert not Path(checkpoint_dir).exists()
     with checkpoint.as_directory() as checkpoint_dir:
         assert _read_content(checkpoint_dir) == "dummy"
-    assert num_downloads == 2
+    assert counter["downloads"] == 2
+
+
+def test_to_directory_survives_as_directory_cleanup(
+    checkpoint: Checkpoint, monkeypatch
+):
+    """`to_directory()` callers can't tell Ray when they're done with the shared
+    temporary directory, so the `as_directory()` cleanup must never delete a
+    directory that `to_directory()` returned, whichever is called first."""
+    _skip_if_not_downloaded(checkpoint)
+    counter = _count_downloads(monkeypatch)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        assert checkpoint.to_directory() == checkpoint_dir
+    assert _read_content(checkpoint_dir) == "dummy"
+
+    with checkpoint.as_directory() as checkpoint_dir_2:
+        assert checkpoint_dir_2 == checkpoint_dir
+    assert _read_content(checkpoint_dir) == "dummy"
+    assert counter["downloads"] == 1
 
 
 def test_to_directory_failed_download(checkpoint: Checkpoint, monkeypatch):

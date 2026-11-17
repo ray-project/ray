@@ -209,6 +209,12 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         wait for the download to finish. Once the download finishes, all processes
         receive the same local directory to read from.
 
+        *If no path is given*, the checkpoint is downloaded to a temporary directory
+        that is shared with every ``to_directory()`` and ``as_directory()`` call for
+        this checkpoint on the node. If that directory already holds the
+        checkpoint, it is returned without downloading again, so treat it as
+        read-only. Ray never deletes a temporary directory returned by this method.
+
         Args:
             path: Target directory to download data to. If not specified,
                 this method will use a temporary directory.
@@ -217,9 +223,13 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             str: Directory containing checkpoint data.
         """
         if path is None:
-            local_path = self._get_temporary_checkpoint_dir()
+            local_path = os.path.normpath(self._get_temporary_checkpoint_dir())
             with TempFileLock(local_path):
                 self._download_to_temporary_dir(local_path)
+                # The caller can't tell us when it's done with the directory, so
+                # register a reader that never unregisters. This stops the
+                # `as_directory()` cleanup from deleting the directory under it.
+                Path(_get_del_lock_path(local_path, suffix="keep")).touch()
             return local_path
 
         local_path = os.path.normpath(os.path.expanduser(str(path)))
@@ -258,11 +268,16 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         Args:
             local_path: The shared temporary directory for this checkpoint.
         """
+        # Only the rename below and the rename in the `as_directory()` cleanup
+        # create or remove `local_path`, so its existence means the download
+        # completed. Never create `local_path` any other way, such as with
+        # `os.makedirs`, or a partial download would look complete.
         if os.path.isdir(local_path):
             return
+        # Left behind if a process crashed while downloading or deleting.
         staging_path = f"{local_path}{_STAGING_SUFFIX}"
-        # Left behind if a process crashed while downloading.
         shutil.rmtree(staging_path, ignore_errors=True)
+        shutil.rmtree(f"{local_path}{_DELETING_SUFFIX}", ignore_errors=True)
         # The caller already holds the lock for `local_path`, so skip the
         # separate lock that `_download_from_fs_path` would take.
         _download_from_fs_path(
@@ -320,7 +335,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path
         else:
-            temp_dir = self._get_temporary_checkpoint_dir()
+            temp_dir = os.path.normpath(self._get_temporary_checkpoint_dir())
             # Each call registers as a reader with its own deletion lock file,
             # so nested calls and threads in one process are counted separately.
             del_lock_path = _get_del_lock_path(temp_dir)
@@ -333,7 +348,8 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                 try:
                     self._download_to_temporary_dir(temp_dir)
                 except Exception:
-                    os.remove(del_lock_path)
+                    with contextlib.suppress(OSError):
+                        os.remove(del_lock_path)
                     raise
 
             try:
@@ -348,8 +364,11 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                         # more readers, and we can delete the directory. If a
                         # process crashed before removing its deletion lock file,
                         # the directory is never deleted. Since it's in /tmp,
-                        # that's not a big deal.
-                        if not _list_existing_del_locks(temp_dir):
+                        # that's not a big deal. A `to_directory()` call also
+                        # leaves a deletion lock file that is never removed.
+                        if not _list_existing_del_locks(temp_dir) and os.path.isdir(
+                            temp_dir
+                        ):
                             # Rename before deleting, so that a crash partway
                             # through never leaves a partial directory at
                             # `temp_dir`, where it would look like a complete one.
