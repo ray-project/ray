@@ -3,13 +3,12 @@ account. `test_snowflake.py` has the tests that run against Snowflake."""
 
 import os
 from datetime import datetime
-from typing import Iterator, List
+from typing import Any, Iterator, List, Optional
 from unittest import mock
 
 import pandas as pd
 import pyarrow as pa
 import pytest
-import snowflake.connector
 from snowflake.connector.result_batch import (
     ArrowResultBatch,
     JSONResultBatch,
@@ -33,12 +32,13 @@ class FakeResultBatch(ArrowResultBatch):
 
     def __init__(self, table: pa.Table):
         self._table = table
+        self.rowcount = table.num_rows
 
-    @property
-    def rowcount(self) -> int:
-        return self._table.num_rows
-
-    def to_arrow(self, force_microsecond_precision: bool = False) -> pa.Table:
+    def to_arrow(
+        self,
+        connection: Optional[Any] = None,
+        force_microsecond_precision: bool = False,
+    ) -> pa.Table:
         table = self._table
         if force_microsecond_precision:
             # Stand in for the connector's downscale, which only ever hits the
@@ -67,12 +67,17 @@ def make_result_batches(rows_per_batch: List[int]) -> List[FakeResultBatch]:
 
 
 @pytest.fixture
-def mock_cursor() -> Iterator[mock.MagicMock]:
+def mock_connect() -> Iterator[mock.MagicMock]:
     with mock.patch("snowflake.connector.connect") as mock_connect:
-        connection = mock_connect.return_value.__enter__.return_value
-        cursor = connection.cursor.return_value.__enter__.return_value
-        cursor.description = [("id",)]
-        yield cursor
+        yield mock_connect
+
+
+@pytest.fixture
+def mock_cursor(mock_connect: mock.MagicMock) -> mock.MagicMock:
+    connection = mock_connect.return_value.__enter__.return_value
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.description = [("id",)]
+    return cursor
 
 
 @pytest.mark.parametrize(
@@ -105,7 +110,7 @@ def test_read_tasks(mock_cursor, rows_per_batch, parallelism, expected_rows_per_
     assert rows == list(range(sum(rows_per_batch)))
 
 
-def test_read_asks_for_arrow_result_format(mock_cursor):
+def test_read_asks_for_arrow_result_format(mock_connect, mock_cursor):
     """`to_arrow` only works on Arrow batches, so the query has to ask for them."""
     mock_cursor.get_result_batches.return_value = make_result_batches([100])
     connection_parameters = {
@@ -116,7 +121,7 @@ def test_read_asks_for_arrow_result_format(mock_cursor):
 
     datasource.get_read_tasks(1)
 
-    _, kwargs = snowflake.connector.connect.call_args
+    _, kwargs = mock_connect.call_args
     assert kwargs["session_parameters"] == {
         # The datasource pins the format without dropping what the caller passed.
         "QUERY_TAG": "ray",

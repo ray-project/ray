@@ -10,7 +10,7 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
-    from snowflake.connector.result_batch import ResultBatch
+    from snowflake.connector.result_batch import ArrowResultBatch, ResultBatch
 
     from ray.data.context import DataContext
 
@@ -41,7 +41,7 @@ class SnowflakeDatasource(Datasource):
         self._connection_parameters = connection_parameters
         # Set by `_execute_query`. Ray Data can call `get_read_tasks` more than
         # once, so the result is kept to avoid running the query again.
-        self._result_batches: Optional[List["ResultBatch"]] = None
+        self._result_batches: Optional[List["ArrowResultBatch"]] = None
         self._column_names: List[str] = []
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
@@ -132,12 +132,12 @@ class SnowflakeDatasource(Datasource):
             # column name. To learn more, read https://peps.python.org/pep-0249/.
             self._column_names = [column[0] for column in cursor.description]
 
-        _check_arrow_result_batches(result_batches)
+        arrow_batches = _require_arrow_result_batches(result_batches)
 
         # Drop batches without rows. `get_read_tasks` samples the first batch to
         # estimate how many bytes a row takes, which needs a row to divide by, and
         # empty blocks only add overhead downstream.
-        self._result_batches = [batch for batch in result_batches if batch.rowcount > 0]
+        self._result_batches = [batch for batch in arrow_batches if batch.rowcount > 0]
 
     def _arrow_connection_parameters(self) -> Dict[str, Any]:
         """The connection parameters, with the result format pinned to Arrow.
@@ -158,8 +158,10 @@ class SnowflakeDatasource(Datasource):
         return {**self._connection_parameters, "session_parameters": session_parameters}
 
 
-def _check_arrow_result_batches(result_batches: List["ResultBatch"]) -> None:
-    """Raises if the connector didn't return Arrow batches.
+def _require_arrow_result_batches(
+    result_batches: List["ResultBatch"],
+) -> List["ArrowResultBatch"]:
+    """Returns the batches as Arrow batches, or raises if any isn't one.
 
     `_arrow_connection_parameters` asks for Arrow, but the connector overrides
     that per statement if its Arrow extension is missing, and `to_arrow` then
@@ -169,24 +171,29 @@ def _check_arrow_result_batches(result_batches: List["ResultBatch"]) -> None:
     Args:
         result_batches: The batches the query returned.
 
+    Returns:
+        The same batches, typed as Arrow batches.
+
     Raises:
         RuntimeError: If any batch isn't an Arrow batch.
     """
     from snowflake.connector.result_batch import ArrowResultBatch
 
-    if all(isinstance(batch, ArrowResultBatch) for batch in result_batches):
-        return
-
-    raise RuntimeError(
-        "`read_snowflake` needs Snowflake's Arrow result format, but the query "
-        "returned JSON batches. This usually means the installed "
-        "snowflake-connector-python can't use Arrow. Install a build with Arrow "
-        "support, or pass `shard_keys` to read through `read_sql` instead."
-    )
+    arrow_batches = [
+        batch for batch in result_batches if isinstance(batch, ArrowResultBatch)
+    ]
+    if len(arrow_batches) != len(result_batches):
+        raise RuntimeError(
+            "`read_snowflake` needs Snowflake's Arrow result format, but the query "
+            "returned JSON batches. This usually means the installed "
+            "snowflake-connector-python can't use Arrow. Install a build with Arrow "
+            "support, or pass `shard_keys` to read through `read_sql` instead."
+        )
+    return arrow_batches
 
 
 def _create_read_fn(
-    result_batches: List["ResultBatch"],
+    result_batches: List["ArrowResultBatch"],
 ) -> Callable[[], Iterable[Block]]:
     def read_fn() -> Iterable[Block]:
         for result_batch in result_batches:
@@ -195,7 +202,7 @@ def _create_read_fn(
     return read_fn
 
 
-def _download(result_batch: "ResultBatch") -> pa.Table:
+def _download(result_batch: "ArrowResultBatch") -> pa.Table:
     # The connector picks a timestamp unit per batch from the data in that batch, so
     # one `TIMESTAMP` column can come back as `timestamp[ns]` from one batch and
     # `timestamp[us]` from another: a batch holding a value outside the nanosecond
