@@ -48,6 +48,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -869,6 +870,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._try_finalize()
         return len(self._output_queue) > 0
 
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        # Partitions are finalized only after every input has been shuffled.
+        return True
+
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
         if not self._shuffle_started:
@@ -1042,6 +1048,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         finalizing_tasks: List[DataOpTask] = list(self._finalizing_tasks.values())
 
         return shuffling_tasks + finalizing_tasks
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        requests = self._get_base_resource_requests()
+        if self._aggregator_pool is not None:
+            # Report aggregator demand even before ``AggregatorPool.start()`` has
+            # issued the ``.remote()`` calls, so a capacity-starved shuffle can
+            # already trigger scale-up.
+            aggregator_request = self._aggregator_pool.get_resource_request()
+            requests.extend(
+                dict(aggregator_request)
+                for _ in range(self._aggregator_pool.num_aggregators)
+            )
+        return requests
 
     def _get_active_shuffling_tasks(self) -> List[MetadataOpTask]:
         return list(
@@ -1839,6 +1858,10 @@ class AggregatorPool:
     @property
     def num_aggregators(self):
         return self._num_aggregators
+
+    def get_resource_request(self) -> Dict[str, float]:
+        """Return the exact resource request used to create each aggregator."""
+        return actor_resource_dict(self._aggregator_ray_remote_args)
 
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]

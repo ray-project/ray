@@ -266,7 +266,8 @@ class LocalTrainFnUtils(TrainFnUtils):
         validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         self._last_metrics = metrics
-        self._last_checkpoint = checkpoint
+        if checkpoint is not None:
+            self._last_checkpoint = checkpoint
         logger.info(f"Reported metrics: {metrics}")
 
     def get_checkpoint(self) -> Optional["Checkpoint"]:

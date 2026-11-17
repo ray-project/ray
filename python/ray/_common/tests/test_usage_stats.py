@@ -265,18 +265,9 @@ def test_worker_crash_increment_stats():
     def crasher():
         exit(1)
 
-    @ray.remote
-    def oomer():
-        mem = []
-        while True:
-            mem.append([0] * 1000000000)
-
     with ray.init() as ctx:
         with pytest.raises(ray.exceptions.WorkerCrashedError):
             ray.get(crasher.options(max_retries=1).remote())
-
-        with pytest.raises(ray.exceptions.OutOfMemoryError):
-            ray.get(oomer.options(max_retries=0).remote())
 
         gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
         wait_for_condition(
@@ -290,7 +281,31 @@ def test_worker_crash_increment_stats():
         assert "worker_crash_system_error" in result
         assert result["worker_crash_system_error"] == "2"
 
-        assert "worker_crash_oom" in result
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_worker_oom_increment_stats():
+    @ray.remote
+    def oomer():
+        time.sleep(1000)
+
+    # A threshold of 0 makes the memory monitor OOM-kill the running task without
+    # exhausting host memory, which would OOM-kill workers of tests sharing the host.
+    with ray.init(_system_config={"memory_usage_threshold": 0}) as ctx:
+        with pytest.raises(ray.exceptions.OutOfMemoryError):
+            ray.get(oomer.options(max_retries=0).remote())
+
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
+        wait_for_condition(
+            lambda: "worker_crash_oom"
+            in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
+            timeout=4,
+        )
+
+        result = ray_usage_lib.get_extra_usage_tags_to_report(gcs_client)
+
         assert result["worker_crash_oom"] == "1"
 
 

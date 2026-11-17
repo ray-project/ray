@@ -32,7 +32,7 @@ def build_model() -> tf.keras.Model:
 
 
 def train_func(config: dict):
-    batch_size = config.get("batch_size", 64)
+    per_worker_batch_size = config.get("batch_size", 64)
     epochs = config.get("epochs", 3)
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
@@ -46,11 +46,14 @@ def train_func(config: dict):
         )
 
     dataset = train.get_dataset_shard("train")
+    # The dataset batch size is the global batch size, which TensorFlow splits
+    # evenly across workers.
+    global_batch_size = per_worker_batch_size * train.get_context().get_world_size()
 
     results = []
     for _ in range(epochs):
         tf_dataset = dataset.to_tf(
-            feature_columns="x", label_columns="y", batch_size=batch_size
+            feature_columns="x", label_columns="y", batch_size=global_batch_size
         )
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[ReportCheckpointCallback()]

@@ -24,7 +24,7 @@ from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
-from ray.experimental.sandbox._internal import docker_config
+from ray.experimental.sandbox._internal import docker_config, layer_cache
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -243,6 +243,8 @@ def get_registry_auth_headers(
     repo: str,
     reference: str = "latest",
     timeout: float = 30.0,
+    scopes: Optional[List[str]] = None,
+    action: str = "pull",
 ) -> Dict[str, str]:
     """Answer a registry's authentication challenge for pulling ``repo``.
 
@@ -260,6 +262,9 @@ def get_registry_auth_headers(
         repo: Repository path within the registry.
         reference: Tag or digest whose manifest is requested.
         timeout: Network and credential helper timeout in seconds.
+        scopes: Override the challenge's scopes, such as pull,push on the
+            target repository and pull on the source repository.
+        action: What the headers are for, "pull" or "push", named in errors.
 
     Returns:
         The ``Authorization`` header for the pull's registry requests, or no
@@ -288,7 +293,7 @@ def get_registry_auth_headers(
         if scheme == "basic":
             if creds is None or not creds.username:
                 raise SandboxCreationError(
-                    f"Registry '{registry}' requires credentials to pull "
+                    f"Registry '{registry}' requires credentials to {action} "
                     f"'{repo}', and the Docker config "
                     f"{docker_config.config_path()} provides none for it."
                 )
@@ -310,8 +315,7 @@ def get_registry_auth_headers(
         params = {}
         if service:
             params["service"] = service
-        if scope:
-            params["scope"] = scope
+        params["scope"] = scopes or [scope]
 
         if creds is not None and creds.identity_token:
             # The token spec's OAuth2 refresh-token grant.
@@ -324,13 +328,15 @@ def get_registry_auth_headers(
             )
             auth_req = urllib.request.Request(
                 auth_url,
-                data=urllib.parse.urlencode(form).encode("utf-8"),
+                data=urllib.parse.urlencode(form, doseq=True).encode("utf-8"),
                 headers={"User-Agent": _USER_AGENT},
             )
         else:
             sep = "&" if "?" in realm else "?"
             auth_url = (
-                f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
+                f"{realm}{sep}{urllib.parse.urlencode(params, doseq=True)}"
+                if params
+                else realm
             )
             basic = None
             if creds is not None and creds.username:
@@ -345,7 +351,7 @@ def get_registry_auth_headers(
         except Exception as auth_err:
             if creds is not None:
                 raise SandboxCreationError(
-                    f"Failed to get a pull token for '{registry}' from "
+                    f"Failed to get a {action} token for '{registry}' from "
                     f"'{realm}' with the credentials in "
                     f"{docker_config.config_path()}: "
                     f"{_describe_pull_error(auth_err)}"
@@ -437,6 +443,7 @@ def extract_tar_layer(
     tar_input: Union[bytes, io.IOBase, BinaryIO],
     dest_dir: str,
     ownership: Optional[Dict[str, Tuple[int, int]]] = None,
+    dir_attrs: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> None:
     """Extract a tar archive layer onto dest_dir with OCI whiteout handling.
 
@@ -451,13 +458,22 @@ def extract_tar_layer(
     entry at; whiteouts and root-owned replacements drop entries. The
     extracted files themselves stay owned by the extracting user; the EROFS
     image build restores the recorded owners.
+
+    ``dir_attrs``, likewise shared across an image's layers, collects each
+    directory's archived {canonical path: (mode, mtime)} instead of applying
+    it, and the caller runs ``apply_dir_attrs`` after the last layer: a
+    read-only directory (0555) locked after its own layer would stop an
+    unprivileged worker from extracting a later layer's files, or whiteouts,
+    inside it. Without it the attributes are applied when this layer ends.
     """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
     else:
         tar_fileobj = tar_input
 
-    dir_mtimes = []
+    apply_now = dir_attrs is None
+    if dir_attrs is None:
+        dir_attrs = {}
     # Iterating reads the layer once; getmembers() first would decompress it
     # twice, since extractfile() then rewinds a compressed stream. Not stream
     # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
@@ -486,6 +502,10 @@ def extract_tar_layer(
             if basename == ".wh..wh..opq":
                 if ownership is not None:
                     _drop_ownership_children(ownership, parent_rel)
+                opaque_attrs = dir_attrs.get(parent_rel)
+                _drop_ownership_children(dir_attrs, parent_rel)
+                if opaque_attrs is not None:
+                    dir_attrs[parent_rel] = opaque_attrs
                 if os.path.isdir(parent_dir):
                     for item in os.listdir(parent_dir):
                         item_path = os.path.join(parent_dir, item)
@@ -504,10 +524,10 @@ def extract_tar_layer(
                 if not del_name:
                     continue
                 del_path = os.path.join(parent_dir, del_name)
+                del_rel = os.path.normpath(os.path.join(parent_rel, del_name))
                 if ownership is not None:
-                    _drop_ownership_subtree(
-                        ownership, os.path.normpath(os.path.join(parent_rel, del_name))
-                    )
+                    _drop_ownership_subtree(ownership, del_rel)
+                _drop_ownership_subtree(dir_attrs, del_rel)
                 if os.path.isdir(del_path) and not os.path.islink(del_path):
                     shutil.rmtree(del_path, ignore_errors=True)
                 elif os.path.exists(del_path) or os.path.islink(del_path):
@@ -520,6 +540,7 @@ def extract_tar_layer(
             # Remove conflicting existing file/dir if member type differs
             if os.path.exists(target_path) or os.path.islink(target_path):
                 if not (os.path.isdir(target_path) and member.isdir()):
+                    _drop_ownership_subtree(dir_attrs, rel)
                     try:
                         if os.path.isdir(target_path) and not os.path.islink(
                             target_path
@@ -563,12 +584,12 @@ def extract_tar_layer(
                     pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
-                # Deferred to the post-loop pass: tar lists a directory
-                # before its contents, so a restrictive archived mode (0500)
-                # applied here would break extracting the children. Preserved
+                # Deferred to apply_dir_attrs: tar lists a directory before
+                # its contents, so a restrictive archived mode (0500) applied
+                # here would break extracting the children. Preserved
                 # symlinks (UsrMerge) are skipped: chmod/utime follow them.
                 if not os.path.islink(target_path):
-                    dir_mtimes.append((target_path, member.mode, member.mtime))
+                    dir_attrs[rel] = (member.mode, member.mtime)
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -603,9 +624,28 @@ def extract_tar_layer(
                     # A later layer re-shipping the path as root wins.
                     ownership.pop(rel, None)
 
+    if apply_now:
+        apply_dir_attrs(dest_dir, dir_attrs)
+
+
+def apply_dir_attrs(dest_dir: str, dir_attrs: Dict[str, Tuple[int, int]]) -> None:
+    """Apply the directory modes and mtimes ``extract_tar_layer`` collected.
+
+    Args:
+        dest_dir: Directory the layers were extracted onto.
+        dir_attrs: {canonical path: (mode, mtime)} of the extracted directories.
+    """
     # Children first, so a parent's restrictive mode cannot block them.
-    for dir_path, mode, mtime in reversed(dir_mtimes):
+    for rel in sorted(
+        dir_attrs, key=lambda rel: -1 if rel == "." else rel.count("/"), reverse=True
+    ):
+        mode, mtime = dir_attrs[rel]
+        dir_path = os.path.join(dest_dir, rel)
         try:
+            # A path since replaced by a file or a symlink keeps its own
+            # attributes: chmod/utime would follow the symlink.
+            if not stat.S_ISDIR(os.lstat(dir_path).st_mode):
+                continue
             if mode:
                 os.chmod(dir_path, mode)
             os.utime(dir_path, (mtime, mtime))
@@ -849,7 +889,7 @@ _USERS_SUBDIR = ".users"
 
 
 def image_cache_max_bytes(images_dir: str) -> int:
-    """Return the image cache size cap in bytes, or 0 for no cap.
+    """Return the combined image and layer cache size cap, or 0 for no cap.
 
     ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES`` sets the cap explicitly; ``0``
     disables eviction. Unset, the cap defaults to half of the filesystem
@@ -1009,17 +1049,16 @@ def evict_least_recently_used_images(
     keep: Optional[str] = None,
     min_free_bytes: int = 0,
 ) -> None:
-    """Evict least-recently-extracted images until the cache fits ``max_bytes``
+    """Evict cached layers, then images until the cache fits ``max_bytes``
     and its filesystem has ``min_free_bytes`` free.
 
-    Nodes cache every image they ever ran, so without a cap a long-lived
-    node eventually fills its disk, and the cache also gives way when
-    sandboxes' overlays or anything else fill it. Candidates are fully extracted images
-    (``.extracted`` marker present) and ``<name>.tar`` archives left behind
-    by earlier Ray versions, oldest first. An image is skipped when a live sandbox uses it, when its
-    per-image lock is held (a pull in progress), or when it is ``keep``. The
-    in-use check is repeated under the lock, which is also where pulls
-    register their users, so a marked image is never removed.
+    Entries are sorted by priority, then modification time: layers have priority
+    0 and go first in last-used order; fully extracted images (``.extracted``
+    marker present) and legacy tar archives have priority 1 and follow in
+    extraction order. Locked entries, pinned images and ``keep`` are skipped.
+    Image pins are rechecked under the same lock that pulls hold when registering
+    users.
+    Open layer files remain readable after eviction.
 
     Args:
         images_dir: Root image cache directory.
@@ -1031,7 +1070,11 @@ def evict_least_recently_used_images(
         names = os.listdir(images_dir)
     except OSError:
         return
-    entries = []  # (mtime, name, image_dir or None, tar_path, size)
+    # (priority, mtime, name, image_dir or None, file_path, size)
+    entries = [
+        (0, mtime, name, None, os.path.join(images_dir, name), size)
+        for mtime, name, size in layer_cache.cached_blobs(images_dir)
+    ]
     for name in names:
         path = os.path.join(images_dir, name)
         if name.endswith(".tar") and os.path.isfile(path):
@@ -1041,6 +1084,7 @@ def evict_least_recently_used_images(
                 try:
                     entries.append(
                         (
+                            1,
                             os.path.getmtime(path),
                             stem,
                             None,
@@ -1065,11 +1109,11 @@ def evict_least_recently_used_images(
             continue  # Concurrently deleted; keep going.
         tar_path = os.path.join(images_dir, f"{name}.tar")
         size = _dir_size_bytes(path) + _file_size_bytes(tar_path)
-        entries.append((mtime, name, path, tar_path, size))
+        entries.append((1, mtime, name, path, tar_path, size))
 
     total = sum(entry[-1] for entry in entries)
     free = _free_bytes(images_dir)
-    for _, name, img_dir, tar_path, size in sorted(entries):
+    for priority, mtime, name, img_dir, tar_path, size in sorted(entries):
         if (max_bytes is None or total <= max_bytes) and (
             free is None or free >= min_free_bytes
         ):
@@ -1083,6 +1127,14 @@ def evict_least_recently_used_images(
                 # A pull may have registered a user since the scan.
                 if img_dir is not None and _has_users(img_dir):
                     continue
+                if img_dir is None:
+                    try:
+                        # Recheck under the lock: a pull may have reused the
+                        # blob and updated its mtime since the initial scan.
+                        if os.path.getmtime(tar_path) != mtime:
+                            continue
+                    except FileNotFoundError:
+                        pass  # Count an entry another pull already evicted.
                 # Another pull may have evicted it since the scan.
                 if img_dir is not None and os.path.isdir(img_dir):
                     _rename_for_deletion(img_dir)
@@ -1094,10 +1146,16 @@ def evict_least_recently_used_images(
             continue  # Locked by an in-progress pull; try the next one.
         # Delete the image once its lock is free, so a pull of it doesn't wait
         # for the delete.
-        _remove_stale_deletions(images_dir)
+        if img_dir is not None:
+            _remove_stale_deletions(images_dir)
         total -= size
         free = _free_bytes(images_dir)
-        logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
+        logger.info(
+            "Evicted cached sandbox %s %s (%d bytes)",
+            "layer" if priority == 0 else "image",
+            name,
+            size,
+        )
 
 
 def reserve_image_cache_space(image_dir: str, needed_bytes: int) -> None:
@@ -1264,69 +1322,29 @@ def pull_and_extract_container_image(
             _remove_stale_deletions(images_dir)
 
 
-def _download_blob(
-    url: str,
-    headers: Dict[str, str],
-    auth_header: Optional[str],
-    timeout_seconds: float,
-    blob_dir: str,
-    stop: threading.Event,
-) -> BinaryIO:
-    """Download a registry blob into an anonymous temporary file.
-
-    Args:
-        url: The blob's URL.
-        headers: Request headers.
-        auth_header: The registry's ``Authorization`` value, if any.
-        timeout_seconds: Network request timeout.
-        blob_dir: Directory for the temporary file.
-        stop: Set to end the download early.
-
-    Returns:
-        The file, rewound; a partial one if ``stop`` was set meanwhile.
-    """
-    blob = tempfile.TemporaryFile(dir=blob_dir)
-    if stop.is_set():
-        return blob
-    try:
-        req = _registry_request(url, headers, auth_header)
-        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            while not stop.is_set():
-                # read1 returns what has arrived, so a stop takes effect soon.
-                chunk = resp.read1(1 << 20)
-                if not chunk:
-                    break
-                blob.write(chunk)
-        blob.seek(0)
-    except BaseException:
-        blob.close()
-        raise
-    return blob
-
-
 def _download_blobs(
-    urls: List[str],
+    digests: List[str],
+    base_url: str,
     headers: Dict[str, str],
     auth_header: Optional[str],
     timeout_seconds: float,
     blob_dir: str,
 ) -> Iterator[BinaryIO]:
-    """Yield registry blobs in order, downloading a few of them at a time.
+    """Yield cached layers in manifest order while later layers download.
 
-    The caller extracts each layer while the ones after it download, and
-    closes each blob it gets. Closing the generator, as on an error, returns
-    at once: downloads still running stop at their next read, and the blobs
-    nobody took get closed.
+    The caller closes each blob. Closing the generator stops outstanding
+    downloads and closes the blobs nobody took.
 
     Args:
-        urls: Blob URLs, in the order to yield them.
-        headers: Request headers.
-        auth_header: The registry's ``Authorization`` value, if any.
+        digests: Layer digests in manifest order.
+        base_url: Registry blob URL prefix to which each digest is appended.
+        headers: Headers to include in registry requests.
+        auth_header: Optional Authorization header value for registry requests.
         timeout_seconds: Network request timeout.
-        blob_dir: Directory for the temporary files.
+        blob_dir: Image cache directory, whose layer cache keeps the blobs.
 
     Yields:
-        BinaryIO: Each blob, as a rewound temporary file.
+        BinaryIO: Cached layer blobs in manifest order; the caller closes each blob.
     """
     stop = threading.Event()
     pool = concurrent.futures.ThreadPoolExecutor(
@@ -1334,9 +1352,14 @@ def _download_blobs(
     )
     downloads = [
         pool.submit(
-            _download_blob, url, headers, auth_header, timeout_seconds, blob_dir, stop
+            layer_cache.fetch_blob,
+            blob_dir,
+            digest,
+            _registry_request(base_url + digest, headers, auth_header),
+            timeout_seconds,
+            stop,
         )
-        for url in urls
+        for digest in digests
     ]
     yielded = 0
     try:
@@ -1367,15 +1390,16 @@ def _extract_image_layers(
     """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
 
     ``image`` is a local tar archive or a registry reference. A registry
-    image's config is written to ``image_dir/.image_config.json`` and its
-    layer blobs are spooled through ``blob_dir``.
+    image's config and manifest are written to ``image_dir/.image_config.json``
+    and ``image_dir/.manifest.json``, respectively, and its
+    layer blobs come from the shared layer cache under ``blob_dir``.
 
     Args:
         image: Container image name or path to a local tar archive.
         rootfs_dir: Empty directory that receives the flattened tree.
         image_dir: Directory that receives the image config.
         timeout_seconds: Network request timeout.
-        blob_dir: Directory for temporary layer blobs.
+        blob_dir: Image cache directory, whose layer cache keeps the blobs.
 
     Returns:
         {path: (uid, gid)} for every path shipped with a non-root owner.
@@ -1447,6 +1471,8 @@ def _extract_image_layers(
             )
             with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
                 manifest_data = json.loads(resp.read().decode("utf-8"))
+        with open(os.path.join(image_dir, ".manifest.json"), "w") as f:
+            json.dump(manifest_data, f)
 
         # extract image config so we can reference metadata bout the image later.
         config_desc = manifest_data.get("config")
@@ -1475,16 +1501,20 @@ def _extract_image_layers(
                 f"No layers found in manifest for image '{image}'"
             )
 
-        blob_urls = [
-            f"{registry_base_url(registry)}/v2/{repo}/blobs/{layer['digest']}"
-            for layer in layers
-        ]
+        digests = [layer["digest"] for layer in layers]
+        base_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/"
         with contextlib.closing(
-            _download_blobs(blob_urls, headers, auth_header, timeout_seconds, blob_dir)
+            _download_blobs(
+                digests, base_url, headers, auth_header, timeout_seconds, blob_dir
+            )
         ) as blobs:
+            dir_attrs: Dict[str, Tuple[int, int]] = {}
             for blob in blobs:
                 with blob:
-                    extract_tar_layer(blob, rootfs_dir, ownership=ownership)
+                    extract_tar_layer(
+                        blob, rootfs_dir, ownership=ownership, dir_attrs=dir_attrs
+                    )
+            apply_dir_attrs(rootfs_dir, dir_attrs)
 
     except Exception as err:
         if isinstance(err, SandboxCreationError):
