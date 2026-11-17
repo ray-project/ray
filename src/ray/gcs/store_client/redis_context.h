@@ -211,12 +211,21 @@ struct RedisRequestContext {
   /// Whether `reply` answers an HSETNX that may have been applied by an earlier
   /// attempt of this request: an attempt lost its reply, and this one found the
   /// field already set.
+  ///
+  /// \param reply A successful reply to this request's current attempt.
+  /// \return True if the field must be read back before reporting the result.
   bool MayHaveSetFieldEarlier(const redisReply &reply) const;
 
   /// Switch this request to an HGET of the HSETNX's field, and submit it.
+  ///
+  /// \param request_cxt The request whose HSETNX got 0 after a lost reply.
+  /// Deleted later, once the HGET completes or its context is gone.
   static void CheckEarlierSet(RedisRequestContext *request_cxt);
 
   /// Hand `reply` to the callback on the io_service and delete the request.
+  ///
+  /// \param request_cxt The finished request. Deleted here.
+  /// \param reply The reply to pass to the request's callback.
   static void Complete(RedisRequestContext *request_cxt,
                        std::shared_ptr<CallbackReply> reply);
 

@@ -574,29 +574,34 @@ TEST_F(RedisAsyncContextTest, TestPutReportsAddedWhenItsReplyIsLost) {
     io_thread.join();
     store_client.reset();
   };
-  auto put = [&](const std::string &value) {
-    std::promise<bool> added;
+  // Returns nullopt if the put does not finish in time, so a stuck put fails
+  // the test instead of hanging it. The promise is shared so a late callback
+  // still has somewhere to write.
+  auto put = [&](const std::string &value) -> std::optional<bool> {
+    auto added = std::make_shared<std::promise<bool>>();
     store_client->AsyncPut("lost_reply_table",
                            "key",
                            value,
                            /*overwrite=*/false,
-                           {[&added](bool a) { added.set_value(a); }, io});
-    auto future = added.get_future();
-    EXPECT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
+                           {[added](bool a) { added->set_value(a); }, io});
+    auto future = added->get_future();
+    if (future.wait_for(std::chrono::seconds(20)) != std::future_status::ready) {
+      return std::nullopt;
+    }
     return future.get();
   };
 
   proxy.DropNextHsetnxReply();
-  EXPECT_TRUE(put("first"));
+  EXPECT_EQ(put("first"), std::optional<bool>(true));
   EXPECT_TRUE(proxy.dropped_hsetnx_reply());
 
   // A put that keeps its reply sees the field taken.
-  EXPECT_FALSE(put("first"));
+  EXPECT_EQ(put("first"), std::optional<bool>(false));
 
   // A lost reply on a put that did not set the field still reports false: the
   // field holds another value.
   proxy.DropNextHsetnxReply();
-  EXPECT_FALSE(put("second"));
+  EXPECT_EQ(put("second"), std::optional<bool>(false));
   EXPECT_TRUE(proxy.dropped_hsetnx_reply());
 }
 #endif
