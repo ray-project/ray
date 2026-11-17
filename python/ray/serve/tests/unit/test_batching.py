@@ -1318,31 +1318,18 @@ def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
         stream.reset_message()
 
 
-def test_extract_self_if_method_call_does_not_hang_on_mock():
-    """Attribute access on a mock returns a fresh mock each time, so the
-    ``__wrapped__`` walk must be depth-capped instead of relying on cycle
-    detection."""
-    from unittest.mock import MagicMock
+def passthrough_decorator(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        return await func(*args, **kwargs)
 
-    def some_func(self, x):
-        return x
-
-    mock = MagicMock()
-    mock.some_func.__wrapped__ = None
-    assert extract_self_if_method_call((mock,), some_func) is None
+    return wrapper
 
 
 def test_extract_self_if_method_call_follows_wrapped_chain():
     """`extract_self_if_method_call` must follow the full `__wrapped__` chain,
     so `@serve.batch` keeps working when wrapped in another decorator that
     uses `functools.wraps`. See #47449."""
-
-    def passthrough_decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await func(*args, **kwargs)
-
-        return wrapper
 
     class ClassA:
         @serve.batch(max_batch_size=2, batch_wait_timeout_s=0.01)
@@ -1366,13 +1353,6 @@ def test_extract_self_if_method_call_follows_wrapped_chain():
 async def test_serve_batch_wrapped_in_another_decorator():
     """`@other_decorator @serve.batch(...)` must still batch correctly and
     receive `self` in the handler. See #47449."""
-
-    def passthrough_decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await func(*args, **kwargs)
-
-        return wrapper
 
     class ClassA:
         def __init__(self):

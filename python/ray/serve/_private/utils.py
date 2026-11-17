@@ -592,9 +592,6 @@ def decompress_metric_report(compressed: bytes) -> Any:
     return cloudpickle.loads(zlib.decompress(compressed))
 
 
-_MAX_WRAPPED_CHAIN_DEPTH = 50
-
-
 def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
     """Check if this is a method rather than a function.
 
@@ -611,25 +608,17 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
         The ``self`` object if it's a method call, else ``None``.
     """
     if len(args) > 0:
-        method = getattr(args[0], func.__name__, False)
+        method = getattr(args[0], func.__name__, None)
         if method:
             # Follow the full ``__wrapped__`` chain set by ``functools.wraps``.
             # The chain can be longer than one hop when ``@serve.batch`` is
             # combined with other wrapping decorators, e.g.
             # ``@other_decorator @serve.batch(...)``. See #47449.
-            wrapped = method
-            seen = set()
-            # Cap the chain walk: attribute access on a mock object returns a
-            # new mock every time, so a cycle can never be detected there.
-            depth = 0
-            while id(wrapped) not in seen and depth < _MAX_WRAPPED_CHAIN_DEPTH:
-                seen.add(id(wrapped))
-                depth += 1
-                if wrapped == func:
+            try:
+                if inspect.unwrap(method, stop=lambda f: f is func) is func:
                     return args[0]
-                wrapped = getattr(wrapped, "__wrapped__", None)
-                if wrapped is None:
-                    break
+            except ValueError:  # ``__wrapped__`` loop
+                pass
 
     return None
 
