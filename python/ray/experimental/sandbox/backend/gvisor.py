@@ -1577,6 +1577,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Return the host bundle directory, which is removed with the sandbox."""
         return self._get_metadata_or_raise(sandbox_id)["root_dir"]
 
+    def mount_points(self, sandbox_id: str) -> List[str]:
+        """Return the paths that the sandbox's spec mounts something on."""
+        spec_path = os.path.join(self.sandbox_dir(sandbox_id), "config.json")
+        with open(spec_path, encoding="utf-8") as f:
+            return [mount["destination"] for mount in json.load(f).get("mounts", [])]
+
     def export_rootfs_changes(
         self, sandbox_id: str, path: str, timeout: float = 1800.0
     ) -> None:

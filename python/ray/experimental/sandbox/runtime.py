@@ -394,7 +394,9 @@ class SandboxRuntime:
             self._backend.export_rootfs_changes(
                 instance_id, rootfs_tar, timeout=timeout_seconds
             )
-            layers = image_push.build_layers(rootfs_tar, directory)
+            layers = image_push.build_layers(
+                rootfs_tar, directory, self._backend.mount_points(instance_id)
+            )
             return image_push.push_image(
                 cfg.image,
                 image,

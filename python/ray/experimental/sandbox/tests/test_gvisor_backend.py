@@ -10,6 +10,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 from pathlib import Path
@@ -20,7 +21,12 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
-from ray.experimental.sandbox._internal import cdi_lib, image_utils, overlayfs
+from ray.experimental.sandbox._internal import (
+    cdi_lib,
+    image_push,
+    image_utils,
+    overlayfs,
+)
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     image_cache_name,
@@ -985,6 +991,24 @@ def test_image_without_mount_points_boots(tmp_path):
         )
         assert res.exit_code == 0, res.stderr
         assert res.stdout.split() == ["nameserver", "1.1.1.1", "hi", "/work"]
+        # A commit's layer holds what the sandbox wrote, and none of the
+        # mount points runsc made for it.
+        rootfs_tar = str(tmp_path / "rootfs.tar")
+        backend.export_rootfs_changes(sb, rootfs_tar, timeout=60)
+        (layer,) = image_push.build_layers(
+            rootfs_tar, str(tmp_path), backend.mount_points(sb)
+        )
+        with tarfile.open(layer.path) as tar:
+            names = {os.path.normpath(name) for name in tar.getnames()}
+        assert {"etc/new", "moved", "work"} <= names
+        assert not names & {
+            "proc",
+            "sys",
+            "dev",
+            "etc/hosts",
+            "etc/resolv.conf",
+            "data/in",
+        }
     finally:
         backend.delete_sandbox(sb)
 
