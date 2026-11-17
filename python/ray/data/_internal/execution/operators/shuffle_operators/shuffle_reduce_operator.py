@@ -35,7 +35,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
     _shuffle_reduce_task,
 )
-from ray.data._internal.execution.util import merge_label_selector
+from ray.data._internal.execution.util import merge_label_selector, merge_runtime_envs
 from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
@@ -47,15 +47,6 @@ logger = logging.getLogger(__name__)
 
 
 _SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
-
-
-def _merged_reduce_runtime_env(user_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
-    merged = {**_SHUFFLE_REDUCE_RUNTIME_ENV, **user_runtime_env}
-    merged["env_vars"] = {
-        **_SHUFFLE_REDUCE_RUNTIME_ENV["env_vars"],
-        **user_runtime_env.get("env_vars", {}),
-    }
-    return merged
 
 
 class ShuffleReduceOp(PhysicalOperator):
@@ -195,11 +186,16 @@ class ShuffleReduceOp(PhysicalOperator):
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
-        user_args = dict(self._reduce_ray_remote_args)
+        # None means "unset" to ray.remote, so it must not override the defaults.
+        user_args = {
+            k: v for k, v in self._reduce_ray_remote_args.items() if v is not None
+        }
         user_runtime_env = user_args.pop("runtime_env", None)
         remote_args.update(user_args)
         if user_runtime_env is not None:
-            remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
+            remote_args["runtime_env"] = merge_runtime_envs(
+                _SHUFFLE_REDUCE_RUNTIME_ENV, user_runtime_env
+            )
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
 
@@ -514,14 +510,16 @@ class ShuffleReduceOp(PhysicalOperator):
 
     def current_logical_usage(self) -> ExecutionResources:
         cpu: float = 0
+        gpu: float = 0
         memory: float = 0
         for task in self._shuffle_reduce_tasks.values():
             bundle = task.get_requested_resource_bundle()
             if bundle is None:
                 continue
             cpu += bundle.cpu
+            gpu += bundle.gpu
             memory += bundle.memory
-        return ExecutionResources(cpu=cpu, memory=memory)
+        return ExecutionResources(cpu=cpu, gpu=gpu, memory=memory)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator."""
