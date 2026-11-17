@@ -53,7 +53,7 @@ def test_tempdir_created_successfully(delete_default_temp_dir, shutdown_only):
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_tempdir_commandline(delete_default_temp_dir):
+def test_tempdir_commandline(delete_default_temp_dir, create_auth_token):
     temp_dir = os.path.join(
         "/tmp/test", uuid.uuid4().hex[:-10]
     )  # truncate the uuid to avoid the socket path length limit

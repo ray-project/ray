@@ -121,11 +121,9 @@ def _split_single_block(
         stats = BlockExecStats.builder()
         split_block = block_accessor.slice(prev_index, index)
         accessor = BlockAccessor.for_block(split_block)
-        _meta = BlockMetadata(
-            num_rows=accessor.num_rows(),
-            size_bytes=accessor.size_bytes(),
+        _meta = accessor.get_metadata(
             input_files=meta.input_files,
-            exec_stats=stats.build(),
+            block_exec_stats=stats.build(),
         )
         split_meta.append(_meta)
         split_blocks.append(split_block)

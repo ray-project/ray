@@ -137,13 +137,18 @@ applications:
 
 ### Send queries
 
-
+Query each application through its route prefix:
 
 ```python
->>> import requests
->>> audio_file = "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
->>> resp = requests.post("http://localhost:8000/whisper", json={"filepath": audio_file}) # doctest: +SKIP
->>> resp.json() # doctest: +SKIP
+import json
+import requests
+
+audio_file = "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
+resp = requests.post("http://localhost:8000/whisper", json={"filepath": audio_file})
+print(json.dumps(resp.json(), indent=4))
+```
+
+```text
 {
     "language": "en",
     "language_probability": 1,
@@ -159,10 +164,15 @@ applications:
         ...
     ]
 }
+```
 
->>> link_to_image = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
->>> resp = requests.post("http://localhost:8000/resnet", json={"uri": link_to_image}) # doctest: +SKIP
->>> resp.text # doctest: +SKIP
+```python
+link_to_image = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
+resp = requests.post("http://localhost:8000/resnet", json={"uri": link_to_image})
+print(resp.text)
+```
+
+```text
 ox
 ```
 

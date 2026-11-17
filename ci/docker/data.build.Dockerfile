@@ -56,6 +56,16 @@ if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
     pyarrow
 fi
 
+# daft caps pyarrow < 26, so the lock resolves at 25.x; force the actual
+# latest pyarrow on top for the latest-lane image. pyarrow 26 dropped
+# Python 3.10, so the 3.10 image keeps the locked version.
+if [[ "$IMAGE_TYPE" == "pyarrow-latest" && "$PYTHON" != "3.10" ]]; then
+  uv pip install \
+    --system \
+    --upgrade-package pyarrow \
+    "pyarrow==26.0.1"
+fi
+
 if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
   # These packages increase the image size quite a bit, so we only install them
   # as needed.

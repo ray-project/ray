@@ -1,5 +1,28 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
+# A random auth token generated at build time, kept out of source. Tests that
+# can't get one from a driver read it through RAY_AUTH_TOKEN_PATH: a
+# `ray_cc_test` sets `auth_token = True`, and cpp/BUILD.bazel uses
+# RAY_TOKEN_AUTH_TEST_ENV.
+genrule(
+    name = "auth_token_file",
+    testonly = True,
+    outs = ["auth_token"],
+    # No python3 here: Windows CI agents lack it on the genrule's PATH.
+    cmd = "head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > $@",
+    visibility = [
+        "//cpp:__pkg__",
+        "//src/ray/core_worker/tests:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
+        "//src/ray/gcs_rpc_client/tests:__pkg__",
+        "//src/ray/object_manager/tests:__pkg__",
+        "//src/ray/observability/tests:__pkg__",
+        "//src/ray/ray_syncer/tests:__pkg__",
+        "//src/ray/raylet/tests:__pkg__",
+        "//src/ray/rpc/tests:__pkg__",
+    ],
+)
+
 # Default main function that configures the Ray logger and sets up failure signal
 # handling to aid with debugging.
 #

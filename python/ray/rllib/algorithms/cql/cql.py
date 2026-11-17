@@ -57,20 +57,30 @@ logger = logging.getLogger(__name__)
 class CQLConfig(SACConfig):
     """Defines a configuration class from which a CQL can be built.
 
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.algorithms.cql import CQLConfig
-        config = CQLConfig().training(gamma=0.9, lr=0.01)
-        config = config.resources(num_gpus=0)
-        config = config.env_runners(num_env_runners=4)
-        print(config.to_dict())
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build(env="CartPole-v1")
-        algo.train()
+    Examples:
+        >>> from pathlib import Path  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.algorithms.cql import CQLConfig
+        >>> # Get the path to the Pendulum data in the rllib folder.
+        >>> base_path = Path(__file__).parents[2]
+        >>> data_path = base_path / "offline/tests/data/pendulum/pendulum-v1_enormous"
+        >>> # CQL sets a learning rate per optimizer, so the base `lr` must be None.
+        >>> config = CQLConfig().training(gamma=0.9, lr=None)
+        >>> config = config.resources(num_gpus=0)
+        >>> config = config.env_runners(num_env_runners=4)
+        >>> # CQL learns continuous actions, so use Pendulum, not CartPole.
+        >>> config = config.environment("Pendulum-v1")
+        >>> config = config.offline_data(
+        ...     input_=[data_path.as_posix()],
+        ...     dataset_num_iters_per_learner=5,
+        ... )
+        >>> print(config.to_dict())
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
     """
 
     def __init__(self, algo_class=None):
+        """Initializes a CQLConfig instance."""
         super().__init__(algo_class=algo_class or CQL)
 
         # fmt: off

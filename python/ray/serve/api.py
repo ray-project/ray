@@ -957,6 +957,24 @@ def _run(
 
     This is only used internally with the _blocking not totally blocking the following
     code indefinitely until Ctrl-C'd.
+
+    Args:
+        target: A Serve application returned by ``Deployment.bind()``.
+        _blocking: Whether to wait until the application is running.
+        name: Application name.
+        route_prefix: Route prefix for HTTP requests. If None, the application
+            isn't exposed over HTTP.
+        logging_config: Application logging config, applied to deployments
+            that don't set their own.
+        _local_testing_mode: Internal flag for running the application in
+            local-testing mode.
+        external_scaler_enabled: Whether external autoscaling is enabled for
+            this application.
+        controller_options: Options for the Serve controller actor. Only
+            applied when this call creates the controller.
+
+    Returns:
+        A handle to the application's ingress deployment.
     """
     return _run_many(
         [
@@ -1091,6 +1109,10 @@ def delete(name: str, _blocking: bool = True):
     """Delete an application by its name.
 
     Deletes the app with all corresponding deployments.
+
+    Args:
+        name: Name of the application to delete.
+        _blocking: Whether to wait until the application is deleted.
     """
     client = _get_global_client()
     client.delete_apps([name], blocking=_blocking)
@@ -1278,6 +1300,9 @@ def get_multiplexed_model_id() -> str:
             @serve.deployment
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
+
+    Returns:
+        The multiplexed model ID for the current request.
     """
     # First check if we're inside a batch context. If so, get the model ID
     # from the batch request context. All requests in a batch are guaranteed
@@ -1307,6 +1332,9 @@ def status() -> ServeStatus:
             serve.run(MyDeployment.bind())
             status = serve.status()
             assert status.applications["default"].status == "RUNNING"
+
+    Returns:
+        The status of Serve, or an empty status if Serve hasn't started.
     """
 
     client = _get_global_client(raise_if_no_controller_running=False)

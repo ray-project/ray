@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.bundle_queue import EstimateSize
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -796,6 +797,49 @@ def test_read_map_chain_operator_fusion_e2e(
     )
     assert name in ds.stats()
     _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
+
+
+@pytest.mark.skipif(
+    not actor_only_backend_enabled(),
+    reason="Actor->Actor fusion only happens under the actor-only backend.",
+)
+def test_fused_callable_class_actor_udfs_e2e(ray_start_regular_shared_2_cpus):
+    """Two callable-class actor UDFs fused together must each register their
+    instance in the shared ``_map_actor_context``.
+
+    Regression test: under the actor-only backend, Actor->Actor fusion merges
+    two callable-class UDFs into a single actor. Previously each operator's
+    ``init_fn`` bailed out if the actor context already existed, so only the
+    upstream UDF's instance got registered and the downstream UDF's lookup
+    raised ``KeyError`` at runtime.
+    """
+
+    class Decode:
+        def __init__(self, scale):
+            self.scale = scale
+
+        def __call__(self, batch):
+            batch["decoded"] = [x * self.scale for x in batch["id"]]
+            return batch
+
+    class Preprocess:
+        def __init__(self, offset):
+            self.offset = offset
+
+        def __call__(self, batch):
+            batch["out"] = [x + self.offset for x in batch["decoded"]]
+            return batch
+
+    ds = ray.data.range(10, override_num_blocks=2)
+    ds = ds.map_batches(Decode, fn_constructor_args=(10,), concurrency=1)
+    ds = ds.map_batches(Preprocess, fn_constructor_args=(1,), concurrency=1)
+
+    # Both UDFs must have run, so the fused actor registered both instances.
+    out = sorted(ds.take_all(), key=lambda r: r["id"])
+    assert [r["out"] for r in out] == [i * 10 + 1 for i in range(10)], out
+
+    # Confirm the two ops were actually fused into a single operator.
+    assert "MapBatches(Decode)->MapBatches(Preprocess)" in ds.stats(), ds.stats()
 
 
 def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):

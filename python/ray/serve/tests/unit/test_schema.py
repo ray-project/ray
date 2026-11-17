@@ -25,9 +25,11 @@ from ray.serve.config import (
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     ControllerHealthMetrics,
+    DeploymentDetails,
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
+    ReplicaDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
@@ -1550,6 +1552,47 @@ def test_serve_instance_details_restores_unset_config_options_is_opt_in():
         restores_unset_config_options=True,
     )._get_user_facing_json_serializable_dict(exclude_unset=True)
     assert reported["restores_unset_config_options"] is True
+
+
+def test_deploy_schema_config_id_is_optional_and_echoed():
+    """`config_id` is metadata: optional on the way in, reported back as applied."""
+    assert ServeDeploySchema.model_validate({"applications": []}).config_id is None
+    cfg = ServeDeploySchema.model_validate({"applications": [], "config_id": "c1"})
+    assert cfg.config_id == "c1"
+    assert cfg.model_dump(exclude_unset=True)["config_id"] == "c1"
+
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+    )
+    assert details.applied_config_id is None
+    reported = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+        applied_config_id="c1",
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+    assert reported["applied_config_id"] == "c1"
+
+
+def test_replica_and_deployment_versions_default_to_none():
+    """Versions are optional so older payloads still parse."""
+    replica = ReplicaDetails(replica_id="r", state="RUNNING", start_time_s=0)
+    assert replica.version is None
+    deployment = DeploymentDetails(
+        name="d",
+        status="HEALTHY",
+        status_trigger="CONFIG_UPDATE_COMPLETED",
+        message="",
+        deployment_config={"name": "d"},
+        target_num_replicas=1,
+        required_resources={},
+        replicas=[replica],
+    )
+    assert deployment.target_version is None
 
 
 def test_serve_instance_details_includes_controller_health_metrics():

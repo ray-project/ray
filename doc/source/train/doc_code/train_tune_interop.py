@@ -1,10 +1,6 @@
 # flake8: noqa
 # isort: skip_file
 
-import os
-
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
-
 # __quickstart_start__
 import random
 import tempfile

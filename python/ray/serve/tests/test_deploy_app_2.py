@@ -1490,6 +1490,131 @@ def test_instance_details_report_restoring_unset_options(serve_instance):
     assert details["restores_unset_config_options"] is True
 
 
+def test_instance_details_echo_config_id_and_versions(serve_instance):
+    """Config id, target version, and replica pids survive a controller restart."""
+    client = serve_instance
+    client.deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                {
+                    "name": SERVE_DEFAULT_APP_NAME,
+                    "import_path": FAIL_ON_FLAG_IMPORT_PATH,
+                }
+            ],
+            config_id="c1",
+        )
+    )
+    wait_for_condition(lambda: len(_running_replica_pids(client)) == 2, timeout=60)
+
+    def snapshot():
+        """Return (target_version, replica pids) once every replica is RUNNING."""
+        details = ServeInstanceDetails(
+            **ray.get(client._controller.get_serve_instance_details.remote())
+        )
+        deployment = details.applications[SERVE_DEFAULT_APP_NAME].deployments[
+            "FailOnFlag"
+        ]
+        assert details.applied_config_id == "c1"
+        assert deployment.target_version
+        assert len(deployment.replicas) == 2
+        assert all(
+            r.state == "RUNNING" and r.version == deployment.target_version
+            for r in deployment.replicas
+        )
+        return deployment.target_version, sorted(r.pid for r in deployment.replicas)
+
+    before = snapshot()
+    old_pid = ray.get(client._controller.get_pid.remote())
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != old_pid)
+    wait_for_condition(lambda: snapshot() is not None, timeout=60)
+    assert snapshot() == before
+
+    # A config without an id clears the echo rather than keeping a stale one.
+    client.deploy_apps(_rolling_update_config())
+    wait_for_condition(
+        lambda: ray.get(client._controller.get_serve_instance_details.remote()).get(
+            "applied_config_id"
+        )
+        is None,
+        timeout=60,
+    )
+
+
+def test_versions_follow_the_kind_of_config_change(serve_instance):
+    """Only changes that restart or reconfigure replicas produce a new version."""
+    client = serve_instance
+
+    def deploy(config, num_replicas, previous_target=None):
+        """Deploy and return (target_version, replica pids) once converged on it."""
+        client.deploy_apps(config)
+
+        def converged():
+            details = _deployment_details(client)
+            return (
+                details.status == "HEALTHY"
+                and details.target_version != previous_target
+                and len(details.replicas) == num_replicas
+                and all(
+                    r.state == "RUNNING" and r.version == details.target_version
+                    for r in details.replicas
+                )
+            )
+
+        wait_for_condition(converged, timeout=60)
+        details = _deployment_details(client)
+        return details.target_version, sorted(r.pid for r in details.replicas)
+
+    v1, pids = deploy(_rolling_update_config(), 2)
+
+    # Replica count only: same version, same replicas plus one.
+    target, new_pids = deploy(
+        _rolling_update_config({"name": "FailOnFlag", "num_replicas": 3}), 3
+    )
+    assert target == v1 and set(pids) < set(new_pids)
+    pids = new_pids
+
+    # user_config: new version applied by reconfiguring the same replicas.
+    v2, new_pids = deploy(
+        _rolling_update_config(
+            {"name": "FailOnFlag", "num_replicas": 3, "user_config": {"k": 1}}
+        ),
+        3,
+        previous_target=v1,
+    )
+    assert v2 != v1 and new_pids == pids
+
+    # Actor options: new version with restarted replicas.
+    v3, new_pids = deploy(
+        _rolling_update_config(
+            {
+                "name": "FailOnFlag",
+                "num_replicas": 3,
+                "user_config": {"k": 1},
+                "ray_actor_options": {"runtime_env": {"env_vars": {"RESTART": "1"}}},
+            }
+        ),
+        3,
+        previous_target=v2,
+    )
+    assert v3 not in (v1, v2) and not set(new_pids) & set(pids)
+    pids = new_pids
+
+    # Application runtime_env: rebuilt app, new version, restarted replicas.
+    rebuilt = ServeDeploySchema(
+        applications=[
+            {
+                "name": SERVE_DEFAULT_APP_NAME,
+                "import_path": FAIL_ON_FLAG_IMPORT_PATH,
+                "runtime_env": {"env_vars": {"REBUILD": "1"}},
+                "deployments": [{"name": "FailOnFlag", "num_replicas": 3}],
+            }
+        ]
+    )
+    v4, new_pids = deploy(rebuilt, 3, previous_target=v3)
+    assert v4 not in (v1, v2, v3) and not set(new_pids) & set(pids)
+
+
 @pytest.mark.parametrize("restart_controller", [False, True])
 def test_sparse_config_rollback_restores_code_defined_options(
     serve_instance, restart_controller

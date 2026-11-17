@@ -2,7 +2,7 @@
 This file serves as a documentation example and CI test for YAML config deployment.
 
 Structure:
-1. Monkeypatch setup: Ensures serve.run is non-blocking and removes accelerator requirements for CI testing.
+1. Monkeypatch setup: Ensures serve.run is non-blocking.
 2. Load YAML config and convert to Python using build_openai_app
 3. Test validation (deployment status polling + cleanup)
 """
@@ -22,7 +22,6 @@ with open(config_path, "r") as f:
 
 llm_configs = config_dict["applications"][0]["args"]["llm_configs"]
 for config in llm_configs:
-    config.pop("accelerator_type", None)
     # Disable compile cache to avoid cache corruption in CI
     if "runtime_env" not in config:
         config["runtime_env"] = {}

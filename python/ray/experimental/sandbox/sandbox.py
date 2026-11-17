@@ -74,6 +74,12 @@ class Sandbox:
         restore_from: Optional[str] = None,
         **kwargs,
     ):
+        if "gpu_ids" in kwargs:
+            raise TypeError(
+                "Sandbox does not accept 'gpu_ids'. A sandbox gets every GPU "
+                "Ray assigned this actor, from ray.get_gpu_ids()."
+            )
+
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
         # For restore_from, do not default to actor-assigned resources unless explicitly requested,
         # so that the checkpoint's recorded resource limits are preserved.
@@ -124,6 +130,11 @@ class Sandbox:
                 raise ValueError("Must provide either 'image' or 'restore_from'")
             if network is None:
                 network = "none"
+            # A sandbox gets every GPU Ray assigned this actor. Unlike cpu and
+            # memory, the actor has no other use for them, so there is nothing
+            # to override. An error resolving them propagates, so the sandbox
+            # never boots without them.
+            gpu_ids = [str(i) for i in ray.get_gpu_ids()] or None
             self.instance_id = self.runtime.create(
                 image=image,
                 cpu=cpu,
@@ -139,6 +150,7 @@ class Sandbox:
                 capabilities=capabilities,
                 readonly=readonly,
                 disk=disk,
+                gpu_ids=gpu_ids,
                 **kwargs,
             )
 
@@ -253,6 +265,31 @@ class Sandbox:
                 denylist.
         """
         self.runtime.set_egress_allowlist(self.instance_id, cidrs)
+
+    def commit(
+        self,
+        image: str,
+        env: Optional[Dict[str, str]] = None,
+        timeout_seconds: float = 1800.0,
+    ) -> str:
+        """Push the sandbox's base image and root filesystem changes to a registry.
+
+        The sandbox must have been created with ``readonly=False``. Registry
+        credentials come from ``$DOCKER_CONFIG`` on the node that runs this
+        actor. The actor runs one call at a time, so other calls wait until
+        the push finishes; see ``SandboxRuntime.commit``.
+
+        Args:
+            image: Target reference with a tag, such as ``registry/repo:tag``.
+            env: Variables to replace or extend the base image config's Env.
+            timeout_seconds: Timeout for export and each registry request.
+
+        Returns:
+            The immutable ``registry/repo@sha256:...`` reference.
+        """
+        return self.runtime.commit(
+            self.instance_id, image, env=env, timeout_seconds=timeout_seconds
+        )
 
     def checkpoint(
         self,

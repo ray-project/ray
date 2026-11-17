@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 @dataclass
 class TorchXLAConfig(TorchConfig):
-    """
-    Configuration for torch XLA setup.
+    """Configuration for torch XLA setup.
     See https://pytorch.org/xla/release/1.13/index.html for more info.
     Currently, only "neuron_cores" accelerator (AwsNeuronXLABackend)
     is supported with xrt runtime.
@@ -147,8 +146,7 @@ class _TorchAwsNeuronXLABackend(Backend):
     def on_training_start(
         self, worker_group: BaseWorkerGroup, backend_config: TorchXLAConfig
     ):
-        """
-        Configure the environment variables for the worker group.
+        """Configure the environment variables for the worker group.
         And initialize the xla distributed process group.
         TODO: Current setup only supports homogenous cluster with
          neuron_cores accelerator and xrt runtime.
@@ -159,8 +157,7 @@ class _TorchAwsNeuronXLABackend(Backend):
     def on_shutdown(
         self, worker_group: BaseWorkerGroup, backend_config: TorchXLAConfig
     ):
-        """
-        Logic ran right after training is finished.
+        """Logic ran right after training is finished.
         This is a sanity cleanup to kill xrt server, and to optionally
         run neuron parallel graph compilation
         """

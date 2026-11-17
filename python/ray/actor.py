@@ -823,9 +823,7 @@ class _ActorMethodMetadata:
         self._tensor_transport = tensor_transport
 
     def bind(self, actor_handle: "ActorHandle") -> "ActorMethod":
-        """
-        Produce a bound ActorMethod that holds a strong reference to actor_handle.
-        """
+        """Produce a bound ActorMethod that holds a strong reference to actor_handle."""
         return ActorMethod(
             actor_handle,
             self._method_name,
@@ -921,6 +919,10 @@ class ActorMethod:
         self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
+        """Raise a TypeError, because actor methods can't be called directly.
+
+        Call ``.remote()`` on the method instead.
+        """
         raise TypeError(
             "Actor methods cannot be called directly. Instead "
             f"of running 'object.{self._method_name}()', try "
@@ -929,8 +931,7 @@ class ActorMethod:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        Bind arguments to the actor method for Ray DAG building.
+        """Bind arguments to the actor method for Ray DAG building.
 
         This method generates and returns an intermediate representation (IR)
         node that indicates the actor method will be called with the given
@@ -942,6 +943,7 @@ class ActorMethod:
         return self._bind(args, kwargs)
 
     def remote(self, *args, **kwargs):
+        """Call this actor method remotely with the given arguments."""
         return self._remote(args, kwargs)
 
     def options(self, **options: Any):
@@ -1090,6 +1092,7 @@ class ActorMethod:
         enable_task_events=None,
         tensor_transport: Optional[str] = None,
         _labels: Optional[Dict[str, str]] = None,
+        _consume_once: bool = False,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -1114,6 +1117,29 @@ class ActorMethod:
         )
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
+
+        # `_consume_once` is a private, experimental option right now.
+        # It is not part of the public API and may change or be removed.
+        if not isinstance(_consume_once, bool):
+            raise TypeError(
+                f"_consume_once must be a bool, got {type(_consume_once).__name__}."
+            )
+        if _consume_once:
+            # TODO(karticam): Support streaming generators in a follow-up PR.
+            if num_returns == "streaming":
+                raise ValueError(
+                    "_consume_once=True is not supported yet for streaming generator "
+                    "actor methods. Support will be added in a future release."
+                )
+            if num_returns == "dynamic":
+                raise ValueError(
+                    "_consume_once=True is not supported with num_returns='dynamic'."
+                )
+            if tensor_transport is not None:
+                raise ValueError(
+                    "_consume_once=True is not supported together with "
+                    "tensor_transport."
+                )
 
         if tensor_transport is not None:
             if num_returns != 1:
@@ -1169,6 +1195,7 @@ class ActorMethod:
                 enable_task_events=enable_task_events,
                 tensor_transport=tensor_transport,
                 labels=_labels,
+                consume_once=_consume_once,
             )
 
         # Apply the decorator if there is one.
@@ -1507,6 +1534,8 @@ class _ActorClassMetadata:
 
 @PublicAPI
 class ActorClassInheritanceException(TypeError):
+    """Raised when a class tries to inherit from an actor class."""
+
     pass
 
 
@@ -1863,8 +1892,7 @@ class ActorClass(Generic[T]):
 
             @DeveloperAPI
             def bind(self, *args, **kwargs):
-                """
-                For Ray DAG building that creates static graph from decorated
+                """For Ray DAG building that creates static graph from decorated
                 class or functions.
                 """
                 from ray.dag.class_node import ClassNode
@@ -2259,8 +2287,7 @@ class ActorClass(Generic[T]):
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        For Ray DAG building that creates static graph from decorated
+        """For Ray DAG building that creates static graph from decorated
         class or functions.
         """
         from ray.dag.class_node import ClassNode
@@ -2498,6 +2525,7 @@ class ActorHandle(Generic[T]):
         enable_task_events: Optional[bool] = None,
         tensor_transport: Optional[str] = None,
         labels: Optional[Dict[str, str]] = None,
+        consume_once: bool = False,
     ):
         """Method execution stub for an actor handle.
 
@@ -2524,6 +2552,14 @@ class ActorHandle(Generic[T]):
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
             labels: Optional key-value labels to attach to this actor method task.
+            consume_once: Private, experimental and not part of the public API. If
+                True, each return value can be passed as an argument to exactly one
+                actor method call and can't be borrowed (for example, nested inside
+                another object or returned from a task). If the consuming actor runs
+                on another node, the value is moved there: once the consumer's node
+                has its copy, the copy in the object store on the producing actor's
+                node is freed. If the consumer runs on the same node, it uses that
+                copy, and nothing is copied.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -2533,6 +2569,8 @@ class ActorHandle(Generic[T]):
 
         args = args or []
         kwargs = kwargs or {}
+        if consume_once and self._ray_is_cross_language:
+            raise ValueError("_consume_once=True is only supported for Python actors.")
         if self._ray_is_cross_language:
             list_args = cross_language._format_args(worker, args, kwargs)
             function_descriptor = cross_language._get_function_descriptor_for_actor_method(  # noqa: E501
@@ -2592,6 +2630,7 @@ class ActorHandle(Generic[T]):
             enable_task_events,
             tensor_transport,
             labels,
+            consume_once=consume_once,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

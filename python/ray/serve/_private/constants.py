@@ -269,6 +269,11 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
+#: `graceful_shutdown_wait_loop_s` may be 0. A draining replica still sleeps at
+#: least this long between checks, and logs that it is waiting at most once per
+#: `DRAIN_WAITING_LOG_INTERVAL_S`.
+MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 0.01
+DRAIN_WAITING_LOG_INTERVAL_S = 1.0
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 
 # Dependency ordered shutdown deletes deployments in tiers, callers before
@@ -863,6 +868,13 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
+# When metrics authentication is required, HAProxy serves the exporter and
+# stats page on this owner-only Unix socket. HAProxyManager exposes them on the
+# metrics port with Ray token authentication.
+RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH", "/tmp/haproxy-serve/exporter.sock"
+)
+
 # Per-worker-node override for the proxy's HTTP/gRPC bind ports. Head node exempt.
 # Prefer http_options.port / grpc_options.port. This override only matters when
 # proxies are colocated on one machine and need distinct ports without SO_REUSEPORT.
@@ -979,14 +991,6 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
 # backpressure). Set RAY_SERVE_HAPROXY_RETRY_ON to override globally.
 RAY_SERVE_HAPROXY_RETRY_ON = get_env_str("RAY_SERVE_HAPROXY_RETRY_ON", "conn-failure")
 RAY_SERVE_HAPROXY_RETRIES = get_env_int_non_negative("RAY_SERVE_HAPROXY_RETRIES", None)
-# Same retry policy as above; defaults to the global value so the ingress
-# request router shares one policy unless explicitly overridden.
-RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", RAY_SERVE_HAPROXY_RETRY_ON
-)
-RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", RAY_SERVE_HAPROXY_RETRIES
-)
 RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
     "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
 )

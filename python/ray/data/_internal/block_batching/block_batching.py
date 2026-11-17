@@ -18,7 +18,7 @@ def batch_blocks(
     *,
     stats: Optional[DatasetStats] = None,
     batch_size: Optional[int] = None,
-    batch_format: str = "default",
+    batch_format: Optional[str] = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
     shuffle_buffer_min_size: Optional[int] = None,

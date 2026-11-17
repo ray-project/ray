@@ -14,6 +14,13 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class EnvToModulePipeline(ConnectorPipelineV2):
+    """The connector pipeline that runs between the env and the RLModule.
+
+    Runs its connector pieces in order to build the batch for the RLModule's
+    forward pass from the episodes. If a `MetricsLogger` is passed, it also logs
+    the sum of the episode lengths before and after the pipeline runs.
+    """
+
     @override(ConnectorPipelineV2)
     def __call__(
         self,

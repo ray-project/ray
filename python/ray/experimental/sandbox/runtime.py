@@ -1,8 +1,10 @@
 import asyncio
 import os
+import tempfile
 import threading
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal import image_push
 from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
@@ -10,7 +12,7 @@ from ray.experimental.sandbox.backend.base import (
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
-from ray.experimental.sandbox.exceptions import SandboxCreationError
+from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
 
@@ -94,6 +96,7 @@ class SandboxRuntime:
         cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
+        gpu_ids: Optional[List[Union[int, str]]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
         disk: Union[str, int, float] = 0,
@@ -136,6 +139,8 @@ class SandboxRuntime:
                 is writable. Writes are isolated within a per-sandbox copy-on-write overlay
                 filesystem, ensuring multiple sandboxes running the same container image do
                 not interfere with each other or modify the base image.
+            gpu_ids: GPU device ids/UUIDs to expose via CDI; see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
             _oci_spec_transform_fn: PRIVATE — development/testing only. Called with the fully-built OCI
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
@@ -163,6 +168,7 @@ class SandboxRuntime:
             cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
             readonly=readonly,
+            gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,
             disk=disk,
@@ -192,6 +198,7 @@ class SandboxRuntime:
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
         user: Optional[str] = None,
+        combine_output: bool = False,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox.
 
@@ -207,6 +214,8 @@ class SandboxRuntime:
                 user (optionally ":group") name, resolved against the
                 /etc/passwd and /etc/group inside the running sandbox
                 (default: the image user).
+            combine_output: Return stdout and stderr together, as raw bytes in
+                the order written, in ``ExecResult.output``.
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -219,6 +228,7 @@ class SandboxRuntime:
             env=env,
             shell=shell,
             user=user,
+            combine_output=combine_output,
         )
 
     async def exec_async(
@@ -230,6 +240,7 @@ class SandboxRuntime:
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
         user: Optional[str] = None,
+        combine_output: bool = False,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox asynchronously.
 
@@ -245,6 +256,8 @@ class SandboxRuntime:
                 user (optionally ":group") name, resolved against the
                 /etc/passwd and /etc/group inside the running sandbox
                 (default: the image user).
+            combine_output: Return stdout and stderr together, as raw bytes in
+                the order written, in ``ExecResult.output``.
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -258,6 +271,7 @@ class SandboxRuntime:
             env=env,
             shell=shell,
             user=user,
+            combine_output=combine_output,
         )
 
     def upload_file(self, instance_id: str, local_path: str, remote_path: str) -> None:
@@ -342,6 +356,56 @@ class SandboxRuntime:
             cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
         """
         self._backend.set_egress_allowlist(instance_id, cidrs)
+
+    def commit(
+        self,
+        instance_id: str,
+        image: str,
+        env: Optional[Dict[str, str]] = None,
+        timeout_seconds: float = 1800.0,
+    ) -> str:
+        """Push the sandbox's base image and root filesystem changes to a registry.
+
+        The sandbox must have been created with ``readonly=False``.
+        Mounts aren't included. Commit leaves the sandbox in the state it was
+        in: a running sandbox is paused only while its changes are exported,
+        and a paused sandbox stays paused. Registry credentials come from
+        ``$DOCKER_CONFIG`` and must allow push.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            image: Target reference with a tag, such as ``registry/repo:tag``.
+            env: Variables to replace or extend the base image config's Env.
+            timeout_seconds: Timeout for export and each registry request.
+
+        Returns:
+            The immutable ``registry/repo@sha256:...`` reference.
+        """
+        cfg = self._backend.get_config(instance_id)
+        # Fail before the export, which pauses a running sandbox.
+        if cfg.readonly:
+            raise SandboxError(
+                f"Cannot commit sandbox '{instance_id}': its root filesystem is "
+                "read-only, so it has no changes to export. Create the sandbox "
+                "with readonly=False to commit it."
+            )
+        image_push.validate_commit(cfg.image, image, self._image_manager.images_dir)
+        with tempfile.TemporaryDirectory(
+            prefix="commit-", dir=self._backend.sandbox_dir(instance_id)
+        ) as directory:
+            rootfs_tar = os.path.join(directory, "rootfs.tar")
+            self._backend.export_rootfs_changes(
+                instance_id, rootfs_tar, timeout=timeout_seconds
+            )
+            layers = image_push.build_layers(rootfs_tar, directory)
+            return image_push.push_image(
+                cfg.image,
+                image,
+                layers,
+                env,
+                self._image_manager.images_dir,
+                timeout_seconds,
+            )
 
     def checkpoint(
         self,

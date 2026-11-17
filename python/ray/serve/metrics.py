@@ -142,6 +142,12 @@ class Counter(metrics.Counter):
     def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
         """Increment the counter by the given value, add serve context
         tag values to the tags
+
+        Args:
+            value: Value to increment the counter by.
+            tags: Tags to set or override for this record. If the metric has a
+                ``route`` tag key and ``tags`` doesn't set it, Serve fills it in
+                from the current request.
         """
         tags = _add_serve_context_tag_values(self._tag_keys, tags)
         super().inc(value, tags)
@@ -200,6 +206,12 @@ class Gauge(metrics.Gauge):
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Set the gauge to the given value, add serve context
         tag values to the tags
+
+        Args:
+            value: Value to set the gauge to.
+            tags: Tags to set or override for this record. If the metric has a
+                ``route`` tag key and ``tags`` doesn't set it, Serve fills it in
+                from the current request.
         """
         tags = _add_serve_context_tag_values(self._tag_keys, tags)
         super().set(value, tags)
@@ -266,6 +278,12 @@ class Histogram(metrics.Histogram):
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe the given value, add serve context
         tag values to the tags
+
+        Args:
+            value: Value to observe.
+            tags: Tags to set or override for this record. If the metric has a
+                ``route`` tag key and ``tags`` doesn't set it, Serve fills it in
+                from the current request.
         """
         tags = _add_serve_context_tag_values(self._tag_keys, tags)
         super().observe(value, tags)

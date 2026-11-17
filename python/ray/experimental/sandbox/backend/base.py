@@ -28,12 +28,15 @@ class ExecResult:
         stdout: Standard output text string.
         stderr: Standard error text string.
         duration_seconds: Command execution time in seconds.
+        output: With ``combine_output``, raw stdout and stderr bytes in write
+            order; ``stdout`` and ``stderr`` are then empty. Otherwise None.
     """
 
     exit_code: int
     stdout: str
     stderr: str
     duration_seconds: float
+    output: Optional[bytes] = None
 
     @property
     def duration_ms(self) -> float:
@@ -90,6 +93,7 @@ class BaseSandboxBackend(ABC):
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
         user: Optional[str] = None,
+        combine_output: bool = False,
     ) -> ExecResult:
         """Execute a command synchronously inside the sandbox.
 
@@ -105,6 +109,8 @@ class BaseSandboxBackend(ABC):
                 user (optionally ":group") name, resolved against the
                 /etc/passwd and /etc/group inside the running sandbox
                 (default: the image user).
+            combine_output: Return stdout and stderr together, as raw bytes in
+                the order written, in ``ExecResult.output``.
 
         Returns:
             An ExecResult instance containing stdout, stderr, and exit code.

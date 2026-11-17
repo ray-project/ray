@@ -68,8 +68,7 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
 
 
 def patch_print_function() -> None:
-    """
-    Patch the print function to redirect logs to Train's logger.
+    """Patch the print function to redirect logs to Train's logger.
     Only patch the print function if the environment variable is set to "1"
     """
     if env_bool(ENABLE_PRINT_PATCH_ENV_VAR, DEFAULT_ENABLE_PRINT_PATCH):

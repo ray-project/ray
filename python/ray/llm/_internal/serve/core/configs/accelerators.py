@@ -97,8 +97,7 @@ class AcceleratorBackend(ABC):
 
     @property
     def requires_deferred_placement_group(self) -> bool:
-        """
-        If True, Ray Serve will not provision a placement group for the deployment.
+        """If True, Ray Serve will not provision a placement group for the deployment.
         Instead, creation is deferred to the replica at runtime.
         Defaults to False.
         """
@@ -270,8 +269,7 @@ class TPUAccelerator(AcceleratorBackend):
 
     @property
     def requires_deferred_placement_group(self) -> bool:
-        """
-        If a TPU topology is specified, we defer PG creation so the replica can
+        """If a TPU topology is specified, we defer PG creation so the replica can
         provision a `SlicePlacementGroup` at runtime. This ensures multi-host
         TPU slices are gang-scheduled atomically according to their physical
         topology rather than fragmented across the cluster.

@@ -61,8 +61,23 @@ def terminate_current_instance():
 
 
 def terminate_node(node_id: str):
+    """Terminate the instance that hosts ``node_id``.
+
+    The killer task runs on the node it terminates, so it often dies with the
+    node instead of returning. Don't retry it: a retry has hard affinity to a node
+    that no longer exists, and fails with ``TaskUnschedulableError``.
+    """
     killer_task = ray.remote(terminate_current_instance).options(
         num_cpus=0,
+        max_retries=0,
         scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
     )
-    ray.get(killer_task.remote())
+    try:
+        ray.get(killer_task.remote())
+    except (
+        ray.exceptions.NodeDiedError,
+        ray.exceptions.WorkerCrashedError,
+        ray.exceptions.TaskUnschedulableError,
+    ):
+        # The node went down with the task, or was already gone.
+        pass

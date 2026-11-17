@@ -17,7 +17,7 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data.block import BlockMetadata, TaskExecWorkerStats
+from ray.data.block import UNKNOWN_NODE_ID, TaskExecWorkerStats
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -36,8 +36,6 @@ _METRIC_FIELD_METRICS_ARGS_KEY = "__metric_metrics_args"
 _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
 _METRICS: List["MetricDefinition"] = []
-
-NODE_UNKNOWN = "unknown"
 
 
 class MetricsGroup(Enum):
@@ -143,11 +141,10 @@ class RunningTaskInfo:
     cum_block_gen_time_s: float
     cum_block_ser_time_s: float
     task_id: ray.TaskID
-    # Node IDs derived from the input blocks' exec_stats at task submission time.
+    # Node IDs derived from the input blocks' node_id at task submission time.
     # Used to determine cache hits: if the task's first output block was produced
     # on a node that already held an input block, it's a "cache hit" (the task
-    # ran where its data lived). For source operators (e.g., ReadRange), input
-    # blocks lack exec_stats, so input_node_ids will contain NODE_UNKNOWN and
+    # ran where its data lived).
     # all tasks will be classified as cache misses.
     input_node_ids: Set[str] = field(default_factory=set)
     last_updated: float = field(init=False, default_factory=lambda: time.perf_counter())
@@ -186,12 +183,12 @@ class OpRuntimesMetricsMeta(type):
                 _METRICS.append(metric)
 
 
-def node_id_from_block_metadata(meta: BlockMetadata) -> str:
-    if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
-        node_id = meta.exec_stats.node_id
-    else:
-        node_id = NODE_UNKNOWN
-    return node_id
+def _is_object_lost_error(exception: BaseException) -> bool:
+    """Whether ``exception`` is, or is a task error caused by, a lost object.
+    Errors user code wraps in its own exception aren't detected."""
+    if isinstance(exception, ray.exceptions.RayTaskError):
+        exception = exception.cause
+    return isinstance(exception, ray.exceptions.ObjectLostError)
 
 
 @dataclass
@@ -589,6 +586,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Byte size of used memory in object store.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
+    bytes_remote_inputs_read: int = metric_field(
+        default=0,
+        description="Cumulative input bytes this operator's actors read from a "
+        "node other than the actor's node (cross-node object transfer).",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+        map_only=True,
+    )
+    num_remote_blocks_read: int = metric_field(
+        default=0,
+        description="Cumulative number of input blocks this operator's actors "
+        "read cross-node (from a node other than the actor's node).",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+        map_only=True,
+    )
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -617,6 +628,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
         self._op_task_duration_stats = DistributionTracker()
         self._max_uss_bytes = DistributionTracker()
+        # Number of failed tasks whose error was caused by a lost object (e.g.
+        # lineage reconstruction failed or the owner died). Used for usage
+        # collection, so not exposed as a metric.
+        self._num_tasks_failed_object_lost = 0
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -630,12 +645,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def as_dict(
         self,
         skip_internal_metrics: bool = False,
+        include_resource_usage: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Return a dict representation of the metrics.
+        """Return a dict representation of the metrics.
 
         Args:
             skip_internal_metrics: Whether to skip internal metrics.
+            include_resource_usage: Whether to include the owning operator's
+                current CPU, GPU and memory usage.
 
         Returns:
             A dict representation of the metrics.
@@ -652,16 +669,17 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 value = value.as_dict()
             result.append((metric.name, value))
 
-        # TODO: record resource usage in OpRuntimeMetrics,
-        # avoid calling self._op.current_logical_usage()
-        resource_usage = self._op.current_logical_usage()
-        result.extend(
-            [
-                ("cpu_usage", resource_usage.cpu or 0),
-                ("gpu_usage", resource_usage.gpu or 0),
-                ("memory_usage", resource_usage.memory or 0),
-            ]
-        )
+        if include_resource_usage:
+            # TODO: record resource usage in OpRuntimeMetrics,
+            # avoid calling self._op.current_logical_usage()
+            resource_usage = self._op.current_logical_usage()
+            result.extend(
+                [
+                    ("cpu_usage", resource_usage.cpu or 0),
+                    ("gpu_usage", resource_usage.gpu or 0),
+                    ("memory_usage", resource_usage.memory or 0),
+                ]
+            )
         result.extend(self._extra_metrics.items())
         return dict(result)
 
@@ -946,6 +964,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def max_uss_bytes(self) -> DistributionTracker:
         return self._max_uss_bytes
 
+    @property
+    def num_tasks_failed_object_lost(self) -> int:
+        """Number of failed tasks whose error was caused by a lost object."""
+        return self._num_tasks_failed_object_lost
+
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
@@ -1024,9 +1047,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.rows_inputs_of_submitted_tasks += inputs.num_rows() or 0
         self._pending_task_inputs.add(inputs)
-        input_node_ids = {
-            node_id_from_block_metadata(entry.metadata) for entry in inputs.blocks
-        }
+        input_node_ids = {entry.metadata.node_id for entry in inputs.blocks}
         self._running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
             num_outputs=0,
@@ -1104,7 +1125,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
             trace_allocation(block_ref, "operator_output")
 
-            output_node_id = node_id_from_block_metadata(meta)
+            output_node_id = meta.node_id
             if first_output_node_id is None:
                 first_output_node_id = output_node_id
 
@@ -1123,7 +1144,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             # Classify the task as cache hit/miss based on first output block
             is_hit = (
                 first_output_node_id is not None
-                and first_output_node_id != NODE_UNKNOWN
+                and first_output_node_id != UNKNOWN_NODE_ID
                 and first_output_node_id in task_info.input_node_ids
             )
             task_info.is_task_locality_hit = is_hit
@@ -1138,11 +1159,31 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         if self._per_node_metrics_enabled:
             for entry in output.blocks:
                 meta = entry.metadata
-                node_id = node_id_from_block_metadata(meta)
+                node_id = meta.node_id
                 node_metrics = self._per_node_metrics[node_id]
 
                 node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
                 node_metrics.blocks_outputs_of_finished_tasks += 1
+
+    def _release_task_inputs(self, task_index: int):
+        """Releases what ``on_task_submitted`` reserved for the task."""
+        self.num_tasks_running -= 1
+        inputs = self._running_tasks.pop(task_index).inputs
+        input_size = inputs.size_bytes()
+        self._pending_task_inputs.remove(inputs)
+        assert self.obj_store_mem_pending_task_inputs >= 0, (
+            self._op,
+            self.obj_store_mem_pending_task_inputs,
+            input_size,
+        )
+        self.obj_store_mem_freed += input_size
+        inputs.destroy_if_owned()
+
+    def on_task_aborted(self, task_index: int):
+        """Callback when a task is aborted without a failure. Releases what
+        ``on_task_submitted`` reserved without counting the task as finished,
+        since the task that replaces it is counted instead."""
+        self._release_task_inputs(task_index)
 
     def on_task_finished(
         self,
@@ -1152,10 +1193,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_exec_driver_stats: Optional["TaskExecDriverStats"],
     ):
         """Callback when a task is finished."""
-        self.num_tasks_running -= 1
         self.num_tasks_finished += 1
         if exception is not None:
             self.num_tasks_failed += 1
+            if _is_object_lost_error(exception):
+                self._num_tasks_failed_object_lost += 1
 
         task_info = self._running_tasks[task_index]
 
@@ -1222,13 +1264,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
-        input_size = inputs.size_bytes()
-        self._pending_task_inputs.remove(inputs)
-        assert self.obj_store_mem_pending_task_inputs >= 0, (
-            self._op,
-            self.obj_store_mem_pending_task_inputs,
-            input_size,
-        )
+        # Release before the object-location lookup below, which can raise.
+        self._release_task_inputs(task_index)
 
         ctx = self._op.data_context
         if ctx.enable_get_object_locations_for_metrics:
@@ -1239,22 +1276,17 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
 
-        self.obj_store_mem_freed += total_input_size
-
         # Update per node metrics
         if self._per_node_metrics_enabled:
             node_ids = set()
             for entry in inputs.blocks:
                 meta = entry.metadata
-                node_id = node_id_from_block_metadata(meta)
+                node_id = meta.node_id
                 node_metrics = self._per_node_metrics[node_id]
 
                 # Stats to update once per node id or if node id is unknown
-                if node_id not in node_ids or node_id == NODE_UNKNOWN:
+                if node_id not in node_ids or node_id == UNKNOWN_NODE_ID:
                     node_metrics.num_tasks_finished += 1
 
                 # Keep track of node ids to ensure we don't double count
                 node_ids.add(node_id)
-
-        inputs.destroy_if_owned()
-        del self._running_tasks[task_index]

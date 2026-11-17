@@ -3,6 +3,7 @@ load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_test")
 ray_cc_test(
     name = "ray_syncer_test",
     srcs = ["ray_syncer_test.cc"],
+    auth_token = True,
     tags = [
         "no_tsan",
         "no_ubsan",
@@ -16,6 +17,7 @@ ray_cc_test(
         "//src/ray/ray_syncer:fake_ray_syncer",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc/authentication:authentication_token",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:env",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
