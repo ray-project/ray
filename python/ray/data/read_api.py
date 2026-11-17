@@ -94,6 +94,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
+    _normalize_paths_to_strings,
     get_compute_strategy_for_read_api,
     get_table_block_metadata_schema,
     merge_resources_to_ray_remote_args,
@@ -2680,6 +2681,35 @@ def read_csv(
     )
 
 
+def _text_read_uses_v2(
+    paths: Union[str, List[str]],
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+    arrow_open_stream_args: Optional[Dict[str, Any]],
+) -> bool:
+    """Whether ``read_text`` routes through DataSource V2.
+
+    V2 has no ``open_stream_args``, and its listing needs file sizes that HTTP
+    servers often do not report, so those reads keep the V1 reader.
+    """
+    from ray.data.datasource.path_util import _is_http_filesystem, _is_http_url
+
+    if not DataContext.get_current().use_datasource_v2:
+        return False
+    if arrow_open_stream_args is not None:
+        return False
+    if any(_is_http_url(path) for path in _normalize_paths_to_strings(paths)):
+        return False
+    if filesystem is None:
+        return True
+    if _is_http_filesystem(filesystem):
+        return False
+    try:
+        from fsspec.implementations.http import HTTPFileSystem
+    except ImportError:
+        return True
+    return not isinstance(filesystem, HTTPFileSystem)
+
+
 @PublicAPI
 def read_text(
     paths: Union[str, List[str]],
@@ -2712,6 +2742,16 @@ def read_text(
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
     The column name default to "text".
+
+    Note:
+        The DataSourceV2 reader is selected through the ``use_datasource_v2``
+        setting of :class:`~ray.data.context.DataContext`. A read that sets
+        ``arrow_open_stream_args`` or reads over HTTP uses the V1 reader. If you
+        encounter a DataSourceV2 limitation, use the V1 reader by setting
+        ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
+        ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray. This shared setting also affects ``read_parquet()`` and
+        ``read_orc()``.
 
     Examples:
         Read a file in remote storage.
@@ -2790,6 +2830,38 @@ def read_text(
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
+    if _text_read_uses_v2(paths, filesystem, arrow_open_stream_args):
+        from ray.data._internal.datasource_v2.formats.text.text_datasource_v2 import (
+            TextDatasourceV2,
+        )
+
+        datasource_v2 = TextDatasourceV2(
+            paths=_normalize_paths_to_strings(paths),
+            encoding=encoding,
+            drop_empty_lines=drop_empty_lines,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     datasource = TextDatasource(
         paths,
