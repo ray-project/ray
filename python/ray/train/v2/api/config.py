@@ -132,8 +132,7 @@ class ScalingConfig(ScalingConfigV1):
         if self.elasticity_enabled and self.max_workers == 0:
             raise ValueError(
                 f"Invalid ScalingConfig(num_workers={self.num_workers}): "
-                "max_workers must be at least 1. "
-                "Use num_workers=0 to run in local mode."
+                "max_workers must be at least 1."
             )
 
         self._validate_tpu_config()
