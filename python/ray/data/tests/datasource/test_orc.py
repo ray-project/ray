@@ -382,6 +382,19 @@ def test_read_orc_include_paths(ray_start_regular_shared, tmp_path, orc_reader_v
     assert all(row["path"].endswith("data.orc") for row in rows)
 
 
+def test_read_orc_v2_filter_path_from_directory(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    _write_orc(str(tmp_path / "first.orc"), pa.table({"id": [1]}))
+    path = str(tmp_path / "matching.orc")
+    _write_orc(path, pa.table({"id": [2]}))
+    ds = ray.data.read_orc(str(tmp_path), include_paths=True)
+    assert ds.filter(expr=col("path") == path).take_all() == [{"id": 2, "path": path}]
+
+
 def test_read_orc_ignore_missing_paths(
     ray_start_regular_shared, tmp_path, orc_reader_version
 ):

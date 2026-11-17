@@ -185,7 +185,7 @@ ds = ds.randomize_block_order()
 
 Ray Data provides the following options for shuffling all rows globally across the whole dataset:
 
-- **Random shuffling**: Call {meth}`~ray.data.Dataset.random_shuffle` to shuffle individual rows from the existing blocks into new blocks. You can optionally provide a seed.
+- **Random shuffling**: Call {meth}`~ray.data.Dataset.random_shuffle` to shuffle individual rows from the existing blocks into new blocks. You can optionally provide a seed. With {ref}`disk-based shuffle <disk-based-shuffle>` enabled under the {ref}`shuffle v2 <shuffle-v2>` strategy, random shuffle runs as a map and reduce operator pair that streams its input through the map step.
 - **Key-based repartitioning**: Call {meth}`~ray.data.Dataset.repartition` with the `keys` parameter to shuffle the rows based on the hash of the values in the key columns you provide. This operation co-locates rows with the same key values deterministically. Ray 2.46 introduced this option.
 
 A shuffle is an expensive operation. It requires materializing the whole dataset in memory, and it acts as a synchronization barrier, so subsequent operators can't start executing until the shuffle completes.

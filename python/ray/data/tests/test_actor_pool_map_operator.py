@@ -38,6 +38,8 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+    _actor_task_rerun_policy,
     _ActorPool,
     _MapWorker,
 )
@@ -1973,6 +1975,34 @@ def test_merge_ray_remote_args_op_wins_on_collision(restore_data_context):
     )
     merged = op._merge_ray_remote_args()
     assert merged["label_selector"] == {"subcluster": "val", "node": "X"}
+
+
+@pytest.mark.parametrize(
+    "actor_args, reruns",
+    [
+        # By default the operator gives actors unlimited task retries.
+        ({}, True),
+        # With ``max_restarts=0`` it leaves ``max_task_retries`` at Ray's 0.
+        ({"max_restarts": 0}, False),
+        ({"max_task_retries": 0}, False),
+    ],
+)
+def test_actor_task_rerun_policy_follows_max_task_retries(
+    restore_data_context, actor_args, reruns
+):
+    """An actor task counts as rerun on ``actor_task_retry_on_errors`` only when
+    its actor's ``max_task_retries`` lets Ray rerun it, so a task that won't
+    rerun emits its buffered rows before an error the job skips."""
+    context = DataContext.get_current()
+    context.actor_task_retry_on_errors = [ValueError]
+    actor_args = ActorPoolMapOperator._apply_default_remote_args(actor_args, context)
+    task_args = ActorPoolMapOperator._apply_default_actor_task_remote_args(
+        None, context
+    )
+
+    policy = _actor_task_rerun_policy(task_args, actor_args)
+
+    assert policy.may_rerun(ValueError("bad input")) is reruns
 
 
 if __name__ == "__main__":
