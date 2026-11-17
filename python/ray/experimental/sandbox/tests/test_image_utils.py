@@ -2007,6 +2007,28 @@ def test_erofs_pull_builds_reproducible_images(tmp_path, erofs_pull, monkeypatch
     # The superblock's build time is 0, as mkfs.erofs -T0 writes it.
     assert contents[0][1024 + 24 : 1024 + 32] == bytes(8)
 
+    # The tag moves to an image where one small file changed, with the same
+    # number of blocks and inodes: only the UUID, which follows the layers,
+    # tells the superblocks apart, so a checkpoint of one image isn't
+    # restored onto the other.
+    moved = list(layers)
+    moved[1] = _layer(("b", os.urandom(1 << 20), {}), ("d/x", b"y", {}))
+    with _serve_image(monkeypatch, moved) as image:
+        image_dir = pull_and_extract_container_image(
+            image, images_dir=str(tmp_path / "moved")
+        )
+    with open(os.path.join(image_dir, ROOTFS_IMAGE), "rb") as f:
+        moved_superblock = f.read(1024 + 128)[1024:]
+    superblock = contents[0][1024 : 1024 + 128]
+    assert moved_superblock[:48] + moved_superblock[64:] == (
+        superblock[:48] + superblock[64:]
+    )
+    assert moved_superblock[48:64] != superblock[48:64]
+    assert (
+        image_utils.erofs_superblock_fingerprint(os.path.join(image_dir, ROOTFS_IMAGE))
+        not in fingerprints
+    )
+
 
 def test_erofs_pull_refuses_digests_that_are_not_sha256_hex(tmp_path, erofs_pull):
     """A manifest digest names files in the layer cache, so erofs-pull takes

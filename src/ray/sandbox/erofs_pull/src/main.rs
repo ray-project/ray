@@ -247,7 +247,9 @@ fn run(spec: Spec) -> Result<(), String> {
     }
     tree.seed();
     let t_tree = Instant::now();
-    let inodes = erofs::write(&tree, &out).map_err(|e| e.to_string())?;
+    let digests: Vec<&str> = spec.layers.iter().map(|l| l.digest.as_str()).collect();
+    let uuid = erofs::image_uuid(out.block, &digests);
+    let inodes = erofs::write(&tree, &out, uuid).map_err(|e| e.to_string())?;
     let t_done = Instant::now();
     eprintln!(
         "{}",

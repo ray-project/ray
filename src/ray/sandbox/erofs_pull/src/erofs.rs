@@ -10,6 +10,8 @@
 use std::io;
 use std::os::unix::fs::FileExt;
 
+use sha2::{Digest, Sha256};
+
 use crate::layer::Out;
 use crate::tree::{NodeKind, Tree, MAX_NAME, ROOT};
 
@@ -74,7 +76,34 @@ fn dir_blocks(mut entries: Vec<(&[u8], u64, u8)>, block: usize) -> io::Result<Ve
     Ok(data)
 }
 
-pub fn write(tree: &Tree, out: &Out) -> io::Result<u64> {
+/// Names the way this writer lays an image out. Change it whenever the same
+/// layers would come out with a different layout (data order, inode
+/// numbering, directory format, seeds), so that the superblock tells the
+/// two layouts apart.
+const LAYOUT: &str = "erofs-pull layout 1";
+
+/// The image's UUID: a hash of the layout, the block size and the layers'
+/// digests in manifest order. gVisor restores a checkpoint only onto an
+/// image whose superblock matches the one it was taken on, and the
+/// checkpoint records where files' data lies; so two images get the same
+/// superblock only if they're the same bytes. Builds of the same layers
+/// still match, wherever they run. An RFC 9562 version 8 (custom) UUID.
+pub fn image_uuid<S: AsRef<str>>(block_size: u64, digests: &[S]) -> [u8; 16] {
+    let mut hasher = Sha256::new();
+    hasher.update(LAYOUT.as_bytes());
+    hasher.update(block_size.to_le_bytes());
+    for digest in digests {
+        hasher.update(b"\n");
+        hasher.update(digest.as_ref().as_bytes());
+    }
+    let mut uuid = [0u8; 16];
+    uuid.copy_from_slice(&hasher.finalize()[..16]);
+    uuid[6] = (uuid[6] & 0x0f) | 0x80;
+    uuid[8] = (uuid[8] & 0x3f) | 0x80;
+    uuid
+}
+
+pub fn write(tree: &Tree, out: &Out, uuid: [u8; 16]) -> io::Result<u64> {
     // Number the inodes breadth-first from the root, once each (hard links
     // share one), and count the names that refer to each.
     let mut index = vec![u32::MAX; tree.nodes.len()];
@@ -151,10 +180,11 @@ pub fn write(tree: &Tree, out: &Out) -> io::Result<u64> {
     sb[12] = out.block.trailing_zeros() as u8;
     sb[14..16].copy_from_slice(&0u16.to_le_bytes()); // root nid
     sb[16..24].copy_from_slice(&(order.len() as u64).to_le_bytes());
-    // Build time 0 and a zero UUID, as `mkfs.erofs -T0 --mkfs-time
-    // -U00000000-0000-0000-0000-000000000000` writes: gVisor restores a
-    // checkpoint only onto an image with the superblock it was taken on.
+    // Build time 0, as `mkfs.erofs -T0 --mkfs-time` writes it, and a UUID
+    // that depends only on what the image is built from (image_uuid): every
+    // build of an image has the same superblock, and different images don't.
     sb[24..32].copy_from_slice(&0u64.to_le_bytes());
+    sb[48..64].copy_from_slice(&uuid);
     sb[36..40].copy_from_slice(&(blocks as u32).to_le_bytes());
     sb[40..44].copy_from_slice(&(meta_blk as u32).to_le_bytes());
     out.file.write_all_at(&sb, 1024)?;
@@ -170,7 +200,28 @@ impl crate::tree::Node {
 
 #[cfg(test)]
 mod tests {
-    use super::dir_blocks;
+    use super::{dir_blocks, image_uuid};
+
+    #[test]
+    fn the_uuid_follows_the_layers_their_order_and_the_block_size() {
+        let (a, b) = (
+            format!("sha256:{}", "a".repeat(64)),
+            format!("sha256:{}", "b".repeat(64)),
+        );
+        let uuid = image_uuid(4096, &[&a, &b]);
+        assert_eq!(uuid, image_uuid(4096, &[&a, &b]));
+        for other in [
+            image_uuid(4096, &[&b, &a]),
+            image_uuid(4096, &[&a]),
+            image_uuid(4096, &[&a, &b, &b]),
+            image_uuid(65536, &[&a, &b]),
+        ] {
+            assert_ne!(uuid, other);
+        }
+        // RFC 9562 version 8, variant 10.
+        assert_eq!(uuid[6] >> 4, 8);
+        assert_eq!(uuid[8] >> 6, 0b10);
+    }
 
     #[test]
     fn names_longer_than_erofs_takes_are_an_error_not_a_hang() {
