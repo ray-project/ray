@@ -53,7 +53,8 @@ class TickCapacitySnapshot:
     # reserved - committed (non-PG pools), floored at zero. Excludes nodes to
     # reclaim: an actor placed there would be evicted next tick.
     free_by_node: Dict[NodeIdStr, ExecutionResources]
-    # This dataset's coordinator slice, before subtracting what we hold.
+    # This dataset's coordinator slice minus its placement groups' bundles,
+    # before subtracting what the non-PG pools hold.
     reserved_by_node: Dict[NodeIdStr, ExecutionResources]
     # Nodes each op's constraint allows (every allocated node when
     # unconstrained). Static for the tick: it says where an op may run, never

@@ -61,9 +61,8 @@ def committed_by_node(
     """Resources the non-PG pools hold per node: running actors plus pendings
     at their target node.
 
-    PG-managed ops are excluded: their actors live in a placement group
-    reservation, which the coordinator already leaves out of this dataset's
-    slice.
+    PG-managed ops are excluded: their actors live inside a placement group,
+    whose bundles ``build_capacity_snapshot`` takes out of the slice instead.
     """
     committed: Dict[NodeIdStr, ExecutionResources] = {}
     for op in profiles.non_pg_ops:
@@ -233,16 +232,19 @@ class SizingTicker:
 
         Draining nodes are left out of ``reserved``, so anything we hold there
         shows up in ``nodes_to_reclaim``. Nodes to reclaim are left out of
-        ``free``: an actor placed there would be evicted next tick.
+        ``free``: an actor placed there would be evicted next tick. The
+        placement groups' bundles are left out too: the slice includes them,
+        but only PG actors can use them.
         """
+        zero = ExecutionResources.zero()
+        pg_reserved = self._pg_bundles.reserved_by_node
         reserved = {
-            node_id: res
+            node_id: res.subtract(pg_reserved.get(node_id, zero)).max(zero)
             for node_id, res in cluster_view.reserved_by_node.items()
             if node_id not in cluster_view.draining_nodes
         }
         nodes_to_reclaim = self._nodes_to_reclaim(reserved)
         committed = committed_by_node(self._profiles)
-        zero = ExecutionResources.zero()
         free = {
             node_id: res.subtract(committed.get(node_id, zero)).max(zero)
             for node_id, res in reserved.items()

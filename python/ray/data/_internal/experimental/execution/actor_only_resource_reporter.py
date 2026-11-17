@@ -52,6 +52,11 @@ class DatasetAllocationView:
     pg_bundles: Dict[PlacementGroupIdStr, List[ExecutionResources]] = field(
         default_factory=dict
     )
+    # Node each of those bundles was placed on, by bundle index; ``None`` for a
+    # bundle Ray has not placed yet.
+    pg_bundle_nodes: Dict[PlacementGroupIdStr, List[Optional[NodeIdStr]]] = field(
+        default_factory=dict
+    )
     # Nodes Ray core is draining. Their allocation is still reported, but
     # nothing new should be placed there.
     draining_nodes: FrozenSet[NodeIdStr] = frozenset()
@@ -79,6 +84,9 @@ class ActorOnlyResourceReporter:
         # Shapes are fixed at PG creation, so each PG is fetched at most once
         # (``prefetch_pg_bundles``) and served from here afterwards.
         self._pg_bundles_by_id: Dict[PlacementGroupIdStr, List[ExecutionResources]] = {}
+        self._pg_bundle_nodes_by_id: Dict[
+            PlacementGroupIdStr, List[Optional[NodeIdStr]]
+        ] = {}
         # Signature of the last-seen per-node allocation and when it last
         # changed (see ``seconds_since_allocation_change``).
         self._alloc_signature: Optional[
@@ -163,6 +171,19 @@ class ActorOnlyResourceReporter:
                 ExecutionResources.from_resource_dict(bundles[idx])
                 for idx in sorted(bundles)
             ]
+            bundle_nodes = table.get("bundles_to_node_id", {}) or {}
+            self._pg_bundle_nodes_by_id[pg_id] = [
+                bundle_nodes.get(idx) or None for idx in sorted(bundles)
+            ]
+
+    def register_placement_groups(
+        self, placement_groups: List["PlacementGroup"]
+    ) -> None:
+        """Register the topology's placement groups with the coordinator, so
+        other requesters are not handed the capacity they hold."""
+        pg_ids = {pg.id.hex() for pg in placement_groups}
+        if pg_ids:
+            self._autoscaling_coordinator.register_placement_groups(pg_ids)
 
     def get_cluster_view(
         self,
@@ -176,6 +197,9 @@ class ActorOnlyResourceReporter:
             reserved_by_node=self.get_reserved_resources_by_node(),
             labels_by_node=get_alive_node_labels() if include_labels else {},
             pg_bundles=dict(self._pg_bundles_by_id) if include_pg_bundles else {},
+            pg_bundle_nodes=(
+                dict(self._pg_bundle_nodes_by_id) if include_pg_bundles else {}
+            ),
             draining_nodes=(
                 frozenset(get_draining_nodes())
                 if include_draining_nodes

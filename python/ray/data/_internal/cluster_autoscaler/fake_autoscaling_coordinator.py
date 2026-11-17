@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, FrozenSet, List, Optional
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional
 
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
@@ -11,6 +11,7 @@ from .base_autoscaling_coordinator import (
     ResourceRequestStrategy,
     ResourceType,
 )
+from ray.data._internal.execution.interfaces.common import PlacementGroupIdStr
 
 
 class FakeAutoscalingCoordinator(AutoscalingCoordinator):
@@ -56,6 +57,7 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         self._initial_cluster_resources = initial_cluster_resources
         self._initial_cluster_resources_by_node = initial_cluster_resources_by_node
         self._allocation: Optional[FakeAutoscalingCoordinator.Allocation] = None
+        self.placement_group_ids: FrozenSet[PlacementGroupIdStr] = frozenset()
 
     def request_resources(
         self,
@@ -89,6 +91,12 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
 
     def cancel_request(self) -> None:
         self._allocation = None
+
+    def register_placement_groups(
+        self, placement_group_ids: Iterable[PlacementGroupIdStr]
+    ) -> None:
+        """Record them; the fake reserves every requested bundle regardless."""
+        self.placement_group_ids = frozenset(placement_group_ids)
 
     def get_reserved_resources(self) -> NodeResources:
         """Return the reserved resources if they haven't expired."""

@@ -1,6 +1,8 @@
 """Unit tests for ``ActorOnlyResourceReporter`` and its wiring into the cluster
 autoscaler's utilization gauge. Fakes only; no cluster."""
+import importlib
 import sys
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -142,6 +144,48 @@ def test_per_node_allocation_and_change_tracking():
     view = reporter.get_cluster_view()
     assert view.reserved_by_node["node1"].cpu == 2
     assert view.labels_by_node == {} and view.pg_bundles == {}
+
+
+def _fake_pg(id_hex: str) -> Any:
+    return SimpleNamespace(id=SimpleNamespace(hex=lambda: id_hex))
+
+
+@pytest.mark.parametrize(
+    "pg_ids, expected",
+    [
+        # Several ops sharing one group register it once.
+        (["pg1", "pg1"], {"pg1"}),
+        # Every group the dataset uses is registered.
+        (["pg1", "pg2"], {"pg1", "pg2"}),
+        ([], set()),
+    ],
+)
+def test_register_placement_groups(pg_ids, expected):
+    coordinator = FakeAutoscalingCoordinator()
+    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+    reporter.register_placement_groups([_fake_pg(pg_id) for pg_id in pg_ids])
+    assert coordinator.placement_group_ids == expected
+
+
+def test_prefetch_pg_bundles_reads_bundle_nodes(monkeypatch):
+    """The view carries where each bundle was placed; an unplaced bundle has
+    no node."""
+    placement_group_module = importlib.import_module("ray.util.placement_group")
+    monkeypatch.setattr(
+        placement_group_module,
+        "placement_group_table",
+        lambda pg: {
+            "bundles": {0: {"CPU": 1, "GPU": 1}, 1: {"CPU": 1, "GPU": 1}},
+            "bundles_to_node_id": {0: "g1"},
+        },
+    )
+    reporter = ActorOnlyResourceReporter(
+        _topology(), FakeAutoscalingCoordinator(), _FakeResourceBank()
+    )
+    reporter.prefetch_pg_bundles([_fake_pg("pg1")])
+    view = reporter.get_cluster_view(include_pg_bundles=True)
+    assert view.pg_bundles == {"pg1": [ExecutionResources(cpu=1, gpu=1)] * 2}
+    assert view.pg_bundle_nodes == {"pg1": ["g1", None]}
 
 
 @pytest.mark.parametrize("cpu_running,should_scale_up", [(4.0, False), (8.0, True)])

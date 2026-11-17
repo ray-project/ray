@@ -438,6 +438,9 @@ class _FakeReporter(ActorOnlyResourceReporter):
     def prefetch_pg_bundles(self, placement_groups):
         pass
 
+    def register_placement_groups(self, placement_groups):
+        self.registered_placement_groups = list(placement_groups)
+
 
 class _FakeClock:
     def __init__(self, now: float = 100.0):
@@ -1051,11 +1054,13 @@ def test_pg_bundles_are_per_bundle_slots(caplog, propagate_logs):
     """Each bundle is its own slot (a 4-GPU actor fits no 2-GPU bundle, even
     though the PG totals 8 GPU); a bundle index narrows the op to one bundle,
     an out-of-range one is warned about and widened to every bundle; an
-    unresolved PG is left out (its capacity is unknown)."""
+    unresolved PG is left out (its capacity is unknown). The PG's bundles are
+    held on their nodes once, however many ops share it."""
     pg = _FakePG("pg1")
     view = DatasetAllocationView(
         reserved_by_node={},
         pg_bundles={"pg1": [ExecutionResources(gpu=2)] * 4},
+        pg_bundle_nodes={"pg1": ["g1", "g1", "g2", "g2"]},
     )
     anywhere = _pg_op("anywhere", pg, gpu=1, running=3)
     pinned = _pg_op("pinned", pg, bundle_index=1, gpu=1, running=1, inputs=[anywhere])
@@ -1069,6 +1074,12 @@ def test_pg_bundles_are_per_bundle_slots(caplog, propagate_logs):
 
     every_bundle = tuple(("pg1", i) for i in range(4))
     assert bundles.bundles_by_op[anywhere] == every_bundle
+    # Three ops use pg1, and the pinned one only bundle 1, yet every bundle is
+    # counted once.
+    assert bundles.reserved_by_node == {
+        "g1": ExecutionResources(gpu=4),
+        "g2": ExecutionResources(gpu=4),
+    }
     assert bundles.bundles_by_op[pinned] == (("pg1", 1),)
     assert unresolved not in bundles.bundles_by_op
     assert bundles.bundles_by_op[bad_index] == every_bundle
@@ -1090,6 +1101,37 @@ def test_pg_bundles_are_per_bundle_slots(caplog, propagate_logs):
     ledger = ConstraintAwareCapacityLedger(snapshot)
     assert ledger.max_upscale_delta(anywhere) == 4
     assert ledger.max_upscale_delta(big) == 0  # 4 GPU free, but split in two
+
+
+def test_placement_group_bundles_are_not_free_for_non_pg_ops():
+    """The slice includes the placement group's bundles on the nodes Ray placed
+    them, but only PG actors can use them: non-PG ops see that node's capacity
+    without them, and the group is registered with the coordinator."""
+    pg = _FakePG("pg1")
+    view = DatasetAllocationView(
+        reserved_by_node={
+            "g1": ExecutionResources(cpu=8, gpu=4),
+            "c1": ExecutionResources(cpu=8),
+        },
+        labels_by_node={"g1": {}, "c1": {}},
+        pg_bundles={"pg1": [ExecutionResources(cpu=1, gpu=1)] * 3},
+        # Bundle 2 is not placed yet, so it holds nothing.
+        pg_bundle_nodes={"pg1": ["g1", "g1", None]},
+    )
+    infer = _pg_op("infer", pg, cpu=1, gpu=1, running=2)
+    write = _FakeOp(
+        "write",
+        _FakePool(min_size=1, max_size=10, cpu=1, running=1),
+        node="g1",
+        inputs=[infer],
+    )
+    sizer, _ = _bootstrapped(infer, write, view=view)
+
+    capacity = _snapshot_of(sizer)
+    assert capacity.reserved_by_node["g1"] == ExecutionResources(cpu=6, gpu=2)
+    assert capacity.free_by_node["g1"] == ExecutionResources(cpu=5, gpu=2)
+    assert capacity.free_by_node["c1"] == ExecutionResources(cpu=8)
+    assert sizer.reporter.registered_placement_groups == [pg]
 
 
 @pytest.mark.parametrize(

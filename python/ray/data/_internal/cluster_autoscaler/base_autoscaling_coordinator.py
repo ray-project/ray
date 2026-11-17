@@ -1,8 +1,11 @@
 import abc
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
-from ray.data._internal.execution.interfaces.common import NodeIdStr
+from ray.data._internal.execution.interfaces.common import (
+    NodeIdStr,
+    PlacementGroupIdStr,
+)
 
 ResourceType = str
 ResourceDict = Dict[ResourceType, float]
@@ -101,4 +104,14 @@ class AutoscalingCoordinator(abc.ABC):
         Returns:
             Resources keyed by node id. Empty if there is no ongoing request.
         """
+        ...
+
+    @abc.abstractmethod
+    def register_placement_groups(
+        self, placement_group_ids: Iterable[PlacementGroupIdStr]
+    ) -> None:
+        """Tell the coordinator which placement groups this requester holds, so
+        their bundles are reserved where Ray placed them and kept out of
+        everyone else's capacity. Replaces the previous set; empty unregisters
+        them."""
         ...

@@ -502,7 +502,7 @@ class OperatorSizer:
         self, resource_reporter: "ActorOnlyResourceReporter"
     ) -> Tuple[PlacementGroupBundles, Dict[ExperimentalActorPoolMapOperator, int]]:
         """Capacity for PG-managed ops, read once: bundle shapes are fixed at
-        PG creation.
+        PG creation. Also registers the placement group with the coordinator.
 
         An op's PG capacity is unknown when it mints a PG per actor (no bundles
         to inspect) or its PG has no bundles in the view yet (not created, or
@@ -510,13 +510,13 @@ class OperatorSizer:
         size, and Ray core still places its actors into the PG.
         """
         ops = self._profiles.actor_pool_ops
-        resource_reporter.prefetch_pg_bundles(
-            [
-                pg
-                for op in ops
-                if (pg := op.placement_constraint().placement_group) is not None
-            ]
-        )
+        placement_groups = [
+            pg
+            for op in ops
+            if (pg := op.placement_constraint().placement_group) is not None
+        ]
+        resource_reporter.prefetch_pg_bundles(placement_groups)
+        resource_reporter.register_placement_groups(placement_groups)
         view = resource_reporter.get_cluster_view(include_pg_bundles=True)
         pg_bundles = PlacementGroupBundles.measure(ops, view)
         unknown_pg_caps = {

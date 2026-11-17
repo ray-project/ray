@@ -1352,6 +1352,17 @@ def test_proxy_passes_caller_label_selectors_through():
     assert kwargs["subcluster_selector"] == {"ray-subcluster": "training"}
 
 
+def test_proxy_forwards_placement_group_registration():
+    mock_actor = Mock()
+    proxy = DefaultAutoscalingCoordinator(
+        requester_id="r", autoscaling_coordinator_actor=mock_actor
+    )
+    proxy.register_placement_groups(["pg1", "pg2"])
+    mock_actor.register_placement_groups.remote.assert_called_once_with(
+        requester_id="r", placement_group_ids=frozenset({"pg1", "pg2"})
+    )
+
+
 def _placement_group_table(state, bundles_to_node_id, bundle=None):
     return {
         "state": state,
@@ -1428,7 +1439,9 @@ def test_placement_group_bundles_reserved_where_placed(
         request_remaining=["CPU"],
     )
 
-    coordinator.register_placement_group(requester_id="train", placement_group_id="pg")
+    coordinator.register_placement_groups(
+        requester_id="train", placement_group_ids=["pg"]
+    )
 
     train = coordinator.get_reserved_resources("train")
     assert train == expected_train
@@ -1459,7 +1472,9 @@ def test_registered_placement_group_outlives_its_request():
         expire_after_s=1000,
         request_remaining=["CPU"],
     )
-    coordinator.register_placement_group(requester_id="train", placement_group_id="pg")
+    coordinator.register_placement_groups(
+        requester_id="train", placement_group_ids=["pg"]
+    )
 
     # Train's request expires; the group still holds n2's CPUs.
     now[0] = 200
@@ -1477,6 +1492,62 @@ def test_registered_placement_group_outlives_its_request():
         "n1": {"CPU": 8},
         "n2": {"CPU": 8},
     }
+
+
+def test_requester_with_several_placement_groups():
+    """Every registered group of a requester is reserved where Ray placed it.
+    A removed group is forgotten while the others stay registered, and an
+    empty set unregisters the rest."""
+    placement_group_tables = {
+        "pg_a": _placement_group_table("CREATED", {0: "n1"}),
+        "pg_b": _placement_group_table("CREATED", {0: "n2", 1: "n2"}),
+    }
+    coordinator = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: [
+            {"NodeID": node_id, "Resources": {"CPU": 8}, "Alive": True}
+            for node_id in ("n1", "n2")
+        ],
+        get_placement_group_table=lambda pg_id: placement_group_tables[pg_id],
+    )
+    coordinator.request_resources(
+        requester_id="data_a",
+        resources=[{"CPU": 1}] * 3,
+        expire_after_s=100,
+        priority=ResourceRequestPriority.HIGH,
+    )
+    coordinator.request_resources(
+        requester_id="data_b",
+        resources=[],
+        expire_after_s=100,
+        request_remaining=["CPU"],
+    )
+
+    coordinator.register_placement_groups(
+        requester_id="data_a", placement_group_ids=["pg_a", "pg_b"]
+    )
+    assert coordinator.get_reserved_resources("data_a") == {
+        "n1": {"CPU": 1},
+        "n2": {"CPU": 2},
+    }
+    assert coordinator.get_reserved_resources("data_b") == {
+        "n1": {"CPU": 7},
+        "n2": {"CPU": 6},
+    }
+
+    # Ray removes pg_a: its CPU goes back and it is forgotten; pg_b stays.
+    placement_group_tables["pg_a"]["state"] = "REMOVED"
+    coordinator.get_reserved_resources("data_b", recompute=True)
+    assert coordinator._placement_group_ids == {"data_a": frozenset({"pg_b"})}
+    assert coordinator.get_reserved_resources("data_b", recompute=True) == {
+        "n1": {"CPU": 7},
+        "n2": {"CPU": 6},
+    }
+
+    # An empty set unregisters pg_b too.
+    coordinator.register_placement_groups(requester_id="data_a", placement_group_ids=[])
+    assert coordinator._placement_group_ids == {}
 
 
 if __name__ == "__main__":

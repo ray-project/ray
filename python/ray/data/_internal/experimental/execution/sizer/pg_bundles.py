@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, Iterable, Tuple
+from typing import TYPE_CHECKING, Dict, Iterable, Set, Tuple
 
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     pack_actors,
 )
@@ -43,6 +44,9 @@ class PlacementGroupBundles:
     bundles_by_op: Dict[
         "ExperimentalActorPoolMapOperator", Tuple[BundleKey, ...]
     ] = field(default_factory=dict)
+    # Everything those placement groups hold, per node they were placed on:
+    # every bundle, whichever ops may use it. Not free for non-PG ops.
+    reserved_by_node: Dict[NodeIdStr, ExecutionResources] = field(default_factory=dict)
 
     @classmethod
     def measure(
@@ -54,6 +58,8 @@ class PlacementGroupBundles:
         bundles_by_op: Dict[
             "ExperimentalActorPoolMapOperator", Tuple[BundleKey, ...]
         ] = {}
+        # The placement groups these ops use, each once however many ops share it.
+        pg_ids: Set[str] = set()
         for op in ops:
             constraint = op.placement_constraint()
             if constraint.placement_group is None:
@@ -62,6 +68,7 @@ class PlacementGroupBundles:
             bundles = view.pg_bundles.get(pg_id)
             if not bundles:
                 continue
+            pg_ids.add(pg_id)
             index = constraint.placement_group_bundle_index
             if index is not None and index >= len(bundles):
                 # Ray would reject this index; size against every bundle
@@ -84,7 +91,22 @@ class PlacementGroupBundles:
             for key in keys:
                 shapes[key] = bundles[key[1]]
             bundles_by_op[op] = keys
-        return cls(shapes=shapes, bundles_by_op=bundles_by_op)
+
+        # A placement group holds every bundle, whichever ops may use it.
+        reserved_by_node: Dict[NodeIdStr, ExecutionResources] = {}
+        for pg_id in pg_ids:
+            bundle_nodes = view.pg_bundle_nodes.get(pg_id, ())
+            for shape, node_id in zip(view.pg_bundles[pg_id], bundle_nodes):
+                # A bundle Ray hasn't placed yet has no node, and holds nothing.
+                if node_id is not None:
+                    reserved_by_node[node_id] = reserved_by_node.get(
+                        node_id, ExecutionResources.zero()
+                    ).add(shape)
+        return cls(
+            shapes=shapes,
+            bundles_by_op=bundles_by_op,
+            reserved_by_node=reserved_by_node,
+        )
 
     def free_by_bundle(self) -> Dict[BundleKey, ExecutionResources]:
         """Each bundle's shape minus what the PG ops already hold in it.
