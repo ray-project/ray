@@ -215,6 +215,12 @@ class AllToAllOperator(
         # Disable resource allocation and throttling for the operator
         return True
 
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        # The bulk fn runs on the whole input; nothing downstream can start
+        # until it has.
+        return True
+
 
 class NAryOperator(PhysicalOperator):
     """An operator that has multiple input dependencies and one output.

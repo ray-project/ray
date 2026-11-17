@@ -312,6 +312,10 @@ class CheckpointConfig:
             (or lowest-scoring, if ``checkpoint_score_attribute`` is set)
             checkpoint will be deleted.
             If this is ``None`` then all checkpoints will be kept. Must be >= 1.
+            The latest checkpoint is never deleted, because training resumes
+            from it after a failure, so up to ``num_to_keep + 1`` checkpoints
+            can be on disk. A checkpoint whose validation hasn't finished is
+            also kept until the validation completes.
         checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept.
             This attribute must be a key from the metrics dictionary
