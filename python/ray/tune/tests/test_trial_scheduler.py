@@ -1297,6 +1297,32 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         )
         self.assertEqual(pbt._num_checkpoints, 2)
 
+    def testSynchRetriedTrialKeepsState(self):
+        pbt, runner = self.basicSetup(synch=True)
+        trials = runner.get_trials()
+
+        # The controller requeues a failed trial with on_trial_error followed
+        # by on_trial_add. Its perturbation state must survive.
+        trials[0].status = Trial.PENDING
+        pbt.on_trial_error(runner, trials[0])
+        pbt.on_trial_add(runner, trials[0])
+
+        for i in range(1, len(trials)):
+            self.on_trial_result(
+                pbt, runner, trials[i], result(20, 200 + i), TrialScheduler.PAUSE
+            )
+
+        # Step 15 is only 5 steps after the last perturbation at step 10, so the
+        # retried trial keeps training and does not trigger a sync early.
+        self.on_trial_result(
+            pbt, runner, trials[0], result(15, 1000), TrialScheduler.CONTINUE
+        )
+        self.assertEqual(pbt._num_perturbations, 0)
+        self.assertEqual(
+            [pbt._trial_state[t].last_train_time for t in trials],
+            [10, 20, 20, 20, 20],
+        )
+
     def testPerturbsLowPerformingTrials(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
