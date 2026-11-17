@@ -48,6 +48,10 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    extra_srcs = [
+        "tests/parquet_test_utils.py",
+        "tests/schema_planning_utils.py",
+    ],
     files = glob(["tests/datasource_v2/test_*.py"]),
     tags = [
         "exclusive",
@@ -1953,6 +1957,20 @@ py_test(
     srcs = ["tests/test_sort.py"],
     tags = [
         "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_random_shuffle_v2",
+    size = "medium",
+    srcs = ["tests/test_random_shuffle_v2.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],
