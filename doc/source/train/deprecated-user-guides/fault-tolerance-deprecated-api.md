@@ -6,6 +6,9 @@ orphan: true
 
 # Handling Failures and Node Preemption (Deprecated API)
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 :::{important}
 This user guide covers deprecated fault tolerance APIs. See {ref}`train-fault-tolerance` for the new API user guide.
 

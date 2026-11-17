@@ -8,6 +8,9 @@ myst:
 
 # Ray Train API
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 The Ray Train API reference documents Ray Train's public Python API. Each page below covers one group of APIs, such as a framework integration or the configuration classes.
 
 :::{important}

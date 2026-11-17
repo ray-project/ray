@@ -8,6 +8,9 @@ myst:
 
 # Get started with distributed training using JAX
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 This guide introduces the {class}`~ray.train.v2.jax.JaxTrainer` in Ray Train.
 
 (what-is-jax)=

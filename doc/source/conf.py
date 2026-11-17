@@ -570,14 +570,6 @@ html_context = {
     "github_repo": "ray",
     "github_version": "master",
     "doc_path": "doc/source/",
-    # Rendered after the site-wide announcement by _templates/sections/announcement.html,
-    # only on pages whose name starts with one of `train_banner_page_prefixes`.
-    # dismissable-banner.js wires its close button through `data-banner-key`.
-    # TODO(Ray 3.0): Remove the Train V1 deprecation banner when Train V1 is removed,
-    # together with `show_train_banner` in _templates/sections/announcement.html and
-    # `.ray-banner--compact` in _static/css/dismissable-banner.css.
-    "train_banner_page_prefixes": ("train/", "_collections/train/"),
-    "train_banner": """<div class="ray-banner ray-banner--notice ray-banner--compact" data-banner-key="ray-docs-train-v1-deprecation-banner-dismissed">Ray Train V1 is deprecated and will be removed in Ray 3.0. <a href="https://github.com/ray-project/ray/issues/49454">Read the V2 migration guide</a><button type="button" class="ray-banner__close" aria-label="Close the Ray Train V1 deprecation banner">&times;</button></div>""",
 }
 
 # Pick the sidebar template by build environment: Read the Docs builds

@@ -8,6 +8,9 @@ myst:
 
 # Get started with distributed training using PyTorch Lightning
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 This tutorial shows how to convert an existing PyTorch Lightning script to use Ray Train.
 
 You learn how to do the following:
