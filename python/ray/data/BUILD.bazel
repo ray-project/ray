@@ -2653,7 +2653,7 @@ py_test(
 
 py_test(
     name = "test_context",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_context.py"],
     tags = [
         "exclusive",
