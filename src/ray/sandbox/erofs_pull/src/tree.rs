@@ -133,13 +133,16 @@ impl Tree {
     }
 
     /// `os.makedirs(path, exist_ok=True)`: the directory at `path`, created
-    /// (0755, root) where missing; `None` if a non-directory is in the way.
+    /// (0755, root) where missing; `None` if a non-directory is in the way or
+    /// a missing name is longer than `MAX_NAME` (ENAMETOOLONG), the
+    /// directories before it staying created, as `os.makedirs` leaves them.
     fn makedirs(&mut self, path: &[Vec<u8>]) -> Option<u32> {
         let mut cur = ROOT;
         for part in path {
             cur = match self.child(cur, part) {
                 Some(c) if self.is_dir(c) => c,
                 Some(_) => return None,
+                None if part.len() > MAX_NAME => return None,
                 None => {
                     let d = self.new_dir(0o755);
                     self.children(cur)?.insert(part.clone(), d);
@@ -293,7 +296,9 @@ impl Tree {
         }
     }
 
-    /// `_seed_tmp` then `_seed_mountpoints`.
+    /// `_seed_tmp` then `_seed_mountpoints`. A seed whose path can't be
+    /// created (a file in the way, a name longer than `MAX_NAME` through a
+    /// symlink) is skipped, as their `except OSError` skips it.
     pub fn seed(&mut self) {
         if let Some(tmp) = self.resolve(&components(b"tmp")) {
             if let Some(d) = self.makedirs(&tmp) {
@@ -362,5 +367,35 @@ mod tests {
         // A whiteout of a long name creates nothing.
         tree.apply(&entry([b".wh.".as_slice(), &long].concat(), reg())).unwrap();
         assert_eq!(names(&tree), vec![vec![b'y'; MAX_NAME]]);
+    }
+
+    /// Every name in the tree, at any depth.
+    fn all_names(tree: &Tree, dir: u32, out: &mut Vec<Vec<u8>>) {
+        if let NodeKind::Dir(children) = &tree.nodes[dir as usize].kind {
+            for (name, &child) in children {
+                out.push(name.clone());
+                if child != dir {
+                    all_names(tree, child, out);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn seeds_through_a_symlink_to_a_long_name_are_skipped() {
+        let long = "x".repeat(MAX_NAME + 1);
+        for target in [format!("/{long}"), format!("/a/{long}/b")] {
+            let mut tree = Tree::new(0);
+            tree.apply(&entry(b"tmp".to_vec(), Kind::Sym(target.clone().into_bytes())))
+                .unwrap();
+            tree.seed();
+            let mut names = Vec::new();
+            all_names(&tree, ROOT, &mut names);
+            assert!(names.iter().all(|n| n.len() <= MAX_NAME), "{target}");
+            // As os.makedirs does, what comes before the long name is created.
+            assert_eq!(names.contains(&b"a".to_vec()), target.starts_with("/a/"), "{target}");
+            // The other seeds are still there.
+            assert!(names.contains(&b"proc".to_vec()) && names.contains(&b"hosts".to_vec()));
+        }
     }
 }

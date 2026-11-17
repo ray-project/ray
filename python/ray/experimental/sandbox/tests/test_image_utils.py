@@ -2166,3 +2166,32 @@ def test_erofs_pull_and_names_longer_than_255_bytes(tmp_path, erofs_pull, monkey
             pull_and_extract_container_image(image, images_dir=str(tmp_path / "long"))
     assert time.monotonic() - start < 30
     assert any("longer than 255 bytes" in warning for warning in warnings)
+
+
+@pytest.mark.parametrize("target", ["/" + "x" * 300, "/a/" + "x" * 300 + "/b"])
+def test_erofs_pull_skips_seeds_behind_long_names(
+    tmp_path, erofs_pull, monkeypatch, target
+):
+    """A ``/tmp`` that is a symlink to a name longer than 255 bytes isn't
+    seeded, as extraction's ``os.makedirs`` fails there and the seeding
+    ignores it; the image comes out as extraction builds it."""
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    layers = [_layer(("etc", b"", _DIR), ("tmp", b"", _symlink(target)))]
+    images = []
+    with _serve_image(monkeypatch, layers) as image:
+        for name in ("erofs-pull", "extracted"):
+            if name == "extracted":
+                monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", "0")
+            image_dir = pull_and_extract_container_image(
+                image, images_dir=str(tmp_path / name)
+            )
+            images.append(os.path.join(image_dir, ROOTFS_IMAGE))
+    assert warnings == []
+    assert _erofs_tree(images[0]) == _erofs_tree(images[1])
+    # dump.erofs, which _erofs_tree reads with, leaves names longer than 255
+    # bytes out of its listings, so count the name's bytes instead: the
+    # symlink's target holds them once, and a directory of that name would
+    # hold them again.
+    with open(images[0], "rb") as f:
+        assert f.read().count(b"x" * 300) == 1

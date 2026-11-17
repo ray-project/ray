@@ -11,7 +11,7 @@ use std::io;
 use std::os::unix::fs::FileExt;
 
 use crate::layer::Out;
-use crate::tree::{NodeKind, Tree, ROOT};
+use crate::tree::{NodeKind, Tree, MAX_NAME, ROOT};
 
 const MAGIC: u32 = 0xe0f5e1e2;
 const INODE_SIZE: u64 = 64;
@@ -30,6 +30,14 @@ fn file_type(kind: &NodeKind) -> u8 {
 /// Directory data: blocks of 12-byte dirents followed by their names, the
 /// entries sorted by name across blocks (lookups binary-search them).
 fn dir_blocks(mut entries: Vec<(&[u8], u64, u8)>, block: usize) -> io::Result<Vec<u8>> {
+    // EROFS takes names of at most MAX_NAME bytes. Tree keeps to that; this
+    // catches any path that doesn't.
+    if let Some((name, _, _)) = entries.iter().find(|(name, _, _)| name.len() > MAX_NAME) {
+        return Err(io::Error::other(format!(
+            "a directory entry is longer than {MAX_NAME} bytes: {:?}",
+            String::from_utf8_lossy(name)
+        )));
+    }
     entries.sort_by(|a, b| a.0.cmp(b.0));
     let mut data = Vec::new();
     let mut i = 0;
@@ -42,7 +50,7 @@ fn dir_blocks(mut entries: Vec<(&[u8], u64, u8)>, block: usize) -> io::Result<Ve
             n += 1;
         }
         if n == 0 {
-            // Tree::apply keeps names to MAX_NAME bytes, which always fit.
+            // Unreachable: a name of MAX_NAME bytes always fits a block.
             return Err(io::Error::other("a directory entry doesn't fit in a block"));
         }
         let block_start = data.len();
@@ -165,10 +173,12 @@ mod tests {
     use super::dir_blocks;
 
     #[test]
-    fn an_entry_that_fits_no_block_is_an_error_not_a_hang() {
-        let long = vec![b'x'; 5000];
-        assert!(dir_blocks(vec![(&long, 1, 1)], 4096).is_err());
-        let name = vec![b'x'; 255];
+    fn names_longer_than_erofs_takes_are_an_error_not_a_hang() {
+        for len in [256, 4000, 5000] {
+            let long = vec![b'x'; len];
+            assert!(dir_blocks(vec![(&long, 1, 1)], 4096).is_err(), "{len}");
+        }
+        let name = vec![b'x'; 254]; // 255 bytes with the suffix below
         let names: Vec<_> = (0..40).map(|i| [name.as_slice(), &[i as u8]].concat()).collect();
         let data = dir_blocks(names.iter().map(|n| (n.as_slice(), 1, 1)).collect(), 4096).unwrap();
         assert!(data.len() > 4096);
