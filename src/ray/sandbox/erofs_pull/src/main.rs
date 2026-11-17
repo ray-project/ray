@@ -172,12 +172,13 @@ fn run(spec: Spec) -> Result<(), String> {
             })
         })
         .collect();
-    // Layers download and decompress in parallel, but each writes its file
-    // data into the image only after the layer before it is done, so the
-    // image's layout, and so its bytes, don't depend on timing: gVisor
-    // restores a checkpoint only onto the image it was taken on, and the
-    // checkpoint records where each open file's data is. rapidgzip decodes
-    // each layer on all cores, so this costs little parallelism.
+    // Layers download in parallel, but each is decompressed and written
+    // into the image only after the layer before it is done, so the image's
+    // layout, and so its bytes, don't depend on timing: gVisor restores a
+    // checkpoint only onto the image it was taken on, and the checkpoint
+    // records where each open file's data is. Decoding is serial across
+    // layers; rapidgzip decodes each layer on all cores, and downloads go
+    // in the same order, so this costs little.
     let mut previous_done: Option<std::sync::mpsc::Receiver<()>> = None;
     let workers: Vec<_> = blobs
         .iter()

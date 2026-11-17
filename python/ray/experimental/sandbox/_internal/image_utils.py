@@ -1409,8 +1409,9 @@ def _build_image_with_erofs_pull(
     """Build ``out_path`` from a resolved registry image with erofs-pull.
 
     erofs-pull downloads the layers into the layer cache over parallel range
-    requests, decompresses them in parallel as they arrive, and writes each
-    file's data once into the image, applying the layers and seeds as
+    requests, decompresses them one after another (each on all cores) as
+    they arrive, and writes each file's data once into the image, applying
+    the layers and seeds as
     ``extract_tar_layer``, ``_seed_tmp`` and ``_seed_mountpoints`` do. The
     registry token reaches it on stdin; it goes through the proxies
     ``urllib`` does (``HTTPS_PROXY``, ``NO_PROXY`` and so on) and trusts the
