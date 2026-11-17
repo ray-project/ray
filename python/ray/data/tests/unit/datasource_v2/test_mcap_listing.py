@@ -11,19 +11,23 @@ from typing import Any, Iterable, List, Tuple
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.datasource_v2.common.listing_utils import partition_files
 from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
-from ray.data._internal.datasource_v2.formats.mcap import mcap_datasource_v2
+from ray.data._internal.datasource_v2.formats.mcap import (
+    mcap_datasource_v2,
+    mcap_summary,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
     MCAPDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import SummaryTail
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     ROW_ID_COLUMN,
     TimeRange,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
-    _READ_PEAK_FACTOR,
+    _BUFFER_GROWTH,
     chunk_unit_id,
+    read_summaries,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
@@ -31,6 +35,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     CHUNKED_FILE_MESSAGES,
     STEP,
     list_manifests,
+    pack,
     read_all,
     round_robin_messages,
     scanner_for,
@@ -51,26 +56,6 @@ pytestmark = pytest.mark.skipif(
 def unit_ids(chunk_metadata: Any) -> List[int]:
     """The chunk offsets a listing row reads, from its ``unit_ids``."""
     return [int(i) for i in chunk_metadata["unit_ids"]]
-
-
-def pack(datasource: MCAPDatasourceV2, shard: List[str]) -> List[FileManifest]:
-    """List ``shard`` and pack its rows into read tasks, as one ``ListFiles``
-    task does."""
-    indexer = datasource._get_file_indexer()
-    partitioner = datasource.get_file_partitioner()
-    assert partitioner is not None
-    blocks = [
-        m.as_block()
-        for m in indexer.list_files(pa.array(shard), filesystem=datasource.filesystem)
-    ]
-    return [
-        FileManifest(block)
-        for block in partition_files(
-            blocks,
-            None,  # pyrefly: ignore[bad-argument-type]  (TaskContext unused)
-            partitioner,
-        )
-    ]
 
 
 def chunk_units(tasks: Iterable[FileManifest]) -> List[Tuple[str, int]]:
@@ -219,17 +204,7 @@ def test_file_without_index_is_one_whole_file_row(tmp_path):
 
 def test_summary_without_channels_is_one_whole_file_row(chunked_file, monkeypatch):
     """A file whose summary lists no channels is listed whole and still read."""
-    from ray.data._internal.datasource_v2.formats.mcap import mcap_summary
-
-    real_read_summary = mcap_summary.read_summary
-
-    def without_channels(filesystem, path):
-        summary = real_read_summary(filesystem, path)
-        assert summary is not None
-        summary.channels = {}
-        return summary
-
-    monkeypatch.setattr(mcap_summary, "read_summary", without_channels)
+    without_summary_records(monkeypatch, "channels")
     datasource = MCAPDatasourceV2([chunked_file], topics=["/a"])
 
     (manifest,) = list_manifests(datasource)
@@ -363,13 +338,15 @@ def test_unreadable_file_gets_a_read_task_of_its_own(tmp_path):
     [(False, False, False), (True, False, False), (True, True, True)],
 )
 def test_listed_sizes_bound_the_table_a_read_builds(
-    tmp_path, include_metadata, include_row_id, include_paths
+    tmp_path, monkeypatch, include_metadata, include_row_id, include_paths
 ):
-    """A chunk's listed size is ``_READ_PEAK_FACTOR`` times a bound on the bytes
-    its rows take as a table, and the bound is tight: a read of the file builds
-    a table between 80% and 100% of it, whichever columns the rows carry."""
+    """Under a budget far above the working set, a chunk's listed size is a
+    bound on the bytes its rows take as a table, plus ``_BUFFER_GROWTH``. The
+    bound is tight: a read of the file builds a table between 80% and 100% of
+    it, whichever columns the rows carry."""
     path = os.path.join(tmp_path, "mixed.mcap")
     write_mixed_channels(path, num_messages=400, payload_bytes=1000)
+    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 2**62)
     datasource = MCAPDatasourceV2(
         [path],
         include_metadata=include_metadata,
@@ -381,7 +358,7 @@ def test_listed_sizes_bound_the_table_a_read_builds(
     table = read_all(datasource, manifest)
 
     listed = sum(int(md["size_bytes"]) for md in manifest.file_chunk_metadatas)
-    bound = listed / _READ_PEAK_FACTOR
+    bound = listed / (1 + _BUFFER_GROWTH)
     assert 0.8 * bound <= table.nbytes <= bound
 
 
@@ -456,6 +433,127 @@ def test_packer_packs_per_listing_shard(tmp_path):
     assert len(set(chunk_units(per_shard))) == len(chunk_units(per_shard)) == 16
     # Two shards may each leave one bin under-filled.
     assert len(per_shard) <= len(whole) + 1
+
+
+def listed_rows(datasource: MCAPDatasourceV2) -> List[Tuple[str, List[int], int]]:
+    """Every listing row in listing order: its path, chunk offsets and weight."""
+    return [
+        (str(path), unit_ids(md), int(md["size_bytes"]))
+        for manifest in list_manifests(datasource)
+        for path, md in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ]
+
+
+def test_listing_order_does_not_depend_on_summary_concurrency(tmp_path, monkeypatch):
+    """Listing 30 files with one summary read at a time or 32 at once gives the
+    same rows in the same order, so the packer forms the same read tasks."""
+    for i in range(30):
+        write_mcap(os.path.join(tmp_path, f"f{i:02d}.mcap"), round_robin_messages(4))
+
+    monkeypatch.setenv("RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", "1")
+    one_at_a_time = listed_rows(MCAPDatasourceV2([str(tmp_path)]))
+    monkeypatch.setenv("RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", "32")
+    many_at_once = listed_rows(MCAPDatasourceV2([str(tmp_path)]))
+
+    assert len(one_at_a_time) == 30 * 4
+    assert many_at_once == one_at_a_time
+
+
+IO_CONCURRENCY = 2
+SECTION_BUDGET = 100  # bytes of summary sections held at once
+
+
+def fake_tail(path: str, section_bytes: int, *, in_tail: bool = True) -> SummaryTail:
+    """A tail whose section is ``section_bytes`` long and needs no further read
+    when ``in_tail``; otherwise reading the rest opens the file."""
+    data = bytes(1 + section_bytes + 8)  # a byte before the section, magic after
+    # A section that starts before the tail's first byte needs another read.
+    return SummaryTail(path, start=0 if in_tail else 2, data=data, summary_start=1)
+
+
+class FailingFileSystem:
+    """A filesystem whose files cannot be opened, so a section read past the
+    tail fails."""
+
+    def open_input_file(self, path):
+        raise OSError(f"cannot open {path}")
+
+
+@dataclasses.dataclass
+class WindowLog:
+    """What ``read_summaries`` holds after each admission: bytes, sections, tails."""
+
+    held: List[int] = dataclasses.field(default_factory=list)
+    sections: List[int] = dataclasses.field(default_factory=list)
+    tails: List[int] = dataclasses.field(default_factory=list)
+
+
+def fetch_sections(monkeypatch, tails, filesystem=None) -> Tuple[List[Any], WindowLog]:
+    """Run ``read_summaries`` over ``tails`` (a path to tail or error mapping),
+    returning each item's section or error, in order, and the window's log."""
+    log = WindowLog()
+
+    def read_tail(filesystem, path, retried_io_errors):
+        if isinstance(tails[path], Exception):
+            raise tails[path]
+        return tails[path]
+
+    real_admit = mcap_summary._SectionWindow.admit_sections
+
+    def admit_sections(window):
+        real_admit(window)
+        log.held.append(window._held)
+        log.sections.append(len(window._sections))
+        log.tails.append(len(window._tails))
+
+    monkeypatch.setattr(mcap_summary, "_read_tail", read_tail)
+    monkeypatch.setattr(mcap_summary._SectionWindow, "admit_sections", admit_sections)
+    fetched = []
+    for path, section_read in read_summaries(
+        filesystem, list(tails), lambda p: p, SECTION_BUDGET, IO_CONCURRENCY
+    ):
+        error = section_read.exception()
+        section = None if error else section_read.result()
+        fetched.append((path, error or len(section or b"")))
+    return fetched, log
+
+
+@pytest.mark.parametrize(
+    "sizes",
+    [[30, 50, 20, 250, 10, 40, 60, 0], [1] * 20],
+    ids=["by_bytes", "by_count"],
+)
+def test_read_summaries_bounds_held_sections(monkeypatch, sizes):
+    """Sections come back in file order. The sections held fit the byte budget,
+    except an oversize one held alone, and there are at most twice
+    ``io_concurrency`` of them, with at most ``io_concurrency`` tails ahead."""
+    tails = {f"f{i}": fake_tail(f"f{i}", n) for i, n in enumerate(sizes)}
+
+    fetched, log = fetch_sections(monkeypatch, tails)
+
+    assert fetched == [(f"f{i}", n) for i, n in enumerate(sizes)]
+    for held, sections in zip(log.held, log.sections):
+        assert held <= SECTION_BUDGET or sections == 1
+    assert max(log.sections) <= 2 * IO_CONCURRENCY
+    assert max(log.tails) <= IO_CONCURRENCY
+
+
+def test_read_summaries_hands_a_failed_read_to_its_file(monkeypatch):
+    """A failed tail read and a failed section read each come back as that
+    file's error, in its place, and the files after them are still read."""
+    tails = {
+        "ok_0": fake_tail("ok_0", 10),
+        "bad_tail": OSError("tail"),
+        "bad_section": fake_tail("bad_section", 10, in_tail=False),
+        "ok_1": fake_tail("ok_1", 20),
+    }
+
+    fetched, _ = fetch_sections(monkeypatch, tails, FailingFileSystem())
+
+    assert [path for path, _ in fetched] == list(tails)
+    assert fetched[0] == ("ok_0", 10) and fetched[3] == ("ok_1", 20)
+    assert str(fetched[1][1]) == "tail"
+    assert str(fetched[2][1]) == "cannot open bad_section"
 
 
 if __name__ == "__main__":

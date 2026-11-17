@@ -206,10 +206,14 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
                 training_report.validation,
                 training_report.checkpoint,
             )
-            if isinstance(training_report.validation, ValidationTaskConfig):
+            # A per-report timeout overrides the default, and an unset one falls
+            # back to it, the same way per-report fn_kwargs are merged.
+            timeout_s = self._validation_config.task_config.timeout_s
+            if (
+                isinstance(training_report.validation, ValidationTaskConfig)
+                and training_report.validation.timeout_s is not None
+            ):
                 timeout_s = training_report.validation.timeout_s
-            else:
-                timeout_s = self._validation_config.task_config.timeout_s
             self._pending_validations[validate_task] = _PendingValidation(
                 checkpoint=training_report.checkpoint,
                 start_time=time.monotonic(),

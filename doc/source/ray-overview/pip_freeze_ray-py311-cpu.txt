@@ -9,19 +9,18 @@ annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.13.0
 archspec @ file:///home/conda/feedstock_root/build_artifacts/archspec_1737352602016/work
-async-timeout==5.0.1
 attrs==26.1.0
 azure-common==1.1.28
 azure-core==1.35.1
 azure-datalake-store==0.0.53
 azure-identity==1.23.1
 azure-storage-blob==12.28.0
-backports.zstd @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_backports.zstd_1786861406/work
+backports.zstd @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_backports.zstd_1792690547/work
 billiard==4.2.4
 boltons @ file:///home/conda/feedstock_root/build_artifacts/boltons_1733827268945/work
 boto3==1.29.7
 botocore==1.32.7
-Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1786622598436/work
+Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1792653565170/work
 build @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-build_1790158724/work
 cached-property @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_cached_property_1787678456/work
 cachetools==5.5.2
@@ -36,14 +35,14 @@ click-repl==0.3.0
 cloudpickle==3.1.1
 colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1733218098505/work
 colorful==0.5.8
-conda @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda_1787306270/work/conda-src
-conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-libmamba-solver_1784200590/work/src
-conda-lockfiles @ file:///home/conda/feedstock_root/build_artifacts/conda-lockfiles_1783438273155/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda_1792605460/work/conda-src
+conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-libmamba-solver_1792667722/work/src
+conda-lockfiles @ file:///home/conda/feedstock_root/build_artifacts/conda-lockfiles_1790164213976/work
 conda-package-handling @ file:///home/conda/feedstock_root/build_artifacts/conda-package-handling_1736345463896/work
-conda-pypi @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-pypi_1784203008/work
-conda-rattler-solver @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-rattler-solver_1781212602/work
-conda-self @ file:///home/conda/feedstock_root/build_artifacts/conda-self_1784724887257/work
-conda_index @ file:///home/conda/feedstock_root/build_artifacts/conda-index_1782239657976/work
+conda-pypi @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-pypi_1792581704/work
+conda-rattler-solver @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-rattler-solver_1792776185/work
+conda-self @ file:///home/conda/feedstock_root/build_artifacts/conda-self_1790101636564/work
+conda_index @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-index_1788522660/work
 conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/conda-package-streaming_1781292971987/work
 cryptography==44.0.3
 cupy-cuda12x==13.6.0
@@ -51,13 +50,12 @@ Cython==0.29.37
 distlib==0.4.3
 distro @ file:///home/conda/feedstock_root/build_artifacts/distro_1734729835256/work
 dm-tree==0.1.10
-exceptiongroup @ file:///home/conda/feedstock_root/build_artifacts/exceptiongroup_1763918002538/work
 Farama-Notifications==0.0.4
 fastapi==0.133.0
 fastrlock==0.8.3
 filelock==3.29.0
 flatbuffers==25.12.19
-frozendict @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_frozendict_1781203600/work
+frozendict @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_frozendict_hb5810a6_1793383265/work
 frozenlist==1.8.0
 fsspec==2023.12.1
 google-api-core==2.30.3
@@ -83,24 +81,24 @@ httpx @ file:///home/conda/feedstock_root/build_artifacts/httpx_1733663348460/wo
 hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1733298771451/work
 idna==3.18
 importlib-metadata==6.11.0
-installer @ file:///home/conda/feedstock_root/build_artifacts/python-installer_1778554130319/work
+installer @ file:///home/conda/feedstock_root/build_artifacts/python-installer_1791838165249/work
 isodate==0.7.2
 Jinja2 @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jinja2_1764517220/work
 jmespath==1.1.0
 jsonpatch @ file:///home/conda/feedstock_root/build_artifacts/jsonpatch_1733814567314/work
-jsonpointer @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jsonpointer_1774311356/work
+jsonpointer @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jsonpointer_1793068577/work
 jsonschema==4.24.1
 jsonschema-specifications==2025.9.1
 kombu==5.6.2
-libmambapy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_libmambapy_1788274100/work/libmambapy
+libmambapy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_libmambapy_ha1b5483_1793537951/work/libmambapy
 linkify-it-py==2.1.0
 lz4==4.4.5
 markdown-it-py==2.2.0
-MarkupSafe @ file:///home/conda/feedstock_root/build_artifacts/markupsafe_1772444934960/work
+MarkupSafe==3.0.3
 mdit-py-plugins==0.3.5
 mdurl==0.1.2
 memray==1.19.3
-menuinst @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_menuinst_1788033924/work
+menuinst @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_menuinst_1790716788/work
 mmh3==5.2.1
 msal==1.34.0b1
 msal-extensions==1.2.0
@@ -115,10 +113,10 @@ opentelemetry-proto==1.39.0
 opentelemetry-sdk==1.39.0
 opentelemetry-semantic-conventions==0.60b0
 ormsgpack==1.12.2
-packaging==26.3
+packaging @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_packaging_1785888127/work
 pandas==2.3.3
 platformdirs==4.9.6
-pluggy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pluggy_1764896838/work
+pluggy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pluggy_1792063298/work
 portalocker==2.10.1
 prometheus_client==0.25.0
 prompt_toolkit==3.0.52
@@ -126,12 +124,12 @@ propcache==0.4.1
 proto-plus==1.27.2
 protobuf==5.27.5
 psutil==5.9.8
-py-rattler @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_py-rattler_1788524945/work
+py-rattler @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_py-rattler_1792604753/work
 py-spy==0.4.2
 pyarrow==23.0.1
 pyasn1==0.6.3
 pyasn1_modules==0.4.2
-pycosat @ file:///home/conda/feedstock_root/build_artifacts/pycosat_1788489260594/work
+pycosat @ file:///home/conda/feedstock_root/build_artifacts/pycosat_1790861617215/work
 pycparser==3.0
 pycron==3.2.0
 pydantic==2.12.3
@@ -140,24 +138,24 @@ Pygments==2.18.0
 PyJWT==2.12.1
 pyOpenSSL==25.1.0
 pyparsing==3.3.2
-pyproject_hooks @ file:///home/conda/feedstock_root/build_artifacts/pyproject_hooks_1733710025763/work
+pyproject_hooks @ file:///home/conda/feedstock_root/build_artifacts/pyproject_hooks_1791576783212/work
 PySocks @ file:///home/conda/feedstock_root/build_artifacts/pysocks_1733217236728/work
 python-dateutil==2.9.0.post0
 python-discovery==1.6.1
 python-dotenv==1.2.2
 pytz==2022.7.1
 PyYAML==6.0.3
-ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=07acd0f5d49c64ed3c90f86cf569be51fbab3a185028609f825f3eb674bc9fc3
+ray @ file:///home/ray/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl#sha256=82b4fd63359e2f50a74498edcad8b9eb934d992e71a7527413ea1b7782c6f527
 ray-haproxy==2.8.25
 referencing==0.36.2
 requests==2.33.1
 rich==13.7.1
 rpds-py==0.30.0
 rsa==4.7.2
-ruamel.yaml @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_ruamel.yaml_1766175793/work
-ruamel.yaml.clib @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_ruamel.yaml.clib_1788170279/work
+ruamel.yaml @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_ruamel.yaml_1767538149/work
+ruamel.yaml.clib @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_ruamel.yaml.clib_1788881215/work
 s3transfer==0.8.0
-scipy==1.15.3
+scipy==1.17.1
 six==1.17.0
 smart-open==6.2.0
 sniffio @ file:///home/conda/feedstock_root/build_artifacts/sniffio_1762941432086/work
@@ -166,7 +164,7 @@ taskiq==0.12.2
 taskiq-dependencies==1.5.7
 tensorboardX==2.6.5
 textual==4.0.0
-tomli @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_tomli_1774492402/work
+tomli @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_tomli_1791394576/work
 tomli_w @ file:///home/conda/feedstock_root/build_artifacts/tomli-w_1736962227066/work
 tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1735661334605/work
 truststore @ file:///home/conda/feedstock_root/build_artifacts/truststore_1729762363021/work

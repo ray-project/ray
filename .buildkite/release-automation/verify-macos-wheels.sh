@@ -7,7 +7,7 @@ set -x
 # TODO(#54047): Python 3.13 is skipped due to the bug
 # we should re-enable it when the bug is fixed.
 
-PYTHON_VERSIONS=("3.10" "3.11" "3.12")
+PYTHON_VERSIONS=("3.11" "3.12")
 BAZELISK_VERSION="v1.16.0"
 
 # Sets RAY_VERSION and RAY_COMMIT

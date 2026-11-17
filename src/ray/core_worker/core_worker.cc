@@ -2302,6 +2302,19 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   return returned_refs;
 }
 
+std::optional<MoveState> CoreWorker::GetMoveState(const ObjectID &object_id) const {
+  return reference_counter_->GetMoveState(object_id);
+}
+
+std::vector<std::optional<MoveState>> CoreWorker::GetMoveStates(
+    const std::vector<ObjectID> &object_ids) const {
+  return reference_counter_->GetMoveStates(object_ids);
+}
+
+bool CoreWorker::HasConsumeOnceObjects() const {
+  return reference_counter_->HasConsumeOnceObjects();
+}
+
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
@@ -2689,6 +2702,19 @@ Status CoreWorker::SubmitActorTask(
         actor_id.Hex()));
   }
 
+  // Nothing after this commit to MOVED fails the submit, so a committed move always has a
+  // consuming task. That task can still fail (for example, if the actor is dead), and the
+  // ref stays MOVED.
+  std::vector<ObjectID> arg_ids;
+  for (const std::unique_ptr<TaskArg> &arg : args) {
+    if (std::optional<ObjectID> arg_id = arg->GetReferenceId()) {
+      arg_ids.push_back(*arg_id);
+    }
+  }
+  if (!arg_ids.empty() && reference_counter_->HasConsumeOnceObjects()) {
+    RAY_RETURN_NOT_OK(reference_counter_->TryCommitMoves(arg_ids));
+  }
+
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
   // Subscribe the actor state when we first submit the actor task. It is to reduce the
   // number of connections. The method is idempotent.
@@ -2753,7 +2779,7 @@ Status CoreWorker::SubmitActorTask(
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   task_returns = task_manager_->AddPendingTask(
-      rpc_address_, task_spec, CurrentCallSite(), max_retries);
+      rpc_address_, task_spec, CurrentCallSite(), max_retries, task_options.consume_once);
   actor_task_submitter_->SubmitTask(task_spec);
   return Status::OK();
 }
