@@ -48,6 +48,8 @@ _REPLICA_SYNC_BIND_ATTEMPTS = 3
 _ENDPOINT_SYNC_RETRY_INITIAL_S = 1.0
 _ENDPOINT_SYNC_RETRY_MAX_S = 30.0
 
+_AUTOSCALING_SNAPSHOT_INTERVAL_S = 1.0
+
 
 def get_worker_id(replica_unique_id: str) -> int:
     """Deterministically derive a Dynamo worker id from a replica's unique id."""
@@ -232,6 +234,7 @@ class KVTokenTracker:
         self._autoscaling_metrics_callback: Optional[
             Callable[[Dict[str, int]], None]
         ] = None
+        self._autoscaling_metrics_task: Optional[asyncio.Task] = None
         self._pending_tasks: Set[asyncio.Task] = set()
         self._long_poll_client: Optional[LongPollClient] = None
         self._stopping = False
@@ -252,8 +255,15 @@ class KVTokenTracker:
     def set_autoscaling_metrics_callback(
         self, callback: Callable[[Dict[str, int]], None]
     ) -> None:
-        """Set the local callback for router-owned autoscaling metrics."""
+        """Set the local callback for router-owned autoscaling metrics.
+
+        Snapshots refresh every second and after local selections.
+        """
         self._autoscaling_metrics_callback = callback
+        if self._autoscaling_metrics_task is None:
+            self._autoscaling_metrics_task = asyncio.create_task(
+                self._publish_autoscaling_snapshots()
+            )
 
     async def get_autoscaling_snapshot(self) -> Dict[str, int]:
         """Return the workload of all in-flight requests, as this router's
@@ -263,8 +273,6 @@ class KVTokenTracker:
     def _get_autoscaling_snapshot(self) -> Dict[str, int]:
         # The selection service applies every router's bookings and every
         # LLMServer's lifecycle events, so this covers all routers' requests.
-        # Its prefill estimate decays the oldest prefill per worker over the
-        # prefill's expected duration.
         outstanding_prefill_tokens = 0
         if self._svc is not None:
             for model in self._svc.loads(
@@ -282,6 +290,12 @@ class KVTokenTracker:
             self._autoscaling_metrics_callback(self._get_autoscaling_snapshot())
         except Exception:
             logger.exception("Autoscaling metrics callback failed.")
+
+    async def _publish_autoscaling_snapshots(self) -> None:
+        # Dynamo applies worker and peer events without invoking Python hooks.
+        while True:
+            await asyncio.sleep(_AUTOSCALING_SNAPSHOT_INTERVAL_S)
+            self._publish_autoscaling_snapshot()
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -465,6 +479,9 @@ class KVTokenTracker:
             self._long_poll_client.stop()
             self._long_poll_client = None
         tasks = list(self._pending_tasks)
+        if self._autoscaling_metrics_task is not None:
+            tasks.append(self._autoscaling_metrics_task)
+            self._autoscaling_metrics_task = None
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

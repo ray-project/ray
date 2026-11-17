@@ -312,42 +312,70 @@ def _ports_released(endpoints):
     return True
 
 
-def _outstanding_prefill_tokens(snapshot) -> int:
-    return snapshot[OUTSTANDING_EFFECTIVE_PREFILL_TOKENS]
-
-
 @pytest.mark.asyncio
 async def test_autoscaling_snapshot_tracks_request_phases():
     """The snapshot follows the selection service: a selection adds its
     request's prefill tokens, and prefill completion or a free removes them."""
     pytest.importorskip("dynamo.llm")
     worker_id = get_worker_id("engine-replica-0")
-    tracker = _NoLongPollTracker()
+    tracker, peer = _NoLongPollTracker(), _NoLongPollTracker()
     publisher = _start_publisher(worker_id)
     published = []
     try:
-        await _register_engine_worker(tracker, worker_id)
-        await _subscribe((tracker,), publisher, worker_id)
+        for router in (tracker, peer):
+            await _register_engine_worker(router, worker_id)
+        await tracker._svc.register_replica_peer(
+            f"tcp://127.0.0.1:{peer._replica_sync_port}"
+        )
+        await _subscribe((tracker, peer), publisher, worker_id)
         tracker.set_autoscaling_metrics_callback(published.append)
 
-        await tracker.select_worker("a", list(range(64)), [worker_id])
-        await tracker.select_worker("b", list(range(100, 164)), [worker_id])
-        snapshot = await tracker.get_autoscaling_snapshot()
-        assert _outstanding_prefill_tokens(snapshot) > 0
-        assert _outstanding_prefill_tokens(published[-1]) > 0
-        assert len(published) == 2
+        async def wait_snapshot(tokens):
+            expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: tokens}
 
-        # Prefill completion of one and a free of the other clear the load.
-        publisher.publish("a", LifecycleEvent.PREFILL_COMPLETE)
-        publisher.publish("b", LifecycleEvent.FINISHED)
-        await async_wait_for_condition(
-            lambda: _outstanding_prefill_tokens(tracker._get_autoscaling_snapshot())
-            == 0,
-            timeout=10,
+            async def matches():
+                return (
+                    await tracker.get_autoscaling_snapshot() == expected
+                    and bool(published)
+                    and published[-1] == expected
+                )
+
+            await async_wait_for_condition(matches, timeout=10)
+
+        await tracker.select_worker("a", list(range(64)), [worker_id])
+        assert published[-1] == {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 64}
+        # A peer books 3 uncached tokens from a 32-token prompt.
+        await peer._svc.create_reservation(
+            {
+                "model_name": SELECTION_MODEL_NAME,
+                "routing_group": SELECTION_ROUTING_GROUP,
+                "selection_id": "b",
+                "worker_id": worker_id,
+                "token_ids": list(range(100, 132)),
+                "effective_prefill_tokens": 3,
+            }
         )
+        await wait_snapshot(67)
+
+        publisher.publish("a", LifecycleEvent.PREFILL_COMPLETE)
+        publisher.publish("a", LifecycleEvent.PREFILL_COMPLETE)
+        await wait_snapshot(3)
+        publisher.publish("a", LifecycleEvent.FINISHED)
+        await async_wait_for_condition(
+            lambda: _active_requests(tracker, worker_id) == 1, timeout=10
+        )
+        await wait_snapshot(3)
+        publisher.publish("b", LifecycleEvent.FINISHED)
+        await wait_snapshot(0)
+
+        await peer.select_worker("removed", list(range(200, 264)), [worker_id])
+        await wait_snapshot(64)
+        tracker.remove_worker(worker_id)
+        await wait_snapshot(0)
     finally:
         publisher.close()
-        await tracker.shutdown()
+        for router in (tracker, peer):
+            await router.shutdown()
 
 
 @pytest.mark.asyncio
@@ -399,6 +427,7 @@ async def _check_router_shutdown():
             )
         sender = TokenSender()
         tracker.subscribe_token_endpoints(sender.connect)
+        tracker.set_autoscaling_metrics_callback(lambda snapshot: None)
         publisher = _start_publisher(get_worker_id("engine"))
         try:
             endpoints = [f"tcp://127.0.0.1:{tracker._replica_sync_port}"]
@@ -442,6 +471,7 @@ async def _check_router_shutdown():
             )
         await asyncio.sleep(0)
         assert not tracker._pending_tasks
+        assert tracker._autoscaling_metrics_task is None
         assert tracker._replica_peers._task is None
         assert tracker._lifecycle_sources._task is None
         assert sender._context is None
@@ -624,7 +654,7 @@ async def test_router_restarted_on_its_endpoint_stays_a_peer():
             lambda: _active_requests(peer, worker_id) == 1, timeout=10
         )
 
-        await owner._svc.shutdown_async()
+        await owner.shutdown()
         with patch.object(kv_token_tracker, "find_free_port", return_value=port):
             restarted = trackers[0] = _NoLongPollTracker()
         await _register_engine_worker(restarted, worker_id)
@@ -640,8 +670,7 @@ async def test_router_restarted_on_its_endpoint_stays_a_peer():
         assert _active_requests(peer, worker_id) > 1
     finally:
         for tracker in trackers:
-            if tracker._svc is not None:
-                await tracker._svc.delete_worker(worker_id)
+            await tracker.shutdown()
 
 
 # ---- Session affinity -------------------------------------------------------
@@ -846,42 +875,41 @@ class _SlowResumeSelectionService:
 @pytest.mark.asyncio
 async def test_cancelled_selection_frees_its_booking():
     """A route cancelled after the selection service booked it (HAProxy gave up
-    on a slow router) must not leave untracked load booked."""
+    on a slow router) must not leave untracked load booked, on this router or on
+    the peer the booking was replicated to."""
     pytest.importorskip("dynamo.llm")
     worker_id = get_worker_id("engine-replica-0")
-
-    tracker = _NoLongPollTracker()
+    owner, peer = _NoLongPollTracker(), _NoLongPollTracker()
     try:
-        tracker._register_block_size(16, "engine-replica-0")
-        await tracker._upsert_worker(
-            worker_id,
-            "engine-replica-0",
-            {
-                "endpoint": "tcp://127.0.0.1:59998",
-                "block_size": 16,
-                "max_num_batched_tokens": 8192,
-                "dp_rank": 0,
-            },
+        for tracker in (owner, peer):
+            await _register_engine_worker(tracker, worker_id)
+        await peer._svc.register_replica_peer(
+            f"tcp://127.0.0.1:{owner._replica_sync_port}"
         )
-        tracker._svc = _SlowResumeSelectionService(tracker._svc)
+        # The mesh SUB socket connects in the background.
+        await asyncio.sleep(0.5)
+        owner._svc = _SlowResumeSelectionService(owner._svc)
 
         select = asyncio.create_task(
-            tracker.select_worker("req-abandoned", list(range(64)), [worker_id], 32)
+            owner.select_worker("req-abandoned", list(range(64)), [worker_id], 32)
         )
-        await tracker._svc.booked.wait()
-        assert _active_requests(tracker, worker_id) == 1
+        await owner._svc.booked.wait()
+        # The booking reaches the peer before the caller gives up.
+        await async_wait_for_condition(
+            lambda: _active_requests(peer, worker_id) == 1, timeout=10
+        )
         select.cancel()
         with pytest.raises(asyncio.CancelledError):
             await select
-        tracker._svc.release.set()
+        owner._svc.release.set()
+        # Freeing the abandoned booking releases it on the peer too.
         await async_wait_for_condition(
-            lambda: _active_requests(tracker, worker_id) == 0,
-            timeout=5,
-            retry_interval_ms=10,
+            lambda: [_active_requests(t, worker_id) for t in (owner, peer)] == [0, 0],
+            timeout=10,
         )
     finally:
-        if tracker._svc is not None:
-            await tracker._svc.delete_worker(worker_id)
+        for tracker in (owner, peer):
+            await tracker.shutdown()
 
 
 # ---- LongPoll replica-membership tracking -----------------------------------

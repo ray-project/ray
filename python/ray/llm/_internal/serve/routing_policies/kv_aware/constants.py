@@ -31,8 +31,6 @@ KV_TOKEN_STAGING_MAX_BYTES = get_env_int_positive(
 KV_TOKEN_ZMQ_SEND_QUEUE_LIMIT = 256
 KV_TOKEN_ZMQ_RECEIVE_QUEUE_LIMIT = 1024
 KV_TOKEN_ZMQ_MAX_SOCKETS = 4096
-# Lifecycle events an LLMServer queues per LLMRouter before dropping new ones.
-KV_LIFECYCLE_ZMQ_SEND_QUEUE_LIMIT = 2000
 
 # experimental_configs key overriding the per-node base port.
 KV_EVENTS_PORT_BASE_KEY = "KV_EVENTS_PORT_BASE"
