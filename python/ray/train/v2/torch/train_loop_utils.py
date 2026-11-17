@@ -301,6 +301,11 @@ def prepare_data_loader(
 
     Returns:
         The prepared DataLoader.
+
+    Raises:
+        ValueError: If ``add_dist_sampler`` is ``True``, there is more than one
+            worker, and ``data_loader`` was created with a custom
+            ``batch_sampler``.
     """
     record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_DATALOADER, "1")
 
@@ -321,6 +326,17 @@ def prepare_data_loader(
         )
         and add_dist_sampler
     ):
+        # A custom `batch_sampler` leaves `batch_size` as None. Rebuilding the
+        # DataLoader below would drop the `batch_sampler` and disable batching.
+        if data_loader.batch_sampler is not None and data_loader.batch_size is None:
+            raise ValueError(
+                "`prepare_data_loader` can't add a `DistributedSampler` to a "
+                "DataLoader with a custom `batch_sampler`, since that would drop "
+                "the `batch_sampler` and return unbatched samples. Shard the data "
+                "in your batch sampler instead (for example, by wrapping a "
+                "`DistributedSampler` in a `torch.utils.data.BatchSampler`) and "
+                "pass `add_dist_sampler=False`."
+            )
 
         def with_sampler(loader):
             # Automatically set the DistributedSampler
