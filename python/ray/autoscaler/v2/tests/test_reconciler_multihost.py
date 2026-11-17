@@ -11023,6 +11023,85 @@ class TestReconcilerMultiHost:
                     },
                 }
             )
+            # Intermediate staggered-boot tick: worker 0 of both replicas is
+            # already RAY_RUNNING (idle > 10s) while worker 1 of both replicas
+            # is still RAY_INSTALLING on the shared launch_request_id.
+            store_stag = InstanceStorage(
+                cluster_id="multitick_stag_lrid_seam", storage=InMemoryStorage()
+            )
+            im_stag = InstanceManager(store_stag, instance_status_update_subscribers=[])
+            self._add_instances(
+                store_stag,
+                [
+                    create_instance(
+                        "head",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="head",
+                        node_kind=NodeKind.HEAD,
+                        cloud_instance_id="head-pod",
+                        ray_node_id=binary_to_hex(head_id),
+                    ),
+                    create_instance(
+                        "b0",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        cloud_instance_id="pod-b0",
+                        ray_node_id=binary_to_hex(b0_id),
+                        launch_request_id="lid-shared",
+                    ),
+                    create_instance(
+                        "b1",
+                        status=Instance.RAY_INSTALLING,
+                        instance_type="tpu",
+                        cloud_instance_id="pod-b1",
+                        launch_request_id="lid-shared",
+                    ),
+                    create_instance(
+                        "i0",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        cloud_instance_id="pod-i0",
+                        ray_node_id=binary_to_hex(i0_id),
+                        launch_request_id="lid-shared",
+                    ),
+                    create_instance(
+                        "i1",
+                        status=Instance.RAY_INSTALLING,
+                        instance_type="tpu",
+                        cloud_instance_id="pod-i1",
+                        launch_request_id="lid-shared",
+                    ),
+                ],
+            )
+            stag_state = ClusterResourceState(
+                node_states=[
+                    NodeState(
+                        node_id=head_id,
+                        instance_id="head-pod",
+                        status=NodeStatus.RUNNING,
+                    ),
+                    _tpu_node(b0_id, "pod-b0", busy=False, idle_ms=20_000),
+                    _tpu_node(i0_id, "pod-i0", busy=False, idle_ms=20_000),
+                ]
+            )
+            Reconciler.reconcile(
+                instance_manager=im_stag,
+                scheduler=ResourceDemandScheduler(),
+                cloud_provider=provider,
+                ray_cluster_resource_state=stag_state,
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=min2_cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            stag_after, _ = store_stag.get_instances()
+            assert all(
+                stag_after[k].status != Instance.RAY_STOP_REQUESTED
+                for k in ("b0", "b1", "i0", "i1")
+            )
+
             ambig_mixed_state = ClusterResourceState(
                 node_states=[
                     NodeState(

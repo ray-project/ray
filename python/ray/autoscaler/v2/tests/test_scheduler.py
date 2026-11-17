@@ -6008,6 +6008,7 @@ def _run_node(
     used: Optional[Dict[str, float]] = None,
     idle_ms: int = 0,
     rep: Optional[str] = None,
+    lid: Optional[str] = None,
 ) -> AutoscalerInstance:
     used = used or {}
     inst = make_autoscaler_instance(
@@ -6016,6 +6017,7 @@ def _run_node(
             status=Instance.RAY_RUNNING,
             instance_id=iid,
             node_id=iid.encode(),
+            launch_request_id=lid or "",
         ),
         ray_node=NodeState(
             node_id=iid.encode(),
@@ -10593,43 +10595,6 @@ def test_pinned_locality_domains_intersection_and_not_in():
     assert ResourceDemandScheduler._pinned_locality_domains([g_cofin], cfgs) == {}
 
 
-def test_is_domain_idle_mixed_selectors_and_zero_resource_bundles():
-    """_is_domain_idle checks all nodes matched by unlabeled bundles
-    in mixed gangs, falls back to full-node idleness on empty/implicit bundles,
-    and preserves capacity-equivalence for non-zero bundles."""
-    cfgs = {"tpu_4x4": _tpu_config(max_workers=8)}
-    # (a) Mixed selectors: w=0..2 idle, w=3 busy (TPU: 0 available); gang has 1 labeled
-    # bundle (w=0) + 1 unlabeled bundle -> s0 is NOT idle.
-    s0_mixed = [
-        _tpu_host("s0-0", "s0", 0),
-        _tpu_host("s0-1", "s0", 1),
-        _tpu_host("s0-2", "s0", 2),
-        _tpu_host("s0-3", "s0", 3, used={"TPU": 4}),
-    ]
-    ctx_a = _mk_ctx(cfgs, s0_mixed)
-    reqs_mixed = [
-        _mk_req({"CPU": 1, "TPU": 4}, label_selectors=[[(_WID, _IN, ["0"])]]),
-        _mk_req({"CPU": 1, "TPU": 4}),
-    ]
-    assert not ResourceDemandScheduler._is_domain_idle(ctx_a.get_nodes(), reqs_mixed, 1)
-
-    # (b) Empty {} and implicit-only bundles detect partial CPU usage.
-    s0_cpu_used = [
-        _tpu_host("s0-0", "s0", 0, used={"CPU": 1}),
-        _tpu_host("s0-1", "s0", 1),
-    ]
-    ctx_b = _mk_ctx(cfgs, s0_cpu_used)
-    reqs_empty = [_mk_req({})]
-    assert not ResourceDemandScheduler._is_domain_idle(ctx_b.get_nodes(), reqs_empty, 1)
-    reqs_imp = [_mk_req({"_implicit_res": 1.0})]
-    assert not ResourceDemandScheduler._is_domain_idle(ctx_b.get_nodes(), reqs_imp, 1)
-
-    # (c) Preservation counter-case: non-zero bundle {"CPU": 1, "TPU": 4} has
-    # identical floor capacity (1) on total {CPU:4, TPU:4} and avail {CPU:3, TPU:4}.
-    reqs_tpu = [_mk_req({"CPU": 1, "TPU": 4})]
-    assert ResourceDemandScheduler._is_domain_idle(ctx_b.get_nodes(), reqs_tpu, 1)
-
-
 def test_stop_requested_and_stopping_live_sibling_subtraction_min_workers():
     """All live siblings of draining replicas (both RAY_STOP_REQUESTED
     and RAY_STOPPING) are subtracted from min_worker_nodes headroom so healthy
@@ -13169,6 +13134,158 @@ def test_replica_grouper_exclusive_domain_mixed_and_colliding_provider_ids():
     rep_col_drain = _sched({"tpu2": tpu2_cfg}, colliding + [i1_stop], gangs=[g1_pin])
     assert len(rep_col_drain.infeasible_gang_resource_requests) == 1
 
+    # (d) Non-provider + provider collision on exclusive slice-0 where combined
+    # membership exceeds workers_per_replica (2+2 > 2) must stay separate so:
+    # - min_worker_nodes=2 scales down 1 idle replica (does not wedge at 4),
+    # - max_worker_nodes=2 terminates only the idle replica and keeps busy prov-1,
+    # - 2 busy non-provider + (1 busy + 1 ALLOCATED) prov-1 does not fabricate a
+    #   5th phantom backfill placeholder blocking a 3rd replica under max=6.
+    n_idle = [
+        _run_node(
+            "tpu2",
+            "n0",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "0"},
+            idle_ms=60_000,
+        ),
+        _run_node(
+            "tpu2",
+            "n1",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "1"},
+            idle_ms=60_000,
+        ),
+    ]
+    p_idle = [
+        _run_node(
+            "tpu2",
+            "p0",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "0"},
+            rep="prov-1",
+            idle_ms=60_000,
+        ),
+        _run_node(
+            "tpu2",
+            "p1",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "1"},
+            rep="prov-1",
+            idle_ms=60_000,
+        ),
+    ]
+    tpu2_min2 = _tpu_config(
+        name="tpu2", workers_per_replica=2, min_workers=2, max_workers=6
+    )
+    rep_min2 = _sched({"tpu2": tpu2_min2}, n_idle + p_idle, idle_s=10.0)
+    assert len(rep_min2.to_terminate) == 2
+
+    p_busy = [
+        _run_node(
+            "tpu2",
+            "p0",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "0"},
+            used={"TPU": 4},
+            rep="prov-1",
+        ),
+        _run_node(
+            "tpu2",
+            "p1",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "1"},
+            used={"TPU": 4},
+            rep="prov-1",
+        ),
+    ]
+    tpu2_max2 = _tpu_config(
+        name="tpu2", workers_per_replica=2, min_workers=0, max_workers=2
+    )
+    rep_max2 = _sched({"tpu2": tpu2_max2}, n_idle + p_busy, idle_s=10.0)
+    assert sorted(t.instance_id for t in rep_max2.to_terminate) == ["n0", "n1"]
+
+    n_busy = [
+        _run_node(
+            "tpu2",
+            "n0",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "0"},
+            used={"TPU": 4},
+        ),
+        _run_node(
+            "tpu2",
+            "n1",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "1"},
+            used={"TPU": 4},
+        ),
+    ]
+    p_boot = [
+        _run_node(
+            "tpu2",
+            "p0",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "0"},
+            used={"TPU": 4},
+            rep="prov-1",
+        ),
+        _pending_node("tpu2", "p1", Instance.ALLOCATED, rep="prov-1"),
+    ]
+    tpu2_max6 = _tpu_config(
+        name="tpu2", workers_per_replica=2, min_workers=0, max_workers=6
+    )
+    rep_scale3 = _sched(
+        {"tpu2": tpu2_max6},
+        n_busy + p_boot,
+        reqs=[
+            _resource_request({"CPU": 4, "TPU": 4}),
+            _resource_request({"CPU": 4, "TPU": 4}),
+            _resource_request({"CPU": 4, "TPU": 4}),
+        ],
+    )
+    assert rep_scale3.infeasible_resource_requests == []
+    assert _launch_and_terminate(rep_scale3) == ({"tpu2": 2}, [])
+
+    # (e) Same-size collision (1+1 == 2) with overlapping worker index "0" must
+    # stay separate rather than merging into a corrupted two-head replica:
+    # n0 (unattributed, 1 host) + p0 (prov-1, 1 host + 1 backfill placeholder)
+    # yield 3 hosts on slice-0 (not 2 if wrongly merged).
+    dup_wid = [
+        _run_node(
+            "tpu2",
+            "n0",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "0"},
+            rep=None,
+        ),
+        _run_node(
+            "tpu2",
+            "p0",
+            {"CPU": 4, "TPU": 4},
+            {_SLICE: "slice-0", _WID: "0"},
+            rep="prov-1",
+        ),
+    ]
+    g3_pin = _strict_pack_gang(
+        _SLICE,
+        _spread_reqs({"CPU": 4, "TPU": 4}, 3, "_pg_c3"),
+        loc_constraints=[(_SLICE, _IN, ["slice-0"])],
+    )
+    assert (
+        _sched(
+            {"tpu2": tpu2_cfg}, dup_wid, gangs=[g3_pin]
+        ).infeasible_gang_resource_requests
+        == []
+    )
+    assert (
+        len(
+            _sched(
+                {"tpu2": tpu2_cfg}, dup_wid, gangs=[g4_pin]
+            ).infeasible_gang_resource_requests
+        )
+        == 1
+    )
+
 
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_multihost_domain_group_propagates_orthogonal_runtime_labels(exclusive):
@@ -13288,6 +13405,31 @@ def test_multihost_domain_group_propagates_orthogonal_runtime_labels(exclusive):
     ]
     rep_conflict = _sched(cfgs4, conflict_insts, reqs=[plain_rack0])
     assert len(rep_conflict.infeasible_resource_requests) == 1
+
+    # Partial missing label (c0 has rack-0, c1 registered without rack) must NOT
+    # propagate rack-0 onto booting siblings c2/c3.
+    missing_label_insts = [
+        _run_node(
+            "accel",
+            "c0",
+            {"CPU": 4, "TPU": 4},
+            {dom_key: "d0", rack_key: "rack-0"},
+            used={"TPU": 4},
+            rep="rep-m",
+        ),
+        _run_node(
+            "accel",
+            "c1",
+            {"CPU": 4, "TPU": 4},
+            {dom_key: "d0"},
+            used={"TPU": 4},
+            rep="rep-m",
+        ),
+        _pending_node("accel", "c2", Instance.ALLOCATED, rep="rep-m"),
+        _pending_node("accel", "c3", Instance.ALLOCATED, rep="rep-m"),
+    ]
+    rep_missing = _sched(cfgs4, missing_label_insts, reqs=[plain_rack0])
+    assert len(rep_missing.infeasible_resource_requests) == 1
 
 
 def test_in_progress_ippr_shared_domain_and_pending_dedup():
@@ -13578,6 +13720,454 @@ def test_gang_dedup_key_preserves_locality_constraint_label_name():
     assert len(rep_both.infeasible_gang_resource_requests) == 1
     assert rep_both.infeasible_gang_resource_requests[0] == g_infeas
     assert _launch_and_terminate(rep_both) == ({"cpu": 1}, [])
+
+
+@pytest.mark.parametrize("use_shared_domain", [True, False])
+def test_multireplica_midboot_odd_counts_and_staggered_boot(use_shared_domain):
+    """Multi-replica shared-lid batches preserve modulo-size deficit math on odd
+    mid-boot counts (3 running + 1 booting/vanished/unlabeled) and staggered
+    2+2 registration without premature termination or scale-up deadlock."""
+    clique_key = "ray.io/gpu-clique"
+    rack_key = "ray.io/rack"
+    dom_key = clique_key if use_shared_domain else None
+    head_res = "clique-head"
+    cfgs = {
+        "mw": NodeTypeConfig(
+            name="mw",
+            resources={"CPU": 4, "GPU": 4, head_res: 1},
+            min_worker_nodes=0,
+            max_worker_nodes=6,
+            runtime_label_keys=(rack_key, clique_key)
+            if use_shared_domain
+            else (rack_key,),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=2,
+                domain_label_key=dom_key,
+                domain_exclusive=False,
+                head_resources=(head_res,),
+            ),
+        )
+    }
+    base_labels = {
+        rack_key: "rack-0",
+        **({clique_key: "clique-0"} if use_shared_domain else {}),
+    }
+    r0 = _run_node(
+        "mw",
+        "r0",
+        {"CPU": 4, "GPU": 4, head_res: 1},
+        base_labels,
+        used={"GPU": 4},
+        lid="L1",
+    )
+    r1 = _run_node(
+        "mw", "r1", {"CPU": 4, "GPU": 4}, base_labels, used={"GPU": 4}, lid="L1"
+    )
+    r2 = _run_node(
+        "mw", "r2", {"CPU": 4, "GPU": 4}, base_labels, used={"GPU": 4}, lid="L1"
+    )
+    b3 = _pending_node("mw", "b3", Instance.ALLOCATED, lid="L1")
+
+    # (a) Booting 4th host attaches to L1 batch, inherits domain + rack + missing
+    # 2nd-replica head resource, rejects cross-domain/cross-rack stealing, and
+    # allows 3rd-replica scale-up under max_worker_nodes=6 (no phantom 5th slot).
+    pin_key = clique_key if use_shared_domain else rack_key
+    pin_val = "clique-0" if use_shared_domain else "rack-0"
+    other_val = "clique-1" if use_shared_domain else "rack-1"
+    g_head_same = _strict_pack_gang(
+        pin_key,
+        _spread_reqs({"CPU": 4, "GPU": 4, head_res: 1}, 1, "_pg_head0"),
+        loc_constraints=[(pin_key, _IN, [pin_val])],
+    )
+    rep_head = _sched(cfgs, [r0, r1, r2, b3], gangs=[g_head_same])
+    assert rep_head.infeasible_gang_resource_requests == []
+    assert _launch_and_terminate(rep_head) == ({}, [])
+
+    other_host = _run_node(
+        "mw",
+        "o0",
+        {"CPU": 4, "GPU": 4, head_res: 1},
+        {rack_key: "rack-1", **({clique_key: "clique-1"} if use_shared_domain else {})},
+        lid="L2",
+    )
+    other_host_busy = _run_node(
+        "mw",
+        "o1",
+        {"CPU": 4, "GPU": 4},
+        {rack_key: "rack-1", **({clique_key: "clique-1"} if use_shared_domain else {})},
+        used={"GPU": 4},
+        lid="L2",
+    )
+    g2_other = _strict_pack_gang(
+        pin_key,
+        _spread_reqs({"CPU": 4, "GPU": 4}, 2, "_pg_steal"),
+        loc_constraints=[(pin_key, _IN, [other_val])],
+    )
+    rep_steal = _sched(
+        cfgs, [r0, r1, r2, b3, other_host, other_host_busy], gangs=[g2_other]
+    )
+    assert len(rep_steal.infeasible_gang_resource_requests) == 1
+
+    # 3 running (busy) + 1 ALLOCATED (free) + 2 new GPU=4 demands -> 1 fits on b3,
+    # 1 triggers 3rd replica launch (2 nodes) cleanly under max_worker_nodes=6.
+    rep_scale3 = _sched(
+        cfgs,
+        [r0, r1, r2, b3],
+        reqs=[
+            _resource_request({"CPU": 4, "GPU": 4}),
+            _resource_request({"CPU": 4, "GPU": 4}),
+        ],
+    )
+    assert rep_scale3.infeasible_resource_requests == []
+    assert _launch_and_terminate(rep_scale3) == ({"mw": 2}, [])
+
+    # (b) RAY_STOP_REQUESTED on r0 propagates draining onto attached b3.
+    r0_stop = _run_node(
+        "mw",
+        "r0",
+        {"CPU": 4, "GPU": 4, head_res: 1},
+        base_labels,
+        used={"GPU": 4},
+        lid="L1",
+    )
+    assert r0_stop.im_instance is not None
+    r0_stop.im_instance.status = Instance.RAY_STOP_REQUESTED
+    g1_any = _strict_pack_gang(
+        pin_key, _spread_reqs({"CPU": 4, "GPU": 4}, 1, "_pg_drain")
+    )
+    cfgs_capped = {
+        "mw": NodeTypeConfig(
+            name="mw",
+            resources={"CPU": 4, "GPU": 4, head_res: 1},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            runtime_label_keys=cfgs["mw"].runtime_label_keys,
+            replica_config=cfgs["mw"].replica_config,
+        )
+    }
+    rep_drain = _sched(cfgs_capped, [r0_stop, r1, r2, b3], gangs=[g1_any])
+    assert len(rep_drain.infeasible_gang_resource_requests) == 1
+
+    # (c) Vanished 4th host emits 1 backfill placeholder with head resource + rack.
+    rep_bf = _sched(cfgs_capped, [r0, r1, r2], gangs=[g_head_same])
+    assert rep_bf.infeasible_gang_resource_requests == []
+    assert _launch_and_terminate(rep_bf) == ({}, [])
+
+    # (d) Unlabeled 4th running sibling attaches to L1 group in shared-domain mode.
+    if use_shared_domain:
+        r3_unlabeled = _run_node(
+            "mw", "r3", {"CPU": 4, "GPU": 4, head_res: 1}, {}, used={"GPU": 4}, lid="L1"
+        )
+        rep_r3 = _sched(
+            cfgs,
+            [r0, r1, r2, r3_unlabeled],
+            reqs=[_resource_request({"CPU": 4, "GPU": 4})],
+        )
+        assert rep_r3.infeasible_resource_requests == []
+        assert _launch_and_terminate(rep_r3) == ({"mw": 2}, [])
+
+    # (e) Staggered boot Case 2A: 2 idle RAY_RUNNING + 2 RAY_INSTALLING on shared
+    # lid="lid-shared" with min_worker_nodes=2 must NOT terminate the 2 running hosts.
+    cfgs_min2 = {
+        "mw": NodeTypeConfig(
+            name="mw",
+            resources={"CPU": 4, "GPU": 4, head_res: 1},
+            min_worker_nodes=2,
+            max_worker_nodes=4,
+            runtime_label_keys=cfgs["mw"].runtime_label_keys,
+            replica_config=cfgs["mw"].replica_config,
+        )
+    }
+    staggered = [
+        _run_node(
+            "mw",
+            "a0",
+            {"CPU": 4, "GPU": 4, head_res: 1},
+            base_labels,
+            idle_ms=20_000,
+            lid="lid-shared",
+        ),
+        _run_node(
+            "mw",
+            "b0",
+            {"CPU": 4, "GPU": 4, head_res: 1},
+            base_labels,
+            idle_ms=20_000,
+            lid="lid-shared",
+        ),
+        _pending_node("mw", "a1", Instance.RAY_INSTALLING, lid="lid-shared"),
+        _pending_node("mw", "b1", Instance.RAY_INSTALLING, lid="lid-shared"),
+    ]
+    rep_staggered = _sched(cfgs_min2, staggered, idle_s=10.0)
+    assert rep_staggered.to_terminate == []
+
+
+def test_pinned_domain_pending_idle_symmetry_and_multihost_scaleup():
+    """All-idle pinned domains with expired pending + running nodes scale down
+    cleanly without leaking, while active multi-worker TO_LAUNCH and QUEUED
+    replicas in a pinned domain protect co-located idle nodes."""
+    rack_key = "ray.io/rack"
+    cfgs = {
+        "sh": NodeTypeConfig(
+            name="sh",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+            labels={rack_key: "rack-0"},
+        ),
+        "mw": NodeTypeConfig(
+            name="mw",
+            resources={"CPU": 4, "GPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+            labels={rack_key: "rack-0"},
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=2,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+            ),
+        ),
+    }
+    g_infeas_rack0 = _strict_pack_gang(
+        rack_key,
+        _spread_reqs({"CPU": 4}, 5, "_pg_inf5"),
+        loc_constraints=[(rack_key, _IN, ["rack-0"])],
+    )
+    g_gpu2_rack0 = _strict_pack_gang(
+        rack_key,
+        _spread_reqs({"CPU": 4, "GPU": 4}, 2, "_pg_gpu2"),
+        loc_constraints=[(rack_key, _IN, ["rack-0"])],
+    )
+
+    sh0_alloc = _pending_node("sh", "sh0", Instance.ALLOCATED)
+    sh0_idle = _run_node("sh", "sh0", {"CPU": 4}, {rack_key: "rack-0"}, idle_ms=60_000)
+    mw_idle = [
+        _run_node(
+            "mw",
+            "mw0",
+            {"CPU": 4, "GPU": 4},
+            {_SLICE: "s0", _WID: "0", rack_key: "rack-0"},
+            idle_ms=60_000,
+        ),
+        _run_node(
+            "mw",
+            "mw1",
+            {"CPU": 4, "GPU": 4},
+            {_SLICE: "s0", _WID: "1", rack_key: "rack-0"},
+            idle_ms=60_000,
+        ),
+    ]
+    mw_busy = [
+        _run_node(
+            "mw",
+            "mw0",
+            {"CPU": 4, "GPU": 4},
+            {_SLICE: "s0", _WID: "0", rack_key: "rack-0"},
+            used={"GPU": 4},
+            idle_ms=0,
+        ),
+        _run_node(
+            "mw",
+            "mw1",
+            {"CPU": 4, "GPU": 4},
+            {_SLICE: "s0", _WID: "1", rack_key: "rack-0"},
+            used={"GPU": 4},
+            idle_ms=0,
+        ),
+    ]
+
+    # (a) All-idle pinned rack-0 (ALLOCATED sh0 + expired RUNNING mw0/mw1):
+    # Tick 1 starts sh0's pending timer and shields mw0/mw1; Tick 2 after
+    # pending_idle_timeout_s scales down all three cleanly (zero leak).
+    sched_leak = ResourceDemandScheduler()
+    now_t = [100.0]
+    with patch(
+        "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
+    ):
+        r1 = sched_leak.schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs=cfgs,
+                current_instances=[sh0_alloc] + mw_idle,
+                gang_resource_requests=[g_infeas_rack0],
+                idle_timeout_s=10.0,
+                pending_idle_timeout_s=10.0,
+            )
+        )
+        assert r1.to_terminate == []
+        now_t[0] = 220.0
+        r2 = sched_leak.schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs=cfgs,
+                current_instances=[sh0_alloc] + mw_idle,
+                gang_resource_requests=[g_infeas_rack0],
+                idle_timeout_s=10.0,
+                pending_idle_timeout_s=10.0,
+            )
+        )
+        assert sorted(t.instance_id for t in r2.to_terminate) == ["mw0", "mw1", "sh0"]
+
+    # Counter-case: while mw0/mw1 are busy in rack-0, ALLOCATED sh0 stays
+    # protected and does not record a stale unneeded timestamp that could
+    # prematurely expire a freshly added sibling pending node.
+    sh_fresh = _pending_node("sh", "sh_fresh", Instance.ALLOCATED)
+    sched_busy = ResourceDemandScheduler()
+    now_t[0] = 100.0
+    with patch(
+        "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
+    ):
+        rb1 = sched_busy.schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs=cfgs,
+                current_instances=[sh0_alloc] + mw_busy,
+                gang_resource_requests=[g_infeas_rack0],
+                idle_timeout_s=10.0,
+                pending_idle_timeout_s=10.0,
+            )
+        )
+        assert rb1.to_terminate == []
+        assert "sh" not in sched_busy._pending_unneeded_since_s
+        now_t[0] = 220.0
+        rb2 = sched_busy.schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs=cfgs,
+                current_instances=[sh0_alloc, sh_fresh] + mw_busy,
+                gang_resource_requests=[g_infeas_rack0],
+                idle_timeout_s=10.0,
+                pending_idle_timeout_s=10.0,
+            )
+        )
+        assert rb2.to_terminate == []
+
+    # (b) Multi-worker TO_LAUNCH replica in pinned rack-0 protects co-located idle sh0.
+    rep_launch = _sched(
+        cfgs, [sh0_idle], gangs=[g_gpu2_rack0, g_infeas_rack0], idle_s=10.0
+    )
+    assert _launch_and_terminate(rep_launch) == ({"mw": 2}, [])
+
+    # (c) Multi-worker active QUEUED replica in pinned rack-0 protects idle sh0,
+    # and once unneeded + expired all three terminate cleanly together.
+    mw_queued = [
+        _pending_node("mw", "q0", Instance.QUEUED),
+        _pending_node("mw", "q1", Instance.QUEUED),
+    ]
+    rep_q_active = _sched(
+        cfgs,
+        [sh0_idle] + mw_queued,
+        gangs=[g_gpu2_rack0, g_infeas_rack0],
+        idle_s=10.0,
+    )
+    assert _launch_and_terminate(rep_q_active) == ({}, [])
+
+    sched_q_idle = ResourceDemandScheduler()
+    now_t[0] = 100.0
+    with patch(
+        "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
+    ):
+        rq1 = sched_q_idle.schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs=cfgs,
+                current_instances=[sh0_idle] + mw_queued,
+                gang_resource_requests=[g_infeas_rack0],
+                idle_timeout_s=10.0,
+                pending_idle_timeout_s=10.0,
+            )
+        )
+        assert rq1.to_terminate == []
+        now_t[0] = 220.0
+        rq2 = sched_q_idle.schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs=cfgs,
+                current_instances=[sh0_idle] + mw_queued,
+                gang_resource_requests=[g_infeas_rack0],
+                idle_timeout_s=10.0,
+                pending_idle_timeout_s=10.0,
+            )
+        )
+        assert sorted(t.instance_id for t in rq2.to_terminate) == ["q0", "q1", "sh0"]
+
+
+def test_dynamic_domain_prefilter_host_count_and_locality_selector_safety():
+    """Schedulable host-count prefilter skips fragmented slices without calling
+    _try_schedule, and failed-dynamic-domain deduplication never skips a domain
+    referenced by a multi-tier fallback selector on locality_label."""
+    # (a) 8 fragmented 4-host slices: 3 hosts have 16 CPU, 1 host has 0 CPU.
+    # A 4-bundle 10-CPU spread gang fits aggregate CPU (48 >= 40) but only 3 hosts
+    # can fit any bundle (< min_nodes_needed=4) -> 0 _try_schedule calls per slice.
+    frag_slices = [
+        _run_node(
+            "tpu",
+            f"s{s}-w{w}",
+            {"CPU": 16, "TPU": 4},
+            {_SLICE: f"slice-{s}", _WID: str(w)},
+            used={"CPU": 16} if w == 3 else None,
+        )
+        for s in range(8)
+        for w in range(4)
+    ]
+    g_spread4 = _strict_pack_gang(_SLICE, _spread_reqs({"CPU": 10}, 4, "_pg_f4"))
+    orig_try = ResourceDemandScheduler._try_schedule
+    calls = 0
+
+    def _counting_try(ctx, requests_to_sched, *args, **kwargs):
+        nonlocal calls
+        if requests_to_sched:
+            calls += 1
+        return orig_try(ctx, requests_to_sched, *args, **kwargs)
+
+    with patch.object(
+        ResourceDemandScheduler, "_try_schedule", staticmethod(_counting_try)
+    ):
+        rep_frag = _sched(
+            {"tpu": _tpu_config(name="tpu", workers_per_replica=4, max_workers=32)},
+            frag_slices,
+            gangs=[g_spread4],
+        )
+    assert len(rep_frag.infeasible_gang_resource_requests) == 1
+    assert calls == 0
+
+    # (b) Unpinned gangs referencing locality_label via NOT_IN or a multi-tier
+    # fallback selector must NOT be deduplicated across identical non-locality
+    # dynamic domains:
+    # - NOT_IN (_SLICE, ["slice-0"]) fails on slice-0 but succeeds on slice-1.
+    # - Tier 1 (_SLICE IN ["slice-1"]) / Tier 2 (tier IN ["ok"]) selects slice-1
+    #   (leaving idle slice-0 w0 to idle-terminate while keeping w1 alive).
+    sel_cfgs = {
+        "w": NodeTypeConfig(
+            name="w",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+            runtime_label_keys=(_SLICE, "tier"),
+        )
+    }
+    insts = [
+        _run_node(
+            "w", "w0", {"CPU": 4}, {_SLICE: "slice-0", "tier": "ok"}, idle_ms=60_000
+        ),
+        _run_node(
+            "w", "w1", {"CPU": 4}, {_SLICE: "slice-1", "tier": "ok"}, idle_ms=60_000
+        ),
+    ]
+    b_not_in = _mk_req({"CPU": 2}, label_selectors=[[(_SLICE, _NOT_IN, ["slice-0"])]])
+    g_not_in = _strict_pack_gang(_SLICE, [b_not_in])
+    rep_not_in = _sched(sel_cfgs, insts, gangs=[g_not_in], idle_s=10.0)
+    assert rep_not_in.infeasible_gang_resource_requests == []
+    assert sorted(t.instance_id for t in rep_not_in.to_terminate) == ["w0"]
+
+    b_pref = _mk_req(
+        {"CPU": 2},
+        label_selectors=[[(_SLICE, _IN, ["slice-1"])], [("tier", _IN, ["ok"])]],
+    )
+    g_pref = _strict_pack_gang(_SLICE, [b_pref])
+    rep_pref = _sched(sel_cfgs, insts, gangs=[g_pref], idle_s=10.0)
+    assert rep_pref.infeasible_gang_resource_requests == []
+    assert sorted(t.instance_id for t in rep_pref.to_terminate) == ["w0"]
 
 
 if __name__ == "__main__":
