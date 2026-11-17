@@ -11492,6 +11492,29 @@ class TestReconcilerMultiHost:
         assert workers() == ["u-a", "u-b", "u-c", "u-d"]
         assert len(res.infeasible_gang_resource_requests) == 0
 
+    def test_unlabeled_busy_survivors_scale_up_second_replica_for_new_gang(self):
+        """When 3 busy unlabeled survivors remain on slice-0 after a pod dies at
+        maxReplicas=2, a new 4-host STRICT_PACK gang co-launches the 1-pod refill plus
+        the 4-pod second replica (5 pods total -> replicas=2) instead of clamping to 1."""
+        (group, _, _, ray_busy, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
+            "refill-plus-new-slice",
+            size=4,
+            max_replicas=2,
+            pod_names=[f"u-{i}" for i in range(12)],
+        )
+        for _ in range(3):
+            step_tick(tasks=4)
+        for nm in workers():
+            ray_busy[nm] = True
+        step_tick()
+        victim = workers()[-1]
+        res = None
+        for _ in range(4):
+            res = step_tick(gangs=1, dead=victim)
+        assert group.get("replicas") == 2
+        assert len(workers()) == 8
+        assert len(res.infeasible_gang_resource_requests) == 0
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
