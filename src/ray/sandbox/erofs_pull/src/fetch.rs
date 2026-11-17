@@ -288,22 +288,27 @@ impl Blob {
         Ok(())
     }
 
-    /// After the digest checks out: move the blob to its cache name.
+    /// Once the digest checks out: move the blob to its cache name and
+    /// release its lock, right away rather than when the pull ends, so other
+    /// pulls never wait on more than this blob's download. Readers keep
+    /// reading through the open file. Does nothing once the lock is released.
     pub fn commit(&self) -> io::Result<()> {
-        if !self.cached {
+        let mut lock = self.lock.lock().unwrap();
+        if lock.is_some() {
             use std::os::unix::fs::PermissionsExt;
             self.file.set_permissions(fs::Permissions::from_mode(0o644))?;
             fs::rename(&self.partial, &self.final_path)?;
+            lock.take();
         }
-        self.lock.lock().unwrap().take();
         Ok(())
     }
 
+    /// Removes an unverified download and releases its lock; does nothing
+    /// to a blob already committed or found in the cache.
     pub fn discard(&self) {
-        if !self.cached {
+        if self.lock.lock().unwrap().take().is_some() {
             let _ = fs::remove_file(&self.partial);
         }
-        self.lock.lock().unwrap().take();
     }
 }
 

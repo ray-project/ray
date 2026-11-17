@@ -100,21 +100,31 @@ fn run(spec: Spec) -> Result<(), String> {
     });
     // An image may list a layer more than once: each distinct blob is opened
     // (and locked, downloaded and hashed) once, and every layer that uses it
-    // reads it.
-    let mut unique: Vec<Arc<Blob>> = Vec::new();
-    let mut blobs: Vec<Arc<Blob>> = Vec::new();
+    // reads it. Blobs are opened, which takes the layer cache's lock on each,
+    // in digest order: two pulls sharing layers then can't each hold a lock
+    // the other waits for, whatever order their manifests list them in.
+    let mut distinct: Vec<&LayerSpec> = Vec::new();
     for l in &spec.layers {
-        let blob = match unique.iter().find(|b| b.digest == l.digest) {
-            Some(b) => b.clone(),
-            None => {
-                let b = Blob::open(&spec.blob_dir, &spec.base_url, &l.digest, l.size, spec.chunk_mib << 20)
-                    .map_err(|e| e.to_string())?;
-                unique.push(b.clone());
-                b
-            }
-        };
-        blobs.push(blob);
+        if !distinct.iter().any(|d| d.digest == l.digest) {
+            distinct.push(l);
+        }
     }
+    distinct.sort_by(|a, b| a.digest.cmp(&b.digest));
+    let mut unique: Vec<Arc<Blob>> = Vec::new();
+    for l in distinct {
+        match Blob::open(&spec.blob_dir, &spec.base_url, &l.digest, l.size, spec.chunk_mib << 20) {
+            Ok(b) => unique.push(b),
+            Err(e) => {
+                unique.iter().for_each(|b| b.discard());
+                return Err(format!("{}: {e}", l.digest));
+            }
+        }
+    }
+    let blobs: Vec<Arc<Blob>> = spec
+        .layers
+        .iter()
+        .map(|l| unique.iter().find(|b| b.digest == l.digest).unwrap().clone())
+        .collect();
     let out_file = File::options()
         .read(true)
         .write(true)
@@ -135,7 +145,16 @@ fn run(spec: Spec) -> Result<(), String> {
         .iter()
         .map(|b| {
             let b = b.clone();
-            (!b.cached()).then(|| std::thread::spawn(move || hash_blob(b).map(|_| Instant::now())))
+            // A verified blob is committed, and its lock released, at once.
+            (!b.cached()).then(|| {
+                std::thread::spawn(move || match hash_blob(b.clone()).and_then(|_| b.commit()) {
+                    Ok(()) => Ok(Instant::now()),
+                    Err(e) => {
+                        b.discard();
+                        Err(e)
+                    }
+                })
+            })
         })
         .collect();
     let workers: Vec<_> = blobs
@@ -184,9 +203,6 @@ fn run(spec: Spec) -> Result<(), String> {
         unique.iter().for_each(|b| b.discard());
         let _ = std::fs::remove_file(&spec.out);
         return Err(e);
-    }
-    for b in &unique {
-        b.commit().map_err(|e| e.to_string())?;
     }
     let t_layers = Instant::now();
 

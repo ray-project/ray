@@ -1939,3 +1939,37 @@ def test_failed_erofs_pull_without_mkfs_erofs(tmp_path, erofs_pull, monkeypatch)
     with _serve_image(monkeypatch, layers, _cut_short) as image:
         with pytest.raises(SandboxCreationError, match="erofs-pull failed to build"):
             pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+
+
+def test_concurrent_erofs_pulls_sharing_layers(tmp_path, erofs_pull, monkeypatch):
+    """Two erofs-pulls of images that share layers in opposite orders both
+    finish: neither waits on a layer lock while holding one the other needs."""
+    layers = [_layer((name, os.urandom(1 << 20), {})) for name in ("x", "y")]
+    digests = [f"sha256:{hashlib.sha256(layer).hexdigest()}" for layer in layers]
+    with _serve_image(monkeypatch, layers):
+        mirror = os.environ["RAY_SANDBOX_REGISTRY_MIRROR"]
+        for attempt in range(5):
+            blob_dir = tmp_path / str(attempt) / ".blobs" / "sha256"
+            procs = []
+            for i, order in enumerate([(0, 1), (1, 0)]):
+                spec = {
+                    "base_url": f"{mirror}/v2/library/busybox/blobs/",
+                    "layers": [
+                        {"digest": digests[j], "size": len(layers[j])} for j in order
+                    ],
+                    "blob_dir": str(blob_dir),
+                    "out": str(tmp_path / f"{attempt}-{i}.erofs"),
+                }
+                proc = subprocess.Popen(
+                    [_EROFS_PULL_UNDER_TEST],
+                    stdin=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                proc.stdin.write(json.dumps(spec).encode())
+                proc.stdin.close()
+                procs.append(proc)
+            try:
+                assert [proc.wait(timeout=30) for proc in procs] == [0, 0]
+            finally:
+                for proc in procs:
+                    proc.kill()
