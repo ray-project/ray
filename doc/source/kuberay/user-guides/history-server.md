@@ -520,7 +520,7 @@ Alternatively, navigate to the History Server cluster selection page:
 http://localhost:8265/select_cluster
 ```
 
-This page lists every stored cluster session with its name, namespace, status, and creation timestamp. Each row has an **Open Dashboard** button that switches the Ray dashboard to that session. Sessions served from storage also have a reload button that re-processes the session to pick up newly uploaded data.
+This page lists every stored cluster session with its name, namespace, status, and creation timestamp. Each row has an **Open Dashboard** button that switches the Ray dashboard to that session. Sessions served from storage also have a reload button that re-processes the session to pick up newly uploaded events.
 
 ![Cluster selection page listing stored Ray cluster sessions, each row showing a cluster name, namespace, session status, owner, creation timestamp, and an Open Dashboard button, with a reload button on sessions served from storage](images/kuberay-historyserver-select-cluster.png)
 
@@ -532,9 +532,13 @@ Ray job page using Ray History Server as a backend:
 
 ## Access a running RayCluster
 
+:::{note}
+Serving running clusters from storage requires the History Server and collector images from KubeRay v1.8.0 or later.
+:::
+
 By default, the History Server serves a running RayCluster from the data that the collector has uploaded to object storage so far, without sending requests to the live cluster. A running cluster appears in `/clusters` and on the [cluster selection page](#cluster-selection-page) as soon as its head collector detects the session. Enter it the same way as a terminated session.
 
-The History Server caches a session after the first load, so the view doesn't update on its own. To pick up newly uploaded events and logs, click the reload button on the cluster selection page, or add `?reload=true` to the `/enter_cluster` URL:
+The History Server reads log files from object storage on each request, so the log viewer always shows the latest uploaded content. Events are cached after the first load, so the pages built from events, such as jobs, actors, and nodes, don't update on their own. To pick up newly uploaded events, click the reload button on the cluster selection page, or add `?reload=true` to the `/enter_cluster` URL:
 
 ```text
 http://localhost:8265/enter_cluster/default/rayjob/rayjob-historyserver-gcs/<SESSION_ID>?reload=true
