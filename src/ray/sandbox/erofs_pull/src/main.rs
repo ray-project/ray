@@ -241,7 +241,7 @@ fn run(spec: Spec) -> Result<(), String> {
     let mut tree = tree::Tree::new(epoch);
     for entries in &layers {
         for e in entries {
-            tree.apply(e);
+            tree.apply(e)?;
         }
     }
     tree.seed();

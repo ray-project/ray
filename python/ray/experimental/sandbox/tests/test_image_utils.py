@@ -2137,3 +2137,32 @@ def test_erofs_pull_skips_the_proxy_for_no_proxy_hosts(
         with _serve_image(monkeypatch, layers) as image:
             pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
     assert forwarded == []
+
+
+def test_erofs_pull_and_names_longer_than_255_bytes(tmp_path, erofs_pull, monkeypatch):
+    """A name of up to 255 bytes, the most EROFS and Linux take, builds as
+    extraction builds it; a longer one fails erofs-pull, quickly, and then
+    extraction, as creating it does."""
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    ok = [_layer(("d" * 255, b"", _DIR), ("d" * 255 + "/" + "f" * 255, b"f", {}))]
+    images = []
+    with _serve_image(monkeypatch, ok) as image:
+        for name in ("erofs-pull", "extracted"):
+            if name == "extracted":
+                monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", "0")
+            image_dir = pull_and_extract_container_image(
+                image, images_dir=str(tmp_path / name)
+            )
+            images.append(os.path.join(image_dir, ROOTFS_IMAGE))
+    assert warnings == []
+    assert _erofs_tree(images[0]) == _erofs_tree(images[1])
+
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", _EROFS_PULL_UNDER_TEST)
+    too_long = [_layer(("x" * 300, b"x", {}))]
+    start = time.monotonic()
+    with _serve_image(monkeypatch, too_long) as image:
+        with pytest.raises(SandboxCreationError):
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "long"))
+    assert time.monotonic() - start < 30
+    assert any("longer than 255 bytes" in warning for warning in warnings)

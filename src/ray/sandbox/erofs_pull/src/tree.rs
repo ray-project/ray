@@ -24,6 +24,8 @@ pub struct Node {
 }
 
 pub const ROOT: u32 = 0;
+/// The longest name EROFS (EROFS_NAME_LEN) and Linux (NAME_MAX) take.
+pub const MAX_NAME: usize = 255;
 const MAX_SYMLINK_HOPS: u32 = 40;
 
 pub struct Tree {
@@ -148,10 +150,20 @@ impl Tree {
         Some(cur)
     }
 
-    pub fn apply(&mut self, e: &Entry) {
+    /// Applies a layer's entry. Fails where extraction does on a name longer
+    /// than `MAX_NAME`: a parent directory, file or directory it would create
+    /// (`os.makedirs` and `os.open` raise ENAMETOOLONG); a symlink or hard
+    /// link of such a name is skipped, as extraction ignores the error there.
+    pub fn apply(&mut self, e: &Entry) -> Result<(), String> {
+        let too_long = || {
+            format!(
+                "a name in {:?} is longer than {MAX_NAME} bytes",
+                String::from_utf8_lossy(&e.path)
+            )
+        };
         let path = &e.path[e.path.iter().take_while(|&&c| c == b'/').count()..];
         if path.split(|&c| c == b'/').any(|c| c == b"..") {
-            return;
+            return Ok(());
         }
         let mut comps = components(path);
         let Some(base) = comps.pop() else {
@@ -163,22 +175,24 @@ impl Tree {
                 }
                 root.mtime = e.mtime;
             }
-            return;
+            return Ok(());
         };
-        let Some(parent) = self.resolve(&comps) else { return };
+        let Some(parent) = self.resolve(&comps) else {
+            return Ok(());
+        };
         let parent_id = self.lookup(&parent).filter(|&p| self.is_dir(p));
 
         if base == b".wh..wh..opq" {
             if let Some(p) = parent_id {
                 self.children(p).unwrap().clear();
             }
-            return;
+            return Ok(());
         }
         if let Some(del) = base.strip_prefix(b".wh.") {
             if let (Some(p), false) = (parent_id, del.is_empty()) {
                 self.children(p).unwrap().remove(del);
             }
-            return;
+            return Ok(());
         }
 
         if let Some(existing) = parent_id.and_then(|p| self.child(p, &base)) {
@@ -201,7 +215,7 @@ impl Tree {
                 }
                 node.uid = e.uid;
                 node.gid = e.gid;
-                return;
+                return Ok(());
             }
             self.children(parent_id.unwrap()).unwrap().remove(&base);
         }
@@ -213,22 +227,30 @@ impl Tree {
             Kind::Hard(link) => {
                 let link = &link[link.iter().take_while(|&&c| c == b'/').count()..];
                 if link.split(|&c| c == b'/').any(|c| c == b"..") {
-                    return;
+                    return Ok(());
                 }
                 let mut lcomps = components(link);
-                let Some(lbase) = lcomps.pop() else { return };
-                let Some(ldir) = self.resolve(&lcomps) else { return };
+                let Some(lbase) = lcomps.pop() else { return Ok(()) };
+                let Some(ldir) = self.resolve(&lcomps) else {
+                    return Ok(());
+                };
                 let Some(target) = self.lookup(&ldir).and_then(|d| self.child(d, &lbase)) else {
-                    return;
+                    return Ok(());
                 };
                 if self.is_dir(target) {
-                    return;
+                    return Ok(());
                 }
-                let Some(p) = self.makedirs(&parent) else { return };
+                if parent.iter().any(|c| c.len() > MAX_NAME) {
+                    return Err(too_long());
+                }
+                if base.len() > MAX_NAME {
+                    return Ok(());
+                }
+                let Some(p) = self.makedirs(&parent) else { return Ok(()) };
                 self.children(p).unwrap().insert(base, target);
-                return;
+                return Ok(());
             }
-            Kind::Other => return,
+            Kind::Other => return Ok(()),
         };
         let mode = match (&kind, e.mode) {
             (NodeKind::Sym(_), _) => 0o777,
@@ -236,7 +258,16 @@ impl Tree {
             (_, 0) => 0o644,
             (_, m) => m,
         };
-        let Some(p) = self.makedirs(&parent) else { return };
+        if parent.iter().any(|c| c.len() > MAX_NAME) {
+            return Err(too_long());
+        }
+        if base.len() > MAX_NAME {
+            return match kind {
+                NodeKind::Sym(_) => Ok(()),
+                _ => Err(too_long()),
+            };
+        }
+        let Some(p) = self.makedirs(&parent) else { return Ok(()) };
         let id = self.add(Node {
             kind,
             mode,
@@ -245,6 +276,7 @@ impl Tree {
             mtime: e.mtime,
         });
         self.children(p).unwrap().insert(base, id);
+        Ok(())
     }
 
     fn create_empty_file(&mut self, dir: u32, name: &[u8]) {
@@ -286,5 +318,49 @@ impl Tree {
                 self.create_empty_file(p, &base);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NodeKind, Tree, MAX_NAME, ROOT};
+    use crate::layer::{Entry, Kind};
+
+    fn entry(path: Vec<u8>, kind: Kind) -> Entry {
+        Entry {
+            path,
+            kind,
+            mode: 0o644,
+            uid: 0,
+            gid: 0,
+            mtime: 0,
+        }
+    }
+
+    fn names(tree: &Tree) -> Vec<Vec<u8>> {
+        match &tree.nodes[ROOT as usize].kind {
+            NodeKind::Dir(children) => children.keys().cloned().collect(),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn names_longer_than_erofs_takes_fail_as_extraction_does() {
+        let long = vec![b'x'; MAX_NAME + 1];
+        let reg = || Kind::Reg { blk: 0, size: 0 };
+        let mut tree = Tree::new(0);
+        // A name of MAX_NAME bytes is fine.
+        tree.apply(&entry(vec![b'y'; MAX_NAME], reg())).unwrap();
+        // A longer file, directory, or parent of anything: an error.
+        assert!(tree.apply(&entry(long.clone(), reg())).is_err());
+        assert!(tree.apply(&entry(long.clone(), Kind::Dir)).is_err());
+        let under_long = [long.as_slice(), b"/f"].concat();
+        assert!(tree.apply(&entry(under_long.clone(), reg())).is_err());
+        assert!(tree.apply(&entry(under_long, Kind::Sym(b"t".to_vec()))).is_err());
+        // A longer symlink is skipped, as extraction ignores its failure.
+        tree.apply(&entry(long.clone(), Kind::Sym(b"t".to_vec()))).unwrap();
+        // A whiteout of a long name creates nothing.
+        tree.apply(&entry([b".wh.".as_slice(), &long].concat(), reg())).unwrap();
+        assert_eq!(names(&tree), vec![vec![b'y'; MAX_NAME]]);
     }
 }

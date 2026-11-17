@@ -29,7 +29,7 @@ fn file_type(kind: &NodeKind) -> u8 {
 
 /// Directory data: blocks of 12-byte dirents followed by their names, the
 /// entries sorted by name across blocks (lookups binary-search them).
-fn dir_blocks(mut entries: Vec<(&[u8], u64, u8)>, block: usize) -> Vec<u8> {
+fn dir_blocks(mut entries: Vec<(&[u8], u64, u8)>, block: usize) -> io::Result<Vec<u8>> {
     entries.sort_by(|a, b| a.0.cmp(b.0));
     let mut data = Vec::new();
     let mut i = 0;
@@ -40,6 +40,10 @@ fn dir_blocks(mut entries: Vec<(&[u8], u64, u8)>, block: usize) -> Vec<u8> {
         while i + n < entries.len() && used + 12 + entries[i + n].0.len() <= block {
             used += 12 + entries[i + n].0.len();
             n += 1;
+        }
+        if n == 0 {
+            // Tree::apply keeps names to MAX_NAME bytes, which always fit.
+            return Err(io::Error::other("a directory entry doesn't fit in a block"));
         }
         let block_start = data.len();
         let mut name_off = 12 * n;
@@ -59,7 +63,7 @@ fn dir_blocks(mut entries: Vec<(&[u8], u64, u8)>, block: usize) -> Vec<u8> {
             data.resize(block_start + block, 0);
         }
     }
-    data
+    Ok(data)
 }
 
 pub fn write(tree: &Tree, out: &Out) -> io::Result<u64> {
@@ -109,7 +113,7 @@ pub fn write(tree: &Tree, out: &Out) -> io::Result<u64> {
                 for (name, &c) in children {
                     entries.push((name, nid(c), file_type(&tree.nodes[c as usize].kind)));
                 }
-                let data = dir_blocks(entries, out.block as usize);
+                let data = dir_blocks(entries, out.block as usize)?;
                 let blk = out.alloc(data.len() as u64);
                 out.file.write_all_at(&data, blk * out.block)?;
                 (0o040000, data.len() as u64, blk)
@@ -153,5 +157,20 @@ pub fn write(tree: &Tree, out: &Out) -> io::Result<u64> {
 impl crate::tree::Node {
     fn kind_is_dir(&self) -> bool {
         matches!(self.kind, NodeKind::Dir(_))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dir_blocks;
+
+    #[test]
+    fn an_entry_that_fits_no_block_is_an_error_not_a_hang() {
+        let long = vec![b'x'; 5000];
+        assert!(dir_blocks(vec![(&long, 1, 1)], 4096).is_err());
+        let name = vec![b'x'; 255];
+        let names: Vec<_> = (0..40).map(|i| [name.as_slice(), &[i as u8]].concat()).collect();
+        let data = dir_blocks(names.iter().map(|n| (n.as_slice(), 1, 1)).collect(), 4096).unwrap();
+        assert!(data.len() > 4096);
     }
 }
