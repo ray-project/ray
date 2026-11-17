@@ -50,7 +50,8 @@ If you deployed KubeRay with Helm, then enable the `RayClusterStatusConditions` 
 ```bash
 helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.2.2 \
   --set featureGates\[0\].name=RayClusterStatusConditions \
-  --set featureGates\[0\].enabled=true
+  --set featureGates\[0\].enabled=true \
+  -n $YOUR_NAMESPACE
 ```
 
 Or, just make your KubeRay Operator executable run with `--feature-gates=RayClusterStatusConditions=true` argument.
