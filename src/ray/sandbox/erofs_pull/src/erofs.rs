@@ -139,7 +139,10 @@ pub fn write(tree: &Tree, out: &Out) -> io::Result<u64> {
     sb[12] = out.block.trailing_zeros() as u8;
     sb[14..16].copy_from_slice(&0u16.to_le_bytes()); // root nid
     sb[16..24].copy_from_slice(&(order.len() as u64).to_le_bytes());
-    sb[24..32].copy_from_slice(&tree.now.to_le_bytes());
+    // Build time 0 and a zero UUID, as `mkfs.erofs -T0 --mkfs-time
+    // -U00000000-0000-0000-0000-000000000000` writes: gVisor restores a
+    // checkpoint only onto an image with the superblock it was taken on.
+    sb[24..32].copy_from_slice(&0u64.to_le_bytes());
     sb[36..40].copy_from_slice(&(blocks as u32).to_le_bytes());
     sb[40..44].copy_from_slice(&(meta_blk as u32).to_le_bytes());
     out.file.write_all_at(&sb, 1024)?;

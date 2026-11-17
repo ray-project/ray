@@ -28,7 +28,8 @@ const MAX_SYMLINK_HOPS: u32 = 40;
 
 pub struct Tree {
     pub nodes: Vec<Node>,
-    pub now: u64,
+    /// The mtime of entries the build creates (missing parents, seeds).
+    pub epoch: u64,
 }
 
 type Path = Vec<Vec<u8>>;
@@ -43,8 +44,11 @@ fn components(p: &[u8]) -> Path {
 }
 
 impl Tree {
-    pub fn new(now: u64) -> Self {
-        let mut t = Tree { nodes: Vec::new(), now };
+    pub fn new(epoch: u64) -> Self {
+        let mut t = Tree {
+            nodes: Vec::new(),
+            epoch,
+        };
         t.new_dir(0o755);
         t
     }
@@ -55,13 +59,13 @@ impl Tree {
     }
 
     fn new_dir(&mut self, mode: u16) -> u32 {
-        let now = self.now;
+        let epoch = self.epoch;
         self.add(Node {
             kind: NodeKind::Dir(BTreeMap::new()),
             mode,
             uid: 0,
             gid: 0,
-            mtime: now,
+            mtime: epoch,
         })
     }
 
@@ -245,13 +249,13 @@ impl Tree {
 
     fn create_empty_file(&mut self, dir: u32, name: &[u8]) {
         if self.child(dir, name).is_none() {
-            let now = self.now;
+            let epoch = self.epoch;
             let f = self.add(Node {
                 kind: NodeKind::Reg { blk: 0, size: 0 },
                 mode: 0o644,
                 uid: 0,
                 gid: 0,
-                mtime: now,
+                mtime: epoch,
             });
             self.children(dir).unwrap().insert(name.to_vec(), f);
         }

@@ -361,20 +361,18 @@ pub fn agent(timeout: Duration) -> ureq::Agent {
 
 /// Fetch every chunk of `blobs` over `connections` connections.
 ///
-/// Chunks go in order of how far into its blob each starts, so all layers'
-/// prefixes grow together and every decompressor has input from the start.
+/// Chunks go in the order given: blob by blob, each from its start. The
+/// layers are written into the image in that order, so the connections all
+/// work on the earliest layer not yet in while the ones before it are
+/// written, and later layers queue behind it.
 pub fn download_all(remote: Arc<Remote>, blobs: &[Arc<Blob>], connections: usize) -> Vec<std::thread::JoinHandle<()>> {
-    let mut chunks: Vec<(f64, usize, usize)> = Vec::new();
-    for (i, b) in blobs.iter().enumerate() {
-        for k in 0..b.nchunks() {
-            chunks.push((b.chunk_range(k).0 as f64 / b.size as f64, i, k));
-        }
-    }
-    chunks.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let chunks: VecDeque<(usize, usize)> = blobs
+        .iter()
+        .enumerate()
+        .flat_map(|(i, b)| (0..b.nchunks()).map(move |k| (i, k)))
+        .collect();
     let threads = connections.min(chunks.len());
-    let queue = Arc::new(Mutex::new(
-        chunks.into_iter().map(|(_, i, k)| (i, k)).collect::<VecDeque<_>>(),
-    ));
+    let queue = Arc::new(Mutex::new(chunks));
     (0..threads)
         .map(|_| {
             let queue = queue.clone();

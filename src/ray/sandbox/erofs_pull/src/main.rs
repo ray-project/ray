@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Read};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -140,7 +140,14 @@ fn run(spec: Spec) -> Result<(), String> {
     }
     let out = Arc::new(Out::new(out_file, spec.block_size));
 
-    let downloads = fetch::download_all(remote, &unique, spec.connections);
+    // Downloads go in the order the layers are written: manifest order.
+    let mut in_order: Vec<Arc<Blob>> = Vec::new();
+    for b in &blobs {
+        if !in_order.iter().any(|o| Arc::ptr_eq(o, b)) {
+            in_order.push(b.clone());
+        }
+    }
+    let downloads = fetch::download_all(remote, &in_order, spec.connections);
     let hashes: Vec<_> = unique
         .iter()
         .map(|b| {
@@ -157,15 +164,29 @@ fn run(spec: Spec) -> Result<(), String> {
             })
         })
         .collect();
+    // Layers download and decompress in parallel, but each writes its file
+    // data into the image only after the layer before it is done, so the
+    // image's layout, and so its bytes, don't depend on timing: gVisor
+    // restores a checkpoint only onto the image it was taken on, and the
+    // checkpoint records where each open file's data is. rapidgzip decodes
+    // each layer on all cores, so this costs little parallelism.
+    let mut previous_done: Option<std::sync::mpsc::Receiver<()>> = None;
     let workers: Vec<_> = blobs
         .iter()
         .map(|b| {
             let (b2, out) = (b.clone(), out.clone());
             let threads = spec.gzip_threads;
-            let build = std::thread::spawn(move || {
-                layer::read_layer(BlobReader::new(b2), threads, &out).map(|e| (e, Instant::now()))
-            });
-            build
+            let wait_for = previous_done.take();
+            let (done, next) = std::sync::mpsc::channel();
+            previous_done = Some(next);
+            std::thread::spawn(move || {
+                if let Some(previous) = wait_for {
+                    let _ = previous.recv();
+                }
+                let result = layer::read_layer(BlobReader::new(b2), threads, &out).map(|e| (e, Instant::now()));
+                let _ = done.send(());
+                result
+            })
         })
         .collect();
 
@@ -206,8 +227,10 @@ fn run(spec: Spec) -> Result<(), String> {
     }
     let t_layers = Instant::now();
 
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    let mut tree = tree::Tree::new(now);
+    // Entries the build creates (missing parents, seeds) get the newest mtime
+    // in the layers rather than the time of the build, so builds match.
+    let epoch = layers.iter().flatten().map(|e| e.mtime).max().unwrap_or(0);
+    let mut tree = tree::Tree::new(epoch);
     for entries in &layers {
         for e in entries {
             tree.apply(e);

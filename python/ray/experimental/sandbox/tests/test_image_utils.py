@@ -1973,3 +1973,36 @@ def test_concurrent_erofs_pulls_sharing_layers(tmp_path, erofs_pull, monkeypatch
             finally:
                 for proc in procs:
                     proc.kill()
+
+
+def test_erofs_pull_builds_reproducible_images(tmp_path, erofs_pull, monkeypatch):
+    """Two pulls of an image build the same bytes, whichever layer arrives
+    first: gVisor restores a checkpoint only onto the image it was taken on
+    (same superblock, and the same place for each file's data)."""
+    layers = [
+        _layer(("a", os.urandom(1 << 20), {}), ("d", b"", _DIR)),
+        _layer(("b", os.urandom(1 << 20), {}), ("d/x", b"x", {})),
+        _layer(("c", os.urandom(1 << 20), {}), ("e/f", b"f", {})),
+    ]
+
+    def delaying(slow):
+        def serve_blob(index, handler, blob):
+            if index == slow:
+                time.sleep(0.5)
+            _send(handler, blob)
+
+        return serve_blob
+
+    images = []
+    for slow in (0, len(layers) - 1):
+        with _serve_image(monkeypatch, layers, delaying(slow)) as image:
+            image_dir = pull_and_extract_container_image(
+                image, images_dir=str(tmp_path / f"slow{slow}")
+            )
+        images.append(os.path.join(image_dir, ROOTFS_IMAGE))
+    contents = [open(image, "rb").read() for image in images]
+    assert contents[0] == contents[1]
+    fingerprints = {image_utils.erofs_superblock_fingerprint(i) for i in images}
+    assert len(fingerprints) == 1 and None not in fingerprints
+    # The superblock's build time is 0, as mkfs.erofs -T0 writes it.
+    assert contents[0][1024 + 24 : 1024 + 32] == bytes(8)
