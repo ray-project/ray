@@ -36,17 +36,7 @@ ds = ray.data.from_items(
     ]
 )
 
-if __name__ == "__main__":
-    import importlib.util
-
-    import torch
-
-    if importlib.util.find_spec("sglang") is None:
-        print("Skipping SGLang score run (SGLang isn't installed)")
-    elif not torch.cuda.is_available():
-        print("Skipping SGLang score run (no GPU available)")
-    else:
-        for row in processor(ds).take_all():
-            # One [p_yes, p_no] list per item, in item order.
-            print(row["items"], row["scores"])
+for row in processor(ds).take_all():
+    # One [p_yes, p_no] list per item, in item order.
+    print(row["items"], row["scores"])
 # __sglang_score_example_end__

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+import torch
 
 from ray.llm._internal.batch.stages.sglang_engine_stage import (
     SGLangEngineStage,
@@ -16,8 +17,6 @@ from ray.llm._internal.batch.tasks.sglang.score import (
     _check_sglang_supports_score,
     _convert_to_embed_override_tensors,
 )
-
-torch = pytest.importorskip("torch")
 
 _MODEL = "test-model"
 
