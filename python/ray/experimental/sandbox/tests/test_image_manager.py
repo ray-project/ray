@@ -2,8 +2,11 @@ import io
 import json
 import logging
 import os
+import signal
+import subprocess
 import sys
 import tarfile
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,11 +20,78 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import (
+    SANDBOX_INIT_ARGS,
     BaseImageManager,
     ImageManager,
     get_default_oci_spec,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+
+
+def test_sandbox_init_stops_when_the_image_has_no_sleep(tmp_path):
+    """Without sleep, the init loop exits at once instead of spinning."""
+    start = time.monotonic()
+    result = subprocess.run(
+        ["/bin/sh", *SANDBOX_INIT_ARGS[1:]],
+        env={"PATH": str(tmp_path)},
+        capture_output=True,
+        timeout=30,
+    )
+    assert result.returncode == 127
+    assert time.monotonic() - start < 10
+
+
+def test_sandbox_init_starts_sleep_again_after_a_kill(tmp_path):
+    """A sleep that is killed, by a command that kills every sleep, say, is
+    started again, so PID 1 keeps running and reaping."""
+    log = tmp_path / "starts"
+    fake = tmp_path / "sleep"
+    # The first two starts kill themselves; the third waits.
+    fake.write_text(
+        "#!/bin/sh\n"
+        f"echo x >> {log}\n"
+        f'[ "$(wc -l < {log})" -lt 3 ] && kill -9 $$\n'
+        "exec /bin/sleep 60\n"
+    )
+    fake.chmod(0o755)
+    init = subprocess.Popen(
+        ["/bin/sh", *SANDBOX_INIT_ARGS[1:]], env={"PATH": f"{tmp_path}:/bin:/usr/bin"}
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and (
+            not log.exists() or len(log.read_text().split()) < 3
+        ):
+            time.sleep(0.05)
+        assert len(log.read_text().split()) == 3
+        assert init.poll() is None
+    finally:
+        init.kill()
+        init.wait()
+
+
+def test_sandbox_init_ignores_the_signals_that_would_end_it(tmp_path):
+    """gVisor delivers a signal to PID 1 as to any process, and PID 1's exit
+    stops the sandbox, so the init shell ignores what `kill 1` or `pkill sh`
+    send."""
+    started = tmp_path / "started"
+    fake = tmp_path / "sleep"
+    fake.write_text(f"#!/bin/sh\ntouch {started}\nexec /bin/sleep 60\n")
+    fake.chmod(0o755)
+    init = subprocess.Popen(
+        ["/bin/sh", *SANDBOX_INIT_ARGS[1:]], env={"PATH": f"{tmp_path}:/bin:/usr/bin"}
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not started.exists():
+            time.sleep(0.05)
+        for sig in ("TERM", "HUP", "INT", "QUIT", "USR1", "USR2"):
+            init.send_signal(getattr(signal, f"SIG{sig}"))
+        time.sleep(0.5)
+        assert init.poll() is None
+    finally:
+        init.kill()
+        init.wait()
 
 
 @pytest.fixture(autouse=True)
@@ -197,7 +267,7 @@ def test_image_manager_create_oci_spec(tmp_path):
     assert spec["root"]["readonly"] is False
     assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
     assert spec["process"]["cwd"] == "/workspace"
-    assert spec["process"]["args"] == ["sleep", "infinity"]
+    assert spec["process"]["args"] == list(SANDBOX_INIT_ARGS)
 
     # Verify envs override
     env_list = spec["process"]["env"]

@@ -687,6 +687,101 @@ def test_exec_timeout_kills_a_setsid_child_of_the_command():
         runtime.delete(instance_id)
 
 
+@pytest.mark.parametrize("image", ["busybox:latest", "python:3.10-slim"])
+def test_orphaned_processes_are_reaped(image):
+    """Processes whose parents exit become children of the sandbox's PID 1,
+    which reaps them, so commands that leave background processes behind
+    don't fill the sandbox with zombies. Commands still get their own exit
+    codes."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image=image, shell="/bin/sh")
+    try:
+        for _ in range(20):
+            runtime.exec(instance_id, "sleep 0.01 &")
+        time.sleep(1)
+        # The images have no common ps; a zombie's state in /proc is Z. The
+        # state follows the command name, which ends at the last ")".
+        states = runtime.exec(
+            instance_id,
+            "for f in /proc/[0-9]*/stat; do sed 's/.*) //' $f | cut -d' ' -f1; done",
+        )
+        assert states.exit_code == 0
+        assert "Z" not in states.stdout.split(), states.stdout
+        assert runtime.exec(instance_id, "exit 7").exit_code == 7
+        assert runtime.exec(instance_id, "sleep 0.5 & exit 3").exit_code == 3
+        assert runtime.exec(instance_id, "kill -9 $$").exit_code == 137
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_pid_1_outlives_the_signals_that_commands_send_it():
+    """`kill 1` and `pkill sh` don't stop the sandbox, and a killed sleep is
+    started again, so PID 1 keeps reaping."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        for command in ("kill -TERM 1", "kill -HUP 1; kill -INT 1", "pkill sh"):
+            runtime.exec(instance_id, command)
+        runtime.exec(instance_id, "pkill -9 sleep")
+        time.sleep(0.5)
+        processes = runtime.exec(instance_id, "ps -o pid,args").stdout
+        assert "sleep 2147483647" in processes, processes
+        # A command's own processes still take signals as usual.
+        assert runtime.exec(instance_id, "kill -TERM $$").exit_code == 143
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_a_restored_sandbox_runs_the_first_process_of_its_checkpoint(monkeypatch):
+    """runsc refuses a restore whose first process isn't the checkpoint's. A
+    checkpoint from before PID 1 became a reaping shell ran `sleep infinity`,
+    as this one does, and it restores with that."""
+    from ray.experimental.sandbox import image_manager
+
+    runtime = SandboxRuntime()
+    with monkeypatch.context() as earlier:
+        earlier.setattr(image_manager, "SANDBOX_INIT_ARGS", ("sleep", "infinity"))
+        instance_id = runtime.create(
+            image="busybox:latest", shell="/bin/sh", rootless=False
+        )
+    restored = None
+    try:
+        runtime.exec(instance_id, "echo kept > /tmp/marker")
+        path = runtime.checkpoint(instance_id, leave_running=False)
+        restored = runtime.restore(path)
+        assert runtime.exec(restored, "cat /tmp/marker").stdout.strip() == "kept"
+        first = runtime.exec(restored, "tr '\\0' ' ' < /proc/1/cmdline").stdout
+        assert first.strip() == "sleep infinity"
+    finally:
+        for sandbox in (instance_id, restored):
+            try:
+                if sandbox:
+                    runtime.delete(sandbox)
+            except Exception:
+                pass
+
+
+def test_a_restored_bundle_keeps_the_checkpoints_first_process(tmp_path):
+    checkpoint, bundle = tmp_path / "checkpoint", tmp_path / "bundle"
+    checkpoint.mkdir()
+    bundle.mkdir()
+    new = {"process": {"args": ["sh", "-c", "loop"], "cwd": "/"}, "root": {}}
+    (bundle / "config.json").write_text(json.dumps(new))
+    # A checkpoint without a spec, or with one that can't be read: no change.
+    gvisor._keep_checkpointed_init(str(checkpoint), str(bundle))
+    (checkpoint / "config.json").write_text("{")
+    gvisor._keep_checkpointed_init(str(checkpoint), str(bundle))
+    assert json.loads((bundle / "config.json").read_text()) == new
+    (checkpoint / "config.json").write_text(
+        json.dumps({"process": {"args": ["sleep", "infinity"]}})
+    )
+    gvisor._keep_checkpointed_init(str(checkpoint), str(bundle))
+    assert json.loads((bundle / "config.json").read_text()) == {
+        "process": {"args": ["sleep", "infinity"], "cwd": "/"},
+        "root": {},
+    }
+
+
 def test_exec_timeout_kills_processes_started_during_the_kill():
     """A child that keeps starting processes starts more between the listing
     of the command's processes and its own kill. Those are killed too."""
