@@ -1,5 +1,6 @@
 import fnmatch
 import io
+import json
 import logging
 import os
 import platform
@@ -35,6 +36,28 @@ def pytest_runtest_setup(item):
     # A pull mustn't evict cached images because the runner's disk is full.
     os.environ["RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"] = "0"
     os.environ["DOCKER_CONFIG"] = _EMPTY_DOCKER_CONFIG
+
+
+@pytest.fixture
+def orphan():
+    """Make the owner of a bundle look like a process that has exited: point
+    the bundle's owner file at the owner lock that such a process leaves."""
+    from ray.experimental.sandbox.backend import gvisor
+
+    def orphan(root) -> None:
+        exited = subprocess.Popen(["true"])
+        exited.wait()
+        lock = Path(
+            gvisor._owner_locks_dir(), f"{exited.pid}-{os.urandom(6).hex()}.lock"
+        )
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.touch()
+        path = Path(root, gvisor._OWNER_FILE)
+        owner = json.loads(path.read_text())
+        owner["owner_lock"] = lock.name
+        path.write_text(json.dumps(owner))
+
+    return orphan
 
 
 @pytest.fixture
