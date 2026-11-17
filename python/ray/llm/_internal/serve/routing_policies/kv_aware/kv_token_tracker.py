@@ -24,6 +24,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_REPLICA_SYNC_METADATA_KEY,
     KV_TOKEN_METADATA_KEY,
     OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
+    RAY_SERVE_LLM_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     SELECTION_MODEL_NAME,
     SELECTION_ROUTING_GROUP,
     SESSION_AFFINITY_MODE,
@@ -47,8 +48,6 @@ _REPLICA_SYNC_BIND_ATTEMPTS = 3
 # Backoff bounds for retrying a failed endpoint update.
 _ENDPOINT_SYNC_RETRY_INITIAL_S = 1.0
 _ENDPOINT_SYNC_RETRY_MAX_S = 30.0
-
-_AUTOSCALING_SNAPSHOT_INTERVAL_S = 1.0
 
 
 def get_worker_id(replica_unique_id: str) -> int:
@@ -257,7 +256,7 @@ class KVTokenTracker:
     ) -> None:
         """Set the local callback for router-owned autoscaling metrics.
 
-        Snapshots refresh every second and after local selections.
+        Snapshots refresh at the configured interval and after local selections.
         """
         self._autoscaling_metrics_callback = callback
         if self._autoscaling_metrics_task is None:
@@ -294,7 +293,7 @@ class KVTokenTracker:
     async def _publish_autoscaling_snapshots(self) -> None:
         # Dynamo applies worker and peer events without invoking Python hooks.
         while True:
-            await asyncio.sleep(_AUTOSCALING_SNAPSHOT_INTERVAL_S)
+            await asyncio.sleep(RAY_SERVE_LLM_AUTOSCALING_METRIC_PUSH_INTERVAL_S)
             self._publish_autoscaling_snapshot()
 
     def _create_selection_service(self) -> None:

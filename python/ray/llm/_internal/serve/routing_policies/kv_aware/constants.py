@@ -1,5 +1,6 @@
 from ray.serve._private.constants import SERVE_INGRESS_ROUTER_HEADER_PREFIX
 from ray.serve._private.constants_utils import (
+    get_env_float,
     get_env_float_positive,
     get_env_int_positive,
 )
@@ -49,6 +50,10 @@ DEFAULT_KV_INDEXER_THREADS = 4
 # requests that are queued or in prefill.
 # KVTokenTracker publishes the snapshot via set_autoscaling_metrics_callback.
 OUTSTANDING_EFFECTIVE_PREFILL_TOKENS = "outstanding_effective_prefill_tokens"
+
+RAY_SERVE_LLM_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_LLM_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
+)
 
 # The engine's KV-event replay (ROUTER) socket sits this many ports above its PUB
 # port, a separate range so it never collides with the PUB ports of colocated

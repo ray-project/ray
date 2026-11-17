@@ -313,10 +313,13 @@ def _ports_released(endpoints):
 
 
 @pytest.mark.asyncio
-async def test_autoscaling_snapshot_tracks_request_phases():
+async def test_autoscaling_snapshot_tracks_request_phases(monkeypatch):
     """The snapshot follows the selection service: a selection adds its
     request's prefill tokens, and prefill completion or a free removes them."""
     pytest.importorskip("dynamo.llm")
+    monkeypatch.setattr(
+        kv_token_tracker, "RAY_SERVE_LLM_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 0.01
+    )
     worker_id = get_worker_id("engine-replica-0")
     tracker, peer = _NoLongPollTracker(), _NoLongPollTracker()
     publisher = _start_publisher(worker_id)
