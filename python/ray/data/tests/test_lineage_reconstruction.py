@@ -41,6 +41,13 @@ reconstruction_enabled = pytest.mark.parametrize(
     ids=["data_reconstruction_on"],
 )
 
+reconstruction_disabled = pytest.mark.parametrize(
+    "ray_start_regular_shared",
+    [{"job_config": JobConfig(_disable_job_level_lineage_reconstruction=False)}],
+    indirect=True,
+    ids=["data_reconstruction_off"],
+)
+
 
 def _lost_error() -> ObjectLostError:
     return ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
@@ -227,6 +234,81 @@ def test_losses_before_the_seed_is_submitted_share_one_reconstruction_task(
         None, None, TaskExecDriverStats(task_output_backpressure_s=0.0), False
     )
     assert not producer.has_next()
+
+
+def test_joined_plans_sharing_a_child_release_it_once(
+    ray_start_regular_shared,  # noqa: F405
+):
+    """Two leaves under one child of a seed are lost while the seed's re-execution
+    is still queued.
+
+    Both plans need that child, and they share one seed re-run. The re-run
+    withholds the child's input under both plans, then releases it once for both,
+    and the child is submitted once under both plans.
+    """
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        TaskExecDriverStats,
+    )
+    from ray.data._internal.execution.util import make_ref_bundles
+
+    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+
+    # First run: the seed feeds one child, which fans two blocks out to two leaves.
+    seed_task_id = producer._lineage_task_id_for(0)
+    child_task_id = consumer._lineage_task_id_for(0)
+    leaf_task_ids = ["leaf:0", "leaf:1"]
+    seed_block_ref = make_ref_bundles([[1]])[0].block_refs[0]
+    seed_block_id = seed_block_ref.hex()  # pyrefly: ignore[missing-attribute]
+    tracker.register_task_submission(seed_task_id, [])
+    tracker.register_block_output(seed_task_id, seed_block_id, 0)
+    tracker.register_block_queued(seed_task_id, 0)
+    tracker.register_task_submission(
+        child_task_id, tracker.resolve_dependencies([seed_block_id])
+    )
+    for output_index, leaf_task_id in enumerate(leaf_task_ids):
+        child_block_id = f"{child_task_id}/{output_index}"
+        tracker.register_block_output(child_task_id, child_block_id, output_index)
+        tracker.register_block_queued(child_task_id, output_index)
+        tracker.register_task_submission(
+            leaf_task_id, tracker.resolve_dependencies([child_block_id])
+        )
+
+    # Both leaves are lost. The second plan joins the first plan's queued seed
+    # re-execution even though both plans need the same child.
+    plan_ids = [
+        tracker.register_task_failed(leaf_task_id)[1] for leaf_task_id in leaf_task_ids
+    ]
+    stamped_seed_input = producer.stamp_seed_reconstruction_task(
+        seed_task_id, {plan_ids[0]}, seed_input
+    )
+    assert producer.join_queued_reconstruction_task(seed_task_id, {plan_ids[1]})
+
+    producer._submit_data_task(MagicMock(), stamped_seed_input)
+    (task,) = producer._data_tasks.values()
+    assert task.reconstruction_plan_ids == frozenset(plan_ids)
+
+    # The child's input is the last withheld output under both plans, so producing it
+    # releases the child once, for both plans, before the task completes.
+    (second_run,) = _produced_bundles([[1]])
+    task._output_ready_callback(second_run)
+    (released,) = _drain(producer)
+    assert released.block_refs == second_run.block_refs
+    assert released.reconstruction_stamp == ReconstructionStamp(
+        child_task_id, frozenset(plan_ids)
+    )
+    assert producer._reconstruction_outputs == {}
+
+    # Completing releases nothing more.
+    task._task_done_callback(
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0), False
+    )
+    assert not producer.has_next()
+
+    # The child is submitted once, as a re-execution of both plans.
+    consumer._submit_data_task(MagicMock(), released)
+    (child_task,) = consumer._data_tasks.values()
+    assert child_task.lineage_task_id == child_task_id
+    assert child_task.reconstruction_plan_ids == frozenset(plan_ids)
 
 
 def _run_to_completion(
@@ -664,6 +746,27 @@ def test_write_after_a_lost_block_writes_every_row_once(
     assert ray.get(injector.fired.remote()) == [45]
     rows = ray.data.read_parquet(str(tmp_path)).take_all()
     assert_every_row_once([row["id"] for row in rows])
+
+
+@reconstruction_disabled
+def test_flag_off_disables_data_lineage_reconstruction(
+    ray_start_regular_shared, raise_original_map_exception
+):
+    """With the flag off, a lost block takes the normal task error path.
+
+    Ray Data doesn't try to reconstruct it, so the dataset fails with the original
+    ``ObjectLostError``.
+    """
+    assert not DataContext.get_current().enable_ray_data_reconstruction
+    injector = LossInjector.remote([45])  # pyrefly: ignore[missing-attribute]
+
+    with pytest.raises(ObjectLostError) as raised:
+        _linear(injector).take_all()
+
+    # A `LineageReconstructionError` is an `ObjectLostError` too. It would mean Ray Data
+    # tried to reconstruct the block.
+    assert not isinstance(raised.value, LineageReconstructionError)
+    assert ray.get(injector.fired.remote()) == [45]
 
 
 # One plan per branch of the gate that decides whether lineage reconstruction runs.

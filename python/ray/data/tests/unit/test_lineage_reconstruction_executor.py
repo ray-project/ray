@@ -62,9 +62,12 @@ def test_mark_aborted_fires_the_done_callback_exactly_once():
     error = _lost_error()
 
     task.mark_aborted(error)
-    task.mark_aborted(error)
     assert done_calls == [{"error": error, "aborted_for_reconstruction": False}]
     assert task.has_finished
+
+    # A repeat abort doesn't run the done-callback again.
+    task.mark_aborted(error)
+    assert done_calls == [{"error": error, "aborted_for_reconstruction": False}]
 
     done_calls.clear()
     task = _abortable_task(_recording_done_callback(done_calls))
