@@ -317,23 +317,6 @@ class PandasRow(Mapping):
         return row_repr_pretty(self, p, cycle)
 
 
-def _is_scalar_null(value: Any) -> bool:
-    """Whether a scalar is missing, for any pandas dtype.
-
-    ``ray.data._internal.util.is_null`` covers ``None`` and ``float('nan')``
-    but not pandas' own sentinels (``pd.NA`` from nullable/Arrow-backed dtypes,
-    ``pd.NaT`` from datetime columns), which is what the pandas block accessor
-    actually sees. ``pd.isna`` handles all of them, but returns an array for
-    array-likes, so only scalars are routed through it.
-    """
-    if value is None:
-        return True
-    if isinstance(value, (list, tuple, set, dict, np.ndarray)):
-        return False
-    result = pd.isna(value)
-    return result is True or result is np.True_
-
-
 class PandasBlockColumnAccessor(BlockColumnAccessor):
     def __init__(self, col: "pandas.Series"):
         super().__init__(col)
@@ -385,17 +368,24 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def value_counts(self) -> Optional[Dict[str, List]]:
         # `dropna=False` to match Arrow's `value_counts`, which counts nulls as
-        # values of their own; pandas drops them by default. Null-ish index
-        # entries (NaN, pd.NA, None, depending on dtype) are normalized to a
-        # single canonical `None` so that accumulators built from Arrow- and
-        # pandas-backed blocks merge on the same key.
+        # values of their own; pandas drops them by default.
         value_counts = self._column.value_counts(dropna=False)
         if len(value_counts) == 0:
             return None
+        # Missing entries are reported as a single canonical `None`, so that
+        # accumulators built from Arrow- and pandas-backed blocks merge on the
+        # same key. Which entries count as missing is dtype-dependent, so use
+        # pandas' own mask rather than testing each value: for an
+        # Arrow-backed column `NaN` is a real value distinct from null (as it
+        # is for Arrow's `value_counts`), while for a numpy or nullable column
+        # `NaN` is the missing marker and becomes null when the block is
+        # converted to Arrow.
+        index = value_counts.index
+        missing = index.isna()
         return {
             "values": [
-                None if _is_scalar_null(value) else value
-                for value in value_counts.index.tolist()
+                None if is_missing else value
+                for value, is_missing in zip(index.tolist(), missing.tolist())
             ],
             "counts": value_counts.values.tolist(),
         }
