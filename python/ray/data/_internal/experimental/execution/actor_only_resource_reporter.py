@@ -85,6 +85,8 @@ class ActorOnlyResourceReporter:
         # Shapes are fixed at PG creation, so each PG is cached once
         # (``cache_pg_bundle_shapes``) and served from here afterwards.
         self._pg_bundles_by_id: Dict[PlacementGroupIdStr, List[ExecutionResources]] = {}
+        # Placement groups last registered with the coordinator.
+        self._registered_pg_ids: FrozenSet[PlacementGroupIdStr] = frozenset()
         # Signature of the last-seen per-node allocation and when it last
         # changed (see ``seconds_since_allocation_change``).
         self._alloc_signature: Optional[
@@ -185,11 +187,15 @@ class ActorOnlyResourceReporter:
     def register_placement_groups(
         self, placement_groups: List["PlacementGroup"]
     ) -> None:
-        """Register the topology's placement groups with the coordinator, so
-        other requesters are not handed the capacity they hold."""
-        pg_ids = {pg.id.hex() for pg in placement_groups}
-        if pg_ids:
+        """Register this dataset's placement groups with the coordinator, so
+        other requesters are not handed the capacity they hold.
+
+        Replaces the registered set; sends nothing when it hasn't changed.
+        """
+        pg_ids = frozenset(pg.id.hex() for pg in placement_groups)
+        if pg_ids != self._registered_pg_ids:
             self._autoscaling_coordinator.register_placement_groups(pg_ids)
+            self._registered_pg_ids = pg_ids
 
     def get_cluster_view(
         self,

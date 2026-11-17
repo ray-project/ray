@@ -47,6 +47,16 @@ from typing import (
 
 from typing_extensions import override
 
+if TYPE_CHECKING:
+    from ray.data._internal.execution.lineage_tracker import (
+        LineageTaskId,
+        LineageTracker,
+        ParentBlockOutput,
+        ReconstructionPlanId,
+    )
+    from ray.types import ObjectRef as BlockRef
+    from ray.util.placement_group import PlacementGroup
+
 import ray
 from ray import ObjectRef
 from ray._private.runtime_env.redaction import redact_runtime_env
@@ -75,7 +85,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.common import ActorId, ActorStatus
+from ray.data._internal.execution.interfaces.common import (
+    ActorId,
+    ActorStatus,
+    PlacementGroupIdStr,
+)
 from ray.data._internal.execution.interfaces.physical_operator import (
     TaskPullRequest,
     is_actor_death,
@@ -267,6 +281,9 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         self._user_set_ray_remote_args_fn = (
             user_args.get("ray_remote_args_fn") is not None
         )
+        self._user_set_ray_remote_args_fn = kwargs.get("ray_remote_args_fn") is not None
+        # Placement groups the ``ray_remote_args_fn`` created, one per actor.
+        self._fn_placement_groups: Dict[PlacementGroupIdStr, "PlacementGroup"] = {}
 
         super().__init__(*args, **kwargs)
         self._input_queue_bytes_by_node: DefaultDict[NodeIdStr, int] = defaultdict(int)
@@ -634,6 +651,9 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         remote_args = super()._merge_ray_remote_args()
         if self._user_set_ray_remote_args_fn:
             self.validate_ray_remote_args(fn_resolved_args=remote_args)
+            # Validation guarantees a PlacementGroupSchedulingStrategy here.
+            pg = remote_args["scheduling_strategy"].placement_group
+            self._fn_placement_groups[pg.id.hex()] = pg
         if scheduling_strategy is not None:
             # Placement-resolved creation supersedes the op's default
             # scheduling_strategy (a string). Self-placed (PG /
@@ -642,6 +662,11 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             # placement intent.
             remote_args["scheduling_strategy"] = scheduling_strategy
         return remote_args
+
+    def fn_placement_groups(self) -> List["PlacementGroup"]:
+        """Placement groups this op's ``ray_remote_args_fn`` created so far,
+        one per actor it started. Empty without a fn."""
+        return list(self._fn_placement_groups.values())
 
     def _raise_unsupported(self, reason: str) -> NoReturn:
         """Reject an operator configuration this backend cannot honor. Shared by

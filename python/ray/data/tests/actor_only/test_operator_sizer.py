@@ -293,6 +293,7 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         self._user_set_ray_remote_args = dict(user_ray_remote_args or {})
         self._ray_remote_args = dict(ray_remote_args or {})
         self._user_set_ray_remote_args_fn = uses_ray_remote_args_fn
+        self._fn_placement_groups = {}
         self._placement_constraint = None
         self._data_context = DataContext.get_current()
         self._pool = pool
@@ -1131,6 +1132,28 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
     assert capacity.reserved_by_node["g1"] == ExecutionResources(cpu=6, gpu=2)
     assert capacity.free_by_node["g1"] == ExecutionResources(cpu=5, gpu=2)
     assert capacity.free_by_node["c1"] == ExecutionResources(cpu=8)
+
+
+def test_fn_placement_groups_are_registered():
+    """Placement groups a ray_remote_args_fn creates per actor are registered
+    with the coordinator alongside the static ones (each sizing tick does
+    this), so the coordinator takes their bundles out of the non-PG slice."""
+    static_pg = _FakePG("static")
+    infer = _pg_op("infer", static_pg, gpu=1)
+    embed = _FakeOp(
+        "embed",
+        _FakePool(min_size=1, max_size=4, gpu=1),
+        node=None,
+        uses_ray_remote_args_fn=True,
+        inputs=[infer],
+    )
+    sizer, _ = _bootstrapped(infer, embed)
+    assert sizer.reporter.registered_placement_groups == [static_pg]
+
+    fn_pg = _FakePG("fn")
+    embed._fn_placement_groups = {"fn": cast(Any, fn_pg)}
+    sizer._register_placement_groups()
+    assert sizer.reporter.registered_placement_groups == [static_pg, fn_pg]
 
 
 @pytest.mark.parametrize(

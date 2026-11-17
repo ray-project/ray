@@ -2,7 +2,7 @@
 autoscaler's utilization gauge. Fakes only; no cluster."""
 import sys
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, FrozenSet, List, cast
 
 import pytest
 
@@ -166,6 +166,30 @@ def test_register_placement_groups(pg_ids, expected):
     reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
     reporter.register_placement_groups([_fake_pg(pg_id) for pg_id in pg_ids])
     assert coordinator.placement_group_ids == expected
+
+
+class _RecordingCoordinator(FakeAutoscalingCoordinator):
+    """Records every placement-group registration it is sent."""
+
+    def __init__(self):
+        super().__init__()
+        self.sent: List[FrozenSet[str]] = []
+
+    def register_placement_groups(self, placement_group_ids):
+        self.sent.append(frozenset(placement_group_ids))
+        super().register_placement_groups(placement_group_ids)
+
+
+def test_register_placement_groups_sends_only_changes():
+    """Re-registering the same set sends nothing; a new group sends the whole
+    set again."""
+    coordinator = _RecordingCoordinator()
+    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+
+    reporter.register_placement_groups([_fake_pg("pg1")])
+    reporter.register_placement_groups([_fake_pg("pg1")])
+    reporter.register_placement_groups([_fake_pg("pg1"), _fake_pg("pg2")])
+    assert coordinator.sent == [frozenset({"pg1"}), frozenset({"pg1", "pg2"})]
 
 
 def test_cache_pg_bundle_shapes_reads_bundle_specs():
