@@ -146,13 +146,13 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig, ProcessorConfig):
             optional ``strategy``
             (``PACK``/``STRICT_PACK``/``SPREAD``/``STRICT_SPREAD``).
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
-            Defaults to True, except for the ``score`` task, which doesn't support it. Use nested config for per-stage control over batch_size,
+            Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
-            Defaults to True, except for the ``score`` task, which doesn't support it. Use nested config for per-stage control over batch_size,
+            Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         prepare_multimodal_stage: Multimodal preprocessing stage config
             (bool | dict | PrepareMultimodalStageConfig). Defaults to False.
@@ -257,13 +257,15 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
             ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``
             env var.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
-            Defaults to True. Use nested config for per-stage control over batch_size,
+            Defaults to True, except for the ``score`` task, which doesn't support it.
+            Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, and memory.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
-            Defaults to True. Use nested config for per-stage control over batch_size,
+            Defaults to True, except for the ``score`` task, which doesn't support it.
+            Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.

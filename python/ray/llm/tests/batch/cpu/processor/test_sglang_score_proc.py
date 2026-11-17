@@ -150,31 +150,6 @@ def test_task_kwargs_validation(hf_config, task_kwargs, kwargs, match):
             r"'score_extraction_token_id' \[1000\] are outside",
         ),
         (
-            {"label_token_ids": [10], "score_extraction_token_id": 5},
-            {},
-            "disable_radix_cache=True and chunked_prefill_size=-1",
-        ),
-        (
-            {"label_token_ids": [10], "score_extraction_token_id": 5},
-            {"engine_kwargs": {"enable_mis": True, "allow_auto_truncate": True}},
-            "allow_auto_truncate",
-        ),
-        (
-            {
-                "label_token_ids": [10],
-                "score_extraction_token_id": 5,
-                "item_first": True,
-            },
-            {
-                "engine_kwargs": {
-                    "disable_radix_cache": True,
-                    "chunked_prefill_size": -1,
-                },
-                "tokenize_stage": False,
-            },
-            "'item_first' can't be used with score extraction",
-        ),
-        (
             {
                 "label_token_ids": [10],
                 "embed_override_token_id": 5,

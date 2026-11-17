@@ -14,7 +14,6 @@ from ray.llm._internal.batch.stages.sglang_engine_stage import (
     SGLangTaskType,
 )
 from ray.llm._internal.batch.tasks.sglang.score import (
-    _check_sglang_supports_score,
     _convert_to_embed_override_tensors,
 )
 
@@ -37,7 +36,8 @@ def score_engine():
 
     engine.async_score = AsyncMock(side_effect=async_score)
     engine_cls = MagicMock(return_value=engine)
-    with patch.dict(sys.modules, {"sglang": MagicMock(Engine=engine_cls)}):
+    sglang = MagicMock(Engine=engine_cls, __version__="0.5.23")
+    with patch.dict(sys.modules, {"sglang": sglang}):
         engine.engine_cls = engine_cls
         yield engine
 
@@ -123,7 +123,7 @@ async def test_score_wrapper_calls_async_score(score_engine, query, items):
     assert kwargs["apply_softmax"] is True
     assert kwargs["query_embed_overrides"] is None
     assert kwargs["item_embed_overrides"] is None
-    assert "score_extraction_token_id" not in kwargs
+    assert kwargs["score_extraction_token_id"] is None
     assert output == {
         "scores": [[float(len(item))] for item in items],
         "num_input_tokens": 7,
@@ -243,58 +243,11 @@ async def test_score_udf(score_engine):
     assert all("params" not in r for r in responses)
 
 
-def _async_score_full(
-    self,
-    query,
-    items,
-    label_token_ids=None,
-    apply_softmax=False,
-    item_first=False,
-    embed_override_token_id=None,
-    query_embed_overrides=None,
-    item_embed_overrides=None,
-):
-    pass
-
-
-def _async_score_old(self, query, items, label_token_ids=None, apply_softmax=False):
-    pass
-
-
-def _async_score_var_kwargs(self, query, items, **kwargs):
-    pass
-
-
-@pytest.mark.parametrize(
-    "async_score,error",
-    [
-        (_async_score_full, None),
-        (_async_score_var_kwargs, None),
-        (_async_score_old, "embed_override_token_id"),
-        (None, "async_score"),
-    ],
-)
-def test_check_sglang_supports_score(async_score, error):
-    engine_cls = type(
-        "Engine", (), {} if async_score is None else {"async_score": async_score}
-    )
-    if error is None:
-        _check_sglang_supports_score(engine_cls)
-    else:
-        with pytest.raises(ImportError, match=error):
-            _check_sglang_supports_score(engine_cls)
-
-
-def test_check_sglang_supports_score_extraction():
-    engine_cls = type("Engine", (), {"async_score": _async_score_full})
-    with pytest.raises(ImportError, match="score_extraction_token_id"):
-        _check_sglang_supports_score(engine_cls, ["score_extraction_token_id"])
-
-
-def test_score_wrapper_checks_sglang_before_engine_init():
-    engine_cls = MagicMock(spec=[])
-    with patch.dict(sys.modules, {"sglang": MagicMock(Engine=engine_cls)}):
-        with pytest.raises(ImportError, match="async_score"):
+def test_score_wrapper_checks_sglang_version_before_engine_init():
+    engine_cls = MagicMock()
+    sglang = MagicMock(Engine=engine_cls, __version__="0.5.20")
+    with patch.dict(sys.modules, {"sglang": sglang}):
+        with pytest.raises(ImportError, match=r"sglang>=0\.5\.21, but 0\.5\.20"):
             _score_wrapper()
     engine_cls.assert_not_called()
 

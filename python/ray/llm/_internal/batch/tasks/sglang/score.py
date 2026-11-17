@@ -1,8 +1,7 @@
 """The score task for SGLang."""
 
-import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
 from pydantic import BaseModel, Field, StrictInt, model_validator
@@ -28,25 +27,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Options passed to `Engine.async_score` as is.
-_ASYNC_SCORE_OPTIONS = (
-    "label_token_ids",
-    "apply_softmax",
-    "item_first",
-    "embed_override_token_id",
-)
-
-# Keyword arguments of `Engine.async_score` that the score task always passes.
-_REQUIRED_ASYNC_SCORE_KWARGS = (
-    "query",
-    "items",
-    "label_token_ids",
-    "apply_softmax",
-    "item_first",
-    "embed_override_token_id",
-    "query_embed_overrides",
-    "item_embed_overrides",
-)
+# First SGLang release whose `Engine.async_score` accepts `score_extraction_token_id`.
+_MIN_SGLANG_VERSION = "0.5.21"
 
 
 class SGLangScoreOptions(BaseModelExtended):
@@ -165,19 +147,17 @@ class _SGLangScoreTask(_SGLangTask):
 
     def __init__(self, engine_kwargs: Dict[str, Any], **task_kwargs: Any):
         super().__init__(engine_kwargs, **task_kwargs)
-        options = SGLangScoreOptions(**task_kwargs)
-        self.score_kwargs = {key: getattr(options, key) for key in _ASYNC_SCORE_OPTIONS}
-        # Passed only when set, so plain scoring works on SGLang versions
-        # without the argument.
-        if options.score_extraction_token_id is not None:
-            self.score_kwargs[
-                "score_extraction_token_id"
-            ] = options.score_extraction_token_id
+        self.score_kwargs = SGLangScoreOptions(**task_kwargs).model_dump()
 
         import sglang
+        from packaging.version import Version
 
         # Checked before the engine is created, so no weights are loaded first.
-        _check_sglang_supports_score(sglang.Engine, self.score_kwargs)
+        if Version(sglang.__version__) < Version(_MIN_SGLANG_VERSION):
+            raise ImportError(
+                f"task_type='score' requires sglang>={_MIN_SGLANG_VERSION}, "
+                f"but {sglang.__version__} is installed."
+            )
 
     def prepare_request(
         self, row: Dict[str, Any], params: Optional[Dict[str, Any]]
@@ -259,27 +239,6 @@ def _validate_score_config(config: "SGLangEngineProcessorConfig") -> None:
         raise ValueError(
             "'embed_override_token_id' and 'score_extraction_token_id' must " "differ."
         )
-    if extraction_id is None:
-        return
-
-    # SGLang checks these too, but only once a row reaches a worker.
-    if options["item_first"]:
-        raise ValueError("'item_first' can't be used with score extraction.")
-    if engine_kwargs.get("allow_auto_truncate"):
-        raise ValueError(
-            "'allow_auto_truncate' can't be used with score extraction: "
-            "truncation would drop extraction positions."
-        )
-    # SGLang sets both itself when enable_mis is on.
-    if not engine_kwargs.get("enable_mis") and (
-        engine_kwargs.get("disable_radix_cache") is not True
-        or engine_kwargs.get("chunked_prefill_size") != -1
-    ):
-        raise ValueError(
-            "Score extraction without 'enable_mis' requires "
-            "engine_kwargs disable_radix_cache=True and chunked_prefill_size=-1, "
-            "because the extraction positions index the full prompt."
-        )
 
 
 def _validate_score_token_ids(options: Dict[str, Any], hf_config: Any) -> None:
@@ -314,37 +273,6 @@ def _validate_score_token_ids(options: Dict[str, Any], hf_config: Any) -> None:
                 f"'{name}' {out_of_range} are outside the model "
                 f"vocabulary (size {vocab_size})."
             )
-
-
-def _check_sglang_supports_score(
-    engine_cls: Any, score_kwargs: Iterable[str] = ()
-) -> None:
-    """Raise if the installed SGLang's `Engine.async_score` is missing or too old.
-
-    Args:
-        engine_cls: The `sglang.Engine` class.
-        score_kwargs: The `async_score` arguments the run passes besides the
-            always-required ones, such as `score_extraction_token_id`.
-    """
-    async_score = getattr(engine_cls, "async_score", None)
-    if async_score is None:
-        raise ImportError(
-            "task_type='score' requires `sglang.Engine.async_score`. "
-            "Please upgrade SGLang."
-        )
-    try:
-        params = inspect.signature(async_score).parameters
-    except (TypeError, ValueError):
-        return
-    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return
-    required = dict.fromkeys([*_REQUIRED_ASYNC_SCORE_KWARGS, *score_kwargs])
-    missing = [name for name in required if name not in params]
-    if missing:
-        raise ImportError(
-            f"task_type='score' requires `sglang.Engine.async_score` to accept "
-            f"{missing}. Please upgrade SGLang."
-        )
 
 
 def _convert_to_embed_override_tensors(

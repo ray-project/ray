@@ -342,7 +342,7 @@ Classification models differ in the following ways:
 
 ## Score items against a query with SGLang
 
-{class}`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` supports `task_type="score"`, which runs SGLang's [score API](https://docs.sglang.io/basic_usage/native_api.html). Each row holds one `query` and a list of `items`, and `row["scores"]` holds one score list per item, in item order. Set `enable_mis=True` in `engine_kwargs` to score all items of a row in one forward pass with SGLang's multi-item scoring. As in SGLang, multi-item scoring tokenizes the query and items separately instead of as one `query + item` text, so tokens at the boundary, and the scores, can differ slightly.
+{class}`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` supports `task_type="score"`, which runs SGLang's [score API](https://docs.sglang.io/basic_usage/native_api.html) and requires SGLang 0.5.21 or later. Each row holds one `query` and a list of `items`, and `row["scores"]` holds one score list per item, in item order. To score all items of a row in one forward pass with SGLang's multi-item scoring, set `enable_mis=True` and `attention_backend="flashinfer"` in `engine_kwargs`. Multi-item scores can differ slightly from scores of each item on its own, because the query and items are tokenized separately instead of as one text.
 
 ```{literalinclude} doc_code/working-with-llms/sglang_score_example.py
 :language: python
