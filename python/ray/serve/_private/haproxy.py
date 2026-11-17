@@ -57,8 +57,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
-    RAY_SERVE_HAPROXY_INGRESS_RETRIES,
-    RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
@@ -819,10 +817,8 @@ class HAProxyConfig:
     retry_on: str = RAY_SERVE_HAPROXY_RETRY_ON
     retries: Optional[int] = RAY_SERVE_HAPROXY_RETRIES
 
-    # Per-ingress-router overrides; when None the ingress backend inherits the
-    # global policy above.
-    ingress_retry_on: Optional[str] = RAY_SERVE_HAPROXY_INGRESS_RETRY_ON
-    ingress_retries: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_RETRIES
+    # Per-ingress-router override for the server timeout. The ingress backend
+    # inherits the global retry policy above.
     ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
 
     is_head: bool = False
