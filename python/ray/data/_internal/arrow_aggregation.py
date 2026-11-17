@@ -201,7 +201,8 @@ def _narrow_ids(ids: np.ndarray, num_groups: int) -> np.ndarray:
     """``ids`` in the smallest integer type that holds them. A stable sort on
     16-bit or smaller integers is a radix sort, ~10x faster than on int64."""
     for dtype in (np.uint8, np.uint16, np.uint32):
-        if num_groups <= np.iinfo(dtype).max:
+        # ids run from 0 to num_groups - 1.
+        if num_groups <= np.iinfo(dtype).max + 1:
             return ids.astype(dtype, copy=False)
     return ids
 
@@ -523,7 +524,7 @@ def _merge_std(
             )
             / total
         )
-        delta = mean - group_mean[ids]
+        delta = np.where(used, mean - group_mean[ids], 0.0)
         m2 = np.bincount(
             ids,
             weights=np.where(used, weight * (var + delta * delta), 0.0),
