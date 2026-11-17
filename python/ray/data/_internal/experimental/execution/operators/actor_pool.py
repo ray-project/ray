@@ -1084,14 +1084,22 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
     def _teardown_drained_actor(self, actor: ActorHandle) -> None:
         """Tear down a fully-drained actor (no in-flight tasks, no outstanding
-        outputs). The pool's references are dropped and Ray core reclaims the
-        actor."""
+        outputs): drop the pool's references and kill it.
+
+        The kill is explicit because releasing drops the actor's committed
+        usage from the sizer's view right away, while ref counting frees the
+        actor's node resources only once every handle is gone. A stray handle
+        left the actor alive and idle, holding capacity the sizer had already
+        handed out, so an actor pinned there could never schedule. Killing is
+        safe here: nothing is in flight and every output has been consumed.
+        """
         if self._metrics is not None:
             info = self._draining_actors[actor]
             self._metrics.record_drain_completed(
                 self._op_tag, info.reason.value, time.time() - info.since
             )
         self._release_running_actor(actor)
+        ray.kill(actor)
 
     def begin_draining(self, actor: ActorHandle, *, reason: DrainReason) -> None:
         """Mark an actor for draining. While draining, no new tasks can be

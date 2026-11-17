@@ -480,13 +480,13 @@ def test_drain_waits_for_inflight_tasks(two_node_cluster):
 
 
 # ---------------------------------------------------------------------------
-# A drained actor is released by dropping the pool's references,
-# never hard-killed -- an explicit kill would make the objects it produced
-# unreconstructable. Along the way, ``draining_generation`` bumps on every
-# draining-set change (add / reclaim / release) so the output-priority sync
-# can cheaply skip when nothing changed.
+# A drained actor is released and killed: by then nothing is in flight and
+# every output has been consumed, and a stray handle would otherwise keep it
+# alive holding capacity the sizer already handed out. Along the way,
+# ``draining_generation`` bumps on every draining-set change (add / reclaim /
+# release) so the output-priority sync can cheaply skip when nothing changed.
 # ---------------------------------------------------------------------------
-def test_drained_actor_released_without_kill(two_node_cluster, monkeypatch):
+def test_drained_actor_released_and_killed(two_node_cluster, monkeypatch):
     kills = []
     real_kill = ray.kill
     monkeypatch.setattr(ray, "kill", lambda actor, **kw: kills.append(actor))
@@ -511,11 +511,12 @@ def test_drained_actor_released_without_kill(two_node_cluster, monkeypatch):
         g3 = pool.draining_generation
         assert g3 > g2  # re-add -> bump
 
-        # The actor is released from the pool without a hard kill.
+        # The actor is released from the pool and killed, so a stray handle
+        # can't keep it alive holding capacity the sizer already handed out.
         assert pool.process_draining_actors() == 1
         assert pool.draining_generation > g3  # release -> bump
         assert not pool.has_actor(id_a)
-        assert a not in kills
+        assert kills == [a]
     finally:
         monkeypatch.setattr(ray, "kill", real_kill)
         pool.shutdown(force=True)

@@ -10,6 +10,7 @@ from typing_extensions import override
 
 import ray
 import ray.exceptions
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import PlacementGroupID
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
@@ -792,6 +793,30 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert pool.reclaim_draining_actors(limit=1) == 1
         assert pool._running_actors[busy].status == ActorStatus.ACTIVE
         assert pool._running_actors[idle].status == ActorStatus.DRAINING
+
+    def test_drained_actor_is_killed_even_with_stray_handle(self):
+        """A fully drained actor is killed at teardown, not just dereferenced.
+        ``actor`` below is a handle outside the pool; ref counting alone would
+        keep the actor alive and holding node capacity the sizer has already
+        released."""
+        pool = self._create_pool()
+        actor = self._add_ready_actor(pool, node_id="node1")
+        assert ray.get(actor.get_location.remote()) == "node1"
+
+        pool.begin_draining(actor, reason=DrainReason.RESIZE)
+        assert pool.process_draining_actors() == 1
+        assert pool.num_running_actors() == 0
+
+        # ray.kill is asynchronous: a call racing it can still be served, so
+        # poll until the actor is gone.
+        def actor_is_dead() -> bool:
+            try:
+                ray.get(actor.get_location.remote(), timeout=10)
+            except ray.exceptions.RayActorError:
+                return True
+            return False
+
+        wait_for_condition(actor_is_dead, timeout=30)
 
     def test_drain_metrics_graceful_completion(self):
         metrics = self._drain_metrics()
