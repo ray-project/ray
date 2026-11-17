@@ -195,16 +195,30 @@ struct RedisRequestContext {
 
  private:
   /// Shared failure path for a reply that never came (connection gone), an
-  /// error reply, and a submission hiredis refused. A command that never
-  /// reached Redis gets its retry back while the current outage's shared
+  /// error reply, and a submission hiredis refused. A command that got no
+  /// answer from Redis gets its retry back while the current outage's shared
   /// deadline has not passed; see RedisAsyncContext::OutageDeadline.
   ///
   /// \param request_cxt The failed request. Deleted here if its context is gone.
-  /// \param reached_redis Whether Redis saw the command (an error reply).
+  /// \param reached_redis Whether Redis answered the command with an error. False
+  /// when no reply came, which leaves open whether Redis ran it, and for replies
+  /// that are not about the command (-NOAUTH).
   /// \param error_msg What went wrong, for the log line.
   static void HandleFailure(RedisRequestContext *request_cxt,
                             bool reached_redis,
                             std::string_view error_msg);
+
+  /// Whether `reply` answers an HSETNX that may have been applied by an earlier
+  /// attempt of this request: an attempt lost its reply, and this one found the
+  /// field already set.
+  bool MayHaveSetFieldEarlier(const redisReply &reply) const;
+
+  /// Switch this request to an HGET of the HSETNX's field, and submit it.
+  static void CheckEarlierSet(RedisRequestContext *request_cxt);
+
+  /// Hand `reply` to the callback on the io_service and delete the request.
+  static void Complete(RedisRequestContext *request_cxt,
+                       std::shared_ptr<CallbackReply> reply);
 
   ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
@@ -229,6 +243,16 @@ struct RedisRequestContext {
   std::vector<const char *> argv_;
   std::vector<size_t> argc_;
   ClockInterface &clock_;
+
+  /// Set once an attempt loses its reply to a closed connection. Redis may
+  /// have run that attempt, so a retried HSETNX that returns 0 may be looking
+  /// at this request's own write.
+  bool lost_reply_ = false;
+  /// Set while the HGET that settles such an HSETNX is in flight. Run() then
+  /// sends `check_argv_` instead of `argv_`.
+  bool checking_earlier_set_ = false;
+  std::vector<const char *> check_argv_;
+  std::vector<size_t> check_argc_;
 
   // Nullable; see the constructor docs.
   RedisMetrics *metrics_;

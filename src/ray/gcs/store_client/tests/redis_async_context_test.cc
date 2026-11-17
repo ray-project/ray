@@ -48,6 +48,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/redis_context.h"
+#include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/clock.h"
 #include "ray/util/logging.h"
@@ -415,6 +416,12 @@ class ClosingProxy {
 
   int closed_on_accept() const { return closed_on_accept_; }
 
+  /// Forward the next HSETNX to Redis, then close its connection in place of
+  /// forwarding the reply: Redis runs the command and the client never hears.
+  void DropNextHsetnxReply() { drop_hsetnx_reply_ = true; }
+
+  bool dropped_hsetnx_reply() const { return !drop_hsetnx_reply_; }
+
  private:
   void AcceptLoop() {
     while (!stopping_) {
@@ -443,23 +450,33 @@ class ClosingProxy {
         open_fds_.push_back(client);
         open_fds_.push_back(upstream);
       }
-      pipes_.emplace_back([client, upstream] { Pipe(client, upstream); });
+      pipes_.emplace_back([this, client, upstream] { Pipe(client, upstream); });
     }
   }
 
-  static void Pipe(int a, int b) {
+  /// `a` is the client side, `b` the Redis side.
+  void Pipe(int a, int b) {
     char buf[16384];
     pollfd fds[2] = {{a, POLLIN, 0}, {b, POLLIN, 0}};
+    bool drop_next_reply = false;
     while (poll(fds, 2, -1) > 0) {
       for (int i = 0; i < 2; ++i) {
         if (fds[i].revents == 0) {
           continue;
         }
         ssize_t n = read(fds[i].fd, buf, sizeof(buf));
+        if (n > 0 && i == 1 && drop_next_reply) {
+          drop_hsetnx_reply_ = false;
+          n = 0;
+        }
         if (n <= 0 || write(fds[1 - i].fd, buf, n) != n) {
           shutdown(a, SHUT_RDWR);
           shutdown(b, SHUT_RDWR);
           return;
+        }
+        if (i == 0 && drop_hsetnx_reply_ &&
+            absl::StrContains(std::string_view(buf, n), "HSETNX")) {
+          drop_next_reply = true;
         }
       }
     }
@@ -471,6 +488,7 @@ class ClosingProxy {
   std::atomic<bool> stopping_{false};
   std::atomic<bool> closing_{false};
   std::atomic<int> closed_on_accept_{0};
+  std::atomic<bool> drop_hsetnx_reply_{false};
   std::mutex mu_;
   std::vector<int> open_fds_;
   std::vector<std::thread> pipes_;
@@ -536,6 +554,50 @@ TEST_F(RedisAsyncContextTest, TestReconnectBacksOffWithZeroRetryBase) {
   // 2s, far below the 120-attempt budget.
   EXPECT_GE(proxy.closed_on_accept(), 1);
   EXPECT_LE(proxy.closed_on_accept(), 20);
+}
+
+// An HSETNX whose connection closes after Redis ran it, but before its reply
+// arrived, is sent again on the new connection and gets 0 back: the field is
+// set, by its own first attempt. The put must still report that it added the
+// field, or job submission rejects the job it just created as a duplicate.
+TEST_F(RedisAsyncContextTest, TestPutReportsAddedWhenItsReplyIsLost) {
+  ClosingProxy proxy(TEST_REDIS_SERVER_PORTS.front());
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  RedisClientOptions options{"127.0.0.1", proxy.port(), "", "", false};
+  auto store_client = std::make_unique<RedisStoreClient>(io, options, clock);
+  absl::Cleanup stop = [&] {
+    work.reset();
+    io.stop();
+    io_thread.join();
+    store_client.reset();
+  };
+  auto put = [&](const std::string &value) {
+    std::promise<bool> added;
+    store_client->AsyncPut("lost_reply_table",
+                           "key",
+                           value,
+                           /*overwrite=*/false,
+                           {[&added](bool a) { added.set_value(a); }, io});
+    auto future = added.get_future();
+    EXPECT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
+    return future.get();
+  };
+
+  proxy.DropNextHsetnxReply();
+  EXPECT_TRUE(put("first"));
+  EXPECT_TRUE(proxy.dropped_hsetnx_reply());
+
+  // A put that keeps its reply sees the field taken.
+  EXPECT_FALSE(put("first"));
+
+  // A lost reply on a put that did not set the field still reports false: the
+  // field holds another value.
+  proxy.DropNextHsetnxReply();
+  EXPECT_FALSE(put("second"));
+  EXPECT_TRUE(proxy.dropped_hsetnx_reply());
 }
 #endif
 

@@ -330,9 +330,11 @@ void RedisRequestContext::HandleFailure(RedisRequestContext *request_cxt,
   }
   bool refunded = false;
   if (!reached_redis) {
-    // The command never made it to Redis: the connection was gone, or hiredis
-    // accepted it on a context that then died. The attempt says nothing about
-    // the command, so give the retry back while the outage is young. The
+    // No answer about the command: the connection was gone, or it died with the
+    // command in flight. In the second case Redis may still have run it; the
+    // write commands GCS sends are idempotent, and a retried HSETNX is settled
+    // in RedisResponseFn. The attempt says nothing about the command either
+    // way, so give the retry back while the outage is young. The
     // deadline belongs to the outage, not to this request, so every in-flight
     // command expires at the same instant however long it had been retrying.
     const absl::Time now = request_cxt->clock_.Now();
@@ -397,7 +399,25 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
     // that never came.
     const bool reached_redis =
         redis_reply != nullptr && !absl::StartsWith(error_msg, "NOAUTH");
+    if (redis_reply == nullptr) {
+      // hiredis fails every pending callback when the connection goes away,
+      // including commands it had already written. Redis may have run this one.
+      request_cxt->lost_reply_ = true;
+    }
     HandleFailure(request_cxt, reached_redis, error_msg);
+  } else if (request_cxt->checking_earlier_set_) {
+    // The reply to the HGET that settles a retried HSETNX. If the field holds
+    // this request's value, the attempt that lost its reply set it. The HGET
+    // cannot tell that write from an earlier put of the same bytes; Ray's
+    // callers either write unique values or accept an existing equal one.
+    const bool set_by_this_request =
+        redis_reply->type == REDIS_REPLY_STRING &&
+        std::string_view(redis_reply->str, redis_reply->len) ==
+            request_cxt->redis_cmds_[3];
+    redisReply added{};
+    added.type = REDIS_REPLY_INTEGER;
+    added.integer = set_by_this_request ? 1 : 0;
+    Complete(request_cxt, std::make_shared<CallbackReply>(added));
   } else {
     // Count the write as acknowledged before its callback can act on it, so a
     // reconnect check from here on requires Redis to still have it.
@@ -405,27 +425,67 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
       request_cxt->redis_context_->AckWrite(request_cxt->write_number_);
     }
     // Measure while hiredis still owns the reply, and before anything is posted
-    // to the io_service: `request_cxt` is deleted at the end of this branch, so
-    // every read of it has to happen above the post.
+    // to the io_service: `request_cxt` is deleted once the reply is handed on,
+    // so every read of it has to happen above that.
     if (request_cxt->metrics_ != nullptr) {
       request_cxt->metrics_->response_payload_bytes_sum.Record(
           static_cast<double>(ResponsePayloadBytes(*redis_reply)),
           {{"Command", request_cxt->command_label_},
            {"TableName", request_cxt->table_label_}});
     }
-    auto reply = std::make_shared<CallbackReply>(*redis_reply);
-    request_cxt->io_service_.post(
-        [reply, callback = std::move(request_cxt->callback_)]() {
-          if (callback) {
-            callback(std::move(reply));
-          }
-        },
-        "RedisRequestContext.Callback");
-    auto end_time = request_cxt->clock_.Now();
-    request_cxt->ray_metric_gcs_latency_.Record(
-        absl::ToDoubleMilliseconds(end_time - request_cxt->start_time_));
-    delete request_cxt;
+    if (request_cxt->MayHaveSetFieldEarlier(*redis_reply)) {
+      // Settle it here rather than in the caller's callback: this request still
+      // holds the key, so no queued write to it can land before the HGET.
+      CheckEarlierSet(request_cxt);
+      return;
+    }
+    Complete(request_cxt, std::make_shared<CallbackReply>(*redis_reply));
   }
+}
+
+bool RedisRequestContext::MayHaveSetFieldEarlier(const redisReply &reply) const {
+  return lost_reply_ && redis_cmds_.size() == 4 &&
+         absl::EqualsIgnoreCase(redis_cmds_[0], "HSETNX") &&
+         reply.type == REDIS_REPLY_INTEGER && reply.integer == 0;
+}
+
+void RedisRequestContext::CheckEarlierSet(RedisRequestContext *request_cxt) {
+  request_cxt->checking_earlier_set_ = true;
+  request_cxt->check_argv_ = {
+      "HGET", request_cxt->redis_cmds_[1].data(), request_cxt->redis_cmds_[2].data()};
+  request_cxt->check_argc_ = {
+      4, request_cxt->redis_cmds_[1].size(), request_cxt->redis_cmds_[2].size()};
+  // The HGET is a new command and gets its own retry budget: the HSETNX may
+  // have spent the last of its own to get here.
+  request_cxt->pending_retries_ = RayConfig::instance().num_redis_request_retries() + 1;
+  request_cxt->first_refund_.reset();
+  request_cxt->exp_back_off_.Reset();
+  // hiredis runs this reply callback under the context lock that Run() takes,
+  // so submit from the io_service instead of from here.
+  request_cxt->io_service_.post(
+      [request_cxt]() {
+        if (request_cxt->context_alive_.expired()) {
+          delete request_cxt;
+          return;
+        }
+        request_cxt->Run();
+      },
+      "RedisRequestContext.CheckEarlierSet");
+}
+
+void RedisRequestContext::Complete(RedisRequestContext *request_cxt,
+                                   std::shared_ptr<CallbackReply> reply) {
+  request_cxt->io_service_.post(
+      [reply = std::move(reply), callback = std::move(request_cxt->callback_)]() {
+        if (callback) {
+          callback(std::move(reply));
+        }
+      },
+      "RedisRequestContext.Callback");
+  auto end_time = request_cxt->clock_.Now();
+  request_cxt->ray_metric_gcs_latency_.Record(
+      absl::ToDoubleMilliseconds(end_time - request_cxt->start_time_));
+  delete request_cxt;
 }
 
 void RedisRequestContext::Run() {
@@ -457,16 +517,18 @@ void RedisRequestContext::Run() {
   // The previous attempt, if any, failed without a reply, so nothing else reads
   // this until the submission below sets it under the lock.
   write_number_ = 0;
+  auto &argv = checking_earlier_set_ ? check_argv_ : argv_;
+  const auto &argc = checking_earlier_set_ ? check_argc_ : argc_;
   Status status = redis_context_->RedisAsyncCommandArgv(
       RedisResponseFn,
       this,
-      argv_.size(),
-      argv_.data(),
-      argc_.data(),
+      argv.size(),
+      argv.data(),
+      argc.data(),
       metrics_ != nullptr
           ? std::make_optional(absl::FunctionRef<void()>(capture_acceptance))
           : std::nullopt,
-      is_write_ ? &write_number_ : nullptr);
+      is_write_ && !checking_earlier_set_ ? &write_number_ : nullptr);
   if (status.ok()) {
     // The submission lock has been released, so a reply on the IO thread may
     // already have deleted this request. Only use the independent local snapshot,
