@@ -54,6 +54,46 @@ def test_resources_different():
     assert new_res.get("a") == 0
 
 
+def test_resources_does_not_mutate_caller_dicts():
+    custom = {"a": 1}
+    extra_custom = {"b": 2}
+    res = _Resources(
+        cpu=1,
+        gpu=0,
+        custom_resources=custom,
+        extra_custom_resources=extra_custom,
+    )
+    assert custom == {"a": 1}
+    assert extra_custom == {"b": 2}
+    assert res.custom_resources == {"a": 1, "b": 0}
+    assert res.extra_custom_resources == {"a": 0, "b": 2}
+
+
+def test_resources_is_nonnegative_checks_memory():
+    res_1 = _Resources(cpu=1, gpu=0, memory=100, object_store_memory=200)
+    res_2 = _Resources(cpu=1, gpu=0, memory=200, object_store_memory=100)
+    diff = _Resources.subtract(res_1, res_2)
+    assert diff.memory == -100
+    assert not diff.is_nonnegative()
+
+    extra_neg = _Resources(cpu=1, gpu=0, extra_memory=-10)
+    assert not extra_neg.is_nonnegative()
+
+
+def test_resource_updater_empty_or_zero_retries():
+    resource_updater = _ResourceUpdater(refresh_period=0)
+    with mock.patch("ray.is_initialized", return_value=True), mock.patch(
+        "ray.cluster_resources", return_value={}
+    ), mock.patch("time.sleep"):
+        resource_updater.update_avail_resources(num_retries=0, force=True)
+        assert resource_updater.get_num_cpus() == 0
+        assert resource_updater.get_num_gpus() == 0
+
+        resource_updater.update_avail_resources(num_retries=1, force=True)
+        assert resource_updater.get_num_cpus() == 0
+        assert resource_updater.get_num_gpus() == 0
+
+
 def test_resource_updater(ray_start_cluster):
     cluster = ray_start_cluster
 
