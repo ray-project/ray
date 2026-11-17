@@ -110,7 +110,7 @@ class LLMServerProtocol(DeploymentProtocol):
         Raise error when the engine is dead and needs to be restarted.
         """
 
-    async def reset_prefix_cache(self) -> None:
+    async def reset_prefix_cache(self) -> Optional[bool]:
         """Reset the prefix cache of the underlying engine"""
 
     async def start_profile(self) -> None:

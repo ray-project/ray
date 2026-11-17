@@ -108,6 +108,28 @@ def two_model_dev_ingress(ray_instance, disable_placement_bundles):
     serve.delete("two-model-app", _blocking=True)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "replica_results,success",
+    [([True, True], True), ([True, False], False), ([None, None], True)],
+)
+async def test_reset_prefix_cache_reports_replica_results(replica_results, success):
+    """The endpoint fails if any replica's engine could not reset its cache."""
+    import json
+
+    from ray.llm._internal.serve.core.ingress.mixins.cache_manager import (
+        CacheManagerIngressMixin,
+        ResetPrefixCacheRequest,
+    )
+
+    class Ingress(CacheManagerIngressMixin):
+        async def _broadcast_to_replicas(self, model, method, kwargs=None):
+            return replica_results
+
+    response = await Ingress().reset_prefix_cache(ResetPrefixCacheRequest(model="m"))
+    assert json.loads(response.body) == {"success": success}
+
+
 class TestDevIngressEndpoints:
     """Test DevIngress endpoints."""
 

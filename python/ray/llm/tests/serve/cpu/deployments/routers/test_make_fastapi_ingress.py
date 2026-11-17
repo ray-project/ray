@@ -158,6 +158,20 @@ class TestMakeFastapiIngress:
         assert "self" in param_names
         assert "body" in param_names
 
+    def test_default_map_registers_mixin_endpoints(self):
+        """Without an endpoint_map, the routes the class's mixins declare are
+        registered too, so every builder serves them."""
+        from ray.llm._internal.serve.core.ingress.dev_ingress import DevIngress
+
+        app = FastAPI()
+        make_fastapi_ingress(DevIngress, app=app)
+
+        route_paths = {
+            route.path for route in app.routes if isinstance(route, APIRoute)
+        }
+        assert {"/reset_prefix_cache", "/sleep", "/collective_rpc"} <= route_paths
+        assert "/v1/chat/completions" in route_paths
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

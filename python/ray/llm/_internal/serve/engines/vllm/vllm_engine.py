@@ -926,9 +926,9 @@ class VLLMEngine(LLMEngine):
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
 
-    async def reset_prefix_cache(self) -> None:
+    async def reset_prefix_cache(self) -> bool:
         assert self._engine_client is not None, "engine_client is not initialized"
-        await self._engine_client.reset_prefix_cache()
+        return await self._engine_client.reset_prefix_cache()
 
     async def sleep(self, **kwargs: Any) -> None:
         """Put the vLLM engine to sleep.
