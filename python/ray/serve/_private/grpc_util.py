@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from copy import deepcopy
-from typing import Callable, List, Optional, Sequence, Set, Tuple
+from typing import Callable, List, Optional, Sequence, Set, Tuple, Union
 from unittest.mock import Mock
 
 import grpc
@@ -41,7 +41,7 @@ class gRPCGenericServer(Server):
         self,
         service_handler_factory: Callable,
         *,
-        extra_options: Optional[List[Tuple[str, str]]] = None,
+        extra_options: Optional[List[Tuple[str, Union[str, int]]]] = None,
     ):
         super().__init__(
             thread_pool=None,
