@@ -976,7 +976,6 @@ class _PartitionedHiveCursor:
     def __init__(self, connection):
         self._connection = connection
         self._statement = None
-        self._show_iter = None
         self.closed = False
 
     def execute(self, statement):
@@ -996,15 +995,9 @@ class _PartitionedHiveCursor:
             if value is None:
                 return [(f"{option} is undefined",)]
             return [(f"{option}={value}",)]
+        if statement.startswith("SHOW PARTITIONS"):
+            return self._connection._show_specs
         raise AssertionError(f"unexpected fetchall statement: {statement}")
-
-    def fetchmany(self, size):
-        assert self._statement.startswith("SHOW PARTITIONS"), self._statement
-        if self._show_iter is None:
-            self._show_iter = iter(self._connection._show_specs)
-        import itertools
-
-        return list(itertools.islice(self._show_iter, size))
 
     def close(self):
         self.closed = True

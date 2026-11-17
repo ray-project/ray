@@ -255,12 +255,7 @@ def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
                 ),
             )
             cursor.execute(f"SHOW PARTITIONS `{database}`.`{table}`")
-            spec_rows = []
-            while True:
-                batch = cursor.fetchmany(1024)
-                if not batch:
-                    break
-                spec_rows.extend(batch)
+            spec_rows = cursor.fetchall()
             raw_specs = _parse_partition_specs(
                 spec_rows, metadata.partition_fields, database, table
             )
