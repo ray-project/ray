@@ -31,7 +31,7 @@ rust_test(
 )
 
 # rapidgzip-sys's native library (rapidgzip's C API over librapidarchive, with
-# rpmalloc and zlib-ng), linked into the rapidgzip-sys crate in place of its
+# zlib-ng), linked into the rapidgzip-sys crate in place of its
 # build script (see the crates_repository annotation in WORKSPACE and
 # thirdparty/patches/rapidgzip-sys-bazel.patch).
 cmake(
@@ -42,8 +42,13 @@ cmake(
         "RAPIDGZIP_NO_ISAL": "ON",
         # No LTO: GCC's bitcode-only LTO objects don't link into a Rust binary.
         "RAPIDGZIP_NO_IPO": "ON",
-        # Install librpmalloc.a and libzlibstatic.a next to the C API.
+        # Install libzlibstatic.a next to the C API.
         "RAPIDGZIP_INSTALL_DEPS": "ON",
+        # The system allocator, not rpmalloc: rpmalloc keeps freed memory
+        # cached per decoder thread, which doubled erofs-pull's peak memory
+        # (2.5 GB against 1.2 GB pulling pytorch/pytorch on 32 cores) for
+        # about 0.2 s of a 5.8 s pull.
+        "RAPIDGZIP_NO_RPMALLOC": "ON",
         "CMAKE_INSTALL_LIBDIR": "lib",
     },
     # Make, not Ninja; see bazel/rocksdb.BUILD.
@@ -61,7 +66,6 @@ cmake(
     # Static libraries resolve left to right: the C API, then what it uses.
     out_static_libs = [
         "librapidgzip-capi.a",
-        "librpmalloc.a",
         "libzlibstatic.a",
     ],
     target_compatible_with = ["@platforms//os:linux"],

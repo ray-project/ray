@@ -1,23 +1,33 @@
 Build rapidgzip-sys's native library with Bazel (rules_foreign_cc), for
-//src/ray/sandbox/erofs_pull. Three opt-in cache variables, off by default:
+//src/ray/sandbox/erofs_pull. Four opt-in cache variables, off by default:
 
 - RAPIDGZIP_NO_ISAL: build without ISA-L, whose x86 assembly needs nasm.
   rapidgzip's own decoder is within ~5% for Ray's use.
+- RAPIDGZIP_NO_RPMALLOC: use the system allocator, not rpmalloc. rpmalloc
+  keeps freed memory cached per decoder thread: erofs-pull peaked at
+  2.5 GB on a 32-core node pulling pytorch/pytorch with it, 1.2 GB
+  without, and the pull took 5.8 s instead of 5.6 s.
 - RAPIDGZIP_NO_IPO: skip LTO. With GCC, LTO leaves bitcode-only objects that
   link only when the final link runs GCC with -flto; rustc's link of
-  erofs-pull doesn't, so rpmalloc's and zlib-ng's symbols go missing.
-- RAPIDGZIP_INSTALL_DEPS: install librpmalloc.a and libzlibstatic.a next to
-  librapidgzip-capi.a, where rules_foreign_cc collects static libraries.
-
-And one fix: rpmalloc uses __builtin_thread_pointer with GCC 5 and later, but
-GCC only has it on x86_64 from GCC 11 (CI's manylinux toolchain is GCC 10).
-Older GCCs take rpmalloc's inline-assembly path, which reads the same
-thread pointer.
+  erofs-pull doesn't, so zlib-ng's symbols go missing.
+- RAPIDGZIP_INSTALL_DEPS: install the static libraries rapidgzip-capi needs
+  (libzlibstatic.a) next to librapidgzip-capi.a, where rules_foreign_cc
+  collects static libraries.
 
 diff --git a/native/rapidgzip-capi/CMakeLists.txt b/native/rapidgzip-capi/CMakeLists.txt
 --- a/native/rapidgzip-capi/CMakeLists.txt
 +++ b/native/rapidgzip-capi/CMakeLists.txt
-@@ -17,7 +17,8 @@ set(LIBRAPIDARCHIVE_WITH_RPMALLOC ON CACHE BOOL "" FORCE)
+@@ -13,11 +13,17 @@ set(LIBRAPIDARCHIVE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+ set(LIBRAPIDARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+ set(LIBRAPIDARCHIVE_USE_SYSTEM_ZLIB OFF CACHE BOOL "" FORCE)
+ set(LIBRAPIDARCHIVE_USE_ZLIB_NG ON CACHE BOOL "" FORCE)
+-set(LIBRAPIDARCHIVE_WITH_RPMALLOC ON CACHE BOOL "" FORCE)
++# Ray: RAPIDGZIP_NO_RPMALLOC uses the system allocator instead of rpmalloc.
++if(RAPIDGZIP_NO_RPMALLOC)
++    set(LIBRAPIDARCHIVE_WITH_RPMALLOC OFF CACHE BOOL "" FORCE)
++else()
++    set(LIBRAPIDARCHIVE_WITH_RPMALLOC ON CACHE BOOL "" FORCE)
++endif()
  # Upstream currently disables ISA-L for macOS in release workflows because the
  # macOS path is not stable enough yet. Keep the Apple build reliable and use the
  # accelerated ISA-L path on the other targets.
@@ -27,7 +37,7 @@ diff --git a/native/rapidgzip-capi/CMakeLists.txt b/native/rapidgzip-capi/CMakeL
      set(LIBRAPIDARCHIVE_WITH_ISAL OFF CACHE BOOL "" FORCE)
  else()
      set(LIBRAPIDARCHIVE_WITH_ISAL ON CACHE BOOL "" FORCE)
-@@ -37,3 +38,13 @@ if(TARGET rpmalloc)
+@@ -37,3 +43,13 @@ if(TARGET rpmalloc)
  endif()
  
  install(TARGETS rapidgzip-capi DESTINATION lib)
@@ -55,15 +65,3 @@ diff --git a/vendor/librapidarchive/CMakeLists.txt b/vendor/librapidarchive/CMak
      include(CheckIPOSupported)
      check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
      if(IPO_SUPPORTED)
-diff --git a/vendor/librapidarchive/src/external/rpmalloc/rpmalloc/rpmalloc.c b/vendor/librapidarchive/src/external/rpmalloc/rpmalloc/rpmalloc.c
---- a/vendor/librapidarchive/src/external/rpmalloc/rpmalloc/rpmalloc.c
-+++ b/vendor/librapidarchive/src/external/rpmalloc/rpmalloc/rpmalloc.c
-@@ -577,7 +577,7 @@ get_thread_id(void) {
- #if defined(_WIN32)
- 	return (uintptr_t)((void*)NtCurrentTeb());
- #elif !defined(__APPLE__) && !defined(__CYGWIN__) &&                                                \
--    ((defined(__clang__) && (__clang_major__ >= 7)) || ((defined(__GNUC__) && (__GNUC__ >= 5)))) && \
-+    ((defined(__clang__) && (__clang_major__ >= 7)) || ((defined(__GNUC__) && (__GNUC__ >= 11)))) && \
-     (defined(__aarch64__) || defined(__x86_64__) || defined(__loongarch__))  // Unsure of other archs, needs testing
- 	void* thp = __builtin_thread_pointer();
- 	return (uintptr_t)thp;
