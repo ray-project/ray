@@ -42,6 +42,7 @@ def test_consume_prefix_in_state_dict_if_present_not_in_place():
         "other.layer": {"version": 1},
     }
     state_dict = {
+        "module.module.layer1.weight": torch.tensor([10.0]),
         "module.layer1.weight": torch.tensor([1.0]),
         "module.layer2.weight": torch.tensor([2.0]),
         "other.layer.weight": torch.tensor([3.0]),
@@ -49,7 +50,8 @@ def test_consume_prefix_in_state_dict_if_present_not_in_place():
     }
 
     result = consume_prefix_in_state_dict_if_present_not_in_place(state_dict, "module.")
-    assert "layer1.weight" in result
+    assert torch.equal(result["layer1.weight"], torch.tensor([1.0]))
+    assert torch.equal(result["module.layer1.weight"], torch.tensor([10.0]))
     assert "layer2.weight" in result
     assert "other.layer.weight" in result
     assert result["_metadata"] == {

@@ -92,7 +92,7 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
     """
     copied = False
 
-    for key in state_dict:
+    for key in sorted(state_dict.keys()):
         if key.startswith(prefix):
             newkey = key[len(prefix) :]
             if not copied:
