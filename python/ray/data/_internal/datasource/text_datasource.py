@@ -4,6 +4,8 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
+TEXT_COLUMN_NAME = "text"
+
 if TYPE_CHECKING:
     import pyarrow
 
@@ -11,7 +13,7 @@ if TYPE_CHECKING:
 class TextDatasource(FileBasedDatasource):
     """Text datasource, for reading and writing text files."""
 
-    _COLUMN_NAME = "text"
+    _COLUMN_NAME = TEXT_COLUMN_NAME
 
     def __init__(
         self,

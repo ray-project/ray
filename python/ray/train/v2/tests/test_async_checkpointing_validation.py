@@ -480,6 +480,198 @@ def test_report_validation_fn_keeps_correct_checkpoints(tmp_path):
     assert result.best_checkpoints[1][1] == {"score": 5}
 
 
+@pytest.mark.parametrize("order", ["min", "max"])
+def test_validation_only_score_keeps_best_checkpoint_while_pending(tmp_path, order):
+    """``checkpoint_score_attribute`` names a metric that only the validation
+    function returns, so a checkpoint has no score until its validation
+    finishes. While a validation runs, ``num_to_keep`` must not evict the best
+    validated checkpoint to make room for the unscored one."""
+    signal_actor = create_remote_signal_actor(ray).remote()
+    # The best score is the lowest in "min" order and the highest in "max" order.
+    sign = 1 if order == "min" else -1
+    best, middle, worst = sign * 1, sign * 2, sign * 3
+
+    def validation_fn(checkpoint, val_score, block=False):
+        if block:
+            ray.get(signal_actor.wait.remote())
+        return {"val_score": val_score}
+
+    def reported_by_step(consistency_mode=CheckpointConsistencyMode.VALIDATED):
+        # Checkpoints come back in score order, so key them by reporting step.
+        return {
+            reported.metrics["step"]: reported
+            for reported in ray.train.get_all_reported_checkpoints(
+                consistency_mode=consistency_mode
+            )
+        }
+
+    def train_fn():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"step": 0},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"val_score": best}),
+            )
+
+        reported = reported_by_step()
+        assert reported[0].metrics == {"step": 0, "val_score": best}
+        best_path = reported[0].checkpoint.path
+
+        # Step 1 has no score until its blocked validation finishes.
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"step": 1},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(
+                    fn_kwargs={"val_score": worst, "block": True}
+                ),
+            )
+
+        try:
+            # Both checkpoints should exist but one is waiting for validation
+            reported = reported_by_step(CheckpointConsistencyMode.COMMITTED)
+            assert sorted(reported) == [0, 1]
+            assert reported[0].status == ReportedCheckpointStatus.VALIDATED
+            assert reported[1].status == ReportedCheckpointStatus.PENDING_VALIDATION
+            assert reported[1].metrics == {"step": 1}
+            assert os.path.exists(best_path)
+            pending_path = reported[1].checkpoint.path
+        finally:
+            ray.get(signal_actor.send.remote())
+
+        # Once checkpoint step 1 is validated, then it should be deleted.
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"step": 2},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"val_score": middle}),
+            )
+
+        reported = reported_by_step()
+        assert sorted(reported) == [0, 2]
+        assert reported[0].metrics == {"step": 0, "val_score": best}
+        assert reported[2].metrics == {"step": 2, "val_score": middle}
+        assert os.path.exists(best_path)
+        assert not os.path.exists(pending_path)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        validation_config=ValidationConfig(fn=validation_fn),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1,
+                checkpoint_score_attribute="val_score",
+                checkpoint_score_order=order,
+            ),
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+    # `best_checkpoints` holds the top `num_to_keep`; the latest is kept too.
+    assert result.metrics == {"step": 2, "val_score": middle}
+    assert [metrics for _, metrics in result.best_checkpoints] == [
+        {"step": 0, "val_score": best}
+    ]
+    assert os.path.exists(result.best_checkpoints[0][0].path)
+    assert os.path.exists(result.checkpoint.path)
+
+
+# Failed and timed-out validations take the same eviction path, so only the
+# order that used to mis-rank a missing score ("min") runs both.
+@pytest.mark.parametrize(
+    "order, failure", [("min", "error"), ("min", "timeout"), ("max", "error")]
+)
+def test_validation_only_score_unvalidated_checkpoint_ranks_worst(
+    tmp_path, order, failure
+):
+    """A checkpoint whose validation fails or times out never gets the
+    validation-only score attribute. It must rank below every validated
+    checkpoint, so it never counts as the best checkpoint and ``num_to_keep``
+    deletes it once it is no longer the latest."""
+    sign = 1 if order == "min" else -1
+    best, middle = sign * 1, sign * 2
+
+    def validation_fn(checkpoint, val_score=None, failure=None):
+        if failure == "error":
+            raise ValueError("validation failed")
+        if failure == "timeout":
+            while True:
+                time.sleep(1)
+        return {"val_score": val_score}
+
+    def report(step, **fn_kwargs):
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"step": step},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(
+                    fn_kwargs=fn_kwargs,
+                    timeout_s=1 if fn_kwargs.get("failure") == "timeout" else None,
+                ),
+            )
+
+    expected_status = {
+        "error": ReportedCheckpointStatus.VALIDATION_FAILED,
+        "timeout": ReportedCheckpointStatus.VALIDATION_TIMEOUT,
+    }[failure]
+
+    def reported_by_step(consistency_mode=CheckpointConsistencyMode.VALIDATED):
+        # Checkpoints come back in score order, so key them by reporting step.
+        return {
+            reported.metrics["step"]: reported
+            for reported in ray.train.get_all_reported_checkpoints(
+                consistency_mode=consistency_mode
+            )
+        }
+
+    def train_fn():
+        report(step=0, val_score=best)
+        reported = reported_by_step()
+        best_path = reported[0].checkpoint.path
+
+        # Step 1's validation has a failure or timeout but
+        #   kept only because it is the latest checkpoint.
+        report(step=1, failure=failure)
+        reported = reported_by_step()
+        assert sorted(reported) == [0, 1]
+        assert reported[1].status == expected_status
+        assert reported[1].metrics == {"step": 1}
+        assert os.path.exists(best_path)
+        unvalidated_path = reported[1].checkpoint.path
+
+        # Step 1 is deleted as its no longer the latest
+        report(step=2, val_score=middle)
+        reported = reported_by_step()
+        assert sorted(reported) == [0, 2]
+        assert os.path.exists(best_path)
+        assert not os.path.exists(unvalidated_path)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        validation_config=ValidationConfig(fn=validation_fn),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1,
+                checkpoint_score_attribute="val_score",
+                checkpoint_score_order=order,
+            ),
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+    # `best_checkpoints` holds the top `num_to_keep`; the latest is kept too.
+    assert result.metrics == {"step": 2, "val_score": middle}
+    assert [metrics for _, metrics in result.best_checkpoints] == [
+        {"step": 0, "val_score": best}
+    ]
+    assert os.path.exists(result.best_checkpoints[0][0].path)
+    assert os.path.exists(result.checkpoint.path)
+
+
 @pytest.mark.parametrize("num_validation_workers", [0, 1])
 def test_report_validation_fn_with_trainer_train_fn_report(num_validation_workers):
     """Test implementing the validation_fn with train_fn that reports metrics."""
