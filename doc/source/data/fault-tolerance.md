@@ -80,7 +80,7 @@ Ray Data turns off lineage reconstruction for the whole dataset if the dataset u
 
 ## Reconstruction failures
 
-If Ray Data detects a lost block but can't start reconstructing it (for example, because the task that produced the block isn't tracked in the lineage graph, or Ray Data no longer holds the input of the read task that the block traces back to), Ray Data raises a `ray.data.exceptions.LineageReconstructionError`. The error message includes both why the block was lost and why reconstruction failed.
+If Ray Data detects a lost block but can't start reconstructing it, Ray Data raises a `ray.data.exceptions.LineageReconstructionError`. For example, reconstruction can't start when the task that produced the block isn't tracked in the lineage graph, or when Ray Data no longer holds the input of the read task that the block traces back to. The error message includes both why the block was lost and why reconstruction failed.
 
 `LineageReconstructionError` is a subclass of {class}`~ray.exceptions.ObjectLostError`, so code that already catches `ObjectLostError` also catches it.
 
