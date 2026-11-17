@@ -226,6 +226,22 @@ def _supports_types(
     return True
 
 
+def _has_null_typed_target(
+    table: pa.Table,
+    aggs: Tuple["AggregateFnV2", ...],
+    specs: List[ArrowAggSpec],
+) -> bool:
+    """Whether a type-checked spec's source column is entirely null here
+    (Arrow type ``null``). Such a block says nothing about the column's real
+    type, which another block may have and a spec may not support."""
+    for agg, spec in zip(aggs, specs):
+        col = agg.get_target_column()
+        if spec.supports_type is not None and col is not None:
+            if pa.types.is_null(table.schema.field(col).type):
+                return True
+    return False
+
+
 def _raw_rows_to_partials(
     table: pa.Table,
     keys: List[str],
@@ -246,6 +262,10 @@ def _raw_rows_to_partials(
 
     def _as_target(name: str, column):
         target_type = target_schema.field(name).type
+        if pa.types.is_large_list(column.type) and pa.types.is_list(target_type):
+            # List state past int32 offsets (see ``_list_offsets``): keep it
+            # large; concat promotes the other shards to match.
+            target_type = pa.large_list(target_type.value_field)
         return column if column.type == target_type else pc.cast(column, target_type)
 
     columns = {k: _as_target(k, table[k]) for k in keys}
@@ -493,9 +513,13 @@ def _make_vectorized_aggregating_transformer(
         if block.num_rows == 0:
             return block
 
-        if not _supports_types(block, aggs, specs):
+        if not _supports_types(block, aggs, specs) or _has_null_typed_target(
+            block, aggs, specs
+        ):
             # A column type some spec can't aggregate: ship raw rows, and the
-            # reducer aggregates them on the Python engine.
+            # reducer aggregates them on the Python engine. An all-null block
+            # also ships raw: its column may have an unsupported type in
+            # other blocks, and the reducer decides once it has seen them.
             return block.select(keep)
 
         if _should_skip_partial_aggregation(block, keys, policy):
@@ -549,9 +573,14 @@ def _make_vectorized_aggregating_reduce_fn(
             raws = [t for t in tables if partial_marker not in t.schema.names]
             raw = concat(raws, promote_types=True) if raws else None
             if raw is not None and not _supports_types(raw, aggs, specs):
-                # Map tasks only ship such rows raw, and every block of a
-                # column has the same type, so there are no partials here.
-                assert not partials, "unsupported column type in partial shards"
+                # Map tasks ship blocks of unsupported or unknown (all-null)
+                # type raw, so partials here mean blocks disagree on the
+                # column's type (e.g. int64 in some, a list in others).
+                if partials:
+                    raise ValueError(
+                        "Blocks have different types for an aggregated "
+                        f"column: {raw.schema} vs {partials[0].schema}"
+                    )
                 yield from _python_aggregate(key_columns, aggregation_fns, raw)
                 return
             if not partials:
@@ -567,7 +596,7 @@ def _make_vectorized_aggregating_reduce_fn(
             yield _finalize_aggregates(merged, keys, aggs, specs, comps)
             return
 
-        combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        combined = concat(tables, promote_types=True)
 
         # E.g. distinct/count_distinct have no kernel for a nested source
         # column (the map shipped raw rows); delegate the partition to Python.

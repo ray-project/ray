@@ -1364,10 +1364,15 @@ def test_vectorized_as_list_matches_python_engine(kind, ignore_nulls, modes):
 
 def test_vectorized_aggs_nan_semantics():
     """NaN is a value: it makes Std NaN, as with Mean; Quantile skips it;
-    TopKUnique counts it as null; ValueCounter counts it on its own."""
+    TopKUnique counts it as null; ValueCounter counts it on its own. AbsMax
+    skips it unless a group is all NaN, as with Max."""
+    from ray.data.aggregate import Max
+
     nan = float("nan")
-    table = pa.table({"k": [0, 0, 0, 0], "v": [1.0, nan, 3.0, None]})
+    table = pa.table({"k": [0, 0, 0, 0, 1], "v": [1.0, nan, -3.0, None, nan]})
     aggs = (
+        AbsMax("v"),
+        Max("v"),
         Std("v"),
         Mean("v"),
         Quantile("v"),
@@ -1375,14 +1380,18 @@ def test_vectorized_aggs_nan_semantics():
         ValueCounter("v"),
     )
     for modes in [("always",), ("never",)]:
-        (row,) = _aggregate_shards(aggs, [table], modes).to_pylist()
+        row, all_nan = sorted(
+            _aggregate_shards(aggs, [table], modes).to_pylist(), key=lambda r: r["k"]
+        )
+        assert row["abs_max(v)"] == 3.0 and row["max(v)"] == 1.0
+        assert np.isnan(all_nan["abs_max(v)"]) and np.isnan(all_nan["max(v)"])
         assert np.isnan(row["std(v)"]) and np.isnan(row["mean(v)"])
-        assert row["quantile(v)"] == 2.0
-        assert row["topk_unique(v)"] == [None, 1.0, 3.0]
+        assert row["quantile(v)"] == -1.0
+        assert row["topk_unique(v)"] == [None, -3.0, 1.0]
         counts = row["value_counter(v)"]
         assert sorted(zip(map(repr, counts["values"]), counts["counts"])) == [
+            ("-3.0", 1),
             ("1.0", 1),
-            ("3.0", 1),
             ("None", 1),
             ("nan", 1),
         ]
@@ -1423,6 +1432,41 @@ def test_unsupported_value_types_use_python_engine():
         {"k": 0, "topk_unique(v)": [[1, 2]]},
         {"k": 1, "topk_unique(v)": [[4]]},
     ]
+
+
+@pytest.mark.parametrize("modes", [("always", "always"), ("never", "always")])
+def test_all_null_block_with_unsupported_type(modes):
+    """An all-null block has Arrow type null, which says nothing about the
+    column's real type; another block's list values need the Python engine,
+    so the null block must not be pre-aggregated either."""
+    tables = [
+        pa.table({"k": [0, 1], "v": pa.nulls(2)}),
+        pa.table({"k": [0, 0], "v": [[1, 2], [1, 2]]}),
+    ]
+    aggs = (TopKUnique("v", k=1),)
+    expected = _aggregate_shards(aggs, tables, modes=None).to_pylist()
+    got = _aggregate_shards(aggs, tables, modes).to_pylist()
+    assert sorted(got, key=lambda r: r["k"]) == sorted(expected, key=lambda r: r["k"])
+
+
+@pytest.mark.parametrize("modes", [("always", "never"), ("never", "never")])
+def test_large_list_state(modes):
+    """List state past int32 offsets is a LargeList; raw rows' state must not
+    be cast down to a regular list when merged with it."""
+    import ray.data._internal.arrow_aggregation as arrow_aggregation
+
+    def _large_offsets(lengths):
+        offsets = np.zeros(len(lengths) + 1, dtype=np.int64)
+        np.cumsum(lengths, out=offsets[1:])
+        return pa.array(offsets), pa.LargeListArray
+
+    tables = [_vectorized_vs_python_table("int32", seed, 5) for seed in range(2)]
+    aggs = (AsList("v"), Quantile("v"), TopKUnique("v", k=2), ValueCounter("v"))
+    expected = _rows_by_key(_aggregate_shards(aggs, tables, modes), sort_lists=True)
+    with patch.object(arrow_aggregation, "_list_offsets", _large_offsets):
+        large = _aggregate_shards(aggs, tables, modes)
+    assert pa.types.is_large_list(large.schema.field("list(v)").type)
+    assert _rows_by_key(large, sort_lists=True) == expected
 
 
 class _SumOfSquares(AggregateFnV2):

@@ -73,11 +73,15 @@ class ArrowAggSpec(NamedTuple):
     ] = None
     # Alternatives to ``raw_agg_specs`` / ``merge_specs`` for state that
     # Arrow's grouped functions can't build (lists, value counts, Std's
-    # parallel merge).  Each gets the input table plus the ``Groups`` of the
-    # same group_by and returns one array per component, one entry per group.
-    # A spec with ``grouped_raw`` sets ``raw_agg_specs`` to ``_no_kernels``.
+    # parallel merge).  Each gets the input table plus a ``Groups`` saying
+    # which group each of its rows belongs to, and returns one array per
+    # component with one entry per group.  See ``Groups`` for a worked
+    # example.  A spec with ``grouped_raw`` sets ``raw_agg_specs`` to
+    # ``_no_kernels``.
     #   grouped_raw: (prepped_table, groups, agg_index, source_col, options)
+    #     aggregates raw rows (map side, or raw shards on the reducer).
     #   grouped_merge: (partials_table, groups, component_cols, options)
+    #     merges partial rows from different shards (reducer).
     grouped_raw: Optional[Callable[..., List["pa.Array"]]] = None
     grouped_merge: Optional[Callable[..., List["pa.Array"]]] = None
     # (source column type) -> whether this spec can aggregate it.  None means
@@ -88,10 +92,35 @@ class ArrowAggSpec(NamedTuple):
 class Groups(NamedTuple):
     """Which group each input row of a ``group_by`` landed in.
 
-    ``group_by`` returns one row per group but not the row -> group mapping
-    (pandas' ``groupby().ngroup()``). Merges like Std's need it to broadcast a
-    group's value back to its rows; ``ids[r]`` is the output row of input row
-    ``r`` and ``count`` the number of groups.
+    ``ids[r]`` is the output row (group) of input row ``r``, and ``count`` is
+    the number of groups: pandas' ``groupby().ngroup()``. Arrow's
+    ``group_by(...).aggregate(...)`` only returns one row per group, so the
+    hash aggregator gets this mapping by adding a ``("__ray_row", "list")``
+    aggregation (each group's input row numbers) to the same ``group_by`` and
+    scattering it back. Using the same ``group_by`` keeps ``ids`` aligned
+    with the other aggregations' output rows, null keys included (a join
+    would drop them).
+
+    With ``ids``, per-group math is plain numpy over whole arrays:
+    ``np.bincount(ids, weights=x)`` sums ``x`` per group, and
+    ``per_group[ids]`` broadcasts a per-group value back to the rows.
+
+    Example: merging Std partials (``n``, ``mean``) from two shards::
+
+        partials   row  key  n  mean        group_by("key") output
+                    0    a   2   10           group 0: key=a, __ray_row=[0, 2]
+                    1    b   1    5           group 1: key=b, __ray_row=[1]
+                    2    a   2   20
+        ids   = [0, 1, 0]                   # row 0 -> group 0, ...
+        count = 2
+
+        total     = np.bincount(ids, weights=n)              # [4, 1]
+        mean_all  = np.bincount(ids, weights=n * mean) / total  # [15, 5]
+        deviation = mean - mean_all[ids]                     # [-5, 0, 5]
+
+    ``deviation`` is each partial's distance from its group's overall mean,
+    which Std's merge needs (see ``_merge_std``) and which no single Arrow
+    grouped function can compute.
     """
 
     ids: np.ndarray
@@ -456,9 +485,20 @@ def _merge_std(
     component_cols: Tuple[str, ...],
     options: ArrowAggOptions,
 ) -> List["pa.Array"]:
-    """Merges ``(count, mean, population variance)`` partials per group with
-    Chan et al.'s parallel formula, for all groups at once:
-    ``M2 = sum(n_i * (var_i + (mean_i - mean)^2))``."""
+    """Merges ``(count, mean, population variance)`` partials per group, for
+    all groups at once, with the pairwise update of Chan, Golub and LeVeque,
+    "Updating Formulae and a Pairwise Algorithm for Computing Sample
+    Variances" (Stanford CS tech report STAN-CS-79-773, 1979), generalized
+    to k partials:
+
+        mean = sum(n_i * mean_i) / N,   N = sum(n_i)
+        M2   = sum(n_i * (var_i + (mean_i - mean)^2))
+
+    where ``M2`` is the sum of squared deviations from ``mean``. Unlike
+    accumulating sum and sum of squares, this stays accurate when
+    ``|mean| >> std``. See also
+    https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+    """
     count_col, mean_col, var_col = component_cols
     ids, num_groups = groups.ids, groups.count
     n = _as_array(pc.cast(table[count_col], pa.int64())).to_numpy(zero_copy_only=False)
