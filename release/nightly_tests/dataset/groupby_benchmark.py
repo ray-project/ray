@@ -1,11 +1,14 @@
 import argparse
+import json
+import math
+import time
 
 import pyarrow as pa
 from pyarrow import types
 import pyarrow.compute as pc
 import ray
 
-from benchmark import Benchmark
+from benchmark import Benchmark, _query_prometheus
 from ray.data import DataContext
 from ray.data.aggregate import (
     AbsMax,
@@ -166,12 +169,38 @@ def _make_benchmark_fn(args, consume_fn):
         else:
             ds = ds.map_batches(_cast_strings_to_large, batch_format="pyarrow")
         grouped_ds = ds.groupby(args.group_by)
+        start = time.time()
         consume_fn(grouped_ds)
+        end = time.time()
 
-        # Report arguments for the benchmark.
-        return vars(args)
+        # Report arguments for the benchmark, plus peak memory.
+        return {**vars(args), **_peak_node_memory_gb(start, end)}
 
     return benchmark_fn
+
+
+def _peak_node_memory_gb(start_unix_time: float, end_unix_time: float) -> dict:
+    """Peak physical memory used across the cluster (sum over nodes) and on
+    the busiest node, from Prometheus. Covers all processes on the nodes,
+    including the object store's shared memory. Empty if the query fails."""
+    selector = "ray_node_mem_used_host{SessionName=%s}" % json.dumps(
+        ray.get_runtime_context().get_session_name()
+    )
+    seconds = max(1, math.ceil(end_unix_time - start_unix_time))
+    queries = {
+        "cluster_memory_used_peak_gb": (
+            f"max_over_time(sum({selector})[{seconds}s:10s])"
+        ),
+        "node_memory_used_peak_gb": f"max(max_over_time({selector}[{seconds}s]))",
+    }
+    metrics = {}
+    for name, query in queries.items():
+        try:
+            (result,) = _query_prometheus(query, end_unix_time)
+            metrics[name] = round(float(result["value"][1]) / 1e9, 2)
+        except Exception as e:
+            print(f"Failed to query {name}: {e!r}")
+    return metrics
 
 
 def get_consume_fn(args: argparse.Namespace):
