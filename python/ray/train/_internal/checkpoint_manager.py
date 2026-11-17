@@ -1,6 +1,6 @@
 import logging
 import numbers
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from ray._private import ray_constants
 from ray._private.dict import flatten_dict
@@ -69,6 +69,10 @@ class _CheckpointManager:
         # even if it's not in the top K checkpoints, based on score.
         self._latest_checkpoint_result: Optional[_TrainingResult] = None
 
+        # Checkpoints with missing `checkpoint_score_attribute`, to allow only
+        # reporting this issue once.
+        self._checkpoints_missing_score_logged: Set[Checkpoint] = set()
+
         if (
             self._checkpoint_config.num_to_keep is not None
             and self._checkpoint_config.num_to_keep <= 0
@@ -94,13 +98,14 @@ class _CheckpointManager:
             checkpoint_result: Tracked training result containing the checkpoint
                 and associated metrics to add to bookkeeping.
         """
-        self._latest_checkpoint_result = checkpoint_result
-
         score_attr = self._checkpoint_config.checkpoint_score_attribute
         if ray_constants.env_bool(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, False):
+            # The score attribute can be a nested key such as "a/b", so look it
+            # up in the flattened metrics.
+            flat_metrics = flatten_dict(checkpoint_result.metrics)
             metrics = (
-                {score_attr: checkpoint_result.metrics[score_attr]}
-                if score_attr in checkpoint_result.metrics
+                {score_attr: flat_metrics[score_attr]}
+                if score_attr in flat_metrics
                 else {}
             )
             checkpoint_result = _TrainingResult(
@@ -108,9 +113,11 @@ class _CheckpointManager:
                 metrics=metrics,
             )
 
-        if score_attr is not None and score_attr in checkpoint_result.metrics:
+        self._latest_checkpoint_result = checkpoint_result
+        if score_attr is not None:
             # If we're ordering by a score, insert the checkpoint
-            # so that the list remains sorted.
+            # so that the list remains sorted. A checkpoint without the
+            # score ranks worst (see `_get_checkpoint_score`).
             _insert_into_sorted_list(
                 self._checkpoint_results,
                 checkpoint_result,
@@ -138,6 +145,7 @@ class _CheckpointManager:
             for checkpoint_result in results_to_delete:
                 checkpoint = checkpoint_result.checkpoint
                 logger.debug("Deleting checkpoint: %s", checkpoint)
+                self._checkpoints_missing_score_logged.discard(checkpoint)
                 _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     def _get_checkpoint_score(
@@ -161,13 +169,10 @@ class _CheckpointManager:
             try:
                 checkpoint_result = flat_metrics[checkpoint_score_attribute]
             except KeyError:
-                valid_keys = list(flat_metrics.keys())
-                logger.error(
-                    f"Result dict has no key: {checkpoint_score_attribute}. "
-                    f"checkpoint_score_attr must be set to a key in the "
-                    f"result dict. Valid keys are: {valid_keys}"
-                )
-                checkpoint_result = float("-inf")
+                self._log_missing_score_attribute(checkpoint, list(flat_metrics))
+                # Rank a missing score as the worst valid score in either order.
+                # Applying the order factor would turn it into +inf in "min" mode.
+                return True, float("-inf")
         else:
             checkpoint_result = float("-inf")
 
@@ -189,6 +194,21 @@ class _CheckpointManager:
             (not is_nan(checkpoint_score), checkpoint_score)
             if not is_nan(checkpoint_score)
             else (False, float("-inf"))
+        )
+
+    def _log_missing_score_attribute(
+        self, checkpoint_result: _TrainingResult, checkpoint_metric_keys: List[str]
+    ):
+        """Log, once per checkpoint, that it has no `checkpoint_score_attribute` metric."""
+        checkpoint = checkpoint_result.checkpoint
+        if checkpoint in self._checkpoints_missing_score_logged:
+            return
+        self._checkpoints_missing_score_logged.add(checkpoint)
+        checkpoint_path = checkpoint.path if checkpoint else None
+        logger.error(
+            f"Checkpoint {checkpoint_path} metrics are missing the checkpoint_score_attribute "
+            f"key ({self._checkpoint_config.checkpoint_score_attribute}) to score by. "
+            f"Its metric keys are: {checkpoint_metric_keys}"
         )
 
     @property

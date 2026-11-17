@@ -1131,14 +1131,14 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:e78409ea72f5ac7d6b6f3d33d99426a94005254fa57e10617f430f9fd7c3a0a1 \
     --hash=sha256:f33c9c975782ef7a42c79b6b4fb3d5b043498f9b947126d792592372b432d393
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
-daft==0.7.15 \
-    --hash=sha256:6f192c9e090a27f121855f2a4a4f5781569d7fe7f158a0ad3d8f161b50f92c08 \
-    --hash=sha256:70fac4183d2d68be8eed7e57534189fc35da269f231cba66ed1212d5907abf60 \
-    --hash=sha256:789a05490748befea2cb585b0b0527eb130a0b5888b73fbc8dcc93ce2112da0f \
-    --hash=sha256:b893e732db49020daeab500f636842d271eaa8d0a210e9b1a68e4b178da1e419 \
-    --hash=sha256:e4231a0d2512fa6a7a74eca1b8f5c1be3fba75901f3ab32f34914f020403f930 \
-    --hash=sha256:f7c7bfd5714eb5729cf9ce3362834cae2a8759a97bd7423b69ba2bfbba203bf5
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+daft==0.7.26 \
+    --hash=sha256:57e08253601ebf5aa3da9931306dc059af2dc91de9dcccc279293a0fbf88ac64 \
+    --hash=sha256:8b6e7b8d4e802f15e0f5facb9e019723837d970fa6271449537fe0d594c7aea7 \
+    --hash=sha256:a57d2db079a9736acd65fdff8951ea31d9626f4cb0fa70caec5e298c63005f85 \
+    --hash=sha256:c4e47f5c2bd4d24183c79bee2d8ce340bed0478c6095cd493325d476c02cb01c \
+    --hash=sha256:dc629070c275f25bbabb07d21efcaa1b35cbdf57ed618c5d0b3bf50ae63f44ab \
+    --hash=sha256:ec9034fecd87a76ed1dfb6bba059f81f60a4a363dc6a743ab616175d10ffd3b4
+    # via -r python/requirements/data/pyarrow-nightly.txt
 dask==2026.3.0 \
     --hash=sha256:be614b9242b0b38288060fb2d7696125946469c98a1c30e174883fd199e0428d \
     --hash=sha256:f7d96c8274e8a900d217c1ff6ea8d1bbf0b4c2c21e74a409644498d925eb8f85
@@ -1595,7 +1595,6 @@ fsspec==2023.12.1 \
     --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
-    #   daft
     #   dask
     #   etils
     #   huggingface-hub

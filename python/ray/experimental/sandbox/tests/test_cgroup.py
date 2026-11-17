@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 from unittest.mock import Mock
 
 import pytest
@@ -253,12 +254,15 @@ def test_launcher_changes_only_the_workloads_oom_priority() -> None:
 
 
 @pytest.mark.parametrize("limited", [False, True])
+@pytest.mark.parametrize("choom", [None, "/usr/bin/choom"])
 def test_backend_applies_oom_priority_to_start_exec_and_file_io(
     shared: Path,
     bundles: Path,
     monkeypatch: pytest.MonkeyPatch,
     limited: bool,
+    choom: Optional[str],
 ) -> None:
+    monkeypatch.setattr(gvisor, "_choom", lambda: choom)
     images = Mock()
     images.get_workdir.return_value = None
     backend = GVisorSandboxBackend(image_manager=images)
@@ -270,10 +274,10 @@ def test_backend_applies_oom_priority_to_start_exec_and_file_io(
 
     def popen(args, **kwargs):
         commands.append(args)
-        if limited:
-            (Path(args[3]) / "cgroup.procs").write_text(str(process.pid))
         if "--pid-file" in args:
-            # As `runsc run` does once the container exists.
+            # As the launcher does, and `runsc run` once the container exists.
+            if limited:
+                (Path(args[3]) / "cgroup.procs").write_text(str(process.pid))
             Path(args[args.index("--pid-file") + 1]).write_text(str(process.pid))
         return process
 
@@ -292,9 +296,17 @@ def test_backend_applies_oom_priority_to_start_exec_and_file_io(
         backend.write_file(sandbox_id, "/file", b"content")
         assert backend.read_file(sandbox_id, "/file") == b"output"
         assert len(commands) == 4
-        for command in commands:
-            assert command[command.index("--oom-score-adj") + 1] == "0"
-            assert command[3] == (str(shared / sandbox_id) if limited else "")
+        launch, *later = commands
+        assert launch[launch.index("--oom-score-adj") + 1] == "0"
+        # Only the launch joins the sandbox's cgroup. exec and file I/O run in
+        # its Sentry, which is in the cgroup already, so they only set the
+        # OOM score: with choom where the node has it, else with the launcher.
+        assert launch[3] == (str(shared / sandbox_id) if limited else "")
+        for command in later:
+            if choom:
+                assert command[:5] == [choom, "-n", "0", "--", "runsc"]
+            else:
+                assert command[3:7] == ["", "--oom-score-adj", "0", "runsc"]
     finally:
         backend.delete_sandbox(sandbox_id)
 

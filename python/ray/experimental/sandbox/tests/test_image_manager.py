@@ -703,12 +703,28 @@ def _prepare(mgr, root_dir, **kwargs):
     return mgr.spec_kwargs["resolv_conf_source"]
 
 
-def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path):
+def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path, monkeypatch):
+    # The built-in resolvers, whatever this node sets.
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
     mgr = _SpecCapturingManager(tmp_path)
     source = _prepare(mgr, tmp_path, network="public")
     assert source == os.path.join(str(tmp_path), "resolv.conf")
     content = open(source, encoding="utf-8").read()
     assert content == "nameserver 8.8.8.8\nnameserver 1.1.1.1\n"
+
+
+def test_prepare_oci_bundle_public_uses_the_node_default_resolvers(
+    tmp_path, monkeypatch
+):
+    """RAY_SANDBOX_DEFAULT_DNS replaces the public resolvers on networks that
+    block them; a sandbox's own dns still wins."""
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", " 103.247.36.36, 10.0.0.2 ")
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="public")
+    content = open(source, encoding="utf-8").read()
+    assert content == "nameserver 103.247.36.36\nnameserver 10.0.0.2\n"
+    source = _prepare(mgr, tmp_path, network="public", dns=["10.0.0.9"])
+    assert open(source, encoding="utf-8").read() == "nameserver 10.0.0.9\n"
 
 
 def test_prepare_oci_bundle_dns_overrides_for_public_and_host(tmp_path):
@@ -1208,6 +1224,63 @@ def test_extract_tar_layer_defers_restrictive_directory_modes(tmp_path):
     assert stat.S_IMODE(os.stat(dest / "locked").st_mode) == 0o500
     # Restore writability so pytest can clean the tmp dir up.
     os.chmod(dest / "locked", 0o700)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory modes")
+def test_read_only_directory_stays_writable_until_the_last_layer(tmp_path):
+    """A later layer can add and delete entries in a directory an earlier
+    layer ships read-only, as a commit split mid-directory does; the archived
+    mode lands once every layer is extracted."""
+    import io
+    import stat
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import (
+        apply_dir_attrs,
+        extract_tar_layer,
+    )
+
+    def layer(*members) -> bytes:
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            for name, mode, data in members:
+                info = tarfile.TarInfo(name)
+                info.mode = mode
+                if data is None:
+                    info.type = tarfile.DIRTYPE
+                    tar.addfile(info)
+                else:
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+        return buf.getvalue()
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    dir_attrs = {}
+    layers = [
+        layer(
+            ("gomod", 0o555, None),
+            ("gomod/big0.bin", 0o444, b"0"),
+            ("gomod/stale", 0o444, b"s"),
+            ("gone", 0o555, None),
+        ),
+        layer(
+            ("gomod/big1.bin", 0o444, b"1"),
+            ("gomod/.wh.stale", 0o644, b""),
+            ("gone", 0o644, b"now a file"),
+        ),
+    ]
+    for data in layers:
+        extract_tar_layer(data, str(dest), dir_attrs=dir_attrs)
+    apply_dir_attrs(str(dest), dir_attrs)
+
+    try:
+        assert sorted(os.listdir(dest / "gomod")) == ["big0.bin", "big1.bin"]
+        assert stat.S_IMODE(os.stat(dest / "gomod").st_mode) == 0o555
+        # The replaced directory's mode is not applied to the file.
+        assert stat.S_IMODE(os.stat(dest / "gone").st_mode) == 0o644
+    finally:
+        os.chmod(dest / "gomod", 0o755)
 
 
 if __name__ == "__main__":

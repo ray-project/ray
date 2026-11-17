@@ -51,11 +51,11 @@ with tf.distribute.MultiWorkerMirroredStrategy().scope():
 
 ### Step 2: Update your `Dataset` batch size to the global batch size
 
-Because the [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch) splits evenly across worker processes, set `batch_size` to the per-worker batch size times the number of workers.
+TensorFlow splits each [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch) evenly across worker processes. Set the dataset's `batch_size` to the global batch size, which is the per-worker batch size times the number of workers.
 
 ```diff
--batch_size = worker_batch_size
-+batch_size = worker_batch_size * train.get_context().get_world_size()
+-batch_size = per_worker_batch_size
++global_batch_size = per_worker_batch_size * train.get_context().get_world_size()
 ```
 
 ## Create a `TensorflowTrainer`
@@ -125,6 +125,11 @@ def train_func(config: dict):
     # Get dataset shard from Ray Train
     dataset_shard = train.get_context().get_dataset_shard("train")
 
+    # The dataset batch size is the global batch size, which TensorFlow splits
+    # evenly across workers.
+    per_worker_batch_size = 64
+    global_batch_size = per_worker_batch_size * train.get_context().get_world_size()
+
     # Define a helper function to build a TensorFlow dataset
     def to_tf_dataset(dataset, batch_size):
         def to_tensor_iterator():
@@ -148,7 +153,7 @@ def train_func(config: dict):
         # Call our helper function to build the dataset
         tf_dataset = to_tf_dataset(
             dataset=dataset_shard,
-            batch_size=64,
+            batch_size=global_batch_size,
         )
         history = multi_worker_model.fit(tf_dataset)
 ```
