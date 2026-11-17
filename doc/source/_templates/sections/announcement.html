@@ -2,7 +2,12 @@
     Change: the banner content <div> is a <header>. Nested in the <aside>, it adds no landmark.
     Why: Read the Docs serves docs.ray.io through Cloudflare, which converts pages to Markdown for clients
     that send `Accept: text/markdown`, such as coding agents. The converter drops <header>, <footer>, and <nav>
-    but keeps <div> and <aside>, so site chrome in a <div> leaks into the Markdown as page content. -#}
+    but keeps <div> and <aside>, so site chrome in a <div> leaks into the Markdown as page content.
+    Change: Ray Train pages also render `train_banner` from html_context in conf.py.
+    Why: a banner scoped to one library renders server-side, so it never flashes on other pages.
+    TODO(Ray 3.0): Remove `show_train_banner` and its uses here when Train V1 is removed, along with
+    `train_banner` in conf.py. -#}
+{%- set show_train_banner = train_banner and pagename.startswith(train_banner_page_prefixes) -%}
 {#- The "revealer" allows async banners to be loaded, revealed, and animated together in a controlled way -#}
 <div class="pst-async-banner-revealer d-none">
 {#- Version warning banner is always loaded remotely/asynchronously #}
@@ -11,13 +16,16 @@
 {%- set announcement_banner_label = _("Announcement") -%}
 {%- set announcement_banner_classes = "bd-header-announcement d-print-none" -%}
 {%- set announcement_is_remote = theme_announcement and theme_announcement.startswith("http") -%}
-{%- set announcement_is_local = theme_announcement and not announcement_is_remote -%}
+{%- set announcement_is_local = (theme_announcement and not announcement_is_remote) or show_train_banner -%}
   {%- if announcement_is_remote %}
   <aside class="{{ announcement_banner_classes }} d-none" aria-label="{{ announcement_banner_label }}" data-pst-announcement-url="{{ theme_announcement }}"></aside>
   {%- endif %}
 </div>
 {%- if announcement_is_local %}
 <aside class="bd-header-announcement" aria-label="Announcement">
-  <header class="bd-header-announcement__content">{{ theme_announcement }}</header>
+  <header class="bd-header-announcement__content">
+    {%- if theme_announcement and not announcement_is_remote %}{{ theme_announcement }}{% endif -%}
+    {%- if show_train_banner %}{{ train_banner }}{% endif -%}
+  </header>
 </aside>
 {%- endif %}

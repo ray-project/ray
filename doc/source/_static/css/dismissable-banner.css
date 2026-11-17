@@ -11,6 +11,15 @@
     background-color: var(--ray-blue-dark);
 }
 
+/* A slimmer band for notices scoped to one library's pages, such as the Ray
+   Train V1 deprecation notice.
+   TODO(Ray 3.0): Remove with the Train V1 deprecation banner in conf.py, unless
+   another banner uses this class by then. */
+.ray-banner--compact {
+    padding: 0.25rem 3rem;
+    font-size: 0.875rem;
+}
+
 .ray-banner__close {
     background: none;
     border: none;
