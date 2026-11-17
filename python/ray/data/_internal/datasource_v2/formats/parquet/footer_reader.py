@@ -451,9 +451,12 @@ class FooterReader:
         # single schema, so resolve them once rather than rescanning every leaf
         # for each group. The read-column lookup reads leaf paths off row group 0,
         # which a file with no row groups has none of; it sizes nothing either way.
-        file_filter, prune_filter, filter_columns, complete_filter = (
-            self._filter_for_file(path, metadata.schema)
-        )
+        (
+            file_filter,
+            prune_filter,
+            filter_columns,
+            complete_filter,
+        ) = self._filter_for_file(path, metadata.schema)
         filter_leaves = self._locate_filter_columns(metadata.schema, filter_columns)
         leaf_indices = (
             self._read_leaf_indices(metadata.row_group(0))
