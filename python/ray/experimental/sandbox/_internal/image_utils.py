@@ -955,6 +955,16 @@ def _free_bytes(path: str) -> Optional[int]:
         return None
 
 
+def _short_of_free_space(images_dir: str) -> int:
+    """The free-space floor if the cache's filesystem is below it, else 0.
+
+    At most two statvfs calls, cheap enough for every cache hit.
+    """
+    min_free = image_cache_min_free_bytes(images_dir)
+    free = _free_bytes(images_dir) if min_free > 0 else None
+    return min_free if free is not None and free < min_free else 0
+
+
 def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
     """Record ``instance_id`` as a live user of the cached image.
 
@@ -1020,27 +1030,63 @@ def _file_size_bytes(path: str) -> int:
         return 0
 
 
-def _rename_for_deletion(image_dir: str) -> str:
+def _rename_for_deletion(image_dir: str) -> Tuple[str, int]:
     """Atomically rename a cached image's directory to
-    ``.deleting.<random>``, and return the new path to delete.
+    ``.deleting.<random>``, and return the new path with a descriptor that
+    holds the deletion's lock on it, both for ``_delete_renamed``.
 
     A crash midway through deleting it then never leaves a partly deleted
     image under the image's own name, and the next pull sweeps up what such a
     crash leaves behind (see ``_remove_stale_deletions``). The new name
     leaves out the image's, so it stays short whatever the image's name.
+
+    The lock is taken before the rename, so no sweep finds the directory
+    under its new name without it.
     """
     images_dir = os.path.dirname(image_dir)
     renamed = os.path.join(images_dir, f".deleting.{uuid.uuid4().hex}")
-    os.replace(image_dir, renamed)
-    return renamed
+    lock_fd = os.open(image_dir, os.O_RDONLY)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        os.replace(image_dir, renamed)
+    except BaseException:
+        os.close(lock_fd)
+        raise
+    return renamed, lock_fd
+
+
+def _delete_renamed(renamed: str, lock_fd: int) -> None:
+    """Delete a directory renamed for deletion, then release its lock."""
+    try:
+        shutil.rmtree(renamed, ignore_errors=True)
+    finally:
+        os.close(lock_fd)
 
 
 def _remove_stale_deletions(images_dir: str) -> None:
     """Finish deleting image directories whose deletion was interrupted (see
-    ``_rename_for_deletion``)."""
+    ``_rename_for_deletion``).
+
+    Each deletion holds a lock on its directory from before the rename until
+    the directory is gone, and a directory that another process or thread is
+    deleting is left to it, so nobody waits for a deletion that isn't its
+    own. The lock goes with its process, so what a killed worker left is
+    taken at once.
+    """
     for name in os.listdir(images_dir):
-        if name.startswith(".deleting."):
-            shutil.rmtree(os.path.join(images_dir, name), ignore_errors=True)
+        if not name.startswith(".deleting."):
+            continue
+        path = os.path.join(images_dir, name)
+        try:
+            fd = os.open(path, os.O_RDONLY)
+        except OSError:
+            continue  # Gone since the listing.
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            continue  # Being deleted.
+        _delete_renamed(path, fd)
 
 
 def evict_least_recently_used_images(
@@ -1121,6 +1167,7 @@ def evict_least_recently_used_images(
         if name == keep or (img_dir is not None and _has_users(img_dir)):
             continue
         lock_path = os.path.join(images_dir, f"{name}.lock")
+        moved_aside = None
         try:
             with open(lock_path, "w", encoding="utf-8") as f_lock:
                 fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1137,17 +1184,18 @@ def evict_least_recently_used_images(
                         pass  # Count an entry another pull already evicted.
                 # Another pull may have evicted it since the scan.
                 if img_dir is not None and os.path.isdir(img_dir):
-                    _rename_for_deletion(img_dir)
+                    moved_aside = _rename_for_deletion(img_dir)
                 try:
                     os.remove(tar_path)
                 except OSError:
                     pass
         except OSError:
             continue  # Locked by an in-progress pull; try the next one.
-        # Delete the image once its lock is free, so a pull of it doesn't wait
-        # for the delete.
-        if img_dir is not None:
-            _remove_stale_deletions(images_dir)
+        finally:
+            # Delete the image once its lock is free, so a pull of it doesn't
+            # wait for the delete.
+            if moved_aside is not None:
+                _delete_renamed(*moved_aside)
         total -= size
         free = _free_bytes(images_dir)
         logger.info(
@@ -1217,16 +1265,11 @@ def pull_and_extract_container_image(
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
+    # Finish deleting what a killed worker moved aside. One listdir, so a
+    # cache hit pays it too, and a node that only ever hits its cache still
+    # gets that space back. What an eviction is deleting right now is left
+    # to it, so that a hit doesn't wait for another process's deletion.
     _remove_stale_deletions(images_dir)
-    max_cache = image_cache_max_bytes(images_dir)
-    min_free = image_cache_min_free_bytes(images_dir)
-    if max_cache > 0 or min_free > 0:
-        evict_least_recently_used_images(
-            images_dir,
-            max_cache if max_cache > 0 else None,
-            keep=safe_name,
-            min_free_bytes=min_free,
-        )
 
     expected_marker = expected_extract_marker()
 
@@ -1235,23 +1278,72 @@ def pull_and_extract_container_image(
             _mark_image_in_use(target_dir, instance_id)
         return target_dir
 
-    with open(lock_path, "w", encoding="utf-8") as f_lock:
+    marker_path = os.path.join(target_dir, ".extracted")
+
+    def _cached() -> bool:
+        if not (os.path.isdir(target_dir) and os.path.exists(marker_path)):
+            return False
+        try:
+            with open(marker_path, "r", encoding="utf-8") as f_mark:
+                if f_mark.read() != expected_marker:
+                    return False  # A cache of another format re-pulls once.
+        except OSError:
+            return False
+        return not os.path.isfile(image) or (
+            os.path.getmtime(marker_path) >= os.path.getmtime(image)
+        )
+
+    # Fast path: a current cache entry is used under a shared lock, so the
+    # sandboxes starting on a node at once don't queue on one another. Pulls
+    # and eviction take the lock exclusively, so neither runs while a user
+    # registers here.
+    with open(lock_path, "a", encoding="utf-8") as f_lock:
+        try:
+            fcntl.flock(f_lock, fcntl.LOCK_SH)
+            # A stale tree of an earlier cache format (see
+            # _drop_stale_rootfs_tree) needs the exclusive lock to go, and so
+            # does a disk below the free-space floor, which running sandboxes'
+            # overlays and logs can fill without any pull.
+            if (
+                _cached()
+                and not os.path.isdir(os.path.join(target_dir, "rootfs"))
+                and not _short_of_free_space(images_dir)
+            ):
+                return _finish()
+        finally:
+            try:
+                fcntl.flock(f_lock, fcntl.LOCK_UN)
+            except Exception:
+                pass
+
+    moved_aside = None
+    with open(lock_path, "a", encoding="utf-8") as f_lock:
         try:
             fcntl.flock(f_lock, fcntl.LOCK_EX)
-            marker_path = os.path.join(target_dir, ".extracted")
-            if os.path.isdir(target_dir) and os.path.exists(marker_path):
-                try:
-                    with open(marker_path, "r", encoding="utf-8") as f_mark:
-                        marker_current = f_mark.read() == expected_marker
-                except OSError:
-                    marker_current = False
-                # A cache of another format re-pulls once.
-                if marker_current and (
-                    not os.path.isfile(image)
-                    or os.path.getmtime(marker_path) >= os.path.getmtime(image)
-                ):
-                    _drop_stale_rootfs_tree(target_dir)
-                    return _finish()
+            if _cached():
+                _drop_stale_rootfs_tree(target_dir)
+                min_free = _short_of_free_space(images_dir)
+                if min_free:
+                    # Only the floor: a hit doesn't grow the cache, so the size
+                    # cap waits for the next pull.
+                    evict_least_recently_used_images(
+                        images_dir, None, keep=safe_name, min_free_bytes=min_free
+                    )
+                return _finish()
+
+            # A pull makes room first. A cache hit (every sandbox start after
+            # the first) skips this scan, which sizes every cached image,
+            # unless the disk is below the floor. Under this image's lock,
+            # which the scan never takes (keep).
+            max_cache = image_cache_max_bytes(images_dir)
+            min_free = image_cache_min_free_bytes(images_dir)
+            if max_cache > 0 or min_free > 0:
+                evict_least_recently_used_images(
+                    images_dir,
+                    max_cache if max_cache > 0 else None,
+                    keep=safe_name,
+                    min_free_bytes=min_free,
+                )
 
             if _has_users(target_dir):
                 raise SandboxCreationError(
@@ -1306,11 +1398,18 @@ def pull_and_extract_container_image(
             if users and os.path.isdir(old_tree):
                 os.replace(old_tree, tmp_rootfs_dir)
             if os.path.exists(target_dir):
-                _rename_for_deletion(target_dir)
+                moved_aside = _rename_for_deletion(target_dir)
             os.replace(tmp_extract_dir, target_dir)
             for user in users:
                 _mark_image_in_use(target_dir, user)
 
+            if max_cache > 0:
+                # Again, now that the new image counts. The scan before the
+                # pull couldn't see it, and cache hits don't check the size
+                # cap, so the cache would stay over it until the next pull.
+                evict_least_recently_used_images(
+                    images_dir, max_cache, keep=safe_name, min_free_bytes=min_free
+                )
             return _finish()
         finally:
             try:
@@ -1319,7 +1418,8 @@ def pull_and_extract_container_image(
                 pass
             # Delete an image the pull moved aside once the lock is free, so
             # other pulls of this image don't wait for it.
-            _remove_stale_deletions(images_dir)
+            if moved_aside is not None:
+                _delete_renamed(*moved_aside)
 
 
 def _download_blobs(
