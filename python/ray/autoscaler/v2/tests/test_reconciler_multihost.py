@@ -10725,8 +10725,11 @@ class TestReconcilerMultiHost:
                     NodeState(
                         node_id=reconcile_idle_id,
                         instance_id="tpu-pod-0",
+                        ray_node_type_name="tpu",
                         status=NodeStatus.IDLE,
                         idle_duration_ms=5000,
+                        total_resources={"CPU": 4.0, "TPU": 4.0},
+                        available_resources={"CPU": 4.0, "TPU": 4.0},
                         labels={
                             "ray.io/accelerator-type": "TPU-V6E",
                             "ray.io/tpu-topology": "4x4",
@@ -10738,8 +10741,7 @@ class TestReconcilerMultiHost:
             provider = MagicMock()
             provider.poll_errors.return_value = []
             provider.get_node_types_with_pending_deletes.return_value = set()
-            scheduler = MagicMock()
-            scheduler.schedule.return_value = SchedulingReply()
+            scheduler = ResourceDemandScheduler()
 
             Reconciler.reconcile(
                 instance_manager=im,
@@ -10930,7 +10932,9 @@ class TestReconcilerMultiHost:
             insts_t1, _ = store.get_instances()
             for k in ("b0", "b1", "i0", "i1"):
                 assert insts_t1[k].status == Instance.RAY_RUNNING
-            assert reconcile_logger.warning.call_count >= 2
+            tick1_warnings = reconcile_logger.warning.call_count
+            assert tick1_warnings >= 2
+            provider.launch.assert_not_called()
 
             # Tick 2: lid-idle expires idle > 10s while lid-busy stays active on b0 (b1 idle > 10s).
             tick2_state = ClusterResourceState(
@@ -10963,6 +10967,125 @@ class TestReconcilerMultiHost:
             assert insts_t2["b1"].status == Instance.RAY_RUNNING
             assert insts_t2["i0"].status == Instance.RAY_STOP_REQUESTED
             assert insts_t2["i1"].status == Instance.RAY_STOP_REQUESTED
+            # Warnings deduplicate via log_once across ticks, and 0 duplicate launches occur.
+            assert reconcile_logger.warning.call_count == tick1_warnings
+            provider.launch.assert_not_called()
+
+            # Tick 3 (ambiguous 4-host single-lrid batch missing runtime labels):
+            # 2 busy + 2 idle hosts must NOT be sliced apart; once all 4 are idle
+            # with min_worker_nodes=2, exactly 2 hosts terminate cleanly.
+            store_ambig = InstanceStorage(
+                cluster_id="multitick_ambig_lrid_seam", storage=InMemoryStorage()
+            )
+            im_ambig = InstanceManager(
+                store_ambig, instance_status_update_subscribers=[]
+            )
+            self._add_instances(
+                store_ambig,
+                [
+                    create_instance(
+                        "head",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="head",
+                        node_kind=NodeKind.HEAD,
+                        cloud_instance_id="head-pod",
+                        ray_node_id=binary_to_hex(head_id),
+                    ),
+                    *[
+                        create_instance(
+                            k,
+                            status=Instance.ALLOCATED,
+                            instance_type="tpu",
+                            cloud_instance_id=f"pod-{k}",
+                            launch_request_id="lid-shared",
+                        )
+                        for k in ("b0", "b1", "i0", "i1")
+                    ],
+                ],
+            )
+            min2_cfg = MockAutoscalingConfig(
+                configs={
+                    "max_num_nodes": 5,
+                    "idle_timeout_s": 10.0,
+                    "node_type_configs": {
+                        "head": node_type_configs["head"],
+                        "tpu": NodeTypeConfig(
+                            name="tpu",
+                            min_worker_nodes=2,
+                            max_worker_nodes=4,
+                            idle_timeout_s=10.0,
+                            resources={"CPU": 4, "TPU": 4},
+                            replica_config=node_type_configs["tpu"].replica_config,
+                            runtime_label_keys=node_type_configs[
+                                "tpu"
+                            ].runtime_label_keys,
+                        ),
+                    },
+                }
+            )
+            ambig_mixed_state = ClusterResourceState(
+                node_states=[
+                    NodeState(
+                        node_id=head_id,
+                        instance_id="head-pod",
+                        status=NodeStatus.RUNNING,
+                    ),
+                    _tpu_node(b0_id, "pod-b0", busy=True, idle_ms=0),
+                    _tpu_node(b1_id, "pod-b1", busy=False, idle_ms=20_000),
+                    _tpu_node(i0_id, "pod-i0", busy=True, idle_ms=0),
+                    _tpu_node(i1_id, "pod-i1", busy=False, idle_ms=20_000),
+                ]
+            )
+            Reconciler.reconcile(
+                instance_manager=im_ambig,
+                scheduler=ResourceDemandScheduler(),
+                cloud_provider=provider,
+                ray_cluster_resource_state=ambig_mixed_state,
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=min2_cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            ambig_t1, _ = store_ambig.get_instances()
+            assert all(
+                ambig_t1[k].status == Instance.RAY_RUNNING
+                for k in ("b0", "b1", "i0", "i1")
+            )
+
+            ambig_idle_state = ClusterResourceState(
+                node_states=[
+                    NodeState(
+                        node_id=head_id,
+                        instance_id="head-pod",
+                        status=NodeStatus.RUNNING,
+                    ),
+                    _tpu_node(b0_id, "pod-b0", busy=False, idle_ms=20_000),
+                    _tpu_node(b1_id, "pod-b1", busy=False, idle_ms=20_000),
+                    _tpu_node(i0_id, "pod-i0", busy=False, idle_ms=20_000),
+                    _tpu_node(i1_id, "pod-i1", busy=False, idle_ms=20_000),
+                ]
+            )
+            Reconciler.reconcile(
+                instance_manager=im_ambig,
+                scheduler=ResourceDemandScheduler(),
+                cloud_provider=provider,
+                ray_cluster_resource_state=ambig_idle_state,
+                non_terminated_cloud_instances=cloud_instances,
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=min2_cfg,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                _logger=reconcile_logger,
+            )
+            ambig_t2, _ = store_ambig.get_instances()
+            stopped = [
+                k
+                for k in ("b0", "b1", "i0", "i1")
+                if ambig_t2[k].status == Instance.RAY_STOP_REQUESTED
+            ]
+            assert len(stopped) == 2
         finally:
             reset_log_once()
 

@@ -447,6 +447,50 @@ class SchedulingNode:
         """Get the available resources for the given resource request source."""
         return self.available_resources_for_sched[resource_request_source]
 
+    def ippr_capacity_bounds(
+        self,
+    ) -> Optional[Tuple[bool, bool, float, float]]:
+        """Return `(in_progress, can_resize_up, cpu_bound, mem_bound)` when IPPR
+        affects scheduling capacity, else `None`."""
+        ippr = self.ippr_status
+        if ippr is None:
+            return None
+        in_progress = ippr.is_in_progress()
+        can_up = ippr.can_resize_up()
+        if not (in_progress or can_up):
+            return None
+        cpu = float(self.total_resources.get("CPU", 0.0))
+        mem = float(self.total_resources.get("memory", 0.0))
+        if in_progress:
+            cpu = float(ippr.desired_cpu)
+            mem = float(ippr.desired_memory)
+        if can_up:
+            cpu = max(cpu, float(ippr.max_cpu()))
+            mem = max(mem, float(ippr.max_memory()))
+        return (in_progress, can_up, cpu, mem)
+
+    def get_ippr_effective_available(
+        self, resource_request_source: ResourceRequestSource
+    ) -> Dict[str, float]:
+        """Return available resources adjusted for in-progress or resize-up IPPR."""
+        avail = self.get_available_resources(resource_request_source)
+        bounds = self.ippr_capacity_bounds()
+        if bounds is None:
+            return avail
+        _, _, cpu_bound, mem_bound = bounds
+        adjusted = dict(avail)
+        adjusted["CPU"] = max(
+            0.0,
+            adjusted.get("CPU", 0.0)
+            + (cpu_bound - self.total_resources.get("CPU", 0.0)),
+        )
+        adjusted["memory"] = max(
+            0.0,
+            adjusted.get("memory", 0.0)
+            + (mem_bound - self.total_resources.get("memory", 0.0)),
+        )
+        return adjusted
+
     def get_sched_requests(self, resource_request_source: ResourceRequestSource):
         """Get the resource requests for the given resource request source."""
         return self.sched_requests[resource_request_source]
@@ -2034,6 +2078,21 @@ class _ReplicaGrouper:
             rep.members.append(ph)
             out_nodes.append(ph)
 
+    def _compute_shared_runtime_labels(
+        self, running_nodes: List[SchedulingNode]
+    ) -> Dict[str, str]:
+        """Extract orthogonal runtime labels shared uniformly across `running_nodes`."""
+        if not (self.cfg.runtime_label_keys and running_nodes):
+            return {}
+        shared_rt: Dict[str, str] = {}
+        for key in self.cfg.runtime_label_keys:
+            if key in (self.dom_key, self.wid_key) or key in self.cfg.labels:
+                continue
+            vals = {m.labels[key] for m in running_nodes if m.labels.get(key)}
+            if len(vals) == 1:
+                shared_rt[key] = next(iter(vals))
+        return shared_rt
+
     def _group_provider_replicas(
         self, by_prov: Dict[str, List[SchedulingNode]]
     ) -> None:
@@ -2058,15 +2117,6 @@ class _ReplicaGrouper:
                 for m in p_run
                 if self.dom_key and m.labels.get(self.dom_key)
             ]
-            shared_rt: Dict[str, str] = {}
-            if self.dom_key is None and self.cfg.runtime_label_keys and p_run:
-                for key in self.cfg.runtime_label_keys:
-                    if key == self.wid_key or key in self.cfg.labels:
-                        continue
-                    vals = {m.labels[key] for m in p_run if m.labels.get(key)}
-                    if len(vals) == 1:
-                        shared_rt[key] = next(iter(vals))
-
             bound_lids = set(self.view.rep_lids.get((self.node_type, prov_id), ()))
             for m in p_nodes:
                 if m.launch_request_id:
@@ -2083,8 +2133,27 @@ class _ReplicaGrouper:
                 )
             )
             if self.rc.domain_exclusive:
-                rid = valid_doms[0] if valid_doms else None
-                dom_val = rid
+                dom_val = valid_doms[0] if valid_doms else None
+                existing = self.replicas.get(dom_val) if dom_val is not None else None
+                if existing is not None and not any(
+                    m.provider_replica_id for m in existing.members
+                ):
+                    rep = existing
+                    rep.lids.update(bound_lids)
+                else:
+                    if dom_val is None:
+                        rid = None
+                    elif existing is None:
+                        rid = dom_val
+                    else:
+                        rid = self._ctx.new_pending_domain(
+                            f"{self.node_type}:prov:{prov_id}"
+                        )
+                    rep = self._new_replica(
+                        rid=rid,
+                        domain=dom_val,
+                        lids=bound_lids,
+                    )
             else:
                 rid = self._ctx.new_pending_domain(f"{self.node_type}:prov:{prov_id}")
                 dom_val = (
@@ -2092,18 +2161,26 @@ class _ReplicaGrouper:
                     if valid_doms
                     else self._ctx.new_pending_domain(self.node_type)
                 )
-            rep = self._new_replica(
-                rid=rid,
-                domain=dom_val,
-                lids=bound_lids,
-                shared_runtime_labels=shared_rt,
-            )
+                rep = self._new_replica(
+                    rid=rid,
+                    domain=dom_val,
+                    lids=bound_lids,
+                )
             for m in p_run:
                 m._has_runtime_domain = True
                 m.replica_id = rep.rid
-                if is_draining:
-                    m._is_draining_replica = True
                 rep.members.append(m)
+            rep.shared_runtime_labels = self._compute_shared_runtime_labels(
+                [m for m in rep.members if m.is_running]
+            )
+            is_draining = is_draining or any(
+                m._is_draining_replica
+                or m.im_instance_status == Instance.RAY_STOP_REQUESTED
+                for m in rep.members
+            )
+            if is_draining:
+                for m in rep.members:
+                    m._is_draining_replica = True
             if p_pend:
                 self._place(rep, p_pend, len(p_pend), draining=is_draining)
                 while p_pend:
@@ -2116,14 +2193,14 @@ class _ReplicaGrouper:
                     extra_rep = self._new_replica(
                         rid=extra_rid,
                         domain=extra_dom,
-                        shared_runtime_labels=shared_rt or None,
+                        shared_runtime_labels=rep.shared_runtime_labels or None,
                     )
                     self._place(extra_rep, p_pend, self.size, draining=is_draining)
 
     def _group_shared_domain_replicas(
         self, shared_running_by_dom: Dict[str, List[SchedulingNode]]
     ) -> None:
-        """Partition running nodes in non-exclusive domains into fixed-size replicas."""
+        """Group running nodes in non-exclusive domains without provider replica IDs."""
         for dom_val, dom_nodes in sorted(shared_running_by_dom.items()):
             by_lid: Dict[str, List[SchedulingNode]] = defaultdict(list)
             no_lid: List[SchedulingNode] = []
@@ -2132,33 +2209,44 @@ class _ReplicaGrouper:
                     by_lid[m.launch_request_id].append(m)
                 else:
                     no_lid.append(m)
-            groups: List[List[SchedulingNode]] = [
-                l_nodes for _, l_nodes in sorted(by_lid.items())
-            ]
+            groups: List[Tuple[Optional[str], List[SchedulingNode]]] = sorted(
+                by_lid.items()
+            )
             if no_lid:
-                groups.append(no_lid)
-            for group_nodes in groups:
+                groups.append((None, no_lid))
+            for lid, group_nodes in groups:
                 group_nodes.sort(
                     key=lambda n: (
                         ResourceDemandScheduler._sort_nodes_for_termination(n),
                         n.im_instance_id or "",
                     )
                 )
-                for i in range(0, len(group_nodes), self.size):
-                    chunk = group_nodes[i : i + self.size]
-                    rep = self._new_replica(domain=dom_val)
-                    for m in chunk:
-                        m.replica_id = rep.rid
-                        m._has_runtime_domain = True
-                        rep.members.append(m)
+                # Keep multi-replica unattributed/shared-lid batches in one unit
+                # so idle-first slicing never splits active physical replicas;
+                # `_enforce_idle_termination` chunks all-idle multiples into
+                # `size`-node termination units.
+                rep = self._new_replica(
+                    domain=dom_val,
+                    lids={lid} if lid else None,
+                )
+                for m in group_nodes:
+                    m.replica_id = rep.rid
+                    m._has_runtime_domain = True
+                    rep.members.append(m)
 
     def _tag_draining_and_lids(self) -> None:
         for rep in self.replicas.values():
             for m in rep.members:
                 if m.launch_request_id:
                     rep.lids.add(m.launch_request_id)
+            if not rep.shared_runtime_labels:
+                running_members = [m for m in rep.members if m.is_running]
+                if running_members:
+                    rep.shared_runtime_labels = self._compute_shared_runtime_labels(
+                        running_members
+                    )
             if any(m._is_draining_replica for m in rep.members) or (
-                (self.rc.domain_exclusive and rep.rid in self.draining_doms)
+                (self.rc.domain_exclusive and rep.domain in self.draining_doms)
                 or any(
                     m.im_instance_status == Instance.RAY_STOP_REQUESTED
                     for m in rep.members
@@ -2216,27 +2304,42 @@ class _ReplicaGrouper:
                     if any(m._is_draining_replica for m in rep.members):
                         for m in rep.members:
                             m._is_draining_replica = True
+                    rep.shared_runtime_labels = self._compute_shared_runtime_labels(
+                        [m for m in rep.members if m.is_running]
+                    )
                     del lid_nodes[:take]
 
             if not lid_nodes:
                 continue
             has_booting = bool(booting_with_lid.get(lid))
             if len(lid_nodes) % self.size == 0:
-                for i in range(0, len(lid_nodes), self.size):
-                    rep = self._new_replica(lids={lid})
-                    chunk = lid_nodes[i : i + self.size]
-                    is_draining = lid in self.draining_lids or any(
-                        m.im_instance_status == Instance.RAY_STOP_REQUESTED
-                        for m in chunk
-                    )
-                    for m in chunk:
-                        m.replica_id = rep.rid
-                        m._has_runtime_domain = True
-                        if is_draining:
-                            m._is_draining_replica = True
-                        rep.members.append(m)
+                # Keep multi-replica batches with one launch_request_id in a
+                # single logical unit so idle-first slicing never splits active
+                # physical replicas; `_enforce_idle_termination` chunks
+                # all-idle multiples into `size`-node termination units.
+                rep = self._new_replica(
+                    lids={lid},
+                    shared_runtime_labels=self._compute_shared_runtime_labels(
+                        lid_nodes
+                    ),
+                )
+                is_draining = lid in self.draining_lids or any(
+                    m.im_instance_status == Instance.RAY_STOP_REQUESTED
+                    for m in lid_nodes
+                )
+                for m in lid_nodes:
+                    m.replica_id = rep.rid
+                    m._has_runtime_domain = True
+                    if is_draining:
+                        m._is_draining_replica = True
+                    rep.members.append(m)
             elif len(lid_nodes) < self.size and has_booting:
-                rep = self._new_replica(lids={lid})
+                rep = self._new_replica(
+                    lids={lid},
+                    shared_runtime_labels=self._compute_shared_runtime_labels(
+                        lid_nodes
+                    ),
+                )
                 is_draining = lid in self.draining_lids or any(
                     m.im_instance_status == Instance.RAY_STOP_REQUESTED
                     for m in lid_nodes
@@ -3694,6 +3797,12 @@ class ResourceDemandScheduler(IResourceScheduler):
             if not req.bundle_selectors:
                 return None
             bs = req.bundle_selectors[0]
+            loc_label = (
+                bs.locality_requirement.locality_constraint.label_name
+                if bs.HasField("locality_requirement")
+                and bs.locality_requirement.locality_constraint.label_name
+                else None
+            )
             fresh_slots: Dict[str, int] = {}
             for r in bs.resource_requests:
                 for pc in r.placement_constraints:
@@ -3703,7 +3812,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                         key = pc.affinity.label_name
                     else:
                         continue
-                    if key not in active_keys and key not in fresh_slots:
+                    if (
+                        key not in active_keys
+                        and key != loc_label
+                        and key not in fresh_slots
+                    ):
                         fresh_slots[key] = len(fresh_slots)
 
             def _norm_sel(sel: LabelSelector) -> Tuple:
@@ -3974,18 +4087,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         if max_bundles_per_node <= 0:
             return False
         for node in domain_nodes:
-            avail = node.get_available_resources(ResourceRequestSource.PENDING_DEMAND)
-            if node.ippr_status is not None and node.ippr_status.can_resize_up():
-                avail = dict(avail)
-                avail["CPU"] = avail.get("CPU", 0.0) + max(
-                    0.0,
-                    node.ippr_status.max_cpu() - node.total_resources.get("CPU", 0.0),
-                )
-                avail["memory"] = avail.get("memory", 0.0) + max(
-                    0.0,
-                    node.ippr_status.max_memory()
-                    - node.total_resources.get("memory", 0.0),
-                )
+            avail = node.get_ippr_effective_available(
+                ResourceRequestSource.PENDING_DEMAND
+            )
             for req in requests:
                 if (
                     _has_label_constraints(req)
@@ -4134,9 +4238,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 tuple(
                     sorted((k, v) for k, v in n.labels.items() if k != locality_label)
                 ),
-                (n.ippr_status.max_cpu(), n.ippr_status.max_memory())
-                if n.ippr_status is not None and n.ippr_status.can_resize_up()
-                else None,
+                n.ippr_capacity_bounds(),
                 bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)),
                 any(
                     "GPU" in r.resources_bundle
@@ -4167,25 +4269,16 @@ class ResourceDemandScheduler(IResourceScheduler):
                 res_name,
                 1.0 if res_name.startswith(IMPLICIT_RESOURCE_PREFIX) else 0.0,
             )
-            if res_name not in ("CPU", "memory") or node.ippr_status is None:
+            if res_name not in ("CPU", "memory"):
                 return base
-            cur_tot = node.total_resources.get(res_name, 0.0)
-            target_tot = cur_tot
-            if node.ippr_status.is_in_progress():
-                desired = (
-                    node.ippr_status.desired_cpu
-                    if res_name == "CPU"
-                    else node.ippr_status.desired_memory
-                )
-                target_tot = max(target_tot, desired)
-            if node.ippr_status.can_resize_up():
-                max_cap = (
-                    node.ippr_status.max_cpu()
-                    if res_name == "CPU"
-                    else node.ippr_status.max_memory()
-                )
-                target_tot = max(target_tot, max_cap)
-            return base + max(0.0, target_tot - cur_tot)
+            bounds = node.ippr_capacity_bounds()
+            if bounds is None:
+                return base
+            target_tot = bounds[2] if res_name == "CPU" else bounds[3]
+            return max(
+                0.0,
+                base + (target_tot - node.total_resources.get(res_name, 0.0)),
+            )
 
         return not any(
             sum(_node_max_available(n, k) for n in pool) + _RESOURCE_EPSILON < needed
@@ -5353,6 +5446,45 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         units: List[List[SchedulingNode]] = []
         active_pinned_domains: Set[Tuple[str, str]] = set()
+
+        def _shared_pinned_pairs(
+            target_nodes: Iterable[SchedulingNode],
+            cfg: Optional[NodeTypeConfig],
+        ) -> Set[Tuple[str, str]]:
+            if not pinned_domains:
+                return set()
+            is_exclusive = cfg.domain_exclusive if cfg is not None else False
+            dom_key = cfg.domain_label_key if cfg is not None else None
+            pairs: Set[Tuple[str, str]] = set()
+            for key, pinned_vals in pinned_domains.items():
+                if is_exclusive and key == dom_key:
+                    continue
+                for m in target_nodes:
+                    val = m.labels.get(key)
+                    if val in pinned_vals:
+                        pairs.add((key, val))
+            return pairs
+
+        def _is_pinned_protected(
+            target_nodes: List[SchedulingNode],
+            cfg: Optional[NodeTypeConfig],
+            is_incomplete: bool = False,
+        ) -> bool:
+            if not pinned_domains:
+                return False
+            if _shared_pinned_pairs(target_nodes, cfg) & active_pinned_domains:
+                return True
+            if not is_incomplete:
+                return False
+            dom_key = cfg.domain_label_key if cfg is not None else None
+            for key, pinned_vals in pinned_domains.items():
+                for m in target_nodes:
+                    if m.labels.get(key) in pinned_vals or (
+                        dom_key and key == dom_key and m.replica_id in pinned_vals
+                    ):
+                        return True
+            return False
+
         if pinned_domains:
             for n in nodes:
                 if (
@@ -5362,15 +5494,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                     and not n.is_leaving
                     and id(n) not in idle_timeouts
                 ):
-                    cfg = node_type_configs.get(n.node_type)
-                    is_exclusive = cfg.domain_exclusive if cfg is not None else False
-                    dom_key = cfg.domain_label_key if cfg is not None else None
-                    for key, pinned_vals in pinned_domains.items():
-                        if is_exclusive and key == dom_key:
-                            continue
-                        val = n.labels.get(key)
-                        if val in pinned_vals:
-                            active_pinned_domains.add((key, val))
+                    active_pinned_domains.update(
+                        _shared_pinned_pairs([n], node_type_configs.get(n.node_type))
+                    )
 
         per_type_state: List[
             Tuple[
@@ -5423,29 +5549,25 @@ class ResourceDemandScheduler(IResourceScheduler):
             has_unknown_cloud_pod = any(m.progress_rank < 2 for m in flat)
             has_unknown_req = any(m.progress_rank == 2 for m in flat)
             if pinned_domains:
-                dom_key = cfg.domain_label_key
                 for _, rn, ph_m in known:
                     has_ph_demand = any(any(m.sched_requests.values()) for m in ph_m)
                     if (
-                        len(rn) < size
+                        len(rn) % size != 0
                         or has_ph_demand
                         or not all(id(m) in idle_timeouts for m in rn)
                     ):
-                        for key, pinned_vals in pinned_domains.items():
-                            if cfg.domain_exclusive and key == dom_key:
-                                continue
-                            for m in rn + ph_m:
-                                val = m.labels.get(key)
-                                if val in pinned_vals:
-                                    active_pinned_domains.add((key, val))
-                for m in flat:
-                    if id(m) not in idle_timeouts:
-                        for key, pinned_vals in pinned_domains.items():
-                            if cfg.domain_exclusive and key == dom_key:
-                                continue
-                            val = m.labels.get(key)
-                            if val in pinned_vals:
-                                active_pinned_domains.add((key, val))
+                        active_pinned_domains.update(
+                            _shared_pinned_pairs(rn + ph_m, cfg)
+                        )
+                if flat:
+                    if len(flat) % size != 0:
+                        active_pinned_domains.update(_shared_pinned_pairs(flat, cfg))
+                    else:
+                        active_pinned_domains.update(
+                            _shared_pinned_pairs(
+                                (m for m in flat if id(m) not in idle_timeouts), cfg
+                            )
+                        )
             per_type_state.append(
                 (
                     cfg,
@@ -5460,14 +5582,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         for n in nodes:
             if n.node_type not in replica_sizes and id(n) in idle_timeouts:
-                cfg = node_type_configs.get(n.node_type)
-                is_exclusive = cfg.domain_exclusive if cfg is not None else False
-                dom_key = cfg.domain_label_key if cfg is not None else None
-                if any(
-                    not (is_exclusive and key == dom_key)
-                    and (key, n.labels.get(key)) in active_pinned_domains
-                    for key in pinned_domains
-                ):
+                if _is_pinned_protected([n], node_type_configs.get(n.node_type)):
                     continue
                 units.append([n])
 
@@ -5480,8 +5595,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             has_unknown_cloud_pod,
             has_unknown_req,
         ) in per_type_state:
-            dom_key = cfg.domain_label_key
-            is_exclusive = cfg.domain_exclusive
             # Incomplete replicas may still have unattributed siblings in `flat`:
             # - Provider-identified replicas already know all their created cloud
             #   pods (progress_rank < 2), so they never wait on opaque
@@ -5499,38 +5612,16 @@ class ResourceDemandScheduler(IResourceScheduler):
                 has_running = any(m.is_running for m in rn)
                 is_prov = all(m.provider_replica_id for m in rn)
                 has_ph_demand = any(any(m.sched_requests.values()) for m in ph_m)
-                pinned_protect = False
-                if pinned_domains:
-                    rep_nodes = rn + ph_m
-                    for key, pinned_vals in pinned_domains.items():
-                        vals = {
-                            m.labels[key]
-                            for m in rep_nodes
-                            if m.labels.get(key) in pinned_vals
-                        }
-                        if dom_key and key == dom_key:
-                            vals.update(
-                                m.replica_id
-                                for m in rep_nodes
-                                if m.replica_id in pinned_vals
-                            )
-                        if not vals:
-                            continue
-                        if is_exclusive and key == dom_key:
-                            if len(rn) < size:
-                                pinned_protect = True
-                                break
-                        elif len(rn) < size or any(
-                            (key, val) in active_pinned_domains for val in vals
-                        ):
-                            pinned_protect = True
-                            break
+                is_incomplete = len(rn) % size != 0
+                pinned_protect = _is_pinned_protected(
+                    rn + ph_m, cfg, is_incomplete=is_incomplete
+                )
                 is_idle = (
                     not has_ph_demand
                     and all(id(m) in idle_timeouts for m in rn)
                     and not pinned_protect
                 )
-                may_have_unknown_sibling = len(rn) < size and (
+                may_have_unknown_sibling = is_incomplete and (
                     (not is_prov and has_unknown_cloud_pod)
                     or (
                         has_unknown_req
@@ -5563,7 +5654,13 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             if not flat:
                 units.extend(idle_inc_known)
-            elif not has_active_inc and all(id(m) in idle_timeouts for m in flat):
+            elif (
+                not has_active_inc
+                and all(id(m) in idle_timeouts for m in flat)
+                and not _is_pinned_protected(
+                    flat, cfg, is_incomplete=len(flat) % size != 0
+                )
+            ):
                 flat.sort(
                     key=lambda m: (m.progress_rank, m.idle_duration_ms),
                     reverse=True,
