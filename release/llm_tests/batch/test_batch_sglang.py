@@ -147,9 +147,11 @@ def label_token_ids(score_tokenizer):
     ]
 
 
-def _run_score(rows, task_kwargs, enable_mis=False, **config_kwargs):
+def _run_score(
+    rows, task_kwargs, enable_mis=False, extra_engine_kwargs=None, **config_kwargs
+):
     """Score `rows` with the Ray Data SGLang processor, ordered by `id`."""
-    engine_kwargs = dict(context_length=2048)
+    engine_kwargs = dict(context_length=2048, **(extra_engine_kwargs or {}))
     if enable_mis:
         engine_kwargs.update(enable_mis=True, attention_backend="flashinfer")
     config = SGLangEngineProcessorConfig(
@@ -275,6 +277,52 @@ def test_sglang_score_embed_overrides(score_tokenizer, label_token_ids, enable_m
     )
 
     _assert_scores_close([overridden], [reference])
+
+
+@pytest.mark.parametrize("enable_mis", [False, True])
+def test_sglang_score_extraction(score_tokenizer, label_token_ids, enable_mis):
+    """Each anchor scores like the item truncated right after that anchor."""
+    anchor_id = score_tokenizer.convert_tokens_to_ids("<|vision_pad|>")
+
+    def encode(text):
+        return score_tokenizer.encode(text, add_special_tokens=False)
+
+    query_ids = score_tokenizer.encode(SCORE_QUERY)
+    paris, london, berlin = encode(" Paris"), encode(" London"), encode(" Berlin")
+    items = [
+        paris + [anchor_id] + london + [anchor_id],
+        berlin + [anchor_id],
+    ]
+    rows = [{"id": 0, "query_token_ids": query_ids, "item_token_ids": items}]
+    extracted = _run_score(
+        rows,
+        dict(
+            label_token_ids=label_token_ids,
+            apply_softmax=True,
+            score_extraction_token_id=anchor_id,
+        ),
+        enable_mis=enable_mis,
+        # SGLang requires both for score extraction.
+        extra_engine_kwargs=dict(disable_radix_cache=True, chunked_prefill_size=-1),
+        tokenize_stage=False,
+    )[0]
+
+    # Causal attention: the score at an anchor depends only on the tokens
+    # before it, so it equals plain scoring of the item cut at that anchor.
+    prefixes = [paris + [anchor_id], items[0], items[1]]
+    reference_rows = [
+        {"id": 0, "query_token_ids": query_ids, "item_token_ids": prefixes}
+    ]
+    reference = _run_score(
+        reference_rows,
+        dict(label_token_ids=label_token_ids, apply_softmax=True),
+        tokenize_stage=False,
+    )[0]
+
+    assert [len(anchors) for anchors in extracted] == [2, 1]
+    _assert_scores_close(
+        [*extracted[0], *extracted[1]], [reference[0], reference[1], reference[2]]
+    )
 
 
 if __name__ == "__main__":
