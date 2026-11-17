@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -60,6 +60,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         paths: List[str],
         *,
         filesystem: Optional["FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         partitioning: Optional[Partitioning] = None,
         file_extensions: Optional[List[str]] = None,
         ignore_missing_paths: bool = False,
@@ -69,7 +70,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         super().__init__(name="OrcV2", category=DatasourceCategory.FILE_BASED)
         self._supports_distributed_reads = not _is_local_scheme(paths)
         resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
-            paths, filesystem
+            paths, filesystem, storage_options=storage_options
         )
         self._paths = resolved_paths
         # The resolved paths above lose their URI scheme; lineage tracking

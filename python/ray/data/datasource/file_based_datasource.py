@@ -155,6 +155,7 @@ class FileBasedDatasource(Datasource):
         paths: Union[str, List[str]],
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
         meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -188,7 +189,9 @@ class FileBasedDatasource(Datasource):
         # to self since it is captured every read_task_fn during serialization and
         # causing this data being duplicated and excessive object store spilling.
         self._source_paths_ref = ray.put(paths)
-        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        paths, self._filesystem = _resolve_paths_and_filesystem(
+            paths, filesystem, storage_options=storage_options
+        )
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )

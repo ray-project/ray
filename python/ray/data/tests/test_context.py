@@ -15,6 +15,72 @@ _RECONSTRUCTION_OVERRIDE_ERROR = (
 )
 
 
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (None, {"connect_timeout": 10.0, "request_timeout": 30.0}),
+        ("{}", {"connect_timeout": 10.0, "request_timeout": 30.0}),
+        (
+            '{"connect_timeout": 20, "background_writes": false}',
+            {
+                "connect_timeout": 20,
+                "request_timeout": 30.0,
+                "background_writes": False,
+            },
+        ),
+        (
+            '{"connect_timeout": 5, "request_timeout": 60}',
+            {"connect_timeout": 5, "request_timeout": 60},
+        ),
+        ("[]", None),
+        ("bad-json", None),
+    ],
+)
+def test_s3_filesystem_defaults_env(monkeypatch, value, expected):
+    from ray.data.context import _env_s3_filesystem_defaults
+
+    name = "RAY_DATA_S3_FILESYSTEM_DEFAULTS"
+    monkeypatch.delenv(name, raising=False)
+    if value is not None:
+        monkeypatch.setenv(name, value)
+    if expected is None:
+        with pytest.raises(ValueError, match=name):
+            _env_s3_filesystem_defaults()
+    else:
+        assert _env_s3_filesystem_defaults() == expected
+
+
+def test_s3_filesystem_defaults_are_independent(monkeypatch):
+    from ray.data.context import DEFAULT_S3_FILESYSTEM_DEFAULTS, DataContext
+
+    monkeypatch.setitem(
+        DEFAULT_S3_FILESYSTEM_DEFAULTS, "proxy_options", {"host": "proxy"}
+    )
+    first, second = DataContext(), DataContext()
+    first.s3_filesystem_defaults["proxy_options"]["host"] = "different"
+    assert second.s3_filesystem_defaults["proxy_options"]["host"] == "proxy"
+    assert DEFAULT_S3_FILESYSTEM_DEFAULTS["proxy_options"]["host"] == "proxy"
+
+
+def test_s3_filesystem_defaults_env_initializes_context():
+    import os
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    env["RAY_DATA_S3_FILESYSTEM_DEFAULTS"] = '{"connect_timeout": 20}'
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-c",
+            "from ray.data.context import DataContext; "
+            "assert DataContext().s3_filesystem_defaults == "
+            "{'connect_timeout': 20, 'request_timeout': 30.0}",
+        ],
+        env=env,
+    )
+
+
 def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
     ctx = ray.data.DataContext.get_current()
     with pytest.warns(DeprecationWarning):

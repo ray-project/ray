@@ -2,6 +2,7 @@ import contextlib
 import copy
 import enum
 import importlib
+import json
 import logging
 import os
 import threading
@@ -276,6 +277,20 @@ DEFAULT_RETRIED_IO_ERRORS = (
     # of retries.
     "AWS Error ACCESS_DENIED during HeadBucket operation",
 )
+
+
+def _env_s3_filesystem_defaults() -> Dict[str, Any]:
+    name = "RAY_DATA_S3_FILESYSTEM_DEFAULTS"
+    try:
+        options = json.loads(os.environ.get(name, "{}"))
+    except json.JSONDecodeError:
+        raise ValueError(f"`{name}` must be a JSON object.") from None
+    if not isinstance(options, dict):
+        raise ValueError(f"`{name}` must be a JSON object.")
+    return {"connect_timeout": 10.0, "request_timeout": 30.0, **options}
+
+
+DEFAULT_S3_FILESYSTEM_DEFAULTS = _env_s3_filesystem_defaults()
 
 DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
     "RAY_DATA_ICEBERG_WRITE_FILE_MAX_ATTEMPTS", 10
@@ -891,6 +906,16 @@ class DataContext:
             trigger a retry when reading or writing files. Each pattern is first checked
             as a substring, then as a regex. This is useful for handling
             transient errors when reading from remote storage systems.
+        s3_filesystem_defaults: Default PyArrow S3FileSystem keyword arguments for
+            file reads and writes that explicitly provide ``storage_options``. Defaults to
+            ``connect_timeout=10.0`` and ``request_timeout=30.0`` seconds,
+            overridden by the JSON object in
+            ``RAY_DATA_S3_FILESYSTEM_DEFAULTS`` at module import. URI connection
+            options override these defaults, and per-call options override both.
+            Set before creating a Dataset or invoking a file write API. Use only
+            non-sensitive connection/performance settings here; pass credentials
+            through per-call ``storage_options``. None for ``storage_options``
+            preserves historical URI inference without applying these defaults.
         lance_config: Configuration for Lance datasource and datasink operations
             including retry settings for read and write operations. See
             :class:`LanceConfig` for details.
@@ -1191,6 +1216,9 @@ class DataContext:
     max_tasks_in_flight_per_actor: Optional[int] = None
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
+    )
+    s3_filesystem_defaults: Dict[str, Any] = field(
+        default_factory=lambda: copy.deepcopy(DEFAULT_S3_FILESYSTEM_DEFAULTS)
     )
     lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)

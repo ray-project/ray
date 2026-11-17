@@ -4995,6 +4995,7 @@ class Dataset:
         *,
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         catalog: Optional["Catalog"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -5042,6 +5043,20 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            storage_options: Optional PyArrow S3FileSystem keyword arguments,
+                such as ``access_key``, ``secret_key``, ``session_token``,
+                ``region``, and ``endpoint_override``. For S3 paths with no
+                explicit filesystem, these override
+                ``DataContext.s3_filesystem_defaults`` (initially
+                ``connect_timeout=10.0`` and ``request_timeout=30.0`` seconds).
+                An empty dictionary enables those defaults. URI connection
+                options override the defaults, and per-call options override both.
+                None preserves existing inference. Requires ``s3://`` paths and
+                cannot be combined with ``filesystem`` or ``catalog``.
+                Percent-encode ``?`` in object keys to distinguish it from a URI
+                configuration query.
+                On Linux/Curl, request_timeout is a low-speed/stalled-transfer
+                timeout, not a total request duration limit.
             catalog: An optional :class:`~ray.data.Catalog` (e.g.
                 :class:`~ray.data.DatabricksUnityCatalog`). When provided, ``path``
                 is interpreted as a catalog table identifier (e.g.
@@ -5136,6 +5151,8 @@ class Dataset:
                       #pyarrow.parquet.ParquetWriter.write_table>`_.
 
         """  # noqa: E501
+        if catalog is not None and storage_options is not None:
+            raise ValueError("`storage_options` and `catalog` cannot be combined.")
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
 
@@ -5188,6 +5205,7 @@ class Dataset:
             max_rows_per_file=effective_max_rows,
             min_bytes_per_file=min_bytes_per_file,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
@@ -5207,6 +5225,7 @@ class Dataset:
         path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -5258,6 +5277,10 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            storage_options: Optional PyArrow S3FileSystem settings. See
+                :meth:`~ray.data.Dataset.write_parquet` for defaults and
+                precedence. Requires ``s3://`` paths and cannot be combined with
+                an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -5314,6 +5337,7 @@ class Dataset:
             pandas_json_args=pandas_json_args,
             min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
@@ -5620,6 +5644,7 @@ class Dataset:
         file_format: str = "png",
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -5651,6 +5676,10 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            storage_options: Optional PyArrow S3FileSystem settings. See
+                :meth:`~ray.data.Dataset.write_parquet` for defaults and
+                precedence. Requires ``s3://`` paths and cannot be combined with
+                an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -5677,6 +5706,7 @@ class Dataset:
             column,
             file_format,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
@@ -5696,6 +5726,7 @@ class Dataset:
         path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -5748,6 +5779,10 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            storage_options: Optional PyArrow S3FileSystem settings. See
+                :meth:`~ray.data.Dataset.write_parquet` for defaults and
+                precedence. Requires ``s3://`` paths and cannot be combined with
+                an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -5801,6 +5836,7 @@ class Dataset:
             arrow_csv_args=arrow_csv_args,
             min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
@@ -5820,6 +5856,7 @@ class Dataset:
         path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -5871,6 +5908,10 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            storage_options: Optional PyArrow S3FileSystem settings. See
+                :meth:`~ray.data.Dataset.write_parquet` for defaults and
+                precedence. Requires ``s3://`` paths and cannot be combined with
+                an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -5925,6 +5966,7 @@ class Dataset:
             arrow_orc_args=arrow_orc_args,
             min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
@@ -5945,6 +5987,7 @@ class Dataset:
         *,
         tf_schema: Optional["schema_pb2.Schema"] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -5999,6 +6042,10 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            storage_options: Optional PyArrow S3FileSystem settings. See
+                :meth:`~ray.data.Dataset.write_parquet` for defaults and
+                precedence. Requires ``s3://`` paths and cannot be combined with
+                an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -6036,6 +6083,7 @@ class Dataset:
             tf_schema=tf_schema,
             min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
@@ -6055,6 +6103,7 @@ class Dataset:
         path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -6093,6 +6142,10 @@ class Dataset:
             path: The path to the destination root directory, where WebDataset tar
                 archives are written.
             filesystem: The filesystem implementation to write to.
+            storage_options: Optional PyArrow S3FileSystem settings. See
+                :meth:`~ray.data.Dataset.write_parquet` for defaults and
+                precedence. Requires ``s3://`` paths and cannot be combined with
+                an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
                 already exist. Defaults to ``True``.
@@ -6134,6 +6187,7 @@ class Dataset:
             encoder=encoder,
             min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
@@ -6154,6 +6208,7 @@ class Dataset:
         *,
         column: str,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -6198,6 +6253,10 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            storage_options: Optional PyArrow S3FileSystem settings. See
+                :meth:`~ray.data.Dataset.write_parquet` for defaults and
+                precedence. Requires ``s3://`` paths and cannot be combined with
+                an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -6235,6 +6294,7 @@ class Dataset:
             column,
             min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,

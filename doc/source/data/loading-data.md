@@ -258,6 +258,29 @@ variety       string
 
 Ray Data relies on PyArrow for authentication with Amazon S3. To configure credentials that work with PyArrow, see the PyArrow [S3 filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#s3).
 
+To configure an S3 connection without constructing a filesystem, pass PyArrow
+`S3FileSystem` keyword arguments through `storage_options`:
+
+```python
+options = {"anonymous": True, "region": "us-west-2", "connect_timeout": 5.0}
+ds = ray.data.read_parquet(
+    "s3://ray-example-data/iris.parquet", storage_options=options
+)
+```
+
+File read and write APIs accept these options for `s3://` paths. Don't combine
+`storage_options` with `filesystem` or a Parquet `catalog`.
+An empty dictionary applies {class}`~ray.data.DataContext`'s
+`s3_filesystem_defaults`, initially `connect_timeout=10.0` and
+`request_timeout=30.0` seconds. URI connection options override these defaults,
+and per-call options override both. Omit `storage_options` to preserve URI
+inference without applying these defaults. When reading multiple paths, use the
+same effective S3 configuration for every path. Percent-encode `?` in object
+keys to distinguish it from a URI configuration query.
+
+Use `endpoint_override` for an S3-compatible service. Keep credentials out of
+`s3_filesystem_defaults` and `RAY_DATA_S3_FILESYSTEM_DEFAULTS`.
+
 :::
 
 :::{tab-item} Google Cloud Storage

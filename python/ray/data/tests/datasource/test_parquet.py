@@ -50,6 +50,47 @@ def use_datasource_v2(request, restore_data_context):
     restore_data_context.use_datasource_v2 = request.param
 
 
+@pytest.mark.parametrize("format", ["parquet", "csv"])
+def test_s3_storage_options_read(
+    s3_fs,
+    s3_path,
+    s3_server,
+    aws_credentials,
+    ray_start_regular_shared,
+    use_datasource_v2,
+    format,
+):
+    from pyarrow import csv
+
+    table = pa.table({"value": [1, 2, 3]})
+    path = s3_path + f"/input.{format}"
+    if format == "parquet":
+        pq.write_table(table, _unwrap_protocol(path), filesystem=s3_fs)
+    else:
+        with s3_fs.open_output_stream(_unwrap_protocol(path)) as stream:
+            csv.write_csv(table, stream)
+    options = {**aws_credentials, "region": "us-west-2", "endpoint_override": s3_server}
+    ds = getattr(ray.data, f"read_{format}")(path, storage_options=options)
+    assert sorted(ds.take_all(), key=lambda row: row["value"]) == [
+        {"value": 1},
+        {"value": 2},
+        {"value": 3},
+    ]
+    output = s3_path + f"/output-{format}"
+    getattr(ds, f"write_{format}")(output, storage_options=options)
+    result = getattr(ray.data, f"read_{format}")(output, storage_options=options)
+    assert sorted(result.take_all(), key=lambda row: row["value"]) == [
+        {"value": 1},
+        {"value": 2},
+        {"value": 3},
+    ]
+
+
+def test_parquet_storage_options_rejects_catalog():
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ray.data.read_parquet("s3://bucket/a", catalog=object(), storage_options={})
+
+
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
     tmp_path, shutdown_only, use_datasource_v2, monkeypatch
 ):

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -85,6 +85,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         paths: List[str],
         *,
         filesystem: Optional["FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         partitioning: Optional[Partitioning] = Partitioning(PartitionStyle.HIVE),
         file_extensions: Optional[Union[List[str], tuple[str, ...]]] = ("parquet",),
         ignore_missing_paths: bool = False,
@@ -105,7 +106,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # property and consumed by ``_read_datasource_v2``.
         self._supports_distributed_reads = not _is_local_scheme(paths)
         resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
-            paths, filesystem
+            paths, filesystem, storage_options=storage_options
         )
         self._paths: List[str] = resolved_paths
         # The resolved paths above lose their URI scheme; lineage tracking

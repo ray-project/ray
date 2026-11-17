@@ -22,6 +22,7 @@ import copy
 from typing import (
     TYPE_CHECKING,
     Any,
+    Dict,
     Iterable,
     Iterator,
     List,
@@ -107,6 +108,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         include_row_id: bool = False,
         include_paths: bool = False,
         filesystem: Optional["FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         partitioning: Optional[Partitioning] = None,
         partition_filter: Optional[PathPartitionFilter] = None,
         file_extensions: Optional[Union[List[str], tuple[str, ...]]] = ("mcap",),
@@ -120,7 +122,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         # ``local://`` scheme (see ``ParquetDatasourceV2``).
         self._supports_distributed_reads = not _is_local_scheme(paths)
         resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
-            paths, filesystem
+            paths, filesystem, storage_options=storage_options
         )
         self._paths: List[str] = resolved_paths
         self._filesystem = resolved_filesystem
