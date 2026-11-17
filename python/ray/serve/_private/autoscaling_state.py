@@ -22,6 +22,7 @@ import numpy as np
 from ray.serve._private import autoscaling_metrics_merge
 from ray.serve._private.autoscaling_metrics_codec import FlatHandleReport
 from ray.serve._private.common import (
+    DIRECT_INGRESS_RUNNING_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     DeploymentHandleSource,
@@ -297,7 +298,9 @@ class DeploymentAutoscalingState:
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
         # (report timestamp, samples) memo of each replica's running series, so the
         # object->array conversion runs once per report, not once per decision tick.
-        self._replica_running_memo: Dict[ReplicaID, _ReplicaRunningMemo] = dict()
+        self._replica_running_memo: Dict[
+            Tuple[ReplicaID, str], _ReplicaRunningMemo
+        ] = dict()
         # Bumped only when the running set actually changes, so a handle that has to
         # mask out stopped replicas does it once per change, not once per tick.
         self._running_gen: int = 0
@@ -412,7 +415,8 @@ class DeploymentAutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_metrics:
             del self._replica_metrics[replica_id]
-        self._replica_running_memo.pop(replica_id, None)
+        for key in (RUNNING_REQUESTS_KEY, DIRECT_INGRESS_RUNNING_REQUESTS_KEY):
+            self._replica_running_memo.pop((replica_id, key), None)
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -487,8 +491,10 @@ class DeploymentAutoscalingState:
         ):
             self._replica_metrics[replica_id] = replica_metric_report
 
-    def _replica_running_samples(self) -> List[MetricSamples]:
-        """Running samples of the replicas still running. Memoized against the stored
+    def _replica_running_samples(
+        self, key: str = RUNNING_REQUESTS_KEY
+    ) -> List[MetricSamples]:
+        """`key` samples of the replicas still running. Memoized against the stored
         report's timestamp, so a series is converted once per report rather than on
         every decision tick; _replica_metrics stays the only source of truth."""
         samples = []
@@ -496,15 +502,15 @@ class DeploymentAutoscalingState:
             report = self._replica_metrics.get(replica_id)
             if report is None:
                 continue
-            series = report.metrics.get(RUNNING_REQUESTS_KEY)
+            series = report.metrics.get(key)
             if not series:
                 continue
-            cached = self._replica_running_memo.get(replica_id)
+            cached = self._replica_running_memo.get((replica_id, key))
             if cached is None or cached.timestamp != report.timestamp:
                 cached = _ReplicaRunningMemo(
                     report.timestamp, MetricSamples.from_timeseries(series)
                 )
-                self._replica_running_memo[replica_id] = cached
+                self._replica_running_memo[(replica_id, key)] = cached
             samples.append(cached.samples)
         return samples
 
@@ -730,8 +736,13 @@ class DeploymentAutoscalingState:
             last_scale_down_time=self._last_scale_down_time,
         )
 
-    def _collect_replica_running_requests(self) -> List[TimeSeries]:
-        """Collect running requests timeseries from replicas for aggregation.
+    def _collect_replica_running_requests(
+        self, key: str = RUNNING_REQUESTS_KEY
+    ) -> List[TimeSeries]:
+        """Collect `key` timeseries from replicas for aggregation.
+
+        Args:
+            key: The replica metric to collect.
 
         Returns:
             List of timeseries data.
@@ -742,11 +753,9 @@ class DeploymentAutoscalingState:
             replica_metric_report = self._replica_metrics.get(replica_id, None)
             if (
                 replica_metric_report is not None
-                and RUNNING_REQUESTS_KEY in replica_metric_report.metrics
+                and key in replica_metric_report.metrics
             ):
-                timeseries_list.append(
-                    replica_metric_report.metrics[RUNNING_REQUESTS_KEY]
-                )
+                timeseries_list.append(replica_metric_report.metrics[key])
 
         return timeseries_list
 
@@ -870,7 +879,9 @@ class DeploymentAutoscalingState:
         """Total ongoing requests, aggregated at the controller from raw timeseries.
 
         Running requests come from replicas or from handles, never both; the writer is
-        responsible for keeping those exclusive. Queued requests always come from
+        responsible for keeping those exclusive. The one addition is a direct-ingress
+        replica under handle collection, which reports only the requests no handle
+        routed, so its series always adds. Queued requests always come from
         handles. Every series is merged as one set of sources, so the reduction sees
         running and queued together rather than aggregating them separately.
 
@@ -878,10 +889,11 @@ class DeploymentAutoscalingState:
             1. Collect running-request timeseries from replicas, if any reported.
             2. Collect queued-request timeseries from handles (always).
             3. Collect running-request timeseries from handles, only if step 1 was empty.
-            4. Merge every series into one instantaneous total: gauges are right-
+            4. Collect direct-ingress running-request timeseries from replicas (always).
+            5. Merge every series into one instantaneous total: gauges are right-
                continuous step functions, summed across sources at each change point,
                which avoids the windowing bias of averaging each source first.
-            5. Reduce that step function with the deployment's `aggregation_function`,
+            6. Reduce that step function with the deployment's `aggregation_function`,
                so the result is a window mean, peak or trough, not the current value.
 
         The window opens once every series has contributed a point, because a series is
@@ -936,6 +948,13 @@ class DeploymentAutoscalingState:
         if not metrics_collected_on_replicas:
             ongoing_requests_timeseries.extend(handle_timeseries)
         ongoing_requests_timeseries.extend(queued_timeseries)
+        ongoing_requests_timeseries.extend(
+            series
+            for series in self._collect_replica_running_requests(
+                DIRECT_INGRESS_RUNNING_REQUESTS_KEY
+            )
+            if series
+        )
         if not ongoing_requests_timeseries:
             return 0.0
         return self._merge_and_aggregate_timeseries(ongoing_requests_timeseries)
@@ -956,6 +975,7 @@ class DeploymentAutoscalingState:
             samples += MetricSamples.per_series(self._collect_handle_running_requests())
         samples += self._queued_columnar_samples()
         samples += MetricSamples.per_series(self._collect_handle_queued_requests())
+        samples += self._replica_running_samples(DIRECT_INGRESS_RUNNING_REQUESTS_KEY)
         return self._aggregate_samples(samples)
 
     def get_last_decision_total_num_requests(self) -> float:

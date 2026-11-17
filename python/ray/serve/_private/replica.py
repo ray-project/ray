@@ -55,6 +55,7 @@ from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
+    DIRECT_INGRESS_RUNNING_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentID,
     ReplicaID,
@@ -410,6 +411,7 @@ class ReplicaMetricsManager:
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
         self._num_ongoing_requests = 0
+        self._num_direct_ingress_ongoing_requests = 0
         self._max_ongoing_requests = max_ongoing_requests
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
@@ -750,7 +752,8 @@ class ReplicaMetricsManager:
         For direct ingress deployments, metrics must be collected from replicas regardless
         of whether autoscaling metrics are being collected via handles. This is necessary
         because direct ingress traffic bypasses deployment handles and goes directly to
-        the replicas.
+        the replicas. With handle collection on, such a replica reports only the
+        requests that reached it directly, since handles report the ones they route.
         """
         if self._is_direct_ingress and self._autoscaling_config:
             return True
@@ -780,6 +783,8 @@ class ReplicaMetricsManager:
         self, request_metadata: RequestMetadata, delta: int
     ) -> None:
         self._num_ongoing_requests += delta
+        if request_metadata.is_direct_ingress:
+            self._num_direct_ingress_ongoing_requests += delta
 
         protocol = request_metadata.protocol
 
@@ -1060,7 +1065,16 @@ class ReplicaMetricsManager:
     async def _add_autoscaling_metrics_point_async(self) -> None:
         metrics_dict: Dict[str, float] = {}
         if self.should_collect_ongoing_requests():
-            metrics_dict = {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
+            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                # Collecting only because of direct ingress: handles already report
+                # the requests they route, so counting those here would double them.
+                metrics_dict = {
+                    DIRECT_INGRESS_RUNNING_REQUESTS_KEY: (
+                        self._num_direct_ingress_ongoing_requests
+                    )
+                }
+            else:
+                metrics_dict = {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
 
         # Use cached availability flag to avoid repeated runtime checks
         if self._custom_metrics_enabled:

@@ -22,6 +22,7 @@ from ray.serve._private import (
 )
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import (
+    DIRECT_INGRESS_RUNNING_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
@@ -832,6 +833,54 @@ def test_replica_running_suppresses_columnar_handle_running(agg, monkeypatch):
     ref._running_replicas = [rid]
     ref._cached_running_replica_strs = {rid_str}
     assert abs(mixed - ref.get_total_num_requests()) < 1e-9
+
+
+@pytest.mark.parametrize(
+    "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
+)
+def test_direct_ingress_replica_running_adds_to_handle_running(agg, monkeypatch):
+    """A direct-ingress replica under handle collection reports only the requests no
+    handle routed, so its series adds to the handle's running and queued series on
+    both paths instead of displacing the handle's running series."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    rid = ReplicaID("r0", DEP)
+    rid_str = rid.to_full_id_str()
+    direct = [TimeStampedValue(NOW - 6, 1.0), TimeStampedValue(NOW, 2.0)]
+    handle_running = [TimeStampedValue(NOW - 6, 7.0), TimeStampedValue(NOW, 9.0)]
+    queued = [TimeStampedValue(NOW - 6, 2.0), TimeStampedValue(NOW, 3.0)]
+    replica_report = ReplicaMetricReport(
+        replica_id=rid,
+        metrics={DIRECT_INGRESS_RUNNING_REQUESTS_KEY: direct},
+        timestamp=NOW,
+    )
+
+    def _total(columnar, handle, replica_report=None):
+        st = _state(agg)
+        if replica_report is not None:
+            st.record_request_metrics_for_replica(replica_report)
+        if columnar:
+            st.record_columnar_metrics_for_handle(
+                codec.decode_handle_flat(codec.encode(handle))
+            )
+        else:
+            st._handle_store.objects["h0"] = handle
+        st._running_replicas = [rid]
+        st._cached_running_replica_strs = {rid_str}
+        return st.get_total_num_requests()
+
+    handle = _handle_report_running("h0", rid_str, handle_running, queued)
+    # The same three series summed into one handle series, which the merge cannot
+    # tell apart from three sources sharing timestamps.
+    summed = _handle_report_running(
+        "h0",
+        rid_str,
+        [TimeStampedValue(NOW - 6, 8.0), TimeStampedValue(NOW, 11.0)],
+        queued,
+    )
+    for columnar in (True, False):
+        got = _total(columnar, handle, replica_report)
+        want = _total(columnar, summed)
+        assert abs(got - want) < 1e-9, (agg, columnar, got, want)
 
 
 @pytest.mark.parametrize(
