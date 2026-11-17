@@ -20,14 +20,17 @@ def _get_trial_cpu_and_gpu(trial: Trial) -> Tuple[int, int]:
     return cpu, gpu
 
 
-def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
+def _can_fulfill_no_autoscaler(
+    trial: Trial, cluster_resources: Optional[Dict] = None
+) -> bool:
     """Calculates if there is enough resources for a PENDING trial.
 
     For no autoscaler case.
     """
     assert trial.status == Trial.PENDING
     asked_cpus, asked_gpus = _get_trial_cpu_and_gpu(trial)
-    cluster_resources = _get_cluster_resources_no_autoscaler()
+    if cluster_resources is None:
+        cluster_resources = _get_cluster_resources_no_autoscaler()
 
     return asked_cpus <= cluster_resources.get(
         "CPU", 0
@@ -80,7 +83,9 @@ MSG_TUNE_END = (
 
 # TODO(xwjiang): Consider having a help page with more detailed instructions.
 def _get_insufficient_resources_warning_msg(
-    for_train: bool = False, trial: Optional[Trial] = None
+    for_train: bool = False,
+    trial: Optional[Trial] = None,
+    cluster_resources: Optional[Dict] = None,
 ) -> str:
     msg = "Ignore this message if the cluster is autoscaling. "
 
@@ -97,7 +102,8 @@ def _get_insufficient_resources_warning_msg(
 
     if trial:
         asked_cpus, asked_gpus = _get_trial_cpu_and_gpu(trial)
-        cluster_resources = _get_cluster_resources_no_autoscaler()
+        if cluster_resources is None:
+            cluster_resources = _get_cluster_resources_no_autoscaler()
 
         msg += insufficient.format(
             asked_cpus=asked_cpus,
@@ -144,17 +150,24 @@ class _InsufficientResourcesManager:
                 pending_trials = [
                     trial for trial in all_trials if trial.status == Trial.PENDING
                 ]
-                if not pending_trials or any(
-                    _can_fulfill_no_autoscaler(trial) for trial in pending_trials
+                if not pending_trials:
+                    self._no_running_trials_since = -1
+                    return
+
+                cluster_resources = _get_cluster_resources_no_autoscaler()
+                if any(
+                    _can_fulfill_no_autoscaler(trial, cluster_resources)
+                    for trial in pending_trials
                 ):
-                    # If no trials are pending or at least one pending trial can be
-                    # fulfilled, reset the timer.
+                    # If at least one pending trial can be fulfilled, reset the timer.
                     self._no_running_trials_since = -1
                     return
 
                 # Otherwise, can fulfill none; report the first unfulfilled pending trial.
                 msg = _get_insufficient_resources_warning_msg(
-                    for_train=self._for_train, trial=pending_trials[0]
+                    for_train=self._for_train,
+                    trial=pending_trials[0],
+                    cluster_resources=cluster_resources,
                 )
                 logger.warning(msg)
                 self._no_running_trials_since = time.monotonic()
