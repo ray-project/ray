@@ -37,6 +37,7 @@ from ray.experimental.sandbox.http.resolver import (
     _is_unschedulable,
     _new_random_sandbox_id,
     _sandbox_name_for_token,
+    is_multiplexed_handle,
 )
 from ray.experimental.sandbox.http.schemas import (
     CreateSandboxRequest,
@@ -91,7 +92,7 @@ class _SchedulingTimeout(_ApiError):
 async def _actor_call(sandbox_id: str, awaitable: Awaitable[Any]) -> Any:
     """Await a SandboxHost call, mapping actor failures to HTTP errors."""
     try:
-        return await awaitable
+        result = await awaitable
     except Exception as exc:
         if _is_actor_unavailable(exc):
             # A transient blip (actor restarting / briefly unreachable), not a
@@ -113,6 +114,9 @@ async def _actor_call(sandbox_id: str, awaitable: Awaitable[Any]) -> Any:
                 f"sandbox {sandbox_id} cannot be scheduled: {str(exc)[:300]}",
             ) from exc
         raise
+    if isinstance(result, dict) and result.get("error_code") == "sandbox_not_found":
+        raise _sandbox_not_found(sandbox_id)
+    return result
 
 
 def _parse_label_filters(labels: List[str]) -> Dict[str, str]:
@@ -177,6 +181,19 @@ def create_app(
     # miss), so they run in worker threads and never stall the event loop
     # that serves every other request.
     async def _get(sandbox_id: str) -> Optional[Any]:
+        cached = getattr(resolver, "cached", None)
+        if cached is not None:
+            handle = cached(sandbox_id)
+            if handle is not None:
+                return handle
+        if getattr(resolver, "is_multiplexed", False) and hasattr(
+            resolver, "ensure_pool_async"
+        ):
+            await resolver.ensure_pool_async()
+            if cached is not None:
+                handle = cached(sandbox_id)
+                if handle is not None:
+                    return handle
         return await asyncio.to_thread(resolver.get, sandbox_id)
 
     async def _lookup(sandbox_id: str) -> Any:
@@ -186,6 +203,8 @@ def create_app(
         return handle
 
     async def _kill(sandbox_id: str, handle: Any) -> None:
+        if is_multiplexed_handle(handle):
+            return
         resolver.forget(sandbox_id)
         await asyncio.to_thread(resolver.kill, handle)
 
@@ -305,7 +324,8 @@ def create_app(
                     existing.boot.remote()
                     return JSONResponse(status_code=200, content=info)
         else:
-            sandbox_id = _new_random_sandbox_id()
+            mint = getattr(resolver, "next_sandbox_id", None)
+            sandbox_id = mint() if mint is not None else _new_random_sandbox_id()
 
         resources = request.resources
         cpu_request = resources.cpu_request if resources else None
@@ -359,17 +379,30 @@ def create_app(
             "max_output_bytes": settings.max_output_bytes,
             "max_exec_history": settings.max_exec_history,
         }
-        handle = await asyncio.to_thread(
-            resolver.create,
-            sandbox_id,
-            actor_options,
-            {
-                "sandbox_id": sandbox_id,
-                "spec": spec,
-                "settings": host_settings,
-            },
-            get_if_exists=request.client_token is not None,
-        )
+        ctor_kwargs = {
+            "sandbox_id": sandbox_id,
+            "spec": spec,
+            "settings": host_settings,
+        }
+        create_async = getattr(resolver, "create_async", None)
+        if create_async is not None:
+            handle = await _bounded_call(
+                sandbox_id,
+                create_async(
+                    sandbox_id,
+                    actor_options,
+                    ctor_kwargs,
+                    get_if_exists=request.client_token is not None,
+                ),
+            )
+        else:
+            handle = await asyncio.to_thread(
+                resolver.create,
+                sandbox_id,
+                actor_options,
+                ctor_kwargs,
+                get_if_exists=request.client_token is not None,
+            )
         # Fire-and-forget: boot progress and failures are reported through
         # describe(), never through this call's result. The response is
         # synthesized from the request rather than fetched from the actor so
@@ -404,6 +437,20 @@ def create_app(
         label: List[str] = Query(default=[]),
     ) -> Dict[str, Any]:
         filters = _parse_label_filters(label)
+        describe_all_async = getattr(resolver, "describe_all_async", None)
+        if describe_all_async is not None:
+            pooled_infos = await describe_all_async()
+            if pooled_infos is not None:
+                return {
+                    "sandboxes": [
+                        info
+                        for info in pooled_infos
+                        if all(
+                            info.get("labels", {}).get(k) == v
+                            for k, v in filters.items()
+                        )
+                    ]
+                }
         names = await asyncio.to_thread(resolver.list_names)
         handles = await asyncio.gather(*(_get(name) for name in names))
         named = list(zip(names, handles))

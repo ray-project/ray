@@ -167,5 +167,54 @@ def test_network_modes_track_the_core_config() -> None:
         CreateSandboxRequest(image="python:3.12", network="bridge")
 
 
+def test_multiplexed_actor_settings_validation_and_sharding() -> None:
+    from ray.experimental.sandbox.http.resolver import (
+        RayActorHandleResolver,
+        _new_sharded_sandbox_id,
+        _pool_actor_options,
+        _shard_for_sandbox_id,
+    )
+
+    default_settings = SandboxAPISettings()
+    assert default_settings.num_sandbox_actors is None
+    assert default_settings.sandbox_actor_num_cpus is None
+    assert default_settings.sandbox_actor_memory_mb is None
+
+    with pytest.raises(ValueError, match="num_sandbox_actors"):
+        SandboxAPISettings(sandbox_actor_num_cpus=4.0)
+    with pytest.raises(ValueError, match="num_sandbox_actors"):
+        SandboxAPISettings(sandbox_actor_memory_mb=2048)
+
+    pooled = SandboxAPISettings(
+        num_sandbox_actors=8,
+        sandbox_actor_num_cpus=4.0,
+        sandbox_actor_memory_mb=2048,
+        sandbox_actor_max_concurrency=4096,
+    )
+    opts = _pool_actor_options(pooled)
+    assert opts == {
+        "num_cpus": 4.0,
+        "memory": 2048 * 1024 * 1024,
+        "max_concurrency": 4096,
+        "scheduling_strategy": "SPREAD",
+    }
+
+    fallback = SandboxAPISettings(num_sandbox_actors=4, default_actor_num_cpus=0.5)
+    assert _pool_actor_options(fallback)["num_cpus"] == 0.5
+    assert "memory" not in _pool_actor_options(fallback)
+
+    for shard in range(8):
+        sid = _new_sharded_sandbox_id(shard, 8)
+        assert sid.startswith("sb-")
+        assert len(sid) == len("sb-") + 22
+        assert _shard_for_sandbox_id(sid, 8) == shard
+
+    resolver = RayActorHandleResolver(pooled)
+    minted = [resolver.next_sandbox_id() for _ in range(16)]
+    shards = [_shard_for_sandbox_id(sid, 8) for sid in minted]
+    assert sorted(shards[:8]) == list(range(8))
+    assert sorted(shards[8:]) == list(range(8))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

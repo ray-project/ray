@@ -923,5 +923,98 @@ def test_file_jobs_stay_failed_after_terminate() -> None:
     assert job.get("content") is None
 
 
+def test_describe_wait_until_booted_skips_intermediate_states() -> None:
+    runtime = FakeSandboxRuntime()
+    runtime.pull_gate = threading.Event()
+    host = _make_host(runtime)
+
+    async def scenario() -> dict:
+        boot_task = asyncio.create_task(host.boot())
+        while not runtime.pull_calls:
+            await asyncio.sleep(0.01)
+        waiter = asyncio.create_task(
+            host.describe(wait_seconds=5.0, wait_until_booted=True)
+        )
+        await asyncio.sleep(0.05)
+        assert not waiter.done()
+        runtime.pull_gate.set()
+        info = await asyncio.wait_for(waiter, timeout=5.0)
+        await boot_task
+        return info
+
+    info = asyncio.run(scenario())
+    assert info["status"] == "running"
+
+
+def test_multi_sandbox_host_multiplexes_lifecycle_and_isolates_termination() -> None:
+    from ray.experimental.sandbox.http.host import MultiSandboxHost
+
+    runtimes = []
+
+    def make_runtime() -> FakeSandboxRuntime:
+        rt = FakeSandboxRuntime()
+        rt.instance_id = f"inst-{len(runtimes)}"
+        rt.exec_results = [FakeExecResult(exit_code=0, stdout=f"from-{len(runtimes)}")]
+        runtimes.append(rt)
+        return rt
+
+    multi = MultiSandboxHost(
+        settings={"max_output_bytes": 1024 * 1024, "max_exec_history": 16},
+        runtime_factory=make_runtime,
+    )
+
+    async def scenario() -> dict:
+        await multi.warmup()
+        await multi.create_sandbox(
+            "sb-alpha", {"image": "alpine:3.20", "ttl_seconds": 3600}
+        )
+        await multi.create_sandbox(
+            "sb-beta", {"image": "alpine:3.20", "ttl_seconds": 0.05}
+        )
+        info_a = await multi.describe(
+            "sb-alpha", wait_seconds=5.0, wait_until_booted=True
+        )
+        info_b = await multi.describe(
+            "sb-beta", wait_seconds=5.0, wait_until_booted=True
+        )
+        assert info_a["status"] == "running"
+        assert info_b["status"] == "running"
+
+        # Wait for sb-beta's TTL to evict only sb-beta while sb-alpha keeps running.
+        await asyncio.sleep(0.25)
+        missing_b = await multi.describe("sb-beta")
+        still_a = await multi.describe("sb-alpha")
+
+        started = await multi.start_exec("sb-alpha", ["echo", "hi"], exec_key="k1")
+        exec_info = await multi.get_exec_by_key("sb-alpha", "k1", wait_seconds=5.0)
+        await multi.write_file("sb-alpha", "/tmp/hello.txt", b"world")
+        read_back = await multi.read_file("sb-alpha", "/tmp/hello.txt")
+        listed = await multi.list_sandbox_ids()
+
+        await multi.terminate("sb-alpha")
+        after_term = await multi.describe("sb-alpha")
+        return {
+            "missing_b": missing_b.get("error_code"),
+            "still_a": still_a["status"],
+            "started_status": started["status"],
+            "exec_stdout": exec_info["stdout"],
+            "written": runtimes[0].written_files.get("/tmp/hello.txt"),
+            "read_error": read_back.get("error_code"),
+            "listed": listed,
+            "after_term": after_term.get("error_code"),
+            "deleted": [rt.deleted for rt in runtimes],
+        }
+
+    res = asyncio.run(scenario())
+    assert res["missing_b"] == "sandbox_not_found"
+    assert res["still_a"] == "running"
+    assert res["exec_stdout"] == "from-0"
+    assert res["written"] == b"world"
+    assert res["read_error"] == "file_not_found"
+    assert res["listed"] == ["sb-alpha"]
+    assert res["after_term"] == "sandbox_not_found"
+    assert res["deleted"] == [["inst-0"], ["inst-1"]]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
