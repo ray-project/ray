@@ -1,0 +1,61 @@
+load("@erofs_pull_crates//:defs.bzl", "all_crate_deps")
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+
+# erofs-pull builds a Ray Sandbox root filesystem (an EROFS image gVisor
+# mounts) straight from a registry image's layers: ranged parallel downloads
+# into the layer cache, parallel gzip decoding with rapidgzip, and each file's
+# data written once into the image. Python resolves the image and hands it a
+# JSON spec on stdin; see src/main.rs.
+rust_binary(
+    name = "erofs_pull",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "erofs_pull",
+    edition = "2021",
+    rustc_flags = [
+        # Errors are returned, not unwound; a panic still prints its message
+        # and exits non-zero. Drops the unwinding runtime.
+        "-Cpanic=abort",
+        "-Cstrip=symbols",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+    deps = all_crate_deps(normal = True),
+)
+
+rust_test(
+    name = "erofs_pull_test",
+    size = "small",
+    crate = ":erofs_pull",
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+# rapidgzip-sys's native library (rapidgzip's C API over librapidarchive, with
+# rpmalloc and zlib-ng), linked into the rapidgzip-sys crate in place of its
+# build script (see the crates_repository annotation in WORKSPACE and
+# thirdparty/patches/rapidgzip-sys-bazel.patch).
+cmake(
+    name = "rapidgzip_native",
+    cache_entries = {
+        # No ISA-L: its x86 assembly needs nasm, and rapidgzip's own decoder
+        # is within ~5% of it here.
+        "RAPIDGZIP_NO_ISAL": "ON",
+        # No LTO: GCC's bitcode-only LTO objects don't link into a Rust binary.
+        "RAPIDGZIP_NO_IPO": "ON",
+        # Install librpmalloc.a and libzlibstatic.a next to the C API.
+        "RAPIDGZIP_INSTALL_DEPS": "ON",
+        "CMAKE_INSTALL_LIBDIR": "lib",
+    },
+    # Make, not Ninja; see bazel/rocksdb.BUILD.
+    generate_args = ["-GUnix Makefiles"],
+    lib_source = "@erofs_pull_crates__rapidgzip-sys-1.2.1//:native_srcs",
+    # Static libraries resolve left to right: the C API, then what it uses.
+    out_static_libs = [
+        "librapidgzip-capi.a",
+        "librpmalloc.a",
+        "libzlibstatic.a",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["@erofs_pull_crates__rapidgzip-sys-1.2.1//:__pkg__"],
+    working_directory = "native/rapidgzip-capi",
+)

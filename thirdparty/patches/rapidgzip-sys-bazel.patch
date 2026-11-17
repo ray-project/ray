@@ -1,0 +1,52 @@
+Build rapidgzip-sys's native library with Bazel (rules_foreign_cc), for
+//src/ray/sandbox/erofs_pull. Three opt-in cache variables, off by default:
+
+- RAPIDGZIP_NO_ISAL: build without ISA-L, whose x86 assembly needs nasm.
+  rapidgzip's own decoder is within ~5% for Ray's use.
+- RAPIDGZIP_NO_IPO: skip LTO. With GCC, LTO leaves bitcode-only objects that
+  link only when the final link runs GCC with -flto; rustc's link of
+  erofs-pull doesn't, so rpmalloc's and zlib-ng's symbols go missing.
+- RAPIDGZIP_INSTALL_DEPS: install librpmalloc.a and libzlibstatic.a next to
+  librapidgzip-capi.a, where rules_foreign_cc collects static libraries.
+
+diff --git a/native/rapidgzip-capi/CMakeLists.txt b/native/rapidgzip-capi/CMakeLists.txt
+--- a/native/rapidgzip-capi/CMakeLists.txt
++++ b/native/rapidgzip-capi/CMakeLists.txt
+@@ -17,7 +17,8 @@ set(LIBRAPIDARCHIVE_WITH_RPMALLOC ON CACHE BOOL "" FORCE)
+ # Upstream currently disables ISA-L for macOS in release workflows because the
+ # macOS path is not stable enough yet. Keep the Apple build reliable and use the
+ # accelerated ISA-L path on the other targets.
+-if(APPLE)
++# Ray: RAPIDGZIP_NO_ISAL builds without ISA-L's assembly (and so without nasm).
++if(APPLE OR RAPIDGZIP_NO_ISAL)
+     set(LIBRAPIDARCHIVE_WITH_ISAL OFF CACHE BOOL "" FORCE)
+ else()
+     set(LIBRAPIDARCHIVE_WITH_ISAL ON CACHE BOOL "" FORCE)
+@@ -37,3 +38,13 @@ if(TARGET rpmalloc)
+ endif()
+ 
+ install(TARGETS rapidgzip-capi DESTINATION lib)
++
++# Ray: rules_foreign_cc links the static libraries it finds in the install
++# tree, so install the ones rapidgzip-capi needs next to it.
++if(RAPIDGZIP_INSTALL_DEPS)
++    foreach(dep rpmalloc zlibstatic isal)
++        if(TARGET ${dep})
++            install(TARGETS ${dep} ARCHIVE DESTINATION lib)
++        endif()
++    endforeach()
++endif()
+diff --git a/vendor/librapidarchive/CMakeLists.txt b/vendor/librapidarchive/CMakeLists.txt
+--- a/vendor/librapidarchive/CMakeLists.txt
++++ b/vendor/librapidarchive/CMakeLists.txt
+@@ -104,7 +104,9 @@ find_package(Threads REQUIRED)
+ # > C:/mingw64//x86_64-w64-mingw32/bin/ld.exe:
+ #   C:/mingw64//x86_64-w64-mingw32/lib/libmingw32.a(lib64_libmingw32_a-crtexewin.o):crtexewin.c:(.text.startup+0xbd):
+ #   undefined reference to `WinMain'
+-if(NOT WIN32 AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
++# Ray: RAPIDGZIP_NO_IPO skips LTO. GCC's LTO objects only link where the final
++# link runs GCC with -flto, which rustc's link of a Rust binary doesn't.
++if(NOT WIN32 AND NOT RAPIDGZIP_NO_IPO AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
+     include(CheckIPOSupported)
+     check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
+     if(IPO_SUPPORTED)

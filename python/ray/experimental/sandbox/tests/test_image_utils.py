@@ -602,7 +602,9 @@ def fake_docker_hub(monkeypatch):
     manifest = json.dumps(
         {
             "config": {"digest": config},
-            "layers": [{"digest": add_blob(layer.getvalue())}],
+            "layers": [
+                {"digest": add_blob(layer.getvalue()), "size": len(layer.getvalue())}
+            ],
         }
     ).encode()
     manifest_digest = f"sha256:{hashlib.sha256(manifest).hexdigest()}"
@@ -1715,3 +1717,190 @@ def test_extract_tar_layer_reads_a_layer_once(tmp_path):
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
+
+
+# The erofs-pull binary the tests below run: RAY_SANDBOX_EROFS_PULL as the
+# test run starts (a Bazel-built one, say), else the one packaged with Ray.
+_EROFS_PULL_UNDER_TEST = next(
+    (
+        path
+        for path in (
+            os.environ.get("RAY_SANDBOX_EROFS_PULL", ""),
+            image_utils._EROFS_PULL_PACKAGED,
+        )
+        if path not in ("", "0") and os.access(path, os.X_OK)
+    ),
+    None,
+)
+
+
+@pytest.fixture
+def erofs_pull(fake_mkfs_erofs, monkeypatch):
+    """erofs-pull on, with the real erofs-utils for the extraction it is
+    compared against; skips without either."""
+    path = os.pathsep.join(
+        d for d in os.environ["PATH"].split(os.pathsep) if d != str(fake_mkfs_erofs)
+    )
+    if not (
+        shutil.which("mkfs.erofs", path=path) and shutil.which("dump.erofs", path=path)
+    ):
+        pytest.skip("erofs-utils is not installed")
+    if _EROFS_PULL_UNDER_TEST is None:
+        pytest.skip("no erofs-pull binary")
+    monkeypatch.setenv("PATH", path)
+    image_utils.mkfs_erofs_path.cache_clear()
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", _EROFS_PULL_UNDER_TEST)
+
+
+def _erofs_tree(image, path="/"):
+    """{path: (type, permission bits, uid, gid, contents)} of an EROFS image."""
+
+    def dump(*args):
+        return subprocess.run(
+            ["dump.erofs", *args, image], capture_output=True, check=True
+        ).stdout
+
+    tree = {}
+    listing = dump("--ls", f"--path={path}").decode().split("FILENAME", 1)[1]
+    for line in listing.splitlines():
+        fields = line.split(None, 2)
+        if len(fields) != 3 or fields[2] in (".", ".."):
+            continue
+        child, is_dir = os.path.join(path, fields[2]), int(fields[1]) == 2
+        stat = re.search(
+            r"Uid: (\d+)\s+Gid: (\d+)\s+Access: (\d+)/",
+            dump(f"--path={child}").decode(),
+        )
+        data = b"" if is_dir else dump("--cat", f"--path={child}")
+        tree[child] = (fields[1], int(stat[3], 8), int(stat[1]), int(stat[2]), data)
+        if is_dir:
+            tree.update(_erofs_tree(image, child))
+    return tree
+
+
+def _layer(*members):
+    """A gzipped layer of ``(name, data, kwargs)`` members, in order."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data, kwargs in members:
+            _add_member(tar, name, data, **kwargs)
+    return buf.getvalue()
+
+
+_DIR = {"typ": tarfile.DIRTYPE, "mode": 0o755}
+
+
+def _symlink(target):
+    return {"typ": tarfile.SYMTYPE, "mode": 0o777, "linkname": target}
+
+
+def _send_ranges(index, handler, blob):
+    """Answer ``Range`` requests as registries' storage does."""
+    match = re.fullmatch(r"bytes=(\d+)-(\d+)", handler.headers.get("Range", ""))
+    if match is None:
+        _send(handler, blob)
+        return
+    start, end = int(match[1]), min(int(match[2]), len(blob) - 1)
+    handler.send_response(206)
+    handler.send_header("Content-Range", f"bytes {start}-{end}/{len(blob)}")
+    handler.send_header("Content-Length", str(end - start + 1))
+    handler.end_headers()
+    handler.wfile.write(blob[start : end + 1])
+
+
+@pytest.mark.parametrize("serve_blob", [None, _send_ranges])
+def test_erofs_pull_builds_the_extracted_image(
+    tmp_path, erofs_pull, monkeypatch, serve_blob
+):
+    """erofs-pull builds the image extraction builds, entry for entry, from
+    storage that ignores ``Range`` and from storage that serves it."""
+    base = _layer(
+        ("usr", b"", _DIR),
+        ("usr/bin", b"", _DIR),
+        ("usr/bin/sh", b"sh-1", {"mode": 0o755}),
+        ("bin", b"", _symlink("usr/bin")),
+        ("etc", b"", _DIR),
+        ("etc/secret", b"secret", {"mode": 0o600}),
+        ("opq", b"", _DIR),
+        ("opq/a", b"a", {}),
+        ("gone", b"", _DIR),
+        ("gone/x", b"x", {}),
+        ("home", b"", _DIR),
+        ("home/u", b"", {**_DIR, "mode": 0o700, "uid": 1000, "gid": 1000}),
+        ("home/u/notes", b"notes", {"uid": 1000, "gid": 1000, "mode": 0o600}),
+    )
+    upper = _layer(
+        ("etc/.wh.secret", b"", {}),
+        ("etc/motd", b"hi", {}),  # No entry for etc/ in this layer.
+        (".wh.gone", b"", {}),
+        ("opq/.wh..wh..opq", b"", {}),
+        ("opq/b", b"b", {}),
+        ("bin", b"", _DIR),  # A directory over UsrMerge's bin -> usr/bin.
+        ("bin/hello", b"hello", {"mode": 0o755}),
+        ("usr/bin/hello2", b"", {"typ": tarfile.LNKTYPE, "linkname": "usr/bin/hello"}),
+        ("run/shm", b"", _DIR),
+        ("dev/shm", b"", _symlink("/run/shm")),
+    )
+    big = _layer(("big", os.urandom(1 << 20), {}))
+    layers = [base, upper, big, upper]  # A layer can repeat.
+    images = []
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        for name in ("erofs-pull", "extracted"):
+            if name == "extracted":
+                monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", "0")
+            image_dir = pull_and_extract_container_image(
+                image, images_dir=str(tmp_path / name)
+            )
+            images.append(os.path.join(image_dir, ROOTFS_IMAGE))
+    pulled, extracted = (_erofs_tree(image) for image in images)
+    assert pulled == extracted
+    assert pulled["/usr/bin/hello2"][4] == b"hello"
+    assert pulled["/home/u"][1:4] == (0o700, 1000, 1000)
+    assert "/tmp/.ray-sandbox-keep" in pulled
+    # The layers are in the layer cache, which kept no tree of them.
+    blobs = os.listdir(tmp_path / "erofs-pull" / ".blobs" / "sha256")
+    assert {b for b in blobs if not b.endswith(".lock")} == {
+        hashlib.sha256(layer).hexdigest() for layer in layers
+    }
+
+
+def test_erofs_pull_from_a_registry(tmp_path, fake_docker_hub, erofs_pull, monkeypatch):
+    """A pull from the fake registry (token challenge, multi-arch index,
+    blobs redirected to storage that refuses the token) is built by
+    erofs-pull, not by extraction."""
+    monkeypatch.setattr(image_utils, "extract_tar_layer", lambda *a, **k: 1 / 0)
+    image_dir = pull_and_extract_container_image(
+        "busybox:latest", images_dir=str(tmp_path / "images")
+    )
+    tree = _erofs_tree(os.path.join(image_dir, ROOTFS_IMAGE))
+    assert tree["/bin/busybox"][1:] == (0o755, 0, 0, fake_docker_hub)
+    assert "/etc/resolv.conf" in tree
+
+
+def _cut_short(index, handler, blob):
+    """Promise the whole blob, send half of it, and close the connection."""
+    handler.send_response(200)
+    handler.send_header("Content-Length", str(len(blob)))
+    handler.end_headers()
+    handler.wfile.write(blob[: len(blob) // 2])
+
+
+@pytest.mark.parametrize(
+    "serve_blob",
+    [_cut_short, lambda index, handler, blob: _send(handler, b"x" * len(blob))],
+)
+def test_erofs_pull_falls_back_to_extraction(
+    tmp_path, erofs_pull, monkeypatch, serve_blob
+):
+    """A layer cut short or swapped fails erofs-pull, which caches nothing,
+    and extraction, which tries it next, fails the pull on it."""
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    with _serve_image(
+        monkeypatch, [_layer(("a", os.urandom(1 << 16), {}))], serve_blob
+    ) as image:
+        with pytest.raises(SandboxCreationError):
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+    assert any("with erofs-pull failed" in warning for warning in warnings)
+    blobs = os.listdir(tmp_path / "images" / ".blobs" / "sha256")
+    assert [b for b in blobs if not b.endswith(".lock")] == []

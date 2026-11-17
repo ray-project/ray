@@ -45,8 +45,11 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
     path, so a cached ``rootfs.erofs`` is a tar the test can open and
     inspect, with the owners the real build would store. Its argv lands in
     ``mkfs.args`` next to the script. Yields the directory holding both.
+    erofs-pull, which writes real EROFS images without mkfs.erofs, is off.
     """
     from ray.experimental.sandbox._internal.image_utils import mkfs_erofs_path
+
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", "0")
 
     bin_dir = tmp_path / "fake-mkfs-bin"
     bin_dir.mkdir()
