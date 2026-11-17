@@ -217,6 +217,7 @@ class MultiplexMixin:
 
     # Provided by the composed RequestRouter.
     _pending_requests_by_model_id: DefaultDict[str, Deque[PendingRequest]]
+    _first_pending_request_for_model_id: Callable[[str], Optional[PendingRequest]]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -244,15 +245,9 @@ class MultiplexMixin:
         if request_metadata is None or not request_metadata.multiplexed_model_id:
             return None
 
-        model_id = request_metadata.multiplexed_model_id
-        candidates = self._pending_requests_by_model_id.get(model_id)
-        while candidates:
-            pr = candidates[0]
-            if not pr.future.done():
-                return pr
-            candidates.popleft()
-        self._pending_requests_by_model_id.pop(model_id, None)
-        return None
+        return self._first_pending_request_for_model_id(
+            request_metadata.multiplexed_model_id
+        )
 
     def _discard_multiplexed_replica_ids_on_replica_actor_died(
         self, replica_id: ReplicaID
@@ -903,20 +898,34 @@ class RequestRouter(ABC):
         self._pending_requests_by_id.pop(internal_id, None)
 
         model_id = pending_request.metadata.multiplexed_model_id
-        if not model_id:
-            return
+        if model_id:
+            # Every completed or cancelled request calls this method, so the key
+            # is dropped once its last request is done, even for routers without
+            # FIFOMixin, which never look up by model ID.
+            self._first_pending_request_for_model_id(model_id)
+
+    def _first_pending_request_for_model_id(
+        self, model_id: str
+    ) -> Optional[PendingRequest]:
+        """Pop done requests from the front of the model ID's deque.
+
+        Finding a request in the deque would be O(n), so done entries are popped
+        from the front instead. Entries done out of order are popped once the
+        ones ahead of them are done.
+
+        Args:
+            model_id: The multiplexed model ID to clean up.
+
+        Returns:
+            The first pending request, or None after dropping the key.
+        """
         candidates = self._pending_requests_by_model_id.get(model_id)
-        if candidates is None:
-            return
-        # Finding the request in the deque would be O(n), so instead pop done
-        # entries from the front. Entries done out of order are popped once the
-        # ones ahead of them are done. Every completed or cancelled request calls
-        # this method, so the key is dropped once its last request is done, even
-        # for routers without FIFOMixin, which never look up by model ID.
-        while candidates and candidates[0].future.done():
+        while candidates:
+            if not candidates[0].future.done():
+                return candidates[0]
             candidates.popleft()
-        if not candidates:
-            self._pending_requests_by_model_id.pop(model_id, None)
+        self._pending_requests_by_model_id.pop(model_id, None)
+        return None
 
     def _insert_pending_request_sorted(
         self, queue: Deque[PendingRequest], pending_request: PendingRequest
