@@ -129,8 +129,11 @@ class ActorTaskExecutionArgWaiterInterface {
   /// thread, so the IPC is not blocked behind in-progress work on the task
   /// execution service).
   ///
+  /// \param args The task's by-reference args to fetch.
   /// \param is_move Parallel to `args`: whether the task consumes the arg
   /// (TaskArg.is_move).
+  /// \param task_attempt The task attempt the args belong to. `OnArgsReady` takes the
+  /// same value.
   virtual void BeginArgsFetch(const std::vector<rpc::ObjectReference> &args,
                               const std::vector<bool> &is_move,
                               const TaskAttempt &task_attempt) = 0;
