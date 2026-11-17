@@ -1084,6 +1084,13 @@
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+        # Since pyarrow 24 (#68005 moved this image to 25), Arrow's bundled mimalloc
+        # serves allocations up to 2 GiB from its arenas instead of returning
+        # anything over 32 MiB to the OS on free. Freed arena memory is only
+        # released on a later allocation, so idle workers keep GBs of freed Arrow
+        # buffers, which starves the page cache and leads to OOM kills. Release it
+        # on free instead. Users on pyarrow 24+ still get mimalloc's default.
+        MIMALLOC_PURGE_DELAY: "0"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -1092,8 +1099,9 @@
       python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 # A/B for the random_shuffle regression that started with the Nov 12 nightly:
-# same workload on the same image, but pyarrow pinned back to 23.0.1 (the
-# version before #68005). Run alongside random_shuffle on the same commit.
+# same workload on the same image, but with pyarrow pinned back to 23.0.1 (the
+# version before #68005) and without MIMALLOC_PURGE_DELAY. Run alongside
+# random_shuffle on the same commit.
 - name: "random_shuffle_pyarrow23"
   python: "3.11"
   frequency: manual
@@ -1102,24 +1110,6 @@
     byod:
       post_build_script: byod_install_pyarrow23.sh
       runtime_env:
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 10800
-    script: >
-      python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
-
-# Candidate fix on the pyarrow 25 image: make mimalloc return freed memory to the
-# OS immediately instead of holding it (the suspected source of the extra RSS).
-- name: "random_shuffle_mimalloc_purge0"
-  python: "3.11"
-  frequency: manual
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        MIMALLOC_PURGE_DELAY: "0"
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
