@@ -9,6 +9,7 @@ import pytest
 from ray.data.llm import SGLangEngineProcessorConfig
 from ray.llm._internal.batch.constants import SGLangTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
+from ray.llm._internal.batch.tasks.sglang import score as score_task
 
 _SCORE_MODEL = "unsloth/Llama-3.2-1B-Instruct"
 
@@ -177,14 +178,21 @@ def test_score_build_validation(hf_config, task_kwargs, kwargs, match):
     ],
     ids=["classifier_without_labels", "unknown_config", "item_first"],
 )
-def test_score_build_accepts(hf_config_value, task_kwargs, caplog):
-    with patch("transformers.AutoConfig.from_pretrained", return_value=hf_config_value):
+def test_score_build_accepts(hf_config_value, task_kwargs):
+    # Patch the logger rather than use caplog: the "ray" logger doesn't
+    # propagate to the root logger, so caplog misses it on older pytest.
+    with patch(
+        "transformers.AutoConfig.from_pretrained", return_value=hf_config_value
+    ), patch.object(score_task.logger, "warning") as warning:
         processor = ProcessorBuilder.build(_score_config(task_kwargs=task_kwargs))
     assert processor.list_stage_names() == [
         "SGLangScoreTokenizeStage",
         "SGLangEngineStage",
     ]
-    skipped = "aren't checked against the model" in caplog.text
+    skipped = any(
+        "aren't checked against the model" in call.args[0]
+        for call in warning.call_args_list
+    )
     assert skipped is (hf_config_value is None)
 
 
