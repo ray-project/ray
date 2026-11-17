@@ -87,8 +87,8 @@ constexpr std::array<int, 7> kFailureSignals = {
 
 #ifndef _WIN32
 // Whether two dispositions name the same handler. Only the handler itself is
-// compared: this is used to decide whether the disposition currently installed is
-// still the one absl put there, and absl is the only writer of its own entry.
+// compared: this is used to detect whether anything has replaced the disposition
+// absl installed since InstallFailureSignalHandler.
 bool IsSameSignalAction(const struct sigaction &lhs, const struct sigaction &rhs) {
   if ((lhs.sa_flags & SA_SIGINFO) != (rhs.sa_flags & SA_SIGINFO)) {
     return false;
@@ -490,7 +490,7 @@ void RayLog::UninstallSignalAction() {
     if (sigaction(entry.signal_num, NULL, &current) != 0) {
       continue;
     }
-    if (entry.installed_known && !IsSameSignalAction(current, entry.installed)) {
+    if (!IsSameSignalAction(current, entry.installed)) {
       RAY_LOG(DEBUG) << "Not uninstalling handler for signal " << entry.signal_num
                      << "; it was replaced after Ray installed its own.";
       continue;
@@ -565,10 +565,8 @@ void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_h
     entry.signal_num = signal_num;
     memset(&entry.previous, 0, sizeof(entry.previous));
     memset(&entry.installed, 0, sizeof(entry.installed));
-    entry.installed_known = false;
-    if (sigaction(signal_num, NULL, &entry.previous) == 0) {
-      saved_signal_actions_.push_back(entry);
-    }
+    RAY_CHECK(sigaction(signal_num, NULL, &entry.previous) == 0);
+    saved_signal_actions_.push_back(entry);
   }
 #endif
   absl::InstallFailureSignalHandler(options);
@@ -577,7 +575,7 @@ void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_h
   // "somebody installed over us afterwards".
   for (auto &entry : saved_signal_actions_) {
     memset(&entry.installed, 0, sizeof(entry.installed));
-    entry.installed_known = sigaction(entry.signal_num, NULL, &entry.installed) == 0;
+    RAY_CHECK(sigaction(entry.signal_num, NULL, &entry.installed) == 0);
   }
 #endif
   is_failure_signal_handler_installed_ = true;

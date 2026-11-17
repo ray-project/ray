@@ -425,7 +425,6 @@ class RayLog {
     int signal_num;
     struct sigaction previous;
     struct sigaction installed;
-    bool installed_known;
   };
   static std::vector<SavedSignalAction> saved_signal_actions_;
 #endif

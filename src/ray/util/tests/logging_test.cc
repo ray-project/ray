@@ -439,6 +439,31 @@ TEST_P(SignalActionTest, TestUninstallSignalActionRestoresPreexistingHandler) {
   EXPECT_EQ(dummy_handler_calls, 1);
 }
 
+// The path every Ray process takes: no handler before Ray's install, so uninstall
+// must put SIG_DFL back rather than leaving Ray's handler or anything else behind.
+TEST_P(SignalActionTest, TestUninstallSignalActionRestoresDefault) {
+  const int signal_num = GetParam();
+  ray::RayLog::UninstallSignalAction();
+  ResetSignalToDefault(signal_num);
+
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+
+  struct sigaction while_installed;
+  memset(&while_installed, 0, sizeof(while_installed));
+  ASSERT_EQ(sigaction(signal_num, NULL, &while_installed), 0);
+  ASSERT_TRUE((while_installed.sa_flags & SA_SIGINFO) != 0 ||
+              while_installed.sa_handler != SIG_DFL)
+      << "Ray's handler should have taken over the signal";
+
+  ray::RayLog::UninstallSignalAction();
+
+  struct sigaction after_uninstall;
+  memset(&after_uninstall, 0, sizeof(after_uninstall));
+  ASSERT_EQ(sigaction(signal_num, NULL, &after_uninstall), 0);
+  EXPECT_EQ(after_uninstall.sa_flags & SA_SIGINFO, 0);
+  EXPECT_EQ(after_uninstall.sa_handler, SIG_DFL);
+}
+
 // The ordering that actually bit us: Ray initialises first, and only afterwards
 // does something start a JVM, which installs its own SIGSEGV handler on top of
 // Ray's. Ray's teardown must not remove a handler that was installed after its
