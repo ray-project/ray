@@ -398,6 +398,14 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
     def productive_task_slots(self):
         return max(0, self._pool.num_tasks_in_flight() - self.out_backpressure[0])
 
+    def serving_actor_breakdown(self):
+        # (serving, busy, output_backpressured, idle), from the same knobs the
+        # other accessors read: blocked actors first, then busy, rest idle.
+        serving = self._pool.num_running_actors()
+        blocked = min(serving, self.out_backpressure[0])
+        busy = min(serving - blocked, self._pool.num_tasks_in_flight())
+        return serving, busy, blocked, serving - blocked - busy
+
     def output_backpressured_actors(self):
         # Mirror the real contract: a pool with no running actors or with
         # pending (mid-resize) actors reports (0, 0).

@@ -2246,6 +2246,37 @@ def test_is_output_backpressured_counts_blocked_tasks_not_actors():
     assert op.is_output_backpressured() is True
 
 
+def test_serving_actor_breakdown_puts_each_serving_actor_in_one_bucket():
+    """Serving (IDLE / ACTIVE) actors split into output-backpressured, busy
+    and idle; output backpressure wins over busy and idle, and non-serving
+    actors are left out."""
+    from types import SimpleNamespace
+
+    from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
+        ExperimentalActorPoolMapOperator,
+    )
+
+    states = {
+        "busy": SimpleNamespace(status=ActorStatus.ACTIVE),
+        "blocked_busy": SimpleNamespace(status=ActorStatus.ACTIVE),
+        "blocked_idle": SimpleNamespace(status=ActorStatus.IDLE),
+        "idle": SimpleNamespace(status=ActorStatus.IDLE),
+        "draining": SimpleNamespace(status=ActorStatus.DRAINING),
+    }
+    blocked = {"blocked_busy", "blocked_idle", "draining"}
+    op = cast(Any, object.__new__(ExperimentalActorPoolMapOperator))
+    pool = cast(Any, object.__new__(_ExperimentalActorPool))
+    pool.alive_actor_states_by_node = lambda: {"node1": states}
+    op._actor_pool = pool
+    op._actor_pull_budget = lambda actor_id: (
+        TaskPullRequest.zero()
+        if actor_id in blocked
+        else TaskPullRequest(bytes_to_read=1, blocks_to_read=1)
+    )
+
+    assert op.serving_actor_breakdown() == (4, 1, 2, 1)
+
+
 def test_expired_pending_actor_is_released_and_killed(monkeypatch):
     # A pending actor whose ready-ref never resolves (e.g. an actor wedged in
     # failed restarts, ray#53727) must not hold the pool's pending count -- and

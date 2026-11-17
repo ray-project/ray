@@ -1735,6 +1735,32 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 slots += min(state.num_tasks_in_flight, conc)
         return slots
 
+    def serving_actor_breakdown(self) -> Tuple[int, int, int, int]:
+        """(serving, busy, output_backpressured, idle) actor counts, from one
+        scan.
+
+        Serving actors are IDLE or ACTIVE; DRAINING / RESTARTING ones are
+        excluded. Each serving actor lands in exactly one bucket:
+        output-backpressured if its pull budget is exhausted (whether or not
+        it holds tasks), else busy if it has a task in flight, else idle.
+        Unlike ``output_backpressured_actors`` this also counts while actors
+        are pending, so an observer's history has no gaps during a resize.
+        """
+        zeros = TaskPullRequest.zero()
+        serving = busy = blocked = idle = 0
+        for states in self.actor_pool.alive_actor_states_by_node().values():
+            for actor_id, state in states.items():
+                if state.status not in (ActorStatus.IDLE, ActorStatus.ACTIVE):
+                    continue
+                serving += 1
+                if not self._actor_pull_budget(actor_id).all_fields_gt(zeros):
+                    blocked += 1
+                elif state.status == ActorStatus.ACTIVE:
+                    busy += 1
+                else:
+                    idle += 1
+        return serving, busy, blocked, idle
+
     def output_backpressured_actors(self) -> Tuple[int, int]:
         """(blocked, running) ACTOR counts for output backpressure.
 

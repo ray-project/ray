@@ -32,6 +32,9 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     ActorPlacementStrategy,
 )
+from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
+    BottleneckObserver,
+)
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
 )
@@ -170,6 +173,9 @@ class OperatorSizer:
             self._policy.is_output_backpressured,
             self._guard,
         )
+        # Observation only: logs the bottleneck model each tick and decides
+        # nothing.
+        self._bottleneck_observer = BottleneckObserver(self._profiles, clock=clock)
         self._ticker = SizingTicker(
             self._profiles,
             cadence_s=SIZER_CADENCE_S,
@@ -218,6 +224,7 @@ class OperatorSizer:
         if ctx is None:
             return
         self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        self._bottleneck_observer.log_tick()
         # Picks up placement groups a ray_remote_args_fn created since the
         # last tick, so later views take their bundles out of the slice.
         self._register_placement_groups()
@@ -253,8 +260,10 @@ class OperatorSizer:
         self._awaiting_on_start -= started
 
     def _observe(self) -> None:
-        """Sample the signals the optimizer decides on."""
+        """Sample the signals the optimizer decides on, and the bottleneck
+        observer's (which decides nothing yet)."""
         self._optimizer.observe(self._profiles.actor_pool_ops)
+        self._bottleneck_observer.observe(self._topology)
 
     def _cross_op_optimize(
         self, ctx: TickContext, seconds_since_allocation_change: float
