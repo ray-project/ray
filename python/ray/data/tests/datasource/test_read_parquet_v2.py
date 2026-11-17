@@ -7,6 +7,8 @@ triggers Ray auto-init, so they live alongside the other datasource
 integration tests rather than under ``tests/unit/``.
 """
 
+import copy
+import dataclasses
 import json
 import logging
 import os
@@ -38,7 +40,11 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsLimitPushdown
+from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
+    ExperimentalActorPoolMapOperator,
+)
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
+from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
 from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
@@ -394,6 +400,57 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     assert schema is not None
     assert "a" in schema.names
     assert "b" in schema.names
+
+
+@pytest.mark.parametrize(
+    "actor_only,count_pushdown,num_files,expected_num_blocks",
+    [
+        # Parquet's bin packer needs the whole listing: one block.
+        (False, False, 20, 1),
+        (True, False, 20, 1),
+        # The count pushdown drops the partitioner. Classic: one block per
+        # path, up to 200. Actor-only: at least 256 paths per block.
+        (False, True, 20, 20),
+        (False, True, 300, 200),
+        (True, True, 20, 1),
+        (True, True, 300, 2),
+    ],
+)
+def test_read_parquet_v2_list_files_workers_follow_listing_blocks(
+    tmp_path, restore_ctx, actor_only, count_pushdown, num_files, expected_num_blocks
+):
+    # Tasks: one per block, unsized. Actor-only: a pool of 1 up to one actor
+    # per block.
+    paths = []
+    for i in range(num_files):
+        path = tmp_path / f"{i}.parquet"
+        _write(path, pa.table({"a": [i]}))
+        paths.append(str(path))
+    restore_ctx.use_datasource_v2 = True
+    list_files = ray.data.read_parquet(paths)._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files, ListFiles)
+    if count_pushdown:
+        # The listing ``PushdownCountFiles`` builds for ``count()``.
+        whole_file_indexer = list_files.file_indexer.as_whole_file_indexer()
+        assert whole_file_indexer is not None
+        list_files = dataclasses.replace(
+            list_files, file_partitioner=None, file_indexer=whole_file_indexer
+        )
+    data_context = copy.copy(DataContext.get_current())
+    data_context._actor_only_backend_override = actor_only
+
+    list_files_op = plan_list_files_op(list_files, [], data_context)
+
+    assert (
+        list_files_op.input_dependencies[0].num_outputs_total() == expected_num_blocks
+    )
+    if actor_only:
+        assert isinstance(list_files_op, ExperimentalActorPoolMapOperator)
+        assert list_files_op.actor_pool.min_size() == 1
+        assert list_files_op.actor_pool.max_size() == expected_num_blocks
+    else:
+        assert not isinstance(list_files_op, ExperimentalActorPoolMapOperator)
+        assert list_files_op.get_max_concurrency_limit() is None
 
 
 @pytest.mark.parametrize("as_list", [False, True])
