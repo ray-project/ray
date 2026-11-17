@@ -9,6 +9,11 @@ Build rapidgzip-sys's native library with Bazel (rules_foreign_cc), for
 - RAPIDGZIP_INSTALL_DEPS: install librpmalloc.a and libzlibstatic.a next to
   librapidgzip-capi.a, where rules_foreign_cc collects static libraries.
 
+And one fix: rpmalloc uses __builtin_thread_pointer with GCC 5 and later, but
+GCC only has it on x86_64 from GCC 11 (CI's manylinux toolchain is GCC 10).
+Older GCCs take rpmalloc's inline-assembly path, which reads the same
+thread pointer.
+
 diff --git a/native/rapidgzip-capi/CMakeLists.txt b/native/rapidgzip-capi/CMakeLists.txt
 --- a/native/rapidgzip-capi/CMakeLists.txt
 +++ b/native/rapidgzip-capi/CMakeLists.txt
@@ -50,3 +55,15 @@ diff --git a/vendor/librapidarchive/CMakeLists.txt b/vendor/librapidarchive/CMak
      include(CheckIPOSupported)
      check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
      if(IPO_SUPPORTED)
+diff --git a/vendor/librapidarchive/src/external/rpmalloc/rpmalloc/rpmalloc.c b/vendor/librapidarchive/src/external/rpmalloc/rpmalloc/rpmalloc.c
+--- a/vendor/librapidarchive/src/external/rpmalloc/rpmalloc/rpmalloc.c
++++ b/vendor/librapidarchive/src/external/rpmalloc/rpmalloc/rpmalloc.c
+@@ -577,7 +577,7 @@ get_thread_id(void) {
+ #if defined(_WIN32)
+ 	return (uintptr_t)((void*)NtCurrentTeb());
+ #elif !defined(__APPLE__) && !defined(__CYGWIN__) &&                                                \
+-    ((defined(__clang__) && (__clang_major__ >= 7)) || ((defined(__GNUC__) && (__GNUC__ >= 5)))) && \
++    ((defined(__clang__) && (__clang_major__ >= 7)) || ((defined(__GNUC__) && (__GNUC__ >= 11)))) && \
+     (defined(__aarch64__) || defined(__x86_64__) || defined(__loongarch__))  // Unsure of other archs, needs testing
+ 	void* thp = __builtin_thread_pointer();
+ 	return (uintptr_t)thp;
