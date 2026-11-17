@@ -6,7 +6,7 @@ import sys
 import uuid
 from pathlib import Path
 from threading import Thread
-from typing import List, Set
+from typing import Callable, List, Set
 from unittest.mock import patch
 
 import grpc
@@ -180,20 +180,25 @@ def recorded_processors():
     yield _RecordingSpanProcessor.created
 
 
-def _check(exporter_name: str, **kwargs):
-    check_tracing_exporter_import_path(
-        TracingConfig(
-            enabled=True, exporter_import_path=f"{_THIS_MODULE}:{exporter_name}"
-        ),
-        **kwargs,
-    )
+def _check(exporter: Callable, **kwargs):
+    # Hand the check this module's function rather than an import path: under
+    # Bazel, importing the path loads a second copy of this module, whose
+    # counters these tests can't see.
+    with patch(
+        "ray.serve._private.tracing_utils.import_attr", return_value=exporter
+    ) as import_attr:
+        check_tracing_exporter_import_path(
+            TracingConfig(enabled=True, exporter_import_path="test:exporter"),
+            **kwargs,
+        )
+    import_attr.assert_called_once_with("test:exporter")
 
 
 def test_check_tracing_exporter_import_path_accepts_custom(recorded_processors):
     """A custom exporter is called once, and every processor it returns is shut
     down once, without installing a tracer provider."""
     provider = trace.get_tracer_provider()
-    _check("_exporter_two_processors")
+    _check(_exporter_two_processors)
     assert _exporter_calls == 1
     assert [p.shutdown_calls for p in recorded_processors] == [1, 1]
     assert trace.get_tracer_provider() is provider
@@ -214,32 +219,33 @@ def test_check_tracing_exporter_import_path_skips_builtin_call():
 
 def test_check_tracing_exporter_import_path_exporter_raises(recorded_processors):
     with pytest.raises(RuntimeError, match="exporter failed"):
-        _check("_exporter_that_raises")
+        _check(_exporter_that_raises)
     assert _exporter_calls == 1
 
 
 @pytest.mark.parametrize(
-    "exporter_name",
+    "exporter",
     [
-        "_exporter_one_processor_not_list",
-        "_exporter_processor_tuple",
-        "_exporter_valid_then_invalid",
+        _exporter_one_processor_not_list,
+        _exporter_processor_tuple,
+        _exporter_valid_then_invalid,
     ],
+    ids=["not_list", "tuple", "valid_then_invalid"],
 )
 def test_check_tracing_exporter_import_path_invalid_output(
-    recorded_processors, exporter_name
+    recorded_processors, exporter
 ):
     """Output that isn't a List[SpanProcessor] is rejected, and the valid
     processors in it are still shut down once."""
     with pytest.raises(TypeError, match=re.escape("List[SpanProcessor]")):
-        _check(exporter_name)
+        _check(exporter)
     assert [p.shutdown_calls for p in recorded_processors] == [1]
 
 
 def test_check_tracing_exporter_import_path_shutdown_fails(recorded_processors):
     """A processor whose shutdown fails is logged, and the rest still shut down."""
     with patch("ray.serve._private.tracing_utils.logger") as logger:
-        _check("_exporter_shutdown_fails")
+        _check(_exporter_shutdown_fails)
     assert [p.shutdown_calls for p in recorded_processors] == [1, 1]
     logger.exception.assert_called_once()
 
@@ -249,17 +255,17 @@ def test_check_tracing_exporter_import_path_shutdown_fails_keeps_error(
 ):
     """A failed shutdown doesn't replace the validation error."""
     with pytest.raises(TypeError, match=re.escape("List[SpanProcessor]")):
-        _check("_exporter_invalid_and_shutdown_fails")
+        _check(_exporter_invalid_and_shutdown_fails)
     assert [p.shutdown_calls for p in recorded_processors] == [1]
 
 
 def test_check_tracing_exporter_import_path_without_invoking(recorded_processors):
     """With invoke_exporter=False (controller recovery), the exporter's import
     and signature are checked but it isn't called."""
-    _check("_exporter_that_raises", invoke_exporter=False)
+    _check(_exporter_that_raises, invoke_exporter=False)
     assert _exporter_calls == 0
     with pytest.raises(TypeError, match="cannot take any"):
-        _check("_exporter_with_args", invoke_exporter=False)
+        _check(_exporter_with_args, invoke_exporter=False)
 
 
 @pytest.mark.parametrize(
@@ -293,18 +299,13 @@ def test_check_tracing_exporter_import_path_rejects(exporter_import_path, error,
         )
 
 
-def test_check_tracing_exporter_import_path_skips_disabled(recorded_processors):
-    """Disabled tracing never resolves the path or calls the exporter."""
-    check_tracing_exporter_import_path(
-        TracingConfig(enabled=False, exporter_import_path="no.such.module:nope")
-    )
-    check_tracing_exporter_import_path(
-        TracingConfig(
-            enabled=False,
-            exporter_import_path=f"{_THIS_MODULE}:_exporter_two_processors",
+def test_check_tracing_exporter_import_path_skips_disabled():
+    """Disabled tracing never resolves the path, so the exporter isn't called."""
+    with patch("ray.serve._private.tracing_utils.import_attr") as import_attr:
+        check_tracing_exporter_import_path(
+            TracingConfig(enabled=False, exporter_import_path="no.such.module:nope")
         )
-    )
-    assert _exporter_calls == 0
+    import_attr.assert_not_called()
 
 
 def test_validate_tracing_exporter_with_args():
