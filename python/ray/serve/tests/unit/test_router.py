@@ -46,6 +46,7 @@ from ray.serve._private.request_router.common import ReplicaQueueLengthCache
 from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
+    RUNNING_REQUESTS_KEY,
     AsyncioRouter,
     CurrentLoopRouter,
     RouterMetricsManager,
@@ -2571,6 +2572,55 @@ class TestRouterMetricsManager:
                 report = decompress_metric_report(payload)
                 assert report.deployment_id == deployment_id
                 assert report.handle_id == handle_id
+
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Tests handle metrics behavior.",
+    )
+    @pytest.mark.asyncio
+    async def test_metrics_report_records_new_replica_with_queued(self):
+        """A replica first routed to since the last recording has no samples yet.
+        The report must sample queued at the same time as that replica's first
+        point, or the request still counted as queued is counted twice."""
+        timer = MockTimer()
+        timer.reset(100)
+        r1, r2 = (ReplicaID(f"r{i}", DeploymentID("d", "a")) for i in range(2))
+        with patch("time.time", new=timer.time):
+            metrics_manager = RouterMetricsManager(
+                DeploymentID(name="a", app_name="b"),
+                "random",
+                "abc",
+                DeploymentHandleSource.PROXY,
+                Mock(),
+                FakeCounter(
+                    tag_keys=(
+                        "deployment",
+                        "route",
+                        "application",
+                        "handle",
+                        "actor_id",
+                    )
+                ),
+                FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+                FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+                event_loop=asyncio.get_event_loop(),
+            )
+            metrics_manager._deployment_config = DeploymentConfig(
+                autoscaling_config=AutoscalingConfig()
+            )
+            metrics_manager.inc_num_running_requests_for_replica(r1)
+            metrics_manager.inc_num_queued_requests()
+            metrics_manager._add_autoscaling_metrics_point()
+            timer.advance(0.1)
+            # The queued request goes to a replica this handle has not used yet.
+            metrics_manager.dec_num_queued_requests()
+            metrics_manager.inc_num_running_requests_for_replica(r2)
+            report = metrics_manager._get_metrics_report()
+        latest = [report.queued_requests[-1]] + [
+            series[-1] for series in report.metrics[RUNNING_REQUESTS_KEY].values()
+        ]
+        assert {point.timestamp for point in latest} == {timer.time()}
+        assert sum(point.value for point in latest) == 2
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,

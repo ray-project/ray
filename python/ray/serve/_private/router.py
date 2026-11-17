@@ -509,6 +509,18 @@ class RouterMetricsManager:
         assert autoscaling_config is not None
         look_back_period = autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+        if QUEUED_REQUESTS_KEY not in self.metrics_store.data or (
+            RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            and any(
+                replica_id not in self.metrics_store.data
+                for replica_id in self.num_requests_sent_to_replicas
+            )
+        ):
+            # A series with no samples yet, such as a replica first routed to since
+            # the last recording, would otherwise get a point made up now beside a
+            # queued sample taken while that request was still queued, counting it
+            # twice. Record every series together instead.
+            self._add_autoscaling_metrics_point()
         queued_requests = self.metrics_store.data.get(
             QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
         )
