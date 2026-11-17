@@ -127,6 +127,8 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 namespace=actor_namespace,
                 get_if_exists=True,
                 lifetime="detached",
+                # Routers cache this handle, so the actor must outlive its node.
+                max_restarts=-1,
             ).remote()
 
             # Register the actor with the controller for cleanup on serve.shutdown()
