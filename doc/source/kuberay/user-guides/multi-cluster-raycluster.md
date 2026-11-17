@@ -11,6 +11,8 @@ myst:
 This guide shows how to run one Ray cluster whose worker nodes live in several Kubernetes clusters. It uses three local [Kind](https://kind.sigs.k8s.io/) clusters and [Submariner](https://submariner.io/) for cross-cluster networking.
 
 :::{warning}
+This setup doesn't provide high availability for the Ray head. The workers in every Kubernetes cluster depend on the one head in the primary cluster, and this guide doesn't configure {ref}`GCS fault tolerance <kuberay-gcs-ft>`. If the primary head fails, the whole Ray cluster fails.
+
 Workers in a member cluster exit when they can't reach the Ray head for 60 seconds, which is the default of the `gcs_rpc_server_reconnect_timeout_s` Ray system config. An outage of the link between Kubernetes clusters has the same effect on those workers as the loss of the head node.
 :::
 
@@ -363,7 +365,7 @@ Each member cluster runs one worker Pod and the unused head Pod. The worker IP a
 Check the status of the Ray cluster from the head Pod in the primary cluster:
 
 ```bash
-export HEAD_POD=$(kubectl --context kind-primary get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
+export HEAD_POD=$(kubectl --context kind-primary get pods --selector=ray.io/cluster=raycluster-kuberay,ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
 kubectl --context kind-primary exec -it $HEAD_POD -- ray status
 ```
 
