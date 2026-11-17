@@ -4,8 +4,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.autoscaling_state import (
+    AutoscalingStateManager,
+    DeploymentAutoscalingState,
+)
+from ray.serve._private.common import (
+    AutoscalingSnapshotError,
+    DeploymentHandleSource,
+    DeploymentID,
+    HandleMetricReport,
+    ReplicaID,
+    ReplicaMetricReport,
+    TimeStampedValue,
+)
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
@@ -1579,24 +1590,30 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2]["counter"] == 5
 
 
+def _autoscaling_info() -> DeploymentInfo:
+    return DeploymentInfo(
+        deployment_config=DeploymentConfig(
+            autoscaling_config=AutoscalingConfig(
+                min_replicas=1, max_replicas=100, target_ongoing_requests=1
+            )
+        ),
+        replica_config=ReplicaConfig.create(lambda x: x),
+        start_time_ms=0,
+        deployer_job_id="",
+    )
+
+
+def _registered_state() -> DeploymentAutoscalingState:
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    st.register(_autoscaling_info(), curr_target_num_replicas=1)
+    return st
+
+
 def test_last_decision_total_num_requests_reuses_decision_value():
     """record_autoscaling_metrics stashes the decision's total; the getter returns it
     verbatim.
     """
-    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
-    st.register(
-        DeploymentInfo(
-            deployment_config=DeploymentConfig(
-                autoscaling_config=AutoscalingConfig(
-                    min_replicas=1, max_replicas=100, target_ongoing_requests=1
-                )
-            ),
-            replica_config=ReplicaConfig.create(lambda x: x),
-            start_time_ms=0,
-            deployer_job_id="",
-        ),
-        curr_target_num_replicas=1,
-    )
+    st = _registered_state()
     st.record_autoscaling_metrics(
         decision_num_replicas=3,
         total_num_requests=42.0,
@@ -1604,6 +1621,108 @@ def test_last_decision_total_num_requests_reuses_decision_value():
         policy_scope="deployment",
     )
     assert st.get_last_decision_total_num_requests() == 42.0
+
+
+def test_snapshot_request_totals_not_aggregated_per_decision():
+    """The default policy never reads the queued total, so the snapshot must not
+    aggregate it on every decision: that merge is O(handles). It is computed only
+    when the snapshot is built, and the ongoing total reuses the decision's value.
+    """
+    st = _registered_state()
+
+    with patch.object(
+        st, "_get_queued_requests", return_value=7.0
+    ) as queued, patch.object(st, "get_total_num_requests", return_value=5.0) as total:
+        for _ in range(3):
+            st.get_decision_num_replicas(curr_target_num_replicas=1)
+        assert queued.call_count == 0
+        # Only the policy reads the ongoing total, once per decision.
+        assert total.call_count == 3
+
+        snapshot = st.get_deployment_snapshot()
+        assert snapshot.queued_requests == 7.0
+        assert snapshot.ongoing_requests == 5.0
+        assert queued.call_count == 1
+        assert total.call_count == 3
+
+        # A built snapshot is cached until the next decision.
+        st.get_deployment_snapshot()
+        assert queued.call_count == 1
+
+
+def test_snapshot_metrics_health_and_errors():
+    """metrics_health is the age of the newest stored replica or handle report, and
+    a deployment with no reports at all gets METRICS_UNAVAILABLE.
+    """
+    dep_id = DeploymentID("D", "default")
+    st = _registered_state()
+    now = 1000.0
+
+    def snapshot():
+        st.get_decision_num_replicas(curr_target_num_replicas=1)
+        with patch("ray.serve._private.autoscaling_state.time.time", return_value=now):
+            return st.get_deployment_snapshot()
+
+    no_metrics = snapshot()
+    assert no_metrics.metrics_health == "unknown"
+    assert no_metrics.errors == [AutoscalingSnapshotError.METRICS_UNAVAILABLE.value]
+
+    st.record_request_metrics_for_replica(
+        ReplicaMetricReport(
+            replica_id=ReplicaID(unique_id="r1", deployment_id=dep_id),
+            metrics={},
+            timestamp=now - 12.5,
+        )
+    )
+    stale_replica = snapshot()
+    assert stale_replica.metrics_health == "12.50s"
+    assert stale_replica.errors == []
+
+    st.record_request_metrics_for_handle(
+        HandleMetricReport(
+            deployment_id=dep_id,
+            handle_id="h1",
+            actor_id="a1",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            queued_requests=[],
+            metrics={},
+            timestamp=now - 0.25,
+        )
+    )
+    assert snapshot().metrics_health == "250ms"
+
+
+def _manager_with_deployment(dep_id: DeploymentID) -> AutoscalingStateManager:
+    manager = AutoscalingStateManager()
+    manager.register_deployment(dep_id, _autoscaling_info(), 1)
+    return manager
+
+
+def _decide(manager: AutoscalingStateManager, dep_id: DeploymentID) -> None:
+    manager.get_decision_num_replicas(dep_id.app_name, {dep_id: 1})
+
+
+def test_snapshot_logged_once_per_change_and_again_after_reenable():
+    """A snapshot is logged when its key changes. Turning autoscaling off drops the
+    deployment's state, so after it is turned back on the first snapshot is logged
+    again even though its key equals the last one logged before.
+    """
+    dep_id = DeploymentID("D", "app")
+    manager = _manager_with_deployment(dep_id)
+    write = MagicMock()
+
+    _decide(manager, dep_id)
+    manager.log_deployment_snapshots(write)
+    _decide(manager, dep_id)
+    manager.log_deployment_snapshots(write)
+    assert write.call_count == 1
+    assert [s["deployment"] for s in write.call_args.args[0]] == ["D"]
+
+    manager.deregister_deployment(dep_id)
+    manager.register_deployment(dep_id, _autoscaling_info(), 1)
+    _decide(manager, dep_id)
+    manager.log_deployment_snapshots(write)
+    assert write.call_count == 2
 
 
 if __name__ == "__main__":

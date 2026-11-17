@@ -24,8 +24,10 @@ from ray.serve._private.autoscaling_metrics_codec import FlatHandleReport
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
+    AutoscalingSnapshotError,
     DeploymentHandleSource,
     DeploymentID,
+    DeploymentSnapshot,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
@@ -51,10 +53,18 @@ from ray.serve.autoscaling_policy import (
     _apply_autoscaling_config,
 )
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
+from ray.serve.schema import AutoscalingStatus
 from ray.util import metrics
 
 if TYPE_CHECKING:
     from ray.serve.config import AutoscalingConfig
+
+# How each scaling direction reads in an autoscaling snapshot log.
+_SCALING_STATUS_TEXT = {
+    AutoscalingStatus.UPSCALING: "scaling up",
+    AutoscalingStatus.DOWNSCALING: "scaling down",
+    AutoscalingStatus.STABLE: "stable",
+}
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -197,6 +207,10 @@ class _HandleMetricStore:
             self.columnar.pop(report.handle_id, None)
         return True
 
+    def latest_report_timestamp(self) -> Optional[float]:
+        """Producer timestamp of the newest report accepted for any handle."""
+        return max(self._report_ts.values(), default=None)
+
     def forget(self, handle_id: str) -> None:
         """Drop a handle from both stores and the gate together."""
         self.objects.pop(handle_id, None)
@@ -322,6 +336,12 @@ class DeploymentAutoscalingState:
         self._cached_running_replica_strs: Set[str] = set()
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
+        self._cached_snapshot_key: Optional[tuple] = None
+        # Key of the last snapshot written to the log. It lives here rather than on
+        # the controller, so it goes away with this state when autoscaling is turned
+        # off and a re-enabled deployment logs its first snapshot again.
+        self._last_logged_snapshot_key: Optional[tuple] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
@@ -696,7 +716,19 @@ class DeploymentAutoscalingState:
         if _skip_bound_check:
             return decision_num_replicas
 
-        return self.apply_bounds(decision_num_replicas)
+        decision_num_replicas = self.apply_bounds(decision_num_replicas)
+
+        self._cached_snapshot_key = (
+            decision_num_replicas,
+            autoscaling_context.current_num_replicas,
+            autoscaling_context.capacity_adjusted_min_replicas,
+            autoscaling_context.capacity_adjusted_max_replicas,
+        )
+        # Request totals are not read here: each read re-merges every replica and
+        # handle timeseries. The snapshot computes them only when it is built.
+        self._cached_deployment_snapshot = None
+
+        return decision_num_replicas
 
     def get_autoscaling_context(
         self,
@@ -966,6 +998,94 @@ class DeploymentAutoscalingState:
         """
         return self._last_decision_total_num_requests
 
+    def _latest_metrics_timestamp(self) -> Optional[float]:
+        """Send time of the newest replica or handle report still stored. Computed
+        when a snapshot is built rather than on every report, so ingest pays nothing
+        for it."""
+        replica_ts = max(
+            (r.timestamp for r in self._replica_metrics.values()), default=None
+        )
+        handle_ts = self._handle_store.latest_report_timestamp()
+        if replica_ts is None:
+            return handle_ts
+        if handle_ts is None:
+            return replica_ts
+        return max(replica_ts, handle_ts)
+
+    def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
+        """Return the cached deployment snapshot, building it lazily if needed."""
+        if self._cached_deployment_snapshot is not None:
+            return self._cached_deployment_snapshot
+
+        if self._cached_snapshot_key is None:
+            return None
+
+        (
+            target_replicas,
+            current_replicas,
+            min_replicas,
+            max_replicas,
+        ) = self._cached_snapshot_key
+        # Reuse the decision's total; only the queued total is aggregated, and only
+        # when the snapshot key changed since the last emitted snapshot.
+        ongoing_requests = float(self._last_decision_total_num_requests)
+        queued_requests = float(self._get_queued_requests())
+
+        if target_replicas > current_replicas:
+            scaling_status = AutoscalingStatus.UPSCALING
+        elif target_replicas < current_replicas:
+            scaling_status = AutoscalingStatus.DOWNSCALING
+        else:
+            scaling_status = AutoscalingStatus.STABLE
+
+        latest_metrics_timestamp = self._latest_metrics_timestamp()
+        if latest_metrics_timestamp is not None:
+            elapsed = time.time() - latest_metrics_timestamp
+        else:
+            elapsed = None
+
+        look_back_period_s = self._config.look_back_period_s
+        errors: List[str] = []
+        if elapsed is None:
+            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE.value)
+
+        policy = self._config.policy.get_policy()
+
+        self._cached_deployment_snapshot = DeploymentSnapshot(
+            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            app=self._deployment_id.app_name,
+            deployment=self._deployment_id.name,
+            current_replicas=current_replicas,
+            target_replicas=target_replicas,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            scaling_status=_SCALING_STATUS_TEXT[scaling_status],
+            policy_name=f"{policy.__module__}.{policy.__name__}",
+            look_back_period_s=look_back_period_s,
+            queued_requests=queued_requests,
+            ongoing_requests=ongoing_requests,
+            metrics_health=DeploymentSnapshot.format_metrics_health_text(
+                time_since_last_collected_metrics_s=elapsed,
+                look_back_period_s=look_back_period_s,
+            ),
+            errors=errors,
+        )
+        return self._cached_deployment_snapshot
+
+    def get_unlogged_snapshot(self) -> Optional[Tuple[tuple, DeploymentSnapshot]]:
+        """The latest decision's snapshot and its key, unless that key was the last
+        one logged. Builds the snapshot only in that case."""
+        key = self._cached_snapshot_key
+        if key is None or key == self._last_logged_snapshot_key:
+            return None
+        snapshot = self.get_deployment_snapshot()
+        if snapshot is None:
+            return None
+        return key, snapshot
+
+    def mark_snapshot_logged(self, key: tuple) -> None:
+        self._last_logged_snapshot_key = key
+
     def get_replica_metrics(self) -> Dict[str, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
         metric_values: Dict[str, List[TimeSeries]] = defaultdict(list)
@@ -1169,6 +1289,7 @@ class ApplicationAutoscalingState:
         """
         if self.has_policy():
             # Using app-level policy
+            # TODO(nadongjun): App-level autoscaling bypasses per-deployment snapshot creation; add snapshot support here.
             autoscaling_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id],
@@ -1510,3 +1631,20 @@ class AutoscalingStateManager:
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def log_deployment_snapshots(
+        self, write: Callable[[List[Dict[str, Any]]], None]
+    ) -> None:
+        """Pass every deployment snapshot that changed since it was last logged to
+        `write` in one call, then mark them logged."""
+        pending = []
+        for app_state in self._app_autoscaling_states.values():
+            for dep_state in app_state._deployment_autoscaling_states.values():
+                unlogged = dep_state.get_unlogged_snapshot()
+                if unlogged is not None:
+                    pending.append((dep_state, *unlogged))
+        if not pending:
+            return
+        write([snapshot.model_dump(exclude_none=True) for _, _, snapshot in pending])
+        for dep_state, key, _ in pending:
+            dep_state.mark_snapshot_logged(key)

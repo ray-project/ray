@@ -74,6 +74,7 @@ from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
 from ray.serve._private.logging_utils import (
+    configure_autoscaling_snapshot_logger,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -195,6 +196,9 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
+
+        # Autoscaling snapshot logger
+        self._autoscaling_logger: Optional[logging.Logger] = None
 
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
@@ -380,6 +384,11 @@ class ServeController:
         )
         configure_component_logger(
             component_name="controller",
+            component_id=str(os.getpid()),
+            logging_config=global_logging_config,
+        )
+
+        self._autoscaling_logger = configure_autoscaling_snapshot_logger(
             component_id=str(os.getpid()),
             logging_config=global_logging_config,
         )
@@ -624,6 +633,17 @@ class ServeController:
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes
 
+    def _emit_deployment_autoscaling_snapshots(self) -> None:
+        """Write the snapshots that changed this loop as one structured log line."""
+        logger_ = self._autoscaling_logger
+        # Snapshots are logged at INFO. With a higher level they would be built and
+        # marked logged without being written, so skip them until INFO is back on.
+        if logger_ is None or not logger_.isEnabledFor(logging.INFO):
+            return
+        self.autoscaling_state_manager.log_deployment_snapshots(
+            lambda snapshots: logger_.info({"snapshots": snapshots})
+        )
+
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
@@ -722,6 +742,11 @@ class ServeController:
             self._health_metrics_tracker.record_asm_update_duration(asm_duration)
         except Exception:
             logger.exception("Exception updating application state.")
+
+        try:
+            self._emit_deployment_autoscaling_snapshots()
+        except Exception:
+            logger.exception("Exception emitting deployment autoscaling snapshots.")
 
         # Update the proxy nodes set before updating the proxy states,
         # so they are more consistent.
