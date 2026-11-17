@@ -87,4 +87,5 @@ def plan_read_files_op(
         ray_remote_args=op.ray_remote_args,
         isolate_workers=data_context.isolate_read_workers,
         memory_from_input_estimate=True,
+        is_read_op=True,
     )

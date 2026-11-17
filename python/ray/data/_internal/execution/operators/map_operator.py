@@ -224,6 +224,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     Warn if the size of the map UDF exceeds this threshold.
     """
 
+    is_read_op: bool = False
+    """Whether this op reads from a datasource. Set by the read planners (and
+    propagated through fusion)."""
+
     def __init__(
         self,
         map_transformer: MapTransformer,
@@ -386,6 +390,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        is_read_op: bool = False,
         output_partitioning: Optional[HashPartitioning] = None,
         memory_from_input_estimate: bool = False,
     ) -> "MapOperator":
@@ -428,6 +433,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            is_read_op: Whether this op reads from a datasource.
             output_partitioning: See ``PhysicalOperator.output_partitioning``.
             memory_from_input_estimate: If ``True``, each task requests as its
                 logical ``memory`` the estimate its input blocks carry in
@@ -482,6 +488,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
                 memory_from_input_estimate=memory_from_input_estimate,
             )
+            op.is_read_op = is_read_op
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
                 get_actor_pool_map_operator_cls,
@@ -509,6 +516,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                is_read_op=is_read_op,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -705,16 +713,29 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             self._metrics.on_task_output_generated(task_index, output)
 
             if lineage_tracker is not None:
-                # Attribute the block to (this task, output_index) so whichever
-                # downstream task consumes it can name its own dependencies.
-                lineage_tracker.register_block_output(
-                    lineage_task_id, output.block_refs[0].hex(), output_index
-                )
                 if sorted_reconstruction_plan_ids:
-                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
-                        status = lineage_tracker.get_object_reuse_status(
+                    statuses = {
+                        reconstruction_plan_id: lineage_tracker.get_object_reuse_status(
                             lineage_task_id, output_index, reconstruction_plan_id
                         )
+                        for reconstruction_plan_id in sorted_reconstruction_plan_ids
+                    }
+                    # Attribute the block to (this task, output_index) so whichever
+                    # downstream task consumes it can name its own dependencies. Only
+                    # for blocks that will reach a consumer: a dropped one would never
+                    # be resolved, leaving its entry behind for the rest of the run.
+                    if any(
+                        status
+                        in (
+                            ObjectReuseStatus.OBJECT_REUSED,
+                            ObjectReuseStatus.OBJECT_NEW,
+                        )
+                        for status in statuses.values()
+                    ):
+                        lineage_tracker.register_block_output(
+                            lineage_task_id, output.block_refs[0].hex(), output_index
+                        )
+                    for reconstruction_plan_id, status in statuses.items():
                         # REUSED: withhold until the child reconstruction task's whole input set is
                         # re-produced, then release it as one bundle
                         # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
@@ -751,6 +772,9 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     return
                 else:
                     # This is a fresh task
+                    lineage_tracker.register_block_output(
+                        lineage_task_id, output.block_refs[0].hex(), output_index
+                    )
                     lineage_tracker.register_block_queued(lineage_task_id, output_index)
 
             # Notify output queue that the task has produced an new output.
@@ -799,10 +823,20 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     )
                     for reconstruction_plan_id in sorted_reconstruction_plan_ids:
                         lineage_tracker.register_task_complete(
-                            lineage_task_id, reconstruction_plan_id
+                            lineage_task_id,
+                            num_outputs=next_output_index,
+                            reconstruction_plan_id=reconstruction_plan_id,
                         )
                 else:
-                    lineage_tracker.register_task_complete(lineage_task_id)
+                    # The output count lets the tracker garbage collect this task
+                    # once every output has been consumed by a collected task.
+                    lineage_tracker.register_task_complete(
+                        lineage_task_id, num_outputs=next_output_index
+                    )
+                # A completed write task's rows are durable, so its lineage is no
+                # longer needed.
+                if self._is_sink_operator():
+                    lineage_tracker.try_garbage_collect_lineage(lineage_task_id)
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -992,7 +1026,24 @@ def _map_task(
         # `max_concurrent_calls_per_actor > 1` several run at once.
         clock = TransformClock()
 
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+        max_attempts = data_context.max_map_retries + 1
+        attempts_started = 0
+
         def transform_iter_factory():
+            nonlocal attempts_started
+            # Tell the transform whether this attempt can still be rerun, so it
+            # knows whether to emit its buffered rows before an error.
+            attempts_started += 1
+            ctx.rerun_policy = ctx.rerun_policy.with_map_retries(
+                max_attempts - attempts_started, to_match
+            )
             # Clear any per-task custom stats before each attempt (the reporter
             # is reused across retries of this task), so a prior attempt's stats
             # can't leak into this one. A producing transform repopulates it
@@ -1009,19 +1060,11 @@ def _map_task(
                 clock=clock,
             )
 
-        match retry_on:
-            case True:
-                to_match = None
-            case False:
-                to_match = []
-            case _:
-                to_match = retry_on
-
         block_iter = iterate_with_retry(
             transform_iter_factory,
             description="apply UDF transform",
             match=to_match,
-            max_attempts=data_context.max_map_retries + 1,
+            max_attempts=max_attempts,
             unwrap_cause=True,
         )
 
