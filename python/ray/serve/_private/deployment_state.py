@@ -1549,12 +1549,10 @@ class ActorReplicaWrapper:
             done: whether the call finished.
             error_msg: the error if the call raised, else None.
         """
-        if self._ready_obj_ref is None:
-            return True, None
         if not check_obj_ref_ready_nowait(self._ready_obj_ref):  # type: ignore[arg-type]
             return False, None
         try:
-            ray.get(self._ready_obj_ref)
+            ray.get(self._ready_obj_ref)  # type: ignore[arg-type]
         except RayTaskError as e:
             return True, str(e.as_instanceof_cause())
         except Exception as e:
@@ -5267,14 +5265,7 @@ class DeploymentState:
                             initialization_latency_ms
                         )
                 elif original_state == ReplicaState.UPDATING:
-                    # Record replica reconfigure latency.
-                    if replica.reconfigure_start_time is not None:
-                        reconfigure_latency_ms = (
-                            time.time() - replica.reconfigure_start_time
-                        ) * 1000
-                        self.replica_reconfigure_latency_histogram.observe(
-                            reconfigure_latency_ms
-                        )
+                    self._record_reconfigure_latency(replica)
 
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed.
@@ -5343,6 +5334,12 @@ class DeploymentState:
 
         return slow_replicas
 
+    def _record_reconfigure_latency(self, replica: DeploymentReplica) -> None:
+        if replica.reconfigure_start_time is not None:
+            self.replica_reconfigure_latency_histogram.observe(
+                (time.time() - replica.reconfigure_start_time) * 1000
+            )
+
     def _check_pending_rank_reconfigures(self) -> None:
         """Observe the rank-change reconfigures started by
         `_reconfigure_replicas_with_new_ranks`.
@@ -5376,10 +5373,8 @@ class DeploymentState:
                         f"{replica.rank}. Until it restarts, the replica's context "
                         f"may report its previous rank. Error:\n{error_msg}"
                     )
-                elif replica.reconfigure_start_time is not None:
-                    self.replica_reconfigure_latency_histogram.observe(
-                        (time.time() - replica.reconfigure_start_time) * 1000
-                    )
+                else:
+                    self._record_reconfigure_latency(replica)
             elif (
                 not warned_slow
                 and replica.reconfigure_start_time is not None

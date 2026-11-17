@@ -522,6 +522,8 @@ class MockReplicaActorWrapper:
         self.status = ReplicaStartupStatus.PENDING_ALLOCATION
         # Will be set when `graceful_stop()` is called.
         self.stopped = False
+        # Will be set when `reconfigure()` starts an update.
+        self._reconfigure_start_time: Optional[float] = None
         # Expected to be set in the test.
         self.done_stopping = False
         self.killed = False
@@ -641,7 +643,7 @@ class MockReplicaActorWrapper:
 
     @property
     def reconfigure_start_time(self) -> Optional[float]:
-        return None
+        return self._reconfigure_start_time
 
     @property
     def last_health_check_latency_ms(self) -> Optional[float]:
@@ -741,6 +743,8 @@ class MockReplicaActorWrapper:
         updating = self.version.requires_actor_reconfigure(version) or (
             self._rank != rank
         )
+        if updating:
+            self._reconfigure_start_time = time.time()
         self.version = version
         self._rank = rank
         replica_rank_context[self._replica_id.unique_id] = rank

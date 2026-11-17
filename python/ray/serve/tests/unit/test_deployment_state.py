@@ -8472,11 +8472,15 @@ class TestDeploymentRankManagerIntegrationE2E:
         return new_dsm, new_ds, replica_ids[1]
 
     def test_rank_reassignment_reconfigure_keeps_serving(
-        self, mock_deployment_state_manager
+        self, mock_deployment_state_manager, monkeypatch
     ):
         """The replica stays RUNNING while its rank reconfigure is in flight."""
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm, ds, reassigned_id = self._recover_with_rank_gap(create_dsm)
+        latencies = []
+        monkeypatch.setattr(
+            ds.replica_reconfigure_latency_histogram, "observe", latencies.append
+        )
 
         for _ in range(3):
             dsm.update()
@@ -8484,9 +8488,12 @@ class TestDeploymentRankManagerIntegrationE2E:
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
         assert reassigned_id in ds._pending_rank_reconfigures
 
-        # Once the reconfigure succeeds, it's no longer tracked.
+        # Once the reconfigure succeeds, its latency is recorded once and it's no
+        # longer tracked.
         ds._replicas.get_by_id(reassigned_id)._actor.set_ready()
         dsm.update()
+        dsm.update()
+        assert len(latencies) == 1
         assert not ds._pending_rank_reconfigures
         check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
@@ -8512,6 +8519,39 @@ class TestDeploymentRankManagerIntegrationE2E:
         check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
         assert ds._replica_failure_count == 0
+
+    def test_rank_reassignment_reconfigure_slow_is_warned_once(
+        self, mock_deployment_state_manager, monkeypatch
+    ):
+        """A hanging rank reconfigure logs a single slow warning."""
+        warnings = []
+        monkeypatch.setattr(ds_mod.logger, "warning", warnings.append)
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm, ds, reassigned_id = self._recover_with_rank_gap(create_dsm)
+
+        timer.advance(SLOW_STARTUP_WARNING_S + 1)
+        dsm.update()
+        dsm.update()
+
+        slow_warnings = [w for w in warnings if "has not finished reconfiguring" in w]
+        assert len(slow_warnings) == 1
+        assert str(reassigned_id) in slow_warnings[0]
+        assert reassigned_id in ds._pending_rank_reconfigures
+
+    def test_rank_reassignment_reconfigure_stopped_replica_is_dropped(
+        self, mock_deployment_state_manager
+    ):
+        """A replica stopped mid-reconfigure is no longer tracked."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm, ds, reassigned_id = self._recover_with_rank_gap(create_dsm)
+
+        ds._replicas.get_by_id(reassigned_id)._actor.set_unhealthy()
+        dsm.update()
+
+        assert ds._replicas.get_by_id(reassigned_id).actor_details.state == (
+            ReplicaState.STOPPING
+        )
+        assert reassigned_id not in ds._pending_rank_reconfigures
 
     def test_rank_reconfigure_superseded_by_config_update(
         self, mock_deployment_state_manager
