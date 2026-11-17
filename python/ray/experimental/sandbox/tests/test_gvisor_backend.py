@@ -1946,6 +1946,48 @@ def test_create_public_sandbox_installs_the_default_allowlist(tmp_path, monkeypa
     assert set(tmp_path.iterdir()) <= bundles
 
 
+def test_exec_argv_wraps_once(tmp_path, monkeypatch):
+    """exec_argv is how a caller spawns commands itself (the Modal actor
+    does), so it must wrap them as exec_command does, with the sandbox's OOM
+    score; and exec_command, which builds on it, must not wrap a second
+    time."""
+    choom = "/usr/bin/choom"
+    monkeypatch.setattr(gvisor, "_choom", lambda: choom)
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-1"] = {
+        "root_dir": str(tmp_path),
+        "cwd": "/",
+        "config": GVisorSandboxConfig(
+            image="busybox:latest", shell="/bin/sh", oom_score_adj=0
+        ),
+        "status": SandboxStatus.RUNNING,
+    }
+    argv = backend.exec_argv("sb-1", ["true"], pid_file="/host/pid")
+    assert argv[:5] == [choom, "-n", "0", "--", "runsc"]
+    assert argv.count(choom) == 1
+    assert argv[argv.index("-internal-pid-file") + 1] == "/host/pid"
+
+    spawned = []
+
+    class _Done:
+        returncode = 0
+
+        def communicate(self, input=None, timeout=None):
+            return b"", b""
+
+    def popen(args, **kwargs):
+        spawned.append(args)
+        return _Done()
+
+    monkeypatch.setattr(gvisor.subprocess, "Popen", popen)
+    assert backend.exec_command("sb-1", ["true"]).exit_code == 0
+    (args,) = spawned
+    assert args.count(choom) == 1
+    # exec_command still records the pid its timeout kill reads.
+    pid_file = args[args.index("-internal-pid-file") + 1]
+    assert os.path.dirname(pid_file) == str(tmp_path)
+
+
 def test_set_egress_allowlist_needs_a_public_sandbox(tmp_path):
     """Only a network="public" sandbox has an allowlist, and the change never
     runs without the namespace holder (`flush ruleset` must not run anywhere
