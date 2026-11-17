@@ -6,8 +6,10 @@ include-paths schema augmentation against a local tmpdir.
 
 import os
 import sys
+from unittest.mock import Mock, PropertyMock
 
 import pyarrow as pa
+import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 
@@ -30,6 +32,7 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
+    _read_parquet_schema,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
@@ -45,7 +48,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
 from ray.data._internal.util import unify_schemas_with_validation
-from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
@@ -98,6 +101,32 @@ def _manifest_of(paths):
     return FileManifest.construct_manifest(
         paths=paths, sizes=sizes, chunk_metadatas=[None] * len(paths)
     )
+
+
+@pytest.mark.parametrize("size", [None, 123])
+def test_parquet_schema_reader_uses_listed_size_and_retries(monkeypatch, size):
+    import pyarrow.dataset as pds
+
+    expected = pa.schema([("a", pa.int64())])
+    metadata = Mock()
+    metadata.schema.to_arrow_schema.return_value = expected
+    fragment = Mock()
+    metadata_property = PropertyMock(
+        side_effect=[OSError("retryable footer error"), metadata]
+    )
+    type(fragment).metadata = metadata_property
+    file_format = Mock()
+    file_format.make_fragment.return_value = fragment
+    monkeypatch.setattr(pds, "ParquetFileFormat", lambda: file_format)
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+    filesystem = pafs.LocalFileSystem()
+
+    assert _read_parquet_schema("test.parquet", filesystem, size) == expected
+    file_format.make_fragment.assert_called_once_with(
+        "test.parquet", filesystem=filesystem, file_size=size
+    )
+    assert metadata_property.call_count == 2
 
 
 def test_infer_schema_unpartitioned(tmp_path):
