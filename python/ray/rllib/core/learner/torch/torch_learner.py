@@ -46,7 +46,7 @@ from ray.rllib.utils.metrics import (
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -358,12 +358,19 @@ class TorchLearner(Learner):
                 # Only convert per-parameter optimizer buffers (exp_avg, exp_avg_sq,
                 # step, etc.) to tensors on the learner device.
                 optimizer_state = state_dict["state"]
+                optimizer_buffers = convert_to_torch_tensor(
+                    optimizer_state["state"],
+                    device=self._device,
+                )
+                # CPU torch.from_numpy() can alias read-only, shared Ray
+                # object-store buffers. Optimizers mutate these in-place,
+                # so each Learner must own its restored state independently.
+                # GPU transfers already allocate a separate device buffer.
+                if self._device.type == "cpu":
+                    optimizer_buffers = copy_torch_tensors(optimizer_buffers)
                 loaded_state = {
                     **optimizer_state,
-                    "state": convert_to_torch_tensor(
-                        optimizer_state["state"],
-                        device=self._device,
-                    ),
+                    "state": optimizer_buffers,
                 }
                 self._named_optimizers[name].load_state_dict(loaded_state)
 
