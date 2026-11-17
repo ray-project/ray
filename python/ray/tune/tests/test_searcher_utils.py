@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, Searcher
@@ -9,6 +11,15 @@ from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_tra
 @pytest.fixture(autouse=True)
 def register_test_trainable():
     register_mock_trainable()
+
+
+@pytest.fixture
+def propagate_logs():
+    logger = logging.getLogger("ray")
+    old_propagate = logger.propagate
+    logger.propagate = True
+    yield
+    logger.propagate = old_propagate
 
 
 def test_nested_suggestion():
