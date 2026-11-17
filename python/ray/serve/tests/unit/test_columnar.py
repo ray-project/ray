@@ -353,6 +353,23 @@ def _handle_report_running(hid, replica_str, running, queued):
     )
 
 
+def _total_with_handle(agg, rid, handle, replica_report=None, *, columnar):
+    """Total requests for one running replica, `handle` stored columnar or as an
+    object, plus `replica_report` if given."""
+    st = _state(agg)
+    if replica_report is not None:
+        st.record_request_metrics_for_replica(replica_report)
+    if columnar:
+        st.record_columnar_metrics_for_handle(
+            codec.decode_handle_flat(codec.encode(handle))
+        )
+    else:
+        st._handle_store.objects[handle.handle_id] = handle
+    st._running_replicas = [rid]
+    st._cached_running_replica_strs = {rid.to_full_id_str()}
+    return st.get_total_num_requests()
+
+
 # --------------------------------------------------------------------------
 # plumbing: array stores, aggregation, controller dispatch
 # --------------------------------------------------------------------------
@@ -808,20 +825,10 @@ def test_replica_running_suppresses_columnar_handle_running(agg, monkeypatch):
         timestamp=NOW,
     )
 
-    def _build(columnar):
-        st = _state(agg)
-        st.record_request_metrics_for_replica(replica_report)
-        if columnar:
-            st.record_columnar_metrics_for_handle(
-                codec.decode_handle_flat(codec.encode(handle))
-            )
-        else:
-            st._handle_store.objects["h0"] = handle
-        st._running_replicas = [rid]
-        st._cached_running_replica_strs = {rid_str}
-        return st.get_total_num_requests()
-
-    mixed, all_object = _build(True), _build(False)
+    mixed, all_object = (
+        _total_with_handle(agg, rid, handle, replica_report, columnar=columnar)
+        for columnar in (True, False)
+    )
     assert abs(mixed - all_object) < 1e-9, (agg, mixed, all_object)
     # Guard against a vacuous pass: handle running is strictly larger, so a total that
     # included it would exceed the replica-only twin.
@@ -854,20 +861,6 @@ def test_direct_ingress_replica_running_adds_to_handle_running(agg, monkeypatch)
         timestamp=NOW,
     )
 
-    def _total(columnar, handle, replica_report=None):
-        st = _state(agg)
-        if replica_report is not None:
-            st.record_request_metrics_for_replica(replica_report)
-        if columnar:
-            st.record_columnar_metrics_for_handle(
-                codec.decode_handle_flat(codec.encode(handle))
-            )
-        else:
-            st._handle_store.objects["h0"] = handle
-        st._running_replicas = [rid]
-        st._cached_running_replica_strs = {rid_str}
-        return st.get_total_num_requests()
-
     handle = _handle_report_running("h0", rid_str, handle_running, queued)
     # The same three series summed into one handle series, which the merge cannot
     # tell apart from three sources sharing timestamps.
@@ -878,9 +871,36 @@ def test_direct_ingress_replica_running_adds_to_handle_running(agg, monkeypatch)
         queued,
     )
     for columnar in (True, False):
-        got = _total(columnar, handle, replica_report)
-        want = _total(columnar, summed)
+        got = _total_with_handle(agg, rid, handle, replica_report, columnar=columnar)
+        want = _total_with_handle(agg, rid, summed, columnar=columnar)
         assert abs(got - want) < 1e-9, (agg, columnar, got, want)
+
+
+@pytest.mark.parametrize(
+    "key", [RUNNING_REQUESTS_KEY, DIRECT_INGRESS_RUNNING_REQUESTS_KEY]
+)
+def test_on_replica_stopped_drops_memoized_series(key, monkeypatch):
+    """Stopping a replica drops its memoized series under either running key."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    rid = ReplicaID("r0", DEP)
+    st = _state()
+    st.record_request_metrics_for_replica(
+        ReplicaMetricReport(
+            replica_id=rid,
+            metrics={key: [TimeStampedValue(NOW, 1.0)]},
+            timestamp=NOW,
+        )
+    )
+    st.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(
+            codec.encode(_handle_report_queued("h0", [TimeStampedValue(NOW, 1.0)]))
+        )
+    )
+    st._running_replicas = [rid]
+    assert st.get_total_num_requests() == 2.0
+    assert st._replica_running_memo
+    st.on_replica_stopped(rid)
+    assert not st._replica_running_memo
 
 
 @pytest.mark.parametrize(
