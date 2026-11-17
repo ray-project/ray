@@ -68,6 +68,15 @@ class NodeResourceInstanceSet {
   std::string DebugString() const;
 
   /// Returns true if `resource_demands` can be satisfied without modifying state.
+  ///
+  /// IMPORTANT: The allocation logic in CanAllocate and TryAllocate must stay
+  /// consistent. We intentionally don't extract a shared helper function to guarantee
+  /// that their logic is identical, because the two functions do fundamentally
+  /// different things: CanAllocate only needs to know whether any allocation
+  /// exists, while TryAllocate needs to find the best allocation. If both used the same
+  /// helper, CanAllocate's performance would degrade, since it would have to find the
+  /// best allocation every time. Instead, CanAllocate is an early-return version of
+  /// TryAllocate.
   bool CanAllocate(const ResourceSet &resource_demands) const;
 
   /// Try to allocate resources specified by `resource_demands`.
