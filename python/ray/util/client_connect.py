@@ -45,7 +45,7 @@ def connect(
             )
             return ray.get_context().client_worker.connection_info()
         raise RuntimeError(
-            "Ray Client is already connected. Maybe you called "
+            "Ray Client is already initialized. Maybe you called "
             'ray.init("ray://<address>") twice by accident?'
         )
 

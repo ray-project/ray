@@ -1,9 +1,11 @@
 """Unit tests for the NCCL RAS hang-detection callback (no GPU required)."""
+import asyncio
 import json
 import logging
 import re
 import subprocess
 import sys
+import threading
 import time
 import types
 from dataclasses import dataclass
@@ -16,6 +18,7 @@ import pytest
 from ray.train.v2._internal.callbacks import nccl_ras
 from ray.train.v2._internal.callbacks.nccl_ras import (
     DiagnosticResult,
+    NCCLHangDetectorState,
     NCCLRASCallback,
     RASPoller,
     RASQueryError,
@@ -36,7 +39,9 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
     TORCH_FR_BUFFER_SIZE_ENV_VAR,
 )
+from ray.train.v2._internal.metrics import base as metrics_base
 from ray.train.v2.api.exceptions import NCCLHangError
+from ray.train.v2.tests.util import create_dummy_run_context
 
 HEALTHY_RAS_JSON = """{
   "nccl_version": "2.28.9",
@@ -1381,6 +1386,11 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
 # ---------------------------------------------------------------------------
 
 
+# Named like Ray Train's worker thread (``ThreadRunner``) so the test reads
+# like a real dump.
+TRAINING_THREAD_NAME = "TrainingThread(train_func)"
+
+
 def fake_subprocess_run(monkeypatch, **run_result):
     """Script ``subprocess.run`` for the worker-side tools, recording each call.
 
@@ -1456,6 +1466,180 @@ def test_dump_stack_trace_falls_back_to_python(
 
     assert f"py-spy unavailable: {expected_reason}" in trace
     assert "test_dump_stack_trace_falls_back_to_python" in trace
+
+
+PY_SPY_PERMISSION_DENIED = (
+    "Permission Denied: Try running again with elevated permissions by going "
+    "'sudo env \"PATH=$PATH\" !!'"
+)
+SUDO_CHECK_CMD = ["sudo", "-n", "true"]
+NATIVE_STACK = "native stack"
+
+
+@pytest.fixture(autouse=True)
+def unanswered_sudo_check():
+    """Every test starts with the passwordless-sudo check not yet run."""
+    monkeypatch_sudo = nccl_ras._passwordless_sudo
+    nccl_ras._passwordless_sudo = None
+    yield
+    nccl_ras._passwordless_sudo = monkeypatch_sudo
+
+
+def fake_py_spy_runs(monkeypatch, unprivileged, sudo_check=None, sudo_retry=None):
+    """Script ``subprocess.run`` for the three commands of a stack dump.
+
+    ``sudo -n true`` gets ``sudo_check``, any other ``sudo`` command gets
+    ``sudo_retry`` and the plain py-spy call gets ``unprivileged``; each is a
+    ``(returncode, stdout, stderr)`` triple. Returns the recorded commands.
+    """
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd == SUDO_CHECK_CMD:
+            result = sudo_check
+        elif cmd[0] == "sudo":
+            result = sudo_retry
+        else:
+            result = unprivileged
+        returncode, stdout, stderr = result
+        return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    return calls
+
+
+def test_dump_stack_trace_does_not_consult_sudo_when_py_spy_succeeds(monkeypatch):
+    """The unprivileged dump works, so the sudo check never runs and the dump is
+    returned as is."""
+    calls = fake_py_spy_runs(monkeypatch, unprivileged=(0, NATIVE_STACK, ""))
+
+    trace = dump_stack_trace(25.0)
+
+    assert trace == NATIVE_STACK
+    assert len(calls) == 1
+    assert SUDO_CHECK_CMD not in calls
+
+
+def test_dump_stack_trace_retries_with_sudo_when_ptrace_is_denied(monkeypatch):
+    """py-spy is denied ptrace but passwordless sudo works, so the dump is
+    retried as ``sudo -n env PATH=... py-spy ...`` and that dump is returned."""
+    monkeypatch.setenv("PATH", "/opt/bin")
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(0, "", ""),
+        sudo_retry=(0, NATIVE_STACK, ""),
+    )
+
+    trace = dump_stack_trace(25.0)
+
+    assert trace == NATIVE_STACK
+    py_spy_cmd, sudo_check_cmd, sudo_retry_cmd = calls
+    assert sudo_check_cmd == SUDO_CHECK_CMD
+    assert sudo_retry_cmd == ["sudo", "-n", "env", "PATH=/opt/bin"] + py_spy_cmd
+
+
+def test_dump_stack_trace_falls_back_to_python_without_passwordless_sudo(
+    monkeypatch,
+):
+    """py-spy is denied ptrace and sudo needs a password, so the Python-only
+    dump is returned with py-spy's own error message."""
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(1, "", "sudo: a password is required"),
+    )
+
+    trace = dump_stack_trace(25.0)
+
+    assert f"py-spy unavailable: {PY_SPY_PERMISSION_DENIED}; Python-only" in trace
+    assert "test_dump_stack_trace_falls_back_to_python_without" in trace
+    assert calls[1:] == [SUDO_CHECK_CMD]
+
+
+def test_dump_stack_trace_checks_sudo_once_per_process(monkeypatch):
+    """A hung worker may dump more than once, so the second dump reuses the
+    answer of the first sudo check instead of running it again."""
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(0, "", ""),
+        sudo_retry=(0, NATIVE_STACK, ""),
+    )
+
+    dump_stack_trace(25.0)
+    dump_stack_trace(25.0)
+
+    assert calls.count(SUDO_CHECK_CMD) == 1
+
+
+def test_dump_stack_trace_keeps_the_sudo_retry_inside_the_budget(monkeypatch):
+    """The unprivileged py-spy eats most of the budget before it is denied, so
+    the sudo check and retry get only what is left and the dump still returns
+    inside the caller's timeout."""
+    BUDGET_S = 20.0
+    FIRST_ATTEMPT_S = 16.0
+    clock = [0.0]
+    timeouts = []
+
+    def fake_run(cmd, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        if cmd[0] == "py-spy":
+            clock[0] += FIRST_ATTEMPT_S
+            return subprocess.CompletedProcess(cmd, 1, "", PY_SPY_PERMISSION_DENIED)
+        return subprocess.CompletedProcess(cmd, 0, NATIVE_STACK, "")
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    monkeypatch.setattr(nccl_ras.time, "monotonic", lambda: clock[0])
+
+    trace = dump_stack_trace(BUDGET_S)
+
+    assert trace == NATIVE_STACK
+    first_timeout, sudo_check_timeout, sudo_retry_timeout = timeouts
+    assert first_timeout == BUDGET_S
+    assert sudo_check_timeout == BUDGET_S - FIRST_ATTEMPT_S
+    assert sudo_retry_timeout == BUDGET_S - FIRST_ATTEMPT_S
+
+
+def test_dump_stack_trace_skips_sudo_when_the_budget_is_spent(monkeypatch):
+    """The unprivileged py-spy times out, which uses the whole budget, so sudo
+    is never consulted and the Python-only dump comes back right away."""
+    BUDGET_S = 20.0
+    clock = [0.0]
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        clock[0] += BUDGET_S
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    monkeypatch.setattr(nccl_ras.time, "monotonic", lambda: clock[0])
+
+    trace = dump_stack_trace(BUDGET_S)
+
+    assert "py-spy unavailable: py-spy timed out; Python-only" in trace
+    assert len(calls) == 1
+
+
+def test_python_fallback_names_each_thread(monkeypatch):
+    """py-spy is refused, so the Python-only dump is all the reader gets. Each
+    thread header carries the thread's name next to its ident."""
+    fake_subprocess_run(monkeypatch, returncode=1)
+    stop = threading.Event()
+    worker = threading.Thread(target=stop.wait, name=TRAINING_THREAD_NAME)
+    worker.start()
+
+    try:
+        trace = dump_stack_trace(25.0)
+    finally:
+        stop.set()
+        worker.join()
+
+    main = threading.main_thread()
+    assert f"# Thread {worker.ident} ({TRAINING_THREAD_NAME})" in trace
+    assert f"# Thread {main.ident} ({main.name})" in trace
 
 
 def test_nvidia_smi_returns_the_report(monkeypatch):
@@ -1949,6 +2133,196 @@ def test_ras_history_upload(uploads, text_report):
     if text_report:
         expected["ncclras_report.txt"] = text_report
     assert uploads == [(fs_path, expected)]
+
+
+class MockGauge:
+    """Stand-in for ``ray.util.metrics.Gauge`` that keeps the values set."""
+
+    def __init__(self, name: str, description: str, tag_keys: tuple = ()):
+        self.values: Dict[frozenset, float] = {}
+
+    def set(self, value: float, tags: Dict[str, str]):
+        self.values[frozenset(tags.items())] = value
+
+
+@pytest.fixture
+def mock_gauge(monkeypatch):
+    monkeypatch.setattr(metrics_base, "Gauge", MockGauge)
+
+
+def recorded_detector_metrics(callback):
+    """The detector's ``(state, stall duration)`` metrics as last recorded."""
+    state_metric = callback._metrics[nccl_ras.GRAFANA_STATE]
+    (state,) = [s for s in NCCLHangDetectorState if state_metric.get_value(s)]
+    return (
+        state,
+        callback._metrics[nccl_ras.GRAFANA_STALL_DURATION_S].get_value(),
+    )
+
+
+def test_detector_metrics_follow_suspicion_confirmation_and_recovery(
+    monkeypatch, mock_gauge
+):
+    # A communicator freezes until confirmed (observe mode, so no raise), then
+    # recovers. The state follows the log thresholds: suspected from the first
+    # suspicion warning, confirmed at the confirm duration. The stall duration
+    # counts from the first frozen poll.
+    frozen = create_single_comm_report({1: 5, 2: 4})
+    reports = [frozen] * 4 + [create_healthy_report()]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=3,
+        reports=reports,
+        first_suspicion_polls=2,
+    )
+    callback.after_controller_start(create_dummy_run_context())
+
+    recorded = []
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+        recorded.append(recorded_detector_metrics(callback))
+
+    assert recorded == [
+        (NCCLHangDetectorState.HEALTHY, 0.0),  # baseline, nothing to diff against
+        (NCCLHangDetectorState.HEALTHY, 1.0),  # frozen, below first suspicion
+        (NCCLHangDetectorState.SUSPECTED, 2.0),
+        (NCCLHangDetectorState.CONFIRMED, 3.0),
+        (NCCLHangDetectorState.HEALTHY, 0.0),  # recovered
+    ]
+
+
+def test_detector_metrics_record_confirmation_before_raising(monkeypatch, mock_gauge):
+    # In fail mode the confirmation raises, so the confirmed state must already
+    # be recorded by then or it would never reach Grafana.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
+    )
+    callback.after_controller_start(create_dummy_run_context())
+
+    callback.after_worker_group_poll_status(MagicMock())
+    callback.after_worker_group_poll_status(MagicMock())
+    with pytest.raises(NCCLHangError):
+        callback.after_worker_group_poll_status(MagicMock())
+    assert recorded_detector_metrics(callback) == (
+        NCCLHangDetectorState.CONFIRMED,
+        2.0,
+    )
+
+
+def test_detector_metrics_tagged_with_the_run(monkeypatch, mock_gauge):
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=2,
+        reports=[create_healthy_report()],
+    )
+    run_context = create_dummy_run_context()
+    callback.after_controller_start(run_context)
+    callback.after_worker_group_poll_status(MagicMock())
+
+    base_tags = {
+        "ray_train_run_name": run_context.get_run_config().name,
+        "ray_train_run_id": run_context.run_id,
+    }
+    stall_metric = callback._metrics[nccl_ras.GRAFANA_STALL_DURATION_S]
+    assert stall_metric._gauge.values == {frozenset(base_tags.items()): 0.0}
+    # The state is an enum metric: one series per state, tagged with its name.
+    state_tags = {**base_tags, nccl_ras.GRAFANA_STATE_TAG_KEY: "HEALTHY"}
+    state_metric = callback._metrics[nccl_ras.GRAFANA_STATE]
+    assert state_metric._gauge.values == {frozenset(state_tags.items()): 1}
+
+
+def test_detector_metrics_reset_to_healthy_on_worker_group_restart(
+    monkeypatch, mock_gauge
+):
+    # A confirmed hang restarts the worker group, so the panel must not keep
+    # showing CONFIRMED while the new group comes up.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=2, reports=reports
+    )
+    callback.after_controller_start(create_dummy_run_context())
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+    assert recorded_detector_metrics(callback) == (
+        NCCLHangDetectorState.CONFIRMED,
+        2.0,
+    )
+
+    monkeypatch.setattr(nccl_ras, "RASPoller", MagicMock())
+    callback.after_worker_group_start(MagicMock())
+    assert recorded_detector_metrics(callback) == (NCCLHangDetectorState.HEALTHY, 0.0)
+
+
+@pytest.mark.parametrize("cause", ["fatal_poll_result", "unexpected_error"])
+def test_detector_metrics_record_degraded(monkeypatch, mock_gauge, cause):
+    # Once detection is disabled the panel shows DEGRADED rather than a stale
+    # HEALTHY, including across a worker group restart.
+    fatal = RASQueryError("unsupported_f_option", "binary rejected `-f`", fatal=True)
+    frozen = create_single_comm_report({1: 5, 2: 4})
+    reports = [frozen, frozen, fatal]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5, reports=reports
+    )
+    callback.after_controller_start(create_dummy_run_context())
+    callback.after_worker_group_poll_status(MagicMock())
+    callback.after_worker_group_poll_status(MagicMock())
+    assert recorded_detector_metrics(callback) == (
+        NCCLHangDetectorState.SUSPECTED,
+        1.0,
+    )
+
+    if cause == "unexpected_error":
+
+        def boom(*_args, **_kwargs):
+            raise RuntimeError("detector bug")
+
+        callback._ras_poller.next_result = boom
+    callback.after_worker_group_poll_status(MagicMock())
+    assert callback._is_ras_degraded is True
+    assert recorded_detector_metrics(callback) == (NCCLHangDetectorState.DEGRADED, 0)
+
+    callback.after_worker_group_start(MagicMock())
+    assert callback._ras_poller is None
+    assert recorded_detector_metrics(callback) == (NCCLHangDetectorState.DEGRADED, 0)
+
+
+def test_detector_metrics_reset_on_controller_shutdown(monkeypatch, mock_gauge):
+    # A finished run must not leave its last state set on the gauges.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 2
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5, reports=reports
+    )
+    callback.after_controller_start(create_dummy_run_context())
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+
+    asyncio.run(callback.before_controller_shutdown())
+
+    for metric in callback._metrics.values():
+        assert set(metric._gauge.values.values()) == {0}
+
+
+def test_detector_metrics_shutdown_before_controller_start(monkeypatch):
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5, reports=[]
+    )
+    asyncio.run(callback.before_controller_shutdown())  # must not raise
+
+
+def test_detector_metrics_skipped_before_controller_start(monkeypatch):
+    # Without a run context there is nothing to tag the metrics with, so
+    # detection runs without recording them.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 2
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5, reports=reports
+    )
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+    assert callback._metrics is None
+    assert callback.comm_deadlock_count == {_COMM_A: 1}
 
 
 def make_train_worker(world_rank: int, node_ip: str, pid: int) -> MagicMock:

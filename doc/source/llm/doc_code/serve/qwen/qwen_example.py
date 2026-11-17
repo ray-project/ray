@@ -2,7 +2,7 @@
 This file serves as a documentation example and CI test.
 
 Structure:
-1. Monkeypatch setup: Ensures serve.run is non-blocking and removes accelerator requirements for CI testing.
+1. Monkeypatch setup: Ensures serve.run is non-blocking.
 2. Docs example (between __qwen_example_start/end__): Embedded in Sphinx docs via literalinclude.
 3. Test validation (deployment status polling + cleanup)
 """
@@ -24,9 +24,8 @@ def _non_blocking_serve_run(app, **kwargs):
 
 
 def _testing_build_openai_app(llm_serving_args):
-    """Removes accelerator requirements for testing"""
+    """Disables compile cache for testing."""
     for config in llm_serving_args["llm_configs"]:
-        config.accelerator_type = None
         # Disable compile cache to avoid cache corruption in CI
         if not config.runtime_env:
             config.runtime_env = {}
@@ -46,8 +45,8 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "qwen-0.5b",
-        "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
+        "model_id": "qwen3.5-0.8b",
+        "model_source": "Qwen/Qwen3.5-0.8B",
     },
     deployment_config={
         "autoscaling_config": {
@@ -55,11 +54,9 @@ llm_config = LLMConfig(
             "max_replicas": 2,
         }
     },
-    # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-    accelerator_type="A10G",
     # You can customize the engine arguments (e.g. vLLM engine kwargs)
     engine_kwargs={
-        "tensor_parallel_size": 2,
+        "tensor_parallel_size": 1,
     },
 )
 

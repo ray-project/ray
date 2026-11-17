@@ -1,0 +1,36 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-tune-docs-style'
+level: warning
+ignorecase: false
+# Ray Tune terminology. The forms follow the concepts doc/source/tune/key-concepts.md
+# defines: trainable, search space, search algorithm, scheduler, trial, and the
+# `Tuner` and `ResultGrid` classes. General prose rules live in the shared Ray/ style
+# package.
+#
+# Terms whose only wrong form is a casing variant, such as `Hyperopt` and `Hyperband`,
+# live in config/vocabularies/Tune/accept.txt instead of here. The accept list drives
+# `Vale.Terms`, which already flags `HyperOpt` and `HyperBand`, so a swap would alert
+# twice.
+#
+# `vocab: false` so an accept-list entry can't silently shadow a swap. Vocabularies are
+# registered globally, so an entry another library adds would reach these swaps too.
+# See .vale/styles/KubeRay/Terms.yml.
+vocab: false
+# `action: replace` makes Vale's JSON output carry the replacement text, so a tool
+# can apply these swaps from Vale's own alerts. Every swap here must be safe to
+# apply without judgment. A swap that needs a human decision belongs in a rule
+# without the action, such as Tune/Capitalization.yml.
+action:
+  name: replace
+swap:
+  # Spell out abbreviations in prose. Arguments and attributes such as `search_alg`,
+  # `config`, and `logdir` keep code style.
+  'search alg': search algorithm
+  'search algs': search algorithms
+  'config dict': configuration dictionary
+  'config dicts': configuration dictionaries
+  'trial dir': trial directory
+  'trial dirs': trial directories
+  'experiment dir': experiment directory
+  'experiment dirs': experiment directories

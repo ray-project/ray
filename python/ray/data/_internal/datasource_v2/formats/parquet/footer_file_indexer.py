@@ -2,18 +2,16 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import (
-    TYPE_CHECKING,
-    AbstractSet,
-    Deque,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-)
+from typing import TYPE_CHECKING, AbstractSet, Deque, Iterable, Iterator, List, Optional
+
+import numpy as np
+import pyarrow as pa
 
 import ray
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
@@ -22,7 +20,12 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     ChunkedFile,
     FooterReaderActor,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FILE_CHUNK_METADATA_COLUMN_NAME,
+    FILE_SIZE_COLUMN_NAME,
+    PATH_COLUMN_NAME,
+    FileManifest,
+)
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -35,6 +38,7 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
+    from ray.data.datasource.partitioning import Partitioning
     from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
@@ -79,6 +83,50 @@ def _chunked_file_to_manifest(chunked_file: ChunkedFile) -> FileManifest:
     )
 
 
+def _shuffle_row_group_runs(
+    manifests: Iterable[FileManifest],
+    *,
+    seed: Optional[int],
+    max_rows_per_output: int,
+) -> Iterator[FileManifest]:
+    """Permute every row-group run across all files, then re-batch.
+
+    Backs ``FileShuffleConfig(small_chunks_shuffle=True)``. It drains the whole
+    listing because a global permutation needs every row. When ``seed`` is set,
+    rows are first sorted by ``(path, first row group)`` so the permutation does
+    not depend on the order footer reads finished in.
+
+    Rows are rebuilt from Python values rather than concatenated as Arrow
+    tables: per-file manifests infer their own chunk-metadata types (an empty
+    ``unit_sizes`` is ``list<null>``, a coalesced one ``list<int64>``), so their
+    schemas need not match.
+    """
+    rows = []
+    for manifest in manifests:
+        block = manifest.as_block()
+        # Listing manifests are always built as Arrow tables.
+        assert isinstance(block, pa.Table)
+        rows.extend(block.to_pylist())
+    n = len(rows)
+    if n == 0:
+        return
+    if seed is not None:
+        rows.sort(
+            key=lambda row: (
+                row[PATH_COLUMN_NAME],
+                row[FILE_CHUNK_METADATA_COLUMN_NAME]["unit_ids"][0],
+            )
+        )
+    rows = [rows[i] for i in np.random.default_rng(seed).permutation(n)]
+    for start in range(0, n, max_rows_per_output):
+        batch = rows[start : start + max_rows_per_output]
+        yield FileManifest.construct_manifest(
+            paths=[row[PATH_COLUMN_NAME] for row in batch],
+            sizes=[row[FILE_SIZE_COLUMN_NAME] for row in batch],
+            chunk_metadatas=[row[FILE_CHUNK_METADATA_COLUMN_NAME] for row in batch],
+        )
+
+
 class FooterFileIndexer(NonSamplingFileIndexer):
     """Lists files, then footer-reads them to emit one row per row-group run.
 
@@ -86,6 +134,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
     :class:`NonSamplingFileIndexer`; overrides :meth:`list_files` to attach exact
     footer stats to each run instead of emitting opaque per-file chunks. File
     shuffle, when requested, runs after path discovery and before footer reads.
+    Row-group shuffle (``FileShuffleConfig.small_chunks_shuffle``) coalesces row
+    groups into ~``small_shuffle_chunk_size`` runs and then permutes those runs
+    across all files.
     Grouping runs into read units is the partitioner's job -- see
     :class:`~ray.data._internal.datasource_v2.common.online_bin_packer.OnlineBinPacker`.
     """
@@ -98,10 +149,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
         coalesce_bytes: int = 0,
+        small_shuffle_chunk_size: int = 0,
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
         result_batch_size: Optional[int] = None,
         max_inflight_batches: Optional[int] = None,
+        partitioning: Optional[Partitioning] = None,
+        logical_schema: Optional[pa.Schema] = None,
     ):
         super().__init__(
             ignore_missing_paths=ignore_missing_paths,
@@ -110,6 +164,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             max_paths_per_output=max_paths_per_output,
         )
         self._coalesce_bytes = coalesce_bytes
+        self._partitioning = partitioning
+        self._logical_schema = logical_schema
+        # Coalesce target used instead of ``coalesce_bytes`` (when larger) for a
+        # row-group shuffle, so the shuffle unit is a ~chunk-sized run rather
+        # than a single, possibly tiny, row group.
+        self._small_shuffle_chunk_size = small_shuffle_chunk_size
         # Every knob is re-read here rather than taken from the module-level
         # constant, so ``monkeypatch.setenv`` and release-test env overrides work
         # after this module has already been imported. An explicit ctor argument
@@ -178,10 +238,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
+            pruners=pruners,
             preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
         )
 
@@ -190,6 +253,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: Optional["FileSystem"],
+        pruners: Optional[List["FilePruner"]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
@@ -198,6 +262,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
+        if pruners:
+            file_infos = (
+                info
+                for info in file_infos
+                if all(pruner.should_include(info.path) for pruner in pruners)
+            )
         if excluded_read_unit_ids:
             file_infos = (
                 info for info in file_infos if info.path not in excluded_read_unit_ids
@@ -209,10 +279,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
+            pruners=pruners,
             preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
         )
 
@@ -221,20 +294,40 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: Optional["FileSystem"],
+        pruners: Optional[List["FilePruner"]],
         preserve_order: bool,
         predicate: Optional["Expr"],
         limit: Optional[int],
         projected_columns: Optional[List[str]],
+        shuffle_config: Optional["FileShuffleConfig"],
+        execution_idx: int,
         excluded_read_unit_ids: Optional[AbstractSet[str]],
     ) -> Iterator[FileManifest]:
+        partition_pruner = next(
+            (
+                pruner
+                for pruner in pruners or []
+                if isinstance(pruner, PartitionPredicatePruner)
+            ),
+            None,
+        )
+        shuffle_row_groups = (
+            shuffle_config is not None and shuffle_config.small_chunks_shuffle
+        )
+        coalesce_bytes = self._coalesce_bytes
+        if shuffle_row_groups:
+            coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,
                 self._io_concurrency,
                 predicate,
                 projected_columns,
-                self._coalesce_bytes,
+                coalesce_bytes,
                 excluded_read_unit_ids=excluded_read_unit_ids,
+                partitioning=self._partitioning,
+                partition_pruner=partition_pruner,
+                logical_schema=self._logical_schema,
             )
             for _ in range(self._num_actors)
         ]
@@ -244,9 +337,17 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             self._io_concurrency,
         )
         try:
-            yield from self._read_footers(
+            manifests = self._read_footers(
                 actors, file_infos, limit, preserve_order=preserve_order
             )
+            if shuffle_row_groups:
+                assert shuffle_config is not None
+                manifests = _shuffle_row_group_runs(
+                    manifests,
+                    seed=shuffle_config.get_seed(execution_idx),
+                    max_rows_per_output=self._max_paths_per_output,
+                )
+            yield from manifests
         finally:
             for actor in actors:
                 # ``ActorProxy`` is ``ActorHandle | type[T]``; kill wants a handle.

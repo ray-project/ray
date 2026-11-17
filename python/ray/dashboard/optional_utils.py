@@ -1,5 +1,4 @@
-"""
-Optional utils module contains utility methods
+"""Optional utils module contains utility methods
 that require optional dependencies.
 """
 

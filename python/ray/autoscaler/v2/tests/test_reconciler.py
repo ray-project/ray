@@ -39,9 +39,12 @@ from ray.core.generated.autoscaler_pb2 import (
 )
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
+    InstanceUpdateEvent,
     LaunchRequest,
     NodeKind,
+    StatusCode,
     TerminationRequest,
+    UpdateInstanceManagerStateRequest,
 )
 
 s_to_ns = 1 * 1_000_000_000
@@ -82,6 +85,9 @@ class MockAutoscalingConfig:
 
     def get_idle_timeout_s(self):
         return self._configs.get("idle_timeout_s", 999)
+
+    def get_pending_idle_timeout_s(self):
+        return self._configs.get("pending_idle_timeout_s", 999)
 
     def get_provider_instance_type(self, ray_node_type):
         return self._configs.get("provider_instance_types", {}).get(ray_node_type, "")
@@ -129,6 +135,24 @@ def setup():
 
 
 class TestReconciler:
+    @staticmethod
+    def _update_instance(instance_manager, instance_id, status):
+        reply = instance_manager.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=-1,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id=instance_id,
+                        new_instance_status=status,
+                        instance_type="type-1",
+                        launch_request_id=f"{instance_id}-request",
+                        upsert=True,
+                    )
+                ],
+            )
+        )
+        assert reply.status.code == StatusCode.OK
+
     @staticmethod
     def _add_instances(instance_storage, instances):
         for instance in instances:
@@ -573,6 +597,187 @@ class TestReconciler:
         assert events_i_2[1].new_instance_status == Instance.TERMINATING
 
     @staticmethod
+    def test_gc_terminated_instances_past_retention(setup):
+        # TERMINATED records older than the GC retention window are deleted from
+        # storage, while recently TERMINATED and non-terminal records are kept.
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        retention_s = InstanceReconcileConfig().terminated_instance_gc_retention_s
+        now = time.time_ns()
+        instances = [
+            create_instance(
+                "i-stale",
+                status=Instance.TERMINATED,
+                status_times=[
+                    (Instance.TERMINATED, now - (retention_s + 60) * s_to_ns)
+                ],
+            ),
+            create_instance(
+                "i-fresh",
+                status=Instance.TERMINATED,
+                status_times=[(Instance.TERMINATED, now)],
+            ),
+            create_instance(
+                "i-live",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-live",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={
+                "c-live": CloudInstance(
+                    "c-live", "worker_nodes1", False, NodeKind.WORKER
+                )
+            },
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        stored, _ = instance_storage.get_instances()
+        assert "i-stale" not in stored
+        assert "i-fresh" in stored
+        assert "i-live" in stored
+
+    @staticmethod
+    def test_gc_terminated_instances_kept_while_referenced_by_gcs(setup):
+        # A TERMINATED record whose node_id is still in the GCS node snapshot is
+        # kept even past retention, so it is not resurrected as ALLOCATED by
+        # _handle_extra_cloud_instances_from_ray_nodes.
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        retention_s = InstanceReconcileConfig().terminated_instance_gc_retention_s
+        now = time.time_ns()
+        instances = [
+            create_instance(
+                "i-referenced",
+                status=Instance.TERMINATED,
+                ray_node_id=binary_to_hex(b"r-term"),
+                status_times=[
+                    (Instance.TERMINATED, now - (retention_s + 60) * s_to_ns)
+                ],
+            ),
+            create_instance(
+                "i-gone",
+                status=Instance.TERMINATED,
+                ray_node_id=binary_to_hex(b"r-gone"),
+                status_times=[
+                    (Instance.TERMINATED, now - (retention_s + 60) * s_to_ns)
+                ],
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        # GCS still reports r-term but not r-gone.
+        ray_nodes = [
+            NodeState(node_id=b"r-term", status=NodeStatus.DEAD, instance_id="c-term"),
+        ]
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        stored, _ = instance_storage.get_instances()
+        assert "i-referenced" in stored
+        assert "i-gone" not in stored
+
+    @staticmethod
+    def test_gc_reclaims_allocation_failed(setup):
+        # ALLOCATION_FAILED is also a terminal state nothing else reclaims, so a
+        # record past retention is GC'd like TERMINATED. It is reached from
+        # REQUESTED and never has a node_id, so the GCS check does not apply.
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        retention_s = InstanceReconcileConfig().terminated_instance_gc_retention_s
+        now = time.time_ns()
+        instances = [
+            create_instance(
+                "i-stale-failed",
+                status=Instance.ALLOCATION_FAILED,
+                status_times=[
+                    (Instance.ALLOCATION_FAILED, now - (retention_s + 60) * s_to_ns)
+                ],
+            ),
+            create_instance(
+                "i-fresh-failed",
+                status=Instance.ALLOCATION_FAILED,
+                status_times=[(Instance.ALLOCATION_FAILED, now)],
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        stored, _ = instance_storage.get_instances()
+        assert "i-stale-failed" not in stored
+        assert "i-fresh-failed" in stored
+
+    @staticmethod
+    def test_gc_terminated_instances_disabled_with_negative_retention(setup):
+        # A negative retention disables GC so even old TERMINATED records remain.
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        now = time.time_ns()
+        TestReconciler._add_instances(
+            instance_storage,
+            [
+                create_instance(
+                    "i-stale",
+                    status=Instance.TERMINATED,
+                    status_times=[
+                        (Instance.TERMINATED, now - 10 * 24 * 3600 * s_to_ns)
+                    ],
+                )
+            ],
+        )
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                {
+                    "instance_reconcile_config": InstanceReconcileConfig(
+                        terminated_instance_gc_retention_s=-1
+                    )
+                }
+            ),
+        )
+
+        stored, _ = instance_storage.get_instances()
+        assert "i-stale" in stored
+
+    @staticmethod
     def test_ray_reconciler_no_op(setup):
         instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
@@ -997,6 +1202,121 @@ class TestReconciler:
                 == instances[event.instance_id].launch_request_id
             )
             assert event.instance_type == "type-1"
+
+    @staticmethod
+    @pytest.mark.parametrize("history_limit", [10, 200])
+    @mock.patch("time.time_ns")
+    def test_launch_oldest_queued_instance_after_many_retries(
+        mock_time_ns, history_limit, monkeypatch, setup
+    ):
+        instance_manager, instance_storage, _, _ = setup
+        monkeypatch.setattr(
+            "ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH",
+            history_limit,
+        )
+        mock_time_ns.return_value = s_to_ns
+        TestReconciler._update_instance(instance_manager, "older", Instance.QUEUED)
+        mock_time_ns.return_value = 2 * s_to_ns
+        TestReconciler._update_instance(instance_manager, "newer", Instance.QUEUED)
+
+        # Exceed the history limit. The original queue time
+        # must still determine launch order after allocation retries.
+        for _ in range(100):
+            mock_time_ns.return_value += s_to_ns
+            TestReconciler._update_instance(
+                instance_manager, "older", Instance.REQUESTED
+            )
+            mock_time_ns.return_value += s_to_ns
+            TestReconciler._update_instance(instance_manager, "older", Instance.QUEUED)
+
+        Reconciler._handle_instances_launch(
+            instance_manager,
+            MockAutoscalingConfig(configs={"max_concurrent_launches": 1}),
+        )
+        instances, _ = instance_storage.get_instances()
+        assert instances["older"].status == Instance.REQUESTED
+        assert instances["newer"].status == Instance.QUEUED
+        assert len(instances["older"].status_history) == history_limit
+
+    @staticmethod
+    @pytest.mark.parametrize("history_limit", [10, 200])
+    @mock.patch("time.time_ns")
+    def test_allocate_oldest_requested_instance_after_many_retries(
+        mock_time_ns, history_limit, monkeypatch, setup
+    ):
+        instance_manager, instance_storage, _, _ = setup
+        monkeypatch.setattr(
+            "ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH",
+            history_limit,
+        )
+        mock_time_ns.return_value = 0
+        TestReconciler._update_instance(instance_manager, "older", Instance.QUEUED)
+        mock_time_ns.return_value = s_to_ns
+        TestReconciler._update_instance(instance_manager, "older", Instance.REQUESTED)
+        mock_time_ns.return_value = 2 * s_to_ns
+        TestReconciler._update_instance(instance_manager, "newer", Instance.QUEUED)
+        TestReconciler._update_instance(instance_manager, "newer", Instance.REQUESTED)
+
+        for _ in range(100):
+            mock_time_ns.return_value += s_to_ns
+            TestReconciler._update_instance(instance_manager, "older", Instance.QUEUED)
+            mock_time_ns.return_value += s_to_ns
+            TestReconciler._update_instance(
+                instance_manager, "older", Instance.REQUESTED
+            )
+
+        Reconciler._handle_cloud_instance_allocation(
+            instance_manager,
+            non_terminated_cloud_instances={
+                "cloud-1": CloudInstance(
+                    cloud_instance_id="cloud-1",
+                    node_type="type-1",
+                    node_kind=NodeKind.WORKER,
+                    is_running=True,
+                )
+            },
+            cloud_provider_errors=[],
+        )
+        instances, _ = instance_storage.get_instances()
+        assert instances["older"].status == Instance.ALLOCATED
+        assert instances["newer"].status == Instance.REQUESTED
+        assert len(instances["older"].status_history) == history_limit
+
+    @staticmethod
+    @pytest.mark.parametrize("max_retries", [3, 100])
+    @pytest.mark.parametrize("history_limit", [10, 200])
+    @mock.patch("time.time_ns")
+    def test_stuck_requested_instance_retry_limit(
+        mock_time_ns, max_retries, history_limit, monkeypatch, setup
+    ):
+        instance_manager, instance_storage, _, _ = setup
+        monkeypatch.setattr(
+            "ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH",
+            history_limit,
+        )
+        mock_time_ns.return_value = s_to_ns
+        TestReconciler._update_instance(instance_manager, "retry", Instance.QUEUED)
+        reconcile_config = InstanceReconcileConfig(
+            request_status_timeout_s=1,
+            max_num_retry_request_to_allocate=max_retries,
+        )
+
+        # Retry accounting must include requests already trimmed from history.
+        for attempt in range(max_retries + 1):
+            TestReconciler._update_instance(
+                instance_manager, "retry", Instance.REQUESTED
+            )
+            mock_time_ns.return_value += 2 * s_to_ns
+            Reconciler._handle_stuck_instances(
+                instance_manager, reconcile_config, logger
+            )
+            instances, _ = instance_storage.get_instances()
+            instance = instances["retry"]
+            expected_status = (
+                Instance.QUEUED if attempt < max_retries else Instance.ALLOCATION_FAILED
+            )
+            assert instance.status == expected_status
+            assert len(instance.status_history) <= history_limit
 
     @staticmethod
     @mock.patch("time.time_ns")

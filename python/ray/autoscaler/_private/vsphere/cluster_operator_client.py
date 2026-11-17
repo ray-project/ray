@@ -246,9 +246,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         return False
 
     def set_node_tags(self, tags: Dict[str, str]) -> None:
-        """
-        Not required
-        """
+        """Not required"""
         pass
 
     def get_vm_external_ip(self, node_id: str) -> Optional[str]:
@@ -446,8 +444,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         return {}
 
     def safe_to_scale(self):
-        """
-        It is safe to scale as long as total number of workers(desired + current)
+        """It is safe to scale as long as total number of workers(desired + current)
         do not exceeds cluster level max_workers.
         This function should handle cases:
         1. If there are workers in the desired_workers list but not in the

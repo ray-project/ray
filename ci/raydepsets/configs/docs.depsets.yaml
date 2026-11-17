@@ -61,3 +61,41 @@ depsets:
       - py310
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+
+  # The "docstring-only" label's examples environment: ray[all] plus what the
+  # modules holding >>> examples import, without torch or TensorFlow, so the
+  # image stays small to pull. Examples that need torch or TensorFlow are
+  # skipped there and run in each library's doctest() target instead: in
+  # premerge for libraries whose suites the label doesn't skip, and postmerge
+  # for Ray Data. Same
+  # constraints as doctest_depset, so shared packages resolve to the same
+  # versions.
+  - name: docstring_examples_base_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/doc/docstring-examples-requirements.txt
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+    output: python/deplocks/docs/docstring_examples_base_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+
+  # Drop cupy-cuda12x, the CUDA build ray[cgraph] pins, and fastrlock, which
+  # only cupy requires: about 225 MB the CPU-only examples don't use.
+  - name: docstring_examples_depset_${PYTHON_SHORT}
+    operation: relax
+    source_depset: docstring_examples_base_depset_${PYTHON_SHORT}
+    packages:
+      - cupy-cuda12x
+      - fastrlock
+    output: python/deplocks/docs/docstring_examples_depset_py${PYTHON_VERSION}.lock
+    build_arg_sets:
+      - py310

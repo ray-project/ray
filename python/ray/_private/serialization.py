@@ -106,8 +106,7 @@ def _rdt_ref_deserializer(
     tensor_transport: str,
     rdt_meta: "ray.experimental.rdt.rdt_manager.RDTMeta",
 ) -> "ray.ObjectRef":
-    """
-    Deserialize an RDT object ref. When the RDT object ref is deserialized,
+    """Deserialize an RDT object ref. When the RDT object ref is deserialized,
     it firstly deserializes the normal object ref, and then adds metadata of
     the RDT object to the RDT manager, which will be used to fetch
     the RDT object later.
@@ -205,6 +204,21 @@ class SerializationContext:
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
             worker.check_connected()
+
+            # Serializing a ref hands it to another process as a borrower, which a
+            # consume-once ref doesn't allow.
+            if worker.core_worker.has_consume_once_objects() and (
+                worker.core_worker.get_move_state(obj) in ("MOVABLE", "MOVED")
+            ):
+                # raise PicklingError for the case when ref is wrapped in ` raise Exception(ref)`,
+                # since RayTaskError catches PicklingError. Another alternative would be to use
+                # ValueError, but it escapes RayTaskError and leads to actor death.
+                raise pickle.PicklingError(
+                    f"Object {obj.hex()} was created with _consume_once=True. It can "
+                    "only be passed directly as an argument to one actor task, not "
+                    "nested inside another object (including a ray.put value or a "
+                    "raised exception) or returned from a task."
+                )
 
             self.add_contained_object_ref(
                 obj,
@@ -343,9 +357,7 @@ class SerializationContext:
         data: Any,
         out_of_band_tensors: Optional[List[Any]],
     ) -> Any:
-        """
-
-        Args:
+        """Args:
             data: The data to deserialize.
             out_of_band_tensors: Tensors that were sent out-of-band. If this is
                 not None, then the serialized data will contain placeholders
@@ -756,8 +768,7 @@ class SerializationContext:
     def store_rdt_objects(
         self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> bytes:
-        """
-        Store RDT objects in the RDT store.
+        """Store RDT objects in the RDT store.
 
         Args:
             obj_id: The object ID of the value. `obj_id` is required, and the RDT data (e.g. tensors) in `value`

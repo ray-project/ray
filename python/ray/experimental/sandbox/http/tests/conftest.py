@@ -60,8 +60,13 @@ class FakeSandboxRuntime:
         self.deleted: List[str] = []
         self.pull_error: Optional[Exception] = None
         self.create_error: Optional[Exception] = None
+        self.resource_error: Optional[Exception] = None
+        self.resource_checks: List[Dict[str, Any]] = []
+        self.termination_reason: Optional[str] = None
         self.exec_error: Optional[Exception] = None
         self.exec_results: List[FakeExecResult] = []
+        self.allowlist_calls: List[Dict[str, Any]] = []
+        self.allowlist_error: Optional[Exception] = None
         # When set, pull_image blocks until the event fires, holding the
         # sandbox in the "pulling" state for conflict tests.
         self.pull_gate: Optional[threading.Event] = None
@@ -79,6 +84,14 @@ class FakeSandboxRuntime:
         if self.pull_error is not None:
             raise self.pull_error
         return f"/tmp/fake-images/{image}"
+
+    def check_resources(self, **kwargs) -> None:
+        self.resource_checks.append(kwargs)
+        if self.resource_error is not None:
+            raise self.resource_error
+
+    def get_termination_reason(self, instance_id):
+        return self.termination_reason
 
     def create(self, image: str, **kwargs: Any) -> str:
         self.create_calls.append({"image": image, **kwargs})
@@ -157,6 +170,11 @@ class FakeSandboxRuntime:
         if path not in self.readable_files:
             raise SandboxExecError(f"cat: {path}: No such file or directory")
         return self.readable_files[path]
+
+    def set_egress_allowlist(self, instance_id: str, cidrs: List[str]) -> None:
+        self.allowlist_calls.append({"instance_id": instance_id, "cidrs": list(cidrs)})
+        if self.allowlist_error is not None:
+            raise self.allowlist_error
 
     def delete(self, instance_id: str) -> None:
         if self.delete_gate is not None:

@@ -498,8 +498,7 @@ class SquashedGaussian(TFActionDistribution):
 
 @OldAPIStack
 class Beta(TFActionDistribution):
-    """
-    A Beta distribution is defined on the interval [0, 1] and parameterized by
+    """A Beta distribution is defined on the interval [0, 1] and parameterized by
     shape parameters alpha and beta (also called concentration parameters).
 
     PDF(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z

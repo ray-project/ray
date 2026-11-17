@@ -106,7 +106,12 @@ def test_build_anyscale_base_byod_images() -> None:
     ):
         tests = [
             Test(name="aws", env="aws", cluster={"byod": {}}),
-            Test(name="aws", env="aws", cluster={"byod": {"type": "gpu"}}),
+            Test(
+                name="aws",
+                env="aws",
+                python="3.11",
+                cluster={"byod": {"type": "torch-cu128"}},
+            ),
             Test(
                 # This is a duplicate of the default.
                 name="aws",
@@ -140,7 +145,7 @@ def test_build_anyscale_base_byod_images() -> None:
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu116",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu121",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cu118",
-            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu",
+            f"{aws_cr}/anyscale/ray-torch:a1b2c3d4-py311-cu128",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cpu",
         }
 
@@ -162,9 +167,14 @@ def test_get_anyscale_base_byod_image_always_uses_aws_ecr() -> None:
             test = Test(name="t", env=env, cluster={"byod": {}})
             assert test.get_anyscale_base_byod_image() == expected_cpu, env
 
-        gpu_test = Test(name="t", env="gce", cluster={"byod": {"type": "gpu"}})
+        gpu_test = Test(
+            name="t",
+            env="gce",
+            python="3.11",
+            cluster={"byod": {"type": "torch-cu128"}},
+        )
         assert gpu_test.get_anyscale_base_byod_image() == (
-            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu"
+            f"{aws_cr}/anyscale/ray-torch:a1b2c3d4-py311-cu128"
         )
 
         # When ray_version is set, base image uses anyscale/ray prefix
@@ -177,13 +187,14 @@ def test_get_anyscale_base_byod_image_always_uses_aws_ecr() -> None:
         versioned_gpu_test = Test(
             name="t",
             env="gce",
-            cluster={"byod": {"type": "gpu"}, "ray_version": "2.50.0"},
+            python="3.12",
+            cluster={"byod": {"type": "gpu-cu130"}, "ray_version": "2.50.0"},
         )
         assert versioned_cpu_test.get_anyscale_base_byod_image() == (
             "anyscale/ray:2.50.0-py310-cpu"
         )
         assert versioned_gpu_test.get_anyscale_base_byod_image() == (
-            "anyscale/ray:2.50.0-py310-cu121"
+            "anyscale/ray:2.50.0-py312-cu130"
         )
 
 

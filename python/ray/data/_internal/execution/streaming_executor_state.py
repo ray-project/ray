@@ -19,6 +19,7 @@ from ray.data._internal.execution.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
 )
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -30,7 +31,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     Waitable,
 )
-from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -53,6 +53,7 @@ from ray.exceptions import ObjectLostError, UserCodeException
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
@@ -397,10 +398,12 @@ class OpState:
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
         # Tracks consumers blocked in get_output_blocking().
-        # Used to detect consumer starvation. Guarded by
-        # _waiting_consumers_lock since += is not atomic.
+        # Used to detect consumer starvation.
+        # _output_lock guards all fields mutated concurrently by consumer
+        # threads (num_waiting_consumers, outqueue metrics) since += / -=
+        # are not atomic.
         self._num_waiting_consumers: int = 0
-        self._waiting_consumers_lock = threading.Lock()
+        self._output_lock = threading.Lock()
 
     @property
     def num_waiting_consumers(self) -> int:
@@ -559,21 +562,28 @@ class OpState:
                     raise StopIteration()
                 ref = self.output_queue.pop(output_split_idx)
                 if ref is not None:
-                    # Update outqueue metrics when blocks are removed from
-                    # this operator's outqueue.
+                    # Update outqueue metrics and ResourceBank under the same
+                    # lock: multiple consumer threads call get_output_blocking()
+                    # concurrently so -= and ResourceBank dict mutations are
+                    # not atomic without it.
                     # TODO: Abstract queue-releated metrics to queue.
-                    self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                    self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                    with self._output_lock:
+                        self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                        self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                        if actor_only_backend_enabled():
+                            assert self.op._resource_bank is not None
+                            for br in ref.block_refs:
+                                self.op._resource_bank.on_block_consumed(input_ref=br)
                     return ref
                 if not starving:
                     # Queue is empty — mark this consumer as starving.
-                    with self._waiting_consumers_lock:
+                    with self._output_lock:
                         self._num_waiting_consumers += 1
                     starving = True
                 time.sleep(0.01)
         finally:
             if starving:
-                with self._waiting_consumers_lock:
+                with self._output_lock:
                     self._num_waiting_consumers -= 1
 
     def input_queue_bytes(self) -> int:
@@ -602,6 +612,7 @@ def build_streaming_topology(
     options: ExecutionOptions,
     block_ref_counter: BlockRefCounter,
     lineage_tracker: Optional["LineageTracker"] = None,
+    resource_bank: Optional["ResourceBankBase"] = None,
 ) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
@@ -617,6 +628,8 @@ def build_streaming_topology(
         lineage_tracker: Optional tracker for experimental lineage reconstruction.
             Attached to every operator so they can record task lineage as they
             execute. ``None`` disables tracking.
+        resource_bank: Optional per-executor ResourceBankBase for actor-only
+            accounting.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -638,7 +651,9 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
-        op.start(options, block_ref_counter, lineage_tracker)
+        op.start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
         return op_state
 
     setup_state(dag)
@@ -712,13 +727,25 @@ def _reconstruct_lost_object(
             "by the lineage graph.",
         ) from lost_error
 
-    # A retry of a failed reconstruction attempt reuses its original reconstruction plan; a fresh failure
+    # A retry of a failed reconstruction attempt reuses the reconstruction plans it served; a fresh failure
     # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
     # plans do not interfere.
+    traced_seed_ids: Set[str] = set()
+    reconstruction_plan_ids: Set[str] = set()
     try:
-        traced_seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
-            task.lineage_task_id, task.reconstruction_plan_id
-        )
+        if task.reconstruction_plan_ids:
+            for failed_plan_id in sorted(task.reconstruction_plan_ids):
+                seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
+                    task.lineage_task_id, failed_plan_id
+                )
+                traced_seed_ids.update(seed_ids)
+                reconstruction_plan_ids.add(reconstruction_plan_id)
+        else:
+            seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
+                task.lineage_task_id
+            )
+            traced_seed_ids.update(seed_ids)
+            reconstruction_plan_ids.add(reconstruction_plan_id)
     except ValueError as err:
         raise LineageReconstructionError(
             lost_error,
@@ -727,6 +754,7 @@ def _reconstruct_lost_object(
         ) from lost_error
 
     seed_task_ids = sorted(traced_seed_ids)
+    plans_str = ", ".join(sorted(reconstruction_plan_ids))
 
     # Get each seed's retained input from the tracker, and the operator that ran the
     # seed, which is where the input is re-injected.
@@ -753,40 +781,48 @@ def _reconstruct_lost_object(
             ) from lost_error
         resubmissions.append((seed_id, seed_op, seed_input))
 
-    # Mark the task as aborted so the operator releases every resource it reserved.
-    task.mark_aborted(lost_error)
+    # Abort the task so the operator releases every resource it reserved. It's
+    # not counted as failed since its lost output is being reconstructed.
+    task.mark_aborted(lost_error, aborted_for_reconstruction=True)
 
     for seed_id, seed_op, seed_input in resubmissions:
         # Clear the completion state of the seed op and everything downstream so a
         # re-injected seed input can flow through again.
         _clear_downstream_completion_state(topology, seed_op)
+        # If a reconstruction task for this seed is already queued, these plans join it.
+        if seed_op.join_queued_reconstruction_task(seed_id, reconstruction_plan_ids):
+            logger.info(
+                "[lineage-reconstruction] Plan(s) %s joined the queued reconstruction task "
+                "of seed task %s on operator %r.",
+                plans_str,
+                seed_id,
+                seed_op.name,
+            )
+            continue
         # `OpState.output_queue` of the source is the seed op's `input_queues[0]`
         # (same object, wired in `build_streaming_topology`).
         # Backpressure gates the resubmission like any other input.
         # The seed's identity travels on the bundle as its `reconstruction_stamp`.
         # Without it the resubmitted bundle is minted a fresh id and the plan never
         # resolves.
-        seed_input = dataclasses.replace(
-            seed_input,
-            reconstruction_stamp=ReconstructionStamp(
-                lineage_task_id=seed_id, reconstruction_plan_id=reconstruction_plan_id
-            ),
+        seed_input = seed_op.stamp_seed_reconstruction_task(
+            seed_id, reconstruction_plan_ids, seed_input
         )
         source_op = seed_op.input_dependencies[0]
         topology[source_op].add_output(seed_input)
         logger.info(
             "[lineage-reconstruction] Re-injected seed task %s on operator %r "
-            "(~%s bytes) for plan %s.",
+            "(~%s bytes) for plan(s) %s.",
             seed_id,
             seed_op.name,
             seed_input.size_bytes(),
-            reconstruction_plan_id,
+            plans_str,
         )
 
     logger.warning(
-        "Reconstructing lost object for task %s via plan %s from seed task(s) %s.",
+        "Reconstructing lost object for task %s via plan(s) %s from seed task(s) %s.",
         task.lineage_task_id,
-        reconstruction_plan_id,
+        plans_str,
         ", ".join(seed_task_ids),
     )
 
@@ -975,6 +1011,7 @@ def process_completed_tasks(
                                 f'operator "{state.op.name}"; attempting lineage '
                                 "reconstruction."
                             )
+                            lineage_tracker.num_object_reconstruction_attempts += 1
                             try:
                                 _reconstruct_lost_object(
                                     topology, lineage_tracker, state, task, e

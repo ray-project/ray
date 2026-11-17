@@ -523,6 +523,99 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode._hanging_rewards_end["agent_3"], 2.2)
         check(episode._hanging_rewards_begin["agent_5"], 1.0)
 
+    def test_add_env_step_all_agents_done_terminated_vs_truncated(self):
+        """Tests the episode's and agents' done flags once all agents are done.
+
+        A fully truncated episode must not be reported as terminated, otherwise the
+        learner treats the last observations as terminal and does not bootstrap.
+        """
+        obs = {"a0": 0, "a1": 0}
+        actions = {"a0": 0, "a1": 0}
+        rewards = {"a0": 1.0, "a1": 1.0}
+
+        def _run(terminateds, truncateds, prior_terminateds=None):
+            episode = MultiAgentEpisode()
+            episode.add_env_reset(observations=obs)
+            if prior_terminateds is not None:
+                # "a0" is done at a prior timestep, "a1" keeps stepping.
+                episode.add_env_step(
+                    observations={"a0": 1, "a1": 1},
+                    actions=actions,
+                    rewards=rewards,
+                    terminateds={**prior_terminateds, "__all__": False},
+                    truncateds={"a0": not prior_terminateds["a0"], "__all__": False},
+                )
+                step_obs, step_actions, step_rewards = {"a1": 2}, {"a1": 0}, {"a1": 1.0}
+            else:
+                step_obs, step_actions, step_rewards = (
+                    {"a0": 1, "a1": 1},
+                    actions,
+                    rewards,
+                )
+            episode.add_env_step(
+                observations=step_obs,
+                actions=step_actions,
+                rewards=step_rewards,
+                terminateds=terminateds,
+                truncateds=truncateds,
+            )
+            return episode
+
+        # All agents truncated, signaled through `__all__`.
+        episode = _run(
+            terminateds={"__all__": False},
+            truncateds={"a0": True, "a1": True, "__all__": True},
+        )
+        self.assertTrue(episode.is_truncated)
+        self.assertFalse(episode.is_terminated)
+        for sa_episode in episode.agent_episodes.values():
+            self.assertTrue(sa_episode.is_truncated)
+            self.assertFalse(sa_episode.is_terminated)
+        self.assertFalse(episode.get_terminateds()["__all__"])
+
+        # All agents truncated, but `__all__` not set by the env.
+        episode = _run(
+            terminateds={"__all__": False},
+            truncateds={"a0": True, "a1": True, "__all__": False},
+        )
+        self.assertTrue(episode.is_truncated)
+        self.assertFalse(episode.is_terminated)
+        for sa_episode in episode.agent_episodes.values():
+            self.assertTrue(sa_episode.is_truncated)
+            self.assertFalse(sa_episode.is_terminated)
+
+        # Agents truncated at different timesteps, `__all__` not set by the env.
+        episode = _run(
+            terminateds={"__all__": False},
+            truncateds={"a1": True, "__all__": False},
+            prior_terminateds={"a0": False, "a1": False},
+        )
+        self.assertTrue(episode.is_truncated)
+        self.assertFalse(episode.is_terminated)
+
+        # Mix of a terminated and a truncated agent -> episode is terminated.
+        episode = _run(
+            terminateds={"a0": True, "__all__": False},
+            truncateds={"a1": True, "__all__": False},
+        )
+        self.assertTrue(episode.is_terminated)
+
+        # Agent terminated at a prior timestep, the other one truncated now.
+        episode = _run(
+            terminateds={"__all__": False},
+            truncateds={"a1": True, "__all__": False},
+            prior_terminateds={"a0": True, "a1": False},
+        )
+        self.assertTrue(episode.is_terminated)
+
+        # All agents terminated through `__all__`.
+        episode = _run(
+            terminateds={"a0": True, "a1": True, "__all__": True},
+            truncateds={"__all__": False},
+        )
+        self.assertTrue(episode.is_terminated)
+        self.assertFalse(episode.is_truncated)
+
     def test_get_observations(self):
         # Generate simple records for a multi agent environment.
         (
@@ -3346,6 +3439,30 @@ class TestMultiAgentEpisode(unittest.TestCase):
             episode.get_return(include_hanging_rewards=True),
             agent_returns + buffered_rewards,
         )
+
+    def test_get_terminateds_and_truncateds(self):
+        # A truncated episode.
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(observations={"a0": 0, "a1": 0})
+        episode.add_env_step(
+            observations={"a0": 1, "a1": 1},
+            actions={"a0": 0, "a1": 0},
+            rewards={"a0": 1.0, "a1": 1.0},
+            truncateds={"a0": True, "a1": True, "__all__": True},
+        )
+        check(episode.get_truncateds(), {"a0": True, "a1": True, "__all__": True})
+
+        # A terminated, but not truncated, episode.
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(observations={"a0": 0, "a1": 0})
+        episode.add_env_step(
+            observations={"a0": 1, "a1": 1},
+            actions={"a0": 0, "a1": 0},
+            rewards={"a0": 1.0, "a1": 1.0},
+            terminateds={"a0": True, "a1": True, "__all__": True},
+        )
+        check(episode.get_terminateds(), {"a0": True, "a1": True, "__all__": True})
+        check(episode.get_truncateds(), {"a0": False, "a1": False, "__all__": False})
 
     def test_len(self):
         # Generate an empty episode and ensure that `len()` raises an error.

@@ -37,7 +37,7 @@ Although the autoscaler fulfills pending resource demands and releases idle node
 
 The entry point of the autoscaler is [monitor.py](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L332), which starts a GCS client and runs the reconciliation loop.
 
-When you use the `ray up` cluster launcher, the [start_head_processes](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439) function launches this process on the head node. Under KubeRay, the process runs instead as a [separate autoscaler container](https://github.com/ray-project/kuberay/blob/94fa7d3eb793aa1278142f8e585cbe568fec3ae3/ray-operator/controllers/ray/common/pod.go#L191-L194) in the head Pod.
+When you use the `ray up` cluster launcher, the [start_head_processes](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439) function launches this process on the head node. Under KubeRay, the process runs instead as a [separate autoscaler container](https://github.com/kuberay-project/kuberay/blob/94fa7d3eb793aa1278142f8e585cbe568fec3ae3/ray-operator/controllers/ray/common/pod.go#L191-L194) in the head Pod.
 
 :::{warning}
 With the cluster launcher, if the autoscaler process crashes, autoscaling stops. With KubeRay, if the autoscaler container crashes, Kubernetes restarts it according to the default container restart policy.

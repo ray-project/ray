@@ -51,7 +51,7 @@ Follow {ref}`KubeRay operator installation <kuberay-operator-deploy>` to install
 Create a RayJob that creates a RayCluster configured with `runsc` and submits a Ray job that manages Ray sandboxes:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.sandbox.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-job.sandbox.yaml
 ```
 
 The RayJob is configured to do the following:
@@ -146,34 +146,19 @@ res = ray.get(sb.exec.remote("python3 -c 'import urllib.request; urllib.request.
 print(res.exit_code)  # Non-zero exit code
 ```
 
-With `network="public"`, each sandbox gets internet egress from its own private network namespace, bridged by [slirp4netns](https://github.com/rootless-containers/slirp4netns): sandboxes can bind the same port concurrently without conflicting, and can't reach each other or the Pod's own services. They can still reach anything else the node can reach, including other Pods and internal cluster services, so keep `network="none"` for untrusted code. This mode needs the `slirp4netns` binary on the worker's `$PATH` and `/dev/net/tun` available in the Ray container (present on standard GKE `containerd` node pools).
+With `network="public"`, each sandbox gets a private network namespace that [slirp4netns](https://github.com/rootless-containers/slirp4netns) connects to the Pod. Sandboxes can bind the same port at the same time without conflicts, and they can't reach each other or the Pod's own services. Ray filters each sandbox's outbound traffic. By default, it reaches the public internet and leaves out internal addresses as a best effort, which on most clusters keeps other Pods, Services, and the Ray nodes out of reach. Instance metadata and the Kubernetes API Service stay closed whatever the allowlist says. For untrusted code that needs network access, pass a `cidr_allowlist` that names only the services it needs. See {ref}`ray-sandbox-egress-allowlist`.
+
+Code in a `public` sandbox can still send data anywhere on the internet, so keep `network="none"` for untrusted code that doesn't need the network. This mode needs the `slirp4netns` and `nft` binaries on the worker's `$PATH`, and `/dev/net/tun` available in the Ray container, which standard GKE `containerd` node pools provide.
 
 ---
 
 ## (Optional) Step 5: Build a custom Ray image with pre-installed `runsc`
 
-Ray Sandboxes require the `runsc` binary in the Ray worker container's `$PATH`, for example `/usr/local/bin/runsc`.
+Ray Sandboxes need `runsc` in the Ray container's `$PATH`, for example `/usr/local/bin/runsc`, and `mkfs.erofs` from erofs-utils. For `network="public"`, they also need slirp4netns and nftables. {ref}`The Ray Sandboxes requirements <ray-sandbox-requirements>` list the version that each tool needs.
 
-The example above downloads `runsc` at Pod startup. For production, pre-install `runsc` in your container image. Pre-baking the binary eliminates runtime network dependencies, avoids external download failures or rate limits, and decreases Pod startup latency.
+The preceding example downloads `runsc` at Pod startup. For production, pre-install these tools in your container image. Pre-baking them eliminates runtime network dependencies, avoids external download failures or rate limits, and decreases Pod startup latency.
 
-You can build a custom Ray worker image using the following `Dockerfile`:
-
-```dockerfile
-FROM rayproject/ray:2.58.0-py312
-
-USER root
-
-# Install wget, download gVisor runsc and slirp4netns (for network="public"),
-# and install both into the system PATH.
-RUN apt-get update && apt-get install -y --no-install-recommends wget && \
-    ARCH=$(uname -m) && \
-    wget "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" -O /usr/local/bin/runsc && \
-    wget "https://github.com/rootless-containers/slirp4netns/releases/download/v1.3.5/slirp4netns-${ARCH}" -O /usr/local/bin/slirp4netns && \
-    chmod a+rx /usr/local/bin/runsc /usr/local/bin/slirp4netns && \
-    rm -rf /var/lib/apt/lists/*
-
-USER ray
-```
+Build the image with one of the Dockerfiles in {ref}`the Ray Sandboxes requirements <ray-sandbox-requirements>`. They add every tool to a Ray image, and they build erofs-utils from source because the package in Ray's Ubuntu 22.04 images is too old. Base the image on the same Ray version as your RayCluster's `rayVersion`, then set it as the `image` of the Ray container in each worker group that runs sandboxes.
 
 ---
 

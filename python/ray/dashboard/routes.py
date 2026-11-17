@@ -105,9 +105,7 @@ class BaseRouteTable(abc.ABC):
 
 
 def method_route_table_factory():
-    """
-    Return a method-based route table class, for in-process HeadModule objects.
-    """
+    """Return a method-based route table class, for in-process HeadModule objects."""
 
     class MethodRouteTable(BaseRouteTable):
         """A helper class to bind http route to class method. Each _BindInfo.instance
@@ -179,8 +177,7 @@ def rest_response(
     convert_google_style: bool = True,
     **kwargs,
 ) -> aiohttp.web.Response:
-    """
-    Args:
+    """Args:
         status_code: HTTPStatusCode
             The HTTP status code of the response.
         message: str

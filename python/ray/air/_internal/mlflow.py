@@ -48,8 +48,7 @@ class _MLflowLoggerUtil:
         artifact_location: Optional[str] = None,
         create_experiment_if_not_exists: bool = True,
     ) -> None:
-        """
-        Sets up MLflow.
+        """Sets up MLflow.
 
         Sets the Mlflow tracking uri & token, and registry URI. Also sets
         the MLflow experiment that the logger should use, and possibly

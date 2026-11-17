@@ -980,6 +980,30 @@ class TestAutoscalingConfig:
         autoscaling_config = AutoscalingConfig(target_ongoing_requests=7)
         assert autoscaling_config.get_target_ongoing_requests() == 7
 
+    def test_target_ongoing_requests_none_rejected(self):
+        # None used to pass validation and then raise a TypeError in the
+        # controller's autoscaling loop on every iteration.
+        with pytest.raises(ValidationError):
+            AutoscalingConfig(target_ongoing_requests=None)
+        with pytest.raises(ValidationError):
+            DeploymentConfig(
+                autoscaling_config={"max_replicas": 5, "target_ongoing_requests": None}
+            )
+
+    def test_target_ongoing_requests_proto_default(self):
+        # A proto without the field (0.0) falls back to the default.
+        proto = DeploymentConfig(autoscaling_config=AutoscalingConfig()).to_proto()
+        proto.autoscaling_config.ClearField("target_ongoing_requests")
+        config = DeploymentConfig.from_proto(proto)
+        assert config.autoscaling_config.get_target_ongoing_requests() == 2
+
+        config = DeploymentConfig.from_proto_bytes(
+            DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(target_ongoing_requests=7)
+            ).to_proto_bytes()
+        )
+        assert config.autoscaling_config.get_target_ongoing_requests() == 7
+
     def test_scaling_factor(self):
         autoscaling_config = AutoscalingConfig()
         assert autoscaling_config.get_upscaling_factor() == 1

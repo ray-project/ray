@@ -1,5 +1,4 @@
-"""Convert aggregator ``RayEvent``s into the ``TaskEvents`` storage model.
-"""
+"""Convert aggregator ``RayEvent``s into the ``TaskEvents`` storage model."""
 from typing import List, Tuple
 
 from ray._raylet import TaskID

@@ -53,22 +53,16 @@ class TFPolicy(Policy):
 
     Input tensors are typically shaped like [BATCH_SIZE, ...].
 
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.policy import TFPolicy
-        class TFPolicySubclass(TFPolicy):
-            ...
-
-        sess, obs_input, sampled_action, loss, loss_inputs = ...
-        policy = TFPolicySubclass(
-            sess, obs_input, sampled_action, loss, loss_inputs)
-        print(policy.compute_actions([1, 0, 2]))
-        print(policy.postprocess_trajectory(SampleBatch({...})))
-
-    .. testoutput::
-
+    Examples:
+        >>> from ray.rllib.policy import TFPolicy  # doctest: +SKIP_EXAMPLE
+        >>> class TFPolicySubclass(TFPolicy):
+        ...     ...
+        >>> sess, obs_input, sampled_action, loss, loss_inputs = ...
+        >>> policy = TFPolicySubclass(
+        ...     sess, obs_input, sampled_action, loss, loss_inputs)
+        >>> print(policy.compute_actions([1, 0, 2]))
         (array([0, 1, 1]), [], {})
+        >>> print(policy.postprocess_trajectory(SampleBatch({...})))
         SampleBatch({"action": ..., "advantages": ..., ...})
 
     """

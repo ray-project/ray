@@ -133,10 +133,10 @@ class TestVariationSuffix:
 
 class TestValidateValid:
     def test_ray_cpu(self):
-        RayImage("ray", "3.10", "cpu").validate()
+        RayImage("ray", "3.11", "cpu").validate()
 
     def test_ray_tpu(self):
-        RayImage("ray", "3.10", "tpu").validate()
+        RayImage("ray", "3.11", "tpu").validate()
 
     def test_ray_cuda(self):
         RayImage("ray", "3.13", "cu12.8.1-cudnn").validate()
@@ -154,7 +154,7 @@ class TestValidateValid:
         RayImage("ray-llm", "3.12", "cu13.0.0-cudnn", "aarch64").validate()
 
     def test_ray_aarch64(self):
-        RayImage("ray", "3.10", "cpu", "aarch64").validate()
+        RayImage("ray", "3.11", "cpu", "aarch64").validate()
 
 
 class TestValidateInvalid:
@@ -168,13 +168,20 @@ class TestValidateInvalid:
         ):
             RayImage("ray-llm", "3.10", "cu13.0.0-cudnn").validate()
 
+    @pytest.mark.parametrize("image_type", ["ray", "ray-extra"])
+    def test_python_310_not_published_for_ray(self, image_type):
+        with pytest.raises(
+            RayImageError, match=f"Invalid python version 3.10 for {image_type}"
+        ):
+            RayImage(image_type, "3.10", "cpu").validate()
+
     def test_invalid_platform_for_ray_llm(self):
         with pytest.raises(RayImageError, match="Invalid platform cpu for ray-llm"):
             RayImage("ray-llm", "3.12", "cpu").validate()
 
     def test_invalid_platform_for_ray(self):
         with pytest.raises(RayImageError, match="Invalid platform cu99.9.9 for ray"):
-            RayImage("ray", "3.10", "cu99.9.9").validate()
+            RayImage("ray", "3.11", "cu99.9.9").validate()
 
 
 class TestImageTypeConfig:

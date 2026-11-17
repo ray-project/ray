@@ -14,7 +14,7 @@ Ray offers two types of concurrency within an actor:
 - {ref}`threading <threaded-actors>`
 
 
-Keep in mind that Python's [Global Interpreter Lock (GIL)](https://wiki.python.org/moin/GlobalInterpreterLock) runs only one thread of Python code at a time.
+Keep in mind that Python's [Global Interpreter Lock (GIL)](https://docs.python.org/3/glossary.html#term-global-interpreter-lock) runs only one thread of Python code at a time.
 
 As a result, parallelizing pure Python code doesn't give you true parallelism. If you call NumPy, Cython, TensorFlow, or PyTorch code, these libraries release the GIL when they call into C or C++ functions.
 
@@ -311,9 +311,7 @@ Each invocation of a threaded actor runs in a thread pool. The `max_concurrency`
 
 Ray doesn't support `asyncio` for remote tasks. The following snippet fails:
 
-```{testcode}
-:skipif: True
-
+```python
 @ray.remote
 async def f():
     pass
