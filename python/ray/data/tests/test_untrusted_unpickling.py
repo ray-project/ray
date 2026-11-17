@@ -1,0 +1,168 @@
+"""End-to-end checks for the untrusted-unpickling guard around Ray Data reads.
+
+The read operator runs every datasource read function with the forbid flag set;
+Ray's own transport stays exempt; ``RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1``
+turns the guard off for a job. Unit-level coverage lives in
+``tests/unit/test_untrusted_unpickling.py``.
+"""
+
+import pickle
+import sys
+
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pytest
+
+import ray
+from ray.data._internal.object_extensions.arrow import (
+    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
+    ArrowPythonObjectArray,
+    ArrowPythonObjectType,
+)
+from ray.data._internal.untrusted_unpickling import (
+    allow_unsafe_unpickling,
+    forbid_untrusted_unpickling,
+    is_unpickling_forbidden,
+    ray_get_trusted,
+)
+from ray.data.block import BlockMetadata
+from ray.data.datasource import Datasource, ReadTask
+from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.tests.conftest import *  # noqa: F401, F403
+
+
+def _read_task(read_fn) -> ReadTask:
+    return ReadTask(
+        read_fn,
+        BlockMetadata(num_rows=1, size_bytes=8, input_files=None, exec_stats=None),
+    )
+
+
+class _UnpicklingDatasource(Datasource):
+    """A reader whose "file format" is a pickle of a numpy array."""
+
+    def __init__(self, payload: bytes, opt_in: bool = False):
+        super().__init__()
+        self._payload = payload
+        self._opt_in = opt_in
+
+    def estimate_inmemory_data_size(self):
+        return None
+
+    def get_read_tasks(self, parallelism, per_task_row_limit=None, data_context=None):
+        payload, opt_in = self._payload, self._opt_in
+
+        def read_fn():
+            if opt_in:
+                # The reader's documented opt-in: only this call is exempt.
+                with allow_unsafe_unpickling():
+                    arr = pickle.loads(payload)
+            else:
+                arr = pickle.loads(payload)
+            yield pa.table({"a": arr})
+
+        return [_read_task(read_fn)]
+
+
+def test_read_task_unpickling_is_refused(ray_start_regular_shared):
+    ds = ray.data.read_datasource(_UnpicklingDatasource(pickle.dumps(np.arange(3))))
+    with pytest.raises(Exception, match="Refusing to unpickle") as exc_info:
+        ds.take_all()
+    # The error tells the user how to opt in.
+    assert "allow_pickle" in str(exc_info.value)
+
+
+def test_read_task_opt_in_allows_unpickling(ray_start_regular_shared):
+    ds = ray.data.read_datasource(
+        _UnpicklingDatasource(pickle.dumps(np.arange(3)), opt_in=True)
+    )
+    assert ds.take_all() == [{"a": 0}, {"a": 1}, {"a": 2}]
+
+
+def test_fused_udf_may_unpickle(ray_start_regular_shared):
+    # The guard covers the read function only; a fused map UDF runs between the
+    # read's yields and may unpickle freely.
+    ds = ray.data.range(4).map(
+        lambda row: {"x": int(pickle.loads(pickle.dumps(np.arange(3))).sum())}
+    )
+    assert ds.take_all() == [{"x": 3}] * 4
+
+
+def test_ray_get_trusted_reads_ray_objects_inside_guard(ray_start_regular_shared):
+    # A block Ray built in-process from Python objects travels through the
+    # object store as a pickled Table. Plain ``ray.get`` inside the guard is
+    # refused like any other unpickle (Ray wraps the error in RaySystemError);
+    # ``ray_get_trusted`` is how datasource code fetches Ray's own objects.
+    class Payload:
+        pass
+
+    table = pa.table({"col": ArrowPythonObjectArray.from_objects([Payload()])})
+    ref = ray.put(table)
+    with forbid_untrusted_unpickling():
+        with pytest.raises(Exception, match="Refusing to unpickle|arrow_pickled"):
+            ray.get(ref)
+        out = ray_get_trusted(ref)
+        assert is_unpickling_forbidden()
+    assert (
+        out.schema.field("col").type.extension_name == "ray.data.arrow_pickled_object"
+    )
+    assert isinstance(out["col"][0].as_py(), Payload)
+
+
+def test_progress_bar_fetch_is_trusted_inside_guard(ray_start_regular_shared):
+    # Datasource constructors fetch Ray task results through
+    # ``fetch_until_complete`` (Parquet sampling, parallel metadata fetches).
+    from ray.data._internal.progress.progress_bar import ProgressBar
+
+    @ray.remote
+    def make():
+        return np.arange(3)
+
+    refs: list = [make.remote()]
+    with forbid_untrusted_unpickling():
+        [out] = ProgressBar("fetch", 1, unit="task").fetch_until_complete(refs)
+    assert out.tolist() == [0, 1, 2]
+
+
+def test_v1_parquet_read_with_sampling(ray_start_regular_shared, tmp_path):
+    # ``ParquetDatasource.__init__`` samples files in Ray tasks and fetches the
+    # pyarrow ``FileMetaData`` results on the guarded driver thread.
+    for i in range(3):
+        pq.write_table(pa.table({"a": [i]}), tmp_path / f"{i}.parquet")
+    ctx = ray.data.DataContext.get_current()
+    prev = ctx.use_datasource_v2
+    ctx.use_datasource_v2 = False
+    try:
+        rows = ray.data.read_parquet(str(tmp_path)).take_all()
+    finally:
+        ctx.use_datasource_v2 = prev
+    assert sorted(r["a"] for r in rows) == [0, 1, 2]
+
+
+def test_autoload_env_var_disables_guard_end_to_end(
+    ray_start_regular_shared, monkeypatch, tmp_path
+):
+    # The job-wide switch: set on the driver and handed to the read tasks
+    # through their runtime_env. Both a library unpickle and a pickled column
+    # then go through.
+    monkeypatch.setenv(AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, "1")
+    env = {"env_vars": {AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR: "1"}}
+
+    ds = ray.data.read_datasource(
+        _UnpicklingDatasource(pickle.dumps(np.arange(3))), runtime_env=env
+    )
+    assert ds.take_all() == [{"a": 0}, {"a": 1}, {"a": 2}]
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    pq.write_table(
+        pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)}),
+        tmp_path / "data.parquet",
+    )
+    rows = ray.data.read_parquet(str(tmp_path / "data.parquet"), runtime_env=env)
+    assert rows.take_all() == [{"col": {"key": "value"}}]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

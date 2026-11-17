@@ -7,7 +7,6 @@ import pytest
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-from ray.data._internal.datasource import hudi_datasource
 from ray.data._internal.object_extensions.arrow import (
     ArrowPythonObjectArray,
     _contains_pickle_object_type,
@@ -249,25 +248,6 @@ def test_hudi_rejects_pickle_object_columns(ray_start_regular_shared, local_path
         assert isinstance(batch, pa.Table)
         assert not _contains_pickle_object_type(batch.schema.field("rider").type)
     assert not os.path.exists(marker), "pickle.load executed attacker code"
-
-
-def test_hudi_read_checks_pickle_object_columns(local_path, monkeypatch):
-    """Every table the reader yields goes through the pickle-object guard."""
-    table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")
-    checked = []
-    monkeypatch.setattr(
-        hudi_datasource, "raise_on_pickle_object_columns", checked.append
-    )
-
-    datasource = hudi_datasource.HudiDatasource(table_path, query_type="snapshot")
-    yielded = [
-        table
-        for read_task in datasource.get_read_tasks(parallelism=2)
-        for table in read_task.read_fn()
-    ]
-
-    assert len(yielded) == 3
-    assert [id(t) for t in checked] == [id(t) for t in yielded]
 
 
 if __name__ == "__main__":

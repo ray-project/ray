@@ -14,6 +14,7 @@ from ray._common.utils import env_float, env_integer
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.untrusted_unpickling import ray_get_trusted
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import (
@@ -236,7 +237,7 @@ def infer_full_schema_from_files(
             first_result = False
             ref = ready[0]
             offset = pending.pop(ref)
-            for index, value, parquet_encoded in ray.get(ref):
+            for index, value, parquet_encoded in ray_get_trusted(ref):
                 position = offset + index
                 if parquet_encoded:
                     import pyarrow.parquet as pq

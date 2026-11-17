@@ -17,6 +17,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan, Rule
 from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.map_operator import MapBatches, Project
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
+from ray.data._internal.untrusted_unpickling import forbid_untrusted_unpickling
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -143,8 +144,13 @@ class PushdownCountFiles(Rule):
 
             assert PATH_COLUMN_NAME in batch.column_names, batch.column_names
             total_rows = 0
-            for block_metadata in metadata_reader.read_metadata(FileManifest(batch)):
-                total_rows += block_metadata.num_rows or 0
+            # ``read_metadata`` parses external file bytes, so it runs with the
+            # forbid flag set, like ``reader.read``.
+            with forbid_untrusted_unpickling():
+                for block_metadata in metadata_reader.read_metadata(
+                    FileManifest(batch)
+                ):
+                    total_rows += block_metadata.num_rows or 0
             return pa.table({Count.COLUMN_NAME: pa.array([total_rows])})
 
         count_rows_op = MapBatches(

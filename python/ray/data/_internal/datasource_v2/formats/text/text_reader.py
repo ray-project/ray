@@ -24,7 +24,6 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -189,7 +188,6 @@ class TextReader(Reader[FileManifest]):
                     )
                 kept = [_BATCH_SIZE_PRESERVING_STUB_COL_NAME]
             table = table.select(kept)
-        raise_on_pickle_object_columns(table)
         return table
 
     def _fill_missing_planned_columns(

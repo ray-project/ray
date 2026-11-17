@@ -21,7 +21,6 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -221,12 +220,6 @@ class OrcFileReader(FileReader):
         file_schema = pa.schema(
             [field for field in schema if field.name not in partitions]
         )
-        # Filtering must not hide an unsafe column that this scan will decode.
-        decoded_names = set(scan_kwargs["columns"])
-        decoded_schema = pa.schema(
-            [field for field in physical_schema if field.name in decoded_names]
-        )
-        raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
         scanner = fragment.scanner(**scan_kwargs, schema=file_schema)
         residual_filter = (
             residual_predicate.to_pyarrow() if residual_predicate is not None else None
@@ -243,7 +236,6 @@ class OrcFileReader(FileReader):
     @override
     def _on_batch_read(self, table: pa.Table) -> None:
         super()._on_batch_read(table)
-        raise_on_pickle_object_columns(table)
         if self._target_block_size is None or table.nbytes == 0 or table.num_rows == 0:
             return
         row_size = table.nbytes / table.num_rows

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import numpy as np
 
+from ray.data._internal.untrusted_unpickling import allow_unsafe_unpickling
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -49,12 +50,10 @@ class NumpyDatasource(FileBasedDatasource):
         data = f.readall()
         buf.write(data)
         buf.seek(0)
-        yield BlockAccessor.batch_to_block(
-            {
-                "data": np.load(
-                    buf,
-                    allow_pickle=self.allow_pickle,
-                    **self.numpy_load_args,
-                )
-            }
-        )
+        if self.allow_pickle:
+            # Explicit opt-in: lift the forbid flag for this call only.
+            with allow_unsafe_unpickling():
+                data = np.load(buf, allow_pickle=True, **self.numpy_load_args)
+        else:
+            data = np.load(buf, allow_pickle=False, **self.numpy_load_args)
+        yield BlockAccessor.batch_to_block({"data": data})

@@ -92,6 +92,7 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.untrusted_unpickling import forbid_untrusted_unpickling
 from ray.data._internal.util import (
     _autodetect_parallelism,
     _normalize_paths_to_strings,
@@ -623,13 +624,16 @@ def _read_datasource_v2(
     if datasource.schema_needs_file_sample:
         # Full-schema mode retains the discovered files for execution. The
         # default bounded sample is listed again by ListFiles as before.
-        sample = sample_files(
-            indexer,
-            datasource.paths,
-            filesystem,
-            pruners,
-            max_files=None if sample_all_files_for_schema else 16,
-        )
+        # Sampling, schema inference and partition discovery parse file bytes
+        # on the driver, so they run with the forbid flag set.
+        with forbid_untrusted_unpickling():
+            sample = sample_files(
+                indexer,
+                datasource.paths,
+                filesystem,
+                pruners,
+                max_files=None if sample_all_files_for_schema else 16,
+            )
         if len(sample) == 0:
             raise ValueError(
                 f"no files found under {datasource.paths!r}. Check the path and any "
@@ -651,11 +655,14 @@ def _read_datasource_v2(
         time.perf_counter() - listing_started if listing_started is not None else None
     )
     schema_started = time.perf_counter() if sample_all_files_for_schema else None
-    if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
-        assert sample is not None
-        schema = datasource.infer_full_schema(sample, ray_remote_args=ray_remote_args)
-    else:
-        schema = datasource.infer_schema(sample)
+    with forbid_untrusted_unpickling():
+        if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
+            assert sample is not None
+            schema = datasource.infer_full_schema(
+                sample, ray_remote_args=ray_remote_args
+            )
+        else:
+            schema = datasource.infer_schema(sample)
     schema_elapsed = (
         time.perf_counter() - schema_started if schema_started is not None else None
     )
@@ -696,7 +703,8 @@ def _read_datasource_v2(
     # here (rather than mutating ``datasource._partitioning`` inside
     # ``infer_schema``) leaves the datasource instance immutable across
     # reads.
-    resolved_partitioning = datasource.resolve_partitioning(sample)
+    with forbid_untrusted_unpickling():
+        resolved_partitioning = datasource.resolve_partitioning(sample)
     scanner = datasource.create_scanner(
         schema=schema,
         filesystem=filesystem,
@@ -1227,6 +1235,14 @@ def read_zarr(
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
+
+    .. warning::
+
+        Arrays whose metadata declares the numcodecs ``pickle`` codec are
+        refused, because decoding them unpickles chunk bytes from the store,
+        which can execute arbitrary code. Set
+        ``RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1`` on all nodes only for
+        stores you trust.
 
     **Output schemas.** ``read_zarr`` produces one of two schemas, selected by
     ``align_axis_0``: long-form or wide-form.

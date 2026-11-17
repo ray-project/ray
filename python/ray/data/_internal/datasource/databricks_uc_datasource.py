@@ -14,7 +14,7 @@ from ray.data._internal.datasource.databricks_credentials import (
     build_headers,
     request_with_401_retry,
 )
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
+from ray.data._internal.untrusted_unpickling import allow_unsafe_unpickling
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
@@ -195,9 +195,6 @@ class DatabricksUCDatasource(Datasource):
                     with pyarrow.ipc.open_stream(raw_response.content) as reader:
                         arrow_table = reader.read_all()
 
-                    # Unpickling untrusted data can execute arbitrary code. Reject
-                    # object columns unless the user has explicitly opted in.
-                    raise_on_pickle_object_columns(arrow_table)
                     yield arrow_table
 
             def read_fn():
@@ -206,8 +203,9 @@ class DatabricksUCDatasource(Datasource):
                 ):
                     import ray.cloudpickle as pickle
 
-                    # This is for testing.
-                    with open(mock_setup_fn_path, "rb") as f:
+                    # This is for testing. The test writes this pickle itself, so
+                    # it is trusted.
+                    with open(mock_setup_fn_path, "rb") as f, allow_unsafe_unpickling():
                         mock_setup = pickle.load(f)
                     with mock_setup():
                         yield from _read_fn()

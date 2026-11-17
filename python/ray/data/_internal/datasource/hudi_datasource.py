@@ -3,7 +3,6 @@ import os
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
 
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -90,9 +89,6 @@ class HudiDatasource(Datasource):
                     base_file_path, log_file_paths, read_options
                 )
                 table = pyarrow.Table.from_batches([batch])
-                # Unpickling untrusted data can execute arbitrary code. Reject object
-                # columns unless the user has explicitly opted in.
-                raise_on_pickle_object_columns(table)
                 yield table
 
         hudi_table = _build_table()

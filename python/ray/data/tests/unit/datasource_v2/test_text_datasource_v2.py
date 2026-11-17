@@ -291,16 +291,6 @@ def test_reader_retries_transient_errors(tmp_path, monkeypatch):
     assert len(attempts) == 2
 
 
-def test_reader_runs_pickle_object_gate(tmp_path, monkeypatch):
-    path = _write(tmp_path / "data.txt", "a\n")
-    gate = Mock(side_effect=ValueError("arrow_pickled_object"))
-    monkeypatch.setattr(text_reader_mod, "raise_on_pickle_object_columns", gate)
-
-    with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(TextReader().read(_manifest(path)))
-    gate.assert_called_once()
-
-
 # -- scanner -------------------------------------------------------------------
 
 

@@ -53,7 +53,6 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileInfo,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import iterate_with_retry
 from ray.data.context import DataContext
 
@@ -728,7 +727,6 @@ class _HiveOrcFileReader(OrcFileReader):
         )
         for tagged in scanner.scan_batches():
             table = pa.Table.from_batches([tagged.record_batch])
-            raise_on_pickle_object_columns(table)
             if predicate is not None:
                 table = table.filter(predicate)
             yield table

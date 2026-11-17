@@ -528,57 +528,6 @@ def test_parquet_schema_read_closes_file(
     assert len(opened) == 1 and opened[0].closed
 
 
-@pytest.mark.parametrize("nested", [False, True])
-def test_orc_rejects_decoded_pickle_before_filter(tmp_path, monkeypatch, nested):
-    import pickle
-    from types import SimpleNamespace
-
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-    from ray.data.expressions import col
-
-    monkeypatch.delenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", raising=False)
-    marker = tmp_path / "unpickled"
-
-    class Payload:
-        def __reduce__(self):
-            return type(marker).touch, (marker,)
-
-    storage = pa.array([pickle.dumps(Payload())], type=pa.large_binary())
-    values = pa.ExtensionArray.from_storage(ArrowPythonObjectType(), storage)
-    declared_type = pa.binary()
-    if nested:
-        values = pa.StructArray.from_arrays([values], names=["value"])
-        declared_type = pa.struct([("value", pa.binary())])
-    declared = pa.schema([("id", pa.int64()), ("payload", declared_type)])
-    batch = pa.record_batch([pa.array([1]), values], names=declared.names)
-    scanner = hive_direct._HiveOrcScanner(
-        schema=declared,
-        hive_schema=declared,
-        sampled_names=tuple((name, name) for name in declared.names),
-    )
-    scanner, residual = scanner.push_filters(col("id") > 100)
-    assert residual is None
-    check_pickle = MagicMock(wraps=hive_direct.raise_on_pickle_object_columns)
-    monkeypatch.setattr(hive_direct, "raise_on_pickle_object_columns", check_pickle)
-
-    # Inject a decoded Arrow batch at the reader boundary. This does not
-    # claim that a real ORC file can persist this extension type.
-    fragment = SimpleNamespace(
-        physical_schema=declared,
-        scanner=lambda **kwargs: SimpleNamespace(
-            scan_batches=lambda: iter([SimpleNamespace(record_batch=batch)])
-        ),
-    )
-    reader = scanner.create_reader()
-    assert isinstance(reader, hive_direct._HiveOrcFileReader)
-    with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(reader._iter_fragment_tables(fragment, {}))
-    check_pickle.assert_called_once()
-    # An after-filter check would see zero rows and miss the intended order.
-    assert check_pickle.call_args.args[0].num_rows == 1
-    assert not marker.exists()
-
-
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_scanner_options_preserve_native_behavior(tmp_path, monkeypatch, file_format):
     schema = pa.schema([("id", pa.int64())])

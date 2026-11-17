@@ -26,6 +26,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
+from ray.data._internal.untrusted_unpickling import ray_get_trusted
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -397,7 +398,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         while pending:
             gen = pending.popleft()
             for ref in gen:  # blocks until this generator's next result lands
-                for chunked_file in ray.get(ref):
+                for chunked_file in ray_get_trusted(ref):
                     yield _chunked_file_to_manifest(chunked_file)
                     if limit is not None:
                         # Count only fully-matched (exact-survivor) rows so

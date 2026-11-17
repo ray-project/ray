@@ -36,12 +36,12 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     check_for_legacy_tensor_type,
 )
 from ray.data._internal.execution.util import merge_label_selector
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.untrusted_unpickling import ray_get_trusted
 from ray.data._internal.util import (
     MiB,
     RetryingPyFileSystem,
@@ -557,7 +557,7 @@ class ParquetDatasource(Datasource):
 
     @property
     def _source_paths(self) -> List[str]:
-        return ray.get(self._source_paths_ref)
+        return ray_get_trusted(self._source_paths_ref)
 
     def estimate_inmemory_data_size(self) -> int:
         # In case of empty projections no data will be read
@@ -995,10 +995,6 @@ def read_fragments(
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:
-                # When you unpickle untrusted data, attackers can execute arbitrary
-                # code. To avoid exposing our users, raise unless the user has
-                # explicitly opted in.
-                raise_on_pickle_object_columns(table)
                 if block_udf is not None:
                     yield block_udf(table)
                 else:

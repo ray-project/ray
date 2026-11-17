@@ -21,6 +21,7 @@ same dispatch shape V1 uses for ``plan_read_op_with_checkpoint_filter``.
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Iterable, List
 
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
@@ -33,6 +34,10 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.untrusted_unpickling import (
+    forbid_untrusted_unpickling,
+    guard_iterator,
+)
 from ray.data.block import Block
 from ray.data.context import DataContext
 
@@ -57,14 +62,19 @@ def plan_read_files_op(
     block_udf = op.block_udf
 
     def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
-        reader = scanner.create_reader()
+        # Scanner code runs with the forbid flag set, like ``reader.read``.
+        with forbid_untrusted_unpickling():
+            reader = scanner.create_reader()
         # ``prune_input_split`` is an identity by default; ``FileScanner``
         # overrides it to drop files failing a pushed-down partition predicate.
         for block in blocks:
-            manifest = scanner.prune_input_split(FileManifest(block))
+            with forbid_untrusted_unpickling():
+                manifest = scanner.prune_input_split(FileManifest(block))
             if len(manifest) == 0:
                 continue
-            for table in reader.read(manifest):
+            # Forbid unpickling flag set around the reader only; ``block_udf`` and fused
+            # downstream transforms run between yields, unguarded.
+            for table in guard_iterator(partial(reader.read, manifest)):
                 if block_udf is not None:
                     table = block_udf(table)
                 yield table

@@ -2,5 +2,10 @@
 paths:
   - "python/ray/data/_internal/datasource/**/*.py"
   - "python/ray/data/_internal/datasource_v2/**/*.py"
+  - "python/ray/data/_internal/planner/**/*.py"
+  - "python/ray/data/_internal/logical/rules/**/*.py"
+  - "python/ray/data/read_api.py"
 ---
-- Call `raise_on_pickle_object_columns(table)` on every `pa.Table` read from external data (parquet, Arrow IPC, a service or library returning Arrow) before yielding or materializing it, and add a reject test. deserializing from unknown sources is a RCE bug and has to be avoided.
+- Datasource code runs with unpickling blocked, on the driver and in read tasks, and pickled-object Arrow columns from files are refused automatically. Only a reader handed tables built before the read (e.g. HuggingFace) calls `raise_on_pickle_object_columns`. Never wrap external bytes in `ArrowPythonObjectType`. Fetch Ray's own objects (shared read state, path refs, actor results) with `ray_get_trusted`, never plain `ray.get`.
+- A reader whose format can carry pickle (numpy object arrays, torch files) exposes an explicit opt-in, defaults it off, wraps only that call in `allow_unsafe_unpickling()`, and adds a reject test that plants a payload in real file bytes and proves it never runs.
+- Any new place that runs datasource code (a hook, a planner op, an optimizer rule, an actor, a task) runs it under `forbid_untrusted_unpickling()` or `guard_iterator`, whenever that code can open external bytes, read metadata, footers or schemas included. Threads that do so are started with `contextvars.copy_context().run`.

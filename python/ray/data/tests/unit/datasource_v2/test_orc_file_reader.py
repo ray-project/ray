@@ -28,7 +28,6 @@ from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFile
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
-from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
@@ -199,19 +198,6 @@ def test_orc_reader_reports_corrupt_file_path(tmp_path):
         )
 
     assert str(path) in str(exc.value)
-
-
-def test_orc_reader_rejects_pickle_object_columns(monkeypatch):
-    storage = pa.array([b"payload"], type=pa.large_binary())
-    extension = pa.ExtensionArray.from_storage(ArrowPythonObjectType(), storage)
-    table = pa.table({"object": extension})
-    reader = OrcFileReader(format=FileFormat.ORC)
-
-    with pytest.raises(ValueError, match="arrow_pickled_object"):
-        reader._on_batch_read(table)
-
-    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
-    reader._on_batch_read(table)
 
 
 def test_orc_reader_empty_file_yields_no_batches(tmp_path):
@@ -1257,34 +1243,6 @@ def test_orc_missing_predicate_column_is_null_filled(
     ).prune_columns(["id"])
     batches = list(scanner.create_reader().read(_manifest(path)))
     assert [row["id"] for batch in batches for row in batch.to_pylist()] == expected
-
-
-def test_orc_filter_cannot_hide_decoded_pickle_column(tmp_path):
-    physical_schema = pa.schema(
-        [("id", pa.int64()), ("object", ArrowPythonObjectType())]
-    )
-
-    class Fragment:
-        path = str(tmp_path / "root.orc")
-
-        def __init__(self):
-            self.physical_schema = physical_schema
-
-        def scanner(self, **kwargs):
-            pytest.fail("Unsafe decoded columns must be rejected before scanning")
-
-    fragment = Fragment()
-    reader = OrcScanner(
-        schema=physical_schema,
-        predicate=col("id") > 100,
-        partitioning=Partitioning(PartitionStyle.HIVE),
-    ).create_reader()
-    with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(
-            reader._iter_fragment_tables(
-                fragment, {"filter": (col("id") > 100).to_pyarrow()}
-            )
-        )
 
 
 @pytest.mark.parametrize("mixed_or", [False, True])

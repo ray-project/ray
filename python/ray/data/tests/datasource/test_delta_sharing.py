@@ -19,6 +19,7 @@ from ray.data._internal.object_extensions.arrow import (
     AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
     ArrowPythonObjectType,
 )
+from ray.data._internal.untrusted_unpickling import guard_iterator
 from ray.data.block import BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource.datasource import ReadTask
@@ -326,10 +327,13 @@ def test_read_files_rejects_pickle_object_columns(monkeypatch, tmp_path):
     _write_object_column_parquet(path, Exploit())
 
     datasource = DeltaSharingDatasource.__new__(DeltaSharingDatasource)
+    # Run the read function the way the read operator does: under the guard.
     with pytest.raises(ValueError, match="arrow_pickled_object"):
         list(
-            datasource._read_files(
-                [_mock_file_action(url=path.as_uri())], converters={}
+            guard_iterator(
+                lambda: datasource._read_files(
+                    [_mock_file_action(url=path.as_uri())], converters={}
+                )
             )
         )
     assert not marker.exists(), "unpickling executed attacker code"
