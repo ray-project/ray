@@ -45,7 +45,10 @@ from ray.serve._private.metrics_utils import (
     merge_instantaneous_total,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve._private.utils import (
+    get_capacity_adjusted_num_replicas,
+    is_capacity_limited,
+)
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
@@ -419,8 +422,7 @@ class DeploymentAutoscalingState:
         # The direction stays UP once the ramp reaches 100, where no limit applies.
         ramping_up_under_limit = (
             self._target_capacity_direction == TargetCapacityDirection.UP
-            and self._target_capacity is not None
-            and self._target_capacity < 100
+            and is_capacity_limited(self._target_capacity)
         )
         if self._config.initial_replicas is not None and ramping_up_under_limit:
             return get_capacity_adjusted_num_replicas(

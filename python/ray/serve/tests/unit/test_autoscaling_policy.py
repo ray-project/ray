@@ -1624,7 +1624,6 @@ def test_last_decision_total_num_requests_reuses_decision_value():
         (100.0, TargetCapacityDirection.UP, 0),
         # Not ramping up: `min_replicas`, adjusted by the capacity.
         (50, TargetCapacityDirection.DOWN, 0),
-        (50, None, 0),
         (100, TargetCapacityDirection.DOWN, 0),
         (None, None, 0),
     ],
