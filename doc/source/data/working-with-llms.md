@@ -350,12 +350,12 @@ Classification models differ in the following ways:
 :end-before: __sglang_score_example_end__
 ```
 
-Configure the score task with the following settings:
+Configure the score task as follows:
 
-- `task_kwargs`: the `Engine.score` options `label_token_ids`, `apply_softmax`, `item_first`, `embed_override_token_id`, and `score_extraction_token_id`. Generative models require `label_token_ids`, and each item's score list follows their order. See the [SGLang score API](https://docs.sglang.io/basic_usage/native_api.html) for what each option does.
-- Input columns: `query` and `items` text. To pass token IDs instead, set `tokenize_stage=False` and provide `query_token_ids` and `item_token_ids`.
-- Embedding overrides: set `embed_override_token_id`, and add a `query_embed_overrides` column shaped `[num_overrides, hidden_dim]`, an `item_embed_overrides` column with one such entry, or `None`, per item, or both. In each sequence, the vectors replace the embeddings at the `embed_override_token_id` positions, in order.
-- Score extraction: with `score_extraction_token_id` set, each entry of `row["scores"]` holds one score list for each occurrence of that token in the item. It doesn't support `item_first` or `allow_auto_truncate`, and without multi-item scoring it needs `disable_radix_cache=True` and `chunked_prefill_size=-1` in `engine_kwargs`.
+- `task_kwargs`: `label_token_ids`, `apply_softmax`, `item_first`, `embed_override_token_id`, and `score_extraction_token_id`. Generative models require `label_token_ids`, which set the order of each item's scores. See the [SGLang score API](https://docs.sglang.io/basic_usage/native_api.html) for details.
+- Input: each row needs a `query` string and an `items` list of strings. To pass token IDs instead, set `tokenize_stage=False` and provide `query_token_ids` and `item_token_ids`.
+- Embedding overrides: set `embed_override_token_id`, then add a `query_embed_overrides` column, an `item_embed_overrides` column with one entry or `None` per item, or both. Each vector replaces one `embed_override_token_id` token, in order.
+- Score extraction: set `score_extraction_token_id` to get one score list per occurrence of that token in each item. Without multi-item scoring, also set `disable_radix_cache=True` and `chunked_prefill_size=-1` in `engine_kwargs`. Score extraction doesn't support `item_first` or `allow_auto_truncate`.
 
 
 (openai_compatible_api_endpoint)=

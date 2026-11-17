@@ -229,15 +229,9 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
             the throughput and fault-tolerance based on your use case.
         engine_kwargs: The kwargs to pass to the SGLang engine. Default engine kwargs are
             tp_size: 1, dp_size: 1, skip_tokenizer_init: True.
-        task_type: The task type to use: 'generate' (default) or 'score'. See
-            :ref:`sglang_score` for the score task.
+        task_type: The task type to use: 'generate' (default) or 'score'.
         task_kwargs: Options for the task type. The ``generate`` task takes none.
-            The ``score`` task accepts the ``Engine.score`` options
-            ``label_token_ids``, ``apply_softmax``, ``item_first``,
-            ``embed_override_token_id``, and ``score_extraction_token_id``.
-            Generative models require ``label_token_ids``. See the
-            `SGLang score API <https://docs.sglang.io/basic_usage/native_api.html>`_
-            for details.
+            For the ``score`` task, see :ref:`sglang_score`.
         runtime_env: The runtime environment to use for the SGLang engine. See
             :ref:`this doc <handling_dependencies>` for more details.
         max_pending_requests: The maximum number of pending requests. If not specified,
