@@ -2006,3 +2006,36 @@ def test_erofs_pull_builds_reproducible_images(tmp_path, erofs_pull, monkeypatch
     assert len(fingerprints) == 1 and None not in fingerprints
     # The superblock's build time is 0, as mkfs.erofs -T0 writes it.
     assert contents[0][1024 + 24 : 1024 + 32] == bytes(8)
+
+
+def test_erofs_pull_refuses_digests_that_are_not_sha256_hex(tmp_path, erofs_pull):
+    """A manifest digest names files in the layer cache, so erofs-pull takes
+    only sha256 digests of 64 hex digits, as the layer cache does: never
+    ``../`` out of the cache, nor a host file as a "cached" layer."""
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "host-file").write_bytes(b"x" * 100)
+    blob_dir = work / "images" / ".blobs" / "sha256"
+    good = f"sha256:{'0' * 64}"
+    for bad in (
+        "sha256:../../../host-file",
+        "sha256:../../escape",
+        f"sha256:{'A' * 64}",
+    ):
+        spec = {
+            "base_url": "http://127.0.0.1:9/v2/library/busybox/blobs/",
+            "layers": [{"digest": good, "size": 1}, {"digest": bad, "size": 100}],
+            "blob_dir": str(blob_dir),
+            "out": str(work / "out.erofs"),
+        }
+        result = subprocess.run(
+            [_EROFS_PULL_UNDER_TEST],
+            input=json.dumps(spec).encode(),
+            capture_output=True,
+        )
+        assert result.returncode != 0
+        assert b"unsupported layer digest" in result.stderr
+        # Nothing outside the cache, and nothing of either digest in it: the
+        # digests are checked before any file is touched.
+        assert {p.name for p in work.iterdir()} <= {"host-file", "images"}
+        assert not blob_dir.exists() or os.listdir(blob_dir) == []

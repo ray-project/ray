@@ -103,6 +103,10 @@ fn run(spec: Spec) -> Result<(), String> {
     // reads it. Blobs are opened, which takes the layer cache's lock on each,
     // in digest order: two pulls sharing layers then can't each hold a lock
     // the other waits for, whatever order their manifests list them in.
+    // Every digest is checked before any file is touched.
+    if let Some(bad) = spec.layers.iter().find(|l| fetch::digest_hex(&l.digest).is_none()) {
+        return Err(format!("unsupported layer digest {:?}", bad.digest));
+    }
     let mut distinct: Vec<&LayerSpec> = Vec::new();
     for l in &spec.layers {
         if !distinct.iter().any(|d| d.digest == l.digest) {

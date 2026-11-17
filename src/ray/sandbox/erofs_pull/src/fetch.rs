@@ -61,11 +61,19 @@ struct State {
     error: Option<String>,
 }
 
+/// The hex part of a `sha256:` digest of exactly 64 lowercase hex digits, as
+/// the layer cache accepts (`layer_cache._DIGEST`), or None. The digest
+/// comes from the registry's manifest and names files in the cache, so
+/// anything else (`sha256:../../x`, say) is refused before it reaches a path.
+pub fn digest_hex(digest: &str) -> Option<&str> {
+    digest
+        .strip_prefix("sha256:")
+        .filter(|hex| hex.len() == 64 && hex.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')))
+}
+
 impl Blob {
     pub fn open(blob_dir: &str, base_url: &str, digest: &str, size: u64, chunk: u64) -> io::Result<Arc<Blob>> {
-        let hex = digest
-            .strip_prefix("sha256:")
-            .ok_or_else(|| io::Error::other(format!("unsupported digest {digest}")))?;
+        let hex = digest_hex(digest).ok_or_else(|| io::Error::other(format!("unsupported layer digest {digest:?}")))?;
         fs::create_dir_all(blob_dir)?;
         let final_path = PathBuf::from(blob_dir).join(hex);
         let partial = PathBuf::from(blob_dir).join(format!(".partial-{hex}-erofs-pull-{}", std::process::id()));
@@ -438,7 +446,24 @@ impl io::Seek for BlobReader {
 
 #[cfg(test)]
 mod tests {
-    use super::join_url;
+    use super::{digest_hex, join_url};
+
+    #[test]
+    fn only_sha256_digests_of_64_hex_digits_name_cache_files() {
+        let hex = "0123456789abcdef".repeat(4);
+        assert_eq!(digest_hex(&format!("sha256:{hex}")), Some(hex.as_str()));
+        for bad in [
+            "sha256:../../x".to_string(),
+            format!("sha256:{}", &hex[..63]),
+            format!("sha256:{hex}0"),
+            format!("sha256:{}", hex.to_uppercase()),
+            format!("sha256:{}/x", &hex[..62]),
+            format!("sha512:{hex}"),
+            hex.clone(),
+        ] {
+            assert_eq!(digest_hex(&bad), None, "{bad}");
+        }
+    }
 
     #[test]
     fn redirect_locations_resolve_against_the_answering_url() {
