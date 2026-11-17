@@ -13,7 +13,7 @@
 //! SHA-256 matches. Where the server (or the storage it redirects to)
 //! ignores `Range`, the blob downloads in one stream instead.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
 use std::os::unix::fs::FileExt;
@@ -21,10 +21,173 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
+/// The registry, and how requests reach it and the storage it redirects to.
 pub struct Remote {
-    pub agent: ureq::Agent,
+    direct: ureq::Agent,
+    /// Agents that go through a proxy, by URL scheme ("http", "https"), with
+    /// the proxy's `Proxy-Authorization` value if it takes credentials.
+    proxied: HashMap<String, (ureq::Agent, Option<String>)>,
+    /// `no_proxy`: hosts reached directly whatever the proxies.
+    no_proxy: Option<String>,
     pub headers: Vec<(String, String)>,
     pub auth: Option<String>,
+}
+
+impl Remote {
+    /// `proxies` is what Python's `urllib.request.getproxies()` returns
+    /// ({"https": url, "http": url, "no": hosts}), so requests reach the
+    /// registry the way Ray's own do.
+    pub fn new(
+        timeout: Duration,
+        headers: Vec<(String, String)>,
+        auth: Option<String>,
+        proxies: &HashMap<String, String>,
+    ) -> Result<Remote, String> {
+        let mut proxied = HashMap::new();
+        for scheme in ["http", "https"] {
+            if let Some(url) = proxies.get(scheme).filter(|url| !url.is_empty()) {
+                let (address, authorization) = parse_proxy(url);
+                let proxy = ureq::Proxy::new(address)
+                    .map_err(|e| format!("unsupported {scheme} proxy {:?}: {e}", redact(url)))?;
+                proxied.insert(scheme.to_string(), (agent(timeout, Some(proxy)), authorization));
+            }
+        }
+        Ok(Remote {
+            direct: agent(timeout, None),
+            proxied,
+            no_proxy: proxies.get("no").cloned(),
+            headers,
+            auth,
+        })
+    }
+
+    /// The agent for `url`: its scheme's proxy unless `no_proxy` names its
+    /// host. With it, the `Proxy-Authorization` value to send on a plain
+    /// HTTP request; ureq sends a proxy's credentials only in the CONNECT
+    /// that tunnels HTTPS.
+    fn route(&self, url: &str) -> (&ureq::Agent, Option<&str>) {
+        let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+        let scheme = scheme.to_ascii_lowercase();
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+        let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+        match self.proxied.get(&scheme) {
+            Some((agent, authorization)) if !proxy_bypass(self.no_proxy.as_deref(), host) => {
+                (agent, authorization.as_deref().filter(|_| scheme == "http"))
+            }
+            _ => (&self.direct, None),
+        }
+    }
+}
+
+/// `urllib.request.proxy_bypass_environment`: whether `host` ("name" or
+/// "name:port") is in `no_proxy`, a comma-separated list of host names and
+/// domain suffixes, or "*" for every host.
+fn proxy_bypass(no_proxy: Option<&str>, host: &str) -> bool {
+    let Some(no_proxy) = no_proxy else { return false };
+    if no_proxy == "*" {
+        return true;
+    }
+    let host = host.to_lowercase();
+    // urllib's _splitport: a trailing ":<digits>" is the port.
+    let hostonly = match host.rsplit_once(':') {
+        Some((name, port)) if port.bytes().all(|c| c.is_ascii_digit()) => name,
+        _ => host.as_str(),
+    };
+    for name in no_proxy.split(',') {
+        let name = name.trim().trim_start_matches('.').to_lowercase();
+        if name.is_empty() {
+            continue;
+        }
+        if hostonly == name || host == name {
+            return true;
+        }
+        let suffix = format!(".{name}");
+        if hostonly.ends_with(&suffix) || host.ends_with(&suffix) {
+            return true;
+        }
+    }
+    false
+}
+
+/// A proxy URL as urllib reads it (`_parse_proxy`, `ProxyHandler`): only
+/// the user, password and host:port count, the proxy is always spoken to in
+/// plain HTTP (HTTPS goes through it with CONNECT), whatever scheme the URL
+/// names, and the credentials are percent-decoded and used only if both are
+/// there. Returns the proxy URL for ureq and the `Proxy-Authorization` value.
+fn parse_proxy(url: &str) -> (String, Option<String>) {
+    let rest = match url.split_once("://") {
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https") => rest,
+        // socks5://... and the like: let ureq refuse what it can't do.
+        Some(_) => return (url.to_string(), None),
+        None => url,
+    };
+    let end = match rest.find('@') {
+        Some(at) => rest[at..].find('/').map(|i| at + i),
+        None => rest.find('/'),
+    };
+    let authority = &rest[..end.unwrap_or(rest.len())];
+    let Some((userinfo, hostport)) = authority.rsplit_once('@') else {
+        return (format!("http://{authority}"), None);
+    };
+    match userinfo.split_once(':') {
+        Some((user, password)) if !user.is_empty() && !password.is_empty() => {
+            let (user, password) = (percent_decode(user), percent_decode(password));
+            let authorization = format!("Basic {}", base64(format!("{user}:{password}").as_bytes()));
+            (format!("http://{user}:{password}@{hostport}"), Some(authorization))
+        }
+        _ => (format!("http://{hostport}"), None),
+    }
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        match (
+            bytes[i],
+            bytes.get(i + 1).copied().and_then(hex),
+            bytes.get(i + 2).copied().and_then(hex),
+        ) {
+            (b'%', Some(hi), Some(lo)) => {
+                out.push((hi * 16 + lo) as u8);
+                i += 3;
+            }
+            (c, _, _) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn base64(data: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in data.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, &b)| n | (b as u32) << (16 - 8 * i));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// A proxy URL with any password hidden, for error messages.
+fn redact(url: &str) -> String {
+    match url.rsplit_once('@') {
+        Some((_, host)) => format!("<credentials>@{host}"),
+        None => url.to_string(),
+    }
 }
 
 pub struct Blob {
@@ -339,7 +502,11 @@ fn join_url(base: &str, location: &str) -> String {
 }
 
 fn request(remote: &Remote, url: &str, auth: bool, range: Option<(u64, u64)>) -> Result<ureq::Response, String> {
-    let mut req = remote.agent.get(url);
+    let (agent, proxy_authorization) = remote.route(url);
+    let mut req = agent.get(url);
+    if let Some(value) = proxy_authorization {
+        req = req.set("Proxy-Authorization", value);
+    }
     if let Some((from, to)) = range {
         req = req.set("Range", &format!("bytes={from}-{to}"));
     }
@@ -358,13 +525,16 @@ fn request(remote: &Remote, url: &str, auth: bool, range: Option<(u64, u64)>) ->
     }
 }
 
-pub fn agent(timeout: Duration) -> ureq::Agent {
-    ureq::AgentBuilder::new()
+fn agent(timeout: Duration, proxy: Option<ureq::Proxy>) -> ureq::Agent {
+    let mut builder = ureq::AgentBuilder::new()
         .redirects(0)
         .timeout_connect(timeout)
         .timeout_read(timeout)
-        .max_idle_connections_per_host(64)
-        .build()
+        .max_idle_connections_per_host(64);
+    if let Some(proxy) = proxy {
+        builder = builder.proxy(proxy);
+    }
+    builder.build()
 }
 
 /// Fetch every chunk of `blobs` over `connections` connections.
@@ -446,7 +616,61 @@ impl io::Seek for BlobReader {
 
 #[cfg(test)]
 mod tests {
-    use super::{digest_hex, join_url};
+    use super::{base64, digest_hex, join_url, parse_proxy, proxy_bypass};
+
+    #[test]
+    fn no_proxy_matches_as_urllib_does() {
+        let no = Some("localhost, .internal.example,registry.corp:5000");
+        for host in [
+            "localhost",
+            "localhost:8080",
+            "a.internal.example",
+            "internal.example",
+            "REGISTRY.corp:5000",
+        ] {
+            assert!(proxy_bypass(no, host), "{host}");
+        }
+        for host in [
+            "registry-1.docker.io",
+            "notinternal.example",
+            "registry.corp:5001",
+            "example",
+        ] {
+            assert!(!proxy_bypass(no, host), "{host}");
+        }
+        assert!(proxy_bypass(Some("*"), "anything"));
+        assert!(!proxy_bypass(None, "localhost"));
+        assert!(!proxy_bypass(Some(""), "localhost"));
+    }
+
+    #[test]
+    fn proxy_urls_read_as_urllib_reads_them() {
+        let plain = |url: &str| parse_proxy(url).0;
+        assert_eq!(plain("http://proxy:3128"), "http://proxy:3128");
+        assert_eq!(plain("https://proxy:3128/"), "http://proxy:3128");
+        assert_eq!(plain("proxy:3128"), "http://proxy:3128");
+        assert_eq!(plain("socks5://proxy:1080"), "socks5://proxy:1080");
+        // Credentials only when both are there, percent-decoded.
+        assert_eq!(
+            parse_proxy("http://user@proxy:3128"),
+            ("http://proxy:3128".into(), None)
+        );
+        assert_eq!(
+            parse_proxy("http://us%65r:p%40ss/w@proxy:3128/x"),
+            (
+                "http://user:p@ss/w@proxy:3128".into(),
+                Some(format!("Basic {}", base64(b"user:p@ss/w")))
+            )
+        );
+    }
+
+    #[test]
+    fn base64_matches_the_standard_alphabet() {
+        assert_eq!(base64(b"user:pass"), "dXNlcjpwYXNz");
+        assert_eq!(base64(b"a"), "YQ==");
+        assert_eq!(base64(b"ab"), "YWI=");
+        assert_eq!(base64(b""), "");
+    }
 
     #[test]
     fn only_sha256_digests_of_64_hex_digits_name_cache_files() {

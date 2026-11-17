@@ -2039,3 +2039,101 @@ def test_erofs_pull_refuses_digests_that_are_not_sha256_hex(tmp_path, erofs_pull
         # digests are checked before any file is touched.
         assert {p.name for p in work.iterdir()} <= {"host-file", "images"}
         assert not blob_dir.exists() or os.listdir(blob_dir) == []
+
+
+@contextlib.contextmanager
+def _http_proxy():
+    """A forwarding HTTP proxy that wants ``user:pass``, marks what it
+    forwards with ``X-Via-Test-Proxy``, and yields (its URL, the URLs it
+    forwarded)."""
+    import base64
+    import http.client
+
+    forwarded = []
+    credentials = "Basic " + base64.b64encode(b"user:pass").decode()
+
+    class Proxy(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            # Auth schemes are case-insensitive (RFC 7235): urllib sends
+            # "Basic", ureq "basic".
+            scheme, _, token = (
+                self.headers.get("Proxy-Authorization") or ""
+            ).partition(" ")
+            if f"{scheme.capitalize()} {token}" != credentials:
+                self.send_response(407)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            forwarded.append(self.path)
+            target = urllib.parse.urlsplit(self.path)
+            headers = {
+                k: v
+                for k, v in self.headers.items()
+                if k.lower() not in ("proxy-authorization", "connection", "host")
+            }
+            headers["X-Via-Test-Proxy"] = "1"
+            conn = http.client.HTTPConnection(target.netloc, timeout=10)
+            path = target.path + (f"?{target.query}" if target.query else "")
+            conn.request("GET", path, headers=headers)
+            response = conn.getresponse()
+            body = response.read()
+            self.send_response(response.status)
+            for k, v in response.getheaders():
+                if k.lower() not in (
+                    "connection",
+                    "transfer-encoding",
+                    "content-length",
+                ):
+                    self.send_header(k, v)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            conn.close()
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Proxy)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://user:pass@127.0.0.1:{server.server_port}", forwarded
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _only_through_the_proxy(index, handler, blob):
+    if handler.headers.get("X-Via-Test-Proxy") != "1":
+        handler.send_error(403, "not through the proxy")
+        return
+    _send(handler, blob)
+
+
+def test_erofs_pull_goes_through_the_proxy(tmp_path, erofs_pull, monkeypatch):
+    """erofs-pull reaches the registry through the proxy urllib uses
+    (``http_proxy``, with credentials), like Ray's own requests."""
+    monkeypatch.setattr(image_utils, "extract_tar_layer", lambda *a, **k: 1 / 0)
+    layers = [_layer(("a", os.urandom(1 << 20), {}))]
+    with _http_proxy() as (proxy, forwarded):
+        monkeypatch.setenv("http_proxy", proxy)
+        with _serve_image(monkeypatch, layers, _only_through_the_proxy) as image:
+            image_dir = pull_and_extract_container_image(
+                image, images_dir=str(tmp_path / "images")
+            )
+    tree = _erofs_tree(os.path.join(image_dir, ROOTFS_IMAGE))
+    assert len(tree["/a"][4]) == 1 << 20
+    assert any("/blobs/" in url for url in forwarded)
+
+
+def test_erofs_pull_skips_the_proxy_for_no_proxy_hosts(
+    tmp_path, erofs_pull, monkeypatch
+):
+    """A registry ``no_proxy`` names is reached directly, as urllib does."""
+    monkeypatch.setattr(image_utils, "extract_tar_layer", lambda *a, **k: 1 / 0)
+    layers = [_layer(("a", os.urandom(1 << 16), {}))]
+    with _http_proxy() as (proxy, forwarded):
+        monkeypatch.setenv("http_proxy", proxy)
+        monkeypatch.setenv("no_proxy", "example.com, 127.0.0.1")
+        with _serve_image(monkeypatch, layers) as image:
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+    assert forwarded == []

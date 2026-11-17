@@ -41,6 +41,9 @@ struct Spec {
     #[serde(default)]
     headers: HashMap<String, String>,
     auth: Option<String>,
+    /// urllib.request.getproxies(): {"https": url, "http": url, "no": hosts}.
+    #[serde(default)]
+    proxies: HashMap<String, String>,
     layers: Vec<LayerSpec>,
     blob_dir: String,
     out: String,
@@ -93,11 +96,12 @@ fn hash_blob(blob: Arc<Blob>) -> io::Result<()> {
 fn run(spec: Spec) -> Result<(), String> {
     let t0 = Instant::now();
     let ms = |t: Instant| t.duration_since(t0).as_millis() as u64;
-    let remote = Arc::new(Remote {
-        agent: fetch::agent(Duration::from_secs_f64(spec.timeout_seconds)),
-        headers: spec.headers.into_iter().collect(),
-        auth: spec.auth,
-    });
+    let remote = Arc::new(Remote::new(
+        Duration::from_secs_f64(spec.timeout_seconds),
+        spec.headers.into_iter().collect(),
+        spec.auth,
+        &spec.proxies,
+    )?);
     // An image may list a layer more than once: each distinct blob is opened
     // (and locked, downloaded and hashed) once, and every layer that uses it
     // reads it. Blobs are opened, which takes the layer cache's lock on each,

@@ -1412,8 +1412,9 @@ def _build_image_with_erofs_pull(
     requests, decompresses them in parallel as they arrive, and writes each
     file's data once into the image, applying the layers and seeds as
     ``extract_tar_layer``, ``_seed_tmp`` and ``_seed_mountpoints`` do. The
-    registry token reaches it on stdin, and it trusts the CA certificates
-    Python's ``ssl`` does.
+    registry token reaches it on stdin; it goes through the proxies
+    ``urllib`` does (``HTTPS_PROXY``, ``NO_PROXY`` and so on) and trusts the
+    CA certificates Python's ``ssl`` does.
 
     Args:
         image: Registry image reference, for log messages.
@@ -1450,6 +1451,12 @@ def _build_image_with_erofs_pull(
         "out": out_path,
         "block_size": mmap.PAGESIZE,
         "timeout_seconds": timeout_seconds,
+        # The proxies urllib uses for Ray's own registry requests.
+        "proxies": {
+            scheme: url
+            for scheme, url in urllib.request.getproxies().items()
+            if scheme in ("http", "https", "no")
+        },
     }
     env = dict(os.environ)
     paths = ssl.get_default_verify_paths()
