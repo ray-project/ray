@@ -63,6 +63,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorConfig,
 )
 from ray.data._internal.execution.execution_flags import (
+    ACTOR_ONLY_SLOW_TASK_THRESHOLD_S,
     BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO,
     BUDGET_BASED_BLOCK_SIZING,
     DRAIN_STALL_WARN_S,
@@ -207,6 +208,11 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # ``num_*_actors()`` views cannot drift from ``_running_actors``.
         self._status_counts: Counter[ActorStatus] = Counter()
         self._total_num_tasks_in_flight: int = 0
+        # Whether the operator's tasks are slow enough (or of unknown duration)
+        # that queueing one behind a running task is worse than waiting for a
+        # pending actor. Set by the operator each refresh via
+        # ``set_average_task_duration``; read by ``_task_slot_limit``.
+        self._tasks_are_slow: bool = True
 
         # Global fallback heap of all alive actors that may accept another
         # task (see ``_is_available_for_scheduling``: under the per-actor
@@ -270,11 +276,24 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
         A DRAINING actor never may (the draining gate).
         Otherwise the actor is admitted while it has fewer than
-        ``max_tasks_in_flight`` tasks in flight.
+        ``_task_slot_limit`` tasks in flight.
         """
         if state.status == ActorStatus.DRAINING:
             return False
-        return state.num_tasks_in_flight < state.max_tasks_in_flight
+        return state.num_tasks_in_flight < self._task_slot_limit(state)
+
+    def set_average_task_duration(self, duration_s: Optional[float]) -> None:
+        self._tasks_are_slow = (
+            duration_s is None or duration_s >= ACTOR_ONLY_SLOW_TASK_THRESHOLD_S
+        )
+
+    def _task_slot_limit(self, state: _ExperimentalActorState) -> int:
+        """Adjust the max # of tasks that can be submitted per actor based
+        on task completion time.
+        """
+        if self._pending_actors and self._tasks_are_slow:
+            return min(state.max_tasks_in_flight, self.max_actor_concurrency())
+        return state.max_tasks_in_flight
 
     def _remove_from_heaps(self, actor: ActorHandle, node_id: NodeIdStr) -> None:
         """Drop the actor from both scheduling heaps if present."""
