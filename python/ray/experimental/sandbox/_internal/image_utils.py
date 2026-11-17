@@ -1260,9 +1260,6 @@ def pull_and_extract_container_image(
                     "using it. Stop those sandboxes before retrying."
                 )
 
-            # Checked before any download: without it the pull cannot finish.
-            require_mkfs_erofs()
-
             tmp_extract_dir = os.path.join(
                 images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
             )
@@ -1393,6 +1390,12 @@ _EROFS_PULL_PACKAGED = os.path.join(
 )
 
 
+def _erofs_pull_binary() -> Optional[str]:
+    """The erofs-pull binary to build images with, or None for none."""
+    binary = os.environ.get(_EROFS_PULL_ENV) or _EROFS_PULL_PACKAGED
+    return binary if binary != "0" and os.access(binary, os.X_OK) else None
+
+
 def _build_image_with_erofs_pull(
     image: str,
     manifest: dict,
@@ -1428,19 +1431,19 @@ def _build_image_with_erofs_pull(
         the manifest, or a failed build (a download error included:
         extraction retries it).
     """
-    binary = os.environ.get(_EROFS_PULL_ENV) or _EROFS_PULL_PACKAGED
+    binary = _erofs_pull_binary()
     layers = manifest["layers"]
-    if (
-        binary == "0"
-        or not os.access(binary, os.X_OK)
-        or not all(isinstance(layer.get("size"), int) for layer in layers)
+    if binary is None or not all(
+        isinstance(layer.get("size"), int) for layer in layers
     ):
         return False
     spec = {
         "base_url": base_url,
         "headers": headers,
         "auth": auth_header,
-        "layers": [{"digest": l["digest"], "size": l["size"]} for l in layers],
+        "layers": [
+            {"digest": layer["digest"], "size": layer["size"]} for layer in layers
+        ],
         "blob_dir": os.path.dirname(
             layer_cache.blob_path(blob_dir, layers[0]["digest"])
         ),
@@ -1507,6 +1510,8 @@ def _extract_image_layers(
     """
     ownership: Dict[str, Tuple[int, int]] = {}
     if os.path.isfile(image):
+        # Checked before extracting: the image is built with mkfs.erofs.
+        require_mkfs_erofs()
         try:
             with open(image, "rb") as f:
                 extract_tar_layer(f, rootfs_dir, ownership=ownership)
@@ -1612,6 +1617,17 @@ def _extract_image_layers(
             os.path.join(image_dir, ROOTFS_IMAGE),
         ):
             return None
+        # Checked before any layer download: extraction builds the image with
+        # mkfs.erofs.
+        try:
+            require_mkfs_erofs()
+        except SandboxCreationError as err:
+            if _erofs_pull_binary() is None:
+                raise
+            raise SandboxCreationError(
+                f"erofs-pull failed to build image '{image}' (its error is logged "
+                f"above), and extracting it needs mkfs.erofs: {err}"
+            ) from None
         with contextlib.closing(
             _download_blobs(
                 digests, base_url, headers, auth_header, timeout_seconds, blob_dir

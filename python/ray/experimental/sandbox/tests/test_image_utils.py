@@ -1904,3 +1904,38 @@ def test_erofs_pull_falls_back_to_extraction(
     assert any("with erofs-pull failed" in warning for warning in warnings)
     blobs = os.listdir(tmp_path / "images" / ".blobs" / "sha256")
     assert [b for b in blobs if not b.endswith(".lock")] == []
+
+
+def test_erofs_pull_needs_no_mkfs_erofs(
+    tmp_path, fake_docker_hub, erofs_pull, monkeypatch
+):
+    """A node with erofs-pull but no erofs-utils still pulls registry images."""
+    monkeypatch.setattr(image_utils, "mkfs_erofs_path", lambda: None)
+    image_dir = pull_and_extract_container_image(
+        "busybox:latest", images_dir=str(tmp_path / "images")
+    )
+    tree = _erofs_tree(os.path.join(image_dir, ROOTFS_IMAGE))
+    assert tree["/bin/busybox"][4] == fake_docker_hub
+
+
+def test_pull_without_mkfs_erofs_or_erofs_pull(tmp_path, fake_docker_hub, monkeypatch):
+    """Without erofs-pull, a registry pull needs mkfs.erofs and fails before
+    downloading any layer."""
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", "0")
+    monkeypatch.setattr(image_utils, "mkfs_erofs_path", lambda: None)
+    with pytest.raises(SandboxCreationError, match="Install erofs-utils") as info:
+        pull_and_extract_container_image(
+            "busybox:latest", images_dir=str(tmp_path / "images")
+        )
+    assert "erofs-pull" not in str(info.value)
+    assert not (tmp_path / "images" / ".blobs").exists()
+
+
+def test_failed_erofs_pull_without_mkfs_erofs(tmp_path, erofs_pull, monkeypatch):
+    """When erofs-pull fails on a node without mkfs.erofs, the error says so
+    rather than only asking for erofs-utils."""
+    monkeypatch.setattr(image_utils, "mkfs_erofs_path", lambda: None)
+    layers = [_layer(("a", os.urandom(1 << 16), {}))]
+    with _serve_image(monkeypatch, layers, _cut_short) as image:
+        with pytest.raises(SandboxCreationError, match="erofs-pull failed to build"):
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
