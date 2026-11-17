@@ -242,6 +242,9 @@ class RayActorHandleResolver:
         # host_mode="node": node id -> (actor name, handle), and the nodes
         # that sandboxes without a reservation spread over.
         self._node_hosts: Dict[str, Tuple[str, Any]] = {}
+        # host_mode="node": sandbox specs each node host keeps booted ahead
+        # of creates, as [{"spec", "size"}] (set by the gRPC facade).
+        self.warm_templates: List[Dict[str, Any]] = []
         # Alive nodes with CPUs, sorted, and the node each hosted sandbox id's
         # prefix names (None for a prefix two nodes share). Replaced as a
         # whole on each refresh, so readers need no lock or copy.
@@ -295,6 +298,12 @@ class RayActorHandleResolver:
             {"CPU": self._settings.reservation_slab_cpus}
             if self._settings.reservation_slab_cpus
             else None,
+            self.warm_templates,
+            {
+                "max_output_bytes": self._settings.max_output_bytes,
+                "max_exec_history": self._settings.max_exec_history,
+                "max_file_bytes": self._settings.max_file_bytes,
+            },
             # What the host admits against without asking Ray each time.
             {
                 k: float(v)
