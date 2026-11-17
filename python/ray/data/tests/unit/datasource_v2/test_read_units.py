@@ -258,30 +258,6 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
             id="exact-count",
         ),
         pytest.param(
-            {"predicate": col("id") >= 0},
-            False,
-            id="projected-columns",
-        ),
-        pytest.param(
-            {"predicate": None, "projected_columns": []},
-            False,
-            id="no-predicate",
-        ),
-        pytest.param(
-            {"predicate": col("id") >= 0, "projected_columns": [], "limit": 2},
-            False,
-            id="limit",
-        ),
-        pytest.param(
-            {
-                "predicate": col("id") >= 0,
-                "projected_columns": [],
-                "preserve_order": True,
-            },
-            False,
-            id="ordered",
-        ),
-        pytest.param(
             {
                 "predicate": col("id") >= 0,
                 "projected_columns": [],

@@ -323,20 +323,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         coalesce_bytes = self._coalesce_bytes
         if shuffle_row_groups:
             coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
-        # A zero size is only honest when the reader will answer a matched run
-        # from its footer instead of opening it, which is the exact-count gate.
-        # The listing carries the same predicate, projection and limit the
-        # scanner pushed, so it can make that call here; the footer must also
-        # have matched a predicate the reader applies, or ``fully_matched`` is
-        # the default rather than evidence.
+        # Zero bytes are only honest when the reader will answer the run from
+        # its footer, and a row-group shuffle clears the listing limit while
+        # the scanner keeps it, so keep real sizes for shuffled listings.
         read_predicate = combine_predicates(
             predicate,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        # A row-group shuffle clears the listing limit while the scanner keeps
-        # it, so the listing cannot prove the reader will stub. Charging real
-        # bytes there only costs extra tasks; charging zero would let every
-        # matched run fold into one oversized task that the reader still opens.
         stub_fully_matched = not shuffle_row_groups and is_exact_count_read(
             predicate=read_predicate,
             limit=limit,

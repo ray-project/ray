@@ -56,33 +56,18 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
 
 
 def empty_projection_stub(num_rows: int) -> pa.Table:
-    """A zero-column table that keeps its row count through Arrow.
-
-    ``pa.concat_tables`` drops rows from a table with no columns, so a read
-    whose projection is empty carries this all-null column until a downstream
-    projection drops it. ``pa.nulls`` allocates no buffers, so the cost does
-    not depend on ``num_rows``. Both the real empty-projection read and the
-    footer-only stand-in below use this helper, so they cannot drift into two
-    different stub schemas.
-    """
+    """An all-null, zero-buffer table that keeps zero-column reads from losing
+    their rows in ``pa.concat_tables``, shared by both empty-projection paths."""
     return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(num_rows)})
 
 
 def split_fully_matched(
     manifest: FileManifest,
 ) -> Tuple[List[int], FileManifest]:
-    """Separate rows whose run is proven to survive the listing predicate.
-
-    Returns ``(stub_num_rows, to_read)``. A row is stubbed only when it carries
-    chunk metadata with ``fully_matched``: ``num_rows`` then equals exactly what
-    a read of that run would yield. A missing chunk entry means the indexer did
-    not chunk the file, so the whole-file row is read.
-
-    The caller owns the trust decision: ``fully_matched`` is meaningful only
-    when the indexer computed it against the same predicate, and only when no
-    caller can change the row count after reading (a limit, a row-reducing
-    block UDF). This helper does not and cannot check that.
-    """
+    """Split a manifest into ``(stub_num_rows, to_read)``, stubbing only
+    ``fully_matched`` rows that carry chunk metadata and leaving the caller to
+    guarantee the flag was computed against the same predicate and that no
+    limit or block UDF can change the count afterwards."""
     stub_num_rows: List[int] = []
     to_read: List[int] = []
     for idx, chunk_metadata in enumerate(manifest.file_chunk_metadatas):
@@ -205,8 +190,7 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        # Bind once: pyrefly cannot narrow an attribute across the comprehension
-        # below, and the module is otherwise checked as `Optional`.
+        # Bind once: pyrefly cannot narrow this optional attribute in the comprehension.
         schema = self._schema
         if schema is None:
             return None

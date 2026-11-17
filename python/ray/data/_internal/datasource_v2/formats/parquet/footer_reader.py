@@ -161,12 +161,8 @@ class FooterReader:
             filter_expr,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        # Set by the indexer when the reader will answer a fully matched run
-        # from its ``num_rows`` (the exact-count gate; see
-        # ``is_exact_count_read`` in ``parquet_file_reader``). A matched run
-        # then costs zero read bytes, so the bin packer's byte budget must not
-        # charge for data it will never fetch. Outside that shape a matched run
-        # is read like any other, and its size stays real.
+        # Set by the indexer when a matched run is answered from its footer, so
+        # its read-byte size is zero; otherwise the size stays real.
         self._stub_fully_matched = stub_fully_matched
         self._partition_value_parser = (
             _PartitionValueParser(self.partitioning)
@@ -242,9 +238,8 @@ class FooterReader:
         return FileChunk(
             unit_ids=(rg_idx,),
             num_rows=row_group.num_rows,
-            # A run the reader will answer from its footer is never opened, so
-            # it costs zero read bytes. ``num_rows`` stays exact either way;
-            # only the read-byte estimate the bin packer budgets is zeroed.
+            # Only the bin packer's read-byte estimate is zeroed; ``num_rows``
+            # stays exact.
             size_bytes=0 if stubbed else uncompressed,
             fully_matched=fully_matched,
         )

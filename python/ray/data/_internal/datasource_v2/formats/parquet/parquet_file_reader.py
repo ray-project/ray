@@ -197,9 +197,8 @@ def _estimate_batch_size_from_chunk_stats(
     )
     if estimated_in_mem_row_size == 0:
         return None
-    # Never request more rows than the chunk actually contains. ``num_rows``
-    # comes from manifest chunk metadata, which may be a NumPy scalar; PyArrow's
-    # scanner requires a Python int.
+    # Never request more rows than the chunk contains; ``num_rows`` may be a
+    # NumPy scalar, which PyArrow's scanner rejects.
     return int(min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows))
 
 
@@ -210,22 +209,9 @@ def is_exact_count_read(
     columns: Optional[Sequence[str]],
     preserve_order: bool,
 ) -> bool:
-    """Whether a scan needs only the number of surviving rows.
-
-    ``columns`` must be an *empty projection*; ``None`` means "all columns" and
-    does not qualify. The remaining conditions make the listing's
-    ``fully_matched`` flag trustworthy rather than merely present: a pushed
-    predicate is what the flag was computed against, and ``ReadFiles`` refuses
-    predicate push-down for a row-reducing ``block_udf``, so no post-read
-    transform can change the count.
-
-    ``preserve_order`` also disqualifies the read. A stub is emitted before any
-    run that must be opened, and a file's matched and partial runs can occupy
-    separate manifest rows, so stubbing reorders that file's rows. Count does
-    not care, but a user asking for ordered output does.
-
-    Shared by :class:`ParquetFileReader` and ``FooterFileIndexer`` so the
-    listing's stub decision and the reader's gate cannot drift.
+    """Whether a scan needs only surviving row counts: a pushed predicate, no
+    limit, an empty projection, and unordered output, because stubs are emitted
+    before reads and would reorder a file split across manifest rows.
     """
     return (
         predicate is not None
@@ -795,11 +781,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         return kwargs
 
     def _is_exact_count_read(self) -> bool:
-        """Whether this read needs only the number of surviving rows.
-
-        Delegates to :func:`is_exact_count_read`; see there for why each
-        condition is part of the trust contract of the footer-only shortcut.
-        """
+        """Whether this read needs only surviving row counts; see
+        :func:`is_exact_count_read`."""
         return is_exact_count_read(
             predicate=self._predicate,
             limit=self._limit,
@@ -809,22 +792,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
     @override
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Read a manifest, answering fully matched runs from listing metadata.
-
-        ``Dataset.filter(...).count()`` reaches this reader with an empty
-        projection: it needs the number of surviving rows, not the rows. When
-        listing also proved ``FileChunk.fully_matched`` for a run, its
-        ``num_rows`` is exactly what a read would yield, so the file is never
-        opened.
-
-        Every unproven case reads, including an ordered read: stubs are
-        yielded first, so answering part of a file from its footer would move
-        those rows ahead of the runs read below. ``fully_matched`` exactness is
-        a property of the Parquet pairing: this reader is constructed by
-        ``ParquetDatasourceV2``, whose indexer is always ``FooterFileIndexer``,
-        which computes the flag against the listing predicate. An indexer that
-        leaves the flag at its default ``True`` must not feed this reader.
-        """
+        """Read a manifest, answering each ``fully_matched`` run from its
+        ``num_rows`` on an exact-count read and reading everything else, since
+        stubs are emitted before reads (ordered reads skip them) and the flag is
+        trusted only from ``FooterFileIndexer``."""
         if self._is_exact_count_read():
             stub_num_rows, input_split = split_fully_matched(input_split)
             # ``empty_projection_stub`` allocates no buffers, so one table per

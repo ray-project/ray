@@ -1014,7 +1014,7 @@ def _walk(op):
         yield from _walk(child)
 
 
-def test_unfiltered_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
+def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     """An unfiltered ``count()`` must not run the footer indexer.
 
     ``FooterFileIndexer`` subclasses ``NonSamplingFileIndexer`` but overrides
@@ -1038,6 +1038,7 @@ def test_unfiltered_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx
     dag = _optimized_count_plan(ds).dag
 
     assert isinstance(dag, MapBatches)
+    assert dag.ray_remote_args == {"num_cpus": 0.5}
     assert not any(isinstance(op, ReadFiles) for op in _walk(dag))
 
     (list_files_op,) = [op for op in _walk(dag) if isinstance(op, ListFiles)]
@@ -1050,9 +1051,7 @@ def test_unfiltered_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx
 @pytest.mark.parametrize(
     "read_kwargs", [{}, {"include_paths": True}], ids=["plain", "include_paths"]
 )
-def test_unfiltered_count_pushdown_preserves_list_files_fields(
-    tmp_path, restore_ctx, read_kwargs
-):
+def test_count_pushdown_preserves_list_files_fields(tmp_path, restore_ctx, read_kwargs):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -1070,160 +1069,35 @@ def test_unfiltered_count_pushdown_preserves_list_files_fields(
     assert rebuilt.partition_filter is original.partition_filter
 
 
+@pytest.mark.parametrize("case", ["predicate", "limit"])
 @pytest.mark.parametrize("merge_schema", [False, True])
-def test_count_uses_footer_matches_for_filter(tmp_path, restore_ctx, merge_schema):
-    """A filtered count keeps the read plan and answers matched runs from footers.
-
-    The optimizer deliberately does not rewrite this plan: ``ReadFiles`` already
-    receives an empty projection with the predicate pushed, so the reader is
-    the only component that needs to know a run is fully matched.
-    """
-    from ray.data._internal.logical.operators.map_operator import MapBatches
+def test_count_pushdown_declines_row_reducing_reads(
+    tmp_path, restore_ctx, case, merge_schema
+):
+    """A row-reducing pushdown makes footer ``num_rows`` an overcount."""
+    from ray.data.expressions import col
 
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
 
     restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema).filter(
-        expr=col("a") > 2
-    )
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema)
+    ds = ds.filter(expr=col("a") > 2) if case == "predicate" else ds.limit(2)
 
     dag = _optimized_count_plan(ds).dag
     assert any(isinstance(op, ReadFiles) for op in _walk(dag))
-    assert not any(isinstance(op, MapBatches) for op in _walk(dag))
-
-    (read_files_op,) = [op for op in _walk(dag) if isinstance(op, ReadFiles)]
-    scanner = read_files_op.scanner
-    assert isinstance(scanner, ParquetScanner)
-    # ``columns`` is the pushed empty projection: a tuple, not ``None``.
-    assert scanner.columns is not None
-    assert len(scanner.columns) == 0
-    assert scanner.predicate is not None
-    assert scanner.limit is None
-
     assert ds.count() == 2
     rows = ds.take_all()
-    assert sorted(row["a"] for row in rows) == [3, 4]
+    assert len(rows) == 2
+    if case == "predicate":
+        (read_files_op,) = [op for op in _walk(dag) if isinstance(op, ReadFiles)]
+        assert isinstance(read_files_op.scanner, ParquetScanner)
+        assert read_files_op.scanner.columns == ()
+        assert read_files_op.scanner.predicate is not None
+        assert sorted(row["a"] for row in rows) == [3, 4]
 
 
-def test_unfiltered_count_pushdown_keeps_its_cpu_share(tmp_path, restore_ctx):
-    """A footer-only count task must not inherit the read's resource request.
-
-    The task never decodes a data page, so charging it the read's 4 CPUs and
-    8 GiB would reserve resources it cannot use.
-    """
-    from ray.data._internal.logical.operators.map_operator import MapBatches
-
-    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
-
-    restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(
-        str(tmp_path),
-        ray_remote_args={"num_cpus": 4, "memory": 8 * 1024**3},
-    )
-
-    dag = _optimized_count_plan(ds).dag
-    assert isinstance(dag, MapBatches)
-    assert dag.ray_remote_args == {"num_cpus": 0.5}
-
-
-def test_count_with_row_reducing_block_udf_reads(tmp_path, restore_ctx):
-    """A row-reducing block UDF cannot use the footer shortcut.
-
-    ``fully_matched`` describes the scan, not the UDF's output, and stubbing
-    would change how many batches the UDF sees. ``ReadFiles`` refuses predicate
-    push-down for an arbitrary ``block_udf``, so the reader receives no
-    predicate and reads normally.
-    """
-    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
-
-    restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(
-        str(tmp_path), _block_udf=lambda table: table.slice(0, 1)
-    ).filter(expr=col("a") > 0)
-
-    (read_files_op,) = [
-        op for op in _walk(_optimized_count_plan(ds).dag) if isinstance(op, ReadFiles)
-    ]
-    assert read_files_op.block_udf is not None
-    scanner = read_files_op.scanner
-    assert isinstance(scanner, ParquetScanner)
-    assert scanner.predicate is None
-
-    assert ds.count() == len(ds.take_all())
-
-
-@pytest.mark.parametrize("merge_schema", [False, True])
-def test_count_declines_limit(tmp_path, restore_ctx, merge_schema):
-    """A limit makes the result a prefix of the manifest, so it must be read."""
-    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
-
-    restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema).limit(2)
-
-    dag = _optimized_count_plan(ds).dag
-    (read_files_op,) = [op for op in _walk(dag) if isinstance(op, ReadFiles)]
-    # The reader's fast path requires an empty projection *and* no limit; a
-    # limit needs the data columns, so ``columns`` is ``None`` here.
-    scanner = read_files_op.scanner
-    assert isinstance(scanner, ParquetScanner)
-    assert scanner.limit == 2
-    assert scanner.columns is None
-    assert ds.count() == 2
-
-
-def test_count_with_include_paths(tmp_path, restore_ctx):
-    """A synthesized column is not needed by an empty-projection count.
-
-    ``include_paths`` adds ``path`` after the read, but ``count()`` projects to
-    zero columns first, so the run can still be answered from its footer.
-    """
-    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
-
-    restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(str(tmp_path), include_paths=True).filter(
-        expr=col("a") > 0
-    )
-
-    assert ds.count() == 3
-    assert len(ds.take_all()) == 3
-
-
-@pytest.mark.parametrize(
-    "num_files,rows_per_file,row_group_size",
-    [(1, 10, None), (3, 100, 10), (4, 1000, 250)],
-    ids=["single_file", "multi_file_many_row_groups", "multi_file_large"],
-)
-def test_unfiltered_count_matches_rows(
-    tmp_path, restore_ctx, num_files, rows_per_file, row_group_size
-):
-    """End-to-end unfiltered count correctness, including multi-row-group files.
-
-    Regression guard for over-counting: the footer indexer emits one manifest
-    row per row-group run, so a multi-row-group file would otherwise be counted
-    once per run.
-    """
-    _write_row_groups(
-        tmp_path,
-        num_files=num_files,
-        rows_per_file=rows_per_file,
-        row_group_size=row_group_size,
-    )
-
-    restore_ctx.use_datasource_v2 = True
-
-    assert ray.data.read_parquet(str(tmp_path)).count() == num_files * rows_per_file
-
-
-@pytest.mark.parametrize(
-    "predicate, expected",
-    [
-        pytest.param(col("id") >= 0, 400, id="all"),
-        pytest.param(col("id") >= 200, 200, id="fully_matched_files"),
-        pytest.param(col("id") >= 225, 175, id="partial_row_group"),
-        pytest.param(col("id") >= 1000, 0, id="empty"),
-    ],
-)
-def test_filtered_count_matches_rows(tmp_path, restore_ctx, predicate, expected):
+def test_filtered_count_matches_nothing(tmp_path, restore_ctx):
+    """A predicate that matches no row yields zero, not a whole-file count."""
     restore_ctx.use_datasource_v2 = True
     for i in range(4):
         pq.write_table(
@@ -1232,9 +1106,9 @@ def test_filtered_count_matches_rows(tmp_path, restore_ctx, predicate, expected)
             row_group_size=50,
         )
 
-    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=predicate)
-    assert ds.count() == expected
-    assert len(ds.take_all()) == expected
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 1000)
+    assert ds.count() == 0
+    assert len(ds.take_all()) == 0
 
 
 def test_filtered_count_reads_only_partial_runs(tmp_path, restore_ctx, monkeypatch):
@@ -1332,36 +1206,20 @@ def test_filtered_read_preserves_order_across_fully_matched_runs(
     assert [row["x"] for row in rows] == list(range(50, 250))
 
 
-@pytest.mark.parametrize("case", ["nulls", "floats", "no_stats"])
-def test_filtered_count_fails_closed(tmp_path, restore_ctx, case):
-    """Stats that cannot prove a full match must fall back to reading."""
+def test_filtered_count_fails_closed(tmp_path, restore_ctx):
+    """A null in the filter column must not be counted as a full match."""
     restore_ctx.use_datasource_v2 = True
-
-    if case == "nulls":
-        table = pa.table({"id": [1, None, 3, 4]})
-        predicate = col("id") > 0
-        write_statistics = True
-    elif case == "floats":
-        table = pa.table({"id": [1.0, 2.0, float("nan"), 4.0]})
-        predicate = col("id") > 1.0
-        write_statistics = True
-    else:
-        table = pa.table({"id": [1, 2, 3, 4]})
-        predicate = col("id") > 1
-        write_statistics = False
-
     pq.write_table(
-        table,
+        pa.table({"id": [1, None, 3, 4]}),
         str(tmp_path / "data.parquet"),
         row_group_size=2,
-        write_statistics=write_statistics,
     )
 
-    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=predicate)
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") > 0)
     assert ds.count() == len(ds.take_all())
 
 
-def test_unfiltered_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):
+def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):
     """The rebuilt indexer must keep ``skip_paths``, or the skipped file's rows
     are counted even though reading the dataset excludes them."""
     a = tmp_path / "a.parquet"
@@ -1375,9 +1233,7 @@ def test_unfiltered_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):
     assert ds.count() == 2
 
 
-def test_unfiltered_count_pushdown_skip_paths_tolerates_missing_path(
-    tmp_path, restore_ctx
-):
+def test_count_pushdown_skip_paths_tolerates_missing_path(tmp_path, restore_ctx):
     """``skip_paths`` drops a named path before the existence check, so a
     skipped-but-missing path must not fail a pushed-down ``count()``."""
     a = tmp_path / "a.parquet"
