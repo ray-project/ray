@@ -690,19 +690,20 @@ TEST_F(ReferenceCountTest, TestTryCommitMoves) {
                        move_state);
     return id;
   };
-  ObjectID plain = add_owned_object(MoveState::NOT_MOVABLE);
+  ObjectID not_movable = add_owned_object(MoveState::NOT_MOVABLE);
   ObjectID movable_1 = add_owned_object(MoveState::MOVABLE);
   ObjectID movable_2 = add_owned_object(MoveState::MOVABLE);
   ObjectID unknown = ObjectID::FromRandom();
 
-  // A repeated ID is moved once and both entries are reported as moves; NOT_MOVABLE
-  // and unknown IDs are left alone.
+  // A MOVABLE object becomes MOVED on its first commit, and any later commit that
+  // includes it fails. NOT_MOVABLE objects and IDs without a reference never change.
+  // A repeated ID is moved once and both entries are reported as moves.
   StatusOr<std::vector<bool>> is_move =
-      rc->TryCommitMoves({plain, movable_1, movable_1, unknown});
+      rc->TryCommitMoves({not_movable, movable_1, movable_1, unknown});
   ASSERT_TRUE(is_move.ok());
   ASSERT_EQ(*is_move, (std::vector<bool>{false, true, true, false}));
   ASSERT_EQ(
-      rc->GetMoveStates({plain, movable_1, movable_2, unknown}),
+      rc->GetMoveStates({not_movable, movable_1, movable_2, unknown}),
       (std::vector<std::optional<MoveState>>{
           MoveState::NOT_MOVABLE, MoveState::MOVED, MoveState::MOVABLE, std::nullopt}));
 
@@ -715,7 +716,7 @@ TEST_F(ReferenceCountTest, TestTryCommitMoves) {
   ASSERT_TRUE(is_move.ok());
   ASSERT_EQ(rc->GetMoveState(movable_2), MoveState::MOVED);
   ASSERT_EQ(*is_move, (std::vector<bool>{true}));
-  is_move = rc->TryCommitMoves({plain});
+  is_move = rc->TryCommitMoves({not_movable});
   ASSERT_TRUE(is_move.ok());
   ASSERT_EQ(*is_move, (std::vector<bool>{false}));
   is_move = rc->TryCommitMoves({});
@@ -724,7 +725,7 @@ TEST_F(ReferenceCountTest, TestTryCommitMoves) {
   ASSERT_TRUE(rc->GetMoveStates({}).empty());
 
   std::vector<ObjectID> out;
-  for (const ObjectID &id : {plain, movable_1, movable_2}) {
+  for (const ObjectID &id : {not_movable, movable_1, movable_2}) {
     rc->RemoveLocalReference(id, &out);
   }
 }

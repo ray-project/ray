@@ -276,7 +276,6 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
-  // An argument that stays in plasma keeps is_move.
   ASSERT_TRUE(task.ArgIsMove(0));
   // Checks that the object id is still a direct call id.
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
@@ -317,7 +316,6 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ASSERT_FALSE(task.ArgByRef(1));
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
-  // An inlined argument is not moved.
   ASSERT_FALSE(task.ArgIsMove(1));
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
   ASSERT_EQ(task_manager->num_inlined_dependencies, 2);

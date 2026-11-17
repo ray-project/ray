@@ -251,7 +251,12 @@ class TaskSpecBuilder {
     return *this;
   }
 
-  /// Mark the argument at the given index as consumed by this task.
+  /**
+   * @brief Mark the argument at the given index as consumed by this task.
+   *
+   * @param arg_index The index of the argument.
+   * @return Reference to the builder object itself.
+   **/
   TaskSpecBuilder &SetArgIsMove(size_t arg_index) {
     message_->mutable_args(arg_index)->set_is_move(true);
     return *this;
