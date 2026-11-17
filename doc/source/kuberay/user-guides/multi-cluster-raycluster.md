@@ -20,7 +20,7 @@ One Kubernetes cluster is the *primary* cluster. It runs an ordinary RayCluster,
 
 ![Three Kubernetes clusters connected by Submariner. The Ray workers in all three clusters connect to the Ray head in the primary cluster. The head Pods in the two member clusters are unused.](../images/multi-cluster-raycluster.svg)
 
-KubeRay always creates a head Pod for a RayCluster, so each member cluster still has one. No worker connects to it and it runs no workload.
+KubeRay always creates a head Pod for a RayCluster, so each member cluster still has one. This head runs no workload, and the member workers don't join it. However, each worker's `wait-gcs-ready` init container still waits until this head is ready.
 
 Ray nodes connect to each other directly by Pod IP, and member workers find the head by DNS name. This guide uses Submariner to enable both. Submariner connects the clusters with tunnels between a gateway node in each cluster and routes Pod traffic for other clusters through these tunnels. It also makes a service that you export from one cluster resolvable by DNS name in the other clusters. See the [Submariner architecture](https://submariner.io/getting-started/architecture/).
 
@@ -314,16 +314,26 @@ The following excerpt shows the settings that make it a member RayCluster:
 spec:
   headGroupSpec:
     rayStartParams:
-      # No worker connects to this head.
+      # The workers don't join this head.
       num-cpus: "0"
   workerGroupSpecs:
   - groupName: member-group
     rayStartParams:
       # Address of the Ray head in the primary cluster.
       address: raycluster-kuberay-head-svc.default.svc.clusterset.local:6379
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          env:
+          # Ray commands and drivers in the worker Pod connect to the primary head.
+          - name: RAY_ADDRESS
+            value: raycluster-kuberay-head-svc.default.svc.clusterset.local:6379
 ```
 
-The `address` parameter points the workers at the exported head service of the primary cluster. The `rayVersion` and the Ray image must match the RayCluster in the primary cluster. Use a `groupName` that differs from the worker groups in the primary cluster. The output of `ray status` and `ray list nodes` then shows which nodes are in a member cluster. To also tell the member clusters apart, give each member RayCluster its own `groupName`.
+The `address` parameter points the workers at the exported head service of the primary cluster. KubeRay sets the `RAY_ADDRESS` environment variable in worker Pods to the head of the member RayCluster by default. The sample overrides it, so that Ray commands and drivers that run in a member worker Pod connect to the primary head.
+
+The `rayVersion` and the Ray image must match the RayCluster in the primary cluster. Use a `groupName` that differs from the worker groups in the primary cluster so the output of `ray status` and `ray list nodes` shows which nodes are in a member cluster. To also tell the member clusters apart, give each member RayCluster its own `groupName`.
 
 List the Pods in each member cluster:
 
