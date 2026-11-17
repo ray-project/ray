@@ -39,11 +39,15 @@ def test_consume_prefix_in_state_dict_if_present_not_in_place():
         "module": {"version": 1},
         "module.layer1": {"version": 1},
         "module.layer2": {"version": 1},
+        "module.module.z_layer": {"version": 2},
+        "module.z_layer": {"version": 1},
         "other.layer": {"version": 1},
     }
     state_dict = {
         "module.module.layer1.weight": torch.tensor([10.0]),
         "module.layer1.weight": torch.tensor([1.0]),
+        "module.module.z_layer.weight": torch.tensor([20.0]),
+        "module.z_layer.weight": torch.tensor([4.0]),
         "module.layer2.weight": torch.tensor([2.0]),
         "other.layer.weight": torch.tensor([3.0]),
         "_metadata": original_metadata.copy(),
@@ -52,6 +56,8 @@ def test_consume_prefix_in_state_dict_if_present_not_in_place():
     result = consume_prefix_in_state_dict_if_present_not_in_place(state_dict, "module.")
     assert torch.equal(result["layer1.weight"], torch.tensor([1.0]))
     assert torch.equal(result["module.layer1.weight"], torch.tensor([10.0]))
+    assert torch.equal(result["z_layer.weight"], torch.tensor([4.0]))
+    assert torch.equal(result["module.z_layer.weight"], torch.tensor([20.0]))
     assert "layer2.weight" in result
     assert "other.layer.weight" in result
     assert result["_metadata"] == {
@@ -59,6 +65,8 @@ def test_consume_prefix_in_state_dict_if_present_not_in_place():
         "module": {"version": 2},
         "layer1": {"version": 1},
         "layer2": {"version": 1},
+        "z_layer": {"version": 1},
+        "module.z_layer": {"version": 2},
         "other.layer": {"version": 1},
     }
     # Original state_dict and its _metadata must not be mutated in place.

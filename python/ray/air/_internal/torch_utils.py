@@ -92,7 +92,7 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
     """
     copied = False
 
-    for key in sorted(state_dict.keys()):
+    for key in sorted(state_dict.keys(), key=len):
         if key.startswith(prefix):
             newkey = key[len(prefix) :]
             if not copied:
@@ -109,7 +109,7 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
             copied = True
         state_dict["_metadata"] = state_dict["_metadata"].copy()
         metadata = state_dict["_metadata"]
-        for key in sorted(metadata.keys()):
+        for key in sorted(metadata.keys(), key=len):
             if len(key) == 0:
                 continue
             if key == prefix.rstrip(".") or key.startswith(prefix):
