@@ -415,9 +415,9 @@ class FooterReader:
         bytes decoding it as a read task does. Both lean high: a read task over its
         estimate is what runs a node out of memory."""
         buffers = 0
+        # The columns Ray appends count for every file, modelled or not.
+        decoded = estimate_added_columns(row_group=row_group, read=sizing.read)
         if sizing.profiles is None:
-            # A file the estimator doesn't model; the columns Ray appends still count.
-            decoded = estimate_added_columns(row_group=row_group, read=sizing.read)
             unmodelled = set(sizing.leaf_indices)
         else:
             leaves = leaf_chunks(
@@ -426,18 +426,16 @@ class FooterReader:
                 leaf_indices=sizing.leaf_indices,
                 size_stats=size_stats,
             )
-            decoded, buffers = estimate_row_group_work(
+            columns_decoded, buffers = estimate_row_group_work(
                 row_group=row_group,
                 columns=sizing.columns,
                 column_leaves=sizing.column_leaves,
                 leaves=leaves,
-                counted=set(),
                 decode_threads=READER_CPU_COUNT,
             )
+            decoded += columns_decoded
             unmodelled = {j for j in sizing.leaf_indices if j not in leaves}
-            if sizing.pinned_schema is None:
-                decoded += estimate_added_columns(row_group=row_group, read=sizing.read)
-            else:
+            if sizing.pinned_schema is not None:
                 assert sizing.file_schema is not None
                 # Here ``cast_leaves`` is empty unless ``cast_profiles`` was built.
                 cast_leaves = {}
@@ -452,10 +450,9 @@ class FooterReader:
                     unmodelled.update(j for j in indices if j not in cast_leaves[name])
                 decoded += estimate_cast(
                     row_group=row_group,
-                    column_leaves=cast_leaves,
+                    cast_leaves=cast_leaves,
                     file_schema=sizing.file_schema,
                     pinned_schema=sizing.pinned_schema,
-                    read=sizing.read,
                 )
         if unmodelled:
             # A leaf or cast the estimator doesn't model, such as a dictionary-encoded
