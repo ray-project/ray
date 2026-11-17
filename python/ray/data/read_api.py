@@ -1795,7 +1795,7 @@ def read_parquet(
         storage_options: Optional dictionary of ``pyarrow.fs.S3FileSystem``
             keyword arguments, such as ``access_key``, ``secret_key``,
             ``session_token``, ``region``, and ``endpoint_override``.
-            Requires ``s3://`` paths and cannot be combined
+            Requires ``s3://`` or ``s3a://`` paths and cannot be combined
             with ``filesystem``. An empty dictionary enables
             ``DataContext.s3_filesystem_defaults`` (initially
             ``connect_timeout=10.0`` and ``request_timeout=30.0`` seconds).
@@ -1803,9 +1803,9 @@ def read_parquet(
             without query parameters or userinfo. Put credentials and connection
             settings in ``storage_options`` instead of the URI, or omit
             ``storage_options`` to use native URI configuration. Percent-encode
-            ``?`` in object keys.
-            None preserves existing filesystem inference. These are
-            PyArrow option names, not Lance or Delta SDK storage options.
+            ``?`` in object keys. ``s3a://`` is treated as an S3 alias only when
+            this argument is provided. None preserves existing filesystem inference.
+            These are PyArrow option names, not Lance or Delta SDK storage options.
             On Linux with the AWS SDK Curl backend, ``request_timeout`` controls
             the low-speed/stalled-transfer timeout, not the total request duration.
             Cannot be combined with ``catalog``.

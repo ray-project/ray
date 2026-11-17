@@ -32,6 +32,8 @@ from ray.util.annotations import RayDeprecationWarning
         "s3://test-access:test-secret@bucket/a",
         "S3://test-access:test-secret@bucket/a",
         "s3://anonymous@bucket/a",
+        "s3a://bucket/a?region=us-west-2",
+        "S3A://anonymous@bucket/a",
         ["s3://bucket/a", "s3://bucket/b?region=us-west-2"],
     ],
 )
@@ -44,22 +46,24 @@ def test_storage_options_rejects_uri_configuration(paths):
     assert "test-secret" not in str(exc.value)
 
 
+@pytest.mark.parametrize("scheme", ["s3", "s3a"])
 @pytest.mark.parametrize(
     "key, expected",
     [("a%20b", "a b"), ("a%3Fb", "a?b"), ("a%23b", "a#b"), ("a#b", "a#b")],
 )
-def test_storage_options_decodes_uri_object_keys(key, expected):
+def test_storage_options_decodes_uri_object_keys(scheme, key, expected):
     native = pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2")
     with mock.patch("pyarrow.fs.S3FileSystem", return_value=native):
         paths, _ = _resolve_paths_and_filesystem(
-            f"s3://bucket/{key}", storage_options={}
+            f"{scheme}://bucket/{key}", storage_options={}
         )
     assert paths == [f"bucket/{expected}"]
 
 
-def test_storage_options_constructor_accepts_additional_options():
+@pytest.mark.parametrize("scheme", ["s3", "s3a"])
+def test_storage_options_constructor_accepts_additional_options(scheme):
     paths, fs = _resolve_paths_and_filesystem(
-        "s3://bucket/a",
+        f"{scheme}://bucket/a",
         storage_options={
             "anonymous": True,
             "region": "us-west-2",
@@ -67,6 +71,7 @@ def test_storage_options_constructor_accepts_additional_options():
         },
     )
     assert paths == ["bucket/a"]
+    assert fs.type_name == "s3"
     assert fs.__reduce__()[1][0]["allow_delayed_open"] is True
 
 
@@ -87,7 +92,7 @@ def test_storage_options_none_preserves_uri_query_inference(query):
     assert fs.equals(native_fs)
 
 
-@pytest.mark.parametrize("scheme", ["s3", "S3"])
+@pytest.mark.parametrize("scheme", ["s3", "S3", "s3a", "S3A"])
 def test_storage_options_passes_credentials_to_constructor(scheme):
     from ray.data.context import DataContext
 
@@ -107,10 +112,11 @@ def test_storage_options_passes_credentials_to_constructor(scheme):
     )
 
 
+@pytest.mark.parametrize("scheme", ["s3", "s3a"])
 @pytest.mark.parametrize("options", [{}, {"connect_timeout": 0.5}])
 @pytest.mark.parametrize("anonymous", [True, False])
 def test_storage_options_requests_match_native_inference(
-    monkeypatch, options, anonymous
+    monkeypatch, scheme, options, anonymous
 ):
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -165,7 +171,8 @@ def test_storage_options_requests_match_native_inference(
             else {"access_key": "testing", "secret_key": "testing"}
         )
         paths, filesystem = _resolve_paths_and_filesystem(
-            "s3://bucket/a", storage_options={**connection, **credentials, **options}
+            f"{scheme}://bucket/a",
+            storage_options={**connection, **credentials, **options},
         )
         userinfo = "anonymous" if anonymous else "testing:testing"
         uri = f"s3://{userinfo}@bucket/a?{urlencode(connection)}"
@@ -305,14 +312,15 @@ def test_storage_options_override_context_defaults(monkeypatch):
     assert defaults == original_defaults
 
 
-def test_storage_options_none_keeps_uri_inference():
+@pytest.mark.parametrize("path", ["s3://bucket/a", "s3a://bucket/a"])
+def test_storage_options_none_keeps_uri_inference(path):
     with mock.patch("pyarrow.fs.S3FileSystem") as constructor, mock.patch(
         "ray.data.datasource.path_util._resolve_single_path_with_fallback",
         return_value=(pyarrow.fs.LocalFileSystem(), "bucket/a"),
     ) as resolve:
-        _resolve_paths_and_filesystem("s3://bucket/a", storage_options=None)
+        _resolve_paths_and_filesystem(path, storage_options=None)
     constructor.assert_not_called()
-    resolve.assert_called_once_with("s3://bucket/a", None)
+    resolve.assert_called_once_with(path, None)
 
 
 @pytest.mark.parametrize("options", [[], "bad", True, 1])
@@ -326,7 +334,7 @@ def test_storage_options_rejects_invalid_types(options):
     [
         "/tmp/a",
         "gs://bucket/a",
-        "s3a://bucket/a",
+        "s3b://bucket/a",
         ["s3://bucket/a", "/tmp/b"],
     ],
 )
@@ -376,14 +384,20 @@ def test_storage_options_preserves_filesystem_without_reinference(wrapped):
     assert infer.call_args.args[1] is fs
 
 
-def test_storage_options_creates_one_filesystem_for_multiple_paths():
+@pytest.mark.parametrize(
+    "source_paths",
+    [
+        ["s3://bucket/a", "s3://bucket/b"],
+        ["s3://bucket/a", "s3a://bucket/b"],
+        ["S3A://bucket/a", "s3a://bucket/b"],
+    ],
+)
+def test_storage_options_creates_one_filesystem_for_multiple_paths(source_paths):
     from ray.data.context import DataContext
 
     native = pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2")
     with mock.patch("pyarrow.fs.S3FileSystem", return_value=native) as constructor:
-        paths, fs = _resolve_paths_and_filesystem(
-            ["s3://bucket/a", "s3://bucket/b"], storage_options={}
-        )
+        paths, fs = _resolve_paths_and_filesystem(source_paths, storage_options={})
     constructor.assert_called_once_with(
         **DataContext.get_current().s3_filesystem_defaults
     )

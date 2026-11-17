@@ -50,10 +50,11 @@ class _FileDatasink(Datasink[None]):
             filesystem: The filesystem to write files to. If not provided, the
                 filesystem is inferred from the path.
             storage_options: Optional PyArrow S3FileSystem settings passed to the
-                shared path resolver. Requires plain ``s3://`` URIs without query
-                parameters or userinfo and cannot be combined with ``filesystem``.
-                Per-call options override DataContext.s3_filesystem_defaults.
-                None preserves inference.
+                shared path resolver. Requires plain ``s3://`` or ``s3a://`` URIs
+                without query parameters or userinfo and cannot be combined with
+                ``filesystem``. Per-call options override
+                DataContext.s3_filesystem_defaults. ``s3a://`` is an S3 alias when
+                this argument is provided. None preserves inference.
             try_create_dir: Whether to create the directory to write files to.
             open_stream_args: Arguments to pass to ``filesystem.open_output_stream``.
             filename_provider: A :class:`ray.data.datasource.FilenameProvider` that

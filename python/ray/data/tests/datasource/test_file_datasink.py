@@ -10,8 +10,9 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
 
 
+@pytest.mark.parametrize("scheme", ["s3", "s3a"])
 @pytest.mark.parametrize("kind", ["row", "block", "parquet"])
-def test_file_datasink_forwards_storage_options(monkeypatch, kind):
+def test_file_datasink_forwards_storage_options(monkeypatch, scheme, kind):
     from unittest.mock import Mock
 
     from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
@@ -27,10 +28,9 @@ def test_file_datasink_forwards_storage_options(monkeypatch, kind):
     }
     options = {"region": "us-west-2", "connect_timeout": 5.0}
     original = options.copy()
-    sink = classes[kind]("s3://bucket/output", storage_options=options)
-    resolver.assert_called_once_with(
-        "s3://bucket/output", None, storage_options=options
-    )
+    path = f"{scheme}://bucket/output"
+    sink = classes[kind](path, storage_options=options)
+    resolver.assert_called_once_with(path, None, storage_options=options)
     assert sink.path == "output"
     assert options == original
 
@@ -85,6 +85,8 @@ def test_parquet_write_storage_options_rejects_catalog(ray_start_regular_shared)
         ("/tmp/output", None, "requires s3://"),
         ("s3://bucket/output?region=us-west-2", None, "cannot be combined with URI"),
         ("s3://anonymous@bucket/output", None, "cannot be combined with URI"),
+        ("s3a://bucket/output?region=us-west-2", None, "cannot be combined with URI"),
+        ("S3A://anonymous@bucket/output", None, "cannot be combined with URI"),
     ],
 )
 def test_file_datasink_rejects_invalid_storage_options_combinations(

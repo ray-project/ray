@@ -268,8 +268,9 @@ ds = ray.data.read_parquet(
 )
 ```
 
-File read and write APIs accept these options for `s3://` paths. Don't combine
-`storage_options` with `filesystem` or a Parquet `catalog`.
+File read and write APIs accept these options for `s3://` and `s3a://` paths.
+When you provide `storage_options`, Ray Data treats `s3a://` as an S3 alias.
+Don't combine `storage_options` with `filesystem` or a Parquet `catalog`.
 An empty dictionary applies {class}`~ray.data.DataContext`'s
 `s3_filesystem_defaults`, initially `connect_timeout=10.0` and
 `request_timeout=30.0` seconds. Per-call options override these defaults.

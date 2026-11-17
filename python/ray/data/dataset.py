@@ -5051,10 +5051,12 @@ class Dataset:
                 ``connect_timeout=10.0`` and ``request_timeout=30.0`` seconds).
                 An empty dictionary enables those defaults; per-call options
                 override them. None preserves existing inference. Requires plain
-                ``s3://`` URIs without query parameters or userinfo and cannot be
-                combined with ``filesystem`` or ``catalog``. Put connection settings
-                and credentials in ``storage_options``, or omit it to use native
-                URI configuration. Percent-encode ``?`` in object keys.
+                ``s3://`` or ``s3a://`` URIs without query parameters or userinfo.
+                Cannot be combined with ``filesystem`` or ``catalog``. Put connection
+                settings and credentials in ``storage_options``, or omit it to use
+                native URI configuration. Percent-encode ``?`` in object keys.
+                ``s3a://`` is treated as an S3 alias only when this argument is
+                provided.
                 On Linux/Curl, request_timeout is a low-speed/stalled-transfer
                 timeout, not a total request duration limit.
             catalog: An optional :class:`~ray.data.Catalog` (e.g.
@@ -5279,8 +5281,8 @@ class Dataset:
                 ``s3://``, the ``S3FileSystem`` is used.
             storage_options: Optional PyArrow S3FileSystem settings. See
                 :meth:`~ray.data.Dataset.write_parquet` for defaults and
-                precedence. Requires ``s3://`` paths and cannot be combined with
-                an explicit ``filesystem``.
+                precedence. Requires ``s3://`` or ``s3a://`` paths and cannot be
+                combined with an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -5678,8 +5680,8 @@ class Dataset:
                 ``s3://``, the ``S3FileSystem`` is used.
             storage_options: Optional PyArrow S3FileSystem settings. See
                 :meth:`~ray.data.Dataset.write_parquet` for defaults and
-                precedence. Requires ``s3://`` paths and cannot be combined with
-                an explicit ``filesystem``.
+                precedence. Requires ``s3://`` or ``s3a://`` paths and cannot be
+                combined with an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -5781,8 +5783,8 @@ class Dataset:
                 ``s3://``, the ``S3FileSystem`` is used.
             storage_options: Optional PyArrow S3FileSystem settings. See
                 :meth:`~ray.data.Dataset.write_parquet` for defaults and
-                precedence. Requires ``s3://`` paths and cannot be combined with
-                an explicit ``filesystem``.
+                precedence. Requires ``s3://`` or ``s3a://`` paths and cannot be
+                combined with an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -5910,8 +5912,8 @@ class Dataset:
                 ``s3://``, the ``S3FileSystem`` is used.
             storage_options: Optional PyArrow S3FileSystem settings. See
                 :meth:`~ray.data.Dataset.write_parquet` for defaults and
-                precedence. Requires ``s3://`` paths and cannot be combined with
-                an explicit ``filesystem``.
+                precedence. Requires ``s3://`` or ``s3a://`` paths and cannot be
+                combined with an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -6044,8 +6046,8 @@ class Dataset:
                 ``s3://``, the ``S3FileSystem`` is used.
             storage_options: Optional PyArrow S3FileSystem settings. See
                 :meth:`~ray.data.Dataset.write_parquet` for defaults and
-                precedence. Requires ``s3://`` paths and cannot be combined with
-                an explicit ``filesystem``.
+                precedence. Requires ``s3://`` or ``s3a://`` paths and cannot be
+                combined with an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -6144,8 +6146,8 @@ class Dataset:
             filesystem: The filesystem implementation to write to.
             storage_options: Optional PyArrow S3FileSystem settings. See
                 :meth:`~ray.data.Dataset.write_parquet` for defaults and
-                precedence. Requires ``s3://`` paths and cannot be combined with
-                an explicit ``filesystem``.
+                precedence. Requires ``s3://`` or ``s3a://`` paths and cannot be
+                combined with an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
                 already exist. Defaults to ``True``.
@@ -6255,8 +6257,8 @@ class Dataset:
                 ``s3://``, the ``S3FileSystem`` is used.
             storage_options: Optional PyArrow S3FileSystem settings. See
                 :meth:`~ray.data.Dataset.write_parquet` for defaults and
-                precedence. Requires ``s3://`` paths and cannot be combined with
-                an explicit ``filesystem``.
+                precedence. Requires ``s3://`` or ``s3a://`` paths and cannot be
+                combined with an explicit ``filesystem``.
             try_create_dir: If ``True``, attempts to create all directories in
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.

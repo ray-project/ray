@@ -432,10 +432,11 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
         storage_options: Optional PyArrow S3FileSystem keyword arguments. Requires
-            plain S3 URIs without userinfo or query parameters and cannot be
-            combined with filesystem. An empty dictionary enables
+            plain ``s3://`` or ``s3a://`` URIs without userinfo or query parameters
+            and cannot be combined with filesystem. An empty dictionary enables
             DataContext.s3_filesystem_defaults; explicit options override those
-            defaults. None preserves existing inference. Invalid configuration
+            defaults. ``s3a://`` is treated as an S3 alias only when this argument
+            is provided. None preserves existing inference. Invalid configuration
             errors omit sensitive values.
 
     Returns:
@@ -462,8 +463,8 @@ def _resolve_paths_and_filesystem(
             raise TypeError("`storage_options` must be a dictionary.")
         if filesystem is not None:
             raise ValueError("`storage_options` and `filesystem` cannot be combined.")
-        if not all(path.lower().startswith("s3://") for path in paths):
-            raise ValueError("`storage_options` requires s3:// paths.")
+        if not all(path.lower().startswith(("s3://", "s3a://")) for path in paths):
+            raise ValueError("`storage_options` requires s3:// or s3a:// paths.")
 
         from pyarrow.fs import S3FileSystem
 
