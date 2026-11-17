@@ -1760,7 +1760,7 @@ def test_exact_resource_requests_lifecycle(pool_cls, removal, monkeypatch):
     assert pool.get_resource_requests() == [request]
     monkeypatch.setattr(ray, "kill", mock.Mock())
     if removal == "pending":
-        assert pool._try_remove_pending_actor()
+        assert pool._downscale_actor_by_id("actor1", pool_mod.DrainReason.RESIZE)
     elif removal == "all_pending":
         pool._release_pending_actors(force=True)
     elif removal == "expired":
