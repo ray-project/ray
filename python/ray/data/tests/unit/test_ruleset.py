@@ -204,12 +204,14 @@ def test_remove_rule_with_dependants():
 
 
 def test_configure_map_task_memory_rule_dedups_diamond_dag():
+    from collections import Counter
     from unittest.mock import MagicMock
 
-    from ray.data._internal.execution.interfaces.physical_operator import (
-        PhysicalOperator,
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
     )
     from ray.data._internal.execution.operators.map_operator import MapOperator
+    from ray.data._internal.execution.operators.union_operator import UnionOperator
     from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
     from ray.data._internal.logical.rules.configure_map_task_memory import (
         ConfigureMapTaskMemoryRule,
@@ -218,37 +220,44 @@ def test_configure_map_task_memory_rule_dedups_diamond_dag():
 
     class DummyRule(ConfigureMapTaskMemoryRule):
         def __init__(self):
-            self.calls = 0
+            self.calls = Counter()
+            self.estimate = None
 
         def estimate_per_task_memory_requirement(self, op):
-            self.calls += 1
-            return 1024
+            self.calls[op] += 1
+            return self.estimate
 
-    shared_map = MagicMock(spec=MapOperator)
-    shared_map.input_dependencies = []
-    shared_map._ray_remote_args = {}
-    shared_map._ray_remote_args_fn = None
-    shared_map.data_context = DataContext.get_current()
-    shared_map.post_order_iter = lambda: PhysicalOperator.post_order_iter(shared_map)
+    data_context = DataContext.get_current()
+    input_op = InputDataBuffer(data_context, [])
+    shared_map = MapOperator.create(
+        MagicMock(), input_op=input_op, data_context=data_context
+    )
+    branch_a = MapOperator.create(
+        MagicMock(), input_op=shared_map, data_context=data_context
+    )
+    branch_b = MapOperator.create(
+        MagicMock(), input_op=shared_map, data_context=data_context
+    )
+    sink = UnionOperator(data_context, branch_a, branch_b)
 
-    branch_a = MagicMock(spec=PhysicalOperator)
-    branch_a.input_dependencies = [shared_map]
-    branch_a.post_order_iter = lambda: PhysicalOperator.post_order_iter(branch_a)
-
-    branch_b = MagicMock(spec=PhysicalOperator)
-    branch_b.input_dependencies = [shared_map]
-    branch_b.post_order_iter = lambda: PhysicalOperator.post_order_iter(branch_b)
-
-    sink = MagicMock(spec=PhysicalOperator)
-    sink.input_dependencies = [branch_a, branch_b]
-    sink.post_order_iter = lambda: PhysicalOperator.post_order_iter(sink)
-
-    plan = PhysicalPlan(sink, {}, DataContext.get_current())
+    plan = PhysicalPlan(sink, {}, data_context)
     rule = DummyRule()
     rule.apply(plan)
 
+    # When no memory estimate is available yet (returns None), "memory" is not
+    # populated in dynamic_ray_remote_args. If shared_map._ray_remote_args_fn
+    # were wrapped twice across the two diamond branches, a single invocation
+    # would call estimate_per_task_memory_requirement twice.
+    assert shared_map._ray_remote_args_fn() == {}
+    assert rule.calls[shared_map] == 1
+
+    rule.estimate = 1024
     assert shared_map._ray_remote_args_fn() == {"memory": 1024}
-    assert rule.calls == 1
+    assert rule.calls[shared_map] == 2
+    assert branch_a._ray_remote_args_fn() == {"memory": 1024}
+    assert rule.calls[branch_a] == 1
+    assert branch_b._ray_remote_args_fn() == {"memory": 1024}
+    assert rule.calls[branch_b] == 1
 
 
 def test_set_read_parallelism_rule_dedups_diamond_dag():
