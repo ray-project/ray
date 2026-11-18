@@ -111,7 +111,11 @@ class BottleneckTransfer(CapacityTransfer):
        transfer's timeout follows its slowest victim's estimated
        time-to-free.
 
-    An op that is guard-blocked or has pending actors is skipped.
+    An op that is guard-blocked or has pending actors is skipped. The model
+    marks an op ineligible ("no: ...") when it is not named this tick, a more
+    severe named op feeds it, or a producer feeding it is self-limited, so
+    neither step grows an op that would wait for input. A decision is logged
+    once it fires; a refusal is logged with its reason.
     """
 
     name = "bottleneck_transfer"
@@ -129,13 +133,21 @@ class BottleneckTransfer(CapacityTransfer):
         # the cluster is still resizing (when it is most needed); only
         # transfers wait for it to settle.
         for op, _ in tick.snapshot.bottlenecks:
-            if tick.assessment.eligibility.get(op) == "yes: free" and self._can_grow(
-                op, ctx
-            ):
-                grown = self._grow_into_free(op, tick.growth_target(op), ctx)
-                if grown is not None:
-                    requests.append(grown)
-                    return requests
+            if tick.assessment.eligibility.get(op) != "yes: free":
+                continue
+            blocked = self._why_cannot_grow(op, ctx)
+            if blocked is not None:
+                logger.debug(
+                    "PipelineOptimizer: bottleneck %s not grown into free "
+                    "capacity: %s",
+                    op.name,
+                    blocked,
+                )
+                continue
+            grown = self._grow_into_free(op, tick.growth_target(op), ctx)
+            if grown is not None:
+                requests.append(grown)
+                return requests
         if not tick.snapshot.bottlenecks:
             balanced = self._grow_balanced(tick, ctx)
             if balanced:
@@ -155,11 +167,18 @@ class BottleneckTransfer(CapacityTransfer):
     def _can_grow(
         self, op: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
     ) -> bool:
-        return (
-            not ctx.is_pg_managed(op)
-            and self._guard.can_scale(op)
-            and op.actor_pool.num_pending_actors() == 0
-        )
+        return self._why_cannot_grow(op, ctx) is None
+
+    def _why_cannot_grow(
+        self, op: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
+    ) -> Optional[str]:
+        if ctx.is_pg_managed(op):
+            return "placement group"
+        if not self._guard.can_scale(op):
+            return f"guard ({self._guard.reason(op)})"
+        if op.actor_pool.num_pending_actors() > 0:
+            return "actors pending"
+        return None
 
     def _grow_balanced(
         self, tick: "BottleneckTick", ctx: OptimizationContext
@@ -196,6 +215,12 @@ class BottleneckTransfer(CapacityTransfer):
         per_actor = recipient.actor_pool.per_actor_resource_usage()
         nodes = free_schedulable_nodes(ctx, recipient)
         if not any(max_placeable_actors(ctx.free[n], per_actor) >= 1 for n in nodes):
+            logger.debug(
+                "PipelineOptimizer: %s %s not grown into free capacity: no "
+                "allowed node has room after capacity held for transfers",
+                reason,
+                recipient.name,
+            )
             return None
         step = max(1, b_prime - recipient.actor_pool.serving_size())
         num_to_reclaim = min(
@@ -290,6 +315,23 @@ class BottleneckTransfer(CapacityTransfer):
             for v in node_plan.victims
         ]
         timeout_s = transfer_timeout_s(ttfs)
+        # Before firing: ``_fire`` consumes the donors' removable counts.
+        donors_summary = ", ".join(
+            f"{op.name} x{count} (slack {donors_by_op[op].removable})"
+            for op, count in _victims_by_donor(plan).items()
+        )
+        fired = self._fire(
+            recipient, plan, donors_by_op, ctx, state, timeout_s=timeout_s
+        )
+        if not fired:
+            logger.debug(
+                "PipelineOptimizer: bottleneck %s %d -> %d not fired: it would "
+                "reverse a recent transfer (thrash guard)",
+                recipient.name,
+                b,
+                b_prime,
+            )
+            return fired
         severity = dict(tick.assessment.stable).get(recipient, float("nan"))
         logger.debug(
             "PipelineOptimizer: bottleneck %s (sev=%.2f) %d -> %d from %s; "
@@ -298,16 +340,11 @@ class BottleneckTransfer(CapacityTransfer):
             severity,
             b,
             b_prime,
-            ", ".join(
-                f"{op.name} x{count} (slack {donors_by_op[op].removable})"
-                for op, count in _victims_by_donor(plan).items()
-            ),
+            donors_summary,
             max(ttfs, default=0.0),
             timeout_s,
         )
-        return self._fire(
-            recipient, plan, donors_by_op, ctx, state, timeout_s=timeout_s
-        )
+        return fired
 
     def _donor_views(
         self,

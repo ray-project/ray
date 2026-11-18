@@ -236,7 +236,9 @@ class OperatorSizer:
         self._note_held_ops(ctx)
         # The bottleneck model, once per tick, before any rule debits free
         # capacity: the optimizer acts on it and the log line shows it.
-        self._bottleneck = self._bottleneck_observer.tick(ctx.capacity)
+        self._bottleneck = self._bottleneck_observer.tick(
+            ctx.capacity, self._optimizer.held_capacity_by_node()
+        )
         self._bottleneck_observer.log_tick(self._bottleneck)
         # Picks up placement groups a ray_remote_args_fn created since the
         # last tick, so later views take their bundles out of the slice.

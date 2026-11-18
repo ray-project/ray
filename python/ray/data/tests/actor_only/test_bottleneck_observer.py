@@ -604,16 +604,18 @@ _NEEDS = ExecutionResources(cpu=1, memory=2.4 * GiB)
 
 
 @pytest.mark.parametrize(
-    "free_mem_gib, write_nodes, expected",
+    "free_mem_gib, write_nodes, held, expected",
     [
-        (3, {"n1"}, "yes: free"),
-        (0.5, {"n1"}, "yes: victims"),
-        (0.5, {"n3"}, "no: short {cpu=1, memory=2.4GiB} after all victims"),
+        (3, {"n1"}, None, "yes: free"),
+        # The same room, held for an open transfer's recipient, is not free.
+        (3, {"n1"}, ExecutionResources(cpu=1, memory=3 * GiB), "yes: victims"),
+        (0.5, {"n1"}, None, "yes: victims"),
+        (0.5, {"n3"}, None, "no: short {cpu=1, memory=2.4GiB} after all victims"),
     ],
-    ids=["free-room", "victims-on-its-node", "no-actors-on-its-node"],
+    ids=["free-room", "free-room-held", "victims-on-its-node", "no-actors-on-its-node"],
 )
 def test_assessment_eligibility_and_victims(
-    monkeypatch, free_mem_gib, write_nodes, expected
+    monkeypatch, free_mem_gib, write_nodes, held, expected
 ):
     """video_object_detection stall: Write (W) is the bottleneck. Read (R)
     actors sit on n1; the GPU op (B) is on n2. Victims are listed only for an
@@ -669,7 +671,12 @@ def test_assessment_eligibility_and_victims(
     # stability does not make it a recipient.
     lingering = observer.assess(snapshot, capacity, stable=cast(Any, {read}))
     assert lingering.recipient is None and lingering.stable[0][0] is read
-    assessment = observer.assess(snapshot, capacity, stable=cast(Any, {write}))
+    assessment = observer.assess(
+        snapshot,
+        capacity,
+        stable=cast(Any, {write}),
+        held_by_node={"n1": held} if held is not None else None,
+    )
 
     assert [op for op, _ in snapshot.bottlenecks] == [write]
     assert assessment.stable == ((write, pytest.approx(1.0)),)
@@ -685,6 +692,52 @@ def test_assessment_eligibility_and_victims(
             read: DonorVictims(count=2, ttf_min_s=4.0, ttf_p50_s=4.0, circular=True)
         }
         assert "victims for W=[R n=2 ttf min=4s p50=4s circular]" in line
+
+
+@pytest.mark.parametrize(
+    "named, self_limited, op, expected",
+    [
+        # 21:57:00 in video: resize (C) took over while the GPU op (B) was
+        # still named; B's input was empty, so it is no recipient.
+        ([("C", 0.92), ("B", 0.45)], 0.0, "B", "no: C upstream is more severe"),
+        ([("C", 0.92), ("B", 0.45)], 0.0, "C", None),
+        # Stable but no longer named: nothing waits on it.
+        ([("C", 0.92)], 0.0, "B", "no: not named this tick"),
+        # 22:02:39: resize grew while Read was turning self-limited; its new
+        # actors starved.
+        ([("C", 0.97)], 0.12, "C", "no: input from R self-limited (0.12)"),
+        ([("C", 0.97)], 0.05, "C", None),
+    ],
+    ids=[
+        "upstream-more-severe",
+        "most-severe-upstream",
+        "not-named",
+        "input-self-limited",
+        "self-below-margin",
+    ],
+)
+def test_growth_blocker(named, self_limited, op, expected):
+    """An op can use more actors only if named this tick, with no more
+    severe named op feeding it and no self-limited producer feeding it."""
+    ops = {name: _Op(name, serving=1) for name in "RCBW"}
+    observer, _, _ = _observer(*ops.values(), queued=(0, 0, 0, 0))
+    edge = bottleneck_observer.Edge(
+        producer=ops["R"],
+        consumer=ops["C"],
+        producer_blocked=1.0 - self_limited,
+        producer_self_limited=self_limited,
+        consumer_starved=0.0,
+        arrow=Arrow.DOWNSTREAM,
+    )
+    snapshot = bottleneck_observer.Snapshot(
+        shares={},
+        edges=(edge,),
+        bottlenecks=tuple((ops[name], sev) for name, sev in named),
+        slack={},
+    )
+    assert observer._growth_blocker(cast(Any, ops[op]), cast(Any, snapshot)) == (
+        expected
+    )
 
 
 if __name__ == "__main__":

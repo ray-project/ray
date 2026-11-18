@@ -2,6 +2,7 @@
 ``SilentBottleneckGrant``, ``BottleneckTransfer``), the signal bookkeeping
 they decide on, and the ``OpScalingGuard`` they share. Duck-typed doubles; no
 cluster."""
+import logging
 import math
 import sys
 from types import SimpleNamespace
@@ -1582,6 +1583,28 @@ def test_balanced_growth_waits_while_a_bottleneck_is_named():
         _bottleneck_rule(), tick, [read, write], free_cpu=5.0
     )
     assert _granted(requests) == []
+
+
+def test_refused_bottleneck_transfer_is_logged_as_refused(monkeypatch, caplog):
+    """A transfer the thrash guard refuses is logged as not fired, never as a
+    decision with donors."""
+    write = _op("Write", pool=_Pool(current=1))
+    read = _idle_victims_op("ReadVideo", "node", ["r0", "r1"], current=7)
+    tick = _tick(
+        recipient=write,
+        named=[(write, 1.0)],
+        stable=[write],
+        eligibility={write: "yes: victims"},
+        shares={write: None, read: None},
+        slack={read: 5},
+    )
+    rule = _bottleneck_rule()
+    monkeypatch.setattr(rule, "_fire", lambda *args, **kwargs: [])
+    with caplog.at_level(logging.DEBUG):
+        _, state, requests = _apply_bottleneck(rule, tick, [write, read])
+    assert requests == [] and not state.in_flight
+    assert "not fired" in caplog.text
+    assert " from ReadVideo" not in caplog.text
 
 
 def test_one_bottleneck_transfer_at_a_time():

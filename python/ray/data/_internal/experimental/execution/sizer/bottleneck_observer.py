@@ -832,10 +832,19 @@ class BottleneckObserver:
         snapshot: Snapshot["ExperimentalActorPoolMapOperator"],
         capacity: "TickCapacitySnapshot",
         stable: AbstractSet["ExperimentalActorPoolMapOperator"],
+        held_by_node: Optional[Mapping[NodeIdStr, ExecutionResources]] = None,
     ) -> Assessment["ExperimentalActorPoolMapOperator"]:
         """Eligibility of each bottleneck and stable bottleneck, and the
         victims a transfer to the most severe stable one that can grow would
-        draw from."""
+        draw from.
+
+        ``held_by_node`` is capacity already promised to an open transfer's
+        recipient: it is not free for anyone else.
+
+        An op can use more actors only if it is named this tick, no more
+        severe named op feeds it, and no producer feeding it is self-limited
+        (held back by its own output budget while the op had idle slots):
+        otherwise new actors would wait for input."""
         ranked_stable = tuple(
             sorted(
                 (
@@ -859,8 +868,11 @@ class BottleneckObserver:
         bottlenecks = [op for op, _ in snapshot.bottlenecks]
         bottlenecks += [op for op, _ in ranked_stable if op not in bottlenecks]
         freeable = self._freeable_by_node(capacity, exclude=set(bottlenecks))
+        free_by_node = _minus_held(capacity.free_by_node, held_by_node or {})
         eligibility = {
-            op: self._eligibility(op, capacity, freeable) for op in bottlenecks
+            op: self._growth_blocker(op, snapshot)
+            or self._eligibility(op, capacity, free_by_node, freeable)
+            for op in bottlenecks
         }
         # Stability keeps one noisy window from making or unmaking a
         # bottleneck, but an op whose severity has since fallen below the
@@ -916,10 +928,38 @@ class BottleneckObserver:
                     )
         return freeable
 
+    def _growth_blocker(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        snapshot: Snapshot["ExperimentalActorPoolMapOperator"],
+    ) -> Optional[str]:
+        """Why ``op`` could not use more actors this tick, or None."""
+        named = dict(snapshot.bottlenecks)
+        if op not in named:
+            return "no: not named this tick"
+        for other, sev in named.items():
+            if (
+                other is not op
+                and sev > named[op]
+                and path_between(other, op, self._profiles.next_ops) is not None
+            ):
+                return f"no: {self._name(other)} upstream is more severe"
+        for edge in snapshot.edges:
+            if edge.consumer is op and edge.producer_self_limited >= self._arrow_margin:
+                return (
+                    f"no: input from {self._name(edge.producer)} self-limited "
+                    f"({edge.producer_self_limited:.2f})"
+                )
+        return None
+
+    def _name(self, op: "ExperimentalActorPoolMapOperator") -> str:
+        return self._names.get(op, getattr(op, "name", str(op)))
+
     def _eligibility(
         self,
         op: "ExperimentalActorPoolMapOperator",
         capacity: "TickCapacitySnapshot",
+        free_by_node: Mapping[NodeIdStr, ExecutionResources],
         freeable: Mapping[NodeIdStr, ExecutionResources],
     ) -> str:
         pool = op.actor_pool
@@ -928,23 +968,14 @@ class BottleneckObserver:
         if self._profiles.is_pg_managed(op):
             return "no: placement group (not assessed)"
         per_actor = capacity.per_actor_resources_by_op[op]
-        nodes = [
-            n
-            for n in capacity.free_by_node
-            if n in capacity.schedulable_nodes_by_op[op]
-        ]
+        nodes = [n for n in free_by_node if n in capacity.schedulable_nodes_by_op[op]]
         if not nodes:
             return "no: no allowed node"
-        if any(
-            max_placeable_actors(capacity.free_by_node[n], per_actor) >= 1
-            for n in nodes
-        ):
+        if any(max_placeable_actors(free_by_node[n], per_actor) >= 1 for n in nodes):
             return "yes: free"
         best: Optional[Dict[str, float]] = None
         for node in nodes:
-            room = capacity.free_by_node[node].add(
-                freeable.get(node, ExecutionResources.zero())
-            )
+            room = free_by_node[node].add(freeable.get(node, ExecutionResources.zero()))
             if max_placeable_actors(room, per_actor) >= 1:
                 return "yes: victims"
             short = {
@@ -1030,10 +1061,13 @@ class BottleneckObserver:
         )
 
     def tick(
-        self, capacity: "TickCapacitySnapshot"
+        self,
+        capacity: "TickCapacitySnapshot",
+        held_by_node: Optional[Mapping[NodeIdStr, ExecutionResources]] = None,
     ) -> BottleneckTick["ExperimentalActorPoolMapOperator"]:
         """This tick's model: snapshot, stable bottlenecks (advancing their
-        persistence) and assessment. Call once per sizer tick."""
+        persistence) and assessment. Call once per sizer tick;
+        ``held_by_node`` is capacity open transfers hold for their recipients."""
         snapshot = self.snapshot()
         stable = self._stability.update(
             {op for op, _ in snapshot.bottlenecks},
@@ -1043,7 +1077,7 @@ class BottleneckObserver:
         return BottleneckTick(
             snapshot=snapshot,
             stable=stable,
-            assessment=self.assess(snapshot, capacity, stable),
+            assessment=self.assess(snapshot, capacity, stable, held_by_node),
             victim_ttf=self.victim_ttf,
             slack_for=lambda recipient, b_prime: slack_toward(
                 snapshot.shares,
@@ -1072,6 +1106,21 @@ class BottleneckObserver:
             "BottleneckObserver: %s",
             format_snapshot(tick.snapshot, self._names, tick.assessment),
         )
+
+
+def _minus_held(
+    free_by_node: Mapping[NodeIdStr, ExecutionResources],
+    held_by_node: Mapping[NodeIdStr, ExecutionResources],
+) -> Dict[NodeIdStr, ExecutionResources]:
+    """Free capacity per node with what is held for transfers taken out."""
+    return {
+        node: (
+            free.subtract(held_by_node[node]).max(ExecutionResources.zero())
+            if node in held_by_node
+            else free
+        )
+        for node, free in free_by_node.items()
+    }
 
 
 def _format_resources(resources: Mapping[str, float]) -> str:

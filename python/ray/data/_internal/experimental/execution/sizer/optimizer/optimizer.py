@@ -15,6 +15,8 @@ from typing import (
 )
 
 from ray.data._internal.execution.execution_flags import SIZER_BOTTLENECK_MODEL
+from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.experimental.execution.sizer.metrics import (
     OptimizerMetrics,
 )
@@ -99,6 +101,20 @@ class PipelineOptimizer:
     def register(self, rule: OptimizationRule) -> None:
         self._rules.append(rule)
         self._rule_state[rule.name] = rule.new_state()
+
+    def held_capacity_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
+        """Capacity open capacity transfers hold for their recipients'
+        still-owed actors, per node."""
+        held: Dict[NodeIdStr, ExecutionResources] = {}
+        for state in self._rule_state.values():
+            for transfer in getattr(state, "in_flight", {}).values():
+                per_actor = transfer.recipient.actor_pool.per_actor_resource_usage()
+                for node, owed in transfer.owed_by_node.items():
+                    if owed > 0:
+                        held[node] = held.get(node, ExecutionResources.zero()).add(
+                            per_actor.scale(owed)
+                        )
+        return held
 
     # --- observation ------------------------------------------------------
 
