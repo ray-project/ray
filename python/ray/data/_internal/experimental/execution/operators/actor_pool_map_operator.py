@@ -32,6 +32,7 @@ import math
 import time
 import types
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     AbstractSet,
@@ -256,6 +257,26 @@ def _redact_remote_args(ray_remote_args: Optional[Dict[str, Any]]) -> Any:
     redacted = dict(ray_remote_args)
     redacted["runtime_env"] = redact_runtime_env(redacted["runtime_env"])
     return redacted
+
+
+@dataclass(frozen=True)
+class SlotUsage:
+    """An operator's serving task slots right now, for the bottleneck
+    observer. A slot is one of an actor's ``max_concurrency`` task seats."""
+
+    # IDLE or ACTIVE actors; DRAINING / RESTARTING ones are not serving.
+    serving_actors: int
+    # serving_actors x max_concurrency.
+    slots: int
+    # Slots of actors whose pull budget is exhausted: none of them can take
+    # new work, whatever they hold.
+    obp_slots: int
+    # Of ``obp_slots``, those holding a task. The busy-slot integral counts
+    # them; the observer moves them from busy to output-backpressured.
+    obp_busy_slots: int
+    # The pool's cumulative busy-slot seconds (see
+    # ``_ExperimentalActorPool.busy_slot_seconds``).
+    busy_slot_seconds: float
 
 
 class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
@@ -1735,31 +1756,32 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 slots += min(state.num_tasks_in_flight, conc)
         return slots
 
-    def serving_actor_breakdown(self) -> Tuple[int, int, int, int]:
-        """(serving, busy, output_backpressured, idle) actor counts, from one
-        scan.
-
-        Serving actors are IDLE or ACTIVE; DRAINING / RESTARTING ones are
-        excluded. Each serving actor lands in exactly one bucket:
-        output-backpressured if its pull budget is exhausted (whether or not
-        it holds tasks), else busy if it has a task in flight, else idle.
+    def slot_usage(self) -> SlotUsage:
+        """Serving task slots, split for the bottleneck observer, from one
+        scan. Busy time comes from the pool's event-driven integral, so tasks
+        shorter than a sizer tick still count; output backpressure is sampled
+        here, since it changes on output pulls the pool does not see.
         Unlike ``output_backpressured_actors`` this also counts while actors
         are pending, so an observer's history has no gaps during a resize.
         """
         zeros = TaskPullRequest.zero()
-        serving = busy = blocked = idle = 0
+        conc = max(1, self.actor_pool.max_actor_concurrency())
+        serving = obp_actors = obp_busy = 0
         for states in self.actor_pool.alive_actor_states_by_node().values():
             for actor_id, state in states.items():
                 if state.status not in (ActorStatus.IDLE, ActorStatus.ACTIVE):
                     continue
                 serving += 1
                 if not self._actor_pull_budget(actor_id).all_fields_gt(zeros):
-                    blocked += 1
-                elif state.status == ActorStatus.ACTIVE:
-                    busy += 1
-                else:
-                    idle += 1
-        return serving, busy, blocked, idle
+                    obp_actors += 1
+                    obp_busy += min(conc, state.num_tasks_in_flight)
+        return SlotUsage(
+            serving_actors=serving,
+            slots=serving * conc,
+            obp_slots=obp_actors * conc,
+            obp_busy_slots=obp_busy,
+            busy_slot_seconds=self.actor_pool.busy_slot_seconds(),
+        )
 
     def output_backpressured_actors(self) -> Tuple[int, int]:
         """(blocked, running) ACTOR counts for output backpressure.

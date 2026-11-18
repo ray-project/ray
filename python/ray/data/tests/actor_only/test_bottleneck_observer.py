@@ -1,19 +1,29 @@
 """Tests for the observation-only bottleneck model."""
 
+import math
 from types import SimpleNamespace
 from typing import Any, Dict, Sequence, Tuple, cast
 
 import pytest
 
+from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.common import ActorStatus
+from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
+    SlotUsage,
+)
+from ray.data._internal.experimental.execution.sizer import bottleneck_observer
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     Arrow,
     BottleneckObserver,
+    DonorVictims,
     OpShares,
     ShareWindow,
     analyze,
     classify_edge,
     format_snapshot,
+    is_circular,
     slack,
+    time_to_free,
 )
 
 ARROW_MARGIN = 0.1
@@ -188,30 +198,32 @@ def test_slack(actors, busy, growth, expected):
     assert slack(actors, busy, growth, SLACK_MARGIN) == expected
 
 
-def test_share_window_is_time_weighted_and_slides():
+def test_share_window_is_slot_time_weighted_and_slides():
     window = ShareWindow(window_s=10.0)
-    window.record(dt=0.0, serving=4, busy=4, obp=0, starved=0)
-    window.record(dt=5.0, serving=4, busy=4, obp=0, starved=0)
+    window.record(0.0, actors=4, slot_s=0, busy_s=0, obp_s=0, starved_s=0)
+    window.record(5.0, actors=4, slot_s=20, busy_s=20, obp_s=0, starved_s=0)
     assert window.shares() is None  # half a window
 
-    window.record(dt=5.0, serving=4, busy=0, obp=4, starved=0)
+    window.record(5.0, actors=4, slot_s=20, busy_s=0, obp_s=20, starved_s=0)
     shares = window.shares()
     assert shares is not None
     assert (shares.busy, shares.obp, shares.starved) == (0.5, 0.5, 0.0)
     assert shares.actors == 4
 
     # Another 10s of starvation pushes the earlier samples out.
-    window.record(dt=10.0, serving=2, busy=0, obp=0, starved=2)
+    window.record(10.0, actors=2, slot_s=20, busy_s=0, obp_s=0, starved_s=20)
     shares = window.shares()
     assert shares is not None
     assert (shares.busy, shares.obp, shares.starved) == (0.0, 0.0, 1.0)
     assert shares.actors == 2
 
 
-def test_share_window_counts_unstaffed_time_as_one_busy_actor():
+def test_share_window_counts_unstaffed_time_as_one_busy_slot():
     window = ShareWindow(window_s=10.0)
-    window.record(dt=5.0, serving=0, busy=0, obp=0, starved=0, unstaffed=True)
-    window.record(dt=5.0, serving=1, busy=0, obp=1, starved=0)
+    window.record(
+        5.0, actors=0, slot_s=0, busy_s=0, obp_s=0, starved_s=0, unstaffed=True
+    )
+    window.record(5.0, actors=1, slot_s=5, busy_s=0, obp_s=5, starved_s=0)
     shares = window.shares()
     assert shares is not None
     assert (shares.busy, shares.obp, shares.unstaffed) == (0.5, 0.5, 0.5)
@@ -219,8 +231,31 @@ def test_share_window_counts_unstaffed_time_as_one_busy_actor():
 
     # No actors and nothing queued is no data, not a busy stage.
     idle = ShareWindow(window_s=10.0)
-    idle.record(dt=10.0, serving=0, busy=0, obp=0, starved=0)
+    idle.record(10.0, actors=0, slot_s=0, busy_s=0, obp_s=0, starved_s=0)
     assert idle.shares() is None
+
+
+@pytest.mark.parametrize(
+    "work, rate, expected",
+    [(8, 2.0, 4.0), (0, 0.0, 0.0), (3, 0.0, math.inf)],
+    ids=["drains", "nothing-to-drain", "never-consumed"],
+)
+def test_time_to_free(work, rate, expected):
+    assert time_to_free(work, rate) == expected
+
+
+def test_circular_only_when_every_op_between_is_output_backpressured():
+    shares = {
+        "R": OpShares(busy=0.0, obp=1.0, starved=0.0, actors=7),
+        "B": OpShares(busy=0.05, obp=0.95, starved=0.0, actors=2),
+        "W": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2),
+    }
+    _, next_ops = _chain("R", "B", "W")
+    assert is_circular("R", "W", shares, next_ops, ARROW_MARGIN)
+    assert is_circular("B", "W", shares, next_ops, ARROW_MARGIN)  # adjacent
+    assert not is_circular("W", "R", shares, next_ops, ARROW_MARGIN)  # upstream
+    flowing = dict(shares, B=OpShares(busy=0.7, obp=0.3, starved=0.0, actors=2))
+    assert not is_circular("R", "W", flowing, next_ops, ARROW_MARGIN)
 
 
 class _Clock:
@@ -231,18 +266,53 @@ class _Clock:
         return self.now
 
 
+class _Pool:
+    def __init__(self, states=None, max_size=10):
+        self.states = states or {}
+        self._max_size = max_size
+
+    def serving_size(self):
+        return sum(len(by_actor) for by_actor in self.states.values())
+
+    def max_size(self):
+        return self._max_size
+
+    def alive_actor_states_by_node(self):
+        return self.states
+
+
 class _Op:
-    def __init__(self, name, breakdown, completed=False):
+    """Fake op: slot usage set per test; ``busy_slots`` advance the busy-slot
+    integral by that many slot-seconds per observed second."""
+
+    def __init__(self, name, *, serving, obp_actors=0, busy_slots=0.0, conc=1):
         self.name = name
         self.id = name
-        self.breakdown = breakdown
-        self.completed = completed
+        self.serving = serving
+        self.obp_actors = obp_actors
+        self.busy_slots = busy_slots
+        self.conc = conc
+        self.busy_slot_seconds = 0.0
+        self.completed = False
+        self.metrics = SimpleNamespace(
+            num_task_inputs_processed=0,
+            num_outputs_taken=0,
+            num_task_outputs_generated=0,
+            num_tasks_finished=0,
+        )
+        self.actor_pool = _Pool()
 
     def has_completed(self):
         return self.completed
 
-    def serving_actor_breakdown(self):
-        return self.breakdown
+    def slot_usage(self):
+        return SlotUsage(
+            serving_actors=self.serving,
+            slots=self.serving * self.conc,
+            obp_slots=self.obp_actors * self.conc,
+            obp_busy_slots=0,
+            busy_slot_seconds=self.busy_slot_seconds,
+        )
 
 
 class _OpState:
@@ -253,40 +323,61 @@ class _OpState:
         return self.queued
 
 
-def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
-    producer = _Op("P", breakdown=(4, 0, 4, 0))
-    consumer = _Op("C", breakdown=(2, 1, 0, 1))
+def _observer(*ops, queued, window_s=4.0):
+    """An observer over the chain ``ops`` and a stepper that advances the
+    fake clock by 1s, moves each op's busy-slot integral, and observes."""
+    prev_ops, next_ops = _chain(*ops)
     profiles = SimpleNamespace(
-        actor_pool_ops=(producer, consumer),
-        prev_ops={producer: (), consumer: (producer,)},
-        next_ops={producer: (consumer,), consumer: ()},
+        actor_pool_ops=ops,
+        non_pg_ops=ops,
+        prev_ops=prev_ops,
+        next_ops=next_ops,
+        is_pg_managed=lambda op: False,
     )
-    # Fakes stand in for real operators and op states; the observer only
-    # calls the methods defined on them.
-    topology = cast(Any, {producer: _OpState(queued=0), consumer: _OpState(queued=3)})
+    topology = cast(Any, {op: _OpState(queued=q) for op, q in zip(ops, queued)})
     clock = _Clock()
-    observer = BottleneckObserver(cast(Any, profiles), clock=clock, window_s=4.0)
+    observer = BottleneckObserver(cast(Any, profiles), clock=clock, window_s=window_s)
 
-    for _ in range(5):
-        observer.observe(topology)
-        clock.now += 1.0
+    def step(n=1):
+        for _ in range(n):
+            observer.observe(topology)
+            clock.now += 1.0
+            for op in ops:
+                op.busy_slot_seconds += op.busy_slots
+
+    return observer, topology, step
+
+
+def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
+    producer = _Op("P", serving=4, obp_actors=4)
+    consumer = _Op("C", serving=2, busy_slots=1.0)
+    observer, topology, step = _observer(producer, consumer, queued=(0, 3))
+
+    step(5)
     snapshot = observer.snapshot()
     shares = cast(Dict[Any, OpShares], snapshot.shares)
 
     # Consumer's idle actor has queued work: a dispatch gap, not starvation.
     assert shares[consumer].starved == 0.0
+    assert shares[consumer].busy == 0.5
     assert shares[producer].obp == 1.0
     assert [op for op, _ in snapshot.bottlenecks] == [consumer]
     assert "bottlenecks=[C(" in format_snapshot(
         snapshot, {producer: "P", consumer: "C"}
     )
 
-    # The consumer loses every actor with input still queued: it stays in the
+    # With its queue empty, the consumer's idle slot is starved.
+    topology[consumer].queued = 0
+    step(5)
+    assert (
+        cast(Dict[Any, OpShares], observer.snapshot().shares)[consumer].starved == 0.5
+    )
+
+    # The consumer loses every actor with input queued: it stays in the
     # model as unstaffed, and is still the one named.
-    consumer.breakdown = (0, 0, 0, 0)
-    for _ in range(5):
-        observer.observe(topology)
-        clock.now += 1.0
+    topology[consumer].queued = 3
+    consumer.serving, consumer.busy_slots = 0, 0.0
+    step(5)
     snapshot = observer.snapshot()
     shares = cast(Dict[Any, OpShares], snapshot.shares)
     assert shares[consumer].unstaffed == 1.0
@@ -295,8 +386,98 @@ def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
 
     # A completed op leaves the model.
     producer.completed = True
-    observer.observe(topology)
+    step()
     assert producer not in observer.snapshot().shares
+
+
+def test_short_tasks_between_samples_count_as_busy():
+    # Each 1s step the op ran 0.4 slot-seconds of tasks that started and
+    # finished between samples: per-step sampling would see it idle.
+    op = _Op("C", serving=1, busy_slots=0.4)
+    upstream = _Op("P", serving=2, obp_actors=2)
+    observer, _, step = _observer(upstream, op, queued=(0, 5))
+    step(5)
+    shares = cast(Dict[Any, OpShares], observer.snapshot().shares)
+    assert shares[op].busy == pytest.approx(0.4)
+
+
+GiB = 2**30
+_NEEDS = ExecutionResources(cpu=1, memory=2.4 * GiB)
+
+
+@pytest.mark.parametrize(
+    "free_mem_gib, write_nodes, expected",
+    [
+        (3, {"n1"}, "yes: free"),
+        (0.5, {"n1"}, "yes: victims"),
+        (0.5, {"n3"}, "no: short {cpu=1, memory=2.4GiB} after all victims"),
+    ],
+    ids=["free-room", "victims-on-its-node", "no-actors-on-its-node"],
+)
+def test_assessment_eligibility_and_victims(
+    monkeypatch, free_mem_gib, write_nodes, expected
+):
+    """video_object_detection stall: Write (W) is the bottleneck. Read (R)
+    actors sit on n1; the GPU op (B) is on n2. Victims are listed only for an
+    eligible recipient, from donors with actors on its nodes, and R's are
+    circular: their outputs clear through B, which is backpressured on W."""
+
+    def actors(n):
+        return {f"a{i}": SimpleNamespace(status=ActorStatus.ACTIVE) for i in range(n)}
+
+    read = _Op("R", serving=2, obp_actors=2)
+    read.actor_pool = _Pool({"n1": actors(2)})
+    read.metrics.num_task_outputs_generated = 20
+    read.metrics.num_tasks_finished = 10
+    gpu = _Op("B", serving=1, obp_actors=1)
+    gpu.actor_pool = _Pool({"n2": actors(1)})
+    write = _Op("W", serving=1, busy_slots=1.0)
+    write.actor_pool = _Pool({"n2": actors(1)}, max_size=4)
+    observer, _, step = _observer(read, gpu, write, queued=(5, 5, 5))
+    for _ in range(5):
+        gpu.metrics.num_task_inputs_processed += 1  # B consumes 1 block/s
+        step()
+
+    # R's two actors on n1: (tasks in flight, unconsumed outputs).
+    views = {read: {"n1": [(0, 4), (1, 2)]}, gpu: {"n2": [(0, 1)]}}
+    monkeypatch.setattr(
+        bottleneck_observer.placement_view,
+        "build_op_placement_view",
+        lambda op, rank_victims: SimpleNamespace(victim_drain_cost_by_node=views[op]),
+    )
+    zero = ExecutionResources(cpu=0, memory=0)
+    capacity = cast(
+        Any,
+        SimpleNamespace(
+            free_by_node={
+                "n1": ExecutionResources(cpu=1, memory=free_mem_gib * GiB),
+                "n2": zero,
+                "n3": zero,
+            },
+            schedulable_nodes_by_op={read: {"n1"}, gpu: {"n2"}, write: write_nodes},
+            per_actor_resources_by_op={
+                read: _NEEDS,
+                gpu: ExecutionResources(cpu=1, gpu=1, memory=3.3 * GiB),
+                write: _NEEDS,
+            },
+        ),
+    )
+
+    snapshot = observer.snapshot()
+    assessment = observer.assess(snapshot, capacity)
+
+    assert [op for op, _ in snapshot.bottlenecks] == [write]
+    assert assessment.eligibility == {write: expected}
+    line = format_snapshot(snapshot, {read: "R", gpu: "B", write: "W"}, assessment)
+    assert f"eligible=[W: {expected}]" in line
+    if expected.startswith("no:"):
+        assert assessment.recipient is None and "victims for" not in line
+    elif write_nodes == {"n1"}:
+        # 4 outputs, and 2 outputs + 1 task x 2 outputs/task, at 1 block/s.
+        assert assessment.victims == {
+            read: DonorVictims(count=2, ttf_min_s=4.0, ttf_p50_s=4.0, circular=True)
+        }
+        assert "victims for W=[R n=2 ttf min=4s p50=4s circular]" in line
 
 
 if __name__ == "__main__":

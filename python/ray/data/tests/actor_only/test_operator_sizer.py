@@ -33,6 +33,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool import (
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
+    SlotUsage,
     next_actor_pool_ops,
     prev_actor_pool_ops,
 )
@@ -127,6 +128,9 @@ def _views_from_fake_ops(monkeypatch):
 class _FakeMetrics:
     def __init__(self):
         self.num_task_outputs_generated = 0
+        self.num_task_inputs_processed = 0
+        self.num_outputs_taken = 0
+        self.num_tasks_finished = 0
         # Inputs consumed per task; the demand target divides enqueued by this.
         self.average_num_inputs_per_task = 1
 
@@ -398,13 +402,19 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
     def productive_task_slots(self):
         return max(0, self._pool.num_tasks_in_flight() - self.out_backpressure[0])
 
-    def serving_actor_breakdown(self):
-        # (serving, busy, output_backpressured, idle), from the same knobs the
-        # other accessors read: blocked actors first, then busy, rest idle.
+    def slot_usage(self):
+        # From the same knobs the other accessors read: blocked actors are
+        # output-backpressured; the fake keeps no busy-slot integral.
         serving = self._pool.num_running_actors()
+        conc = self._pool.max_actor_concurrency()
         blocked = min(serving, self.out_backpressure[0])
-        busy = min(serving - blocked, self._pool.num_tasks_in_flight())
-        return serving, busy, blocked, serving - blocked - busy
+        return SlotUsage(
+            serving_actors=serving,
+            slots=serving * conc,
+            obp_slots=blocked * conc,
+            obp_busy_slots=0,
+            busy_slot_seconds=0.0,
+        )
 
     def output_backpressured_actors(self):
         # Mirror the real contract: a pool with no running actors or with

@@ -224,7 +224,7 @@ class OperatorSizer:
         if ctx is None:
             return
         self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
-        self._bottleneck_observer.log_tick()
+        self._bottleneck_observer.log_tick(ctx.capacity)
         # Picks up placement groups a ray_remote_args_fn created since the
         # last tick, so later views take their bundles out of the slice.
         self._register_placement_groups()

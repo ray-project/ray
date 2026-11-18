@@ -794,6 +794,33 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert pool._running_actors[busy].status == ActorStatus.ACTIVE
         assert pool._running_actors[idle].status == ActorStatus.DRAINING
 
+    def test_busy_slot_seconds_integrates_tasks_in_flight(self):
+        """The busy-slot integral counts each serving actor's
+        min(max_concurrency, tasks in flight) over time, updated on every
+        submit, completion and status change, so a task shorter than a sizer
+        tick still counts. A draining actor is not serving and adds nothing."""
+        clock = [100.0]
+        with mock.patch.object(pool_mod.time, "monotonic", lambda: clock[0]):
+            pool = self._create_pool(max_tasks_in_flight=4, max_size=4)
+            a = self._add_ready_actor(pool, node_id="node1")
+            b = self._add_ready_actor(pool, node_id="node2")
+            start = pool.busy_slot_seconds()
+
+            # A 0.5s task on a: counted though it starts and ends between reads.
+            pool.on_task_submitted(a, _make_bundle(100))
+            clock[0] += 0.5
+            pool.on_task_completed(a, _make_bundle(100))
+            # Two tasks on b with max_concurrency=1: one slot, for 2s.
+            pool.on_task_submitted(b, _make_bundle(100))
+            pool.on_task_submitted(b, _make_bundle(100))
+            clock[0] += 2.0
+            assert pool.busy_slot_seconds() - start == 2.5
+
+            # Draining b stops its contribution though its tasks still run.
+            pool.begin_draining(b, reason=DrainReason.RESIZE)
+            clock[0] += 3.0
+            assert pool.busy_slot_seconds() - start == 2.5
+
     def test_drained_actor_is_killed_even_with_stray_handle(self):
         """A fully drained actor is killed at teardown, not just dereferenced.
         ``actor`` below is a handle outside the pool; ref counting alone would
@@ -2246,27 +2273,32 @@ def test_is_output_backpressured_counts_blocked_tasks_not_actors():
     assert op.is_output_backpressured() is True
 
 
-def test_serving_actor_breakdown_puts_each_serving_actor_in_one_bucket():
-    """Serving (IDLE / ACTIVE) actors split into output-backpressured, busy
-    and idle; output backpressure wins over busy and idle, and non-serving
-    actors are left out."""
+def test_slot_usage_counts_output_backpressured_actors_whole():
+    """Serving (IDLE / ACTIVE) actors' slots: an output-backpressured actor
+    contributes all its slots to obp (and its held tasks to obp_busy_slots),
+    whether or not it holds tasks; non-serving actors are left out."""
     from types import SimpleNamespace
 
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
     )
 
+    def actor(status, in_flight):
+        return SimpleNamespace(status=status, num_tasks_in_flight=in_flight)
+
     states = {
-        "busy": SimpleNamespace(status=ActorStatus.ACTIVE),
-        "blocked_busy": SimpleNamespace(status=ActorStatus.ACTIVE),
-        "blocked_idle": SimpleNamespace(status=ActorStatus.IDLE),
-        "idle": SimpleNamespace(status=ActorStatus.IDLE),
-        "draining": SimpleNamespace(status=ActorStatus.DRAINING),
+        "busy": actor(ActorStatus.ACTIVE, 2),
+        "blocked_busy": actor(ActorStatus.ACTIVE, 3),
+        "blocked_idle": actor(ActorStatus.IDLE, 0),
+        "idle": actor(ActorStatus.IDLE, 0),
+        "draining": actor(ActorStatus.DRAINING, 1),
     }
     blocked = {"blocked_busy", "blocked_idle", "draining"}
     op = cast(Any, object.__new__(ExperimentalActorPoolMapOperator))
     pool = cast(Any, object.__new__(_ExperimentalActorPool))
     pool.alive_actor_states_by_node = lambda: {"node1": states}
+    pool.max_actor_concurrency = lambda: 2
+    pool.busy_slot_seconds = lambda: 42.0
     op._actor_pool = pool
     op._actor_pull_budget = lambda actor_id: (
         TaskPullRequest.zero()
@@ -2274,7 +2306,11 @@ def test_serving_actor_breakdown_puts_each_serving_actor_in_one_bucket():
         else TaskPullRequest(bytes_to_read=1, blocks_to_read=1)
     )
 
-    assert op.serving_actor_breakdown() == (4, 1, 2, 1)
+    usage = op.slot_usage()
+    assert (usage.serving_actors, usage.slots) == (4, 8)
+    # blocked_busy holds 3 tasks but has only 2 slots.
+    assert (usage.obp_slots, usage.obp_busy_slots) == (4, 2)
+    assert usage.busy_slot_seconds == 42.0
 
 
 def test_expired_pending_actor_is_released_and_killed(monkeypatch):

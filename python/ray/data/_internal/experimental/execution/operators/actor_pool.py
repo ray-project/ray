@@ -181,6 +181,14 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # ``process_draining_actors``): at most one line per
         # ``DRAIN_STALL_WARN_S`` for the whole pool.
         self._last_drain_stall_warn_ts: float = 0.0
+        # Busy-slot integral for the bottleneck observer: the time integral of
+        # each serving (IDLE/ACTIVE) actor's min(max_concurrency, tasks in
+        # flight). Advanced on every change, so tasks shorter than a sizer
+        # tick still count. Contributions keyed by actor id.
+        self._busy_slots_now = 0
+        self._busy_slot_seconds = 0.0
+        self._busy_clock_t = time.monotonic()
+        self._busy_slots_by_actor: Dict[ActorId, int] = {}
         # Map from actor handle to its Ray actor id (hex).
         self._actor_to_id: Dict[ActorHandle, ActorId] = {}
         # Per-actor resource usage, needed because ray_remote_args_fn can
@@ -268,7 +276,39 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._status_counts[state.status] -= 1
         self._status_counts[status] += 1
         state.status = status
+        self._update_busy_slots(state)
         return True
+
+    def _advance_busy_clock(self) -> None:
+        now = time.monotonic()
+        self._busy_slot_seconds += self._busy_slots_now * (now - self._busy_clock_t)
+        self._busy_clock_t = now
+
+    def _update_busy_slots(self, state: _ExperimentalActorState) -> None:
+        """Re-read one actor's busy slots after its in-flight count or status
+        changed. Only serving (IDLE/ACTIVE) actors count."""
+        serving = state.status in (ActorStatus.IDLE, ActorStatus.ACTIVE)
+        new = (
+            min(self.max_actor_concurrency(), state.num_tasks_in_flight)
+            if serving
+            else 0
+        )
+        old = self._busy_slots_by_actor.get(state.actor_id, 0)
+        if new == old:
+            return
+        self._advance_busy_clock()
+        self._busy_slots_now += new - old
+        if new:
+            self._busy_slots_by_actor[state.actor_id] = new
+        else:
+            self._busy_slots_by_actor.pop(state.actor_id, None)
+
+    def busy_slot_seconds(self) -> float:
+        """Cumulative busy-slot seconds since the pool was created: the time
+        integral of each serving actor's min(max_concurrency, tasks in
+        flight). Callers difference two reads to get a window's busy time."""
+        self._advance_busy_clock()
+        return self._busy_slot_seconds
 
     def _is_available_for_scheduling(self, state: _ExperimentalActorState) -> bool:
         """Whether this actor may accept another task. Used by both scheduling
@@ -444,6 +484,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         state.num_input_bytes_in_flight += input_bundle.size_bytes()
         state.latest_task_submission_ts = time.perf_counter()
         self._total_num_tasks_in_flight += 1
+        self._update_busy_slots(state)
 
         # Transfer ownership of primary (local) inputs to this actor by
         # withdrawing them from the ResourceBank now: the producing actor's
@@ -609,6 +650,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         )
 
         self._total_num_tasks_in_flight -= 1
+        self._update_busy_slots(state)
         if state.num_tasks_in_flight == 0:
             self._mark_node_actor_inactive(state)
             # 1 -> 0 in flight: ACTIVE -> IDLE. A DRAINING actor finishing its
@@ -1037,6 +1079,9 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
         # Update total tasks in flight
         self._total_num_tasks_in_flight -= actor_state.num_tasks_in_flight
+        if self._busy_slots_by_actor.get(actor_state.actor_id):
+            self._advance_busy_clock()
+            self._busy_slots_now -= self._busy_slots_by_actor.pop(actor_state.actor_id)
 
         # The per-node active map counts any running actor (incl. draining)
         # with in-flight tasks, so unmark whenever the released actor still
