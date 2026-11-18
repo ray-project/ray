@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from typing import AsyncIterator, Dict, List
+from unittest.mock import call, patch
 
 import pytest
 
@@ -363,6 +364,36 @@ async def test_batch_timeout_counts_time_waiting_for_a_permit():
     release.set()
     assert await asyncio.gather(first, second) == [0, 1]
     assert batch_start_times[1] - release_time < 0.5
+
+
+@pytest.mark.asyncio
+async def test_queue_length_gauge_reads_empty_queue_after_backlog_batch():
+    # Requests that wait for the only permit form the next batch in one pass.
+    # Once that batch is taken, the gauge must read the empty queue, not the
+    # backlog it saw before draining it.
+    batch_sizes = []
+    release = asyncio.Event()
+    with patch("ray.serve.batching.Gauge") as gauge_cls:
+
+        @serve.batch(
+            max_batch_size=4, batch_wait_timeout_s=0.01, max_concurrent_batches=1
+        )
+        async def func(requests):
+            batch_sizes.append(len(requests))
+            await release.wait()
+            return requests
+
+        first = get_or_create_event_loop().create_task(func(0))
+        while not batch_sizes:
+            await asyncio.sleep(0.01)
+        rest = [get_or_create_event_loop().create_task(func(i)) for i in range(1, 5)]
+        await asyncio.sleep(0.05)
+        release.set()
+        assert await asyncio.gather(first, *rest) == [0, 1, 2, 3, 4]
+    assert batch_sizes == [1, 4]
+    assert gauge_cls.return_value.set.call_args_list[-1] == call(
+        0, tags={"function_name": "func"}
+    )
 
 
 @pytest.mark.asyncio
