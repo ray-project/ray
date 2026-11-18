@@ -14,10 +14,7 @@ from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
-    SERVE_NAMESPACE,
-)
+from ray.serve._private.constants import RAY_SERVE_ENABLE_DIRECT_INGRESS
 from ray.serve._private.test_utils import (
     get_application_url,
     ping_fruit_stand,
@@ -35,7 +32,14 @@ from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2, multiplexed_g
 
 
-def test_serving_grpc_requests(ray_cluster):
+@pytest.fixture
+def ray_instance(ray_instance_module):
+    """One Ray for the module: each Ray start can fail on Windows, so start it once."""
+    yield ray_instance_module
+    serve.shutdown()
+
+
+def test_serving_grpc_requests(ray_instance):
     """Test serving gRPC requests.
 
     When Serve runs with a gRPC deployment, the app should be deployed successfully,
@@ -43,10 +47,6 @@ def test_serving_grpc_requests(ray_cluster):
     registered gRPC methods are routing to the correct replica and return the correct
     response.
     """
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -101,12 +101,8 @@ def test_serving_grpc_requests(ray_cluster):
     "direct ingress / HAProxy is enabled (the multiplexed model ID is not "
     "propagated to the replica).",
 )
-def test_grpc_model_multiplexing(ray_cluster):
+def test_grpc_model_multiplexing(ray_instance):
     """Model multiplexing over gRPC routes requests to the correct model."""
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
     serve.start(
         grpc_options=gRPCOptions(
             port=9000,
@@ -123,16 +119,12 @@ def test_grpc_model_multiplexing(ray_cluster):
     ping_grpc_model_multiplexing(channel, "default")
 
 
-def test_serve_start_dictionary_grpc_options(ray_cluster):
+def test_serve_start_dictionary_grpc_options(ray_instance):
     """Test serve able to start with dictionary grpc_options.
 
     When Serve starts with dictionary grpc_options, it should not throw errors and able
     to serve health check and list applications gRPC requests.
     """
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -158,7 +150,7 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
     ping_grpc_healthz(channel)
 
 
-def test_grpc_routing_without_metadata(ray_cluster):
+def test_grpc_routing_without_metadata(ray_instance):
     """Test metadata are not required when calling gRPC proxy with only one app.
 
     When there is only one app deployed, gRPC proxy will route the request to the app
@@ -168,10 +160,6 @@ def test_grpc_routing_without_metadata(ray_cluster):
     # Routing doesn't happen in direct ingress mode.
     if RAY_SERVE_ENABLE_DIRECT_INGRESS:
         pytest.skip()
-
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
 
     grpc_port = 9000
     grpc_servicer_functions = [
@@ -217,17 +205,13 @@ def test_grpc_routing_without_metadata(ray_cluster):
     assert "Application metadata not set" in rpc_error.details()
 
 
-def test_grpc_request_with_request_id(ray_cluster):
+def test_grpc_request_with_request_id(ray_instance):
     """Test gRPC request with and without request id.
 
     When no request id is passed, gRPC proxy will respond with a random request id in
     the trailing metadata. When request id is passed, gRPC proxy will respond with the
     original request id.
     """
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -1623,7 +1607,7 @@ def test_grpc_streaming_client_closes_channel_mid_stream(ray_instance):
 
 
 @pytest.mark.parametrize("enable_reflection", [False, True])
-def test_grpc_proxy_server_reflection(ray_cluster, enable_reflection: bool):
+def test_grpc_proxy_server_reflection(ray_instance, enable_reflection: bool):
     """Test the gRPC server reflection protocol on Serve's gRPC proxy.
 
     When `enable_reflection` is set (the default), a reflection client
@@ -1632,10 +1616,6 @@ def test_grpc_proxy_server_reflection(ray_cluster, enable_reflection: bool):
     advertised. When it's disabled, reflection RPCs return UNIMPLEMENTED.
     User-defined RPCs route to replicas either way.
     """
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
     serve.start(
         grpc_options=gRPCOptions(
             port=9000,
