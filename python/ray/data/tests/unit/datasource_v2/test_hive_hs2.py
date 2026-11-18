@@ -11,6 +11,7 @@ from ray.data._internal.datasource_v2.formats.hive import hive_hs2
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveReadSpec,
 )
+from ray.data._internal.datasource_v2.formats.hive.hive_sql import quote_identifier
 
 
 class _Cursor:
@@ -590,6 +591,13 @@ def test_early_close_cancels_operation():
     next(batches)
     batches.close()
     assert cursor.cancelled and cursor.closed and connection.closed
+
+
+def test_hive_identifier_quoting():
+    assert quote_identifier("select 类别`") == "`select 类别```"
+    for name in ("", "bad\0name"):
+        with pytest.raises(ValueError, match="identifier"):
+            quote_identifier(name)
 
 
 def test_projected_result_schema_is_validated_without_requiring_source_columns():

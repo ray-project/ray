@@ -338,7 +338,13 @@ class TestHiveTablePushdown:
                 )
 
             trace = tmp_path / "projection.jsonl"
-            rows = source(trace).select_columns(["name"]).limit(2).take_all()
+            rows = (
+                source(trace, limit=5)
+                .select_columns(["name"])
+                .limit(2**31)
+                .limit(2)
+                .take_all()
+            )
             assert len(rows) == 2 and all(set(row) == {"name"} for row in rows)
             sql = _data_statements(trace)
             assert len(sql) == 1 and sql[0].startswith("SELECT `name`")
@@ -349,13 +355,7 @@ class TestHiveTablePushdown:
             ids = dataset.select_columns(["id"])
             names = dataset.select_columns(["name"])
             assert sorted(row["id"] for row in ids.take_all()) == [1, 2, 3, 4, 5]
-            assert sorted(row["name"] for row in names.take_all()) == [
-                "a",
-                "b",
-                "c",
-                "d",
-                "e",
-            ]
+            assert sorted(row["name"] for row in names.take_all()) == list("abcde")
             assert sorted(row["id"] for row in ids.take_all()) == [1, 2, 3, 4, 5]
             statements = _data_statements(trace)
             assert len(statements) == 3
@@ -364,6 +364,37 @@ class TestHiveTablePushdown:
                 "SELECT `name`",
                 "SELECT `id`",
             ]
+
+            trace = tmp_path / "source-filter-limit.jsonl"
+            rows = (
+                source(trace, limit=5).filter(expr=col("id") >= 3).limit(2).take_all()
+            )
+            assert len(rows) == 2 and all(row["id"] >= 3 for row in rows)
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and sql[0].endswith(" LIMIT 5")
+            assert " WHERE " not in sql[0]
+
+            for limit in (None, 2**31):
+                trace = tmp_path / f"filter-limit-{limit}.jsonl"
+                dataset = source(trace)
+                if limit is not None:
+                    dataset = dataset.limit(limit)
+                rows = (
+                    dataset.filter(expr=col("id") >= 3)
+                    .select_columns(["name"])
+                    .limit(2)
+                    .take_all()
+                )
+                assert len(rows) == 2 and all(
+                    set(row) == {"name"} and row["name"] in ("c", "d", "e")
+                    for row in rows
+                )
+                sql = _data_statements(trace)
+                assert (
+                    len(sql) == 1
+                    and " WHERE " not in sql[0]
+                    and " LIMIT " not in sql[0]
+                )
 
             trace = tmp_path / "query.jsonl"
             query = f"SELECT id, name FROM {table}"
@@ -382,21 +413,6 @@ class TestHiveTablePushdown:
                 row["name"] in ("c", "d", "e") for row in rows
             )
             assert _data_statements(trace) == [query]
-
-            trace = tmp_path / "source-filter-limit.jsonl"
-            rows = (
-                source(trace, limit=5).filter(expr=col("id") >= 3).limit(2).take_all()
-            )
-            assert len(rows) == 2 and all(row["id"] >= 3 for row in rows)
-            sql = _data_statements(trace)
-            assert len(sql) == 1 and sql[0].endswith(" LIMIT 5")
-            assert " WHERE " not in sql[0]
-
-            trace = tmp_path / "filter-limit.jsonl"
-            rows = source(trace).filter(expr=col("id") >= 3).limit(2).take_all()
-            assert len(rows) == 2 and all(row["id"] >= 3 for row in rows)
-            sql = _data_statements(trace)
-            assert len(sql) == 1 and " WHERE " not in sql[0] and " LIMIT " not in sql[0]
 
             trace = tmp_path / "limit-filter.jsonl"
             rows = source(trace).limit(5).filter(expr=col("id") >= 3).take_all()
@@ -431,27 +447,41 @@ class TestHiveTablePushdown:
                 table,
                 connection_factory=_traced_factory(options, trace, fail_fetch=True),
             ).select_columns(["id"])
-            with pytest.raises(Exception):
+            with pytest.raises(
+                Exception, match="injected fetch failure after real HS2 output"
+            ):
                 failing.take_all()
             assert len(_data_statements(trace)) == 1
 
-    def test_hive_dataset_boolean_limit_over_real_hs2(self, tmp_path):
+    def test_hive_dataset_limit_boundaries_over_real_hs2(self, tmp_path):
         options = _connection_options()
         values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
         with _temporary_table(options, "id BIGINT", values) as (table, _):
-            for limit in (True, False):
-                trace = tmp_path / f"boolean-limit-{limit}.jsonl"
+            for limit, expected_count, sql_limit in (
+                (True, 1, None),
+                (False, 0, None),
+                (2**31 - 1, 3, 2**31 - 1),
+                (2**31, 3, None),
+                (2**63, 3, None),
+            ):
+                trace = tmp_path / f"limit-{limit}.jsonl"
                 dataset = ray.data.read_hive(
                     table, connection_factory=_traced_factory(options, trace)
                 ).limit(limit)
                 rows = dataset.take_all()
-                assert len(rows) == int(limit)
+                assert len(rows) == expected_count
                 assert all(row["id"] in (1, 2, 3) for row in rows)
+                if expected_count == 3:
+                    assert sorted(row["id"] for row in rows) == [1, 2, 3]
                 statements = _data_statements(trace)
-                if limit:
-                    assert len(statements) == 1 and " LIMIT " not in statements[0]
-                else:
+                if limit is False:
                     assert statements == []
+                else:
+                    assert len(statements) == 1
+                    if sql_limit is None:
+                        assert " LIMIT " not in statements[0]
+                    else:
+                        assert statements[0].endswith(f" LIMIT {sql_limit}")
 
             trace = tmp_path / "source-limit-boolean.jsonl"
             dataset = ray.data.read_hive(
@@ -461,78 +491,29 @@ class TestHiveTablePushdown:
             statements = _data_statements(trace)
             assert len(statements) == 1 and statements[0].endswith(" LIMIT 2")
 
-    def test_hive_dataset_limit_integer_range_over_real_hs2(self, tmp_path):
-        options = _connection_options()
-        values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
-        with _temporary_table(options, "id BIGINT", values) as (table, _):
-            for limit in (2**31 - 1, 2**31, 2**63):
-                trace = tmp_path / f"limit-{limit}.jsonl"
-                dataset = ray.data.read_hive(
-                    table, connection_factory=_traced_factory(options, trace)
-                ).limit(limit)
-                assert sorted(row["id"] for row in dataset.take_all()) == [1, 2, 3]
-                statements = _data_statements(trace)
-                assert len(statements) == 1
-                if limit == 2**31 - 1:
-                    assert statements[0].endswith(f" LIMIT {limit}")
-                else:
-                    assert " LIMIT " not in statements[0]
-
-            trace = tmp_path / "smaller-limit.jsonl"
-            dataset = (
-                ray.data.read_hive(
-                    table, connection_factory=_traced_factory(options, trace)
-                )
-                .limit(2**31)
-                .limit(1)
-            )
-            rows = dataset.take_all()
-            assert len(rows) == 1 and rows[0]["id"] in (1, 2, 3)
-            statements = _data_statements(trace)
-            assert len(statements) == 1 and statements[0].endswith(" LIMIT 1")
-
-            trace = tmp_path / "filter-after-large-limit.jsonl"
-            dataset = (
-                ray.data.read_hive(
-                    table, connection_factory=_traced_factory(options, trace)
-                )
-                .limit(2**31)
-                .filter(expr=col("id") > 1)
-                .limit(1)
-            )
-            rows = dataset.take_all()
-            assert len(rows) == 1 and rows[0]["id"] in (2, 3)
-            statements = _data_statements(trace)
-            assert len(statements) == 1
-            assert " WHERE " not in statements[0] and " LIMIT " not in statements[0]
-
     def test_hive_projection_quoted_columns_over_real_hs2(self, tmp_path):
         options = _connection_options()
         value = "O'Reilly\\line\n\t\x00中文"
         encoded = value.encode("utf-8").hex()
-        values = f"SELECT 1, decode(unhex('{encoded}'), 'UTF-8'), '标签', 'tick'"
+        values = f"SELECT 1, decode(unhex('{encoded}'), 'UTF-8'), '标签', 'tick', 2"
         with _temporary_table(
             options,
-            "id BIGINT, `select` STRING, `类别` STRING, `a``b` STRING",
+            "id BIGINT, `select` STRING, `类别` STRING, `a``b` STRING, spare BIGINT",
             values,
             storage_clause="STORED AS ORC",
         ) as (table, _):
-            for index, (column, expected) in enumerate(
-                (("select", value), ("类别", "标签"), ("a`b", "tick"))
-            ):
-                trace = tmp_path / f"quoted-{index}.jsonl"
-                dataset = ray.data.read_hive(
-                    table, connection_factory=_traced_factory(options, trace)
-                ).select_columns([column, "id"])
-                assert [dict(row) for row in dataset.take_all()] == [
-                    {column: expected, "id": 1}
-                ]
-                assert dataset.schema().names == [column, "id"]
-                statements = _data_statements(trace)
-                assert len(statements) == 1 and " WHERE " not in statements[0]
-                assert statements[0].startswith(
-                    "SELECT `" + column.replace("`", "``") + "`, `id`"
-                )
+            trace = tmp_path / "quoted.jsonl"
+            columns = ["select", "类别", "a`b", "id"]
+            dataset = ray.data.read_hive(
+                table, connection_factory=_traced_factory(options, trace)
+            ).select_columns(columns)
+            assert [dict(row) for row in dataset.take_all()] == [
+                {"select": value, "类别": "标签", "a`b": "tick", "id": 1}
+            ]
+            assert dataset.schema().names == columns
+            statements = _data_statements(trace)
+            assert len(statements) == 1 and " WHERE " not in statements[0]
+            assert statements[0].startswith("SELECT `select`, `类别`, `a``b`, `id`")
 
 
 def test_hive_tls_rejects_untrusted_or_mismatched_server():
