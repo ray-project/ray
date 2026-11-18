@@ -81,6 +81,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_ENABLE_PUSH_HEALTH,
     RAY_SERVE_FREEZE_GC_ON_STARTUP,
     RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_MAX_PUSH_IN_FLIGHT_S,
@@ -432,6 +433,7 @@ class ReplicaMetricsManager:
         # have to probe for it.
         self._eval_self_health_fn: Optional[Callable] = None
         self._health_check_period_s: float = 0.0
+        self._health_check_timeout_s: float = 0.0
         self._consecutive_failures = 0
         self._last_counted_failure_at: float = 0.0
         self._pending_health_push_ref: Optional[ObjectRef] = None
@@ -709,12 +711,15 @@ class ReplicaMetricsManager:
             return False
         return time.time() - started_s < RAY_SERVE_MAX_PUSH_IN_FLIGHT_S
 
-    def start_self_health_pusher(self, eval_fn: Callable, period_s: float):
+    def start_self_health_pusher(
+        self, eval_fn: Callable, period_s: float, timeout_s: float
+    ):
         """Periodically run the local health check and push the result.
 
         eval_fn raises when unhealthy.
         """
         self._eval_self_health_fn = eval_fn
+        self._health_check_timeout_s = timeout_s
         self._metrics_pusher.start()
         self._schedule_self_health(period_s)
 
@@ -730,6 +735,10 @@ class ReplicaMetricsManager:
             fixed_rate=True,
         )
 
+    @property
+    def health_check_timeout_s(self) -> float:
+        return self._health_check_timeout_s
+
     def clear_self_health_failures(self) -> None:
         """A check passed, so the failures counted before it are over."""
         self._consecutive_failures = 0
@@ -739,6 +748,9 @@ class ReplicaMetricsManager:
         # so narrow the Optional for the type checkers.
         eval_fn = self._eval_self_health_fn
         assert eval_fn is not None
+        # The check keeps running past the threshold so a pass can clear the count:
+        # one counted while the controller could not act on it, such as during a
+        # controller restart, would otherwise latch and replace a replica that recovered.
         healthy = True
         try:
             await eval_fn()
@@ -2017,6 +2029,7 @@ class Replica:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
+            self._start_self_health_pusher()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
@@ -2044,6 +2057,9 @@ class Replica:
             self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
             )
+            if self._user_callable_initialized:
+                # The period may have changed, so re-register the task with it.
+                self._start_self_health_pusher()
             self._metrics_manager.set_max_ongoing_requests(
                 deployment_config.max_ongoing_requests
             )
@@ -2385,6 +2401,22 @@ class Replica:
             extra={"log_to_stderr": False},
         )
 
+    def _start_self_health_pusher(self):
+        if not RAY_SERVE_ENABLE_PUSH_HEALTH:
+            return
+        self._metrics_manager.start_self_health_pusher(
+            self._run_self_health_check,
+            self._deployment_config.health_check_period_s,
+            self._deployment_config.health_check_timeout_s,
+        )
+
+    async def _run_self_health_check(self):
+        """The self-check's eval. Timed out as the controller times out a probe, so one
+        that hangs counts as a failure rather than ending the heartbeat for good."""
+        await asyncio.wait_for(
+            self.check_health(), self._metrics_manager.health_check_timeout_s
+        )
+
     async def check_health(self):
         try:
             # Runs the user-defined check_health on the user code loop if defined.
@@ -2396,6 +2428,9 @@ class Replica:
             if f is not None:
                 await f
             self._healthy = True
+            # Whichever check passed: a count it left standing would come back
+            # through the controller's max() and add to the next failure.
+            self._metrics_manager.clear_self_health_failures()
         except Exception as e:
             logger.warning("Replica health check failed.")
             self._healthy = False

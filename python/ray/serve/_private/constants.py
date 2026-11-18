@@ -510,6 +510,10 @@ RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
     "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
 )
 
+# Replicas run their own health check and push the result; the controller
+# pull-probes only when a pushed result goes stale. Removed once the stack lands.
+RAY_SERVE_ENABLE_PUSH_HEALTH = get_env_bool("RAY_SERVE_ENABLE_PUSH_HEALTH", "0")
+
 # Replica autoscaling metrics push interval.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
