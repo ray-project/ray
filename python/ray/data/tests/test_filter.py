@@ -544,10 +544,6 @@ def test_filter_udf_preserves_dictionary_encoded_column_type(
 
 
 # https://github.com/ray-project/ray/issues/67230
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize("literal", ["english", "中文"])
 @pytest.mark.parametrize("limit_first", [False, True])
 def test_filter_expr_with_unicode_literal(

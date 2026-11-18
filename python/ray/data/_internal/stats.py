@@ -118,6 +118,10 @@ def _to_metric_tag_value(value: str) -> str:
     Ray's metrics recorder only accepts ASCII tag values, but operator names can
     contain Unicode (e.g., string literals in filter expressions). ASCII values
     are returned unchanged.
+
+    The escaping isn't injective: a non-ASCII value and the ASCII text it escapes
+    to map to the same tag. Operator IDs still get distinct tags within a dataset,
+    because each ID ends with the operator's index in the topology.
     """
     return value.encode("ascii", "backslashreplace").decode("ascii")
 
