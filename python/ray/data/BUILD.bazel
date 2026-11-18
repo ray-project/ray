@@ -48,6 +48,10 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    extra_srcs = [
+        "tests/parquet_test_utils.py",
+        "tests/schema_planning_utils.py",
+    ],
     files = glob(["tests/datasource_v2/test_*.py"]),
     tags = [
         "exclusive",

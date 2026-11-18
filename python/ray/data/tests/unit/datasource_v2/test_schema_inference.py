@@ -148,8 +148,9 @@ def test_schema_inference_empty_paths_does_not_read():
         ),
     ],
 )
+@pytest.mark.parametrize("full", [False, True])
 def test_datasources_use_existing_unifier(
-    tmp_path, format_name, datasource_class, write_table, read_schema
+    tmp_path, format_name, datasource_class, write_table, read_schema, full
 ):
     paths = [str(tmp_path / f"{i}.{format_name}") for i in range(2)]
     tables = [
@@ -164,7 +165,12 @@ def test_datasources_use_existing_unifier(
         chunk_metadatas=[None, None],
     )
 
-    actual = datasource_class([str(tmp_path)]).infer_schema(sample)
+    source = datasource_class([str(tmp_path)])
+    actual = (
+        source.infer_full_schema(sample, ray_remote_args={})
+        if full
+        else source.infer_schema(sample)
+    )
     expected = unify_schemas_with_validation([read_schema(path) for path in paths])
 
     assert actual.equals(expected, check_metadata=True)

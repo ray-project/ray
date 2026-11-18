@@ -651,7 +651,11 @@ def _read_datasource_v2(
         time.perf_counter() - listing_started if listing_started is not None else None
     )
     schema_started = time.perf_counter() if sample_all_files_for_schema else None
-    schema = datasource.infer_schema(sample)
+    if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
+        assert sample is not None
+        schema = datasource.infer_full_schema(sample, ray_remote_args=ray_remote_args)
+    else:
+        schema = datasource.infer_schema(sample)
     schema_elapsed = (
         time.perf_counter() - schema_started if schema_started is not None else None
     )
@@ -1872,13 +1876,12 @@ def read_parquet(
     .. note::
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
-        planning, which can be expensive for large or remote datasets. Execution
-        reads footer metadata again. With more than 10,000 candidate files, the
-        reader warns before footer merging. Retained path and size metadata adds
-        O(files) data to serialized lineage.
-
-        Follow-up work for distributed planning-time footer reads and metadata
-        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+        planning, which can be expensive for large or remote datasets. Larger
+        eligible reads distribute schema I/O across Ray tasks. Execution reads
+        footer metadata again.
+        With more than 10,000 candidate files, the reader warns before schema
+        merging. Retained path and size metadata adds O(files) data to serialized
+        lineage.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
@@ -3141,14 +3144,11 @@ def read_orc(
     .. note::
 
         ``merge_schema=True`` lists all eligible files and reads their schemas
-        on the driver during planning, which can be expensive for large or remote
-        datasets. The reader uses the merged schema, but Ray doesn't retain per-file
-        ORC metadata from schema inference for reuse during execution.
+        during planning, which can be expensive for large or remote datasets.
+        Larger eligible reads distribute schema I/O across bounded Ray tasks.
+        Execution reads ORC metadata again.
         With more than 10,000 candidate files, Ray warns before schema merging.
         Retained path and size metadata adds O(files) data to serialized lineage.
-
-        Follow-up work for distributed planning-time schema reads and metadata
-        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
@@ -6269,6 +6269,14 @@ def read_lance(
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
+
+    .. note::
+        Filtered reads leave row-count metadata unknown without scanning the
+        data during planning. ``count()`` executes the read. Non-stratified
+        ``train_test_split()`` uses materialized rows to determine split sizes.
+        Count-only reads may still read payload columns because this reader
+        does not support automatic projection pushdown. Use ``columns`` to
+        explicitly limit the columns read when appropriate.
 
     Examples:
         >>> import ray
