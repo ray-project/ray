@@ -1048,22 +1048,6 @@ py_test(
 )
 
 py_test(
-    name = "test_local_mode",
-    size = "medium",
-    srcs = ["tests/test_local_mode.py"],
-    env = _TRAIN_V2_TEST_ENV_TF,
-    tags = [
-        "exclusive",
-        "team:ml",
-        "train_v2",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_data_config",
     size = "medium",
     srcs = ["tests/test_data_config.py"],

@@ -36,9 +36,8 @@ class ScalingConfig(ScalingConfigV1):
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
-            ``resources_per_worker`` argument. If the number of workers is 0,
-            the training function will run in local mode, meaning the training
-            function runs in the same process. To enable elasticity, provide a
+            ``resources_per_worker`` argument. Must be at least 1.
+            To enable elasticity, provide a
             ``(min_workers, max_workers)`` tuple of ints.
         elastic_resize_monitor_interval_s: While the worker group is healthy,
             consider resizing the worker group every
@@ -130,6 +129,11 @@ class ScalingConfig(ScalingConfigV1):
                 f"Invalid ScalingConfig(num_workers={self.num_workers}): "
                 f"min_workers={self.min_workers} must be <= max_workers={self.max_workers}."
             )
+        if self.elasticity_enabled and self.max_workers == 0:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                "max_workers must be at least 1."
+            )
 
         self._validate_tpu_config()
 
@@ -143,10 +147,9 @@ class ScalingConfig(ScalingConfigV1):
             )
 
         if self.num_workers == 0:
-            logger.info(
-                "Running in local mode. The training function will run in the same process. "
-                "If you are using it and running into issues please file a report at "
-                "https://github.com/ray-project/ray/issues."
+            raise ValueError(
+                "Invalid ScalingConfig(num_workers=0): Local Mode was removed in "
+                "Ray 2.61. Set `num_workers` to 1 or more."
             )
 
         super().__post_init__()

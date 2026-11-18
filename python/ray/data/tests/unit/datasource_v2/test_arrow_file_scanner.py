@@ -8,6 +8,10 @@ import pytest
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
+from ray.data._internal.datasource_v2.common.synthesized_columns import (
+    PathColumn,
+    RowHashColumn,
+)
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
@@ -52,6 +56,106 @@ def test_prune_input_split_matching_no_file():
     )
 
     assert len(scanner.prune_input_split(manifest)) == 0
+
+
+class _SourceFileColumn(PathColumn):
+    name = "source_file"
+
+
+@pytest.mark.parametrize("scanner_cls", [ParquetScanner, OrcScanner])
+@pytest.mark.parametrize(
+    "columns, projection, predicate, accepted, residual",
+    [
+        ((PathColumn(),), False, col("path") == "P", None, col("path") == "P"),
+        (
+            (PathColumn(),),
+            False,
+            (col("path") == "P") & (col("x") == 2),
+            col("x") == 2,
+            col("path") == "P",
+        ),
+        (
+            (PathColumn(),),
+            False,
+            (col("path") == "P") | (col("x") == 2),
+            None,
+            (col("path") == "P") | (col("x") == 2),
+        ),
+        (
+            (PathColumn(),),
+            False,
+            ~((col("path") == "P") & (col("x") == 2)),
+            None,
+            ~((col("path") == "P") & (col("x") == 2)),
+        ),
+        (
+            (PathColumn(),),
+            False,
+            ((col("path") == "P") | (col("x") == 2)) & (col("x") > 0),
+            col("x") > 0,
+            (col("path") == "P") | (col("x") == 2),
+        ),
+        (
+            (PathColumn(),),
+            False,
+            col("path") == col("x"),
+            None,
+            col("path") == col("x"),
+        ),
+        (
+            (_SourceFileColumn(),),
+            True,
+            col("source_file") == "P",
+            None,
+            col("source_file") == "P",
+        ),
+        ((RowHashColumn(),), False, col("row_hash") == 1, None, col("row_hash") == 1),
+    ],
+    ids=[
+        "path",
+        "and",
+        "or",
+        "not",
+        "nested",
+        "cross_column",
+        "projection",
+        "row_hash",
+    ],
+)
+def test_push_filters_retains_synthesized_residual(
+    scanner_cls, columns, projection, predicate, accepted, residual
+):
+    original = col("x") < 10
+    scanner = scanner_cls(
+        schema=pa.schema(
+            [
+                ("x", pa.int64()),
+                ("path", pa.string()),
+                ("source_file", pa.string()),
+                ("row_hash", pa.uint64()),
+            ]
+        ),
+        synthesized_columns=columns,
+        predicate=original,
+    )
+    if projection:
+        scanner = scanner.prune_columns(["x"])
+
+    pushed, declined = scanner.push_filters(predicate)
+
+    assert scanner.predicate is original
+    assert isinstance(pushed, (ParquetScanner, OrcScanner))
+    assert pushed.synthesized_columns is columns
+    if accepted is None:
+        assert pushed is scanner
+    else:
+        assert pushed is not scanner
+        assert pushed.predicate is not None
+        assert pushed.predicate.structurally_equals(original & accepted)
+    if residual is None:
+        assert declined is None
+    else:
+        assert declined is not None and declined.structurally_equals(residual)
 
 
 @pytest.mark.parametrize("columns", [None, ["id"], []])
