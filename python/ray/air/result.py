@@ -216,10 +216,8 @@ class Result:
                     subset=[CHECKPOINT_DIR_NAME]
                 ).drop_duplicates(subset=[CHECKPOINT_DIR_NAME], keep="last")
                 last_metrics_by_ckpt = {
-                    ckpt_name: row.to_dict()
-                    for ckpt_name, (_, row) in zip(
-                        deduped_df[CHECKPOINT_DIR_NAME], deduped_df.iterrows()
-                    )
+                    row[CHECKPOINT_DIR_NAME]: row
+                    for row in deduped_df.to_dict(orient="records")
                 }
 
             metrics = []
