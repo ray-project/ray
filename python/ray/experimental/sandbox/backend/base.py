@@ -160,6 +160,26 @@ class BaseSandboxBackend(ABC):
         """
         pass
 
+    def assign_config(self, sandbox_id: str, config: SandboxConfig) -> None:
+        """Hand a booted sandbox to a create that boots the same way.
+
+        A warm pool boots sandboxes before the creates they serve. The
+        sandbox's stored config becomes ``config``, with its env on top of
+        the env the sandbox booted with.
+
+        Optional: ``SandboxRuntime`` only calls it for a warm pool, which a
+        backend without it can't serve.
+
+        Args:
+            sandbox_id: Unique string identifier of the booted sandbox.
+            config: The create's config, whose boot-time fields match the
+                sandbox's.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support handing a booted sandbox "
+            "to a create, which warm pools need"
+        )
+
     def set_egress_allowlist(self, sandbox_id: str, cidrs: List[str]) -> None:
         """Replace the egress allowlist of a running sandbox.
 
