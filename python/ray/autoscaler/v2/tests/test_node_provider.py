@@ -2048,8 +2048,9 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             ]
         ]
 
-        # API-server resourceVersion rollback (5000 -> 4000, e.g. etcd restore) recovers
-        # immediately without pinning NotOlderThan to 5000 across subsequent syncs.
+        # API-server resourceVersion rollback (5000 -> 4000, e.g. etcd restore) inside
+        # reconcile_step raises on the stale floor once, resets _last_pod_list_rv to
+        # None, and succeeds on the next in-step sync at RV 4000.
         prov_rb, client_rb = self._make_kuberay_provider(
             worker_groups=[
                 {
@@ -2063,14 +2064,17 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             pods=[_pod(f"cpu-{i}", group="cpu") for i in range(2)],
         )
         client_rb._pod_list["metadata"]["resourceVersion"] = "5000"
-        prov_rb.get_non_terminated()
+        known_rb = set(prov_rb.get_non_terminated())
+        assert prov_rb._last_pod_list_rv == "5000"
         client_rb._pod_list["metadata"]["resourceVersion"] = "4000"
         rb_real_get = client_rb.get
+        rv_checks = []
 
         def strict_rv_get(path):
             if path.startswith("pods?") and "resourceVersion=" in path:
                 floor = int(path.split("resourceVersion=")[1].split("&")[0])
                 current = int(client_rb._pod_list["metadata"]["resourceVersion"])
+                rv_checks.append((floor, current))
                 if floor > current:
                     raise RuntimeError(
                         f"504 Too large resource version: {floor}, current: {current}"
@@ -2078,7 +2082,22 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             return rb_real_get(path)
 
         client_rb.get = strict_rv_get
-        assert set(prov_rb.get_non_terminated()) == {"head-0", "cpu-0", "cpu-1"}
+        with prov_rb.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=known_rb)
+        ):
+            prov_rb.launch(shape={"cpu": 1}, request_id="rb-fail")
+            errs_rb = prov_rb.poll_errors()
+            assert len(errs_rb) == 1
+            assert prov_rb._last_pod_list_rv is None
+            prov_rb.launch(shape={"cpu": 1}, request_id="rb-ok")
+        assert rv_checks == [(5000, 4000)]
+        assert prov_rb._last_pod_list_rv == "4000"
+        assert [
+            op["value"]
+            for ops in client_rb.patch_history
+            for op in ops
+            if op["path"].endswith("/replicas")
+        ] == [3]
 
     def test_reconcile_step_preserves_user_cr_replicas_scale(self):
         """User increases to CR spec.replicas before operator creates pods are preserved
@@ -2199,6 +2218,181 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         ):
             prov_ts.launch(shape={"cpu": 1}, request_id="refill-ts")
         assert client_ts.patch_history == []
+
+    def test_reconcile_step_noop_standalone_sibling_patch_and_replay_rejection(self):
+        """Preserves external user CR scale-ups after cold-start no-op launches,
+        avoids double-counting standalone launches, preserves concurrent user edits on
+        unpatched sibling groups during PATCH, handles external CR decreases, and
+        retains partial maxReplicas rejections across idempotent request_id replays."""
+        _pod = self._make_multihost_pod
+
+        # 1. Cold-start no-op in-step launch (minReplicas=2, replicas=2, 0 pods yet)
+        # followed by user CR scale-up (2 -> 5) + +1 launch patches replicas to 6.
+        prov_noop, client_noop = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "cpu",
+                    "replicas": 2,
+                    "minReplicas": 2,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            pods=[],
+        )
+        known0 = set(prov_noop.get_non_terminated())
+        with prov_noop.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=known0)
+        ):
+            prov_noop.launch(shape={"cpu": 2}, request_id="noop-0")
+        assert client_noop.patch_history == []
+        client_noop._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 5
+        known1 = set(prov_noop.get_non_terminated())
+        with prov_noop.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known1,
+                single_host_in_flight={"cpu": {"noop-0": 2}},
+            )
+        ):
+            prov_noop.launch(shape={"cpu": 1}, request_id="step-1")
+        assert [
+            op["value"]
+            for ops in client_noop.patch_history
+            for op in ops
+            if op["path"].endswith("/replicas")
+        ] == [6]
+
+        # External user CR decrease (6 -> 2) shrinks external unmaterialized capacity
+        # so a subsequent +1 launch with 2 in-flight patches replicas to 3 (not 7).
+        client_noop.patch_history.clear()
+        client_noop._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        known2 = set(prov_noop.get_non_terminated())
+        with prov_noop.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known2,
+                single_host_in_flight={"cpu": {"noop-0": 2}},
+            )
+        ):
+            prov_noop.launch(shape={"cpu": 1}, request_id="step-after-dec")
+        assert [
+            op["value"]
+            for ops in client_noop.patch_history
+            for op in ops
+            if op["path"].endswith("/replicas")
+        ] == [3]
+
+        # 2. Standalone launch(2) followed by in-step launch(2) patches to 4 (not 6).
+        prov_sa, client_sa = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "cpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            pods=[],
+        )
+        prov_sa.launch(shape={"cpu": 2}, request_id="sa-0")
+        known_sa = set(prov_sa.get_non_terminated())
+        with prov_sa.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known_sa,
+                single_host_in_flight={"cpu": {"sa-0": 2}},
+            )
+        ):
+            prov_sa.launch(shape={"cpu": 2}, request_id="sa-step-1")
+        assert [
+            op["value"]
+            for ops in client_sa.patch_history
+            for op in ops
+            if op["path"].endswith("/replicas")
+        ] == [2, 4]
+
+        # 3. Concurrent external CR scale-up on sibling group "gpu" (0 -> 4) returned
+        # in the live PATCH response for "cpu" (0 -> 1) is preserved on the next tick.
+        prov_sib, client_sib = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "cpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "gpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            pods=[],
+        )
+        real_sib_patch = client_sib.patch
+
+        def concurrent_gpu_edit_patch(path, payload):
+            client_sib._ray_cluster["spec"]["workerGroupSpecs"][1]["replicas"] = 4
+            return real_sib_patch(path, payload)
+
+        client_sib.patch = concurrent_gpu_edit_patch
+        known_sib0 = set(prov_sib.get_non_terminated())
+        with prov_sib.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=known_sib0)
+        ):
+            prov_sib.launch(shape={"cpu": 1}, request_id="cpu-1")
+        client_sib.patch = real_sib_patch
+        known_sib1 = set(prov_sib.get_non_terminated())
+        with prov_sib.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known_sib1,
+                single_host_in_flight={"cpu": {"cpu-1": 1}},
+            )
+        ):
+            prov_sib.launch(shape={"gpu": 1}, request_id="gpu-1")
+        assert [
+            (op["path"], op["value"])
+            for ops in client_sib.patch_history
+            for op in ops
+            if op["path"].endswith("/replicas")
+        ] == [
+            ("/spec/workerGroupSpecs/0/replicas", 1),
+            ("/spec/workerGroupSpecs/1/replicas", 5),
+        ]
+
+        # 4. Replaying an already-processed request_id after partial maxReplicas=2
+        # rejection retains accepted=2 so a subsequent +1 launch after raising
+        # maxReplicas to 6 patches replicas to 3 (not 5).
+        prov_rep, client_rep = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "cpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 2,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            pods=[],
+        )
+        known_rep = set(prov_rep.get_non_terminated())
+        with prov_rep.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=known_rep)
+        ):
+            prov_rep.launch(shape={"cpu": 4}, request_id="req-cap")
+            errs_cap = prov_rep.poll_errors()
+            assert len(errs_cap) == 1 and errs_cap[0].count == 2
+            prov_rep.launch(shape={"cpu": 4}, request_id="req-cap")
+            prov_rep._ray_cluster["spec"]["workerGroupSpecs"][0]["maxReplicas"] = 6
+            prov_rep.launch(shape={"cpu": 1}, request_id="req-more")
+        assert [
+            op["value"]
+            for ops in client_rep.patch_history
+            for op in ops
+            if op["path"].endswith("/replicas")
+        ] == [2, 3]
 
 
 if __name__ == "__main__":

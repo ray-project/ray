@@ -59,6 +59,7 @@ from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer impor
     RayInstallError,
 )
 from ray.autoscaler.v2.scheduler import (
+    IResourceScheduler,
     ResourceDemandScheduler,
     SchedulingReply,
 )
@@ -7515,9 +7516,8 @@ class TestReconcilerMultiHost:
         assert tpu_statuses == {"RAY_RUNNING": 4, "REQUESTED": 1}
 
     def test_single_host_in_step_not_older_than_and_genuine_delete(self):
-        """Reconciler tick forwards NotOlderThan on in-step pod LIST, recovers across
-        API-server resourceVersion rollbacks, and shrinks observed count on genuine
-        operator deletions."""
+        """Reconciler tick forwards NotOlderThan on in-step pod LIST and shrinks
+        observed count when operator deletions advance resourceVersion."""
         (
             cr,
             pods,
@@ -9329,6 +9329,367 @@ class TestReconcilerMultiHost:
                 and i.status in (Instance.QUEUED, Instance.REQUESTED)
             ]
             assert transient == []
+
+    def test_staggered_multihost_refill_unlabeled_gap_and_adoption_counter_cases(self):
+        """Verifies sub-replica QUEUED alignment across staggered 2+2 multi-host
+        operator refills with concurrent demand and unlabeled operator refills closing
+        unlabeled_backfill_gap, plus minReplicas==0, stale DEAD ray_node, and mid-loop
+        _from_ray_nodes adoption counter-cases."""
+        tpu_cfg = NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=4,
+            max_worker_nodes=12,
+            resources={"CPU": 4, "TPU": 4},
+            replica_config=WorkerReplicaConfig(workers_per_replica=4),
+        )
+        (
+            cr,
+            pods,
+            _,
+            provider,
+            cfg,
+            store,
+            im,
+            head_state,
+            make_pod,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="staggered-mh-refill",
+            node_type_configs={"tpu": tpu_cfg},
+            max_num_worker_nodes=12,
+            worker_groups=[
+                {
+                    "groupName": "tpu",
+                    "replicas": 1,
+                    "minReplicas": 1,
+                    "maxReplicas": 3,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+        )
+        sched = ResourceDemandScheduler()
+        monitor = CloudResourceMonitor()
+        wg = cr["spec"]["workerGroupSpecs"][0]
+
+        def _tpu_nodes(names, dead_set=frozenset()):
+            out = list(head_state.node_states)
+            for nm in names:
+                is_dead = nm in dead_set
+                out.append(
+                    NodeState(
+                        node_id=nm.encode().ljust(28, b"0"),
+                        instance_id=nm,
+                        ray_node_type_name="tpu",
+                        status=NodeStatus.DEAD if is_dead else NodeStatus.RUNNING,
+                        total_resources={"CPU": 4, "TPU": 4},
+                        available_resources={"CPU": 4, "TPU": 4 if is_dead else 0},
+                    )
+                )
+            return out
+
+        def _tick(node_names, demand_w=0, dead_set=frozenset()):
+            reqs = (
+                [
+                    ResourceRequestByCount(
+                        request=ResourceRequestUtil.make({"TPU": 4}),
+                        count=demand_w,
+                    )
+                ]
+                if demand_w > 0
+                else []
+            )
+            Reconciler.reconcile(
+                im,
+                sched,
+                provider,
+                monitor,
+                ClusterResourceState(
+                    node_states=_tpu_nodes(node_names, dead_set),
+                    pending_resource_requests=reqs,
+                ),
+                provider.get_non_terminated(),
+                cfg,
+                cloud_provider_errors=provider.poll_errors(),
+            )
+
+        # 1. Boot initial 4-host replica r0; crash r0-0 so r0 enters workersToDelete
+        # and 4 min-worker QUEUED replacement rows are deferred.
+        for i in range(4):
+            pods["items"].append(make_pod(f"r0-{i}", "tpu", rep="rep-0"))
+        pods["metadata"]["resourceVersion"] = "2"
+        _tick([f"r0-{i}" for i in range(4)])
+        _tick([f"r0-{i}" for i in range(4)], dead_set={"r0-0"})
+        for i in range(1, 4):
+            _tick(
+                [f"r0-{k}" for k in range(1, 4)],
+                dead_set={f"r0-{k}" for k in range(1, 4)},
+            )
+        assert set(wg["scaleStrategy"]["workersToDelete"]) == {
+            f"r0-{i}" for i in range(4)
+        }
+
+        # Operator clears r0-0..r0-3 and creates staggered replacement rep-1: 2 pods
+        # on Tick N alongside 8-worker demand, then 2 pods on Tick N+1.
+        pods["items"] = [
+            p for p in pods["items"] if not p["metadata"]["name"].startswith("r0-")
+        ] + [make_pod("r1-0", "tpu", rep="rep-1"), make_pod("r1-1", "tpu", rep="rep-1")]
+        pods["metadata"]["resourceVersion"] = "3"
+        _tick(["r1-0", "r1-1"], demand_w=8)
+        pods["items"].extend(
+            [
+                make_pod("r1-2", "tpu", rep="rep-1"),
+                make_pod("r1-3", "tpu", rep="rep-1"),
+                *[make_pod(f"r2-{i}", "tpu", rep="rep-2") for i in range(4)],
+            ]
+        )
+        pods["metadata"]["resourceVersion"] = "4"
+        _tick(
+            [f"r1-{i}" for i in range(4)] + [f"r2-{i}" for i in range(4)],
+            demand_w=8,
+        )
+        queued_left = [
+            v
+            for v in store.get_instances()[0].values()
+            if v.instance_type == "tpu" and v.status == Instance.QUEUED
+        ]
+        assert queued_left == []
+
+        # Subsequent 12-worker demand scales cleanly to maxReplicas=3 (not blocked at 2).
+        _tick(
+            [f"r1-{i}" for i in range(4)] + [f"r2-{i}" for i in range(4)],
+            demand_w=12,
+        )
+        assert wg["replicas"] == 3
+
+        # 2. Unlabeled multi-host operator refill closing unlabeled_backfill_gap while
+        # a 1-pod backfill QUEUED row was deferred under workersToDelete cancels the
+        # stranded 1-pod QUEUED row so maxReplicas=2 remains reachable.
+        u_cfg = NodeTypeConfig(
+            name="tpu-u",
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            resources={"CPU": 4, "TPU": 4},
+            replica_config=WorkerReplicaConfig(workers_per_replica=4),
+        )
+        (
+            cr_u,
+            pods_u,
+            _,
+            prov_u,
+            as_cfg_u,
+            store_u,
+            im_u,
+            head_u,
+            make_pod_u,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="unlabeled-gap-refill",
+            node_type_configs={"tpu-u": u_cfg},
+            max_num_worker_nodes=8,
+            worker_groups=[
+                {
+                    "groupName": "tpu-u",
+                    "replicas": 1,
+                    "minReplicas": 0,
+                    "maxReplicas": 2,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+        )
+        wg_u = cr_u["spec"]["workerGroupSpecs"][0]
+        wg_u["scaleStrategy"] = {"workersToDelete": ["u-del"]}
+        del_im = Instance(
+            instance_id="i-del",
+            instance_type="tpu-u",
+            status=Instance.TERMINATING,
+            cloud_instance_id="u-del",
+            node_kind=NodeKind.WORKER,
+        )
+        del_im.status_history.add(
+            instance_status=Instance.TERMINATING, timestamp_ns=time.time_ns()
+        )
+        im_u._instance_storage.upsert_instance(del_im)
+        pods_u["items"].extend(
+            [make_pod_u("u-del", "tpu-u", rep=None)]
+            + [make_pod_u(f"u-{i}", "tpu-u", rep=None) for i in range(3)]
+        )
+        pods_u["metadata"]["resourceVersion"] = "2"
+
+        class _BackfillFourScheduler(IResourceScheduler):
+            def __init__(self, count: int):
+                self.count = count
+
+            def schedule(self, request):
+                return SchedulingReply(
+                    to_launch=(
+                        [
+                            LaunchRequest(
+                                id="bf-req", instance_type="tpu-u", count=self.count
+                            )
+                        ]
+                        if self.count > 0
+                        else []
+                    )
+                )
+
+        # 3 live unlabeled pods (gap=1) + workersToDelete=["u-del"] defers 1 QUEUED row.
+        Reconciler.reconcile(
+            im_u,
+            _BackfillFourScheduler(4),
+            prov_u,
+            monitor,
+            ClusterResourceState(node_states=list(head_u.node_states)),
+            prov_u.get_non_terminated(),
+            as_cfg_u,
+            cloud_provider_errors=prov_u.poll_errors(),
+        )
+        assert (
+            sum(
+                1
+                for v in store_u.get_instances()[0].values()
+                if v.instance_type == "tpu-u" and v.status == Instance.QUEUED
+            )
+            == 1
+        )
+        # Operator deletes u-del and creates replacement u-3 (4 unlabeled pods -> gap=0).
+        wg_u["scaleStrategy"] = {"workersToDelete": []}
+        pods_u["items"] = [
+            p for p in pods_u["items"] if p["metadata"]["name"] != "u-del"
+        ] + [make_pod_u("u-3", "tpu-u", rep=None)]
+        pods_u["metadata"]["resourceVersion"] = "3"
+        Reconciler.reconcile(
+            im_u,
+            _BackfillFourScheduler(4),
+            prov_u,
+            monitor,
+            ClusterResourceState(node_states=list(head_u.node_states)),
+            prov_u.get_non_terminated(),
+            as_cfg_u,
+            cloud_provider_errors=prov_u.poll_errors(),
+        )
+        assert wg_u["replicas"] == 2
+        assert (
+            sum(
+                1
+                for v in store_u.get_instances()[0].values()
+                if v.instance_type == "tpu-u" and v.status == Instance.QUEUED
+            )
+            == 0
+        )
+
+        # 3. Counter-cases on _handle_extra_cloud_instances:
+        # (a) minReplicas == 0 unmanaged pod adoption preserves a demand QUEUED row;
+        # (b) stale DEAD ray_node absent from non_terminated_cloud_instances preserves
+        #     replacement QUEUED row;
+        # (c) minReplicas == 1 with 2 QUEUED rows + 1 _from_ray_nodes refill cancels
+        #     exactly 1 row and launches the 2nd row to replicas == 2.
+        for min_rep_cc, expect_reps in ((0, 2), (1, 2)):
+            (
+                cr_c,
+                pods_c,
+                _,
+                prov_c,
+                cfg_c,
+                store_c,
+                im_c,
+                head_c,
+                make_pod_c,
+            ) = self._make_kuberay_e2e_env(
+                cluster_id=f"cc-min{min_rep_cc}",
+                node_type_configs={
+                    "cpu": NodeTypeConfig(
+                        name="cpu",
+                        min_worker_nodes=min_rep_cc,
+                        max_worker_nodes=4,
+                        resources={"CPU": 4},
+                    )
+                },
+                max_num_worker_nodes=4,
+                worker_groups=[
+                    {
+                        "groupName": "cpu",
+                        "replicas": min_rep_cc,
+                        "minReplicas": min_rep_cc,
+                        "maxReplicas": 4,
+                        "template": {"spec": {"containers": [{}]}},
+                    }
+                ],
+            )
+            q_cnt = 1 if min_rep_cc == 0 else 2
+            for idx_q in range(q_cnt):
+                q_row = Instance(
+                    instance_id=f"q-{idx_q}",
+                    instance_type="cpu",
+                    status=Instance.QUEUED,
+                )
+                q_row.status_history.add(
+                    instance_status=Instance.QUEUED, timestamp_ns=100 + idx_q
+                )
+                im_c._instance_storage.upsert_instance(q_row)
+
+            # First pass: stale DEAD ray_node absent from non_terminated_cloud_instances
+            # cancels 0 QUEUED rows.
+            stale_dead = NodeState(
+                node_id=b"stale-dead".ljust(28, b"0"),
+                instance_id="ghost-pod",
+                ray_node_type_name="cpu",
+                status=NodeStatus.DEAD,
+                total_resources={"CPU": 4},
+                available_resources={"CPU": 4},
+            )
+            Reconciler._handle_extra_cloud_instances(
+                im_c,
+                prov_c.get_non_terminated(),
+                list(head_c.node_states) + [stale_dead],
+                autoscaling_config=cfg_c,
+            )
+            assert (
+                sum(
+                    1
+                    for v in store_c.get_instances()[0].values()
+                    if v.status == Instance.QUEUED
+                )
+                == q_cnt
+            )
+
+            # Second pass: 1 real refill pod adopted via _from_ray_nodes (IDLE raylet)
+            # cancels min(1, min_rep_cc) QUEUED rows and launches the remaining 1 row!
+            pods_c["items"].append(make_pod_c("cpu-refill", "cpu"))
+            pods_c["metadata"]["resourceVersion"] = "2"
+            cr_c["spec"]["workerGroupSpecs"][0]["replicas"] = 1
+            refill_rn = NodeState(
+                node_id=b"cpu-refill".ljust(28, b"0"),
+                instance_id="cpu-refill",
+                ray_node_type_name="cpu",
+                status=NodeStatus.IDLE,
+                total_resources={"CPU": 4},
+                available_resources={"CPU": 4},
+            )
+            Reconciler.reconcile(
+                im_c,
+                sched,
+                prov_c,
+                monitor,
+                ClusterResourceState(
+                    node_states=list(head_c.node_states) + [refill_rn],
+                    pending_resource_requests=[
+                        ResourceRequestByCount(
+                            request=ResourceRequestUtil.make({"CPU": 4}),
+                            count=2,
+                        )
+                    ],
+                ),
+                prov_c.get_non_terminated(),
+                cfg_c,
+                cloud_provider_errors=prov_c.poll_errors(),
+            )
+            assert cr_c["spec"]["workerGroupSpecs"][0]["replicas"] == expect_reps
+            canceled_cnt = sum(
+                1
+                for v in store_c.get_instances()[0].values()
+                if v.instance_id.startswith("q-") and v.status == Instance.TERMINATED
+            )
+            assert canceled_cnt == (0 if min_rep_cc == 0 else 1)
 
 
 if __name__ == "__main__":

@@ -1253,6 +1253,15 @@ class Reconciler:
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
+    def _queued_fifo_key(instance: IMInstance) -> Tuple[List[int], str]:
+        return (
+            sorted(
+                InstanceUtil.get_status_transition_times_ns(instance, IMInstance.QUEUED)
+            ),
+            instance.instance_id,
+        )
+
+    @staticmethod
     def _compute_to_launch(
         queued_instances: List[IMInstance],
         requested_instances: List[IMInstance],
@@ -1268,13 +1277,8 @@ class Reconciler:
                 instances_by_type[instance.instance_type].append(instance)
             return instances_by_type
 
-        def _queued_times(instance: IMInstance) -> List[int]:
-            return sorted(
-                InstanceUtil.get_status_transition_times_ns(instance, IMInstance.QUEUED)
-            )
-
         queued_instances_by_type = {
-            nt: sorted(insts, key=lambda i: (_queued_times(i), i.instance_id))
+            nt: sorted(insts, key=Reconciler._queued_fifo_key)
             for nt, insts in _group_by_type(queued_instances).items()
         }
         requested_instances_by_type = _group_by_type(requested_instances)
@@ -1286,7 +1290,7 @@ class Reconciler:
         for instance_type in sorted(
             queued_instances_by_type,
             key=lambda nt: (
-                _queued_times(queued_instances_by_type[nt][0]),
+                Reconciler._queued_fifo_key(queued_instances_by_type[nt][0])[0],
                 nt,
             ),
         ):
@@ -1791,7 +1795,6 @@ class Reconciler:
 
         updates = {}
         skipped_requested: List[str] = []
-        canceled_queued_types: Set[NodeType] = set()
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
@@ -1806,8 +1809,6 @@ class Reconciler:
                     termination_request=terminate_request,
                     details=f"allocation canceled: {terminate_request.details}",
                 )
-                if im_instance_to_terminate.instance_type in replica_sizes:
-                    canceled_queued_types.add(im_instance_to_terminate.instance_type)
             elif cur_status == IMInstance.REQUESTED:
                 skipped_requested.append(instance_id)
             elif cur_status in (
@@ -1849,37 +1850,49 @@ class Reconciler:
                 skipped_requested,
             )
 
-        for nt in canceled_queued_types:
-            if pre_view is not None and pre_view.unlabeled_occupying_cids.get(nt):
-                continue
-            rem_queued = sorted(
-                (
-                    inst
-                    for inst in im_instances
-                    if inst.instance_type == nt
-                    and inst.status == IMInstance.QUEUED
-                    and inst.instance_id not in updates
-                ),
-                key=lambda i: (
-                    sorted(
-                        InstanceUtil.get_status_transition_times_ns(
-                            i, IMInstance.QUEUED
-                        )
-                    ),
-                    i.instance_id,
-                ),
+        if replica_sizes:
+            pre_overrides = {iid: ev.new_instance_status for iid, ev in updates.items()}
+            align_view = (
+                _MultiHostReplicaView.build(
+                    im_instances,
+                    cloud_instances,
+                    replica_sizes,
+                    status_overrides=pre_overrides,
+                )
+                if pre_overrides
+                else pre_view
             )
-            rem = len(rem_queued) % replica_sizes[nt]
-            if rem > 0:
-                for inst in rem_queued[-rem:]:
-                    updates[inst.instance_id] = IMInstanceUpdateEvent(
-                        instance_id=inst.instance_id,
-                        new_instance_status=IMInstance.TERMINATED,
-                        details=(
-                            "allocation canceled: rounding sub-replica QUEUED "
-                            f"remainder ({rem} < {replica_sizes[nt]})"
-                        ),
-                    )
+            for nt, size in replica_sizes.items():
+                rem_queued = sorted(
+                    (
+                        inst
+                        for inst in im_instances
+                        if inst.instance_type == nt
+                        and inst.node_kind != NodeKind.HEAD
+                        and inst.status == IMInstance.QUEUED
+                        and inst.instance_id not in updates
+                    ),
+                    key=Reconciler._queued_fifo_key,
+                )
+                if not rem_queued:
+                    continue
+                gap_0 = (
+                    align_view.unlabeled_backfill_gap(nt, size, extra_queued=0)
+                    if align_view is not None
+                    else 0
+                )
+                total_q = len(rem_queued)
+                rem = total_q if total_q < gap_0 else (total_q - gap_0) % size
+                if rem > 0:
+                    for inst in rem_queued[-rem:]:
+                        updates[inst.instance_id] = IMInstanceUpdateEvent(
+                            instance_id=inst.instance_id,
+                            new_instance_status=IMInstance.TERMINATED,
+                            details=(
+                                "allocation canceled: rounding sub-replica QUEUED "
+                                f"remainder ({rem} < {size})"
+                            ),
+                        )
 
         pending_launches = [[req.instance_type, req.count] for req in to_launch]
         if pending_launches and replica_sizes:
@@ -2538,16 +2551,7 @@ class Reconciler:
                 to_cancel = min(adopted, min_deficit, len(q_list))
                 if to_cancel <= 0:
                     continue
-                q_list.sort(
-                    key=lambda i: (
-                        sorted(
-                            InstanceUtil.get_status_transition_times_ns(
-                                i, IMInstance.QUEUED
-                            )
-                        ),
-                        i.instance_id,
-                    )
-                )
+                q_list.sort(key=Reconciler._queued_fifo_key)
                 for q_inst in q_list[:to_cancel]:
                     cancel_updates[q_inst.instance_id] = IMInstanceUpdateEvent(
                         instance_id=q_inst.instance_id,
