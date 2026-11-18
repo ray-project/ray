@@ -201,10 +201,7 @@ class SimpleImputer(SerializablePreprocessorBase):
                         isinstance(df[column].values, np.ndarray)
                         and not df[column].values.flags.writeable
                     )
-                    or (
-                        is_categorical_dtype(df.dtypes[column])
-                        and not df[column].values.codes.flags.writeable
-                    )
+                    or is_categorical_dtype(df.dtypes[column])
                 ):
                     df[output_column] = df[column].copy(deep=True)
 
