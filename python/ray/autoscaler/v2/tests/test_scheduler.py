@@ -15959,6 +15959,569 @@ def test_duplicate_worker_indices_preserve_head_slot_and_cap_placeholders_and_ma
     assert rep_m10.to_terminate == []
 
 
+def test_scale_from_zero_torndown_boot_survivor_and_refill_uuid_order():
+    """Scale-from-zero torn-down booting survivors refill cleanly for pending gangs across
+    exclusive, shared, and domainless modes, attach in-flight refill batches regardless of
+    UUID sort order, and fill staggered multi-slice refills without solo idle kills."""
+    head_res = "TPU-v6e-16-head"
+
+    # R7-1a: Scale-from-zero min=0, max=4 with 1 ALLOCATED survivor + TERMINATED sibling
+    # on L_td schedules a 4-host STRICT_PACK gang across exclusive, shared, and domainless
+    # configs, while rejecting a 5-host gang at max_worker_nodes=4.
+    for loc_key, dom_key, is_excl in (
+        (_SLICE, _SLICE, True),
+        ("rack", "rack", False),
+        ("rack", None, False),
+    ):
+        cfgs = {
+            "acc": NodeTypeConfig(
+                name="acc",
+                min_worker_nodes=0,
+                max_worker_nodes=4,
+                resources={"CPU": 8, "TPU": 4, head_res: 1},
+                runtime_label_keys=tuple({loc_key, _WID}),
+                replica_config=WorkerReplicaConfig(
+                    workers_per_replica=4,
+                    domain_label_key=dom_key,
+                    domain_exclusive=is_excl,
+                    worker_index_label_key=_WID,
+                    head_resources=(head_res,),
+                ),
+            )
+        }
+        a0 = _pending_node("acc", "a0", Instance.ALLOCATED, lid="L_td")
+        a0.cloud_instance_id = "cloud-a0"
+        a0.im_instance.cloud_instance_id = "cloud-a0"
+        dead_td = _terminated_teardown_row("acc", "dead-td", "L_td")
+
+        g4 = _strict_pack_gang(
+            loc_key,
+            [
+                _mk_req({"TPU": 4, head_res: 1}),
+                *_spread_reqs({"TPU": 4}, 3, f"_pg_sfz_{dom_key}_{is_excl}"),
+            ],
+        )
+        rep_ok = _sched(cfgs, [a0, dead_td], gangs=[g4])
+        assert rep_ok.infeasible_gang_resource_requests == []
+        assert _launch_and_terminate(rep_ok) == ({"acc": 4}, [])
+        assert rep_ok.cluster_resources["TPU"] == 16.0
+        assert rep_ok.cluster_resources[head_res] == 1.0
+
+        g5 = _strict_pack_gang(
+            loc_key, _spread_reqs({"TPU": 4}, 5, f"_pg_sfz5_{dom_key}_{is_excl}")
+        )
+        rep_bad = _sched(cfgs, [a0, dead_td], gangs=[g5])
+        assert len(rep_bad.infeasible_gang_resource_requests) == 1
+        assert rep_bad.to_launch == []
+
+    # R7-1b: When refill UUID ("L_a_refill") sorts lexicographically before torn-down
+    # UUID ("L_z_td"), the 3 ALLOCATED refill pods still attach to a0's torn-down replica.
+    excl_cfg4 = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            resources={"CPU": 8, "TPU": 4, head_res: 1},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+                head_resources=(head_res,),
+            ),
+        )
+    }
+    a_surv = _pending_node("tpu", "a-surv", Instance.ALLOCATED, lid="L_z_td")
+    a_surv.cloud_instance_id = "cloud-a-surv"
+    a_surv.im_instance.cloud_instance_id = "cloud-a-surv"
+    dead_z = _terminated_teardown_row("tpu", "dead-z", "L_z_td")
+    refill3 = []
+    for i in range(3):
+        rn = _pending_node("tpu", f"r-{i}", Instance.ALLOCATED, lid="L_a_refill")
+        rn.cloud_instance_id = f"cloud-r-{i}"
+        rn.im_instance.cloud_instance_id = f"cloud-r-{i}"
+        refill3.append(rn)
+    g4_slice = _strict_pack_gang(
+        _SLICE,
+        [
+            _mk_req({"TPU": 4, head_res: 1}, label_selectors=[[(_WID, _IN, ["0"])]]),
+            *_spread_reqs({"TPU": 4}, 3, "_pg_uuid"),
+        ],
+    )
+    rep_uuid = _sched(excl_cfg4, [a_surv, dead_z] + refill3, gangs=[g4_slice])
+    assert rep_uuid.infeasible_gang_resource_requests == []
+    assert _launch_and_terminate(rep_uuid) == ({}, [])
+
+    # C7-2: Staggered 5-pod multi-slice refill on L2 where 1 pod registered into torn-down
+    # slice-0 (2/4 -> 3/4) and 4 pods remain booting in REQUESTED / ALLOCATED alongside
+    # torn-down slice-1 (1/4 expired idle survivor).
+    excl_cfg8 = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            resources={"CPU": 8, "TPU": 4, head_res: 1},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+                head_resources=(head_res,),
+            ),
+        )
+    }
+    s0_td = [
+        _run_node(
+            "tpu",
+            f"s0-{w}",
+            {"CPU": 8, "TPU": 4, **({head_res: 1} if w == 0 else {})},
+            {_SLICE: "slice-0", _WID: str(w)},
+            lid="L0",
+        )
+        for w in (0, 1)
+    ]
+    l2_reg = _run_node(
+        "tpu",
+        "s0-2",
+        {"CPU": 8, "TPU": 4},
+        {_SLICE: "slice-0", _WID: "2"},
+        lid="L2",
+    )
+    s1_idle_exp = _run_node(
+        "tpu",
+        "s1-0",
+        {"CPU": 8, "TPU": 4, head_res: 1},
+        {_SLICE: "slice-1", _WID: "0"},
+        idle_ms=600_000,
+        lid="L1",
+    )
+    dead_l0 = _terminated_teardown_row("tpu", "dead-l0", "L0")
+    dead_l1 = _terminated_teardown_row("tpu", "dead-l1", "L1")
+    for boot_st in (Instance.REQUESTED, Instance.ALLOCATED):
+        l2_boot4 = []
+        for i in range(4):
+            bn = _pending_node("tpu", f"l2-b{i}", boot_st, lid="L2")
+            if boot_st == Instance.ALLOCATED:
+                bn.cloud_instance_id = f"cloud-l2-b{i}"
+                bn.im_instance.cloud_instance_id = f"cloud-l2-b{i}"
+            l2_boot4.append(bn)
+        base_insts = s0_td + [l2_reg, s1_idle_exp, dead_l0, dead_l1] + l2_boot4
+
+        rep_idle_safe = _sched(excl_cfg8, base_insts, idle_s=60.0, pending_idle_s=300.0)
+        assert _launch_and_terminate(rep_idle_safe) == ({}, [])
+
+        g_pin_s0 = _strict_pack_gang(
+            _SLICE,
+            _spread_reqs({"TPU": 4}, 4, "_pg_ps0"),
+            loc_constraints=[(_SLICE, _IN, ["slice-0"])],
+        )
+        rep_pin = _sched(excl_cfg8, base_insts, gangs=[g_pin_s0])
+        assert rep_pin.infeasible_gang_resource_requests == []
+        assert _launch_and_terminate(rep_pin) == ({}, [])
+
+        g_two_1 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_2s_a"))
+        g_two_2 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_2s_b"))
+        rep_two = _sched(excl_cfg8, base_insts, gangs=[g_two_1, g_two_2])
+        assert rep_two.infeasible_gang_resource_requests == []
+        assert _launch_and_terminate(rep_two) == ({}, [])
+
+
+def test_multi_rack_refill_isolation_and_multi_slice_gang_headroom():
+    """Shared-domain and orthogonal-rack launches isolate cross-domain refill pods,
+    preserve split-rack head_resources counts, and account for sibling slice refills
+    against cluster max_num_nodes headroom."""
+    head_res = "TPU-v6e-16-head"
+
+    # A7-1: Two incomplete exclusive slices (3/4 idle slice-0 + 3/4 busy slice-1,
+    # refill_gap=2) with 1 4-host gang + 1 secondary CPU worker task under max_num_nodes=8
+    # vs max_num_nodes=9.
+    a7_cfgs = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=0,
+            max_worker_nodes=12,
+            resources={"CPU": 4, "TPU": 4, head_res: 1},
+            runtime_label_keys=(_SLICE, _WID, "rack"),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+                head_resources=(head_res,),
+            ),
+        ),
+        "cpu_worker": NodeTypeConfig(
+            name="cpu_worker",
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            resources={"CPU": 2, "custom_cpu": 1},
+        ),
+    }
+    s0_idle3 = [
+        _run_node(
+            "tpu",
+            f"s0-{w}",
+            {"CPU": 4, "TPU": 4, **({head_res: 1} if w == 0 else {})},
+            {_SLICE: "slice-0", _WID: str(w)},
+            lid="L0",
+        )
+        for w in range(3)
+    ]
+    s1_busy3 = [
+        _run_node(
+            "tpu",
+            f"s1-{w}",
+            {"CPU": 4, "TPU": 4, **({head_res: 1} if w == 0 else {})},
+            {_SLICE: "slice-1", _WID: str(w)},
+            used={"TPU": 4},
+            lid="L1",
+        )
+        for w in range(3)
+    ]
+    dead0 = _terminated_teardown_row("tpu", "d0", "L0")
+    dead1 = _terminated_teardown_row("tpu", "d1", "L1")
+    g4_tpu = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_a71"))
+    cpu_req = _resource_request({"CPU": 2, "custom_cpu": 1})
+
+    rep_cap8 = _sched(
+        a7_cfgs,
+        s0_idle3 + s1_busy3 + [dead0, dead1],
+        reqs=[cpu_req],
+        gangs=[g4_tpu],
+        max_nodes=8,
+    )
+    assert rep_cap8.infeasible_gang_resource_requests == []
+    assert len(rep_cap8.infeasible_resource_requests) == 1
+    assert _launch_and_terminate(rep_cap8) == ({"tpu": 4}, [])
+    assert rep_cap8.cluster_resources["TPU"] == 32.0
+    assert rep_cap8.cluster_resources[head_res] == 2.0
+
+    rep_cap9 = _sched(
+        a7_cfgs,
+        s0_idle3 + s1_busy3 + [dead0, dead1],
+        reqs=[cpu_req],
+        gangs=[g4_tpu],
+        max_nodes=9,
+    )
+    assert rep_cap9.infeasible_gang_resource_requests == []
+    assert rep_cap9.infeasible_resource_requests == []
+    assert _launch_and_terminate(rep_cap9) == ({"tpu": 4, "cpu_worker": 1}, [])
+
+    # R7-2 (Exclusive TPU slices with orthogonal "rack" runtime label at max_w=8):
+    # 3/4 busy in rack-0 + 4/4 (3 busy, 1 free) in rack-1 rejects 2-host rack gang;
+    # complete slice-1 split across racks (w=0 with head in rack-0, w=1..3 idle in rack-1)
+    # never fabricates a 3rd head token.
+    tpu_rack8 = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            resources={"CPU": 8, "TPU": 4, head_res: 1},
+            runtime_label_keys=(_SLICE, _WID, "rack"),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+                head_resources=(head_res,),
+            ),
+        )
+    }
+    r0_s0_busy3 = [
+        _run_node(
+            "tpu",
+            f"r0s0-{w}",
+            {"CPU": 8, "TPU": 4, **({head_res: 1} if w == 0 else {})},
+            {_SLICE: "slice-0", _WID: str(w), "rack": "rack-0"},
+            used={"TPU": 4, **({head_res: 1} if w == 0 else {})},
+            lid="L0",
+        )
+        for w in range(3)
+    ]
+    r1_s1_full = [
+        _run_node(
+            "tpu",
+            f"r1s1-{w}",
+            {"CPU": 8, "TPU": 4, **({head_res: 1} if w == 0 else {})},
+            {_SLICE: "slice-1", _WID: str(w), "rack": "rack-1"},
+            used={"TPU": 4} if w < 3 else None,
+            lid="L1_ok",
+        )
+        for w in range(4)
+    ]
+    g2_rack = _strict_pack_gang("rack", _spread_reqs({"TPU": 4}, 2, "_pg_r72_tpu2"))
+    rep_tpu_r2 = _sched(tpu_rack8, r0_s0_busy3 + r1_s1_full + [dead0], gangs=[g2_rack])
+    assert len(rep_tpu_r2.infeasible_gang_resource_requests) == 1
+    assert rep_tpu_r2.to_launch == []
+
+    split_s1_full = [
+        _run_node(
+            "tpu",
+            f"sps1-{w}",
+            {"CPU": 8, "TPU": 4, **({head_res: 1} if w == 0 else {})},
+            {
+                _SLICE: "slice-1",
+                _WID: str(w),
+                "rack": "rack-0" if w == 0 else "rack-1",
+            },
+            used={"TPU": 4, head_res: 1} if w == 0 else None,
+            lid="L1_split",
+        )
+        for w in range(4)
+    ]
+    g_rack_head = _strict_pack_gang(
+        "rack",
+        [_mk_req({"TPU": 4, head_res: 1}), _mk_req({"TPU": 4})],
+    )
+    rep_split_head = _sched(
+        tpu_rack8, r0_s0_busy3 + split_s1_full + [dead0], gangs=[g_rack_head]
+    )
+    assert len(rep_split_head.infeasible_gang_resource_requests) == 1
+    assert rep_split_head.to_launch == []
+    assert rep_split_head.cluster_resources[head_res] == 2.0
+
+    # R7-2 + A7-2: Shared-domain and domainless labelRefs cross-rack refill isolation.
+    for dom_k in ("rack", None):
+
+        def _gpu_cfg(max_w: int, dk=dom_k) -> Dict[str, NodeTypeConfig]:
+            return {
+                "gpu": NodeTypeConfig(
+                    name="gpu",
+                    min_worker_nodes=0,
+                    max_worker_nodes=max_w,
+                    resources={"CPU": 4, "GPU": 1},
+                    runtime_label_keys=("rack", "ib-fabric"),
+                    replica_config=WorkerReplicaConfig(
+                        workers_per_replica=4,
+                        domain_label_key=dk,
+                        domain_exclusive=False,
+                    ),
+                )
+            }
+
+        rack1_4of4 = [
+            _run_node(
+                "gpu",
+                f"rk1-{w}",
+                {"CPU": 4, "GPU": 1},
+                {"rack": "rack-1", "ib-fabric": "fab-1"},
+                used={"GPU": 1} if w < 2 else None,
+                lid="L_r1",
+            )
+            for w in range(4)
+        ]
+        rack2_3of4_busy = [
+            _run_node(
+                "gpu",
+                f"rk2-{w}",
+                {"CPU": 4, "GPU": 1},
+                {"rack": "rack-2", "ib-fabric": "fab-2"},
+                used={"GPU": 1},
+                lid="L_r2",
+            )
+            for w in range(3)
+        ]
+        dead_r2 = _terminated_teardown_row("gpu", "dead-r2", "L_r2")
+
+        # 3-GPU gang at max_worker_nodes=8 is rejected (rack-1 is 4/4 with 2 free).
+        g3_rk = _strict_pack_gang("rack", _spread_reqs({"GPU": 1}, 3, "_pg_g3rk"))
+        rep_3at8 = _sched(
+            _gpu_cfg(8), rack1_4of4 + rack2_3of4_busy + [dead_r2], gangs=[g3_rk]
+        )
+        assert len(rep_3at8.infeasible_gang_resource_requests) == 1
+        assert rep_3at8.to_launch == []
+
+        # 6-GPU gang at max_worker_nodes=12 succeeds AND preserves ib-fabric="fab-2" on
+        # rack-2's co-launched refill pod (verified by scheduling a fab-2 task onto it),
+        # whereas a 7-GPU gang at max_worker_nodes=12 is rejected.
+        g6_rk = _strict_pack_gang("rack", _spread_reqs({"GPU": 1}, 6, "_pg_g6rk"))
+        fab2_task = _resource_request({"GPU": 1}, sel=[[("ib-fabric", _IN, ["fab-2"])]])
+        rep_6at12 = _sched(
+            _gpu_cfg(12),
+            rack1_4of4 + rack2_3of4_busy + [dead_r2],
+            reqs=[fab2_task],
+            gangs=[g6_rk],
+        )
+        assert rep_6at12.infeasible_gang_resource_requests == []
+        assert rep_6at12.infeasible_resource_requests == []
+        assert _launch_and_terminate(rep_6at12) == ({"gpu": 8}, [])
+        assert rep_6at12.cluster_resources["GPU"] == 12.0
+
+        g7_rk = _strict_pack_gang("rack", _spread_reqs({"GPU": 1}, 7, "_pg_g7rk"))
+        rep_7at12 = _sched(
+            _gpu_cfg(12), rack1_4of4 + rack2_3of4_busy + [dead_r2], gangs=[g7_rk]
+        )
+        assert len(rep_7at12.infeasible_gang_resource_requests) == 1
+        assert rep_7at12.to_launch == []
+
+        # Two incomplete racks at max_worker_nodes=8 (2/4 busy rack-0 + 3/4 free rack-1):
+        # 4-GPU gang succeeds while 5-GPU gang is rejected.
+        rack0_2busy = [
+            _run_node(
+                "gpu",
+                f"rk0b-{w}",
+                {"CPU": 4, "GPU": 1},
+                {"rack": "rack-0"},
+                used={"GPU": 1},
+                lid="L_rk0",
+            )
+            for w in range(2)
+        ]
+        rack1_3free = [
+            _run_node(
+                "gpu",
+                f"rk1f-{w}",
+                {"CPU": 4, "GPU": 1},
+                {"rack": "rack-1"},
+                lid="L_rk1",
+            )
+            for w in range(3)
+        ]
+        dead_rk0 = _terminated_teardown_row("gpu", "dead-rk0", "L_rk0")
+        dead_rk1 = _terminated_teardown_row("gpu", "dead-rk1", "L_rk1")
+        g4_rk = _strict_pack_gang("rack", _spread_reqs({"GPU": 1}, 4, "_pg_g4rk2"))
+        rep_4ok = _sched(
+            _gpu_cfg(8),
+            rack0_2busy + rack1_3free + [dead_rk0, dead_rk1],
+            gangs=[g4_rk],
+        )
+        assert rep_4ok.infeasible_gang_resource_requests == []
+        assert _launch_and_terminate(rep_4ok) == ({"gpu": 4}, [])
+
+        g5_rk = _strict_pack_gang("rack", _spread_reqs({"GPU": 1}, 5, "_pg_g5rk2"))
+        rep_5bad = _sched(
+            _gpu_cfg(8),
+            rack0_2busy + rack1_3free + [dead_rk0, dead_rk1],
+            gangs=[g5_rk],
+        )
+        assert len(rep_5bad.infeasible_gang_resource_requests) == 1
+        assert rep_5bad.to_launch == []
+
+
+def test_torndown_doomed_requested_siblings_and_post_refill_fresh_batch():
+    """Unallocated Instance.REQUESTED siblings on torn-down batches neither skew
+    initial unlabeled alignment nor accept gangs, and refilled complete slices with
+    multiple historical launch IDs never scramble subsequent fresh ALLOCATED batches."""
+    excl_cfg12 = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=0,
+            max_worker_nodes=12,
+            resources={"CPU": 8, "TPU": 4},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+            ),
+        )
+    }
+
+    # R7-3a: 2 busy running survivors + 1 dead worker + 1 doomed REQUESTED sibling on L0
+    # at max_worker_nodes=12 co-launches 2 refill + 4 fresh (count=8; 3 existing rows +
+    # 6 TO_LAUNCH nodes = 9 * 4 = 36 TPUs).
+    s0_busy2 = [
+        _run_node(
+            "tpu",
+            f"s0-{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-0", _WID: str(w)},
+            used={"TPU": 4},
+            lid="L0",
+        )
+        for w in (0, 1)
+    ]
+    dead_l0 = _terminated_teardown_row("tpu", "dead-l0", "L0")
+    doomed_r3 = _pending_node("tpu", "r3", Instance.REQUESTED, lid="L0")
+    g4 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_r73a"))
+    rep_73a = _sched(excl_cfg12, s0_busy2 + [dead_l0, doomed_r3], gangs=[g4])
+    assert rep_73a.infeasible_gang_resource_requests == []
+    assert _launch_and_terminate(rep_73a) == ({"tpu": 8}, [])
+    assert rep_73a.cluster_resources["TPU"] == 36.0
+
+    # R7-3b: Multi-slice torn-down batch L_ms with 2 busy running + 1 ALLOCATED survivor
+    # + 4 dead + 1 doomed REQUESTED sibling never places a 2-host gang onto doomed_r7.
+    excl_cfg8 = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            resources={"CPU": 8, "TPU": 4},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+            ),
+        )
+    }
+    ms_busy2 = [
+        _run_node(
+            "tpu",
+            f"ms-{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-0", _WID: str(w)},
+            used={"TPU": 4},
+            lid="L_ms",
+        )
+        for w in (0, 1)
+    ]
+    ms_alloc = _pending_node("tpu", "ms-a2", Instance.ALLOCATED, lid="L_ms")
+    ms_alloc.cloud_instance_id = "cloud-ms-a2"
+    ms_alloc.im_instance.cloud_instance_id = "cloud-ms-a2"
+    ms_deads = [
+        _terminated_teardown_row("tpu", f"ms-dead-{i}", "L_ms") for i in range(4)
+    ]
+    doomed_r7 = _pending_node("tpu", "ms-r7", Instance.REQUESTED, lid="L_ms")
+    g2 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 2, "_pg_r73b"))
+    rep_73b = _sched(excl_cfg8, ms_busy2 + [ms_alloc, doomed_r7] + ms_deads, gangs=[g2])
+    assert rep_73b.infeasible_gang_resource_requests == []
+    assert _launch_and_terminate(rep_73b) == ({"tpu": 4}, [])
+
+    # R7-4: Complete 4/4 refilled slice-0 carrying {L_old, L_refill} + two 2/4 busy
+    # vanished-pod slices (total_nonprov_open == 4 == size) + fresh 4-pod ALLOCATED batch
+    # L_new keeps L_new intact and schedules a new 4-host gang with zero launches.
+    s0_refilled_full = [
+        _run_node(
+            "tpu",
+            f"rf0-{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-0", _WID: str(w)},
+            used={"TPU": 4},
+            lid="L_old" if w < 3 else "L_refill",
+        )
+        for w in range(4)
+    ]
+    s12_deg_busy = [
+        _run_node(
+            "tpu",
+            f"dg{s}-{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: f"slice-{s}", _WID: str(w)},
+            used={"TPU": 4},
+            lid=f"L_van_{s}",
+        )
+        for s in (1, 2)
+        for w in (0, 1)
+    ]
+    fresh_lnew = []
+    for w in range(4):
+        fn = _pending_node("tpu", f"nw-{w}", Instance.ALLOCATED, lid="L_new")
+        fn.cloud_instance_id = f"cloud-nw-{w}"
+        fn.im_instance.cloud_instance_id = f"cloud-nw-{w}"
+        fresh_lnew.append(fn)
+    g4_74 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_r74"))
+    rep_74 = _sched(
+        excl_cfg12, s0_refilled_full + s12_deg_busy + fresh_lnew, gangs=[g4_74]
+    )
+    assert rep_74.infeasible_gang_resource_requests == []
+    assert _launch_and_terminate(rep_74) == ({}, [])
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

@@ -11266,6 +11266,8 @@ class TestReconcilerMultiHost:
         max_replicas: int,
         pod_names: List[str],
         omit_runtime_labels: bool = False,
+        min_replicas: int = 0,
+        head_res: Optional[str] = None,
     ):
         slice_key = "ray.io/tpu-slice-name"
         wid_key = "ray.io/tpu-worker-id"
@@ -11274,11 +11276,16 @@ class TestReconcilerMultiHost:
             domain_label_key=slice_key,
             domain_exclusive=True,
             worker_index_label_key=wid_key,
+            head_resources=(head_res,) if head_res else (),
         )
         tpu = NodeTypeConfig(
             name="tpu",
-            resources={"CPU": 4, "TPU": 4},
-            min_worker_nodes=0,
+            resources={
+                "CPU": 4,
+                "TPU": 4,
+                **({head_res: 1} if head_res else {}),
+            },
+            min_worker_nodes=min_replicas * size,
             max_worker_nodes=max_replicas * size,
             replica_config=rc,
             runtime_label_keys=(slice_key, wid_key),
@@ -11301,7 +11308,7 @@ class TestReconcilerMultiHost:
                 {
                     "groupName": "tpu",
                     "replicas": 0,
-                    "minReplicas": 0,
+                    "minReplicas": min_replicas,
                     "maxReplicas": max_replicas,
                     "numOfHosts": size,
                     "template": {"spec": {"containers": [{}]}},
@@ -11336,10 +11343,16 @@ class TestReconcilerMultiHost:
                 int(pods["metadata"]["resourceVersion"]) + 1
             )
 
-        def step_tick(tasks: int = 0, gangs: int = 0, dead: Optional[str] = None):
+        def step_tick(
+            tasks: int = 0,
+            gangs: int = 0,
+            dead: Optional[str] = None,
+            gang_needs_head: bool = False,
+        ):
             states = list(head_state.node_states)
             for nm, busy in ray_busy.items():
                 idx = admitted.index(nm)
+                is_head_slot = bool(head_res) and (idx % size == 0)
                 states.append(
                     NodeState(
                         node_id=nm.encode().ljust(28, b"\0"),
@@ -11350,10 +11363,17 @@ class TestReconcilerMultiHost:
                             if nm == dead
                             else (NodeStatus.RUNNING if busy else NodeStatus.IDLE)
                         ),
-                        total_resources={"CPU": 4.0, "TPU": 4.0},
+                        total_resources={
+                            "CPU": 4.0,
+                            "TPU": 4.0,
+                            **({head_res: 1.0} if is_head_slot else {}),
+                        },
                         available_resources={
                             "CPU": 4.0,
                             "TPU": 0.0 if busy else 4.0,
+                            **(
+                                {head_res: 0.0 if busy else 1.0} if is_head_slot else {}
+                            ),
                         },
                         labels=(
                             {}
@@ -11375,9 +11395,12 @@ class TestReconcilerMultiHost:
                 )
             for _ in range(gangs):
                 bs = state.pending_gang_resource_requests.add().bundle_selectors.add()
-                for _ in range(size):
+                for b_idx in range(size):
+                    req_res = {"TPU": 4.0}
+                    if gang_needs_head and head_res and b_idx == 0:
+                        req_res[head_res] = 1.0
                     bs.resource_requests.add().CopyFrom(
-                        ResourceRequestUtil.make({"TPU": 4.0})
+                        ResourceRequestUtil.make(req_res)
                     )
                 bs.locality_requirement.locality_constraint.label_name = slice_key
                 bs.locality_requirement.locality_constraint.placement_strategy = (
@@ -11514,6 +11537,115 @@ class TestReconcilerMultiHost:
         assert group.get("replicas") == 2
         assert len(workers()) == 8
         assert len(res.infeasible_gang_resource_requests) == 0
+
+    def test_unlabeled_scale_from_zero_mid_boot_pod_death_recovers_replica_for_gang(
+        self,
+    ):
+        """When a scale-from-zero KubeRay group (minReplicas=0, maxReplicas=1, size=4)
+        loses a pod mid-boot while sibling survivors are still ALLOCATED, the pending
+        4-host gang refills the missing pod and recovers to 1 complete replica."""
+        (group, _, _, ray_busy, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
+            "sfz-mid-boot-death",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"u-{i}" for i in range(12)],
+        )
+        # Tick 1 scales 0 -> 1 replica; Tick 2 allocates u-0..u-3.
+        step_tick(gangs=1)
+        step_tick(gangs=1)
+        # Pod u-1 registers and immediately dies while u-0, u-2, u-3 remain ALLOCATED.
+        ray_busy["u-1"] = False
+        res = None
+        for _ in range(4):
+            res = step_tick(gangs=1, dead="u-1" if "u-1" in ray_busy else None)
+        assert group.get("replicas") == 1
+        assert len(workers()) == 4
+        assert len(res.infeasible_gang_resource_requests) == 0
+
+    def test_unlabeled_direct_pod_eviction_clamped_refill_and_second_slice_scale_up(
+        self,
+    ):
+        """When a busy unlabeled pod is evicted directly from Kubernetes at maxReplicas=2
+        (transitioning straight to TERMINATED without teardown history), the clamped 1-pod
+        refill attaches cleanly and scales replicas to 2 with zero infeasible gangs."""
+        (
+            group,
+            pods,
+            _,
+            ray_busy,
+            workers,
+            step_tick,
+        ) = self._make_unlabeled_kuberay_sim(
+            "direct-evict-scale2",
+            size=4,
+            max_replicas=2,
+            pod_names=[f"u-{i}" for i in range(12)],
+        )
+        for _ in range(3):
+            step_tick(tasks=4)
+        for nm in workers():
+            ray_busy[nm] = True
+        step_tick()
+
+        victim = workers()[-1]
+        pods["items"] = [p for p in pods["items"] if p["metadata"]["name"] != victim]
+        pods["metadata"]["resourceVersion"] = str(
+            int(pods["metadata"]["resourceVersion"]) + 1
+        )
+        ray_busy.pop(victim)
+
+        # Tick 1: 4-host gang launches 4 -> clamped to 1 refill pod (u-4 admitted).
+        step_tick(gangs=1)
+        # Tick 2: u-4 is ALLOCATED; attaches to the 3-pod incomplete replica and scales
+        # replicas to 2 with 0 infeasible gangs.
+        res_t2 = step_tick(gangs=1)
+        assert group.get("replicas") == 2
+        assert len(workers()) == 8
+        assert len(res_t2.infeasible_gang_resource_requests) == 0
+
+    def test_unlabeled_min_replicas_operator_recreated_pod_recovers_head_and_scales_up(
+        self,
+    ):
+        """When worker 0 of an attributed replica (lid=L0) crashes and KubeRay
+        automatically recreates replacement pod u-4 under replicas=1 (adopted as
+        ALLOCATED with launch_request_id=""), u-4 attaches to the torn-down replica,
+        restoring worker-0 head_resources and allowing immediate 2nd-replica scale-up."""
+        head_res = "TPU-v6e-16-head"
+        (group, _, _, ray_busy, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
+            "min1-op-recreate",
+            size=4,
+            min_replicas=1,
+            max_replicas=2,
+            pod_names=[f"u-{i}" for i in range(12)],
+            head_res=head_res,
+        )
+        # min_worker_nodes=4 scales 0 -> 1 via LaunchRequest L0; register u-0..u-3.
+        for _ in range(2):
+            step_tick()
+        for nm in workers():
+            ray_busy[nm] = False
+        step_tick()
+        assert workers() == ["u-0", "u-1", "u-2", "u-3"]
+
+        # Worker 0 ("u-0") crashes while replicas=1; Reconciler deletes u-0
+        # (marking L0 in torn_down_lids) and KubeRay recreates unattributed "u-4".
+        step_tick(dead="u-0")
+        assert workers() == ["u-1", "u-2", "u-3", "u-4"]
+
+        # While u-4 is unattributed ALLOCATED and u-1..u-3 are idle, a 4-host gang
+        # requiring head_res on worker 0 is feasible without scaling past replicas=1.
+        res_head = step_tick(gangs=1, gang_needs_head=True)
+        assert group.get("replicas") == 1
+        assert len(res_head.infeasible_gang_resource_requests) == 0
+
+        # When u-1..u-3 are busy, a new 4-host gang scales replicas to 2 immediately
+        # without 3 phantom missing backfill slots blocking scale-up.
+        for nm in ("u-1", "u-2", "u-3"):
+            ray_busy[nm] = True
+        res_scale = step_tick(gangs=1, gang_needs_head=True)
+        assert group.get("replicas") == 2
+        assert len(workers()) == 8
+        assert len(res_scale.infeasible_gang_resource_requests) == 0
 
 
 if __name__ == "__main__":
