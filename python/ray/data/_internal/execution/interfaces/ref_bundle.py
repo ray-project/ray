@@ -292,6 +292,9 @@ class RefBundle:
         """
         assert needed_rows > 0, "needed_rows must be positive."
         assert (
+            self.reconstruction_stamp is None
+        ), "Cannot slice a RefBundle with an active reconstruction_stamp."
+        assert (
             self.num_rows() is not None
         ), "Cannot slice a RefBundle with unknown number of rows."
         assert (
@@ -353,7 +356,6 @@ class RefBundle:
             owns_blocks=False,
             slices=tuple(consumed_slices) if consumed_slices else None,
             output_split_idx=self.output_split_idx,
-            reconstruction_stamp=self.reconstruction_stamp,
         )
 
         remaining_bundle = RefBundle(
@@ -362,7 +364,6 @@ class RefBundle:
             owns_blocks=False,
             slices=tuple(remaining_slices) if remaining_slices else None,
             output_split_idx=self.output_split_idx,
-            reconstruction_stamp=self.reconstruction_stamp,
         )
 
         return sliced_bundle, remaining_bundle
