@@ -9,7 +9,7 @@ collect without it.
 import json
 import shutil
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import pyarrow as pa
 from pyarrow.fs import LocalFileSystem
@@ -44,7 +44,8 @@ def write_mcap(
     index=True,
     encodings=None,
 ):
-    """Write ``messages`` (dicts with topic, log_time, data) to ``path``.
+    """Write ``messages`` (dicts with topic, log_time, data, and optionally
+    publish_time and sequence) to ``path``.
 
     The default ``chunk_size=1`` closes a chunk after every message, so N
     messages make N chunks, each a possible split point. ``encodings``
@@ -84,6 +85,7 @@ def write_mcap(
                 log_time=message["log_time"],
                 publish_time=message.get("publish_time", message["log_time"]),
                 data=data,
+                sequence=message.get("sequence", 0),
             )
         writer.finish()
 
@@ -109,7 +111,9 @@ def mixed_encoding_messages(n=6):
     return messages
 
 
-def write_mcap_without_summary_schemas(path):
+def write_mcap_without_summary_schemas(
+    path, b_declared_in_chunk_1=False, message_indexes=True
+):
     """Write two JSON channels with two schemas, one message per chunk.
 
     The schema records are written only inside the chunks
@@ -118,6 +122,10 @@ def write_mcap_without_summary_schemas(path):
 
         chunk   0   1   2   3   4   5
         topic   /a  /b  /a  /b  /a  /b
+
+    Both schemas are declared in chunk 0, or with ``b_declared_in_chunk_1``,
+    ``other_schema`` only in chunk 1. Without ``message_indexes``, the chunk
+    indexes do not say which channels a chunk holds, so a read opens every chunk.
     """
     from mcap.writer import CompressionType, IndexType, Writer
 
@@ -126,22 +134,62 @@ def write_mcap_without_summary_schemas(path):
             stream,
             chunk_size=1,
             compression=CompressionType.ZSTD,
-            index_types=IndexType.ALL,
+            index_types=IndexType.ALL if message_indexes else IndexType.CHUNK,
             repeat_schemas=False,
         )
         writer.start(profile="", library="ray-test")
         channels = {}
-        for topic, name in (("/a", "test_schema"), ("/b", "other_schema")):
+
+        def declare(topic, name):
             schema_id = writer.register_schema(
                 name=name, encoding="jsonschema", data=b'{"type": "object"}'
             )
             channels[topic] = writer.register_channel(
                 schema_id=schema_id, topic=topic, message_encoding="json"
             )
+
+        declare("/a", "test_schema")
+        if not b_declared_in_chunk_1:
+            declare("/b", "other_schema")
         for i in range(6):
             topic = "/a" if i % 2 == 0 else "/b"
+            if topic not in channels:
+                # Chunk 0 closed after its message, so this lands in chunk 1.
+                declare(topic, "other_schema")
             writer.add_message(
                 channel_id=channels[topic],
+                log_time=BASE_TIME + i * STEP,
+                publish_time=BASE_TIME + i * STEP,
+                data=json.dumps({"seq": i}).encode(),
+            )
+        writer.finish()
+
+
+UNDECLARED_CHANNEL = 99  # the channel id ``write_undeclared_channel`` never declares
+
+
+def write_undeclared_channel(path):
+    """Write one chunk that holds a message on ``/a``, then a message on channel
+    ``UNDECLARED_CHANNEL``, which no record of the file declares.
+
+    The chunk decodes, but the reader cannot place its second message.
+    """
+    from mcap.writer import CompressionType, IndexType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(
+            stream, compression=CompressionType.ZSTD, index_types=IndexType.ALL
+        )
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b'{"type": "object"}'
+        )
+        channel_id = writer.register_channel(
+            schema_id=schema_id, topic="/a", message_encoding="json"
+        )
+        for i, channel in enumerate([channel_id, UNDECLARED_CHANNEL]):
+            writer.add_message(
+                channel_id=channel,
                 log_time=BASE_TIME + i * STEP,
                 publish_time=BASE_TIME + i * STEP,
                 data=json.dumps({"seq": i}).encode(),
@@ -314,6 +362,22 @@ def write_corrupt_chunk(path: str, source: str, index: int) -> str:
     return path
 
 
+NOT_JSON = b"not json"  # a payload on a JSON-encoded topic that does not decode
+
+
+def write_invalid_json(path: str, bad: Iterable[int], **options: Any) -> str:
+    """Write ``CHUNKED_FILE_MESSAGES`` ``round_robin_messages`` to ``path``, with
+    the payloads of the messages whose ``seq`` is in ``bad`` set to ``NOT_JSON``.
+
+    ``options`` go to ``write_mcap``; by default each message is its own chunk.
+    """
+    messages = round_robin_messages(CHUNKED_FILE_MESSAGES)
+    for seq in bad:
+        messages[seq]["data"] = NOT_JSON
+    write_mcap(path, messages, **options)
+    return path
+
+
 # Where a chunk record's compression name starts: after the opcode (1 byte),
 # the record length (8), the message start and end times (8 each), the
 # uncompressed size (8), its CRC (4) and the name's length (4).
@@ -393,9 +457,27 @@ class _SeekLoggingFile:
 
 
 def chunks_read(seek_log: SeekLog, path: str) -> List[int]:
-    """Start offsets of the chunks of ``path`` that were read.
+    """Start offsets of the reads of chunk records in ``path``, in order.
 
-    A chunk record is read in one read from its start offset.
+    Each read starts at a chunk record and fetches that chunk, or a run of
+    chunks fetched together (``mcap_io.read_chunks``).
     """
     starts = {c.chunk_start_offset for c in summary_of(path).chunk_indexes}
     return [offset for offset in seek_log.seeks[path] if offset in starts]
+
+
+def record_parsed_chunks(monkeypatch) -> List[int]:
+    """Record the offset of every chunk the reader parses out of its reads."""
+    from ray.data._internal.datasource_v2.formats.mcap import mcap_chunks
+
+    real_read_chunks = mcap_chunks.read_chunks
+    offsets: List[int] = []
+
+    def read_chunks(f, chunk_indexes, reads, on_corrupt=None):
+        chunks = real_read_chunks(f, chunk_indexes, reads, on_corrupt)
+        for chunk_index, chunk in chunks:
+            offsets.append(chunk_index.chunk_start_offset)
+            yield chunk_index, chunk
+
+    monkeypatch.setattr(mcap_chunks, "read_chunks", read_chunks)
+    return offsets
