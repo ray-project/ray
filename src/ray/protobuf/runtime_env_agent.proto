@@ -103,6 +103,8 @@ message CreateWorkerContainerRequest {
   // served only by the node-local loopback listener.
   map<string, string> environment = 4;
   string working_directory = 5;
+  // Private Unix socket for handing the launcher's stdio to agent-owned run.
+  string stdio_socket = 6;
 }
 
 message CreateWorkerContainerReply {
@@ -112,6 +114,10 @@ message CreateWorkerContainerReply {
   repeated string start_options = 4;
   bool discard_stdout = 5;
   bool discard_stderr = 6;
+  repeated string global_options = 7;
+  // Without stdio_socket, asks the launcher to prepare an FD handoff and retry.
+  // With stdio_socket, the agent owns run and reports its exit over that socket.
+  bool use_run = 8;
 }
 
 message StopWorkerContainerRequest {

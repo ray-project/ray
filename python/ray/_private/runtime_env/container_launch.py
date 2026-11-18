@@ -1,18 +1,23 @@
 """Bridge launcher processes and the runtime env agent for worker containers.
 
-The agent splits ``podman run`` options and owns ``podman create``. The launcher
-requests creation over HTTP, then execs ``podman start`` to run the worker.
+The agent owns creation. Options with create/start equivalents use that split;
+run-only options retain Podman's run semantics with a launcher stdio handoff.
 """
 
 import http.client
 import ipaddress
 import os
 import re
+import signal
+import socket
+import tempfile
 import time
+from array import array
+from contextlib import ExitStack
 from urllib.parse import urlsplit
 
 
-def split_container_options(options, help_text):
+def split_container_options(options, help_text, create_help, global_help):
     """Split run options into create/start settings in the runtime env agent.
 
     The agent fetches Podman's help once. Its option declarations distinguish
@@ -20,19 +25,27 @@ def split_container_options(options, help_text):
 
     ``options`` contains expanded run option tokens, without the image or command.
     ``help_text`` combines Podman's ``--help`` and ``run --help`` output.
+    Separate create and global declarations determine each option's scope.
 
-    The result contains create options, start options, and two booleans telling
-    the launcher to discard stdout and stderr, respectively.
+    Return create options, start options, stdout/stderr discard flags, global
+    options, and whether the original run command is required.
     """
-    schema, aliases = {}, {}
-    for line in help_text.splitlines():
-        declaration = re.split(r"\s{2,}", line.strip(), maxsplit=1)[0]
-        match = re.fullmatch(r"(?:-(.), )?(--[\w-]+)(?: (.+))?", declaration)
-        if match:
-            short, name, value_type = match.groups()
-            schema[name] = value_type is not None
-            if short:
-                aliases[short] = name
+
+    def declarations(text):
+        schema, aliases = {}, {}
+        for line in text.splitlines():
+            declaration = re.split(r"\s{2,}", line.strip(), maxsplit=1)[0]
+            match = re.fullmatch(r"(?:-(.), )?(--[\w-]+)(?: (.+))?", declaration)
+            if match:
+                short, name, value_type = match.groups()
+                schema[name] = value_type is not None
+                if short:
+                    aliases[short] = name
+        return schema, aliases
+
+    schema, aliases = declarations(help_text)
+    create_schema, _ = declarations(create_help)
+    global_schema, _ = declarations(global_help)
     if "--detach" not in schema or "--interactive" not in schema:
         raise RuntimeError("Cannot read Podman's run option schema")
 
@@ -86,17 +99,25 @@ def split_container_options(options, help_text):
 
     # Container configuration belongs to create; attachment and signal handling
     # belong to the launcher's start. Detach means omitting start --attach.
-    create, start, streams = [], [], set()
+    create, start, global_options, streams = [], [], [], set()
+    use_run = False
     detached, interactive = False, False
     for name, value in parsed:
-        if name == "--detach":
+        if name in global_schema:
+            global_options.append(name + "=" + value)
+        elif name == "--detach":
             detached = boolean(value)
         elif name in ("--sig-proxy", "--detach-keys"):
             start.append(name + "=" + value)
         elif name == "--attach":
             streams.update(value.lower().split(","))
         else:
-            create.append(name + "=" + value)
+            if name in create_schema:
+                create.append(name + "=" + value)
+            else:
+                # Some run options (e.g. passwd and rmi) have no create/start
+                # equivalent. Preserve them by executing run itself in the agent.
+                use_run = True
             if name == "--interactive":
                 interactive = boolean(value)
     if streams - {"stdin", "stdout", "stderr"} or (detached and streams):
@@ -112,7 +133,50 @@ def split_container_options(options, help_text):
         start,
         bool(streams and "stdout" not in streams),
         bool(streams and "stderr" not in streams),
+        global_options,
+        use_run,
     )
+
+
+def _wait_for_managed_run(listener, deadline, resources):
+    """Give the agent the launcher's streams, then relay signals and exit status."""
+    listener.settimeout(max(0, deadline - time.monotonic()))
+    with listener.accept()[0] as channel:
+        # The connected channel is sufficient now. Remove the private listener
+        # before a long-lived worker (or a killed launcher) can leave it behind.
+        resources.close()
+        channel.sendmsg(
+            [b"F"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array("i", [0, 1, 2]))]
+        )
+        previous = {}
+
+        def forward(signum, _frame):
+            try:
+                channel.sendall(f"{signum}\n".encode())
+            except OSError:
+                pass
+
+        try:
+            for signum in (
+                signal.SIGTERM,
+                signal.SIGINT,
+                signal.SIGHUP,
+                signal.SIGQUIT,
+                signal.SIGWINCH,
+                signal.SIGUSR1,
+                signal.SIGUSR2,
+                signal.SIGCONT,
+            ):
+                previous[signum] = signal.signal(signum, forward)
+            with channel.makefile("rb") as reply:
+                status = reply.readline(32)
+            if not re.fullmatch(rb"-?\d+\n", status):
+                raise RuntimeError("Lost agent-owned Podman run")
+            returncode = int(status)
+        finally:
+            for signum, handler in previous.items():
+                signal.signal(signum, handler)
+    return returncode
 
 
 def run_worker_container(address, options, entrypoint, launcher_env):
@@ -123,8 +187,8 @@ def run_worker_container(address, options, entrypoint, launcher_env):
     ``entrypoint`` is the create command's positional tail: [image, *worker_args].
     ``launcher_env`` is the host environment for both create and start.
 
-    On success, exec replaces this process with Podman rather than spawning a
-    second launcher. The agent owns container creation and cancellation.
+    Usually exec replaces this process with Podman start. Run-only options use
+    agent-owned run, with this process forwarding IO, signals, and exit status.
     """
     from ray._private.authentication.http_token_authentication import (
         get_auth_headers_if_auth_enabled,
@@ -155,6 +219,52 @@ def run_worker_container(address, options, entrypoint, launcher_env):
     )
     headers = {"Content-Type": "application/octet-stream"}
     headers.update(get_auth_headers_if_auth_enabled({}))
+    with ExitStack() as resources:
+        listener = None
+        while True:
+            reply = _request_creation(endpoint, request, headers, deadline)
+            if not reply.use_run:
+                break
+            if listener is not None:
+                returncode = _wait_for_managed_run(listener, deadline, resources)
+                break
+            # Only run-only options need an FD handoff. A private, short path
+            # also fits AF_UNIX's path limit on hosts with long TMPDIR values.
+            directory = resources.enter_context(
+                tempfile.TemporaryDirectory(prefix="ray-run-", dir="/tmp")
+            )
+            listener = resources.enter_context(
+                socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            )
+            request.stdio_socket = os.path.join(directory, "stdio")
+            listener.bind(request.stdio_socket)
+            listener.listen(1)
+    if reply.use_run:
+        if returncode < 0:
+            if -returncode not in (signal.SIGKILL, signal.SIGSTOP):
+                signal.signal(-returncode, signal.SIG_DFL)
+            os.kill(os.getpid(), -returncode)
+        raise SystemExit(returncode)
+    if not re.fullmatch("[a-f0-9]{64}", reply.container_id):
+        raise RuntimeError("Agent returned an invalid worker container ID")
+    for stream, discard in ((1, reply.discard_stdout), (2, reply.discard_stderr)):
+        if discard:
+            with open(os.devnull, "w") as sink:
+                os.dup2(sink.fileno(), stream)
+    command = [
+        "podman",
+        *reply.global_options,
+        "start",
+        *reply.start_options,
+        reply.container_id,
+    ]
+    # Keep the launcher's PID; the container's Python worker is a separate process.
+    os.execvpe(command[0], command, launcher_env)
+
+
+def _request_creation(endpoint, request, headers, deadline):
+    from ray.core.generated import runtime_env_agent_pb2 as protocol
+
     delay = 0.1
     while True:
         remaining = deadline - time.monotonic()
@@ -172,22 +282,11 @@ def run_worker_container(address, options, entrypoint, launcher_env):
             if response.status != 200:
                 raise RuntimeError(f"Container agent returned HTTP {response.status}")
             reply = protocol.CreateWorkerContainerReply.FromString(body)
-            break
+            if reply.status != protocol.AGENT_RPC_STATUS_OK:
+                raise RuntimeError(reply.error_message)
+            return reply
         except (OSError, http.client.HTTPException):
-            # Only transport failures retry, with backoff bounded by the startup
-            # deadline. HTTP error statuses and agent/protobuf errors fail directly.
             time.sleep(max(0, min(delay, deadline - time.monotonic())))
             delay = min(delay * 2, 1)
         finally:
             connection.close()
-    if reply.status != protocol.AGENT_RPC_STATUS_OK:
-        raise RuntimeError(reply.error_message)
-    if not re.fullmatch("[a-f0-9]{64}", reply.container_id):
-        raise RuntimeError("Agent returned an invalid worker container ID")
-    for stream, discard in ((1, reply.discard_stdout), (2, reply.discard_stderr)):
-        if discard:
-            with open(os.devnull, "w") as sink:
-                os.dup2(sink.fileno(), stream)
-    command = ["podman", "start", *reply.start_options, reply.container_id]
-    # Keep the launcher's PID; the container's Python worker is a separate process.
-    os.execvpe(command[0], command, launcher_env)

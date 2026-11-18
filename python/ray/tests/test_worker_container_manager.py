@@ -1,4 +1,7 @@
 import asyncio
+import json
+import os
+import signal
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -45,6 +48,8 @@ class Engine:
 
     async def run(self, args, environment=None, cwd=None, timeout=None):
         self.calls.append(args)
+        if args == ["create", "--help"]:
+            return CREATE_HELP
         if args[0] == "create":
             self.started.set()
             await self.gate.wait()
@@ -67,7 +72,9 @@ class Engine:
             return ""
         if args[0] == "ps":
             return self.containers.get(args[-1].split("=", 2)[-1], "")
-        if args in (["run", "--help"], ["--help"]):
+        if args == ["--help"]:
+            return GLOBAL_HELP
+        if args == ["run", "--help"]:
             return OPTION_HELP
         raise AssertionError(args)
 
@@ -312,6 +319,19 @@ OPTION_HELP = """
       --env-host              Copy host env
       --rootfs                Root filesystem
       --passwd                Manage passwd
+      --rmi                   Remove image
+"""
+CREATE_HELP = "\n".join(
+    line
+    for line in OPTION_HELP.splitlines()
+    if not any(
+        name in line for name in ("--passwd", "--rmi", "--detach", "--sig-proxy")
+    )
+)
+GLOBAL_HELP = """
+      --root string           Storage root
+      --runroot string        Storage state
+      --storage-opt strings   Storage driver options
 """
 
 
@@ -328,12 +348,11 @@ OPTION_HELP = """
             ["--attach", "--sig-proxy=false", "--detach-keys=ctrl-q"],
         ),
         (
-            ["--no-hosts", "--env-host", "--rootfs", "--passwd", "-i"],
+            ["--no-hosts", "--env-host", "--rootfs", "-i"],
             [
                 "--no-hosts=true",
                 "--env-host=true",
                 "--rootfs=true",
-                "--passwd=true",
                 "--interactive=true",
             ],
             ["--attach", "--interactive"],
@@ -346,32 +365,255 @@ OPTION_HELP = """
     ],
 )
 def test_option_values_and_combined_short_flags(flags, expected_create, expected_start):
-    assert split_container_options(flags, OPTION_HELP) == (
+    assert split_container_options(flags, OPTION_HELP, CREATE_HELP, GLOBAL_HELP) == (
         expected_create,
         expected_start,
         False,
+        False,
+        [],
         False,
     )
 
 
 def test_attach_selection_and_new_boolean_options():
-    assert split_container_options(["-a", "stderr"], OPTION_HELP) == (
+    assert split_container_options(
+        ["-a", "stderr"], OPTION_HELP, CREATE_HELP, GLOBAL_HELP
+    ) == (
         [],
         ["--attach"],
         True,
         False,
+        [],
+        False,
     )
     help_text = OPTION_HELP + "      --future-flag          A new boolean option\n"
-    assert split_container_options(["--future-flag", "-i"], help_text)[0] == [
-        "--future-flag=true",
-        "--interactive=true",
+    result = split_container_options(
+        ["--future-flag", "-i"], help_text, CREATE_HELP, GLOBAL_HELP
+    )
+    assert result[0] == ["--interactive=true"]
+    assert result[-1]  # A new run-only flag must never be sent to create.
+
+
+@pytest.mark.parametrize("flag", ["--passwd=false", "--rmi", "--rmi=false"])
+def test_run_only_options_use_original_run(flag):
+    result = split_container_options([flag], OPTION_HELP, CREATE_HELP, GLOBAL_HELP)
+    assert result[0] == []
+    assert result[-1]
+
+
+def test_global_options_are_kept_separate_with_order_and_repetition():
+    result = split_container_options(
+        ["--root", "/custom/storage", "--storage-opt=a=1", "--storage-opt", "b=2"],
+        GLOBAL_HELP + OPTION_HELP,
+        CREATE_HELP,
+        GLOBAL_HELP,
+    )
+    assert result[0] == []
+    assert result[4] == [
+        "--root=/custom/storage",
+        "--storage-opt=a=1",
+        "--storage-opt=b=2",
     ]
+    assert not result[-1]
+
+
+@pytest.mark.parametrize("fail_create", [False, True])
+def test_cleanup_uses_each_launch_engine_context_even_after_failed_create(
+    tmp_path, fail_create
+):
+    async def run():
+        async with managed(tmp_path) as (manager, _):
+            stores, calls = {}, []
+
+            async def engine(args, environment=None, cwd=None, timeout=None):
+                root, command = args[:2]
+                assert root.startswith("--root=")
+                assert environment == {"CONTAINERS_STORAGE_CONF": root + ".conf"}
+                assert cwd == str(tmp_path / root.split("=")[1])
+                calls.append((root, command))
+                if command == "create":
+                    stores[root] = "a" * 64
+                    if fail_create:
+                        raise RuntimeError(
+                            "Creation failed after storing the container"
+                        )
+                    return stores[root]
+                if command == "ps":
+                    return stores.get(root, "")
+                assert command == "rm"
+                stores.pop(root)
+                return ""
+
+            manager._run = engine
+            owners = [launch("a"), launch("b")]
+            # Launch both before cancelling either; contexts must not overwrite.
+            for index, owner in enumerate(owners):
+                manager.register(owner)
+                root = f"--root=store{index}"
+                operation = manager.create_registered(
+                    owner,
+                    [],
+                    ["image"],
+                    {"CONTAINERS_STORAGE_CONF": root + ".conf"},
+                    str(tmp_path / f"store{index}"),
+                    global_options=[root],
+                )
+                if fail_create:
+                    with pytest.raises(RuntimeError, match="Creation failed"):
+                        await operation
+                    await settled(manager, owner)
+                else:
+                    await operation
+            for owner in owners:
+                manager.stop(owner)
+                await settled(manager, owner)
+            assert not stores
+            for index in range(2):
+                root = f"--root=store{index}"
+                assert (root, "rm") in calls
+                assert calls.count((root, "ps")) >= 2
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("flag", ["--passwd=false", "--rmi"])
+@pytest.mark.parametrize(
+    "finish", ["exit", "signal", "cancel", "disconnect", "escaped"]
+)
+def test_run_only_launch_preserves_stdio_signals_exit_and_cancellation(
+    tmp_path, flag, finish
+):
+    script = tmp_path / "engine.py"
+    script.write_text(
+        "import json, os, signal, subprocess, sys\n"
+        "from pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, lambda *_: sys.exit(23))\n"
+        "Path('argv.json').write_text(json.dumps(sys.argv[1:]))\n"
+        "if os.environ['FINISH'] == 'exit':\n"
+        "    print(sys.stdin.read(), end='', flush=True)\n"
+        "    print('engine stderr', file=sys.stderr, flush=True)\n"
+        "    sys.exit(7)\n"
+        "if os.environ['FINISH'] == 'escaped':\n"
+        "    subprocess.Popen([sys.executable, '-c', \"import time; from pathlib import Path; time.sleep(1); Path('late').touch(); print('late output', flush=True)\"], start_new_session=True)\n"
+        "    sys.exit(0)\n"
+        "while True: signal.pause()\n"
+    )
+
+    async def run():
+        async with managed(tmp_path) as (manager, engine):
+            manager.podman_command = [sys.executable, str(script)]
+            if finish == "escaped":
+                original_engine = engine.run
+
+                async def late_engine(args, *a, **kw):
+                    if args[0] == "ps":
+                        engine.calls.append(args)
+                        return "a" * 64 if (tmp_path / "late").exists() else ""
+                    if args[0] == "rm":
+                        (tmp_path / "late").unlink()
+                        (tmp_path / "removed").touch()
+                        return ""
+                    return await original_engine(args, *a, **kw)
+
+                manager._run = late_engine
+            owner = launch(ttl=30)
+            manager.register(owner)
+            client = await server_for(manager)
+            address = str(client.make_url("/")).removeprefix("http://").rstrip("/")
+            environment = dict(
+                os.environ,
+                FINISH=finish,
+                RAY_AUTH_MODE="disabled",
+                PYTHONPATH=os.path.abspath("python"),
+                RAY_WORKER_CONTAINER_LAUNCH_ID=owner["launch_id"],
+                RAY_WORKER_CONTAINER_SESSION_ID=owner["session_id"],
+                RAY_WORKER_CONTAINER_JOB_ID=owner["job_id"],
+                RAY_WORKER_CONTAINER_DEADLINE_MS=str(owner["deadline_ms"]),
+            )
+            original = manager.create_registered
+
+            async def retry(*args, **kwargs):
+                result = await original(*args, **kwargs)
+                creator = manager.records[owner["launch_id"]].creator
+                assert await original(*args, **kwargs) == result
+                assert manager.records[owner["launch_id"]].creator is creator
+                return result
+
+            manager.create_registered = retry
+            launcher = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-c",
+                "import json,os,sys; from ray._private.runtime_env.container_launch import run_worker_container; "
+                "run_worker_container(sys.argv[1], json.loads(sys.argv[2]), ['image'], dict(os.environ))",
+                address,
+                json.dumps([flag]),
+                env=environment,
+                cwd=str(tmp_path),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                if finish == "exit":
+                    stdout, stderr = await asyncio.wait_for(
+                        launcher.communicate(b"worker input\n"), 15
+                    )
+                    assert stdout == b"worker input\n"
+                    assert stderr == b"engine stderr\n"
+                    assert launcher.returncode == 7
+                else:
+                    for _ in range(1000):
+                        if (tmp_path / "argv.json").exists():
+                            break
+                        await asyncio.sleep(0.01)
+                    else:
+                        raise AssertionError("Podman run was not started")
+                    if finish == "escaped":
+                        record = manager.records[owner["launch_id"]]
+                        while record.run_process.returncode is None:
+                            await asyncio.sleep(0.01)
+                        assert not record.creator.done()
+                        manager.stop(owner)
+                    elif finish == "signal":
+                        launcher.send_signal(signal.SIGTERM)
+                    elif finish == "cancel":
+                        manager.stop(owner)
+                    else:
+                        launcher.kill()
+                    await asyncio.wait_for(launcher.communicate(), 10)
+                    expected = {"signal": 23, "escaped": 0}.get(finish, -signal.SIGKILL)
+                    assert launcher.returncode == expected
+                record = manager.records[owner["launch_id"]]
+                await asyncio.wait_for(record.creator, 5)
+                if finish == "disconnect":
+                    assert record.cancelled
+                if finish in ("exit", "signal"):
+                    assert not record.cancelled
+                if not record.cancelled:
+                    # Ordinary run exits retain user removal/restart policies.
+                    # Raylet sends cancellation separately for startup failures.
+                    manager.stop(owner)
+                await asyncio.wait_for(record.cleanup, 5)
+                assert record.run_process.returncode is not None
+                if finish == "escaped":
+                    assert (tmp_path / "removed").exists()
+                    assert not (tmp_path / "late").exists()
+                argv = json.loads((tmp_path / "argv.json").read_text())
+                assert argv[0] == "run" and flag in argv and argv[-1] == "image"
+                assert not any(command[0] == "create" for command in engine.calls)
+            finally:
+                if launcher.returncode is None:
+                    launcher.kill()
+                    await launcher.wait()
+                await client.close()
+
+    asyncio.run(run())
 
 
 async def server_for(manager):
     agent = RuntimeEnvAgent.__new__(RuntimeEnvAgent)
     agent._worker_container_manager = manager
-    agent._container_option_help = OPTION_HELP
+    agent._container_option_help = (GLOBAL_HELP + OPTION_HELP, CREATE_HELP, GLOBAL_HELP)
     app = web.Application()
     agent.add_container_routes(app)
     client = TestClient(TestServer(app))
@@ -706,8 +948,9 @@ def test_close_cancels_cleanup_without_cancelling_unsettled_command(tmp_path):
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("global_options", [[], ["--root=/custom/storage"]])
 def test_launcher_http_preserves_exact_deadline_and_host_environment(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, global_options
 ):
     from ray._private.authentication_test_utils import reset_auth_token_state
     from ray._private.runtime_env.container_launch import run_worker_container
@@ -718,6 +961,12 @@ def test_launcher_http_preserves_exact_deadline_and_host_environment(
 
     async def run():
         async with managed(tmp_path) as (manager, engine):
+
+            async def scoped_engine(args, *a, **kw):
+                assert args[: len(global_options)] == global_options
+                return await engine.run(args[len(global_options) :], *a, **kw)
+
+            manager._run = scoped_engine
             owner = launch()
             manager.register(owner)
             client = await server_for(manager)
@@ -735,10 +984,20 @@ def test_launcher_http_preserves_exact_deadline_and_host_environment(
                 ) as execute:
                     with pytest.raises(RuntimeError, match="exec attach"):
                         await asyncio.to_thread(
-                            run_worker_container, address, [], ["image"], environment
+                            run_worker_container,
+                            address,
+                            global_options,
+                            ["image"],
+                            environment,
                         )
                 command = execute.call_args.args[1]
-                assert command == ["podman", "start", "--attach", "a" * 64]
+                assert command == [
+                    "podman",
+                    *global_options,
+                    "start",
+                    "--attach",
+                    "a" * 64,
+                ]
                 assert execute.call_args.args[2] == environment
                 assert "do-not-log-token" not in " ".join(command)
                 assert manager.records[owner["launch_id"]].identity == owner

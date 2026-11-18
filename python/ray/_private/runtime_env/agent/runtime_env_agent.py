@@ -486,8 +486,12 @@ class RuntimeEnvAgent:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 await manager.start(self._container_session)
-                option_help = await manager._run(["--help"])
-                option_help += await manager._run(["run", "--help"])
+                global_help = await manager._run(["--help"])
+                option_help = (
+                    global_help + await manager._run(["run", "--help"]),
+                    await manager._run(["create", "--help"]),
+                    global_help,
+                )
                 self.add_container_routes(runner.app)
                 sock.bind(("127.0.0.1", 0))
                 await runner.setup()
@@ -588,9 +592,15 @@ class RuntimeEnvAgent:
                 start_options,
                 discard_stdout,
                 discard_stderr,
+                global_options,
+                use_run,
             ) = split_container_options(
-                list(request.options), self._container_option_help
+                list(request.options), *self._container_option_help
             )
+            if use_run and not request.stdio_socket:
+                return runtime_env_agent_pb2.CreateWorkerContainerReply(
+                    status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK, use_run=True
+                )
             cid = await manager.create_registered(
                 {
                     "launch_id": request.launch.launch_id,
@@ -598,10 +608,12 @@ class RuntimeEnvAgent:
                     "job_id": request.launch.job_id,
                     "deadline_ms": request.launch.deadline_ms,
                 },
-                options,
+                list(request.options) if use_run else options,
                 list(request.entrypoint),
                 dict(request.environment),
                 request.working_directory or None,
+                global_options=global_options,
+                stdio_socket=request.stdio_socket if use_run else "",
             )
             return runtime_env_agent_pb2.CreateWorkerContainerReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK,
@@ -609,6 +621,8 @@ class RuntimeEnvAgent:
                 start_options=start_options,
                 discard_stdout=discard_stdout,
                 discard_stderr=discard_stderr,
+                global_options=global_options,
+                use_run=use_run,
             )
         except (OSError, RuntimeError, ValueError, asyncio.TimeoutError) as error:
             return runtime_env_agent_pb2.CreateWorkerContainerReply(

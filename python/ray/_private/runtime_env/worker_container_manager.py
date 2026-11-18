@@ -11,7 +11,9 @@ import logging
 import os
 import re
 import signal
+import socket
 import time
+from array import array
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,11 @@ class Launch:
     expiry: object = None
     unsettled: object = None
     digest: str = ""
+    global_options: list = field(default_factory=list)
+    environment: object = None
+    cwd: object = None
+    run_process: object = None
+    managed_run: bool = False
 
 
 class WorkerContainerManager:
@@ -114,7 +121,16 @@ class WorkerContainerManager:
             raise RuntimeError("Worker container launch was cancelled")
         record.granted.set()
 
-    async def create_registered(self, identity, options, entrypoint, environment, cwd):
+    async def create_registered(
+        self,
+        identity,
+        options,
+        entrypoint,
+        environment,
+        cwd,
+        global_options=(),
+        stdio_socket="",
+    ):
         record = self._entry(identity)
         await asyncio.wait_for(
             record.granted.wait(),
@@ -123,7 +139,17 @@ class WorkerContainerManager:
         if record.cancelled:
             raise RuntimeError("Worker container launch was cancelled")
         digest = hashlib.sha256(
-            json.dumps([options, entrypoint, environment, cwd], sort_keys=True).encode()
+            json.dumps(
+                [
+                    options,
+                    entrypoint,
+                    environment,
+                    cwd,
+                    list(global_options),
+                    stdio_socket,
+                ],
+                sort_keys=True,
+            ).encode()
         ).hexdigest()
         if record.digest and record.digest != digest:
             raise RuntimeError("Duplicate container launch has different inputs")
@@ -131,23 +157,36 @@ class WorkerContainerManager:
             if self._closing:
                 raise RuntimeError("Container manager is closing")
             record.digest = digest
+            # Freeze the engine context before starting any command, including a
+            # creator which fails or is cancelled before returning its CID.
+            record.global_options = list(global_options)
+            record.environment = dict(environment)
+            record.cwd = cwd
+            record.managed_run = bool(stdio_socket)
             record.creator = asyncio.create_task(
-                self._create(record, options, entrypoint, environment, cwd)
+                self._run_attached(record, options, entrypoint, stdio_socket)
+                if stdio_socket
+                else self._create(record, options, entrypoint)
             )
             record.creator.add_done_callback(
                 lambda task: task.exception() if not task.cancelled() else None
             )
             record.creator.add_done_callback(lambda _: self._retire(record))
+        if stdio_socket:
+            # The launcher now sends stdio and waits for run's exit on the Unix
+            # socket. HTTP retries only join this task; they never rerun Podman.
+            return ""
         cid = await asyncio.shield(record.creator)
         if record.cancelled:
             raise RuntimeError("Worker container launch was cancelled")
         return cid
 
-    async def _create(self, record, options, entrypoint, environment, cwd):
+    async def _create(self, record, options, entrypoint):
         identity = record.identity
         try:
             output = await self._run(
                 [
+                    *record.global_options,
                     "create",
                     *options,
                     "--label=" + LAUNCH_LABEL + "=" + identity["launch_id"],
@@ -155,8 +194,8 @@ class WorkerContainerManager:
                     "--label=ray.job_id=" + identity["job_id"],
                     *entrypoint,
                 ],
-                environment,
-                cwd,
+                record.environment,
+                record.cwd,
                 timeout=max(0, identity["deadline_ms"] / 1000 - time.monotonic()),
             )
             cid = output.strip()
@@ -169,10 +208,184 @@ class WorkerContainerManager:
             self.stop(identity)
             raise
 
+    async def _run_attached(self, record, options, entrypoint, stdio_socket):
+        """Preserve run semantics and retain ownership until descendant IO closes."""
+        loop = asyncio.get_running_loop()
+        channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        channel.setblocking(False)
+        descriptors = []
+        signals = None
+        completion = None
+        spawning = None
+        returncode = 1
+
+        async def connect():
+            await loop.sock_connect(channel, stdio_socket)
+            received = loop.create_future()
+
+            def readable():
+                if received.done():
+                    return
+                try:
+                    data, control, flags, _ = channel.recvmsg(
+                        1, socket.CMSG_SPACE(3 * array("i").itemsize)
+                    )
+                except BlockingIOError:
+                    return
+                except OSError as error:
+                    loop.remove_reader(channel.fileno())
+                    received.set_exception(error)
+                    return
+                for level, kind, value in control:
+                    if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+                        values = array("i")
+                        values.frombytes(value)
+                        descriptors.extend(values)
+                if data != b"F" or flags & socket.MSG_CTRUNC or len(descriptors) != 3:
+                    received.set_exception(RuntimeError("Invalid worker stdio handoff"))
+                else:
+                    received.set_result(None)
+                loop.remove_reader(channel.fileno())
+
+            loop.add_reader(channel.fileno(), readable)
+            try:
+                await received
+            finally:
+                loop.remove_reader(channel.fileno())
+
+        async def forward_signals():
+            pending = b""
+            while True:
+                data = await loop.sock_recv(channel, 128)
+                if not data:
+                    self.stop(record.identity)
+                    return
+                pending += data
+                while b"\n" in pending:
+                    line, pending = pending.split(b"\n", 1)
+                    if line.isdigit() and int(line) in signal.valid_signals():
+                        try:
+                            os.kill(record.run_process.pid, int(line))
+                        except ProcessLookupError:
+                            pass
+                if len(pending) > 16:
+                    raise RuntimeError("Invalid worker signal")
+
+        async def relay(reader, descriptor):
+            writable = True
+            while data := await reader.read(65536):
+                # Regular files and pipes both work here. Never change blocking
+                # flags on the launcher's shared open file descriptions.
+                while data and writable:
+                    try:
+                        written = await asyncio.to_thread(os.write, descriptor, data)
+                        data = data[written:]
+                    except OSError:
+                        writable = False
+                # Still drain after launcher exit: EOF, rather than the parent
+                # PID alone, fences wrappers with escaped creation descendants.
+
+        async def spawn():
+            nonlocal completion
+            record.run_process = await asyncio.create_subprocess_exec(
+                *self.podman_command,
+                "run",
+                *options,
+                "--label=" + LAUNCH_LABEL + "=" + record.identity["launch_id"],
+                "--label=" + SESSION_LABEL + "=" + record.identity["session_id"],
+                "--label=ray.job_id=" + record.identity["job_id"],
+                *entrypoint,
+                stdin=descriptors[0],
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=record.environment,
+                cwd=record.cwd,
+                start_new_session=True,
+            )
+
+            async def settled():
+                await asyncio.gather(
+                    relay(record.run_process.stdout, descriptors[1]),
+                    relay(record.run_process.stderr, descriptors[2]),
+                )
+                return await record.run_process.wait()
+
+            completion = asyncio.create_task(settled())
+            self._commands.add(completion)
+            completion.add_done_callback(self._commands.discard)
+
+        try:
+            await asyncio.wait_for(
+                connect(),
+                max(
+                    0,
+                    min(
+                        self.operation_timeout,
+                        record.identity["deadline_ms"] / 1000 - time.monotonic(),
+                    ),
+                ),
+            )
+            if record.cancelled:
+                return
+            # An attached run can live as long as the worker. It must not hold a
+            # short engine-operation slot for its entire lifetime.
+            spawning = asyncio.create_task(spawn())
+            await asyncio.shield(spawning)
+            if record.cancelled:
+                self._kill_run(record)
+            signals = asyncio.create_task(forward_signals())
+            returncode = await asyncio.shield(completion)
+        except (OSError, RuntimeError, asyncio.TimeoutError):
+            self.stop(record.identity)
+            raise
+        except asyncio.CancelledError:
+            if spawning is not None:
+                await asyncio.shield(spawning)
+            self._kill_run(record)
+            if completion is not None:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(completion), self.operation_timeout
+                    )
+                except asyncio.TimeoutError:
+                    self._retain_command(record, completion)
+            raise
+        finally:
+            if signals is not None:
+                signals.cancel()
+                await asyncio.gather(signals, return_exceptions=True)
+
+            def close_descriptors(_=None):
+                for descriptor in descriptors:
+                    os.close(descriptor)
+
+            if completion is not None and not completion.done():
+                completion.add_done_callback(close_descriptors)
+            else:
+                close_descriptors()
+            try:
+                await loop.sock_sendall(channel, f"{returncode}\n".encode())
+            except OSError:
+                pass
+            channel.close()
+
+    def _kill_run(self, record):
+        if record.run_process is not None and record.run_process.returncode is None:
+            try:
+                os.killpg(record.run_process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                # Keep awaiting this creator; cleanup cannot race its late effects.
+                logger.warning(
+                    "Cannot signal Podman run for %s", record.identity["launch_id"]
+                )
+
     def stop(self, identity):
         """Accept cancellation immediately, including launches denied admission."""
         record = self._entry(identity, stopping=True)
         record.cancelled = True
+        self._kill_run(record)
         record.granted.set()
         self._schedule_cleanup(record)
         return True
@@ -196,6 +409,18 @@ class WorkerContainerManager:
             try:
                 if record.creator is not None:
                     try:
+                        if record.managed_run:
+                            # run may wait for the container, including behind a
+                            # wrapper we cannot signal. Remove while it settles,
+                            # but never treat an early empty query as completion.
+                            while not record.creator.done():
+                                await self._remove(record)
+                                try:
+                                    await asyncio.wait_for(
+                                        asyncio.shield(record.creator), 1
+                                    )
+                                except asyncio.TimeoutError:
+                                    pass
                         await asyncio.shield(record.creator)
                     except (OSError, RuntimeError, asyncio.TimeoutError):
                         pass
@@ -206,7 +431,7 @@ class WorkerContainerManager:
                         await asyncio.shield(record.unsettled)
                     except (OSError, RuntimeError, asyncio.TimeoutError):
                         pass
-                await self._remove(record.identity)
+                await self._remove(record)
                 return
             except (OSError, RuntimeError, asyncio.TimeoutError) as error:
                 if isinstance(error, UnsettledCommandError):
@@ -233,8 +458,10 @@ class WorkerContainerManager:
                     await asyncio.sleep(self.operation_timeout)
                     attempt = 0
 
-    async def _remove(self, identity):
+    async def _remove(self, record):
+        identity = record.identity
         query = [
+            *record.global_options,
             "ps",
             "--all",
             "--quiet",
@@ -244,14 +471,24 @@ class WorkerContainerManager:
             "--filter",
             "label=" + LAUNCH_LABEL + "=" + identity["launch_id"],
         ]
-        ids = (await self._run(query)).split()
+        ids = (await self._run(query, record.environment, record.cwd)).split()
         if any(not re.fullmatch("[a-f0-9]{64}", cid) for cid in ids):
             raise RuntimeError("Invalid container IDs during cleanup")
         if ids:
             await self._run(
-                ["rm", "--force", "--ignore", "--volumes", "--time=0", *ids]
+                [
+                    *record.global_options,
+                    "rm",
+                    "--force",
+                    "--ignore",
+                    "--volumes",
+                    "--time=0",
+                    *ids,
+                ],
+                record.environment,
+                record.cwd,
             )
-            if (await self._run(query)).strip():
+            if (await self._run(query, record.environment, record.cwd)).strip():
                 raise RuntimeError("Worker container still exists after removal")
 
     def _retire(self, record):
@@ -331,7 +568,7 @@ class WorkerContainerManager:
         if process.returncode != 0:
             # Engine errors can echo credentials. Never log raw argv/env/output.
             raise RuntimeError(
-                f"Podman {args[0]} failed with exit code {process.returncode}"
+                f"Podman command failed with exit code {process.returncode}"
             )
         return stdout.decode()
 
