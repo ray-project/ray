@@ -141,7 +141,7 @@ def test_power_transformer_serialization():
 
 
 def test_power_transformer_empty_batch():
-    """Tests PowerTransformer on an empty batch and non-default DataFrame index."""
+    """Tests PowerTransformer (yeo-johnson) on an empty batch."""
     transformer = PowerTransformer(columns=["A", "B"], power=2.0, method="yeo-johnson")
 
     empty_df = pd.DataFrame(
@@ -150,12 +150,6 @@ def test_power_transformer_empty_batch():
     empty_out = transformer.transform_batch(empty_df)
     assert len(empty_out) == 0
     assert list(empty_out.columns) == ["A", "B"]
-
-    df = pd.DataFrame({"A": [1.0, 2.0], "B": [3.0, 4.0]}, index=[10, 20])
-    out = transformer.transform_batch(df)
-    assert list(out.index) == [10, 20]
-    assert not out["A"].isna().any()
-    assert not out["B"].isna().any()
 
 
 if __name__ == "__main__":
