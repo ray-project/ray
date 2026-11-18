@@ -2962,6 +2962,34 @@
     timeout: 1800
     script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb --enable_nixl
 
+# Runs NCCL across two nodes over EFA through the aws-ofi-nccl plugin that the
+# CUDA base-extra images build against the EFA installer's libfabric. Fails if
+# NCCL does not select the efa provider. torch-cu128 covers the CUDA 12 image
+# and torch-cu133 the CUDA 13 image. Manual: run it when bumping EFA_VERSION or
+# AWS_OFI_NCCL_VERSION in docker/base-extra/Dockerfile.
+- name: "efa_nccl_multinode_{{cluster}}_{{image}}"
+  python: "3.11"
+  group: core-daily-test
+  team: core
+  frequency: manual
+  working_dir: microbenchmark
+  matrix:
+    setup:
+      # g4dn_2x1: 2x g4dn.8xlarge (1x T4 each). p4d_2x8: 2x p4d.24xlarge
+      # (8x A100 each, EFA with RDMA).
+      cluster: ["g4dn_2x1", "p4d_2x8"]
+      image: ["torch-cu128", "torch-cu133"]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: "{{image}}"
+    cluster_compute: experimental/compute_efa_{{cluster}}_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/efa_nccl_multinode.py
+
 # TODO(dayshah): Add multi-node benchmarks with actual hardware RDMA support
 # - name: rdt_GPU_multinode
 #   python: "3.10"
