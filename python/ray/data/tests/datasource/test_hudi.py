@@ -23,6 +23,12 @@ def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -
     return os.path.join(target_dir, table_dir)
 
 
+def _select_rows(ds, columns, sort_key=None):
+    """Return the rows of `ds` with only `columns`, sorted by `sort_key` in Python."""
+    rows = [{column: row[column] for column in columns} for row in ds.take_all()]
+    return sorted(rows, key=lambda row: row[sort_key]) if sort_key else rows
+
+
 def _get_hudi_table_path(fs, data_path, table_name, testing_dir="test_hudi") -> str:
     setup_data_path = _unwrap_protocol(data_path)
     target_testing_dir = os.path.join(setup_data_path, testing_dir)
@@ -35,7 +41,9 @@ def _get_hudi_table_path(fs, data_path, table_name, testing_dir="test_hudi") -> 
 def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, local_path):
     table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")
 
-    ds = ray.data.read_hudi(table_path, filters=[("city", "=", "san_francisco")])
+    ds = ray.data.read_hudi(
+        table_path, filters=[("city", "=", "san_francisco")]
+    ).materialize()
 
     assert ds.schema().names == [
         "_hoodie_commit_time",
@@ -51,10 +59,8 @@ def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, local_path
         "city",
     ]
     assert ds.count() == 4
-    rows = (
-        ds.select_columns(["_hoodie_commit_time", "ts", "rider", "fare"])
-        .sort("fare")
-        .take_all()
+    rows = _select_rows(
+        ds, ["_hoodie_commit_time", "ts", "rider", "fare"], sort_key="fare"
     )
     first_commit = "20250715043008154"
     second_commit = "20250715043011090"
@@ -98,7 +104,7 @@ def test_hudi_incremental_query_v6_trips_table(ray_start_regular_shared, local_p
             "hoodie.read.file_group.start_timestamp": first_commit,
             "hoodie.read.file_group.end_timestamp": second_commit,
         },
-    )
+    ).materialize()
 
     assert ds.schema().names == [
         "_hoodie_commit_time",
@@ -114,7 +120,7 @@ def test_hudi_incremental_query_v6_trips_table(ray_start_regular_shared, local_p
         "city",
     ]
     assert ds.count() == 1
-    rows = ds.select_columns(["_hoodie_commit_time", "ts", "rider", "fare"]).take_all()
+    rows = _select_rows(ds, ["_hoodie_commit_time", "ts", "rider", "fare"])
     assert rows == [
         {
             "_hoodie_commit_time": second_commit,
@@ -133,7 +139,7 @@ V8_SECOND_COMMIT = ("20250713010536861", "20250713010537206")
 def test_hudi_snapshot_query_v8_table(ray_start_regular_shared, local_path):
     table_path = _get_hudi_table_path(None, local_path, "v8_nonpartitioned")
 
-    ds = ray.data.read_hudi(table_path)
+    ds = ray.data.read_hudi(table_path).materialize()
 
     assert ds.schema().names[:6] == [
         "_hoodie_commit_time",
@@ -144,8 +150,8 @@ def test_hudi_snapshot_query_v8_table(ray_start_regular_shared, local_path):
         "id",
     ]
     assert ds.count() == 4
-    rows = ds.select_columns(["_hoodie_commit_time", "id", "name"]).sort("id")
-    assert rows.take_all() == [
+    rows = _select_rows(ds, ["_hoodie_commit_time", "id", "name"], sort_key="id")
+    assert rows == [
         {"_hoodie_commit_time": V8_SECOND_COMMIT[0], "id": 1, "name": "Alice"},
         {"_hoodie_commit_time": V8_FIRST_COMMIT[0], "id": 2, "name": "Bob"},
         {"_hoodie_commit_time": V8_FIRST_COMMIT[0], "id": 3, "name": "Carol"},
@@ -195,7 +201,7 @@ def test_hudi_incremental_query_v8_table(
         table_path, query_type="incremental", hudi_options=hudi_options
     )
 
-    rows = ds.select_columns(["id", "_hoodie_commit_time"]).sort("id").take_all()
+    rows = _select_rows(ds, ["id", "_hoodie_commit_time"], sort_key="id")
     assert [(r["id"], r["_hoodie_commit_time"]) for r in rows] == expected
 
 
