@@ -1,7 +1,7 @@
 //! The merged root filesystem, built the way Ray's extraction builds it.
 //!
-//! This mirrors `extract_tar_layer`, `apply_dir_attrs`, `_seed_tmp` and
-//! `_seed_mountpoints` in `image_utils.py`, on an in-memory tree instead of a
+//! This mirrors `extract_tar_layer`, `apply_dir_attrs` and `_seed_tmp` in
+//! `image_utils.py`, on an in-memory tree instead of a
 //! directory: member paths resolve with symlinks followed inside the tree,
 //! a directory entry over a symlink to a directory keeps the symlink, and so on.
 
@@ -305,31 +305,14 @@ impl Tree {
         }
     }
 
-    /// `_seed_tmp` then `_seed_mountpoints`. A seed whose path can't be
-    /// created (a file in the way, a name longer than `MAX_NAME` through a
-    /// symlink) is skipped, as their `except OSError` skips it.
+    /// `_seed_tmp`. A seed whose path can't be created (a file in the way,
+    /// a name longer than `MAX_NAME` through a symlink) is skipped, as its
+    /// `except OSError` skips it.
     pub fn seed(&mut self) {
         if let Some(tmp) = self.resolve(&components(b"tmp")) {
             if let Some(d) = self.makedirs(&tmp) {
                 self.nodes[d as usize].mode = 0o1777;
                 self.create_empty_file(d, b".ray-sandbox-keep");
-            }
-        }
-        let dirs: [&[u8]; 7] = [b"proc", b"sys", b"dev", b"dev/pts", b"dev/shm", b"run", b"tmp"];
-        let files: [&[u8]; 3] = [b"etc/resolv.conf", b"etc/hosts", b"etc/hostname"];
-        for (rel, is_dir) in dirs.iter().map(|d| (*d, true)).chain(files.iter().map(|f| (*f, false))) {
-            let mut comps = components(rel);
-            let base = comps.pop().unwrap();
-            let Some(parent) = self.resolve(&comps) else { continue };
-            if self.lookup(&parent).and_then(|p| self.child(p, &base)).is_some() {
-                continue;
-            }
-            let Some(p) = self.makedirs(&parent) else { continue };
-            if is_dir {
-                let d = self.new_dir(0o755);
-                self.children(p).unwrap().insert(base, d);
-            } else {
-                self.create_empty_file(p, &base);
             }
         }
     }
@@ -400,9 +383,8 @@ mod tests {
             let err = tree.apply(&entry(b"app/config.yaml".to_vec(), kind)).unwrap_err();
             assert!(err.contains("isn't a directory"), "{err}");
         }
-        // The seeds still skip what's in their way, as extraction's do.
-        tree.apply(&entry(b"run".to_vec(), reg())).unwrap();
-        tree.apply(&entry(b"dev".to_vec(), reg())).unwrap();
+        // The seed still skips what's in its way, as extraction's does.
+        tree.apply(&entry(b"tmp".to_vec(), reg())).unwrap();
         tree.seed();
     }
 
@@ -419,8 +401,6 @@ mod tests {
             assert!(names.iter().all(|n| n.len() <= MAX_NAME), "{target}");
             // As os.makedirs does, what comes before the long name is created.
             assert_eq!(names.contains(&b"a".to_vec()), target.starts_with("/a/"), "{target}");
-            // The other seeds are still there.
-            assert!(names.contains(&b"proc".to_vec()) && names.contains(&b"hosts".to_vec()));
         }
     }
 }
