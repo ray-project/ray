@@ -201,12 +201,34 @@ def test_post_mortem_debugging(thread_runner, monkeypatch, post_mortem_enabled):
     assert "ValueError: boom" in str(error)
 
 
-def test_post_mortem_debugger_failure(thread_runner, monkeypatch):
-    """A failure to start the debugger doesn't replace the user's exception."""
+def test_post_mortem_skips_system_exit(thread_runner, monkeypatch):
+    """Like Ray core, SystemExit from the training function doesn't enter the
+    debugger, but is still reported."""
+    monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", "1")
+
+    seen_exceptions = []
+    monkeypatch.setattr(
+        rpdb, "_post_mortem", lambda: seen_exceptions.append(sys.exc_info()[1])
+    )
+
+    def train_func():
+        sys.exit(1)
+
+    thread_runner.run(train_func)
+    thread_runner.join()
+
+    assert seen_exceptions == []
+    assert isinstance(thread_runner.get_error(), UserExceptionWithTraceback)
+
+
+@pytest.mark.parametrize("debugger_error", [RuntimeError, SystemExit])
+def test_post_mortem_debugger_failure(thread_runner, monkeypatch, debugger_error):
+    """A failure to start the debugger, including a BaseException, doesn't
+    replace the user's exception."""
     monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", "1")
 
     def failing_post_mortem():
-        raise RuntimeError("debugger failed")
+        raise debugger_error("debugger failed")
 
     monkeypatch.setattr(rpdb, "_post_mortem", failing_post_mortem)
 
@@ -222,6 +244,4 @@ def test_post_mortem_debugger_failure(thread_runner, monkeypatch):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-x", __file__]))
