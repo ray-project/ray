@@ -156,7 +156,7 @@ class Concatenator(SerializablePreprocessorBase):
         NumPy-backed column would. Missing columns (when ``raise_if_missing=False``)
         are filled with ``np.nan`` to preserve column width and feature positions.
         """
-        if not self._columns:
+        if len(self._columns) == 0:
             return np.empty((len(df), 0), dtype=dtype or np.float64)
         if (
             dtype is not None
@@ -186,7 +186,7 @@ class Concatenator(SerializablePreprocessorBase):
         ):
             dtype = np.float64
 
-        if self._flatten:
+        if self._flatten and len(self._columns) > 0:
             concatenated = self._stack_columns(df)
             concatenated = [
                 np.concatenate(

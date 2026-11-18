@@ -57,6 +57,25 @@ class TestConcatenator:
                     assert row["c"].dtype == np.float64
                     np.testing.assert_allclose(row["c"], expected, equal_nan=True)
 
+            # Empty columns list and sequence types (e.g. pd.Index, np.ndarray)
+            empty_prep = Concatenator(
+                columns=[],
+                output_column_name="c",
+                raise_if_missing=False,
+                flatten=flatten,
+            )
+            empty_res = empty_prep._transform_pandas(df.copy())
+            assert [len(v) for v in empty_res["c"]] == [0] * len(df)
+
+            index_prep = Concatenator(
+                columns=df.columns,
+                output_column_name="c",
+                raise_if_missing=False,
+                flatten=flatten,
+            )
+            index_res = index_prep._transform_pandas(df.copy())
+            assert len(index_res["c"]) == len(df)
+
     def test_exclude_column(self):
         df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5], "c": [3, 4, 5, 6]})
         ds = ray.data.from_pandas(df)
