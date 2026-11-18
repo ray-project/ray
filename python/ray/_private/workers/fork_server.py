@@ -212,7 +212,6 @@ def _prepare_child_environment(
     if "TZ" in changed_keys and hasattr(time, "tzset"):
         time.tzset()
     if "PYTHONPATH" in changed_keys:
-        ray._private.utils._cached_torch_backend_eps = None
         env_py_dirs = [
             os.path.abspath(p)
             for p in os.environ.get("PYTHONPATH", "").split(os.pathsep)
@@ -231,21 +230,24 @@ def _prepare_child_environment(
             os.environ["PYTHONPATH"] = os.pathsep.join(merged_py_dirs)
         else:
             os.environ.pop("PYTHONPATH", None)
-        prefixes = (os.path.abspath(sys.prefix), os.path.abspath(sys.base_prefix))
-        prefix_seps = tuple(p.rstrip(os.sep) + os.sep for p in prefixes)
-        idx = 1 if sys.path else 0
-        sys.path[idx:] = [
-            p
-            for p in sys.path[idx:]
-            if (
-                os.path.abspath(p) not in old_py_dirs
-                or os.path.abspath(p) in prefixes
-                or os.path.abspath(p).startswith(prefix_seps)
-            )
-            and os.path.abspath(p) not in merged_py_dirs
-        ]
-        sys.path[idx:idx] = merged_py_dirs
-        importlib.invalidate_caches()
+        if merged_py_dirs != list(dict.fromkeys(old_py_dirs)):
+            ray._private.utils._cached_torch_backend_eps = None
+            ray._private.worker.global_worker.serialization_context_map.clear()
+            prefixes = (os.path.abspath(sys.prefix), os.path.abspath(sys.base_prefix))
+            prefix_seps = tuple(p.rstrip(os.sep) + os.sep for p in prefixes)
+            idx = 1 if sys.path else 0
+            sys.path[idx:] = [
+                p
+                for p in sys.path[idx:]
+                if (
+                    os.path.abspath(p) not in old_py_dirs
+                    or os.path.abspath(p) in prefixes
+                    or os.path.abspath(p).startswith(prefix_seps)
+                )
+                and os.path.abspath(p) not in merged_py_dirs
+            ]
+            sys.path[idx:idx] = merged_py_dirs
+            importlib.invalidate_caches()
     ray._private.utils._torch_backends_autoload_pending = "torch" in sys.modules
 
     omp_threads = _env_int("OMP_NUM_THREADS")
@@ -289,6 +291,9 @@ def _prepare_child_environment(
                     "RAY_allow_out_of_band_object_ref_serialization", True
                 )
             )
+    tempfile_mod = sys.modules.get("tempfile")
+    if tempfile_mod is not None and changed_keys & {"TMPDIR", "TEMP", "TMP"}:
+        tempfile_mod.tempdir = None
     gw = ray._private.worker.global_worker
     gw._original_visible_accelerator_ids = None
     gw._enable_record_actor_task_log = (
@@ -383,6 +388,13 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         raise RuntimeError(
             "Preloaded module initialized CUDA before fork(); refusing to start ForkServer"
         )
+    if sys.platform.startswith("linux"):
+        with suppress(OSError):
+            if len(os.listdir("/proc/self/task")) > 1:
+                raise RuntimeError(
+                    "Preloaded module started background threads before fork(); "
+                    "refusing to start ForkServer"
+                )
 
     # Ignore SIGCHLD after preloading so preloaded modules calling subprocesses
     # still observe exit codes, while forked workers are auto-reaped by the kernel.

@@ -19,6 +19,10 @@ from ray._private.workers.fork_server import (
     _prepare_child_environment,
 )
 
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux", reason="ForkServer is Linux-only."
+)
+
 # Preloaded into the fork server; replaces the worker entrypoint so each forked child
 # reports its post-fork state and exits instead of connecting to a raylet.
 _PROBE_MODULE = """
@@ -36,6 +40,7 @@ def _get_openblas_threads():
         for sym in (
             "scipy_openblas_get_num_threads64_",
             "scipy_openblas_get_num_threads",
+            "openblas_get_num_threads64_",
             "openblas_get_num_threads",
         ):
             if (fn := getattr(lib, sym, None)) is not None:
@@ -109,26 +114,36 @@ def test_preload_modules_and_prepare_child_environment(monkeypatch, tmp_path):
     monkeypatch.setattr(gw, "_enable_record_actor_task_log", False)
     gw.serialization_context_map["stale"] = object()
 
+    monkeypatch.setattr(tempfile, "tempdir", "/stale_tmp")
     py_dirs = [str(tmp_path / "py1"), str(tmp_path / "py2")]
     child_env = {
         "RAY_JOB_ID": "01000000",
         "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING": "1",
         "PYTHONPATH": os.pathsep.join(py_dirs),
-        "TZ": "UTC",
+        "TZ": "EST+5",
+        "TMPDIR": str(tmp_path),
     }
     runtime_env_vars = {
         "JOB_SCOPED": "${RAY_JOB_ID}/job",
         "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1",
         "OMP_NUM_THREADS": "8",
     }
-    for k in (*child_env, *runtime_env_vars, "OMP_NUM_THREADS"):
-        monkeypatch.delenv(k, raising=False)
-    _prepare_child_environment(
-        {"OMP_NUM_THREADS": "4"}, child_env, ["--worker-id=abc"], runtime_env_vars
-    )
-
-    assert os.environ["JOB_SCOPED"] == "01000000/job"
-    assert not hasattr(time, "tzset") or time.tzname[0] == "UTC"
+    saved_env = {k: os.environ.pop(k, None) for k in (*child_env, *runtime_env_vars)}
+    try:
+        _prepare_child_environment(
+            {"OMP_NUM_THREADS": "4"}, child_env, ["--worker-id=abc"], runtime_env_vars
+        )
+        assert os.environ["JOB_SCOPED"] == "01000000/job"
+        assert not hasattr(time, "tzset") or time.tzname[0] == "EST"
+        assert tempfile.tempdir is None
+    finally:
+        for k, v in saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        if hasattr(time, "tzset"):
+            time.tzset()
     assert sys.path[1:3] == py_dirs
     assert gw._enable_record_actor_task_log is True
     assert "stale" not in gw.serialization_context_map

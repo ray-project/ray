@@ -289,16 +289,27 @@ def set_num_threads_env_vars_if_unset() -> List[str]:
 
 _cached_native_thread_pool_setters: Optional[List[Tuple[str, Any, Any]]] = None
 
+_NATIVE_THREAD_POOL_PREFIXES = (
+    "libopenblas",
+    "libscipy_openblas",
+    "libmkl",
+    "libtorch_cpu",
+    "libgomp",
+    "libiomp",
+    "libomp",
+)
+
 _NATIVE_THREAD_POOL_SYMBOLS = (
     (
         "openblas",
         (
             "scipy_openblas_set_num_threads64_",
             "scipy_openblas_set_num_threads",
+            "openblas_set_num_threads64_",
             "openblas_set_num_threads",
         ),
     ),
-    ("mkl", ("MKL_Set_Num_Threads",)),
+    ("mkl", ("mkl_serv_set_num_threads", "MKL_Set_Num_Threads")),
     ("omp", ("omp_set_num_threads",)),
 )
 
@@ -319,17 +330,21 @@ def cache_native_thread_pool_setters() -> None:
     with contextlib.suppress(OSError), open("/proc/self/maps") as f:
         so_paths = {line.split(None, 5)[-1].strip() for line in f if ".so" in line}
     setters: List[Tuple[str, Any, Any]] = []
-    for path in so_paths:
-        if path.startswith("/") and any(
-            k in path.lower() for k in ("openblas", "mkl", "omp")
+    seen_addrs = set()
+    for path in sorted(so_paths):
+        if path.startswith("/") and os.path.basename(path).lower().startswith(
+            _NATIVE_THREAD_POOL_PREFIXES
         ):
             with contextlib.suppress(OSError):
                 lib = ctypes.CDLL(path, mode=os.RTLD_NOLOAD | os.RTLD_LOCAL)
                 for kind, syms in _NATIVE_THREAD_POOL_SYMBOLS:
                     for sym in syms:
                         if (fn := getattr(lib, sym, None)) is not None:
-                            fn.argtypes = [ctypes.c_int]
-                            setters.append((kind, lib, fn))
+                            addr = ctypes.cast(fn, ctypes.c_void_p).value
+                            if addr not in seen_addrs:
+                                seen_addrs.add(addr)
+                                fn.argtypes = [ctypes.c_int]
+                                setters.append((kind, lib, fn))
                             break
     _cached_native_thread_pool_setters = setters
 
