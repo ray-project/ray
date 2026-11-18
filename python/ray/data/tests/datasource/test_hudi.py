@@ -25,8 +25,10 @@ def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -
 
 def _select_rows(ds, columns, sort_key=None):
     """Return the rows of `ds` with only `columns`, sorted by `sort_key` in Python."""
-    rows = [{column: row[column] for column in columns} for row in ds.take_all()]
-    return sorted(rows, key=lambda row: row[sort_key]) if sort_key else rows
+    rows = ds.take_all()
+    if sort_key:
+        rows = sorted(rows, key=lambda row: row[sort_key])
+    return [{column: row[column] for column in columns} for row in rows]
 
 
 def _get_hudi_table_path(fs, data_path, table_name, testing_dir="test_hudi") -> str:
