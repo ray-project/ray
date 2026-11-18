@@ -10,12 +10,7 @@ myst:
 
 Ray Train runs your training function in training workers, which are Ray actors in separate processes and often on separate nodes. A Ray Train controller actor starts the workers, polls them, and decides whether to retry or raise when something goes wrong. So an error or a hang in your training function happens in a process that your driver script doesn't own, and you debug it with Ray's distributed tools rather than with a debugger attached to your script.
 
-This guide covers the following tasks:
-
-- {ref}`Reproduce a problem on a small cluster <train-debugging-reproduce>`, so that each debugging iteration is fast.
-- {ref}`Find the output and logs <train-debugging-logs>` of each worker and of the controller.
-- {ref}`Debug a run that fails with an error <train-debugging-errors>`.
-- {ref}`Debug a run that hangs <train-debugging-hangs>`.
+This guide describes how to reproduce a failure or hang on a small cluster, find the output and logs of each worker and of the controller, and debug a run that fails with an error or one that hangs.
 
 {ref}`train-debugging-env-vars` lists the timeouts and switches that this guide mentions. {ref}`train-debugging-agents` lists the non-interactive commands that suit a coding agent.
 
@@ -25,10 +20,10 @@ This guide covers the following tasks:
 
 Debug with the same trainer and scaling configuration that fails, scaled down as far as the problem still reproduces. Every run goes through the same controller, worker group, and `ray.train` code paths at any size, so a run with one or two workers on your laptop behaves like the production run, apart from scale.
 
-- **Use few workers.** Set `ScalingConfig(num_workers=1)` to debug training logic and `num_workers=2` to debug anything that involves more than one rank, such as collectives, `ray.train.report` synchronization, or rank-dependent code paths.
-- **Use CPUs when the bug isn't GPU specific.** With `use_gpu=False`, `TorchTrainer` sets up the process group with the Gloo backend, so distributed code runs on a laptop without GPUs.
-- **Start a local Ray cluster.** `trainer.fit()` calls `ray.init()` for you if Ray isn't running, which starts a single-node cluster on your machine. To simulate more resources than your machine has, call `ray.init(num_cpus=<n>)` before `fit()`.
-- **Surface the first error.** `FailureConfig(max_failures)` defaults to `0`, so the run raises on the first worker failure. If your configuration retries failures, set `max_failures=0` while you debug so that a retry doesn't hide the error behind a restart.
+- Use few workers. Set `ScalingConfig(num_workers=1)` to debug training logic and `num_workers=2` to debug anything that involves more than one rank, such as collectives, `ray.train.report` synchronization, or rank-dependent code paths.
+- Use CPUs when the bug isn't GPU specific. With `use_gpu=False`, `TorchTrainer` sets up the process group with the Gloo backend, so distributed code runs on a laptop without GPUs.
+- Start a local Ray cluster. `trainer.fit()` calls `ray.init()` for you if Ray isn't running, which starts a single-node cluster on your machine. To simulate more resources than your machine has, call `ray.init(num_cpus=<n>)` before `fit()`.
+- Surface the first error. `FailureConfig(max_failures)` defaults to `0`, so the run raises on the first worker failure. If your configuration retries failures, set `max_failures=0` while you debug so that a retry doesn't hide the error behind a restart.
 
 The following example runs a two-worker, CPU-only version of a training function on a local cluster:
 
@@ -191,7 +186,7 @@ While one worker is paused, the other workers keep running until they block, for
 For a long debugging session, raise these timeouts so that the run isn't torn down while you inspect it.
 
 :::{note}
-Post-mortem debugging with `RAY_DEBUG_POST_MORTEM=1` doesn't pause a training worker when the training function raises. Ray Train catches the exception in the worker so that it can report the failure to the controller, so Ray never sees an unhandled exception in the actor. To inspect the state at the point of failure, catch the exception in the training function and call `breakpoint()` in the `except` block.
+Post-mortem debugging with `RAY_DEBUG_POST_MORTEM=1` doesn't pause a training worker when the training function raises. Ray Train catches the exception in the worker so that it can report the failure to the controller. As a result, Ray never sees an unhandled exception in the actor. To inspect the state at the point of failure, catch the exception in the training function and call `breakpoint()` in the `except` block.
 :::
 
 (train-debugging-hangs)=
@@ -210,7 +205,7 @@ If the last controller lines are `Requesting resources` or `Attempting to start 
 - The cluster is autoscaling and new nodes aren't up yet.
 - A `label_selector` or `placement_strategy="STRICT_SPREAD"` constraint can't be satisfied.
 
-Run `ray status` to compare the resource demand with the cluster resources, and see the {ref}`Ray Train scaling configuration guide <train_scaling_config>`. If the workers don't start within `RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S`, 60 seconds by default, the controller logs a `WorkerGroupStartupTimeoutError` and a `[FailurePolicy] RETRY` line, then tries again, with no limit on the number of attempts. On an autoscaling cluster, raise this timeout if node startup takes longer.
+Run `ray status` to compare the resource demand with the cluster resources, and see the {ref}`Ray Train scaling configuration guide <train_scaling_config>`. If the workers don't start within `RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S`, 60 seconds by default, the controller logs a `WorkerGroupStartupTimeoutError` and a `[FailurePolicy] RETRY` line, then tries again. It retries with no limit on the number of attempts. On an autoscaling cluster, raise this timeout if node startup takes longer.
 
 :::{caution}
 On an autoscaling cluster, Ray Train compares the request with the maximum resources of the cluster configuration and fails right away with `Insufficient cluster resources to launch training workers` if the cluster can never satisfy it. On a cluster without an autoscaler, such as a local cluster, Ray Train can't tell an infeasible request from a temporary shortage, so the run repeats the startup timeout indefinitely. If the `WorkerGroupStartupTimeoutError` lines repeat, compare the request with the output of `ray status`.
@@ -234,9 +229,9 @@ Check the stack trace of each missing rank to find where it is, as the next sect
 
 To find where a worker is stuck, dump its stack trace while it hangs. Use any of the following tools, which all run `py-spy` on the worker process:
 
-- **Ray dashboard**: In the **Actors** view, find the `RayTrainWorker` actors and click **Stack Trace**. See {ref}`observability-debug-hangs`.
-- **`ray stack`**: Run `ray stack` on a node to dump the stack traces of all Ray worker processes on that node.
-- **`py-spy`**: Run `py-spy dump --pid <pid>` on the node of a worker, with the process ID from the worker group table. Add `--native` on Linux to include C++ and CUDA frames, which show whether a worker is blocked inside a NCCL kernel or in other native code.
+- In the **Actors** view of the Ray dashboard, find the `RayTrainWorker` actors and click **Stack Trace**. See {ref}`observability-debug-hangs`.
+- Run `ray stack` on a node to dump the stack traces of all Ray worker processes on that node.
+- Run `py-spy dump --pid <pid>` on the node of a worker, with the process ID from the worker group table. Add `--native` on Linux to include C++ and CUDA frames, which show whether a worker is blocked inside a NCCL kernel or in other native code.
 
 Ray Train runs the training function in a thread named `TrainingThread(<function name>)`, so look for that thread in the dump. Compare the stacks of all ranks. Ranks that wait in different collectives, or in the same collective at different steps, point to rank-dependent control flow, such as a conditional `all_reduce` or a different number of batches per rank.
 
@@ -317,4 +312,4 @@ A coding agent can't attach an interactive debugger, but it can run the followin
 - `jq` over `/tmp/ray/session_latest/logs/train/*.log` to filter logs by `world_rank` or `levelname`.
 - `ray list actors --filter "class_name=RayTrainWorker"` to list the training workers with their process IDs and nodes.
 
-Have the agent reproduce the problem with one or two CPU workers first, as {ref}`train-debugging-reproduce` describes, so that each attempt takes seconds, and set `RAY_TRAIN_COLLECTIVE_TIMEOUT_S` and a low `TorchConfig(timeout_s)` so that a hang turns into an error the agent can read instead of a command that never returns.
+Have the agent reproduce the problem with one or two CPU workers first, as {ref}`train-debugging-reproduce` describes, so that each attempt takes seconds. Also set `RAY_TRAIN_COLLECTIVE_TIMEOUT_S` and a low `TorchConfig(timeout_s)`, so that a hang turns into an error the agent can read instead of a command that never returns.
