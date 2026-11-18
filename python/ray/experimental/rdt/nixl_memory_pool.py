@@ -205,7 +205,9 @@ class MemoryPoolManager:
 
         # Guards _free_blocks and _allocated_by_obj. This is the innermost lock:
         # the pool never calls back into the transport, so it is always safe to
-        # take while holding the transport's cache lock.
+        # take while holding the transport's locks. Garbage collection could
+        # still run a transfer cleanup while it is held, so the transport makes
+        # every pool call with those cleanups deferred.
         self._lock = threading.Lock()
         # List of MemoryBlock for free blocks, sorted by offset.
         self._free_blocks: List[MemoryBlock] = [MemoryBlock(offset=0, size=pool_size)]

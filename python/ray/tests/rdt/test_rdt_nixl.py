@@ -1299,6 +1299,68 @@ def test_nixl_recv_memory_pool_packed_group(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_recv_memory_pool_failed_transfer(ray_start_regular):
+    """A receive that fails after taking its buffers from the pool gives them back
+    and leaves the pool registered with NIXL, so the next receive still works.
+
+    The pool is registered as a whole, never region by region, so cleaning up the
+    failed transfer must not deregister anything.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class RecvPoolActor:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+
+        def pool_state(self):
+            transport = get_tensor_transport_manager("NIXL")
+            pool = transport._memory_pool
+            pool_ptr = pool.get_pool_tensor().untyped_storage().data_ptr()
+            return (
+                sum(block.size for block in pool._free_blocks),
+                pool_ptr in transport._tensor_desc_cache,
+                transport._nixl_agent_meta_version,
+            )
+
+        def consume_with_failed_transfer(self, refs):
+            agent = get_tensor_transport_manager("NIXL").get_nixl_agent()
+            # Fail the transfer after its receive buffers came out of the pool.
+            agent.check_xfer_state = lambda handle: "ERR"
+            try:
+                ray.get(refs[0])
+            except Exception as e:
+                return str(e)
+            finally:
+                del agent.check_xfer_state
+            return "The transfer did not fail."
+
+        def consume(self, refs):
+            return ray.get(refs[0]).cpu().tolist()
+
+    src_actor = GPUTestActor.remote()
+    dst_actor = RecvPoolActor.remote()
+    free_bytes, pool_in_desc_cache, meta_version = ray.get(
+        dst_actor.pool_state.remote()
+    )
+    assert free_bytes == 1024
+    assert not pool_in_desc_cache
+
+    refs = src_actor.produce.remote([torch.tensor([1, 2, 3]).to("cuda")])
+    error = ray.get(dst_actor.consume_with_failed_transfer.remote(refs))
+    assert "NIXL transfer got to Error state" in error
+
+    # The blocks are back, and the pool was neither added to the registration
+    # cache nor deregistered, which would have bumped the metadata version.
+    assert ray.get(dst_actor.pool_state.remote()) == (1024, False, meta_version)
+
+    refs = src_actor.produce.remote([torch.tensor([4, 5, 6]).to("cuda")])
+    assert ray.get(dst_actor.consume.remote(refs)) == [4, 5, 6]
+    assert ray.get(dst_actor.pool_state.remote()) == (1024, False, meta_version)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_set_nixl_cuda_stream(ray_start_regular):
     """set_nixl_cuda_stream restricts the pre-registration sync to the given
     stream, and the transferred data is still valid."""

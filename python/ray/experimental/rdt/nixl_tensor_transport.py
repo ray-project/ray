@@ -202,8 +202,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agent_locks: Dict[str, Any] = {}
         # Transfers that may still be in flight on each remote agent.
         self._inflight_xfers: Dict[str, set] = {}
-        # Handles to release once the polling of an agent's transfers ends. An agent
-        # has an entry only while it is being polled.
+        # Handles to release once the polling of an agent's transfers ends, each with
+        # the receive pool blocks to free after it. An agent has an entry only while it
+        # is being polled.
         self._deferred_releases: Dict[str, List[Any]] = {}
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
@@ -510,15 +511,17 @@ class NixlTensorTransport(TensorTransportManager):
                 )
             else:
                 # One buffer per remote descriptor; views at recovered offsets.
-                if self._memory_pool is not None:
+                pool = self._memory_pool
+                if pool is not None:
                     # Carve the group buffers out of the pool, which is already
                     # registered with NIXL. wait_fetch_complete copies them out
                     # into independent tensors before returning, so the pool's
                     # own device doesn't have to be the tensors' device.
                     pool_target_device = device
-                    group_buffers, pool_blocks = self._memory_pool.allocate_regions(
-                        packed_group_nbytes
-                    )
+                    with self._defer_cleanup():
+                        group_buffers, pool_blocks = pool.allocate_regions(
+                            packed_group_nbytes
+                        )
                 else:
                     group_buffers = [
                         torch.empty(nbytes, dtype=torch.uint8, device=device)
@@ -657,9 +660,10 @@ class NixlTensorTransport(TensorTransportManager):
                 blocks, fetch_request.pool_blocks = fetch_request.pool_blocks, None
                 # The tensors are views into pool blocks that the next transfer
                 # can overwrite, so copy them out before the caller sees them.
-                fetch_request.tensors = self._memory_pool.copy_out_and_free(
-                    fetch_request.tensors, blocks, fetch_request.pool_target_device
-                )
+                with self._defer_cleanup():
+                    fetch_request.tensors = self._memory_pool.copy_out_and_free(
+                        fetch_request.tensors, blocks, fetch_request.pool_target_device
+                    )
             return fetch_request.tensors
         except TimeoutError:
             # The transfer is still in flight and may keep writing into the
@@ -689,7 +693,12 @@ class NixlTensorTransport(TensorTransportManager):
         remove_tensor_descs: bool,
         pool_blocks: Optional[List[MemoryBlock]] = None,
     ) -> None:
-        """Cleans up resources after a transfer completes or fails."""
+        """Cleans up resources after a transfer completes or fails.
+
+        pool_blocks are the receive buffers of a transfer that did not complete. They
+        go back to the pool only after its handle is released, so that a block is not
+        reused while NIXL may still write into it.
+        """
         deferred = getattr(self._local, "deferred", None)
         if deferred is not None:
             deferred.append(
@@ -720,17 +729,22 @@ class NixlTensorTransport(TensorTransportManager):
                         if deferred is None:
                             nixl_agent.release_xfer_handle(xfer_handle)
                         else:
-                            deferred.append(xfer_handle)
+                            # The transfer is still being polled, so its blocks wait
+                            # for the handle, which is released when the polling ends.
+                            deferred.append((xfer_handle, pool_blocks))
+                            pool_blocks = None
                     # Without the cache, the last transfer on the agent removes it.
                     if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and not inflight:
                         nixl_agent.remove_remote_agent(remote_name)
             if remove_tensor_descs:
                 self._remove_tensor_descs(tensors)
         finally:
-            # Reclaim the receive buffers only after the transfer handle is
-            # released, so that a block cannot be reused while NIXL still
-            # references it.
-            if pool_blocks and self._memory_pool is not None:
+            self._free_pool_blocks(pool_blocks)
+
+    def _free_pool_blocks(self, pool_blocks: Optional[List[MemoryBlock]]) -> None:
+        """Returns receive buffers to the memory pool, if there are any."""
+        if pool_blocks and self._memory_pool is not None:
+            with self._defer_cleanup():
                 self._memory_pool.free_blocks(pool_blocks)
 
     def _remote_agent_lock(self, remote_name: str) -> Any:
@@ -743,11 +757,27 @@ class NixlTensorTransport(TensorTransportManager):
         Garbage collection can run _cleanup_transfer on this thread meanwhile, and it
         would wait for an agent lock. So _cleanup_transfer defers to the release here.
         """
+        with self._defer_cleanup(), self._remote_agent_cache_lock:
+            yield
+
+    @contextlib.contextmanager
+    def _defer_cleanup(self):
+        """Defers the _cleanup_transfer calls that garbage collection makes on this thread.
+
+        Garbage collection can run a fetch request's __del__, and so _cleanup_transfer,
+        at any allocation. _cleanup_transfer takes an agent lock, the cache lock and the
+        memory pool's lock, and threads holding those wait for the remote agent cache
+        lock or the pool's lock. So code holding either of the latter two runs in this
+        scope, and the deferred cleanups run when the outermost scope exits.
+        """
+        if getattr(self._local, "deferred", None) is not None:
+            # An enclosing scope runs them.
+            yield
+            return
         deferred = []
+        self._local.deferred = deferred
         try:
-            with self._remote_agent_cache_lock:
-                self._local.deferred = deferred
-                yield
+            yield
         finally:
             self._local.deferred = None
             for args in deferred:
@@ -782,11 +812,12 @@ class NixlTensorTransport(TensorTransportManager):
             inflight.clear()
         finally:
             del self._deferred_releases[remote_name]
-            for xfer_handle in deferred:
+            for xfer_handle, pool_blocks in deferred:
                 try:
                     nixl_agent.release_xfer_handle(xfer_handle)
                 except Exception:
                     logger.exception("Failed to release deferred transfer handle")
+                self._free_pool_blocks(pool_blocks)
 
     def _prepare_remote_agent(
         self, remote_name: str, version: int, remote_nixl_agent_meta: bytes
@@ -874,7 +905,10 @@ class NixlTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-            if self._memory_pool is None or not self._memory_pool.free_object(obj_id):
+            pool = self._memory_pool
+            with self._defer_cleanup():
+                freed_from_pool = pool is not None and pool.free_object(obj_id)
+            if not freed_from_pool:
                 self._remove_tensor_descs(tensors)
 
     def abort_transport(
@@ -999,9 +1033,11 @@ class NixlTensorTransport(TensorTransportManager):
     ) -> Any:
         """Allocate pool memory for tensors and return NIXL transfer descriptors."""
         pool = self._memory_pool
-        regions = pool.allocate_group(obj_id, tensors)
+        with self._defer_cleanup():
+            regions = pool.allocate_group(obj_id, tensors)
         try:
             return self._nixl_agent.get_xfer_descs(regions)
         except Exception:
-            pool.free_object(obj_id)
+            with self._defer_cleanup():
+                pool.free_object(obj_id)
             raise
