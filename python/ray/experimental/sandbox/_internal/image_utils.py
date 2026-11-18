@@ -1269,7 +1269,12 @@ def pull_and_extract_container_image(
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
             try:
                 ownership = _extract_image_layers(
-                    image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
+                    image,
+                    tmp_rootfs_dir,
+                    tmp_extract_dir,
+                    timeout_seconds,
+                    images_dir,
+                    erofs_image=os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
                 )
                 # None: erofs-pull built the image, with no tree to seed.
                 if ownership is not None:
@@ -1546,15 +1551,19 @@ def _extract_image_layers(
     image_dir: str,
     timeout_seconds: float,
     blob_dir: str,
+    erofs_image: Optional[str] = None,
 ) -> Optional[Dict[str, Tuple[int, int]]]:
     """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
 
     ``image`` is a local tar archive or a registry reference. A registry
     image's config and manifest are written to ``image_dir/.image_config.json``
     and ``image_dir/.manifest.json``, respectively, and its
-    layer blobs come from the shared layer cache under ``blob_dir``. A
-    registry image is built with erofs-pull where it can be
-    (``_build_image_with_erofs_pull``), with nothing extracted.
+    layer blobs come from the shared layer cache under ``blob_dir``. With
+    ``erofs_image``, the caller builds an EROFS image from the tree: a
+    registry image is then built straight into ``erofs_image`` with
+    erofs-pull where it can be (``_build_image_with_erofs_pull``), with
+    nothing extracted, and ``mkfs.erofs``, which the caller builds with
+    otherwise, is checked for before extracting.
 
     Args:
         image: Container image name or path to a local tar archive.
@@ -1562,18 +1571,20 @@ def _extract_image_layers(
         image_dir: Directory that receives the image config.
         timeout_seconds: Network request timeout.
         blob_dir: Image cache directory, whose layer cache keeps the blobs.
+        erofs_image: The EROFS image the caller builds from the tree, if any.
 
     Returns:
         {path: (uid, gid)} for every path shipped with a non-root owner, or
-        None if erofs-pull built the image at ``image_dir/rootfs.erofs``.
+        None if erofs-pull built ``erofs_image``.
 
     Raises:
         SandboxCreationError: When the image cannot be fetched or extracted.
     """
     ownership: Dict[str, Tuple[int, int]] = {}
     if os.path.isfile(image):
-        # Checked before extracting: the image is built with mkfs.erofs.
-        require_mkfs_erofs()
+        if erofs_image is not None:
+            # Checked before extracting: the image is built with mkfs.erofs.
+            require_mkfs_erofs()
         try:
             with open(image, "rb") as f:
                 extract_tar_layer(f, rootfs_dir, ownership=ownership)
@@ -1668,28 +1679,29 @@ def _extract_image_layers(
 
         digests = [layer["digest"] for layer in layers]
         base_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/"
-        if _build_image_with_erofs_pull(
-            image,
-            manifest_data,
-            base_url,
-            headers,
-            auth_header,
-            timeout_seconds,
-            blob_dir,
-            os.path.join(image_dir, ROOTFS_IMAGE),
-        ):
-            return None
-        # Checked before any layer download: extraction builds the image with
-        # mkfs.erofs.
-        try:
-            require_mkfs_erofs()
-        except SandboxCreationError as err:
-            if _erofs_pull_binary() is None:
-                raise
-            raise SandboxCreationError(
-                f"erofs-pull failed to build image '{image}' (its error is logged "
-                f"above), and extracting it needs mkfs.erofs: {err}"
-            ) from None
+        if erofs_image is not None:
+            if _build_image_with_erofs_pull(
+                image,
+                manifest_data,
+                base_url,
+                headers,
+                auth_header,
+                timeout_seconds,
+                blob_dir,
+                erofs_image,
+            ):
+                return None
+            # Checked before any layer download: the caller builds the image
+            # from the extracted tree with mkfs.erofs.
+            try:
+                require_mkfs_erofs()
+            except SandboxCreationError as err:
+                if _erofs_pull_binary() is None:
+                    raise
+                raise SandboxCreationError(
+                    f"erofs-pull failed to build image '{image}' (its error is "
+                    f"logged above), and extracting it needs mkfs.erofs: {err}"
+                ) from None
         with contextlib.closing(
             _download_blobs(
                 digests, base_url, headers, auth_header, timeout_seconds, blob_dir

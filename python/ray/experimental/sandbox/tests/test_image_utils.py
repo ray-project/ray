@@ -132,7 +132,7 @@ def _fake_registry(monkeypatch):
     fetching it. Returns the list of references pulled."""
     pulled = []
 
-    def extract(image, rootfs_dir, *args):
+    def extract(image, rootfs_dir, *args, **kwargs):
         pulled.append(image)
         with open(os.path.join(rootfs_dir, "ref"), "w", encoding="utf-8") as f:
             f.write(image)
@@ -2362,3 +2362,18 @@ def test_erofs_pull_slots_limit_concurrent_builds(tmp_path, monkeypatch):
     for t in threads:
         t.join(10)
     assert order == ["first in", "first out", "second in"]
+
+
+def test_extracting_layers_never_uses_erofs_pull(tmp_path, erofs_pull, monkeypatch):
+    """Callers that want the extracted tree, such as tests that re-pack an
+    image, get it even where erofs-pull would build the image instead."""
+    layers = [_layer(("bin", b"", _DIR), ("bin/sleep", b"sleep", {"mode": 0o755}))]
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    with _serve_image(monkeypatch, layers) as image:
+        ownership = image_utils._extract_image_layers(
+            image, str(rootfs), str(tmp_path), 120.0, str(tmp_path / "images")
+        )
+    assert ownership == {}
+    assert (rootfs / "bin" / "sleep").read_bytes() == b"sleep"
+    assert not (tmp_path / ROOTFS_IMAGE).exists()
