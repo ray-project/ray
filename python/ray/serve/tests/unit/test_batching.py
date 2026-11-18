@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from functools import wraps
 from typing import AsyncIterator, Dict, List
 from unittest.mock import call, patch
 
@@ -12,6 +13,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.batching import _BatchQueue
 from ray.serve.exceptions import RayServeException
 
@@ -1345,6 +1347,56 @@ def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
         else:
             assert over_bound_warning_message not in stream.messages
         stream.reset_message()
+
+
+def passthrough_decorator(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    return wrapper
+
+
+def test_extract_self_if_method_call_follows_wrapped_chain():
+    """`extract_self_if_method_call` must follow the full `__wrapped__` chain,
+    so `@serve.batch` keeps working when wrapped in another decorator that
+    uses `functools.wraps`. See #47449."""
+
+    class ClassA:
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0.01)
+        async def single_wrapped(self, x):
+            return [2 * v for v in x]
+
+        @passthrough_decorator
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0.01)
+        async def double_wrapped(self, x):
+            return [2 * v for v in x]
+
+    instance = ClassA()
+    original_single = ClassA.single_wrapped.__wrapped__
+    original_double = ClassA.double_wrapped.__wrapped__.__wrapped__
+
+    assert extract_self_if_method_call((instance, 1), original_single) is instance
+    assert extract_self_if_method_call((instance, 1), original_double) is instance
+
+
+@pytest.mark.asyncio
+async def test_serve_batch_wrapped_in_another_decorator():
+    """`@other_decorator @serve.batch(...)` must still batch correctly and
+    receive `self` in the handler. See #47449."""
+
+    class ClassA:
+        def __init__(self):
+            self.multiplier = 2
+
+        @passthrough_decorator
+        @serve.batch(max_batch_size=4, batch_wait_timeout_s=0.01)
+        async def handler(self, xs):
+            return [self.multiplier * x for x in xs]
+
+    instance = ClassA()
+    results = await asyncio.gather(*[instance.handler(i) for i in range(4)])
+    assert results == [0, 2, 4, 6]
 
 
 if __name__ == "__main__":
