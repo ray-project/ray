@@ -24,6 +24,7 @@ from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
     SIZER_BOTTLENECK_MAX_STEP_RATIO,
     SIZER_BOTTLENECK_MAX_TIMEOUT_S,
+    SIZER_BOTTLENECK_SLACK_MARGIN,
     SIZER_TRANSFER_TIMEOUT_S,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
@@ -90,6 +91,13 @@ def transfer_timeout_s(victim_ttfs: List[float]) -> float:
 # so one noisy window does not shrink an op.
 _SURPLUS_STREAK_TICKS = 3
 
+# With no recipient, an op whose output is blocked (its budget full while the
+# consumer has no idle slot) at least this share of its slot time is shrunk
+# toward its keep size, but never below the floor: its actors pin full
+# output budgets in the object store and add no throughput.
+_BLOCKED_SHARE_MIN = 0.8
+_BLOCKED_KEEP_FLOOR = 2
+
 
 def max_step_size(b: int, max_size: int) -> int:
     """The largest b' one step may grow a recipient of size b to."""
@@ -132,6 +140,9 @@ class BottleneckTransfer(CapacityTransfer):
         super().__init__(*args, **kwargs)
         # Per donor: consecutive ticks it has had surplus toward the recipient.
         self._surplus_streak: Dict["ExperimentalActorPoolMapOperator", int] = {}
+        # Per op: consecutive ticks it has been blocked with surplus while
+        # there was no recipient.
+        self._blocked_streak: Dict["ExperimentalActorPoolMapOperator", int] = {}
 
     @override
     def apply(
@@ -172,9 +183,12 @@ class BottleneckTransfer(CapacityTransfer):
             return requests
         recipient = tick.assessment.recipient
         if recipient is None:
-            # Shrink only toward a recipient that wants the capacity.
+            # Surplus is shrunk toward a recipient that wants the capacity;
+            # with none, only blocked surplus is, for the memory it pins.
             self._surplus_streak.clear()
+            requests.extend(self._shrink_blocked_surplus(tick, ctx))
             return requests
+        self._blocked_streak.clear()
         if not state.in_flight and self._can_grow(recipient, ctx):
             # One transfer at a time: let the window refill before the next.
             requests.extend(self._transfer_to(recipient, tick, ctx, state))
@@ -451,24 +465,116 @@ class BottleneckTransfer(CapacityTransfer):
             del self._surplus_streak[op]
         return requests
 
+    def _shrink_blocked_surplus(
+        self, tick: "BottleneckTick", ctx: OptimizationContext
+    ) -> List[PlacedSizingRequest]:
+        """With no recipient: drain one actor from each op whose output edge
+        is blocked (budget full while the consumer had no idle slot) at least
+        ``_BLOCKED_SHARE_MIN`` of the time, down toward its keep size (actors
+        needed for its busy and self-limited time, at least
+        ``_BLOCKED_KEEP_FLOOR``). Such actors hold full output budgets in the
+        object store and add no throughput while the consumer is the limit.
+        Same streak and one-drain-at-a-time as ``_shrink_toward_keep``."""
+        blocked_by_op: Dict["ExperimentalActorPoolMapOperator", float] = {}
+        self_by_op: Dict["ExperimentalActorPoolMapOperator", float] = {}
+        for edge in tick.snapshot.edges:
+            blocked_by_op[edge.producer] = max(
+                blocked_by_op.get(edge.producer, 0.0), edge.producer_blocked
+            )
+            self_by_op[edge.producer] = max(
+                self_by_op.get(edge.producer, 0.0), edge.producer_self_limited
+            )
+        named = {op for op, _ in tick.snapshot.bottlenecks} | set(tick.stable)
+        requests: List[PlacedSizingRequest] = []
+        seen = set()
+        for op in ctx.non_pg_ops:
+            shares = tick.snapshot.shares.get(op)
+            if (
+                shares is None
+                or op in named
+                or op.has_completed()
+                or not self._guard.can_scale(op)
+                or blocked_by_op.get(op, 0.0) < _BLOCKED_SHARE_MIN
+            ):
+                continue
+            pool = op.actor_pool
+            needed = min(1.0, shares.busy + self_by_op.get(op, 0.0))
+            keep = max(
+                _BLOCKED_KEEP_FLOOR,
+                pool.min_size(),
+                math.ceil(
+                    pool.serving_size() * needed * (1 + SIZER_BOTTLENECK_SLACK_MARGIN)
+                ),
+            )
+            if pool.serving_size() <= keep:
+                continue
+            seen.add(op)
+            streak = self._blocked_streak.get(op, 0) + 1
+            self._blocked_streak[op] = streak
+            if (
+                streak < _SURPLUS_STREAK_TICKS
+                or pool.num_draining_actors() > 0
+                or pool.num_pending_actors() > 0
+            ):
+                continue
+            donor = DonorCapacity(
+                op=op,
+                view=placement_view.build_op_placement_view(op, rank_victims=True),
+                per_actor=pool.per_actor_resource_usage(),
+                removable=0,
+            )
+            node, ttf = self._surplus_victim_node(donor, None, None, tick, ctx)
+            if node is None:
+                continue
+            self._blocked_streak[op] = 0
+            logger.debug(
+                "PipelineOptimizer: blocked surplus %s -1 on %s (blocked %.2f, "
+                "keep %d of %d; victim ttf %.0fs)",
+                op.name,
+                node,
+                blocked_by_op[op],
+                keep,
+                pool.serving_size(),
+                ttf,
+            )
+            requests.append(
+                PlacedSizingRequest(
+                    request={
+                        op: ScaleDownRequest.on_nodes(
+                            (node,),
+                            force=True,
+                            reason="optimizer: blocked surplus",
+                        )
+                    }
+                )
+            )
+        for op in [op for op in self._blocked_streak if op not in seen]:
+            del self._blocked_streak[op]
+        return requests
+
     @staticmethod
     def _surplus_victim_node(
         donor: DonorCapacity,
-        recipient_per_actor: ExecutionResources,
-        recipient_nodes: AbstractSet[NodeIdStr],
+        recipient_per_actor: Optional[ExecutionResources],
+        recipient_nodes: Optional[AbstractSet[NodeIdStr]],
         tick: "BottleneckTick",
         ctx: OptimizationContext,
     ) -> Tuple[Optional[NodeIdStr], float]:
-        """The node to drain a donor actor on: one where the recipient may
-        run and one recipient actor fits once that actor frees, choosing the
-        node whose cheapest victim frees soonest. (None, 0) if none."""
+        """The node to drain a donor actor on: the one whose cheapest victim
+        frees soonest, and, given a recipient, one where it may run and one of
+        its actors fits once that victim frees. (None, 0) if none."""
         best: Optional[Tuple[NodeIdStr, float]] = None
         for node, costs in donor.view.victim_drain_cost_by_node.items():
-            if not costs or node not in recipient_nodes:
+            if not costs:
                 continue
-            room = ctx.free.get(node, ExecutionResources.zero()).add(donor.per_actor)
-            if max_placeable_actors(room, recipient_per_actor) < 1:
-                continue
+            if recipient_per_actor is not None:
+                if recipient_nodes is None or node not in recipient_nodes:
+                    continue
+                room = ctx.free.get(node, ExecutionResources.zero()).add(
+                    donor.per_actor
+                )
+                if max_placeable_actors(room, recipient_per_actor) < 1:
+                    continue
             ttf = min(
                 tick.victim_ttf(donor.op, in_flight, unconsumed)
                 for in_flight, unconsumed in costs

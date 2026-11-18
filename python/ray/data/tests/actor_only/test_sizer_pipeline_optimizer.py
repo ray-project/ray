@@ -18,7 +18,10 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
 from ray.data._internal.experimental.execution.operators.placement_constraints import (
     PlacementConstraint,
 )
-from ray.data._internal.experimental.execution.sizer import placement_view
+from ray.data._internal.experimental.execution.sizer import (
+    bottleneck_observer,
+    placement_view,
+)
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     OpPlacementView,
 )
@@ -1337,6 +1340,7 @@ def _tick(
         snapshot=SimpleNamespace(
             bottlenecks=tuple(named),
             shares=shares if shares is not None else {},
+            edges=(),
         ),
         stable=frozenset(stable),
         assessment=SimpleNamespace(
@@ -1511,6 +1515,64 @@ def test_busy_surplus_drains_passively_without_a_transfer():
     assert drained == [set(), set(), {read}]
     (placed,) = requests
     assert placed.request[read].nodes == ("node",)
+
+
+def _blocked_tick(read, resize, *, blocked, self_limited=0.01, n=10):
+    """No recipient (the GPU stage is named but cannot grow); ReadVideo's
+    output edge to resize has ``blocked`` / ``self_limited`` shares."""
+    tick = _tick(
+        named=[],
+        shares={
+            read: SimpleNamespace(busy=0.01, starved=0.0, actors=n),
+            resize: SimpleNamespace(busy=0.23, starved=0.0, actors=4),
+        },
+    )
+    tick.snapshot.edges = (
+        bottleneck_observer.Edge(
+            producer=read,
+            consumer=resize,
+            producer_blocked=blocked,
+            producer_self_limited=self_limited,
+            consumer_starved=0.0,
+            arrow=bottleneck_observer.Arrow.DOWNSTREAM,
+        ),
+    )
+    return tick
+
+
+@pytest.mark.parametrize(
+    "blocked, self_limited, n, drains",
+    [
+        # video on g4dn.2xlarge: 10 ReadVideo actors, blocked 0.98 behind
+        # resize, 1% busy. Keep is max(2, ceil(10 x 0.02 x 1.2)) = 2.
+        (0.98, 0.01, 10, True),
+        # Not blocked enough: idle time may be its own (or starved).
+        (0.5, 0.01, 10, False),
+        # Already at the floor.
+        (0.98, 0.01, 2, False),
+        # Self-limited: its budget is the limit, keep = ceil(10 x 0.99 x 1.2).
+        (0.0, 0.98, 10, False),
+    ],
+    ids=["blocked-surplus", "partly-blocked", "at-floor", "self-limited"],
+)
+def test_blocked_surplus_drains_without_a_recipient(blocked, self_limited, n, drains):
+    read = _busy_victims_op("ReadVideo", "node", ["r0"], current=n)
+    resize = _op("resize", pool=_Pool(current=4))
+    rule = _bottleneck_rule()
+    state = rule.new_state()
+    seen = []
+    for _ in range(3):
+        _, state, requests = _apply_bottleneck(
+            rule,
+            _blocked_tick(
+                read, resize, blocked=blocked, self_limited=self_limited, n=n
+            ),
+            [read, resize],
+            state=state,
+        )
+        assert not state.in_flight and _granted(requests) == []
+        seen.append(_donors(requests))
+    assert seen == [set(), set(), {read} if drains else set()]
 
 
 @pytest.mark.parametrize("case", ["no-recipient", "already-draining"])
