@@ -59,8 +59,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
-    RAY_SERVE_HAPROXY_INGRESS_RETRIES,
-    RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
@@ -117,6 +115,7 @@ from ray.serve.schema import (
     LoggingConfig,
     Target,
     TargetGroup,
+    TracingConfig,
 )
 from ray.util import metrics
 
@@ -838,10 +837,8 @@ class HAProxyConfig:
     retry_on: str = RAY_SERVE_HAPROXY_RETRY_ON
     retries: Optional[int] = RAY_SERVE_HAPROXY_RETRIES
 
-    # Per-ingress-router overrides; when None the ingress backend inherits the
-    # global policy above.
-    ingress_retry_on: Optional[str] = RAY_SERVE_HAPROXY_INGRESS_RETRY_ON
-    ingress_retries: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_RETRIES
+    # Per-ingress-router override for the server timeout. The ingress backend
+    # inherits the global retry policy above.
     ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
 
     is_head: bool = False
@@ -1952,13 +1949,14 @@ class HAProxyManager(ProxyActorInterface):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
-        tracing_config=None,
+        tracing_config: TracingConfig,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         super().__init__(
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
             # HAProxyManager is not on the request path, so we can disable
             # the buffer to ensure logs are immediately flushed.
             log_buffer_size=1,

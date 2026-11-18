@@ -14,11 +14,13 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
-    DiskHashShuffleMapOp,
-)
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
+    DiskHashShuffleRegroupOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
+    handle_from_block,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
@@ -32,13 +34,17 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_oper
     SortSamplingOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
-    DiskSortShuffleMapOp,
+    SortRangePartitioner,
     SortShuffleMapOp,
 )
 from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
+from ray.data._internal.planner.plan_all_to_all_op import (
+    plan_disk_hash_shuffle_map,
+    plan_disk_hash_shuffle_reduce,
+)
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -246,17 +252,33 @@ def test_sort_sampling_handles_all_empty_blocks(
     assert op.has_completed()
 
 
-@pytest.mark.parametrize("map_cls", [SortShuffleMapOp, DiskSortShuffleMapOp])
+def _disk_sort_writer(input_op, ctx, *, num_partitions, sort_key):
+    """The disk sort writer as ``_plan_sort_v2`` builds it."""
+    partitioner = SortRangePartitioner(sort_key, num_partitions, input_op, ctx)
+
+    def resolve_boundaries(schema):
+        partitioner.partition_fn_for(schema, input_op)
+
+    return plan_disk_hash_shuffle_map(
+        input_op,
+        ctx,
+        num_partitions=num_partitions,
+        partition_fn=partitioner,
+        on_start=resolve_boundaries,
+    )
+
+
+@pytest.mark.parametrize("build_map_op", [SortShuffleMapOp, _disk_sort_writer])
 def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
-    map_cls,
+    build_map_op,
 ):
     ctx = DataContext.get_current()
     # One map task per input bundle so the task is visible right after add_input.
     ctx.shuffle_input_batch_bytes = 0
     bundle = make_ref_bundles([[3, 1, 2]])[0]
-    op = map_cls(
+    op = build_map_op(
         InputDataBuffer(ctx, []),
         ctx,
         num_partitions=2,
@@ -266,21 +288,30 @@ def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
 
     op.add_input(bundle, 0)
 
-    assert op.boundaries == [(2,)]
+    if isinstance(op, SortShuffleMapOp):
+        assert op.boundaries == [(2,)]
     assert len(op.get_active_tasks()) == 1
 
     op.all_inputs_done()
     run_op_tasks_sync(op)
+    outputs = []
     while op.has_next():
-        op.get_next().destroy_if_owned()
+        outputs.append(op.get_next())
     assert op.has_completed()
+    if not isinstance(op, SortShuffleMapOp):
+        # The disk writer's handle reports the rows per range: [1] and [2, 3].
+        (handle_bundle,) = outputs
+        handle = handle_from_block(ray.get(handle_bundle.block_refs[0]))
+        assert list(handle["num_rows"]) == [1, 2]
+    for bundle in outputs:
+        bundle.destroy_if_owned()
 
 
 @pytest.mark.parametrize(
     "map_cls, reduce_cls",
     [
         (ShuffleMapOp, ShuffleReduceOp),
-        (DiskHashShuffleMapOp, DiskHashShuffleReduceOp),
+        (plan_disk_hash_shuffle_map, plan_disk_hash_shuffle_reduce),
     ],
 )
 def test_shuffle_reduce_preserves_partition_order(
@@ -336,7 +367,7 @@ def _empty_partition_bundle(partition_id: int) -> RefBundle:
     "map_cls, reduce_cls",
     [
         (ShuffleMapOp, ShuffleReduceOp),
-        (DiskHashShuffleMapOp, DiskHashShuffleReduceOp),
+        (plan_disk_hash_shuffle_map, plan_disk_hash_shuffle_reduce),
     ],
 )
 def test_shuffle_reduce_ordered_skips_discarded_empty_partition(
@@ -375,10 +406,17 @@ _USE_DISK = [
 
 _SORT_TRANSPORTS = [
     pytest.param(False, SortShuffleMapOp, ShuffleReduceOp, "", id="object_store"),
-    pytest.param(
-        True, DiskSortShuffleMapOp, DiskHashShuffleReduceOp, "Disk", id="disk"
-    ),
+    # The disk writer is a plain map op; a regroup sits between it and the reduce.
+    pytest.param(True, MapOperator, DiskHashShuffleReduceOp, "Disk", id="disk"),
 ]
+
+
+def _sort_map_op(reduce_op, use_disk):
+    map_op = reduce_op.input_dependencies[0]
+    if use_disk:
+        assert isinstance(map_op, DiskHashShuffleRegroupOp)
+        map_op = map_op.input_dependencies[0]
+    return map_op
 
 
 @pytest.mark.parametrize("use_disk, map_cls, reduce_cls, prefix", _SORT_TRANSPORTS)
@@ -396,7 +434,7 @@ def test_sort_planner_routes_to_shuffle_v2(
     assert isinstance(dag, reduce_cls)
     assert dag._preserve_partition_order
     assert dag.name.startswith(f"{prefix}SortShuffleReduce")
-    map_op = dag.input_dependencies[0]
+    map_op = _sort_map_op(dag, use_disk)
     assert isinstance(map_op, map_cls)
     assert map_op.name.startswith(f"{prefix}SortShuffleMap")
     sampling_op = map_op.input_dependencies[0]
@@ -406,29 +444,31 @@ def test_sort_planner_routes_to_shuffle_v2(
         sampling_op._sample_rows_per_block
         == SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION
     )
-    assert map_op._num_partitions == 2
+    assert dag._num_partitions == 2
 
     read_op_cls = type(ds._logical_plan.dag.input_dependencies[0])
     with mock.patch.object(read_op_cls, "estimated_num_outputs", return_value=None):
         dag = get_execution_plan(ds._logical_plan)[0].dag
-    fallback_map_op = dag.input_dependencies[0]
-    assert isinstance(fallback_map_op, map_cls)
-    assert fallback_map_op._num_partitions == ctx.default_hash_shuffle_parallelism
+    assert isinstance(dag, reduce_cls)
+    assert isinstance(_sort_map_op(dag, use_disk), map_cls)
+    assert dag._num_partitions == ctx.default_hash_shuffle_parallelism
 
     # A single partition needs no boundaries, so the sampling op is skipped.
     ds_single = ray.data.range(10, override_num_blocks=1).sort("id")
     dag = get_execution_plan(ds_single._logical_plan)[0].dag
-    single_map_op = dag.input_dependencies[0]
+    assert isinstance(dag, reduce_cls)
+    single_map_op = _sort_map_op(dag, use_disk)
     assert isinstance(single_map_op, map_cls)
-    assert single_map_op._num_partitions == 1
-    assert single_map_op.boundaries == []
+    assert dag._num_partitions == 1
+    if not use_disk:
+        assert single_map_op.boundaries == []
     assert not isinstance(single_map_op.input_dependencies[0], SortSamplingOp)
 
     ds_with_boundaries = ray.data.range(10, override_num_blocks=2).sort(
         "id", boundaries=[5]
     )
     dag = get_execution_plan(ds_with_boundaries._logical_plan)[0].dag
-    map_op = dag.input_dependencies[0]
+    map_op = _sort_map_op(dag, use_disk)
     assert isinstance(map_op, map_cls)
     assert not isinstance(map_op.input_dependencies[0], SortSamplingOp)
 
