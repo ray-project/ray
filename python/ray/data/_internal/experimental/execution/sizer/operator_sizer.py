@@ -147,6 +147,10 @@ class OperatorSizer:
         }
         for op in self._awaiting_on_start:
             self._guard.block(op, _AWAITING_ON_START_REASON)
+        # Actors last held for each op awaiting on_start, and the one-time
+        # grant to that count queued when its on_start runs.
+        self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
+        self._grow_to_held: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Warm the non-blocking allocation cache, so the first ticks read a
         # real allocation instead of the cold-cache empty value (the client
         # submits an async RPC and serves the answer on a later call).
@@ -171,6 +175,7 @@ class OperatorSizer:
             clock=clock,
             pg_bundles=pg_bundles,
             unknown_pg_cap_by_op=unknown_pg_cap_by_op,
+            hold_target=self._policy.warmup_target,
         )
 
     # --- lifecycle ------------------------------------------------------------
@@ -211,6 +216,7 @@ class OperatorSizer:
         t1 = time.perf_counter()
         if ctx is None:
             return
+        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
 
         self._cross_op_optimize(ctx, seconds_since_allocation_change)
         t2 = time.perf_counter()
@@ -237,6 +243,9 @@ class OperatorSizer:
         started = {op for op in self._awaiting_on_start if not op.awaiting_on_start()}
         for op in started:
             self._guard.release(op)
+            held = self._held_actors_by_op.pop(op, 0)
+            if held > 0:
+                self._grow_to_held[op] = held
         self._awaiting_on_start -= started
 
     def _observe(self) -> None:
@@ -341,6 +350,14 @@ class OperatorSizer:
             else:
                 want = self._policy.warm_delta(
                     op, self._topology[op], backpressured_with_demand
+                )
+            # Released from its on_start hold: grow straight into the room
+            # held for it while it waited (its warmup share), once.
+            held = self._grow_to_held.pop(op, 0)
+            to_held = held - pool.serving_size()
+            if to_held > 0 and (want is None or want.delta < to_held):
+                want = ActorPoolScalingRequest.upscale(
+                    delta=to_held, reason="held share (on_start ran)"
                 )
             below_min = pool.min_size() - pool.serving_size()
             if below_min > 0 and (want is None or want.delta < below_min):

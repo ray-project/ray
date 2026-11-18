@@ -472,6 +472,7 @@ class _TestSizer(OperatorSizer):
         self._release_started_ops()
         ctx = self.next_tick(force=force)
         assert ctx is not None
+        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
         return self._per_op_how_many(ctx)
 
     @property
@@ -644,35 +645,59 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
     assert _tick(sizer).request[write].delta >= 1
 
 
-def test_op_awaiting_on_start_has_its_min_size_held_until_it_runs():
-    # An op held at zero actors until its on_start runs must still find room
-    # when it does. Without a hold, upstream ops can take every node's space
-    # first and the op (e.g. a Write sink) can then never place its first
-    # actor. Its min-size actors stay out of the tick's free capacity, with
-    # memory held as well as CPU, so every phase sizes and places around them.
+@pytest.mark.parametrize(
+    "memory, held, free_after",
+    [
+        # 8 CPU: equal share = (8 - floors 2) x 0.8 / 2 ops = 2.4 -> 2 actors,
+        # held whole: 2 CPU and 2 x 3 memory.
+        (10, 2, (5, 2)),
+        # Memory for only one write actor after read's: only what fits is held.
+        (7, 1, (6, 2)),
+    ],
+    ids=["share-fits", "share-clamped-to-what-fits"],
+)
+def test_op_awaiting_on_start_has_its_share_held_until_it_runs(
+    memory, held, free_after
+):
+    # An op held at zero actors until its on_start runs (an actor made earlier
+    # ships a transformer without that state) must still find room when it
+    # does. Upstream warmup would otherwise take every node's space, and the
+    # only way back is draining actors whose outputs clear through this op.
+    # Its warmup equal share stays out of the tick's free capacity, memory
+    # included, with no actor started; once on_start runs it grows straight
+    # to the held count.
     read = _FakeOp(
         "read", _FakePool(min_size=1, max_size=10, cpu=1, memory=2, running=1)
     )
     write = _write_op(
         "write",
-        _FakePool(min_size=2, max_size=10, cpu=1, memory=3),
+        _FakePool(min_size=1, max_size=10, cpu=1, memory=3),
         inputs=[read],
         awaiting_on_start=True,
     )
     view = DatasetAllocationView(
-        reserved_by_node={"node0": ExecutionResources(cpu=8, memory=10)},
+        reserved_by_node={"node0": ExecutionResources(cpu=8, memory=memory)},
         labels_by_node={"node0": {}},
     )
     sizer, _ = _bootstrapped(read, write, view=view)
 
-    free = _snapshot_of(sizer).free_by_node["node0"]
-    # 8 CPU / 10 memory, minus read's running actor, minus write's 2 held.
-    assert (free.cpu, free.memory) == (5, 2)
+    assert write not in _tick(sizer).request  # no actor while held
+    snapshot = _snapshot_of(sizer)
+    assert snapshot.held_actors_by_op == {write: held}
+    free = snapshot.free_by_node["node0"]
+    assert (free.cpu, free.memory) == free_after
 
-    # Once on_start runs, the hold is gone; write is below min size, so it is
-    # granted and placed before anything else can take the room.
+    # Read's first output ends warmup and is what reaches write: on_start
+    # runs, the hold is gone, and write grows to the held count in one grant
+    # (warmup sizing is over by then), ahead of read (it is below min size).
+    read.metrics.num_task_outputs_generated = 1
     write.pending_on_start = False
-    assert _tick(sizer).request[write].delta == 2
+    request = _tick(sizer).request
+    assert request[write].delta == held
+    assert request[write].reason == "held share (on_start ran)"
+    # One-time: the next tick sizes write from its own signals again (the
+    # fake pool applies nothing, so it is still below min size).
+    assert _tick(sizer).request[write].reason == "below min size"
 
 
 def test_warmup_latches_off_on_critical_op_first_output():

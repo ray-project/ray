@@ -114,8 +114,16 @@ class SizingTicker:
             Dict["ExperimentalActorPoolMapOperator", int]
         ] = None,
         warmup_timeout_s: float = SIZER_WARMUP_TIMEOUT_S,
+        hold_target: Optional[
+            Callable[
+                ["ExperimentalActorPoolMapOperator", ExecutionResources], Optional[int]
+            ]
+        ] = None,
     ):
         self._profiles = profiles
+        # Actors to hold for an op waiting on its on_start: its warmup equal
+        # share (``OpSizingPolicy.warmup_target``); its min size without one.
+        self._hold_target = hold_target
         self.cadence_s = cadence_s
         self.clock = clock
         self.warmup: bool = True
@@ -258,11 +266,15 @@ class SizingTicker:
         constrained_op_count_by_node = self._constrained_op_count_by_node(
             schedulable_nodes_by_op
         )
-        self._hold_floor_for_ops_awaiting_on_start(
+        global_limits = ExecutionResources.zero()
+        for resources in reserved.values():
+            global_limits = global_limits.add(resources)
+        held_actors_by_op = self._hold_share_for_ops_awaiting_on_start(
             free,
             schedulable_nodes_by_op,
             per_actor_resources_by_op,
             constrained_op_count_by_node,
+            global_limits,
         )
 
         return TickCapacitySnapshot(
@@ -275,9 +287,10 @@ class SizingTicker:
             pg_free_by_bundle=self._pg_bundles.free_by_bundle(),
             schedulable_bundles_by_op=dict(self._pg_bundles.bundles_by_op),
             unknown_pg_headroom_by_op=self._unknown_pg_headroom(),
+            held_actors_by_op=held_actors_by_op,
         )
 
-    def _hold_floor_for_ops_awaiting_on_start(
+    def _hold_share_for_ops_awaiting_on_start(
         self,
         free: Dict[NodeIdStr, ExecutionResources],
         schedulable_nodes_by_op: Dict[
@@ -287,23 +300,37 @@ class SizingTicker:
             "ExperimentalActorPoolMapOperator", ExecutionResources
         ],
         constrained_op_count_by_node: Dict[NodeIdStr, int],
-    ) -> None:
+        global_limits: ExecutionResources,
+    ) -> Dict["ExperimentalActorPoolMapOperator", int]:
         """Take each op still waiting on its ``on_start`` out of ``free``
-        (mutated) for its min-size actors.
+        (mutated) for its warmup equal share; return how many actors each
+        got held.
 
         Such an op (e.g. a Write sink) gets no actor until its first input
-        arrives, so nothing else would hold room for it, and by then upstream
-        ops can have taken every node's space. Holding its floor here keeps
-        that room out of every phase's free map. The tick it is released, it
-        is below min size, so it is granted and placed first and claims the
-        room back. The floor is held whole per actor, on the least contended
-        nodes, as the ledger would place it; what does not fit is not held.
+        arrives (an actor made earlier would ship a transformer without the
+        state ``on_start`` sets), so nothing else would hold room for it, and
+        by then upstream ops can have taken every node's space; getting it
+        back means draining actors whose outputs only clear through this op.
+        Holding its share here keeps that room out of every phase's free map
+        without starting an actor. Once released, the sizer grows it straight
+        to the held count, ahead of other ops (it is below min size). The
+        share is held whole per actor, every resource the actor needs, on the
+        least contended nodes, as the ledger would place it; what does not
+        fit is not held.
         """
+        held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = {}
         for op in self._profiles.non_pg_ops:
             if not op.awaiting_on_start() or op.has_completed():
                 continue
             pool = op.actor_pool
-            num_to_hold = pool.min_size() - pool.serving_size()
+            target = (
+                self._hold_target(op, global_limits)
+                if self._hold_target is not None
+                else None
+            )
+            if target is None:
+                target = pool.min_size()
+            num_to_hold = target - pool.serving_size()
             if num_to_hold <= 0:
                 continue
             nodes = sorted(
@@ -311,13 +338,15 @@ class SizingTicker:
                 key=lambda n: (constrained_op_count_by_node.get(n, 0), n),
             )
             held = pack_actors(free, nodes, per_actor_resources_by_op[op], num_to_hold)
+            held_actors_by_op[op] = len(held)
             logger.debug(
-                "OperatorSizer: holding %d/%d min-size actor(s) for %s until "
-                "its on_start runs",
+                "OperatorSizer: holding %d/%d actor(s) (warmup share) for %s "
+                "until its on_start runs",
                 len(held),
                 num_to_hold,
                 op.name,
             )
+        return held_actors_by_op
 
     def _constrained_op_count_by_node(
         self,
