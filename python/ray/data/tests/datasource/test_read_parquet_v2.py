@@ -658,8 +658,11 @@ def test_read_parquet_v2_columns_applies_select_columns(
 
 
 @pytest.mark.parametrize("merge_schema", [False, True])
+@pytest.mark.parametrize(
+    ("include_paths", "path_name"), [(True, "path"), ("source_file", "source_file")]
+)
 def test_read_parquet_v2_columns_with_include_paths_preserves_path(
-    tmp_path, restore_ctx, merge_schema
+    tmp_path, restore_ctx, merge_schema, include_paths, path_name
 ):
     from ray.data._internal.logical.operators.map_operator import Project
 
@@ -670,37 +673,16 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
         ds = ray.data.read_parquet(
             str(tmp_path),
             columns=["a"],
-            include_paths=True,
+            include_paths=include_paths,
             merge_schema=merge_schema,
         )
 
     dag = ds._logical_plan.dag
     assert isinstance(dag, Project)
-    # V1 ``columns=[...]`` retained ``"path"`` implicitly when
-    # ``include_paths=True``; the V2 path appends it to keep that
-    # behavior.
-    assert [expr.name for expr in dag.exprs] == ["a", "path"]
-    assert ds.take_all() == [{"a": 1, "path": str(tmp_path / "data.parquet")}]
-
-
-@pytest.mark.parametrize("merge_schema", [False, True])
-def test_read_parquet_v2_columns_with_custom_path_column(
-    tmp_path, restore_ctx, merge_schema
-):
-    file_path = tmp_path / "data.parquet"
-    _write(file_path, pa.table({"id": [1], "path": ["physical"]}))
-
-    restore_ctx.use_datasource_v2 = True
-    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
-        ds = ray.data.read_parquet(
-            str(file_path),
-            columns=["id"],
-            include_paths="source_file",
-            merge_schema=merge_schema,
-        )
-
-    assert ds.schema().names == ["id", "source_file"]
-    assert ds.take_all() == [{"id": 1, "source_file": str(file_path)}]
+    # ``columns=`` retains the configured synthetic path column implicitly.
+    assert [expr.name for expr in dag.exprs] == ["a", path_name]
+    assert ds.schema().names == ["a", path_name]
+    assert ds.take_all() == [{"a": 1, path_name: str(tmp_path / "data.parquet")}]
 
 
 @pytest.mark.parametrize("configure_after_read", [False, True])
@@ -729,7 +711,10 @@ def test_read_parquet_v2_custom_path_column_rejects_generated_id_name(
     if configure_after_read:
         ds.context.checkpoint_config = config
 
-    with pytest.raises(InvalidCheckpointingConfig, match="already exists"):
+    with pytest.raises(
+        InvalidCheckpointingConfig,
+        match="conflicts with an existing synthesized column",
+    ):
         ds.take_all()
 
 

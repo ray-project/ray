@@ -23,7 +23,6 @@ fault-tolerance
 elastic-training
 nccl-hang-detection
 monitor-your-application
-local-mode
 reproducibility
 Hyperparameter optimization <hyperparameter-optimization>
 ```

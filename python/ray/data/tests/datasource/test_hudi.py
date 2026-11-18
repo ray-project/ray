@@ -4,7 +4,6 @@ import zipfile
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
@@ -13,7 +12,6 @@ from ray.data._internal.object_extensions.arrow import (
     ArrowPythonObjectArray,
     _contains_pickle_object_type,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
@@ -21,15 +19,6 @@ from ray.data.datasource.path_util import (
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-MIN_PYARROW_VERSION_FOR_HUDI = parse_version("11.0.0")
-PYARROW_VERSION = get_pyarrow_version()
-PYARROW_VERSION_MEETS_REQUIREMENT = (
-    PYARROW_VERSION and PYARROW_VERSION >= MIN_PYARROW_VERSION_FOR_HUDI
-)
-PYARROW_HUDI_TEST_SKIP_REASON = (
-    f"Hudi only supported if pyarrow >= {MIN_PYARROW_VERSION_FOR_HUDI}"
-)
 
 
 def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -> str:
@@ -47,10 +36,6 @@ def _get_hudi_table_path(fs, data_path, table_name, testing_dir="test_hudi") -> 
     return _extract_testing_table(fixture_path[0], table_name, target_testing_dir)
 
 
-@pytest.mark.skipif(
-    not PYARROW_VERSION_MEETS_REQUIREMENT,
-    reason=PYARROW_HUDI_TEST_SKIP_REASON,
-)
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -112,10 +97,6 @@ def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, fs, data_p
     ]
 
 
-@pytest.mark.skipif(
-    not PYARROW_VERSION_MEETS_REQUIREMENT,
-    reason=PYARROW_HUDI_TEST_SKIP_REASON,
-)
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -167,10 +148,6 @@ V8_FIRST_COMMIT = ("20250713010535797", "20250713010536200")
 V8_SECOND_COMMIT = ("20250713010536861", "20250713010537206")
 
 
-@pytest.mark.skipif(
-    not PYARROW_VERSION_MEETS_REQUIREMENT,
-    reason=PYARROW_HUDI_TEST_SKIP_REASON,
-)
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -201,10 +178,6 @@ def test_hudi_snapshot_query_v8_table(ray_start_regular_shared, fs, data_path):
     ]
 
 
-@pytest.mark.skipif(
-    not PYARROW_VERSION_MEETS_REQUIREMENT,
-    reason=PYARROW_HUDI_TEST_SKIP_REASON,
-)
 @pytest.mark.parametrize(
     "start_ts,end_ts,expected",
     [
@@ -251,10 +224,6 @@ def test_hudi_incremental_query_v8_table(
     assert [(r["id"], r["_hoodie_commit_time"]) for r in rows] == expected
 
 
-@pytest.mark.skipif(
-    not PYARROW_VERSION_MEETS_REQUIREMENT,
-    reason=PYARROW_HUDI_TEST_SKIP_REASON,
-)
 def test_hudi_rejects_pickle_object_columns(ray_start_regular_shared, local_path):
     """A tampered base data file must not be able to run its embedded pickle."""
     table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")
@@ -282,10 +251,6 @@ def test_hudi_rejects_pickle_object_columns(ray_start_regular_shared, local_path
     assert not os.path.exists(marker), "pickle.load executed attacker code"
 
 
-@pytest.mark.skipif(
-    not PYARROW_VERSION_MEETS_REQUIREMENT,
-    reason=PYARROW_HUDI_TEST_SKIP_REASON,
-)
 def test_hudi_read_checks_pickle_object_columns(local_path, monkeypatch):
     """Every table the reader yields goes through the pickle-object guard."""
     table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")

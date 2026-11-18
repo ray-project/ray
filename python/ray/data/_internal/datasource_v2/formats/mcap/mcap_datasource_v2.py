@@ -3,10 +3,12 @@
 ``read_api.read_mcap`` constructs it when ``DataContext.use_datasource_v2`` is
 set. Listing reads each file's summary, drops files that cannot match the
 selection, and emits one row per chunk (``MCAPSummaryIndexer``), weighted by
-the memory reading it is estimated to need. ``OnlineBinPacker`` groups the
-chunks into read tasks of about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that
-estimate (128 MiB by default). When the read keeps order, ``OrderedFileGrouper``
-first joins each file's chunks so that one task reads the file (``mcap_file_cuts``).
+the memory reading it is estimated to need. Read tasks hold about
+``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that estimate (128 MiB by default).
+``OrderedFileCutter`` cuts a large file into tasks that leave in order, and
+``OnlineBinPacker`` packs small files whole into shared tasks
+(``mcap_file_cuts``). ``TaskSummaryPartitioner`` adds to each task the summary
+records it needs.
 ``MCAPScanner`` holds the optimizer's pushdowns and builds the ``MCAPReader``,
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
@@ -37,7 +39,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_data_column import (
     infer_data_type,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_file_cuts import (
-    OrderedFileGrouper,
+    OrderedFileCutter,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_file_indexer import (
     MCAPSummaryIndexer,
@@ -51,6 +53,9 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     TimeRange,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
+from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
+    TaskSummaryPartitioner,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -77,7 +82,8 @@ if TYPE_CHECKING:
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 # Chunks are packed into read tasks of about this many bytes of estimated read
-# memory (``mcap_summary.chunk_run``).
+# memory (``mcap_summary.chunk_runs``). A listing task holds at most this many
+# bytes of summary sections at once.
 _BIN_PACKING_BYTES = env_integer("RAY_DATA_MCAP_BIN_PACKING_BYTES", 128 * MiB)
 # How many partly filled read tasks the packer keeps open at once.
 _BIN_PACKING_MAX_SHARED_OPEN_BINS = env_integer(
@@ -160,6 +166,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
             selection=self._selection,
             ignore_missing_paths=self._ignore_missing_paths,
             read_task_bytes=_BIN_PACKING_BYTES,
+            log_time_order=self._log_time_order,
             row_layout=MessageRowLayout(
                 include_metadata=self._include_metadata,
                 include_row_id=self._include_row_id,
@@ -169,13 +176,14 @@ class MCAPDatasourceV2(FileDataSourceV2):
 
     def get_file_partitioner(self, **kwargs):
         # Each listing row is one chunk weighted by its estimated read memory,
-        # so chunks are packed into read tasks by that estimate. When the read
-        # keeps order, each file is kept in one task, and files keep their
-        # listing order (``mcap_file_cuts``).
+        # so read tasks are sized by that estimate. A large file is cut into
+        # tasks that leave in order, and small files are packed whole. When the
+        # read keeps order, files also keep their listing order
+        # (``mcap_file_cuts`` says when a file is read whole).
         #
         # Packing is per listing shard, not global, so listing can run as many
         # parallel tasks. Each chunk still lands in exactly one read task; the
-        # cost is at most one under-filled task per shard.
+        # cost is that bins may not fill as well, which may mean more read tasks.
         from ray.data._internal.datasource_v2.common.online_bin_packer import (
             OnlineBinPacker,
         )
@@ -185,7 +193,12 @@ class MCAPDatasourceV2(FileDataSourceV2):
             max_shared_open_bins=_BIN_PACKING_MAX_SHARED_OPEN_BINS,
             requires_global_input=False,
         )
-        return OrderedFileGrouper(packer, budget=_BIN_PACKING_BYTES)
+        cutter = OrderedFileCutter(
+            packer,
+            budget=_BIN_PACKING_BYTES,
+            log_time_order=self._log_time_order,
+        )
+        return TaskSummaryPartitioner(cutter)
 
     @property
     @override
@@ -232,6 +245,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
                 self._filesystem,
                 sample.paths.tolist(),
                 self._listed_paths,
+                summary_budget_bytes=_BIN_PACKING_BYTES,
             )
             if len(sample) > 0
             else None
