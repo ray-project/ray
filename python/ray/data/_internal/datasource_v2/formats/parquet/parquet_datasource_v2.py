@@ -114,6 +114,22 @@ class ParquetDatasourceV2(FileDataSourceV2):
     :class:`ParquetScanner` and :class:`ParquetFileReader`. Schema
     inference merges the supplied file sample's footers and augments with
     partition/path columns as configured.
+
+    Args:
+        paths: Input file or directory paths.
+        filesystem: Filesystem used to resolve and read paths.
+        partitioning: Partition layout for path-derived columns.
+        file_extensions: File extensions to include, or None for all files.
+        ignore_missing_paths: Whether to ignore missing input paths.
+        skip_paths: Exact paths to exclude from the read.
+        include_paths: Whether to add paths, or a nonempty output column name.
+            An empty name or a name matching an enabled ``row_hash`` column
+            raises ValueError. Non-default names must not match partition fields.
+        include_row_hash: Whether to add deterministic row hashes.
+        shuffle: File or row-group shuffle configuration.
+        arrow_parquet_args: Parquet arguments retained by the datasource.
+        schema: Optional schema override for file columns.
+        parquet_format_kwargs: Options passed to the PyArrow Parquet format.
     """
 
     def __init__(

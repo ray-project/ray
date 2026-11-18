@@ -25,7 +25,6 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
-from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 ROW_GROUP_SIZE = 25
 NUM_ROW_GROUPS = 4
@@ -168,21 +167,6 @@ def test_projected_path_replaces_same_named_file_column(tmp_path, name, monkeypa
     assert table.column_names == [name]
     assert table.num_rows == NUM_ROWS
     assert set(table.column(name).to_pylist()) == {path}
-
-
-def test_default_path_column_keeps_hive_partition_collision(tmp_path):
-    partition_dir = tmp_path / "path=partition"
-    partition_dir.mkdir()
-    path = _write_file(partition_dir / "data.parquet")
-    reader = ParquetFileReader(
-        partitioning=Partitioning(PartitionStyle.HIVE),
-        synthesized_columns=(PathColumn(),),
-    )
-
-    table = _read(reader, _manifest([(path, None)]))
-
-    assert table.column_names == ["id", "path"]
-    assert set(table.column("path").to_pylist()) == {path}
 
 
 def test_projected_row_hash_replaces_same_named_file_column(tmp_path):

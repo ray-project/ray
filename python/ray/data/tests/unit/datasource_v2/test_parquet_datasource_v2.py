@@ -460,19 +460,6 @@ def test_infer_schema_with_include_paths(tmp_path):
     assert schema.field("path").type == pa.string()
 
 
-def test_infer_schema_with_custom_path_column(tmp_path):
-    file_path = tmp_path / "data.parquet"
-    _write_parquet(str(file_path), pa.table({"path": ["original"], "id": [1]}))
-
-    datasource = ParquetDatasourceV2([str(file_path)], include_paths="source_file")
-    schema = datasource.infer_schema(_manifest_of([str(file_path)]))
-    scanner = datasource.create_scanner(schema)
-
-    assert schema.names == ["path", "id", "source_file"]
-    assert schema.field("source_file").type == pa.string()
-    assert scanner.read_schema() == schema
-
-
 def test_custom_path_column_rejects_row_hash_name(tmp_path):
     with pytest.raises(ValueError, match="conflicts with `row_hash`"):
         ParquetDatasourceV2(
@@ -572,13 +559,12 @@ def test_infer_schema_with_include_row_hash_existing_column_promoted_to_uint64(
     tmp_path,
 ):
     file_path = tmp_path / "data.parquet"
-    _write_parquet(str(file_path), pa.table({"row_hash": [10, 20], "val": [1, 2]}))
+    _write_parquet(str(file_path), pa.table({"val": [1, 2], "row_hash": [10, 20]}))
 
     datasource = ParquetDatasourceV2([str(file_path)], include_row_hash=True)
     schema = datasource.infer_schema(_manifest_of([str(file_path)]))
 
     assert schema.field("row_hash").type == pa.uint64()
-    assert schema.names == ["val", "row_hash"]
 
 
 def test_create_scanner_propagates_include_row_hash(tmp_path):

@@ -61,7 +61,11 @@ def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.nda
 @DeveloperAPI
 @dataclass(frozen=True)
 class PathColumn(SynthesizedColumn):
-    """Source file path, named ``path`` by default."""
+    """Source file path, named ``path`` by default.
+
+    Args:
+        name: Name of the path column in the output schema.
+    """
 
     name: str = INCLUDE_PATHS_COLUMN_NAME
     type = pa.string()

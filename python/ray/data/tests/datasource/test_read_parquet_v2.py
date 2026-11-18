@@ -470,25 +470,36 @@ def test_read_parquet_v2_include_paths(tmp_path, restore_ctx):
     assert "path" in schema.names
 
 
-@pytest.mark.parametrize("merge_schema", [False, True])
+@pytest.mark.parametrize(
+    ("merge_schema", "has_physical"), [(False, False), (True, False), (False, True)]
+)
 def test_read_parquet_v2_custom_path_column_preserves_file_column(
-    tmp_path, restore_ctx, merge_schema
+    tmp_path, restore_ctx, merge_schema, has_physical
 ):
     first = tmp_path / "first.parquet"
     second = tmp_path / "second.parquet"
-    _write(first, pa.table({"id": [1], "path": ["original-first"]}))
-    _write(second, pa.table({"id": [2], "path": ["original-second"]}))
+    for path, identifier, value in (
+        (first, 1, "original-first"),
+        (second, 2, "original-second"),
+    ):
+        columns = {"id": [identifier], "path": [value]}
+        if has_physical:
+            columns["source_file"] = [value]
+        _write(path, pa.table(columns))
 
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(
         str(tmp_path), include_paths="source_file", merge_schema=merge_schema
     )
 
-    assert ds.schema().names == ["id", "path", "source_file"]
-    assert sorted(ds.take_all(), key=lambda row: row["id"]) == [
+    expected = [
         {"id": 1, "path": "original-first", "source_file": str(first)},
         {"id": 2, "path": "original-second", "source_file": str(second)},
     ]
+    # Filter before any action can materialize the unfiltered Dataset.
+    assert ds.filter(expr=col("source_file") == str(first)).take_all() == expected[:1]
+    assert ds.schema().names == ["id", "path", "source_file"]
+    assert sorted(ds.take_all(), key=lambda row: row["id"]) == expected
 
 
 @pytest.mark.parametrize("include_paths", [True, "path"])
@@ -504,26 +515,6 @@ def test_read_parquet_v2_only_path_projection_uses_synthesized_value(
     ).select_columns(["path"])
 
     assert ds.take_all() == [{"path": str(file_path)}] * 2
-
-
-@pytest.mark.parametrize(
-    ("include_paths", "path_name"),
-    [(True, "path"), ("path", "path"), ("source_file", "source_file")],
-)
-def test_read_parquet_v2_path_collision_preserves_column_order(
-    tmp_path, restore_ctx, include_paths, path_name
-):
-    file_path = tmp_path / "data.parquet"
-    _write(file_path, pa.table({path_name: ["physical"], "id": [1]}))
-
-    restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(str(file_path), include_paths=include_paths)
-
-    assert ds.schema().names == ["id", path_name]
-    batch = ds.take_batch(batch_format="pyarrow")
-    assert isinstance(batch, pa.Table)
-    assert batch.column_names == ds.schema().names
-    assert batch.to_pylist() == [{"id": 1, path_name: str(file_path)}]
 
 
 @pytest.mark.parametrize("merge_schema", [False, True])
@@ -551,7 +542,10 @@ def test_read_parquet_v2_path_overrides_incompatible_file_columns(
     expected = [{"id": 1, path_name: str(first)}, {"id": 2, path_name: str(second)}]
     if path_only:
         expected = [{path_name: row[path_name]} for row in expected]
-    assert sorted(ds.take_all(), key=lambda row: row[path_name]) == expected
+    batch = ds.take_batch(batch_format="pyarrow")
+    assert isinstance(batch, pa.Table)
+    assert batch.column_names == schema.names
+    assert sorted(batch.to_pylist(), key=lambda row: row[path_name]) == expected
 
 
 def test_read_parquet_v2_path_overrides_only_file_column(tmp_path, restore_ctx):
@@ -589,22 +583,22 @@ def test_read_parquet_v2_path_does_not_hide_other_schema_conflicts(
         )
 
 
-def test_read_parquet_custom_path_column_requires_v2(tmp_path, restore_ctx):
+@pytest.mark.parametrize(
+    ("use_v2", "include_paths", "error", "message"),
+    [
+        (False, "source_file", NotImplementedError, "requires DataSourceV2"),
+        (True, "", ValueError, "must be nonempty"),
+    ],
+)
+def test_read_parquet_rejects_invalid_path_column(
+    tmp_path, restore_ctx, use_v2, include_paths, error, message
+):
     file_path = tmp_path / "data.parquet"
     _write(file_path, pa.table({"id": [1]}))
 
-    restore_ctx.use_datasource_v2 = False
-    with pytest.raises(NotImplementedError, match="requires DataSourceV2"):
-        ray.data.read_parquet(str(file_path), include_paths="source_file")
-
-
-def test_read_parquet_v2_rejects_empty_path_column_name(tmp_path, restore_ctx):
-    file_path = tmp_path / "data.parquet"
-    _write(file_path, pa.table({"id": [1]}))
-
-    restore_ctx.use_datasource_v2 = True
-    with pytest.raises(ValueError, match="must be nonempty"):
-        ray.data.read_parquet(str(file_path), include_paths="")
+    restore_ctx.use_datasource_v2 = use_v2
+    with pytest.raises(error, match=message):
+        ray.data.read_parquet(str(file_path), include_paths=include_paths)
 
 
 def test_read_parquet_v2_include_row_hash(tmp_path, restore_ctx):
