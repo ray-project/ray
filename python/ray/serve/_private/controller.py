@@ -468,9 +468,12 @@ class ServeController:
         checked_at: float,
         healthy: bool,
         consecutive_failures: int,
-    ):
-        """Self-health heartbeat from a replica, standing in for a pull probe."""
-        self.deployment_state_manager.record_replica_health(
+    ) -> Optional[Tuple[float, float]]:
+        """Self-health heartbeat from a replica, standing in for a pull probe.
+
+        Returns the health-check period and timeout the replica is judged by.
+        """
+        return self.deployment_state_manager.record_replica_health(
             replica_id, checked_at, healthy, consecutive_failures
         )
 

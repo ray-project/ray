@@ -448,6 +448,11 @@ class ReplicaMetricsManager:
         self._pending_health_push_started_at: float = 0.0
         # What the outstanding heartbeat carries; only meaningful while one is.
         self._pending_health_push_healthy: bool = True
+        # Bumped whenever the deployment config sets the period and timeout. A
+        # heartbeat's reply takes effect only if no such change came after the
+        # heartbeat went out.
+        self._health_config_generation: int = 0
+        self._pending_health_push_generation: int = 0
         # Set while the replica reconfigures; see pause_self_health().
         self._self_health_paused: bool = False
         # Bumped by each resume. A check that ends mid-reconfigure sees the pause flag;
@@ -748,6 +753,7 @@ class ReplicaMetricsManager:
         self._health_check_timeout_s = timeout_s
         self._metrics_pusher.start()
         self._schedule_self_health(period_s)
+        self._health_config_generation += 1
 
     def _schedule_self_health(self, period_s: float) -> None:
         """Run the check every half period so every replica is checked well within
@@ -760,6 +766,32 @@ class ReplicaMetricsManager:
             period_s * 0.5,
             fixed_rate=True,
         )
+
+    async def _adopt_pushed_health_config(self) -> None:
+        """Take up the health-check period and timeout the controller sent back with
+        the last heartbeat.
+
+        Changing only those needs no reconfigure, so this reply is how new ones
+        reach the replica.
+        """
+        ref = self._pending_health_push_ref
+        if ref is None or not check_obj_ref_ready_nowait(ref):
+            return
+        sent_in_generation = self._pending_health_push_generation
+        self._pending_health_push_ref = None
+        try:
+            # ObjectRefs are awaitable at runtime but not typed as such.
+            # pyrefly: ignore[not-async]
+            reply = await ref  # type: ignore[misc]
+        except Exception:
+            return  # e.g. the controller restarted; a later reply carries it
+        # Checked after the await, which yields even for a ready ref: a reconfigure
+        # in that gap sets newer values than this reply holds.
+        if reply is None or sent_in_generation != self._health_config_generation:
+            return
+        period_s, self._health_check_timeout_s = reply
+        if period_s != self._health_check_period_s:
+            self._schedule_self_health(period_s)
 
     def pause_self_health(self) -> None:
         """Hold the self-check while the replica reconfigures. The controller does not
@@ -794,6 +826,10 @@ class ReplicaMetricsManager:
 
     async def _eval_and_push_self_health(self):
         if self._self_health_paused:
+            return
+        await self._adopt_pushed_health_config()
+        if self._self_health_paused:
+            # A reconfigure or shutdown started during that await.
             return
         epoch = self._self_health_epoch
         # Invariant: the pusher registers this task only after setting the callable,
@@ -857,6 +893,7 @@ class ReplicaMetricsManager:
             )
             self._pending_health_push_started_at = time.time()
             self._pending_health_push_healthy = healthy
+            self._pending_health_push_generation = self._health_config_generation
 
     def start_metrics_pusher(self):
         # Invariant: only called when an autoscaling config is set (checked at
@@ -2103,7 +2140,10 @@ class Replica:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
-            self._start_self_health_pusher()
+            # A re-initialize after a controller restart keeps the self-check already
+            # running, with any period it has taken up since it started.
+            if not self._self_health_active:
+                self._start_self_health_pusher()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 

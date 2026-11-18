@@ -1544,6 +1544,8 @@ def _bare_manager():
     m._pending_health_push_ref = None
     m._pending_health_push_started_at = 0.0
     m._pending_health_push_healthy = True
+    m._health_config_generation = 0
+    m._pending_health_push_generation = 0
     m._self_health_paused = False
     m._self_health_epoch = 0
     m._metrics_push_lock = threading.Lock()
@@ -1646,6 +1648,97 @@ class TestSelfHealthPush:
         m._eval_self_health_fn = AsyncMock()
         await m._eval_and_push_self_health()
         m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_period_or_timeout_changed_alone_reaches_the_self_check(
+        self, monkeypatch
+    ):
+        """Changing only health_check_period_s or health_check_timeout_s needs no
+        reconfigure, so the replica learns them from the reply to its heartbeat.
+        Counting failures against the old period would replace it in a sixth of the
+        time going from 10s to 60s."""
+        from unittest.mock import Mock
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+        m._metrics_pusher = Mock()
+        m._metrics_pusher.stop_event.is_set.return_value = False
+        reply = asyncio.get_running_loop().create_future()
+        reply.set_result((60.0, 45.0))
+        m._controller_handle.record_replica_health.remote.return_value = reply
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 1
+        m._last_counted_failure_at -= 15.0  # past the old period, inside the new
+        await m._eval_and_push_self_health()
+        assert m._health_check_period_s == 60.0
+        assert m._health_check_timeout_s == 45.0
+        assert m._consecutive_failures == 1
+        register = m._metrics_pusher.register_or_update_task.call_args
+        assert register.args[2] == 30.0
+        assert register.kwargs["fixed_rate"] is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("reconfigured", ["before_next_check", "while_awaiting"])
+    async def test_a_reply_from_before_a_reconfigure_keeps_its_period(
+        self, monkeypatch, reconfigured
+    ):
+        """The controller can answer a heartbeat before a deploy that changes the
+        period, and the replica reads that reply only at its next check. reconfigure()
+        can set the new period before then, or while the reply is awaited, which
+        yields even for a ready ref. Either way the older reply must not undo it."""
+        from unittest.mock import AsyncMock, Mock
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+        m._metrics_pusher = Mock()
+        m._metrics_pusher.stop_event.is_set.return_value = False
+        old_reply = asyncio.get_running_loop().create_future()
+        old_reply.set_result((10.0, 30.0))
+
+        async def reply_awaited_across_a_reconfigure():
+            m.start_self_health_pusher(AsyncMock(), 4.0, 30.0)  # as reconfigure() does
+            return 10.0, 30.0
+
+        first_reply = (
+            reply_awaited_across_a_reconfigure()
+            if reconfigured == "while_awaiting"
+            else old_reply
+        )
+        push = m._controller_handle.record_replica_health.remote
+        push.side_effect = [first_reply, old_reply]
+        m.start_self_health_pusher(AsyncMock(), 10.0, 30.0)
+        await m._eval_and_push_self_health()  # its reply carries the old period
+        if reconfigured == "before_next_check":
+            m.start_self_health_pusher(AsyncMock(), 4.0, 30.0)  # as reconfigure() does
+        await m._eval_and_push_self_health()
+        assert m._health_check_period_s == 4.0
+
+    @pytest.mark.asyncio
+    async def test_a_reconfigure_starting_during_the_reply_await_holds_the_check(
+        self, monkeypatch
+    ):
+        """Awaiting the reply yields even for a ready ref, and reconfigure() can pause
+        the self-check right then. The user check must not then run alongside the
+        user's reconfigure."""
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+        evals = []
+
+        async def check(_):
+            evals.append(1)
+
+        async def reply_awaited_as_a_reconfigure_starts():
+            m.pause_self_health()  # what reconfigure() does first
+            return 10.0, 30.0
+
+        push = m._controller_handle.record_replica_health.remote
+        push.return_value = reply_awaited_as_a_reconfigure_starts()
+        m._eval_self_health_fn = check
+        await m._eval_and_push_self_health()
+        await m._eval_and_push_self_health()
+        assert evals == [1]
+        assert push.call_count == 1
 
     @pytest.mark.asyncio
     async def test_shutdown_does_not_wait_on_a_hung_check(self):
@@ -2132,6 +2225,22 @@ class TestReplicaHealthVerdict:
         with pytest.raises(RuntimeError, match="intended to fail"):
             await r.check_health()
         assert r._healthy is False
+
+    @pytest.mark.asyncio
+    async def test_a_reinit_keeps_the_running_self_check(self, monkeypatch):
+        """A restarted controller calls initialize again on every replica it recovers.
+        Re-registering would put back the period the replica started with over one
+        it has taken up from a heartbeat reply since."""
+        from unittest.mock import Mock
+
+        monkeypatch.setattr(replica_mod, "RAY_SERVE_ENABLE_PUSH_HEALTH", True)
+        r = _bare_replica()
+        r._metrics_manager.start_self_health_pusher = Mock()
+        r._user_callable_initialized_lock = asyncio.Lock()
+        r._user_callable_initialized = True
+        await r.initialize(None, None)
+        r._user_callable_wrapper.call_user_health_check.assert_called_once()
+        r._metrics_manager.start_self_health_pusher.assert_not_called()
 
 
 class TestReconfigureSelfHealth:

@@ -5843,15 +5843,27 @@ class DeploymentState:
         checked_at: float,
         healthy: bool,
         consecutive_failures: int,
-    ) -> None:
+    ) -> Optional[Tuple[float, float]]:
         """Hand a pushed self-health result to the replica it describes.
 
         A push for a replica this controller does not track is dropped: the pull
-        probe covers it once the replica exists.
+        probe covers it once the replica exists. Returns the health-check period and
+        timeout the controller judges the replica by: changing only those needs no
+        reconfigure, so this reply is how new ones reach the replica.
         """
         replica = self._replicas.get_by_id(replica_id)
         if replica is not None:
             replica.record_pushed_health(checked_at, healthy, consecutive_failures)
+            if replica.actor_details.state == ReplicaState.RECOVERING:
+                # Its version is the target's until check_ready fetches its own.
+                return None
+            # Its own version's, which mid-rollout can differ from the target's.
+            config = replica.version.deployment_config
+        elif self._target_state.info is not None:
+            config = self._target_state.info.deployment_config
+        else:
+            return None
+        return config.health_check_period_s, config.health_check_timeout_s
 
     def check_and_update_replicas(self):
         """Check current state of all DeploymentReplica being tracked, and compare
@@ -6958,14 +6970,14 @@ class DeploymentStateManager:
         checked_at: float,
         healthy: bool,
         consecutive_failures: int,
-    ) -> None:
+    ) -> Optional[Tuple[float, float]]:
         """Route a replica's pushed self-health to the replica itself."""
         deployment_state = self._deployment_states.get(replica_id.deployment_id)
         if deployment_state is None:
             # A deployment this controller no longer tracks; the push has nowhere
             # to land and the replica is on its way out.
-            return
-        deployment_state.record_pushed_health(
+            return None
+        return deployment_state.record_pushed_health(
             replica_id, checked_at, healthy, consecutive_failures
         )
 
