@@ -838,6 +838,27 @@ def test_op_waiting_on_upstream_output_reserves_its_share():
     assert request[ops["resize"]].delta == held[ops["resize"]] - 1
 
 
+def test_bottleneck_model_warm_loop_only_sheds_idle_actors():
+    # Under the bottleneck model growth comes only from the bottleneck rule:
+    # an op with work and demand gets no upscale from the warm loop, and an
+    # idle op is still drained after the hysteresis.
+    busy = _FakeOp(
+        "busy", _FakePool(min_size=1, max_size=50, cpu=1, running=2, in_flight=2)
+    )
+    idle = _FakeOp(
+        "idle", _FakePool(min_size=1, max_size=50, cpu=1, running=4), inputs=(busy,)
+    )
+    sizer, topo = _bootstrapped(busy, idle, enqueued=0, warm=True)
+    topo[busy]._enqueued = 20
+    sizer._bottleneck_model = True
+
+    for _ in range(sizer._policy.downscale_hysteresis - 1):
+        assert _tick(sizer).request == {}
+    request = _tick(sizer).request
+    assert busy not in request
+    assert request[idle].delta < 0
+
+
 def test_warmup_latches_off_on_critical_op_first_output():
     ops, topo = _linear_pipeline(running=1)
     # Critical op = deepest task-launching op, i.e. the last non-sink map -> infer.

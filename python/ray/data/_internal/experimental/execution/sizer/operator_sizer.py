@@ -158,6 +158,8 @@ class OperatorSizer:
         # Actors held last tick for each held op (see SizingTicker), and the
         # one-time grant to that count queued when its hold releases.
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
+        # RAY_DATA_SIZER_BOTTLENECK_MODEL: the bottleneck rule drives growth.
+        self._bottleneck_model = SIZER_BOTTLENECK_MODEL
         # This tick's bottleneck model (set each tick before the optimizer).
         self._bottleneck: Optional[BottleneckTick] = None
         self._grow_to_held: Dict[ExperimentalActorPoolMapOperator, int] = {}
@@ -378,6 +380,10 @@ class OperatorSizer:
                 pass  # fixed pool: only ever replenished to min
             elif ctx.warmup:
                 want = self._policy.warmup_delta(op, ctx.capacity.get_global_limits())
+            elif self._bottleneck_model:
+                # Growth comes only from the bottleneck rule; per op, only
+                # idle actors are shed.
+                want = self._policy.shrink_idle_delta(op, self._topology[op])
             else:
                 want = self._policy.warm_delta(
                     op, self._topology[op], backpressured_with_demand

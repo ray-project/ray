@@ -14,6 +14,7 @@ from typing import (
     Sequence,
 )
 
+from ray.data._internal.execution.execution_flags import SIZER_BOTTLENECK_MODEL
 from ray.data._internal.experimental.execution.sizer.metrics import (
     OptimizerMetrics,
 )
@@ -21,6 +22,9 @@ from ray.data._internal.experimental.execution.sizer.models import (
     OpShortfall,
     PlacedSizingRequest,
     TickCapacitySnapshot,
+)
+from ray.data._internal.experimental.execution.sizer.optimizer.bottleneck_transfer import (  # noqa: E501
+    BottleneckTransfer,
 )
 from ray.data._internal.experimental.execution.sizer.optimizer.capacity_transfer import (  # noqa: E501
     CapacityTransfer,
@@ -76,12 +80,21 @@ class PipelineOptimizer:
         self._rules: List[OptimizationRule] = []
         # Each rule's own state type; the optimizer only carries it.
         self._rule_state: Dict[str, Any] = {}
-        self.register(
-            CapacityTransfer(
-                self._metrics, placement, guard, reset_signals=self._signals.reset
+        if SIZER_BOTTLENECK_MODEL:
+            # The bottleneck model replaces the per-op recipient and donor
+            # policy and the silent-bottleneck grant.
+            self.register(
+                BottleneckTransfer(
+                    self._metrics, placement, guard, reset_signals=self._signals.reset
+                )
             )
-        )
-        self.register(SilentBottleneckGrant(self._metrics, guard, placement))
+        else:
+            self.register(
+                CapacityTransfer(
+                    self._metrics, placement, guard, reset_signals=self._signals.reset
+                )
+            )
+            self.register(SilentBottleneckGrant(self._metrics, guard, placement))
 
     def register(self, rule: OptimizationRule) -> None:
         self._rules.append(rule)

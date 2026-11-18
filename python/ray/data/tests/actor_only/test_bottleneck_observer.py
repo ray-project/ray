@@ -390,6 +390,9 @@ class _Pool:
     def max_size(self):
         return self._max_size
 
+    def max_actor_concurrency(self):
+        return 1
+
     def alive_actor_states_by_node(self):
         return self.states
 
@@ -544,8 +547,11 @@ def test_victim_ttf_is_outputs_and_in_flight_work_over_consume_rate():
         consumer.metrics.num_task_inputs_processed += 2  # 2 blocks/s
         step()
 
-    # (4 unconsumed + 2 tasks x 3 outputs) / 2 blocks/s.
+    # No task duration known yet: (4 unconsumed + 2 tasks x 3 outputs) / 2/s.
     assert observer.victim_ttf(cast(Any, producer), 2, 4) == pytest.approx(5.0)
+    # 30s tasks: the 2 in flight (concurrency 1) finish first, 2 x 30s.
+    producer.metrics.average_total_task_completion_time_s = 30.0
+    assert observer.victim_ttf(cast(Any, producer), 2, 4) == pytest.approx(65.0)
     # An idle actor with nothing buffered frees at once.
     assert observer.victim_ttf(cast(Any, producer), 0, 0) == 0.0
 

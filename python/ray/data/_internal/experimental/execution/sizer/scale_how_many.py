@@ -407,6 +407,36 @@ class OpSizingPolicy:
         )
         return request
 
+    def shrink_idle_delta(
+        self, op: "ExperimentalActorPoolMapOperator", op_state: "OpState"
+    ) -> Optional[ActorPoolScalingRequest]:
+        """Under the bottleneck model, the only per-op decision in the warm
+        phase: shed idle actors once the op has had no work (empty input
+        queue, nothing in flight) for the full hysteresis, which is starved
+        for the whole window in the model's terms. Holds while actors pend.
+        Growth comes only from the bottleneck rule."""
+        pool = op.actor_pool
+        pending = pool.num_pending_actors()
+        has_work = (
+            op_state.total_enqueued_input_blocks() > 0 or pool.num_tasks_in_flight() > 0
+        )
+        streak = self._idle_streak(op)
+        if pending > 0:
+            request, decision = None, f"hold (sizing in flight: {pending} pending)"
+        elif has_work:
+            streak.reset()
+            request, decision = None, "hold (has work; growth is the bottleneck rule's)"
+        else:
+            streak.record(True)
+            request, decision = self._drain_if_idle(pool, streak)
+        logger.debug(
+            "OperatorSizer: warm %s current=%d -> %s",
+            op.name,
+            pool.serving_size(),
+            decision,
+        )
+        return request
+
     def _drain_if_idle(
         self, pool: "AutoscalingActorPool", streak: BoolStreak
     ) -> Tuple[Optional[ActorPoolScalingRequest], str]:

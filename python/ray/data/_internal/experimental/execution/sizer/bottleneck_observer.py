@@ -206,6 +206,15 @@ class BottleneckTick(Generic[K]):
     snapshot: Snapshot[K]
     stable: AbstractSet[K]
     assessment: Assessment[K]
+    # One donor actor's estimated time-to-free: (donor, tasks in flight,
+    # unconsumed outputs) -> seconds.
+    victim_ttf: Callable[[K, int, int], float] = field(
+        default=lambda donor, tasks_in_flight, unconsumed: 0.0, compare=False
+    )
+    # Every other op's slack if the recipient grows to b': (recipient, b').
+    slack_for: Callable[[K, int], Mapping[K, int]] = field(
+        default=lambda recipient, b_prime: {}, compare=False
+    )
 
 
 # --- pure model ------------------------------------------------------------
@@ -966,15 +975,23 @@ class BottleneckObserver:
         tasks_in_flight: int,
         unconsumed_outputs: int,
     ) -> float:
-        """Estimated seconds until one of ``donor``'s actors drains: its
-        unconsumed output blocks plus its tasks in flight x the donor's
-        outputs per task, over the rate its consumer finishes blocks. A lower
-        bound when the consumer has a backlog queued ahead of them."""
+        """Estimated seconds until one of ``donor``'s actors drains: its tasks
+        in flight finishing (rounds of max_concurrency, each the donor's
+        average task duration: an upper estimate, as the running ones have
+        already started), then its unconsumed outputs plus those tasks'
+        outputs consumed at the rate its consumer finishes blocks (a lower
+        bound when the consumer has a backlog queued ahead of them)."""
         metrics = donor.metrics
         outputs_per_task = metrics.num_task_outputs_generated / max(
             1, metrics.num_tasks_finished
         )
-        return time_to_free(
+        task_s = 0.0
+        if tasks_in_flight > 0:
+            concurrency = max(1, donor.actor_pool.max_actor_concurrency())
+            task_s = math.ceil(tasks_in_flight / concurrency) * (
+                getattr(metrics, "average_total_task_completion_time_s", None) or 0.0
+            )
+        return task_s + time_to_free(
             unconsumed_outputs + tasks_in_flight * outputs_per_task,
             self._consume_rate(donor),
         )
@@ -994,6 +1011,14 @@ class BottleneckObserver:
             snapshot=snapshot,
             stable=stable,
             assessment=self.assess(snapshot, capacity, stable),
+            victim_ttf=self.victim_ttf,
+            slack_for=lambda recipient, b_prime: slack_toward(
+                snapshot.shares,
+                recipient,
+                b_prime,
+                self._profiles.next_ops,
+                self._slack_margin,
+            ),
         )
 
     def log_tick(
