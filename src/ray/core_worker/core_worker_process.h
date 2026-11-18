@@ -15,11 +15,15 @@
 #pragma once
 
 #include <boost/thread.hpp>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/asio/asio_util.h"
+#include "ray/common/id.h"
 #include "ray/common/metrics.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
@@ -103,6 +107,26 @@ class CoreWorkerProcess {
   /// from becoming its last owner.
   static std::optional<bool> ShouldInterruptTaskForCancellation();
 
+  /**
+   * @brief Best-effort process-local RDT residency metadata write.
+   *
+   * Mirrors the safe pattern of ShouldInterruptTaskForCancellation(): a no-op
+   * once the core worker process is gone, so a GC callback thread that runs
+   * during shutdown never QuickExits the way GetCoreWorker() would. The
+   * CoreWorker setter is invoked only while holding a read lock and by
+   * reference, so no shared_ptr escapes to an arbitrary callback thread.
+   *
+   * @param object_id The RDT object id.
+   * @param tensor_bytes Logical element bytes per local device; -1 unknown.
+   * @param num_copies Number of successfully queued copies.
+   * @param num_errors Number of queued failed receives with no tensors.
+   */
+  static void SetRdtObjectMemoryInfo(
+      const ObjectID &object_id,
+      const std::vector<std::pair<std::string, int64_t>> &tensor_bytes,
+      int64_t num_copies,
+      int64_t num_errors);
+
   /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();
 
@@ -147,6 +171,24 @@ class CoreWorkerProcessImpl {
 
   /// Whether a running task should be interrupted. Empty if core worker doesn't exist.
   std::optional<bool> ShouldInterruptTaskForCancellation() const;
+
+  /**
+   * @brief Best-effort process-local RDT residency metadata write.
+   *
+   * No-op when the core worker has been torn down. The CoreWorker setter is
+   * called by reference while holding a read lock, so the CoreWorker is never
+   * copied, escaped, or destructed on a caller's thread.
+   *
+   * @param object_id The RDT object id.
+   * @param tensor_bytes Logical element bytes per local device; -1 unknown.
+   * @param num_copies Number of successfully queued copies.
+   * @param num_errors Number of queued failed receives with no tensors.
+   */
+  void SetRdtObjectMemoryInfo(
+      const ObjectID &object_id,
+      const std::vector<std::pair<std::string, int64_t>> &tensor_bytes,
+      int64_t num_copies,
+      int64_t num_errors);
 
   std::shared_ptr<CoreWorker> CreateCoreWorker(CoreWorkerOptions options,
                                                const WorkerID &worker_id);

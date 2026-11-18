@@ -142,6 +142,18 @@ std::optional<bool> CoreWorkerProcess::ShouldInterruptTaskForCancellation() {
   return core_worker_process->ShouldInterruptTaskForCancellation();
 }
 
+void CoreWorkerProcess::SetRdtObjectMemoryInfo(
+    const ObjectID &object_id,
+    const std::vector<std::pair<std::string, int64_t>> &tensor_bytes,
+    int64_t num_copies,
+    int64_t num_errors) {
+  if (core_worker_process == nullptr) {
+    return;
+  }
+  core_worker_process->SetRdtObjectMemoryInfo(
+      object_id, tensor_bytes, num_copies, num_errors);
+}
+
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     CoreWorkerOptions options, const WorkerID &worker_id) {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
@@ -1102,6 +1114,22 @@ std::optional<bool> CoreWorkerProcessImpl::ShouldInterruptTaskForCancellation() 
     return std::nullopt;
   }
   return worker->ShouldInterruptTaskForCancellation();
+}
+
+void CoreWorkerProcessImpl::SetRdtObjectMemoryInfo(
+    const ObjectID &object_id,
+    const std::vector<std::pair<std::string, int64_t>> &tensor_bytes,
+    int64_t num_copies,
+    int64_t num_errors) {
+  const auto read_locked = core_worker_.LockForRead();
+  // Bind by reference, never copy: the setter may run on a GC callback thread
+  // after ShutdownDriver(), and copying the shared_ptr here would let that
+  // thread become the last owner and destruct the CoreWorker out of place.
+  const auto &worker = read_locked.Get();
+  if (worker == nullptr) {
+    return;
+  }
+  worker->SetRdtObjectMemoryInfo(object_id, tensor_bytes, num_copies, num_errors);
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {

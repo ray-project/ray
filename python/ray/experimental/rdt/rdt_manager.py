@@ -10,6 +10,7 @@ from queue import Queue
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     List,
     NamedTuple,
@@ -176,7 +177,7 @@ def set_target_device_for_ref(ref: ObjectRef, target_device: str):
 
 
 class RDTManager:
-    def __init__(self):
+    def __init__(self, memory_info_callback: Optional[Callable] = None):
         # This lock protects _managed_rdt_metadata, _queued_transfers, and _queued_frees since
         # they can be accessed from the user's python thread or the CoreWorker's main io service thread.
         self._lock = threading.Lock()
@@ -210,6 +211,9 @@ class RDTManager:
         # circular import and because it imports third-party dependencies like
         # PyTorch.
         self._rdt_store: Optional["RDTStore"] = None
+        # Optional publisher of scalar-only RDT residency metadata. Injected by
+        # Worker.rdt_manager; ``None`` for a standalone manager (no publishing).
+        self._memory_info_callback = memory_info_callback
 
         # Thread safe queue of transport refs that the monitor thread needs to start monitoring
         self._unmonitored_transfers: Queue[TransferMetadata] = Queue()
@@ -254,7 +258,9 @@ class RDTManager:
                     RDTStore,
                 )
 
-                self._rdt_store = RDTStore()
+                self._rdt_store = RDTStore(
+                    memory_info_callback=self._memory_info_callback
+                )
             return self._rdt_store
 
     def shutdown(self):
@@ -265,6 +271,15 @@ class RDTManager:
                 self._monitor_failures_thread.join()
                 self._monitor_failures_shutdown_event.clear()
                 self._monitor_failures_thread = None
+
+            # Detach the publisher from the core worker before the core worker
+            # is torn down. Clearing the manager callback first means a store
+            # lazily created after shutdown starts with no callback, and
+            # disabling the existing store (under its own lock) synchronizes
+            # with any in-flight add/pop so no publish races the teardown.
+            self._memory_info_callback = None
+            if self._rdt_store is not None:
+                self._rdt_store.disable_memory_info_callback()
 
     def start_monitor_thread_if_needed(self):
         with self._init_lock:

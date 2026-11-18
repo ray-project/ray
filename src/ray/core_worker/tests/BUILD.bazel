@@ -197,6 +197,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "rdt_memory_stats_test",
+    size = "small",
+    srcs = ["rdt_memory_stats_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/core_worker:rdt_memory_stats",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_test(
     name = "mutable_object_provider_test",
     srcs = [
         "mutable_object_provider_test.cc",
