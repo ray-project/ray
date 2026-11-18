@@ -446,6 +446,8 @@ class ReplicaMetricsManager:
         self._last_counted_failure_at: float = 0.0
         self._pending_health_push_ref: Optional[ObjectRef] = None
         self._pending_health_push_started_at: float = 0.0
+        # What the outstanding heartbeat carries; only meaningful while one is.
+        self._pending_health_push_healthy: bool = True
         # Set while the replica reconfigures; see pause_self_health().
         self._self_health_paused: bool = False
         # Bumped by each resume. A check that ends mid-reconfigure sees the pause flag;
@@ -711,8 +713,18 @@ class ReplicaMetricsManager:
 
     async def shutdown(self):
         """Stop periodic background tasks."""
-
+        # A hung user check never reaches the stop event. The self-health task only
+        # observes, so there is nothing to flush: cancel it rather than let
+        # graceful_shutdown wait out its timeout on it.
+        self._metrics_pusher.stop_event.set()
+        self.stop_self_health()
         await self._metrics_pusher.graceful_shutdown()
+
+    def stop_self_health(self) -> None:
+        """Stop the self-check for good. Paused first, because the check this cancels
+        swallows the cancel and would otherwise report it as a failure."""
+        self._self_health_paused = True
+        self._metrics_pusher.cancel_task(self.PUSH_SELF_HEALTH_TASK_NAME)
 
     def _push_blocked(self, ref, started_s: float) -> bool:
         """True while the previous push is still in flight and not yet overdue.
@@ -803,6 +815,10 @@ class ReplicaMetricsManager:
             # CancelledError is not an Exception, and MetricsPusher only catches
             # Exception, so letting it out would retire the heartbeat for good.
             healthy = False
+        if self._metrics_pusher.stop_event.is_set():
+            # Shutting down: an interrupted check confirmed nothing, so neither count
+            # it nor tell the controller.
+            return
         if self._self_health_paused or self._self_health_epoch != epoch:
             # A reconfigure started part way through, so this verdict may reflect it.
             return
@@ -825,7 +841,10 @@ class ReplicaMetricsManager:
                 self._pending_health_push_ref,
                 self._pending_health_push_started_at,
             )
-            if in_flight:
+            if in_flight and (healthy or not self._pending_health_push_healthy):
+                # Turning unhealthy is worth jumping the queue rather than waiting out
+                # a lag episode, but only until an unhealthy heartbeat is in flight:
+                # the payload is absolute, so a second one adds nothing.
                 return
             self._pending_health_push_ref = (
                 # Actor methods are resolved dynamically on the actor handle.
@@ -837,6 +856,7 @@ class ReplicaMetricsManager:
                 )
             )
             self._pending_health_push_started_at = time.time()
+            self._pending_health_push_healthy = healthy
 
     def start_metrics_pusher(self):
         # Invariant: only called when an autoscaling config is set (checked at
@@ -2369,6 +2389,11 @@ class Replica:
 
     async def _perform_graceful_shutdown(self):
         self._shutting_down = True
+        # The controller stops health-checking a replica once it is shutting down, so
+        # stop the self-check now too. Its cancel reaches the user code loop only once
+        # this loop runs again; the drain below yields before __del__ is queued there,
+        # so a check in flight on that loop is cancelled first.
+        self._metrics_manager.stop_self_health()
 
         # Shutdown budget, mirroring the controller's force-kill deadline (see
         # `DeploymentReplica.stop`). Each step below consumes from it; once

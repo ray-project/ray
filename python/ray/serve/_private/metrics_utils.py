@@ -90,7 +90,12 @@ class MetricsPusher:
                 except Exception as e:
                     logger.exception(f"Failed to run metrics task '{name}': {e}")
 
-                registered = self._tasks[name]
+                registered = self._tasks.get(name)
+                if registered is None:
+                    # Removed while task_func ran, by cancel_task or a shutdown that
+                    # gave up waiting; a task_func that swallows the cancel still
+                    # returns here.
+                    return
                 sleep_s = registered.interval_s
                 if registered.fixed_rate:
                     # Start to start, so a slow run does not push the next one back.
@@ -131,6 +136,17 @@ class MetricsPusher:
         self._tasks[name] = _MetricsTask(task_func, interval_s, fixed_rate)
         if name not in self._async_tasks or self._async_tasks[name].done():
             self._async_tasks[name] = asyncio.create_task(self.metrics_task(name))
+
+    def cancel_task(self, name: str) -> None:
+        """Cancel one task now instead of waiting for it to see the stop event.
+
+        The loop checks the stop event only between runs, so a task blocked inside
+        its function would otherwise hold graceful_shutdown for its full timeout.
+        """
+        self._tasks.pop(name, None)
+        task = self._async_tasks.pop(name, None)
+        if task is not None:
+            task.cancel()
 
     def stop_tasks(self):
         self.stop_event.set()
