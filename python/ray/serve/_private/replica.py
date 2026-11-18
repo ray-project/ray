@@ -382,6 +382,10 @@ def _load_deployment_def_from_import_path(import_path: str) -> Callable:
     return deployment_def
 
 
+class _SupersededHealthCheck(Exception):
+    """A check that started later already set the verdict, so this one is not news."""
+
+
 class ReplicaMetricsManager:
     """Manages metrics for the replica.
 
@@ -432,6 +436,10 @@ class ReplicaMetricsManager:
         # Latest local health-check result, pushed to the controller so it does not
         # have to probe for it.
         self._eval_self_health_fn: Optional[Callable] = None
+        # Every check on this replica, probe or self-check, takes the next number as
+        # it starts, so one that ends late cannot overwrite the verdict of a check
+        # that started after it.
+        self._health_checks_started: int = 0
         self._health_check_period_s: float = 0.0
         self._health_check_timeout_s: float = 0.0
         self._consecutive_failures = 0
@@ -716,7 +724,8 @@ class ReplicaMetricsManager:
     ):
         """Periodically run the local health check and push the result.
 
-        eval_fn raises when unhealthy.
+        eval_fn(check_seq) runs the check numbered check_seq. It raises when
+        unhealthy, and _SupersededHealthCheck when its result is not to be reported.
         """
         self._eval_self_health_fn = eval_fn
         self._health_check_timeout_s = timeout_s
@@ -743,6 +752,11 @@ class ReplicaMetricsManager:
         """A check passed, so the failures counted before it are over."""
         self._consecutive_failures = 0
 
+    def number_health_check(self) -> int:
+        """The number for a check, probe or self-check, starting now."""
+        self._health_checks_started += 1
+        return self._health_checks_started
+
     async def _eval_and_push_self_health(self):
         # Invariant: the pusher registers this task only after setting the callable,
         # so narrow the Optional for the type checkers.
@@ -751,9 +765,14 @@ class ReplicaMetricsManager:
         # The check keeps running past the threshold so a pass can clear the count:
         # one counted while the controller could not act on it, such as during a
         # controller restart, would otherwise latch and replace a replica that recovered.
+        check_seq = self.number_health_check()
         healthy = True
         try:
-            await eval_fn()
+            await eval_fn(check_seq)
+        except _SupersededHealthCheck:
+            # A probe answered the controller with a newer verdict meanwhile; pushed
+            # now, this older result would read as the newest.
+            return
         except (Exception, asyncio.CancelledError):
             # CancelledError is not an Exception, and MetricsPusher only catches
             # Exception, so letting it out would retire the heartbeat for good.
@@ -1232,6 +1251,12 @@ class Replica:
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
+        # Set once the replica checks itself periodically and pushes the result.
+        self._self_health_active = False
+        # The number of the check that set the verdict. Checks are numbered as they
+        # start, so with the self-check on, one that ends late cannot overwrite the
+        # verdict of a check that started after it.
+        self._health_verdict_seq = 0
 
         # Track deployment handles created dynamically via get_deployment_handle()
         self._dynamically_created_handles: Set[DeploymentID] = set()
@@ -2403,21 +2428,40 @@ class Replica:
 
     def _start_self_health_pusher(self):
         if not RAY_SERVE_ENABLE_PUSH_HEALTH:
+            # Leave _self_health_active False so remote probes keep running the user
+            # check themselves, exactly as they do without this feature.
             return
+        self._self_health_active = True
         self._metrics_manager.start_self_health_pusher(
             self._run_self_health_check,
             self._deployment_config.health_check_period_s,
             self._deployment_config.health_check_timeout_s,
         )
 
-    async def _run_self_health_check(self):
-        """The self-check's eval. Timed out as the controller times out a probe, so one
-        that hangs counts as a failure rather than ending the heartbeat for good."""
-        await asyncio.wait_for(
-            self.check_health(), self._metrics_manager.health_check_timeout_s
-        )
+    async def _run_self_health_check(self, seq: int):
+        """The self-check's eval. Probes run their own checks alongside it, so once one
+        that started later has set the verdict, this result is not reported. Timed
+        out as the controller times out a probe, so one that hangs counts as a
+        failure rather than ending the heartbeat for good."""
+        try:
+            await asyncio.wait_for(
+                self._check_health(seq), self._metrics_manager.health_check_timeout_s
+            )
+        except Exception:
+            # A check that timed out set no verdict, so only a later one can have.
+            if self._health_verdict_seq > seq:
+                raise _SupersededHealthCheck() from None
+            raise
+        if self._health_verdict_seq != seq:
+            raise _SupersededHealthCheck()
 
     async def check_health(self):
+        # Checks run side by side, as without the self-check: the controller does not
+        # cancel a probe it timed out, so one that waited behind a stuck check would
+        # time out too.
+        await self._check_health(self._metrics_manager.number_health_check())
+
+    async def _check_health(self, seq: int):
         try:
             # Runs the user-defined check_health on the user code loop if defined.
             # Otherwise, if the background watchdog has detected the user loop is
@@ -2427,14 +2471,28 @@ class Replica:
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
-            self._healthy = True
-            # Whichever check passed: a count it left standing would come back
-            # through the controller's max() and add to the next failure.
-            self._metrics_manager.clear_self_health_failures()
+            self._record_health_verdict(healthy=True, seq=seq)
         except Exception as e:
             logger.warning("Replica health check failed.")
-            self._healthy = False
+            self._record_health_verdict(healthy=False, seq=seq)
             raise e from None
+
+    def _record_health_verdict(self, healthy: bool, seq: int) -> None:
+        """Set _healthy, which backs /-/healthz, from a finished check.
+
+        A cancelled check confirmed nothing and never gets here. With the self-check
+        on, one is dropped if a check that started after it already set the verdict.
+        seq is the one it started with.
+        """
+        manager = self._metrics_manager
+        if self._self_health_active and seq < self._health_verdict_seq:
+            return
+        self._health_verdict_seq = seq
+        self._healthy = healthy
+        if healthy:
+            # Whichever check passed: a count it left standing would come back
+            # through the controller's max() and add to the next failure.
+            manager.clear_self_health_failures()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         try:

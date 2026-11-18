@@ -1501,7 +1501,7 @@ class TestCythonImplementationEdgeCases:
         assert result[0].value == pytest.approx(1e-10, rel=1e-6)
 
 
-async def _fails():
+async def _fails(*_):
     raise RuntimeError("intended to fail")
 
 
@@ -1515,6 +1515,7 @@ def _bare_manager():
     m = ReplicaMetricsManager.__new__(ReplicaMetricsManager)
     m._health_check_period_s = 10.0
     m._health_check_timeout_s = 30.0
+    m._health_checks_started = 0
     m._consecutive_failures = 0
     m._last_counted_failure_at = 0.0
     m._pending_health_push_ref = None
@@ -1526,7 +1527,7 @@ def _bare_manager():
     return m
 
 
-def _bare_replica():
+def _bare_replica(active=True):
     """A Replica with only what check_health and the self-check use."""
     from types import SimpleNamespace
     from unittest.mock import Mock
@@ -1535,7 +1536,9 @@ def _bare_replica():
     r._deployment_config = SimpleNamespace(
         health_check_period_s=10.0, health_check_timeout_s=30.0
     )
+    r._self_health_active = active
     r._healthy = False
+    r._health_verdict_seq = 0
     r._user_callable_wrapper = Mock()
     r._user_callable_wrapper.call_user_health_check.return_value = None
     r._metrics_manager = _bare_manager()
@@ -1549,7 +1552,7 @@ class TestSelfHealthPush:
     async def test_healthy_eval_heartbeats(self):
         m = _bare_manager()
 
-        async def ok():
+        async def ok(_):
             return None
 
         m._eval_self_health_fn = ok
@@ -1659,7 +1662,7 @@ class TestSelfHealthPush:
         so letting it out would end the heartbeat task for the replica's lifetime."""
         m = _bare_manager()
 
-        async def cancelled():
+        async def cancelled(_):
             raise asyncio.CancelledError()
 
         m._eval_self_health_fn = cancelled
@@ -1673,12 +1676,12 @@ class TestSelfHealthPush:
 
         monkeypatch.setattr(replica_mod, "RAY_SERVE_ENABLE_PUSH_HEALTH", True)
 
-        r = _bare_replica()
+        r = _bare_replica(active=False)
         r._deployment_config.health_check_timeout_s = 45.0
         r._metrics_manager = Mock()
         r._start_self_health_pusher()
         args = r._metrics_manager.start_self_health_pusher.call_args.args
-        assert args[0] == r._run_self_health_check
+        assert args[0] == r._run_self_health_check  # reports only unsuperseded checks
         assert args[1] == 10.0  # the configured period, not the eval cadence
         assert args[2] == 45.0  # the configured timeout
 
@@ -1691,6 +1694,122 @@ class TestSelfHealthPush:
 
 class TestReplicaHealthVerdict:
     """The checks behind probes and the self-check, and the verdict they leave."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("active", [False, True])
+    async def test_a_probe_runs_its_own_check_past_a_failed_then_stuck_one(
+        self, active
+    ):
+        """A check fails, and the next one hangs. The controller does not cancel a
+        probe it timed out, so that check can still be running when a probe arrives.
+        The probe runs its own check, as on master, rather than wait behind the stuck
+        one or replay the failure, either of which gets a recovered replica replaced.
+        """
+        r = _bare_replica(active=active)
+        stuck = asyncio.Event()
+
+        async def hangs():
+            stuck.set()
+            await asyncio.Event().wait()
+
+        async def passes():
+            return None
+
+        checks = iter([_fails, hangs, passes])
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: next(
+            checks
+        )()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r.check_health()
+        first = asyncio.create_task(r.check_health())
+        await asyncio.wait_for(stuck.wait(), timeout=5)
+        await asyncio.wait_for(r.check_health(), timeout=5)
+        assert r._healthy is True
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("active", [False, True])
+    async def test_a_check_that_started_earlier_does_not_overwrite_a_later_verdict(
+        self, active
+    ):
+        """Checks do not wait for each other, so a slow one can finish after one that
+        started later and saw newer state. With the self-check on, the later-started
+        verdict stands; with it off, the last to finish wins, as on master."""
+        r = _bare_replica(active=active)
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_fail():
+            started.set()
+            await release.wait()
+            raise RuntimeError("intended to fail")
+
+        async def passes():
+            return None
+
+        checks = iter([slow_fail, passes])
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: next(
+            checks
+        )()
+        first = asyncio.create_task(r.check_health())
+        await started.wait()
+        await asyncio.wait_for(r.check_health(), timeout=5)
+        release.set()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await first
+        assert r._healthy is active
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "late, probe",
+        [("passes", "fails"), ("fails", "passes"), ("fails", None)],
+        ids=["stale-pass", "stale-fail", "no-probe"],
+    )
+    async def test_a_self_check_a_later_probe_overtook_is_not_reported(
+        self, late, probe
+    ):
+        """A probe runs its own check while a slow self-check is still going, and
+        answers the controller first. The self-check's result, pushed later, would
+        read as the newest: a stale pass would clear the probe's strikes, and a stale
+        failure would charge a replica that had recovered. With no probe in between,
+        the self-check reports as usual."""
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._eval_self_health_fn = r._run_self_health_check
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def outcome(result):
+            if result == "fails":
+                raise RuntimeError("intended to fail")
+
+        async def slow_self_check():
+            started.set()
+            await release.wait()
+            await outcome(late)
+
+        checks = iter([slow_self_check, lambda: outcome(probe)])
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: next(
+            checks
+        )()
+        self_check = asyncio.create_task(m._eval_and_push_self_health())
+        await started.wait()
+        if probe == "fails":
+            with pytest.raises(RuntimeError, match="intended to fail"):
+                await r.check_health()
+        elif probe == "passes":
+            await r.check_health()
+        release.set()
+        await self_check
+        push = m._controller_handle.record_replica_health.remote
+        if probe is None:
+            assert push.call_args.args[2] is False
+        else:
+            push.assert_not_called()
+            assert m._consecutive_failures == 0
+            assert r._healthy is (probe == "passes")
 
     @pytest.mark.asyncio
     async def test_a_probe_pass_clears_what_the_self_check_counted(self, monkeypatch):
@@ -1741,6 +1860,49 @@ class TestReplicaHealthVerdict:
         assert cancelled == [1]
         await m._eval_and_push_self_health()
         assert push.call_args.args[2:] == (True, 0)
+
+    @pytest.mark.asyncio
+    async def test_a_timed_out_self_check_a_later_probe_overtook_is_not_reported(
+        self,
+    ):
+        """The probe's pass is the newer verdict. The timeout, pushed after it, would
+        read as the newest and charge a replica that had answered."""
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._health_check_timeout_s = 0.5
+        m._eval_self_health_fn = r._run_self_health_check
+        started = asyncio.Event()
+
+        async def hangs():
+            started.set()
+            await asyncio.Event().wait()
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = [hangs(), None]
+        self_check = asyncio.create_task(m._eval_and_push_self_health())
+        await asyncio.wait_for(started.wait(), timeout=5)
+        await r.check_health()  # the probe
+        await asyncio.wait({self_check}, timeout=5)
+        assert self_check.done()  # ended by its own deadline, not this test's
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        assert m._consecutive_failures == 0
+        assert r._healthy is True
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_check_confirms_nothing(self):
+        """It must not flip _healthy, which backs the replica's /-/healthz and so its
+        place in the load balancer rotation."""
+        r = _bare_replica(active=False)
+        r._healthy = True
+
+        async def cancelled():
+            raise asyncio.CancelledError()
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = (
+            lambda: cancelled()
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await r.check_health()
+        assert r._healthy is True
 
 
 class TestReconfigureSelfHealth:
