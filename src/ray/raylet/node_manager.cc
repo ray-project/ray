@@ -18,12 +18,14 @@
 #include <boost/bind/bind.hpp>
 #include <cctype>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_set>
@@ -104,66 +106,48 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 }
 
 #if !defined(_WIN32)
-// Interval between polls for a gracefully-exiting worker process to exit.
 constexpr int kGracefulPgCleanupPollMs = 100;
 
-// Send a signal to the worker's saved process group with safety guards and logging.
-void CleanupProcessGroupSend(pid_t saved_pgid,
-                             const WorkerID &wid,
-                             const std::string &ctx,
-                             int sig) {
-  // Guard against targeting the raylet's own process group if isolation failed.
-  pid_t raylet_pgid = getpgid(0);
-  if (raylet_pgid == saved_pgid) {
-    RAY_LOG(WARNING).WithField(wid)
-        << ctx
-        << ": skipping PG cleanup: worker pgid equals raylet pgid (isolation failed): "
-        << saved_pgid;
-    return;
+// True once the signal was sent or the original group is gone. A temporary
+// lookup or signal failure leaves the pending cleanup available for retry.
+bool TrySignalProcessGroup(const WorkerProcessGroup &group,
+                           const WorkerID &worker_id,
+                           int signal,
+                           bool wait_for_exit = false) {
+  if (group.id <= 1 || group.id == getpgid(0)) {
+    RAY_LOG(WARNING).WithField(worker_id) << "Skipping unsafe process group " << group.id;
+    return true;
   }
-  RAY_LOG(INFO).WithField(wid) << ctx << ": sending "
-                               << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
-                               << " to pgid=" << saved_pgid;
-  auto err = KillProcessGroup(saved_pgid, sig);
-  if (err && *err) {
-    RAY_LOG(WARNING).WithField(wid)
-        << ctx << ": failed to send " << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
-        << " to process group " << saved_pgid << ": " << err->message()
-        << ", errno=" << err->value();
-  }
-}
-
-// Poll for a gracefully-exiting worker process to exit, then SIGKILL its process
-// group to reap any orphaned descendants. Reschedules itself on `timer` until the
-// worker exits, so per-worker process-group cleanup does not interrupt the
-// worker's own shutdown sequence (atexit / __ray_shutdown__ handlers).
-void SchedulePostExitProcessGroupCleanup(
-    std::shared_ptr<boost::asio::deadline_timer> timer,
-    pid_t worker_pid,
-    pid_t pgid,
-    WorkerID wid) {
-  // If the worker process has exited, sweep its (now leaderless) process group
-  // to reap any orphaned descendants it left behind, then stop.
-  if (kill(worker_pid, 0) == -1 && errno == ESRCH) {
-    auto probe = KillProcessGroup(pgid, 0);
-    const bool group_absent = (probe && probe->value() == ESRCH);
-    if (!group_absent) {
-      CleanupProcessGroupSend(pgid, wid, "SchedulePostExitProcessGroupCleanup", SIGKILL);
+  if (IsProcessAlive(group.id)) {
+#if defined(__linux__)
+    const auto start_time = ReadProcessStartTime(group.id);
+    if (!start_time || !group.leader_start_time) {
+      RAY_LOG_EVERY_MS(WARNING, 60000).WithField(worker_id)
+          << "Cannot verify process group leader " << group.id << "; deferring cleanup";
+      return false;
     }
-    return;
+    if (*start_time != *group.leader_start_time) {
+      RAY_LOG(INFO).WithField(worker_id) << "Skipping reused process group " << group.id;
+      return true;
+    }
+#endif
+    if (wait_for_exit) {
+      return false;
+    }
   }
 
-  // The worker is still running its own shutdown. We must not SIGKILL the group
-  // while it is alive (that would kill the worker mid-shutdown), so keep polling
-  // until it exits on its own. A worker that never exits is itself a bug; the
-  // 100ms poll is negligible overhead in that case (and stops when the raylet's
-  // io_context shuts down and cancels the timer).
-  timer->expires_from_now(boost::posix_time::milliseconds(kGracefulPgCleanupPollMs));
-  timer->async_wait([timer, worker_pid, pgid, wid](const boost::system::error_code &ec) {
-    if (!ec) {
-      SchedulePostExitProcessGroupCleanup(timer, worker_pid, pgid, wid);
-    }
-  });
+  // A group can still contain descendants after the original leader exits.
+  const auto error = KillProcessGroup(group.id, signal).value();
+  if (error && error.value() != ESRCH) {
+    RAY_LOG_EVERY_MS(WARNING, 60000).WithField(worker_id)
+        << "Failed to signal process group " << group.id << ": " << error.message();
+    return false;
+  }
+  if (!error) {
+    RAY_LOG(INFO).WithField(worker_id)
+        << "Sent signal " << signal << " to worker process group " << group.id;
+  }
+  return true;
 }
 #endif
 
@@ -1578,18 +1562,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       }
     }
 
-    // Attempt per-worker process-group cleanup before removing the worker. The
-    // worker is its own process-group leader, so killpg also targets the worker
-    // process itself. The timing therefore differs by disconnect type:
-    //   - Non-graceful (e.g. the worker crashed): the worker is already gone, so
-    //     signal the group now (SIGTERM, then SIGKILL shortly after) to reap any
-    //     orphaned descendants it left behind.
-    //   - Graceful: the worker is still running its own shutdown sequence (e.g.
-    //     atexit / __ray_shutdown__ handlers). Signaling the group now would kill
-    //     it mid-shutdown, so wait until the worker process has exited on its own
-    //     and only then SIGKILL the group to reap any orphaned descendants. The
-    //     process group outlives the dead leader as long as members remain, so
-    //     the pgid stays valid for this post-exit sweep.
 #if !defined(_WIN32)
     const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
     const bool subreaper_enabled =
@@ -1601,32 +1573,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           << "Subreaper is deprecated and will be removed in a future release.";
     }
     if (pg_enabled) {
-      auto saved = worker->GetSavedProcessGroupId();
+      auto saved = worker->GetSavedProcessGroup();
       if (saved.has_value()) {
-        const auto wid = worker->WorkerId();
-        const pid_t pgid = *saved;
-        if (!graceful) {
-          // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
-          CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGTERM);
-          auto timer = std::make_shared<boost::asio::deadline_timer>(
-              io_service_, boost::posix_time::milliseconds(200));
-          timer->async_wait(
-              [timer, wid, pgid](const boost::system::error_code &ec) mutable {
-                if (!ec) {
-                  // Probe with signal 0; if group plausibly exists, send SIGKILL.
-                  auto probe = KillProcessGroup(pgid, 0);
-                  const bool group_absent = (probe && probe->value() == ESRCH);
-                  if (!group_absent) {
-                    CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
-                  }
-                }
-              });
-        } else {
-          // Poll for the worker process to exit, then sweep its process group.
-          const pid_t worker_pid = worker->GetProcess().GetId();
-          auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-          SchedulePostExitProcessGroupCleanup(std::move(timer), worker_pid, pgid, wid);
-        }
+        ScheduleProcessGroupCleanup(*worker, *saved, graceful);
       }
     }
 #endif
@@ -3016,6 +2965,68 @@ void NodeManager::HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }
 
+#if !defined(_WIN32)
+void NodeManager::ScheduleProcessGroupCleanup(const WorkerInterface &worker,
+                                              WorkerProcessGroup group,
+                                              bool graceful) {
+  const auto worker_id = worker.WorkerId();
+  auto [it, inserted] = pending_process_group_cleanup_.try_emplace(
+      worker_id,
+      PendingProcessGroupCleanup{
+          worker.GetActorId(), group, graceful, boost::asio::steady_timer(io_service_)});
+  if (!inserted) {
+    return;
+  }
+  if (graceful) {
+    PollProcessGroupCleanup(worker_id);
+    return;
+  }
+
+  // Preserve the TERM-to-KILL delay for an unexpected disconnect.
+  TrySignalProcessGroup(group, worker_id, SIGTERM);
+  it->second.timer.expires_after(std::chrono::milliseconds(200));
+  it->second.timer.async_wait([this, worker_id](const boost::system::error_code &ec) {
+    if (!ec) {
+      PollProcessGroupCleanup(worker_id);
+    }
+  });
+}
+
+bool NodeManager::PollProcessGroupCleanup(const WorkerID &worker_id) {
+  auto it = pending_process_group_cleanup_.find(worker_id);
+  if (it == pending_process_group_cleanup_.end()) {
+    return true;
+  }
+  auto &pending = it->second;
+  if (TrySignalProcessGroup(pending.group, worker_id, SIGKILL, pending.wait_for_exit)) {
+    pending_process_group_cleanup_.erase(it);
+    return true;
+  }
+  pending.timer.expires_after(std::chrono::milliseconds(kGracefulPgCleanupPollMs));
+  pending.timer.async_wait([this, worker_id](const boost::system::error_code &ec) {
+    if (!ec) {
+      PollProcessGroupCleanup(worker_id);
+    }
+  });
+  return false;
+}
+#endif
+
+Status NodeManager::ForceCleanupPendingProcessGroup(const WorkerID &worker_id,
+                                                    const ActorID &actor_id) {
+#if !defined(_WIN32)
+  auto it = pending_process_group_cleanup_.find(worker_id);
+  if (it != pending_process_group_cleanup_.end() && !actor_id.IsNil() &&
+      it->second.actor_id == actor_id) {
+    it->second.wait_for_exit = false;
+    if (!PollProcessGroupCleanup(worker_id)) {
+      return Status::IOError("Process group cleanup deferred; raylet will retry");
+    }
+  }
+#endif
+  return Status::OK();
+}
+
 void NodeManager::Stop() {
   store_client_->Disconnect();
 #if !defined(_WIN32)
@@ -3024,17 +3035,17 @@ void NodeManager::Stop() {
     auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers=*/true,
                                                         /* filter_io_workers=*/false);
     for (const auto &w : workers) {
-      auto saved = w->GetSavedProcessGroupId();
+      auto saved = w->GetSavedProcessGroup();
       if (saved.has_value()) {
         // During shutdown, escalate immediately to avoid relying on timers.
-        CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGTERM);
-        auto probe = KillProcessGroup(*saved, 0);
-        const bool group_absent = (probe && probe->value() == ESRCH);
-        if (!group_absent) {
-          CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGKILL);
-        }
+        TrySignalProcessGroup(*saved, w->WorkerId(), SIGTERM);
+        TrySignalProcessGroup(*saved, w->WorkerId(), SIGKILL);
       }
     }
+    for (const auto &[worker_id, pending] : pending_process_group_cleanup_) {
+      TrySignalProcessGroup(pending.group, worker_id, SIGKILL);
+    }
+    pending_process_group_cleanup_.clear();
   }
 #endif
   object_manager_.Stop();
@@ -3665,9 +3676,14 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
   const auto actor_id = ActorID::FromBinary(request.intended_actor_id());
   RAY_LOG(INFO).WithField(worker_id).WithField(actor_id) << "Received KillLocalActor RPC";
 
+  const bool force_kill = request.force_kill();
   auto worker = worker_pool_.GetRegisteredWorker(worker_id);
-  // If the worker is not registered, then it must have already been killed
   if (!worker || worker->IsDead()) {
+    if (force_kill) {
+      send_reply_callback(
+          ForceCleanupPendingProcessGroup(worker_id, actor_id), nullptr, nullptr);
+      return;
+    }
     RAY_LOG(WARNING).WithField(worker_id)
         << "HandleKillLocalActor: worker not registered or already dead, "
            "returning OK without dispatching kill";
@@ -3677,18 +3693,19 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
 
   rpc::KillActorRequest kill_actor_request;
   kill_actor_request.set_intended_actor_id(request.intended_actor_id());
-  kill_actor_request.set_force_kill(request.force_kill());
+  kill_actor_request.set_force_kill(force_kill);
   kill_actor_request.mutable_death_cause()->CopyFrom(request.death_cause());
   std::shared_ptr<bool> replied = std::make_shared<bool>(false);
 
   auto timer = execute_after(
       io_service_,
-      [this, send_reply_callback, worker_id, replied]() {
+      [this, send_reply_callback, worker_id, actor_id, force_kill, replied]() {
         if (*replied) {
           return;
         }
         auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
-        if (current_worker) {
+        if (current_worker && (current_worker->GetActorId().IsNil() ||
+                               current_worker->GetActorId() == actor_id)) {
           // If the worker is still alive, force kill it
           RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
                         << " did not exit after "
@@ -3701,19 +3718,33 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
         }
 
         *replied = true;
-        send_reply_callback(Status::OK(), nullptr, nullptr);
+        const auto status = !current_worker && force_kill
+                                ? ForceCleanupPendingProcessGroup(worker_id, actor_id)
+                                : Status::OK();
+        send_reply_callback(status, nullptr, nullptr);
       },
       std::chrono::milliseconds(
           RayConfig::instance().kill_worker_timeout_milliseconds()));
 
   worker->rpc_client()->KillActor(
       kill_actor_request,
-      [actor_id, timer, send_reply_callback, replied](const ray::Status &status,
-                                                      const rpc::KillActorReply &) {
+      [this, worker_id, actor_id, force_kill, timer, send_reply_callback, replied](
+          const ray::Status &status, const rpc::KillActorReply &) {
         if (*replied) {
           return;
         }
         if (!status.ok()) {
+          if (force_kill && !status.IsInvalid()) {
+            if (worker_pool_.GetRegisteredWorker(worker_id)) {
+              // A transport error can precede the disconnect. Keep the fallback armed.
+              return;
+            }
+            *replied = true;
+            timer->cancel();
+            send_reply_callback(
+                ForceCleanupPendingProcessGroup(worker_id, actor_id), nullptr, nullptr);
+            return;
+          }
           std::ostringstream stream;
           stream << "KillActor RPC failed for actor " << actor_id << ": "
                  << status.ToString();

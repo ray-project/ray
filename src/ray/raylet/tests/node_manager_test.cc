@@ -14,7 +14,14 @@
 
 #include "ray/raylet/node_manager.h"
 
+#if defined(__linux__)
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #include <atomic>
+#include <csignal>
 #include <cstdint>
 #include <memory>
 #include <queue>
@@ -47,9 +54,12 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
 #include "ray/util/clock.h"
+#include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 
 namespace ray::raylet {
 
@@ -1576,6 +1586,65 @@ TEST_P(NodeManagerKillActorTest, TestHandleKillLocalActorIdempotency) {
 }
 
 INSTANTIATE_TEST_SUITE_P(WorkerState, NodeManagerKillActorTest, ::testing::Bool());
+
+#if defined(__linux__)
+class NodeManagerProcessGroupTest : public NodeManagerTest,
+                                    public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerProcessGroupTest, StopCleansDisconnectedWorker) {
+  const bool graceful = GetParam();
+  int sockets[2];
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+  const local_stream_protocol protocol(AF_UNIX, 0);
+  local_stream_socket peer(io_service_, protocol, sockets[0]);
+  auto client = ClientConnection::Create(
+      {}, {}, local_stream_socket(io_service_, protocol, sockets[1]), "test", {});
+  auto [process, error] = Process::Spawn({"/bin/sleep", "5"},
+                                         /*decouple=*/false,
+                                         /*pid_file=*/"",
+                                         /*env=*/{},
+                                         /*new_process_group=*/true);
+  ASSERT_FALSE(error) << error.message();
+  const auto pid = process->GetId();
+  ASSERT_GT(pid, 1);
+  // Ensure the group is established even when the child has yet to call setpgrp().
+  (void)setpgid(pid, pid);
+  ASSERT_EQ(getpgid(pid), pid);
+
+  int status = 0;
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  worker->SetProcess(std::move(process));
+  auto start_time = ReadProcessStartTime(pid);
+  ASSERT_TRUE(start_time);
+  worker->SetSavedProcessGroup({pid, start_time});
+  fake_worker_pool_.registered_worker_by_connection = worker;
+
+  if (!graceful) {
+    // Keep TERM pending until Stop gets a chance to escalate it.
+    ASSERT_EQ(kill(pid, SIGSTOP), 0);
+    const auto stopped = waitpid(pid, &status, WUNTRACED);
+    if (stopped != pid || !WIFSTOPPED(status)) {
+      (void)kill(pid, SIGCONT);
+      FAIL() << "Could not stop the test child";
+    }
+  }
+  node_manager_->DisconnectClient(
+      client, graceful, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, "test");
+  EXPECT_EQ(fake_worker_pool_.disconnected_workers.size(), 1u);
+  fake_worker_pool_.registered_worker_by_connection.reset();
+  node_manager_->Stop();
+  // Bound the wait even if Stop failed to send SIGKILL.
+  if (!graceful) {
+    (void)kill(pid, SIGCONT);
+  }
+  ASSERT_EQ(waitpid(pid, &status, 0), pid);
+  ASSERT_TRUE(WIFSIGNALED(status));
+  EXPECT_EQ(WTERMSIG(status), SIGKILL);
+}
+INSTANTIATE_TEST_SUITE_P(GracefulAndUnexpected,
+                         NodeManagerProcessGroupTest,
+                         testing::Bool());
+#endif
 
 class NodeManagerDeathTest : public NodeManagerTest,
                              public ::testing::WithParamInterface<bool> {};

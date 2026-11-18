@@ -378,6 +378,7 @@ ray_cc_library(
         "//src/ray/util:port_persistence",
         "//src/ray/util:process",
         "//src/ray/util:process_utils",
+        "@boost//:asio",
         "@boost//:system",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -367,6 +367,11 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   void NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &actor,
                                const rpc::ActorDeathCause &death_cause,
                                bool force_kill = true);
+  void NotifyRayletToKillActor(const ActorID &actor_id,
+                               const WorkerID &worker_id,
+                               const rpc::Address &raylet_address,
+                               const rpc::ActorDeathCause &death_cause,
+                               bool force_kill);
 
   /// Add a lightweight observability snapshot of a destroyed actor to the cache.
   /// If the cache is at `RAY_maximum_gcs_destroyed_actor_cached_count`, the oldest

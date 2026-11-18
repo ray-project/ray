@@ -1055,6 +1055,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
       // Create timer only if one doesn't already exist.
       // Duplicate graceful shutdown calls skip this and keep the original timer running.
       if (!force_kill && graceful_shutdown_timeout_ms > 0 &&
+          actor->LocalRayletAddress() &&
           graceful_shutdown_timers_.find(worker_id) == graceful_shutdown_timers_.end()) {
         auto timer = std::make_unique<boost::asio::deadline_timer>(io_context_);
         timer->expires_from_now(
@@ -1064,6 +1065,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
             [weak_self = weak_from_this(),
              actor_id,
              worker_id,
+             raylet_address = *actor->LocalRayletAddress(),
              death_cause,
              graceful_shutdown_timeout_ms](const boost::system::error_code &error) {
               auto self = weak_self.lock();
@@ -1080,12 +1082,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                   << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
                   << "ms) exceeded. Falling back to force kill.";
 
-              auto actor_iter = self->registered_actors_.find(actor_id);
-              if (actor_iter != self->registered_actors_.end() &&
-                  actor_iter->second->GetWorkerID() == worker_id) {
-                self->NotifyRayletToKillActor(
-                    actor_iter->second, death_cause, /*force_kill=*/true);
-              }
+              // DestroyActor can remove the registry entry before the worker exits.
+              // The original WorkerID still identifies this incarnation at its raylet.
+              self->NotifyRayletToKillActor(
+                  actor_id, worker_id, raylet_address, death_cause, /*force_kill=*/true);
             });
 
         graceful_shutdown_timers_[worker_id] = std::move(timer);
@@ -1972,28 +1972,36 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
 void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &actor,
                                               const rpc::ActorDeathCause &death_cause,
                                               bool force_kill) {
-  rpc::KillLocalActorRequest request;
-  request.set_intended_actor_id(actor->GetActorID().Binary());
-  request.set_worker_id(actor->GetWorkerID().Binary());
-  request.mutable_death_cause()->CopyFrom(death_cause);
-  request.set_force_kill(force_kill);
   if (!actor->LocalRayletAddress()) {
     RAY_LOG(INFO).WithField(actor->GetActorID())
         << "Not sending KillLocalActorRequest because Actor has not been assigned a "
            "lease";
     return;
   }
-  auto actor_raylet_client =
-      raylet_client_pool_.GetOrConnectByAddress(actor->LocalRayletAddress().value());
-  RAY_LOG(DEBUG)
-          .WithField(actor->GetActorID())
-          .WithField(actor->GetWorkerID())
-          .WithField(actor->GetNodeID())
+  NotifyRayletToKillActor(actor->GetActorID(),
+                          actor->GetWorkerID(),
+                          *actor->LocalRayletAddress(),
+                          death_cause,
+                          force_kill);
+}
+
+void GcsActorManager::NotifyRayletToKillActor(const ActorID &actor_id,
+                                              const WorkerID &worker_id,
+                                              const rpc::Address &raylet_address,
+                                              const rpc::ActorDeathCause &death_cause,
+                                              bool force_kill) {
+  rpc::KillLocalActorRequest request;
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_worker_id(worker_id.Binary());
+  request.mutable_death_cause()->CopyFrom(death_cause);
+  request.set_force_kill(force_kill);
+  const auto node_id = NodeID::FromBinary(raylet_address.node_id());
+  auto actor_raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
+  RAY_LOG(DEBUG).WithField(actor_id).WithField(worker_id).WithField(node_id)
       << "Send request to kill actor to worker at node";
   actor_raylet_client->KillLocalActor(
       request,
-      [node_id = actor->GetNodeID(), actor_id = actor->GetActorID()](
-          const ray::Status &status, rpc::KillLocalActorReply &&reply) {
+      [node_id, actor_id](const ray::Status &status, rpc::KillLocalActorReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(INFO).WithField(actor_id).WithField(node_id) << absl::StrFormat(
               "Failed to kill actor due to return status: %s. "

@@ -29,6 +29,8 @@
 #include <cerrno>
 #include <cstring>
 #include <fstream>
+#include <iterator>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -159,6 +161,27 @@ bool IsProcessAlive(pid_t pid) {
 }
 
 #if defined(__linux__)
+std::optional<uint64_t> ReadProcessStartTime(pid_t pid) {
+  std::ifstream stat(absl::StrFormat("%s/%d/stat", kProcDirectory, pid));
+  const std::string contents{std::istreambuf_iterator<char>(stat),
+                             std::istreambuf_iterator<char>()};
+  // The parenthesized comm (field 2) can contain spaces and parentheses.
+  const auto comm_end = contents.rfind(')');
+  if (comm_end == std::string::npos) {
+    return std::nullopt;
+  }
+  std::istringstream fields(contents.substr(comm_end + 1));
+  std::string skipped;
+  for (int field = 3; field < 22; ++field) {
+    fields >> skipped;
+  }
+  uint64_t start_time = 0;
+  if (fields >> start_time) {
+    return start_time;
+  }
+  return std::nullopt;
+}
+
 static inline std::error_code KillProcLinux(pid_t pid) {
   std::error_code error;
   if (kill(pid, SIGKILL) != 0) {

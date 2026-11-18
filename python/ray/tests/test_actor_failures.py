@@ -34,7 +34,12 @@ def ray_init_with_task_retry_delay():
 @pytest.fixture
 def ray_init_with_actor_graceful_shutdown_timeout():
     ray.shutdown()
-    address = ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 1000})
+    address = ray.init(
+        _system_config={
+            "actor_graceful_shutdown_timeout_ms": 1000,
+            "process_group_cleanup_enabled": True,
+        }
+    )
     yield address
     ray.shutdown()
 
@@ -1524,7 +1529,7 @@ def test_actor_graceful_shutdown_timeout_fallback(
                 f.write("shutdown_started")
                 f.flush()
 
-            # Hang indefinitely - simulating buggy cleanup code
+            # Simulate cleanup that takes longer than the configured grace period.
             time.sleep(5)
 
             # This should never be reached due to force kill fallback
@@ -1533,10 +1538,12 @@ def test_actor_graceful_shutdown_timeout_fallback(
                 f.flush()
 
         def ready(self):
-            return "ready"
+            return os.getpid()
 
     actor = HangingShutdownActor.remote()
-    ray.get(actor.ready.remote())
+    worker_pid = ray.get(actor.ready.remote())
+    # Allow two seconds of scheduling slack around the one-second grace period.
+    exit_deadline = time.monotonic() + 3
     del actor
 
     # Verify that shutdown started
@@ -1548,7 +1555,12 @@ def test_actor_graceful_shutdown_timeout_fallback(
             f.read() == "shutdown_started"
         ), "Expected __ray_shutdown__ to start execution"
 
-    # Verify that shutdown did NOT complete (force killed before completion)
+    if sys.platform != "win32":
+        wait_for_pid_to_exit(
+            worker_pid, timeout=max(0.1, exit_deadline - time.monotonic())
+        )
+
+    # Verify that the shutdown callback did not reach the end before termination.
     assert not check_file_exists_and_not_empty(shutdown_completed_file), (
         "Expected actor to be force-killed before __ray_shutdown__ completed, "
         "but completion file exists. This means force kill fallback did not work."

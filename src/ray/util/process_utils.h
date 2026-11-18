@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <system_error>
 #include <vector>
@@ -49,6 +50,11 @@ bool IsParentProcessAlive();
 bool IsProcessAlive(pid_t pid);
 
 static constexpr char kProcDirectory[] = "/proc";
+
+#if defined(__linux__)
+/// Start time in clock ticks since boot from /proc/<pid>/stat.
+std::optional<uint64_t> ReadProcessStartTime(pid_t pid);
+#endif
 
 /**
  * @brief Platform-specific kill for the specified process identifier.

@@ -94,8 +94,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   void SetOwnerAddress(const rpc::Address &address) override;
   const rpc::Address &GetOwnerAddress() const override;
 
-  std::optional<pid_t> GetSavedProcessGroupId() const override;
-  void SetSavedProcessGroupId(pid_t pgid) override;
+  std::optional<WorkerProcessGroup> GetSavedProcessGroup() const override;
+  void SetSavedProcessGroup(WorkerProcessGroup group) override;
 
   void ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) override;
 
@@ -233,9 +233,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   std::optional<bool> is_actor_worker_ = std::nullopt;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
-  /// Saved process group id captured at registration time. Used for process-group
-  /// cleanup validation at disconnect/stop.
-  std::optional<pid_t> saved_pgid_ = std::nullopt;
+  std::optional<WorkerProcessGroup> saved_process_group_;
 };
 
 }  // namespace raylet

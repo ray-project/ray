@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <list>
 #include <memory>
 #include <string>
@@ -191,7 +192,7 @@ class GcsActorManagerTest : public ::testing::Test {
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
-    gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
+    gcs_actor_manager_ = std::make_shared<gcs::GcsActorManager>(
         std::move(scheduler),
         gcs_table_storage_.get(),
         io_service_,
@@ -393,7 +394,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
-  std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
+  std::shared_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
@@ -1963,6 +1964,48 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoLimit) {
     ASSERT_EQ(reply_2.actor_table_data().size(), 2);
     ASSERT_EQ(reply_2.total(), 3);
   }
+}
+
+TEST_F(GcsActorManagerTest, GracefulTimeoutTargetsWorkerAfterRegistryRemoval) {
+  class RecordingRaylet : public rpc::FakeRayletClient {
+   public:
+    void KillLocalActor(const rpc::KillLocalActorRequest &request,
+                        const rpc::ClientCallback<rpc::KillLocalActorReply> &) override {
+      requests.push_back(request);
+      last_request_time = std::chrono::steady_clock::now();
+    }
+    std::vector<rpc::KillLocalActorRequest> requests;
+    std::chrono::steady_clock::time_point last_request_time;
+  };
+  const auto grace = std::chrono::milliseconds(100);
+  RayConfig::instance().initialize(R"({"actor_graceful_shutdown_timeout_ms": 100})");
+  auto raylet = std::make_shared<RecordingRaylet>();
+  raylet_client_ = raylet;
+  std::shared_ptr<GcsActor> actor;
+  RegisterAndCreateNamedActor(
+      JobID::FromInt(1), "actor", "test", [](auto, auto, auto) {}, actor);
+  ASSERT_TRUE(actor);
+  actor->UpdateLocalRayletAddress(RandomAddress());
+  const auto actor_id = actor->GetActorID();
+  const auto worker_id = actor->GetWorkerID();
+
+  const auto start = std::chrono::steady_clock::now();
+  ASSERT_TRUE(worker_client_->Reply());  // Release the owner's final reference.
+  ASSERT_FALSE(GetRegisteredActor(*gcs_actor_manager_, actor_id));
+  ASSERT_EQ(raylet->requests.size(), 1u);
+  EXPECT_FALSE(raylet->requests.front().force_kill());
+
+  if (io_service_.stopped()) {
+    io_service_.restart();
+  }
+  while (raylet->requests.size() < 2 && io_service_.run_one_until(start + timeout_ms_)) {
+  }
+  ASSERT_EQ(raylet->requests.size(), 2u);
+  EXPECT_GE(raylet->last_request_time - start, grace);
+  const auto &fallback = raylet->requests.back();
+  EXPECT_TRUE(fallback.force_kill());
+  EXPECT_EQ(fallback.intended_actor_id(), actor_id.Binary());
+  EXPECT_EQ(fallback.worker_id(), worker_id.Binary());
 }
 
 TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
