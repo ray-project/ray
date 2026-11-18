@@ -35,6 +35,14 @@ rust_test(
 cc_library(
     name = "gzip_shim",
     srcs = ["src/gzip.cpp"],
+    # rapidgzip computes lookup tables at compile time, past the compilers'
+    # default constexpr limits (clang's 1M steps fails); these are the limits
+    # rapidgzip's own build sets.
+    copts = select({
+        "@rules_cc//cc/compiler:clang": ["-fconstexpr-steps=99000100"],
+        "@rules_cc//cc/compiler:gcc": ["-fconstexpr-ops-limit=99000100"],
+        "//conditions:default": [],
+    }),
     # This is C++. The link of erofs_pull must name libstdc++ after it:
     # devtoolset's libstdc++ (manylinux) puts the symbols newer than the
     # system's libstdc++.so.6 in a static libstdc++_nonshared.a, which only
