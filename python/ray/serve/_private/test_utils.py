@@ -77,7 +77,7 @@ SERVE_INSTANCE_SIGNAL_ACTOR_NAME = "signal123"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
 
 
-def _passthrough_decorator(func):
+def passthrough_decorator(func):
     """A user decorator that wraps an async function with ``functools.wraps``."""
 
     @wraps(func)

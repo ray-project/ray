@@ -600,10 +600,6 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
     robust solution to this I was able to find. It would also be preferable
     to do this check when the decorator runs, rather than when the method is.
 
-    `func` may be wrapped by more than one decorator, so the whole
-    ``__wrapped__`` chain of the attribute is searched for it with
-    ``inspect.unwrap``.
-
     Arguments:
         args: arguments to the function/method call.
         func: the unbound function that was called.
@@ -613,7 +609,12 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
     """
     if len(args) > 0:
         method = getattr(args[0], func.__name__, None)
-        if method and method is not func:
+        if method:
+            # Follow the full ``__wrapped__`` chain set by ``functools.wraps``.
+            # The chain can be longer than one hop when ``@serve.batch`` is
+            # combined with other wrapping decorators, e.g.
+            # ``@other_decorator @serve.batch(...)``. See #47449.
+            # Stop at non-callables: ``DeploymentHandle`` fabricates ``__wrapped__``.
             unwrapped = inspect.unwrap(
                 method, stop=lambda f: f is func or not callable(f)
             )

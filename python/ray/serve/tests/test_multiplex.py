@@ -9,11 +9,11 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private import test_utils
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
+from ray.serve._private.test_utils import passthrough_decorator
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
@@ -328,7 +328,7 @@ class TestBasicAPI:
             def __init__(self):
                 self.num_loads = 0
 
-            @test_utils._passthrough_decorator
+            @passthrough_decorator
             @serve.multiplexed
             async def load_model(self, model_id: str):
                 self.num_loads += 1
