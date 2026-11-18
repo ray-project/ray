@@ -1156,6 +1156,41 @@
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
+# Ray Data lineage reconstruction under chaos.
+- name: image_classification_lineage_reconstruction_chaos
+  python: "3.11"
+  frequency: manual
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: torch-cu128
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: torch_cu128_image_classification_pyarrow19_py3.11.lock
+      runtime_env:
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
+        RAY_DISABLE_PYARROW_VERSION_CHECK: "1"
+        # Chaos kills nodes on purpose, so dead nodes and the workers that die
+        # with them are expected.
+        RAYTEST_FAIL_ON_DEAD_NODES: "0"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "0"
+        # Lost objects and their re-produced copies coexist during lineage
+        # reconstruction, so the object store utilization bound doesn't apply.
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+    cluster_compute: fixed_size_gpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+      --chaos --lineage-reconstruction --chaos-killer raylet
+      --chaos-kill-delay-s 30 --chaos-kill-batch-size 2 --chaos-max-kills 6
+      --chaos-min-alive-workers 6
+
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 # NOTE: This is almost identical to the `image_classification` test except it removes
@@ -1291,6 +1326,47 @@
   run:
     timeout: 3600
     script: python image_embedding_from_jsonl/main.py {{args}}
+
+# Ray Data lineage reconstruction under chaos.
+- name: image_embedding_from_jsonl_{{cluster_type}}_lineage_reconstruction_chaos
+  python: "3.11"
+  frequency: manual
+  group: data-batch-inference
+
+  matrix:
+    setup:
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          cluster_type: fixed_size
+          args: ""
+      - with:
+          cluster_type: fake_gpu_fixed_size
+          args: --fake-gpu
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      python_depset: torch_cu128_data_image_embedding_py3.11.lock
+      runtime_env:
+        # Chaos kills nodes on purpose, so dead nodes and the workers that die
+        # with them are expected.
+        RAYTEST_FAIL_ON_DEAD_NODES: "0"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "0"
+        # Lost objects and their re-produced copies coexist during lineage
+        # reconstruction, so the object store utilization bound doesn't apply.
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+
+  run:
+    timeout: 5400
+    script: >
+      python image_embedding_from_jsonl/main.py
+      --inference-concurrency 40 40 {{args}}
+      --chaos --lineage-reconstruction --chaos-killer raylet
+      --chaos-kill-interval-s 60 --chaos-kill-batch-size 2
+      --chaos-min-alive-workers 120
 
 - name: text_embedding_{{case}}
   python: "3.10"
