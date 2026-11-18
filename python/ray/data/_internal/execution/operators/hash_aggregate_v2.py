@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tupl
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.types as pa_types
 
 from ray.data._internal.arrow_aggregation import (
     ArrowAggSpec,
@@ -139,8 +140,10 @@ def _group_by(
     if not with_groups:
         return columns, None
     rows = grouped.column(grouped.num_columns - 1).combine_chunks()
+    # pyrefly: ignore[missing-attribute]
     row_indices = pc.list_flatten(rows).to_numpy()
     ids = np.empty(table.num_rows, dtype=np.int64)
+    # pyrefly: ignore[missing-attribute]
     ids[row_indices] = pc.list_parent_indices(rows).to_numpy()
     return columns, Groups(ids=ids, count=grouped.num_rows)
 
@@ -237,7 +240,7 @@ def _has_null_typed_target(
     for agg, spec in zip(aggs, specs):
         col = agg.get_target_column()
         if spec.supports_type is not None and col is not None:
-            if pa.types.is_null(table.schema.field(col).type):
+            if pa_types.is_null(table.schema.field(col).type):
                 return True
     return False
 
@@ -262,7 +265,7 @@ def _raw_rows_to_partials(
 
     def _as_target(name: str, column):
         target_type = target_schema.field(name).type
-        if pa.types.is_large_list(column.type) and pa.types.is_list(target_type):
+        if pa_types.is_large_list(column.type) and pa_types.is_list(target_type):
             # List state past int32 offsets (see ``_list_offsets``): keep it
             # large; concat promotes the other shards to match.
             target_type = pa.large_list(target_type.value_field)
