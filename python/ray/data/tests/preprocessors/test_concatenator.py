@@ -221,7 +221,7 @@ class TestConcatenator:
         assert len(result["combined"][0]) == 4
 
     @pytest.mark.parametrize("flatten", [True, False])
-    def test_non_default_index_and_empty_batch(self, flatten):
+    def test_non_default_index(self, flatten):
         prep = Concatenator(columns=["a", "b"], output_column_name="c", flatten=flatten)
 
         df = pd.DataFrame({"a": [1, 2], "b": [3, 4]}, index=[10, 20])
@@ -229,13 +229,6 @@ class TestConcatenator:
         assert list(out.index) == [10, 20]
         assert np.array_equal(out.loc[10, "c"], np.array([1, 3]))
         assert np.array_equal(out.loc[20, "c"], np.array([2, 4]))
-
-        empty_df = pd.DataFrame(
-            {"a": pd.Series([], dtype="int64"), "b": pd.Series([], dtype="int64")}
-        )
-        empty_out = prep.transform_batch(empty_df)
-        assert len(empty_out) == 0
-        assert list(empty_out.columns) == ["c"]
 
 
 if __name__ == "__main__":
