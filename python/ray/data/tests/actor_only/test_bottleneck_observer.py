@@ -28,6 +28,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     slack,
     slack_toward,
     time_to_free,
+    upstream_limiters,
 )
 
 ARROW_MARGIN = 0.1
@@ -692,6 +693,84 @@ def test_assessment_eligibility_and_victims(
             read: DonorVictims(count=2, ttf_min_s=4.0, ttf_p50_s=4.0, circular=True)
         }
         assert "victims for W=[R n=2 ttf min=4s p50=4s circular]" in line
+
+
+def _edge(producer, consumer, arrow):
+    return bottleneck_observer.Edge(
+        producer=producer,
+        consumer=consumer,
+        producer_blocked=0.0,
+        producer_self_limited=0.0,
+        consumer_starved=0.0,
+        arrow=arrow,
+    )
+
+
+_VIDEO_NEXT = {"R": ("Z",), "Z": ("E",), "E": ("W",), "W": ()}
+
+
+@pytest.mark.parametrize(
+    "arrows, expected",
+    [
+        # 22:03 in video: Read limits resize (self 0.96); downstream edges
+        # point at Write.
+        ((Arrow.UPSTREAM, Arrow.DOWNSTREAM, Arrow.DOWNSTREAM), {"Z": {"R"}}),
+        # 23:25: resize limits both ExtractImageFeatures and, through it,
+        # Write: Write's limiter is resize, the top of the upstream chain.
+        (
+            (Arrow.DOWNSTREAM, Arrow.UPSTREAM, Arrow.UPSTREAM),
+            {"E": {"Z"}, "W": {"Z"}},
+        ),
+        ((Arrow.TIE, Arrow.DOWNSTREAM, Arrow.TIE), {}),
+    ],
+    ids=["read-limits-resize", "resize-limits-chain", "no-upstream-limit"],
+)
+def test_upstream_limiters_follow_upstream_arrows(arrows, expected):
+    chain = ("R", "Z", "E", "W")
+    edges = [_edge(p, c, a) for p, c, a in zip(chain, chain[1:], arrows)]
+    assert upstream_limiters(edges) == {k: frozenset(v) for k, v in expected.items()}
+
+
+def test_starved_time_is_reserve_except_toward_its_limiter():
+    """video at 22:03: resize (Z) is starved because Read (R) is limited by
+    its own budget. Its starved time is not spare toward Write (W), only
+    toward Read; ExtractImageFeatures (E), blocked by Write, keeps its slack."""
+    shares = {
+        "R": OpShares(busy=0.04, obp=0.96, starved=0.0, actors=1),
+        "Z": OpShares(busy=0.16, obp=0.38, starved=0.45, actors=6),
+        "E": OpShares(busy=0.40, obp=0.60, starved=0.0, actors=4),
+        "W": OpShares(busy=0.97, obp=0.0, starved=0.02, actors=9),
+    }
+    edges = [
+        _edge("R", "Z", Arrow.UPSTREAM),
+        _edge("Z", "E", Arrow.DOWNSTREAM),
+        _edge("E", "W", Arrow.DOWNSTREAM),
+    ]
+    to_write = slack_toward(shares, "W", 13, _VIDEO_NEXT, SLACK_MARGIN, edges)
+    # Z: 6 - ceil(6 x (0.16 + 0.45) x 13/9 x 1.2) = 6 - 7; without the edge
+    # rule it would be 6 - ceil(6 x 0.16 x 13/9 x 1.2) = 4.
+    assert to_write["Z"] == -1
+    assert slack_toward(shares, "W", 13, _VIDEO_NEXT, SLACK_MARGIN)["Z"] == 4
+    # E: 4 - ceil(4 x 0.40 x 13/9 x 1.2) = 1.
+    assert to_write["E"] == 1
+    # Toward Read, its limiter, Z's starved time is spare:
+    # 6 - ceil(6 x 0.16 x 2 x 1.2) = 3.
+    assert slack_toward(shares, "R", 2, _VIDEO_NEXT, SLACK_MARGIN, edges)["Z"] == 3
+
+
+def test_starved_time_is_spare_when_the_producer_keeps_up():
+    """X is starved, but its producer P is not what limits the edge (a tie):
+    the downstream op is. X's idle time is spare toward the downstream
+    recipient."""
+    shares = {
+        "P": OpShares(busy=0.5, obp=0.3, starved=0.0, actors=4),
+        "X": OpShares(busy=0.2, obp=0.0, starved=0.4, actors=10),
+        "D": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2),
+    }
+    next_ops = {"P": ("X",), "X": ("D",), "D": ()}
+    edges = [_edge("P", "X", Arrow.TIE), _edge("X", "D", Arrow.DOWNSTREAM)]
+    # X: 10 - ceil(10 x 0.2 x 3/2 x 1.2) = 10 - 4.
+    assert slack_toward(shares, "D", 3, next_ops, SLACK_MARGIN, edges)["X"] == 6
 
 
 @pytest.mark.parametrize(

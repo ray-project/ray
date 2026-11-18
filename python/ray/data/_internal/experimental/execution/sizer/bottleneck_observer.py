@@ -60,6 +60,7 @@ from typing import (
     Callable,
     Deque,
     Dict,
+    FrozenSet,
     Generic,
     Hashable,
     List,
@@ -397,20 +398,63 @@ def on_path(op: K, recipient: K, next_ops: Mapping[K, Sequence[K]]) -> bool:
     )
 
 
+def upstream_limiters(edges: Sequence[Edge[K]]) -> Dict[K, FrozenSet[K]]:
+    """Per op whose input is limited by its producer, the op(s) actually
+    limiting it: follow input edges whose arrow points upstream (the producer
+    limits the flow) until an op whose own input does not. An op with no
+    such input edge is absent."""
+    upstream_producers: Dict[K, List[K]] = {}
+    for edge in edges:
+        if edge.arrow == Arrow.UPSTREAM:
+            upstream_producers.setdefault(edge.consumer, []).append(edge.producer)
+
+    def tops(op: K, seen: FrozenSet[K]) -> FrozenSet[K]:
+        producers = upstream_producers.get(op)
+        if not producers or op in seen:
+            return frozenset((op,))
+        return frozenset().union(*(tops(p, seen | {op}) for p in producers))
+
+    return {
+        op: frozenset().union(*(tops(p, frozenset((op,))) for p in producers))
+        for op, producers in upstream_producers.items()
+    }
+
+
+def needed_busy(
+    op: K,
+    op_shares: OpShares,
+    recipient: Optional[K],
+    limiters: Mapping[K, FrozenSet[K]],
+) -> float:
+    """The share of ``op``'s slot time it must keep for ``recipient``'s
+    growth. Starved time is spare only when nothing upstream is starving it,
+    or toward the op that is: idle time caused by an upstream limit is
+    needed back once that limit is grown."""
+    limited_by = limiters.get(op)
+    if limited_by and recipient not in limited_by:
+        return op_shares.busy + op_shares.starved
+    return op_shares.busy
+
+
 def slack_toward(
     shares: Mapping[K, OpShares],
     recipient: Optional[K],
     b_prime: int,
     next_ops: Mapping[K, Sequence[K]],
     margin: float,
+    edges: Sequence[Edge[K]] = (),
 ) -> Dict[K, int]:
     """Each other op's slack if ``recipient`` grows from its current size b
     to ``b_prime``: ops on its path carry b'/b more work; ops off it (another
-    union branch) carry the same. With no recipient, every factor is 1."""
+    union branch) carry the same. With no recipient, every factor is 1.
+
+    An op starved by an upstream limit (see ``upstream_limiters``) keeps its
+    starved time as reserve toward every recipient but that limit."""
     growth = 1.0
     if recipient is not None and recipient in shares:
         b = max(1, shares[recipient].actors)
         growth = max(b_prime, b) / b
+    limiters = upstream_limiters(edges)
     slack_by_op: Dict[K, int] = {}
     for op, op_shares in shares.items():
         if op == recipient:
@@ -420,7 +464,12 @@ def slack_toward(
             if recipient is not None and on_path(op, recipient, next_ops)
             else 1.0
         )
-        slack_by_op[op] = slack(op_shares.actors, op_shares.busy, factor, margin)
+        slack_by_op[op] = slack(
+            op_shares.actors,
+            needed_busy(op, op_shares, recipient, limiters),
+            factor,
+            margin,
+        )
     return slack_by_op
 
 
@@ -495,13 +544,18 @@ def analyze(
     )
     slack_by_op: Dict[K, int] = {}
     if ranked:
-        top_actors = max(1, shares[ranked[0][0]].actors)
+        top = ranked[0][0]
+        top_actors = max(1, shares[top].actors)
         growth = (top_actors + 1) / top_actors
         bottleneck_ops = {op for op, _ in ranked}
+        limiters = upstream_limiters(edges)
         for op, op_shares in shares.items():
             if op not in bottleneck_ops:
                 slack_by_op[op] = slack(
-                    op_shares.actors, op_shares.busy, growth, slack_margin
+                    op_shares.actors,
+                    needed_busy(op, op_shares, top, limiters),
+                    growth,
+                    slack_margin,
                 )
     return Snapshot(
         shares=dict(shares.items()),
@@ -900,6 +954,7 @@ class BottleneckObserver:
             (snapshot.shares[recipient].actors + 1) if recipient is not None else 0,
             self._profiles.next_ops,
             self._slack_margin,
+            snapshot.edges,
         )
         return Assessment(ranked_stable, eligibility, recipient, victims, slack_by_op)
 
@@ -1085,6 +1140,7 @@ class BottleneckObserver:
                 b_prime,
                 self._profiles.next_ops,
                 self._slack_margin,
+                snapshot.edges,
             ),
             growth_target=lambda op: growth_target(
                 op,
