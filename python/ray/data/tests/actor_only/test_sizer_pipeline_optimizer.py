@@ -1442,8 +1442,8 @@ def test_stable_bottleneck_is_never_a_donor():
 
 def test_victims_are_taken_fastest_to_free_and_timeout_follows_them():
     """video_object_detection: Write needs one 1-CPU slot. ReadVideo's victim
-    would take 900s to drain, ExtractImageFeatures' 80s: the faster one is
-    taken, and the timeout is 1.5 x 80s."""
+    would take 900s to drain, ExtractImageFeatures' 50s: the faster one is
+    taken, and the timeout is 1.5 x 50s."""
     write = _op("Write", pool=_Pool(current=1))
     read = _idle_victims_op("ReadVideo", "node", ["r0"], current=7)
     features = _idle_victims_op("ExtractImageFeatures", "node", ["f0"], current=5)
@@ -1454,13 +1454,33 @@ def test_victims_are_taken_fastest_to_free_and_timeout_follows_them():
         eligibility={write: "yes: victims"},
         shares={write: None, read: None, features: None},
         slack={read: 5, features: 4},
-        ttf={read: 900.0, features: 80.0},
+        ttf={read: 900.0, features: 50.0},
     )
     _, state, requests = _apply_bottleneck(
         _bottleneck_rule(), tick, [write, read, features]
     )
     assert _donors(requests) == {features}
-    assert state.in_flight[write].timeout_s == pytest.approx(120.0)
+    assert state.in_flight[write].timeout_s == pytest.approx(75.0)
+
+
+def test_victims_slower_than_the_cap_are_skipped():
+    """video at 0:13:31: the only donor with slack is ReadVideo, whose
+    victims take 265s to free (their outputs sit behind resize). Taking them
+    would hold their capacity idle for minutes and block every other
+    transfer, so the step is not funded."""
+    write = _op("Write", pool=_Pool(current=1))
+    read = _idle_victims_op("ReadVideo", "node", ["r0", "r1"], current=3)
+    tick = _tick(
+        recipient=write,
+        named=[(write, 1.0)],
+        stable=[write],
+        eligibility={write: "yes: victims"},
+        shares={write: None, read: None},
+        slack={read: 2},
+        ttf={read: 265.0},
+    )
+    _, state, requests = _apply_bottleneck(_bottleneck_rule(), tick, [write, read])
+    assert requests == [] and not state.in_flight
 
 
 @pytest.mark.parametrize(

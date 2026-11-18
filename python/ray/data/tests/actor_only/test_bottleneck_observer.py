@@ -1,5 +1,6 @@
 """Tests for the observation-only bottleneck model."""
 
+import dataclasses
 import math
 from types import SimpleNamespace
 from typing import Any, Dict, Sequence, Tuple, cast
@@ -756,6 +757,34 @@ def test_starved_time_is_reserve_except_toward_its_limiter():
     # Toward Read, its limiter, Z's starved time is spare:
     # 6 - ceil(6 x 0.16 x 2 x 1.2) = 3.
     assert slack_toward(shares, "R", 2, _VIDEO_NEXT, SLACK_MARGIN, edges)["Z"] == 3
+
+
+def test_self_limited_time_is_needed_not_spare():
+    """video at 0:13:31: resize (Z) has 2 actors, busy 0.18, and its output
+    edge is self-limited 0.34 (its budget full while ExtractImageFeatures had
+    room). Toward Write (9 -> 12) it has no slack: halving its actors halves
+    its budget, its actual limit. Read, only blocked, still donates."""
+    shares = {
+        "R": OpShares(busy=0.03, obp=0.97, starved=0.0, actors=3),
+        "Z": OpShares(busy=0.18, obp=0.82, starved=0.0, actors=2),
+        "E": OpShares(busy=0.48, obp=0.43, starved=0.03, actors=5),
+        "W": OpShares(busy=0.97, obp=0.0, starved=0.03, actors=9),
+    }
+    z_out = dataclasses.replace(
+        _edge("Z", "E", Arrow.DOWNSTREAM), producer_self_limited=0.34
+    )
+    edges = [
+        _edge("R", "Z", Arrow.DOWNSTREAM),
+        z_out,
+        _edge("E", "W", Arrow.DOWNSTREAM),
+    ]
+    by_op = slack_toward(shares, "W", 12, _VIDEO_NEXT, SLACK_MARGIN, edges)
+    # Z: 2 - ceil(2 x (0.18 + 0.34) x 12/9 x 1.2) = 2 - 2; busy alone would
+    # give 2 - ceil(0.58) = 1.
+    assert by_op["Z"] == 0
+    assert slack_toward(shares, "W", 12, _VIDEO_NEXT, SLACK_MARGIN)["Z"] == 1
+    # R: 3 - ceil(3 x 0.03 x 12/9 x 1.2) = 2.
+    assert by_op["R"] == 2
 
 
 def test_starved_time_is_spare_when_the_producer_keeps_up():

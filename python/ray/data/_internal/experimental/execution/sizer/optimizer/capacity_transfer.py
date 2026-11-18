@@ -295,7 +295,8 @@ class NodePlan:
         return dict(Counter(victim.donor.op for victim in self.victims))
 
 
-VictimKey = Callable[["VictimCandidate"], Tuple]
+# Orders victim candidates; a key of None excludes the candidate.
+VictimKey = Callable[["VictimCandidate"], Optional[Tuple]]
 
 
 def _victim_candidates(
@@ -334,7 +335,15 @@ def _victim_candidates(
                     recipient_constrained=recipient_constrained,
                 )
             )
-    return sorted(candidates, key=victim_key) if victim_key else sorted(candidates)
+    if victim_key is None:
+        return sorted(candidates)
+    keyed = [(victim_key(c), c) for c in candidates]
+    return [
+        c
+        for key, c in sorted(
+            ((key, c) for key, c in keyed if key is not None), key=lambda kc: kc[0]
+        )
+    ]
 
 
 def _plan_node(

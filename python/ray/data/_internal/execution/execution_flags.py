@@ -175,6 +175,12 @@ SIZER_BOTTLENECK_MAX_STEP_RATIO: float = env_float(
 SIZER_BOTTLENECK_MAX_TIMEOUT_S: float = env_float(
     "RAY_DATA_SIZER_BOTTLENECK_MAX_TIMEOUT_S", 300.0
 )
+# A transfer skips any victim estimated to take longer than this to free:
+# while it drains, its capacity is held idle and the open transfer blocks
+# every other transfer.
+SIZER_BOTTLENECK_MAX_VICTIM_TTF_S: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_MAX_VICTIM_TTF_S", 60.0
+)
 # Least severity for an op to be named a bottleneck: below it, the arrows'
 # noise (e.g. a near-tie edge during ramp-up) rather than neighbours waiting.
 SIZER_BOTTLENECK_MIN_SEVERITY: float = env_float(

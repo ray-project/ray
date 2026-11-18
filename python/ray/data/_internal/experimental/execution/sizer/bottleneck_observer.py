@@ -420,20 +420,35 @@ def upstream_limiters(edges: Sequence[Edge[K]]) -> Dict[K, FrozenSet[K]]:
     }
 
 
+def self_limited_by_op(edges: Sequence[Edge[K]]) -> Dict[K, float]:
+    """Per producer, its largest self-limited share over its output edges:
+    time its own output budget was full while a consumer had an idle slot."""
+    shares: Dict[K, float] = {}
+    for edge in edges:
+        shares[edge.producer] = max(
+            shares.get(edge.producer, 0.0), edge.producer_self_limited
+        )
+    return shares
+
+
 def needed_busy(
     op: K,
     op_shares: OpShares,
     recipient: Optional[K],
     limiters: Mapping[K, FrozenSet[K]],
+    self_limited: Mapping[K, float],
 ) -> float:
     """The share of ``op``'s slot time it must keep for ``recipient``'s
-    growth. Starved time is spare only when nothing upstream is starving it,
-    or toward the op that is: idle time caused by an upstream limit is
-    needed back once that limit is grown."""
+    growth: its busy time, plus time held back by its own output budget
+    (that is its limit, not spare: fewer actors means fewer budgets).
+    Starved time is spare only when nothing upstream is starving it, or
+    toward the op that is: idle time caused by an upstream limit is needed
+    back once that limit is grown."""
+    needed = op_shares.busy + self_limited.get(op, 0.0)
     limited_by = limiters.get(op)
     if limited_by and recipient not in limited_by:
-        return op_shares.busy + op_shares.starved
-    return op_shares.busy
+        needed += op_shares.starved
+    return min(needed, 1.0)
 
 
 def slack_toward(
@@ -448,13 +463,15 @@ def slack_toward(
     to ``b_prime``: ops on its path carry b'/b more work; ops off it (another
     union branch) carry the same. With no recipient, every factor is 1.
 
-    An op starved by an upstream limit (see ``upstream_limiters``) keeps its
+    An op keeps its self-limited time (see ``self_limited_by_op``), and an
+    op starved by an upstream limit (see ``upstream_limiters``) keeps its
     starved time as reserve toward every recipient but that limit."""
     growth = 1.0
     if recipient is not None and recipient in shares:
         b = max(1, shares[recipient].actors)
         growth = max(b_prime, b) / b
     limiters = upstream_limiters(edges)
+    self_limited = self_limited_by_op(edges)
     slack_by_op: Dict[K, int] = {}
     for op, op_shares in shares.items():
         if op == recipient:
@@ -466,7 +483,7 @@ def slack_toward(
         )
         slack_by_op[op] = slack(
             op_shares.actors,
-            needed_busy(op, op_shares, recipient, limiters),
+            needed_busy(op, op_shares, recipient, limiters, self_limited),
             factor,
             margin,
         )
@@ -549,11 +566,12 @@ def analyze(
         growth = (top_actors + 1) / top_actors
         bottleneck_ops = {op for op, _ in ranked}
         limiters = upstream_limiters(edges)
+        self_limited = self_limited_by_op(edges)
         for op, op_shares in shares.items():
             if op not in bottleneck_ops:
                 slack_by_op[op] = slack(
                     op_shares.actors,
-                    needed_busy(op, op_shares, top, limiters),
+                    needed_busy(op, op_shares, top, limiters, self_limited),
                     growth,
                     slack_margin,
                 )

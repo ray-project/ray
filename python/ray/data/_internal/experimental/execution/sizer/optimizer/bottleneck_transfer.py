@@ -24,6 +24,7 @@ from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
     SIZER_BOTTLENECK_MAX_STEP_RATIO,
     SIZER_BOTTLENECK_MAX_TIMEOUT_S,
+    SIZER_BOTTLENECK_MAX_VICTIM_TTF_S,
     SIZER_TRANSFER_TIMEOUT_S,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
@@ -263,14 +264,18 @@ class BottleneckTransfer(CapacityTransfer):
             self._metrics.record_refusal(self.name, "no_donor")
             return []
 
-        def victim_key(candidate: VictimCandidate) -> Tuple:
-            # Pending first; then whatever frees soonest.
+        def victim_key(candidate: VictimCandidate) -> Optional[Tuple]:
+            # Pending first; then whatever frees soonest. A victim slower than
+            # the cap is skipped: its capacity would sit idle while it drains,
+            # and the open transfer would block every other one.
             pending = candidate.eviction_rank % 3 == 0
             ttf = tick.victim_ttf(
                 candidate.donor.op,
                 candidate.tasks_in_flight,
                 candidate.unconsumed_outputs,
             )
+            if not pending and ttf > SIZER_BOTTLENECK_MAX_VICTIM_TTF_S:
+                return None
             return (not pending, ttf, candidate.eviction_rank)
 
         best: Optional[Tuple[int, List[NodePlan], Dict]] = None
@@ -303,9 +308,11 @@ class BottleneckTransfer(CapacityTransfer):
             self._metrics.record_refusal(self.name, "victims_insufficient")
             logger.debug(
                 "PipelineOptimizer: bottleneck %s (b=%d) cannot be funded: no "
-                "donor slack frees a node it may use",
+                "donor slack frees a node it may use (victims slower than "
+                "%.0fs to free are skipped)",
                 recipient.name,
                 b,
+                SIZER_BOTTLENECK_MAX_VICTIM_TTF_S,
             )
             return []
         b_prime, plan, donors_by_op = best
