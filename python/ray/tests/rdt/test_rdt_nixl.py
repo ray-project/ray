@@ -1361,6 +1361,45 @@ def test_nixl_recv_memory_pool_failed_transfer(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_recv_memory_pool_empty_tensor(ray_start_regular):
+    """An object with an empty tensor arrives the same with a receive pool.
+
+    NIXL can't find a zero-length descriptor inside the pool's registration, so
+    such an object skips the pool.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PutActor:
+        def put(self, tensors):
+            return [ray.put([t.to("cuda") for t in tensors], _tensor_transport="nixl")]
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class RecvPoolActor:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+
+        def consume(self, refs):
+            tensors = ray.get(refs[0])
+            pool = get_tensor_transport_manager("NIXL")._memory_pool
+            assert sum(b.size for b in pool._free_blocks) == pool.pool_size
+            return [t.cpu().tolist() for t in tensors]
+
+    src_actor = PutActor.remote()
+    dst_actor = RecvPoolActor.remote()
+    for tensors, expected in [
+        ([torch.empty(0)], [[]]),
+        (
+            [torch.tensor([1.0, 2.0]), torch.empty(0), torch.tensor([3.0])],
+            [[1.0, 2.0], [], [3.0]],
+        ),
+    ]:
+        refs = ray.get(src_actor.put.remote(tensors))
+        assert ray.get(dst_actor.consume.remote(refs)) == expected
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_set_nixl_cuda_stream(ray_start_regular):
     """set_nixl_cuda_stream restricts the pre-registration sync to the given
     stream, and the transferred data is still valid."""

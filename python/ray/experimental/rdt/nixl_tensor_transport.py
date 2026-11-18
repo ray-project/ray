@@ -512,7 +512,9 @@ class NixlTensorTransport(TensorTransportManager):
             else:
                 # One buffer per remote descriptor; views at recovered offsets.
                 pool = self._memory_pool
-                if pool is not None:
+                # NIXL can't find a zero-length descriptor inside the pool's
+                # registration, so an object with an empty one skips the pool.
+                if pool is not None and all(packed_group_nbytes):
                     # Carve the group buffers out of the pool, which is already
                     # registered with NIXL. wait_fetch_complete copies them out
                     # into independent tensors before returning, so the pool's
