@@ -108,8 +108,7 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 #if !defined(_WIN32)
 constexpr int kGracefulPgCleanupPollMs = 100;
 
-// True once the signal was sent or the original group is gone. A temporary
-// lookup or signal failure leaves the pending cleanup available for retry.
+// Return false only when cleanup should be retried.
 bool TrySignalProcessGroup(const WorkerProcessGroup &group,
                            const WorkerID &worker_id,
                            int signal,
@@ -137,13 +136,18 @@ bool TrySignalProcessGroup(const WorkerProcessGroup &group,
   }
 
   // A group can still contain descendants after the original leader exits.
-  const auto error = KillProcessGroup(group.id, signal).value();
-  if (error && error.value() != ESRCH) {
+  const auto error = KillProcessGroup(group.id, signal);
+  if (!error.has_value()) {
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Process group signaling is unsupported; skipping group " << group.id;
+    return true;
+  }
+  if (*error && error->value() != ESRCH) {
     RAY_LOG_EVERY_MS(WARNING, 60000).WithField(worker_id)
-        << "Failed to signal process group " << group.id << ": " << error.message();
+        << "Failed to signal process group " << group.id << ": " << error->message();
     return false;
   }
-  if (!error) {
+  if (!*error) {
     RAY_LOG(INFO).WithField(worker_id)
         << "Sent signal " << signal << " to worker process group " << group.id;
   }
