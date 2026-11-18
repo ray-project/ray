@@ -201,6 +201,59 @@ def test_reads_through_a_table_rooted_filesystem(partitioned_table):
     _assert_matches_v1(partitioned_table, filesystem=filesystem)
 
 
+@pytest.mark.parametrize("caller_filesystem", [False, True])
+def test_s3_reads_send_no_head_requests(s3_server, aws_credentials, caller_filesystem):
+    """The log has every file's size, so no open asks S3 for one. A caller's
+    filesystem is what ``read_unity_catalog`` passes."""
+    import json
+
+    import requests
+
+    options = {
+        "AWS_ENDPOINT_URL": s3_server,
+        "AWS_ALLOW_HTTP": "true",
+        "AWS_ACCESS_KEY_ID": "testing",
+        "AWS_SECRET_ACCESS_KEY": "testing",
+        "AWS_REGION": "us-west-2",
+        "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
+    }
+    s3 = pa_fs.S3FileSystem(
+        endpoint_override=s3_server,
+        region="us-west-2",
+        allow_bucket_creation=True,
+        **aws_credentials,
+    )
+    s3.create_dir("delta")
+    for start in (0, 10):
+        deltalake.write_deltalake(
+            "s3://delta/table",
+            pa.table({"id": range(start, start + 10), "grp": ["a b"] * 5 + ["x"] * 5}),
+            partition_by=["grp"],
+            mode="append",
+            storage_options=options,
+        )
+    filesystem = (
+        pa_fs.SubTreeFileSystem("delta/table", s3) if caller_filesystem else None
+    )
+    recorder = f"{s3_server}/moto-api/recorder"
+    requests.post(f"{recorder}/reset-recording")
+    requests.post(f"{recorder}/start-recording")
+
+    ds = _read("s3://delta/table", storage_options=options, filesystem=filesystem)
+    ids = sorted(row["id"] for row in ds.take_all())
+
+    requests.post(f"{recorder}/stop-recording")
+    recorded = requests.get(f"{recorder}/download-recording").text.splitlines()
+    data_file_heads = [
+        r["url"]
+        for r in map(json.loads, recorded)
+        if r["method"] == "HEAD" and r["url"].endswith(".parquet")
+    ]
+    assert _uses_v2(ds)
+    assert ids == list(range(20))
+    assert data_file_heads == []
+
+
 def test_shuffle_files_reads_every_row(partitioned_table):
     ds = _read(partitioned_table, shuffle="files")
 

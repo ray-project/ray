@@ -6813,18 +6813,24 @@ def read_delta(
 
     ctx = DataContext.get_current()
     if ctx.use_datasource_v2 and ctx.use_delta_datasource_v2:
+        import deltalake
+        from packaging.version import parse as parse_version
+
         from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
             DeltaDatasourceV2,
             delta_datasource_v2_unsupported_reason,
         )
 
         # The V2 reader lists the data files in its listing tasks, so the driver
-        # only needs the log's metadata.
+        # only needs the log's metadata. deltalake 1.6 and later ignore
+        # ``without_files`` (with a DeprecationWarning) and load the file list.
+        without_files = (
+            {"without_files": True}
+            if parse_version(deltalake.__version__) < parse_version("1.6")
+            else {}
+        )
         log_only_table = DeltaTable(
-            path,
-            version=version,
-            storage_options=storage_options,
-            without_files=True,
+            path, version=version, storage_options=storage_options, **without_files
         )
         unsupported_reason = (
             # The V2 reader doesn't turn ``partition_filters`` into partition

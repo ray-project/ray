@@ -1,3 +1,4 @@
+import json
 import os
 from unittest import mock
 
@@ -195,6 +196,16 @@ def test_delta_read_does_not_unpickle_a_tampered_data_file(tmp_path):
         ),
         os.path.join(path, data_file),
     )
+    # Whoever can swap a data file can also change its size in the log, which
+    # readers trust when they open the file.
+    log_path = os.path.join(path, "_delta_log", f"{0:020d}.json")
+    with open(log_path) as f:
+        actions = [json.loads(line) for line in f]
+    for action in actions:
+        if "add" in action:
+            action["add"]["size"] = os.path.getsize(os.path.join(path, data_file))
+    with open(log_path, "w") as f:
+        f.write("".join(json.dumps(action) + "\n" for action in actions))
 
     batches = list(ray.data.read_delta(path).iter_batches(batch_format="pyarrow"))
 
