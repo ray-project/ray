@@ -4,13 +4,25 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
 
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    _split_predicate_by_columns,
+    combine_predicates,
+)
+from ray.data._internal.datasource_v2.interfaces.pushdown import (
+    SupportsFilterPushdown,
+    SupportsPartitionPruning,
+)
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
     SourceOperator,
 )
-from ray.data._internal.logical.operators.map_operator import AbstractMap
+from ray.data._internal.logical.operators.map_operator import AbstractMap, Filter
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockMetadata,
@@ -308,7 +320,7 @@ class ReadFiles(
         # probe fails — the UDF may require a non-empty input.
         if self.block_udf is not None:
             try:
-                transformed = self.block_udf(schema.empty_table()).schema
+                transformed = self.block_udf(_create_empty_table(schema)).schema
                 schema = transformed.with_metadata(schema.metadata)
             except Exception:
                 pass
@@ -369,11 +381,6 @@ class ReadFiles(
             # An arbitrary post-read transform can change any field's values.
             return False
 
-        from ray.data._internal.datasource_v2.interfaces.pushdown import (
-            SupportsFilterPushdown,
-            SupportsPartitionPruning,
-        )
-
         # Either mixin is enough: a scanner that only prunes partitions still
         # takes the partition-column conjuncts, and ``apply_predicate`` keeps
         # the rest in a ``Filter``.
@@ -382,7 +389,18 @@ class ReadFiles(
         )
 
     def get_current_predicate(self) -> Optional[Expr]:
-        return getattr(self.scanner, "predicate", None)
+        # Scanner predicate plus partition pruning: all this read enforces.
+        predicate = (
+            self.scanner.pushed_predicate()
+            if isinstance(self.scanner, SupportsFilterPushdown)
+            else None
+        )
+        partition_predicate = (
+            self.scanner.pushed_partition_predicate()
+            if isinstance(self.scanner, SupportsPartitionPruning)
+            else None
+        )
+        return combine_predicates(predicate, partition_predicate)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
         if self.block_udf is not None:
@@ -390,10 +408,6 @@ class ReadFiles(
                 # The transform's effects are unknown; keep every predicate
                 # above it, including callers that skip the capability check.
                 return self
-
-            from ray.data._internal.planner.plan_expression.expression_visitors import (
-                get_column_references,
-            )
 
             if (
                 set(get_column_references(predicate_expr))
@@ -403,16 +417,6 @@ class ReadFiles(
                 # Keep mixed predicates intact too; splitting them could change
                 # the result when the expression contains OR or other nesting.
                 return self
-
-        from ray.data._internal.datasource_v2.common.pushdown_utils import (
-            _split_predicate_by_columns,
-            combine_predicates,
-        )
-        from ray.data._internal.datasource_v2.interfaces.pushdown import (
-            SupportsFilterPushdown,
-            SupportsPartitionPruning,
-        )
-        from ray.data._internal.logical.operators.map_operator import Filter
 
         pushes_filters = isinstance(self.scanner, SupportsFilterPushdown)
         partition_cols: Set[str] = (
@@ -524,6 +528,11 @@ class ListFiles(LogicalOperator, SourceOperator):
     # Drops whole files by path. Unlike ``predicate`` above (row-group stats,
     # blind to partition columns), this is what makes ``limit`` safe here.
     partition_pruner: Optional["FilePruner"] = None
+    # Set by a rule that has already fixed the constraints above and knows its
+    # consumer applies them, even though that consumer is not a ``ReadFiles``.
+    # ``DeriveListFilesPushdown`` then leaves this node alone instead of
+    # clearing it. Only ``PushdownCountFiles`` sets it today.
+    pushdown_is_final: bool = False
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list

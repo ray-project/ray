@@ -268,21 +268,12 @@ async def book_uncached_load(tracker, worker_id, count, base):
     return reservation_ids
 
 
-async def book_decode_load(
-    tracker,
-    worker_id,
-    reservation_id,
-    token_ids,
-    output_tokens,
-    expected_output_tokens=None,
-):
-    """Book a request, move it to decode, and add output blocks."""
-    selection = await tracker.select_worker(
-        reservation_id, token_ids, [worker_id], expected_output_tokens
-    )
+async def book_decode_load(tracker, worker_id, reservation_id, token_ids):
+    """Book a request and mark its prefill complete, so its blocks count as
+    decode load."""
+    selection = await tracker.select_worker(reservation_id, token_ids, [worker_id])
     assert selection["worker_id"] == worker_id
     await tracker.on_prefill_complete(reservation_id)
-    await tracker.on_decode_progress(reservation_id, output_tokens)
     return reservation_id
 
 
@@ -650,8 +641,8 @@ class TestKvEventIngestion:
 
     @pytest.mark.asyncio
     async def test_select_worker_prefers_lower_decode_load(self):
-        """With equal KV overlap and no active prefill, a long decode on one
-        worker makes the selector choose the lower decode-load worker."""
+        """With equal KV overlap and no active prefill, a decoding request on
+        one worker makes the selector choose the lower decode-load worker."""
         tracker = _LocalKVTokenTracker()
         a = FakeReplica(23909)
         b = FakeReplica(23910)
@@ -680,13 +671,9 @@ class TestKvEventIngestion:
                 publish=lambda: b.publish_stored([701, 702], token_ids),
             )
 
-            await book_decode_load(
-                tracker,
-                worker_a,
-                "decode-load-a",
-                token_ids,
-                output_tokens=8 * BLOCK_SIZE,
-            )
+            # Blocks the probe doesn't share, so they add to A's decode load.
+            decode_token_ids = list(range(10_000, 10_000 + 8 * BLOCK_SIZE))
+            await book_decode_load(tracker, worker_a, "decode-load-a", decode_token_ids)
 
             loads = await tracker.get_potential_loads(token_ids)
             assert (
@@ -702,71 +689,6 @@ class TestKvEventIngestion:
                 "probe-decode", token_ids, [worker_a, worker_b]
             )
             assert selection["worker_id"] == worker_b
-        finally:
-            a.close()
-            b.close()
-
-    @pytest.mark.asyncio
-    async def test_decode_load_uses_expected_output_decay(self):
-        """Expected output length decays decode load as generation nears the
-        estimate, so the selector prefers the lower remaining-load worker."""
-        tracker = _LocalKVTokenTracker()
-        a = FakeReplica(23911)
-        b = FakeReplica(23912)
-        worker_a = get_worker_id("replica-A")
-        worker_b = get_worker_id("replica-B")
-        try:
-            tracker._on_deployment_targets(
-                targets(
-                    running_replica("replica-A", a.endpoint(), a.replay_endpoint()),
-                    running_replica("replica-B", b.endpoint(), b.replay_endpoint()),
-                )
-            )
-            await wait_registered(tracker, [worker_a, worker_b])
-
-            token_ids = list(range(2 * BLOCK_SIZE))
-            await wait_for_overlap(
-                tracker,
-                token_ids,
-                lambda overlap: overlap.get(worker_a) == 2,
-                publish=lambda: a.publish_stored([801, 802], token_ids),
-            )
-            await wait_for_overlap(
-                tracker,
-                token_ids,
-                lambda overlap: overlap.get(worker_b) == 2,
-                publish=lambda: b.publish_stored([801, 802], token_ids),
-            )
-
-            output_tokens = 4 * BLOCK_SIZE - 1
-            await book_decode_load(
-                tracker,
-                worker_a,
-                "decayed-decode-a",
-                token_ids,
-                output_tokens=output_tokens,
-                expected_output_tokens=4 * BLOCK_SIZE,
-            )
-            await book_decode_load(
-                tracker,
-                worker_b,
-                "full-decode-b",
-                token_ids,
-                output_tokens=output_tokens,
-            )
-
-            active_loads = tracker.get_loads()
-            assert active_loads[worker_a]["potential_prefill_tokens"] == 0
-            assert active_loads[worker_b]["potential_prefill_tokens"] == 0
-            assert (
-                active_loads[worker_a]["potential_decode_blocks"]
-                < active_loads[worker_b]["potential_decode_blocks"]
-            )
-
-            selection = await tracker.select_worker(
-                "probe-decay", token_ids, [worker_a, worker_b]
-            )
-            assert selection["worker_id"] == worker_a
         finally:
             a.close()
             b.close()

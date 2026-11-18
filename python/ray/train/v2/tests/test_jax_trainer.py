@@ -1,5 +1,7 @@
 import os
 import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -11,6 +13,7 @@ from ray.train.v2._internal.constants import (
     is_v2_enabled,
 )
 from ray.train.v2.jax import JaxTrainer
+from ray.train.v2.jax.config import _setup_jax_distributed_environment
 
 assert is_v2_enabled()
 
@@ -997,6 +1000,41 @@ def test_single_host_data_iterator_collate_fn(ray_tpu_single_host, tmp_path):
         assert len(r["batches"]) == 2
         for batch_shape in r["batches"]:
             assert batch_shape == (16, 2)
+
+
+@pytest.mark.parametrize(
+    "use_tpu, jax_platforms, expected_events",
+    [
+        (True, "", ["wait_vfio", "jax_init"]),
+        (False, "cpu", ["jax_init"]),
+    ],
+)
+def test_setup_jax_distributed_waits_for_tpu_vfio_ready(
+    monkeypatch, use_tpu, jax_platforms, expected_events
+):
+    """Verifies TPU setup waits for worker VFIO release before jax.distributed.initialize."""
+    events = []
+    fake_jax = SimpleNamespace(
+        distributed=SimpleNamespace(
+            initialize=lambda *args, **kwargs: events.append("jax_init")
+        )
+    )
+    monkeypatch.setenv("JAX_PLATFORMS", jax_platforms)
+    monkeypatch.setitem(sys.modules, "jax", fake_jax)
+
+    with patch(
+        "ray.train.v2.jax.config.wait_for_tpu_vfio_ready",
+        side_effect=lambda: events.append("wait_vfio"),
+    ):
+        _setup_jax_distributed_environment(
+            master_addr_with_port="127.0.0.1:1234",
+            num_workers=2,
+            index=0,
+            use_tpu=use_tpu,
+            use_gpu=False,
+            resources_per_worker={"TPU": 4} if use_tpu else {"CPU": 1},
+        )
+    assert events == expected_events
 
 
 if __name__ == "__main__":

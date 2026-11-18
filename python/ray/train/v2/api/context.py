@@ -81,7 +81,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             The total number of workers in this run.
@@ -102,7 +103,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             This worker's rank among all workers in this run.
@@ -123,7 +125,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             This worker's rank among the workers on its node.
@@ -143,7 +146,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             The number of workers running on this node.
@@ -163,7 +167,8 @@ class TrainContext(ABC):
             ...     train_fn_per_worker,
             ...     scaling_config=ray.train.ScalingConfig(num_workers=1),
             ... )
-            >>> trainer.fit()
+            >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+            [ignore]...
 
         Returns:
             The rank of this node among the nodes participating in training.
@@ -207,45 +212,3 @@ class DistributedTrainContext(TrainContext):
 
     def get_storage(self):
         return get_internal_train_context().get_storage()
-
-
-@DeveloperAPI
-class LocalTrainContext(TrainContext):
-    """Implementation of TrainContext for local mode."""
-
-    def __init__(
-        self,
-        experiment_name: str,
-        world_size: int = 1,
-        world_rank: int = 0,
-        local_rank: int = 0,
-        local_world_size: int = 1,
-        node_rank: int = 0,
-    ):
-        self.experiment_name = experiment_name
-        self.world_size = world_size
-        self.world_rank = world_rank
-        self.local_rank = local_rank
-        self.local_world_size = local_world_size
-        self.node_rank = node_rank
-
-    def get_experiment_name(self) -> str:
-        return self.experiment_name
-
-    def get_world_size(self) -> int:
-        return self.world_size
-
-    def get_world_rank(self) -> int:
-        return self.world_rank
-
-    def get_local_rank(self) -> int:
-        return self.local_rank
-
-    def get_local_world_size(self) -> int:
-        return self.local_world_size
-
-    def get_node_rank(self) -> int:
-        return self.node_rank
-
-    def get_storage(self):
-        raise NotImplementedError("Local storage context not yet implemented. ")

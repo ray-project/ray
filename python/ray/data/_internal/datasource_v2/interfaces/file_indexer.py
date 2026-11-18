@@ -126,6 +126,7 @@ class FileIndexer(ABC):
         file_infos: Iterable["FileInfo"],
         *,
         filesystem: Optional["FileSystem"],
+        pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
@@ -139,7 +140,9 @@ class FileIndexer(ABC):
         File-based indexers can implement this to reuse one planning-time
         listing during execution. The input keeps discovery order; a file shuffle
         may reorder it, while ``preserve_order`` governs metadata result order.
-        Metadata-backed indexers need not support it.
+        ``pruners`` are execution-time filters derived after discovery, not the
+        initial user filters. Metadata-backed indexers also use them to prove
+        which rows survive before stopping under a limit.
         """
         raise NotImplementedError(
             f"{type(self).__name__} cannot process prelisted file infos"
