@@ -76,6 +76,44 @@ def test_build_layers_roundtrip_whiteouts_and_metadata(tmp_path, monkeypatch, sp
     assert (root / "opaque" / "new").stat().st_mode & 0o777 == 0o750
 
 
+def test_build_layers_leaves_out_the_sandbox_mount_points(tmp_path):
+    """runsc creates the mount points an image lacks in the upper layer, as
+    empty files and directories. A commit leaves them out, and keeps what
+    the sandbox wrote next to them."""
+    archive = tmp_path / "changes.tar"
+    with tarfile.open(archive, "w") as tar:
+        for name, kind, data in [
+            ("./etc", tarfile.DIRTYPE, b""),
+            ("./etc/hosts", tarfile.REGTYPE, b""),
+            ("./etc/resolv.conf", tarfile.REGTYPE, b"nameserver 1.1.1.1\n"),
+            ("./etc/new", tarfile.REGTYPE, b""),
+            ("./proc", tarfile.DIRTYPE, b""),
+            ("./data", tarfile.DIRTYPE, b""),
+            ("./data/in", tarfile.DIRTYPE, b""),
+        ]:
+            member = tarfile.TarInfo(name)
+            member.type, member.size = kind, len(data)
+            if name in ("./proc", "./data"):
+                member.pax_headers = {image_push._OPAQUE_XATTR: "y"}
+            tar.addfile(member, io.BytesIO(data))
+    (layer,) = image_push.build_layers(
+        str(archive),
+        str(tmp_path),
+        ["/etc/hosts", "/etc/resolv.conf", "/proc", "/data/in/", "/sys"],
+    )
+    with tarfile.open(layer.path) as tar:
+        names = tar.getnames()
+    # The written resolv.conf isn't the empty file runsc makes, so it stays,
+    # and so does the directory runsc made above /data/in.
+    assert names == [
+        "./etc",
+        "./etc/resolv.conf",
+        "./etc/new",
+        "./data",
+        "./data/.wh..wh..opq",
+    ]
+
+
 @pytest.mark.parametrize("mount", [False, True])
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize(
