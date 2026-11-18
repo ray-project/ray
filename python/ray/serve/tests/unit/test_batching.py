@@ -1,17 +1,20 @@
 import asyncio
+import contextlib
 import logging
 import time
-from typing import AsyncIterator, Dict, List
+from typing import Any, AsyncIterator, Callable, Dict, List
 
 import pytest
 
 import ray
 from ray import serve
+from ray._common.signature import extract_signature, flatten_args
+from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve.batching import _BatchQueue
+from ray.serve.batching import _BatchQueue, _LazyBatchQueueWrapper, _SingleRequest
 from ray.serve.exceptions import RayServeException
 
 # Setup the global replica context for the test.
@@ -34,6 +37,47 @@ class FakeStream:
 
     def reset_message(self):
         self.messages = []
+
+
+def _make_single_request(
+    func: Callable, payload: Any, model_id: str = ""
+) -> _SingleRequest:
+    return _SingleRequest(
+        self_arg=None,
+        flattened_args=flatten_args(extract_signature(func), (payload,), {}),
+        future=get_or_create_event_loop().create_future(),
+        request_context=ray.serve.context._RequestContext(
+            multiplexed_model_id=model_id
+        ),
+        trace_context=None,
+    )
+
+
+async def _call_with_model_id(func: Callable, model_id: str, *args: Any) -> Any:
+    """Calls a batched function as a request for `model_id`."""
+    ray.serve.context._set_request_context(multiplexed_model_id=model_id)
+    try:
+        return await func(*args)
+    finally:
+        ray.serve.context._unset_request_context()
+
+
+async def _shut_down_queues(queues: List[_BatchQueue]) -> None:
+    """Cancels the queues' batching loops and waits for them to finish."""
+    for queue in queues:
+        queue.shutdown()
+    for queue in queues:
+        with contextlib.suppress(asyncio.CancelledError):
+            await queue._handle_batch_task
+
+
+def _discard_futures(futures: List[asyncio.Future]) -> None:
+    """Cancels pending futures and retrieves exceptions from failed ones."""
+    for future in futures:
+        if not future.done():
+            future.cancel()
+        elif not future.cancelled():
+            future.exception()
 
 
 # We use a single event loop for the entire test session. Without this
@@ -313,10 +357,12 @@ async def test_batch_size_multiple_long_timeout(use_class):
 
 
 @pytest.mark.asyncio
-async def test_requests_arriving_while_batches_run_form_one_batch():
+@pytest.mark.parametrize("model_id", ["", "model-a"])
+async def test_requests_arriving_while_batches_run_form_one_batch(model_id):
     # While every max_concurrent_batches permit is in use, requests that arrive
     # must wait in the queue and then go out as one batch, not as one batch
-    # each that waits for a permit.
+    # each that waits for a permit. This holds for the default queue and for a
+    # multiplexed model's queue.
     batch_sizes = []
     release = asyncio.Event()
 
@@ -326,12 +372,18 @@ async def test_requests_arriving_while_batches_run_form_one_batch():
         await release.wait()
         return requests
 
-    first = get_or_create_event_loop().create_task(func(0))
+    first = get_or_create_event_loop().create_task(
+        _call_with_model_id(func, model_id, 0)
+    )
     while not batch_sizes:
         await asyncio.sleep(0.01)
     rest = []
     for i in range(1, 6):
-        rest.append(get_or_create_event_loop().create_task(func(i)))
+        rest.append(
+            get_or_create_event_loop().create_task(
+                _call_with_model_id(func, model_id, i)
+            )
+        )
         # Longer than batch_wait_timeout_s, so each request could close a batch.
         await asyncio.sleep(0.05)
 
@@ -363,6 +415,402 @@ async def test_batch_timeout_counts_time_waiting_for_a_permit():
     release.set()
     assert await asyncio.gather(first, second) == [0, 1]
     assert batch_start_times[1] - release_time < 0.5
+
+
+@pytest.mark.asyncio
+async def test_multiplexed_batches_fill_per_model_id():
+    batch_records = []
+
+    @serve.batch(max_batch_size=5, batch_wait_timeout_s=1000)
+    async def multiplexed_batch(requests):
+        model_id = serve.get_multiplexed_model_id()
+        batch_records.append((model_id, len(requests)))
+        return [f"{model_id}:{request}" for request in requests]
+
+    # Interleave requests so that a shared queue would mix models in a batch.
+    tasks = []
+    for i in range(5):
+        for model in "ab":
+            tasks.append(
+                get_or_create_event_loop().create_task(
+                    _call_with_model_id(
+                        multiplexed_batch, f"model-{model}", f"{model}-{i}"
+                    )
+                )
+            )
+
+    assert await asyncio.gather(*tasks) == [
+        f"model-{m}:{m}-{i}" for i in range(5) for m in "ab"
+    ]
+    assert sorted(batch_records) == [("model-a", 5), ("model-b", 5)]
+
+
+@pytest.mark.asyncio
+async def test_multiplexed_batch_queues_limit_concurrency_per_model():
+    started = []
+    finish_batches_event = asyncio.Event()
+
+    async def blocked_batch(requests):
+        started.extend(requests)
+        await finish_batches_event.wait()
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(
+        max_batch_size=1,
+        batch_wait_timeout_s=0,
+        max_concurrent_batches=1,
+        handle_batch_func=blocked_batch,
+    )
+
+    futures = []
+    for model_id, payload in [
+        ("model-a", "a-0"),
+        ("model-a", "a-1"),
+        ("model-b", "b-0"),
+    ]:
+        request = _make_single_request(blocked_batch, payload, model_id)
+        wrapper.get_queue(model_id).put(request)
+        futures.append(request.future)
+
+    # model-b's batch runs alongside model-a's, while model-a's second batch
+    # waits for model-a's only permit.
+    await async_wait_for_condition(
+        lambda: sorted(started) == ["a-0", "b-0"], retry_interval_ms=1
+    )
+    model_a_queue = wrapper.get_queue("model-a")
+    await async_wait_for_condition(
+        lambda: bool(model_a_queue.semaphore._waiters), retry_interval_ms=1
+    )
+    assert not futures[1].done()
+    assert model_a_queue.queue.qsize() == 1
+
+    finish_batches_event.set()
+    assert await asyncio.gather(*futures) == ["a-0", "a-1", "b-0"]
+
+
+@pytest.mark.asyncio
+async def test_accumulating_multiplexed_batch_queue_not_cleaned_up():
+    batch_started_event = asyncio.Event()
+    finish_batch_event = asyncio.Event()
+
+    async def blocked_batch(requests):
+        batch_started_event.set()
+        await finish_batch_event.wait()
+        return requests
+
+    # Two permits, so the next batch starts filling while the first one runs.
+    wrapper = _LazyBatchQueueWrapper(
+        max_batch_size=2,
+        batch_wait_timeout_s=1000,
+        max_concurrent_batches=2,
+        handle_batch_func=blocked_batch,
+    )
+    model_queue = wrapper.get_queue("model-a")
+    requests = [
+        _make_single_request(blocked_batch, f"request-{i}", "model-a") for i in range(4)
+    ]
+    futures = [request.future for request in requests]
+
+    model_queue.put(requests[0])
+    model_queue.put(requests[1])
+    await batch_started_event.wait()
+
+    # The third request is dequeued into a batch that is still filling when
+    # the first batch completes, so the queue must not be removed.
+    model_queue.put(requests[2])
+    await async_wait_for_condition(
+        lambda: model_queue.queue.empty() and bool(model_queue._current_batch),
+        retry_interval_ms=1,
+    )
+    finish_batch_event.set()
+    assert await asyncio.gather(*futures[:2]) == ["request-0", "request-1"]
+    await async_wait_for_condition(lambda: not model_queue.tasks, retry_interval_ms=1)
+    assert wrapper._queues["model-a"] is model_queue
+
+    model_queue.put(requests[3])
+    assert await asyncio.gather(*futures[2:]) == ["request-2", "request-3"]
+    await async_wait_for_condition(
+        lambda: "model-a" not in wrapper._queues, retry_interval_ms=1
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_requests", [False, True])
+async def test_idle_multiplexed_batch_queue_cleans_itself_up(cancel_requests):
+    async def no_op(requests):
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(max_batch_size=1, handle_batch_func=no_op)
+    default_queue = wrapper.queue
+
+    futures = []
+    for model_id in ["", "model-a"]:
+        request = _make_single_request(no_op, "request", model_id)
+        if cancel_requests:
+            request.future.cancel()
+        wrapper.get_queue(model_id).put(request)
+        futures.append(request.future)
+
+    # Model queues are removed once idle, but the default queue is kept.
+    await async_wait_for_condition(
+        lambda: "model-a" not in wrapper._queues and default_queue.is_idle(),
+        retry_interval_ms=1,
+    )
+    assert wrapper._queues[""] is default_queue
+    if not cancel_requests:
+        assert await asyncio.gather(*futures) == ["request", "request"]
+
+
+@pytest.mark.asyncio
+async def test_multiplexed_batch_queue_recreated_after_cleanup():
+    async def batch(requests):
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(max_batch_size=1, handle_batch_func=batch)
+
+    old_queue = wrapper.get_queue("model-a")
+    request = _make_single_request(batch, "first", "model-a")
+    old_queue.put(request)
+    assert await request.future == "first"
+    await async_wait_for_condition(
+        lambda: "model-a" not in wrapper._queues
+        and old_queue._handle_batch_task.done(),
+        retry_interval_ms=1,
+    )
+
+    # The next request for the model gets a new queue with its own loop.
+    new_queue = wrapper.get_queue("model-a")
+    assert new_queue is not old_queue
+    request = _make_single_request(batch, "second", "model-a")
+    new_queue.put(request)
+    assert await request.future == "second"
+
+
+@pytest.mark.asyncio
+async def test_debug_helpers_cover_every_model_queue():
+    release = asyncio.Event()
+
+    async def blocked_batch(requests):
+        await release.wait()
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(max_batch_size=1, handle_batch_func=blocked_batch)
+    queues = [wrapper.get_queue(model_id) for model_id in ["model-a", "model-b"]]
+    futures = []
+    try:
+        for queue, model_id in zip(queues, ["model-a", "model-b"]):
+            request = _make_single_request(blocked_batch, "request", model_id)
+            queue.put(request)
+            futures.append(request.future)
+        # Each queue runs a blocked batch, and its loop waits for a permit.
+        await async_wait_for_condition(
+            lambda: all(queue.tasks for queue in queues), retry_interval_ms=1
+        )
+
+        start_times = wrapper._get_curr_iteration_start_times().start_times
+        assert sorted(start_times) == sorted(
+            start_time
+            for queue in queues
+            for start_time in queue.curr_iteration_start_times.values()
+        )
+        assert len(start_times) == 2
+        stacks = await wrapper._get_handling_task_stack()
+        assert stacks.count("Stack for") == 2
+
+        # The wrapper's task is alive only while every queue's loop is.
+        assert await wrapper._is_batching_task_alive()
+        await _shut_down_queues([queues[0]])
+        assert not await wrapper._is_batching_task_alive()
+
+        release.set()
+        assert await asyncio.gather(*futures) == ["request", "request"]
+    finally:
+        all_queues = queues + [
+            queue for queue in wrapper._queues.values() if queue not in queues
+        ]
+        batch_tasks = [task for queue in all_queues for task in queue.tasks]
+        await _shut_down_queues(all_queues)
+        release.set()
+        await asyncio.gather(*batch_tasks, return_exceptions=True)
+        _discard_futures(futures)
+
+
+METRIC_ATTRIBUTES = [
+    "_batch_wait_time_histogram",
+    "_batch_execution_time_histogram",
+    "_batch_queue_length_gauge",
+    "_batch_utilization_histogram",
+    "_batch_size_histogram",
+    "_batches_processed_counter",
+]
+
+
+@pytest.mark.asyncio
+async def test_wrapper_queues_share_metrics():
+    async def no_op(requests):
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(max_batch_size=1, handle_batch_func=no_op)
+    default_queue = wrapper.queue
+    model_queue = wrapper.get_queue("model-a")
+    other_model_queue = wrapper.get_queue("model-b")
+    try:
+        # A model queue recreated after cleanup reuses the same metrics.
+        request = _make_single_request(no_op, "request", "model-a")
+        model_queue.put(request)
+        assert await request.future == "request"
+        await async_wait_for_condition(
+            lambda: "model-a" not in wrapper._queues, retry_interval_ms=1
+        )
+        recreated_queue = wrapper.get_queue("model-a")
+        assert recreated_queue is not model_queue
+
+        for attribute in METRIC_ATTRIBUTES:
+            shared = getattr(default_queue, attribute)
+            for queue in [model_queue, other_model_queue, recreated_queue]:
+                assert getattr(queue, attribute) is shared
+    finally:
+        await _shut_down_queues(list(wrapper._queues.values()))
+
+
+@pytest.mark.asyncio
+async def test_shared_queue_length_gauge_reports_all_model_queues(monkeypatch):
+    release = asyncio.Event()
+
+    async def blocked_batch(requests):
+        await release.wait()
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(
+        max_batch_size=10, batch_wait_timeout_s=1000, handle_batch_func=blocked_batch
+    )
+    queues = [wrapper.get_queue(model_id) for model_id in ["model-a", "model-b"]]
+    recorded = []
+    monkeypatch.setattr(
+        queues[0]._batch_queue_length_gauge,
+        "set",
+        lambda value, tags: recorded.append((value, tags)),
+    )
+
+    futures = []
+    try:
+        # Two requests wait in model-b's queue while model-a fills its batch.
+        # Holding model-b's only permit keeps its requests queued.
+        await queues[1].semaphore.acquire()
+        for queue, model_id in [(queues[1], "model-b")] * 2 + [(queues[0], "model-a")]:
+            request = _make_single_request(blocked_batch, "request", model_id)
+            queue.put(request)
+            futures.append(request.future)
+
+        # Wait for model-a's second record, so that shutting it down cancels a
+        # pending wait. Before Python 3.12, cancelling asyncio.wait_for after
+        # its inner wait has finished is swallowed.
+        await async_wait_for_condition(lambda: len(recorded) >= 2, retry_interval_ms=1)
+        assert recorded[-1] == (2, {"function_name": "blocked_batch"})
+    finally:
+        await _shut_down_queues(queues)
+        _discard_futures(futures)
+
+
+@pytest.mark.asyncio
+async def test_queue_length_gauge_recorded_on_enqueue_and_after_batch(monkeypatch):
+    release = asyncio.Event()
+
+    async def blocked_batch(requests):
+        await release.wait()
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(
+        max_batch_size=10, batch_wait_timeout_s=0, handle_batch_func=blocked_batch
+    )
+    queue = wrapper.get_queue("model-a")
+    recorded = []
+    monkeypatch.setattr(
+        queue._batch_queue_length_gauge,
+        "set",
+        lambda value, tags: recorded.append(value),
+    )
+
+    futures = []
+    try:
+        # The first request's batch holds the only permit.
+        request = _make_single_request(blocked_batch, "first", "model-a")
+        queue.put(request)
+        futures.append(request.future)
+        await async_wait_for_condition(lambda: bool(queue.tasks), retry_interval_ms=1)
+
+        for _ in range(5):
+            request = _make_single_request(blocked_batch, "request", "model-a")
+            queue.put(request)
+            futures.append(request.future)
+        assert recorded[-1] == 5
+
+        release.set()
+        assert await asyncio.gather(*futures) == ["first"] + ["request"] * 5
+        assert recorded[-1] == 0
+    finally:
+        release.set()
+        await _shut_down_queues(list(wrapper._queues.values()))
+        _discard_futures(futures)
+
+
+BATCH_SETTER_CASES = [
+    ("set_max_batch_size", "max_batch_size", 7),
+    ("set_batch_wait_timeout_s", "batch_wait_timeout_s", 3.5),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("setter, attribute, new_value", BATCH_SETTER_CASES)
+async def test_batch_setters_apply_to_existing_and_new_queues(
+    setter, attribute, new_value
+):
+    wrapper = _LazyBatchQueueWrapper()
+    existing_queues = [wrapper.queue, wrapper.get_queue("model-a")]
+
+    getattr(wrapper, setter)(new_value)
+    new_queue = wrapper.get_queue("model-b")
+
+    for queue in existing_queues + [new_queue]:
+        assert getattr(queue, attribute) == new_value
+    assert getattr(wrapper, attribute) == new_value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("setter, attribute, new_value", BATCH_SETTER_CASES)
+async def test_batch_setter_during_queue_construction_is_kept(
+    monkeypatch, setter, attribute, new_value
+):
+    wrapper = _LazyBatchQueueWrapper()
+    original_init = _BatchQueue.__init__
+
+    def init_with_concurrent_setter(self, *args, **kwargs):
+        # The wrapper has already read the old values into the constructor
+        # arguments. Simulate a reconfigure() thread calling the setter now.
+        getattr(wrapper, setter)(new_value)
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(_BatchQueue, "__init__", init_with_concurrent_setter)
+    queue = wrapper.get_queue("model-a")
+
+    assert getattr(queue, attribute) == new_value
+
+
+@pytest.mark.asyncio
+async def test_batch_settings_survive_cloudpickle_before_first_use():
+    class Model:
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def handle(self, requests):
+            return requests
+
+    Model.handle.set_max_batch_size(1)
+    Model.handle.set_batch_wait_timeout_s(0)
+
+    restored = ray.cloudpickle.loads(ray.cloudpickle.dumps(Model))
+
+    assert restored.handle._get_max_batch_size() == 1
+    assert restored.handle._get_batch_wait_timeout_s() == 0
+    assert await restored().handle("request") == "request"
 
 
 @pytest.mark.asyncio
@@ -1314,6 +1762,39 @@ def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
         else:
             assert over_bound_warning_message not in stream.messages
         stream.reset_message()
+
+
+def test_wrapper_warns_about_max_ongoing_requests_once():
+    """A wrapper logs the warning once, not once per model queue."""
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    stream = FakeStream()
+    stream_handler = logging.StreamHandler(stream)
+    logger.addHandler(stream_handler)
+    over_bound = default_deployment_config.max_ongoing_requests + 1
+
+    def warning_count():
+        return sum(
+            "is larger than `max_ongoing_requests`" in m for m in stream.messages
+        )
+
+    try:
+        wrapper = _LazyBatchQueueWrapper(max_batch_size=over_bound)
+        model_queue = wrapper.get_queue("model-a")
+        wrapper.get_queue("model-b")
+        _ = wrapper.queue
+        assert warning_count() == 1
+
+        # Recreating a model queue after cleanup doesn't warn again.
+        wrapper._remove_idle_queue("model-a", model_queue)
+        wrapper.get_queue("model-a")
+        assert warning_count() == 1
+
+        # A setter warns once, even when no queues are left.
+        wrapper._queues.clear()
+        wrapper.set_max_batch_size(over_bound + 1)
+        assert warning_count() == 2
+    finally:
+        logger.removeHandler(stream_handler)
 
 
 if __name__ == "__main__":

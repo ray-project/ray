@@ -36,7 +36,7 @@ emphasize-lines: 11-12
 You can supply 4 optional parameters to the decorators:
 - `max_batch_size` controls the size of the batch. The default value is 10.
 - `batch_wait_timeout_s` controls how long Serve should wait for a batch once the first request arrives. The default value is 0.01 (10 milliseconds).
-- `max_concurrent_batches` maximum number of batches that can run concurrently. The default value is 1.
+- `max_concurrent_batches` maximum number of batches that can run concurrently. With [model multiplexing](serve-model-multiplexing), the limit applies to each model ID. The default value is 1.
 - `batch_size_fn` optional function to compute the effective batch size. If provided, this function takes a list of items and returns an integer representing the batch size. This is useful for batching based on custom metrics such as total nodes in graphs or total tokens in sequences. If `None` (the default), the batch size is computed as `len(batch)`.
 
 Once the first request arrives, the batching decorator waits for a full batch (up to `max_batch_size`) until `batch_wait_timeout_s` is reached. If the timeout is reached, Serve sends the batch to the model regardless of the batch size.

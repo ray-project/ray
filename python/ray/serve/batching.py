@@ -4,7 +4,7 @@ import logging
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from functools import wraps
+from functools import partial, wraps
 from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
@@ -147,6 +147,82 @@ def _is_first_input_value(
     return True
 
 
+class _BatchConfig:
+    """Settable batch parameters shared by a wrapper and all of its queues.
+
+    Queues read these values instead of copying them, so a setter called from
+    another thread (e.g. a synchronous `reconfigure()`) updates every queue,
+    including one being created at the same time.
+    """
+
+    def __init__(self, max_batch_size: int, batch_wait_timeout_s: float) -> None:
+        self.max_batch_size = max_batch_size
+        self.batch_wait_timeout_s = batch_wait_timeout_s
+
+
+class _BatchMetrics:
+    """The batching metrics recorded by one or more queues.
+
+    Metric objects only forward records to series identified by name and tags,
+    so every queue of a batch handler already writes to the same series. A
+    wrapper creates these once and shares them, because constructing them is
+    most of the cost of creating a queue.
+    """
+
+    def __init__(self) -> None:
+        self.wait_time_histogram = Histogram(
+            "serve_batch_wait_time_ms",
+            description="Time requests waited for batch to fill (in milliseconds).",
+            boundaries=BATCH_WAIT_TIME_BUCKETS_MS,
+            tag_keys=("function_name",),
+        )
+        self.execution_time_histogram = Histogram(
+            "serve_batch_execution_time_ms",
+            description="Time to execute the batch function (in milliseconds).",
+            boundaries=BATCH_EXECUTION_TIME_BUCKETS_MS,
+            tag_keys=("function_name",),
+        )
+        self.queue_length_gauge = Gauge(
+            "serve_batch_queue_length",
+            description="Number of requests waiting in the batch queue.",
+            tag_keys=("function_name",),
+        )
+        self.utilization_histogram = Histogram(
+            "serve_batch_utilization_percent",
+            description="Batch utilization as percentage (actual_batch_size / max_batch_size * 100).",
+            boundaries=BATCH_UTILIZATION_BUCKETS_PERCENT,
+            tag_keys=("function_name",),
+        )
+        self.batch_size_histogram = Histogram(
+            "serve_actual_batch_size",
+            description="The actual number of requests in each batch.",
+            boundaries=BATCH_SIZE_BUCKETS,
+            tag_keys=("function_name",),
+        )
+        self.batches_processed_counter = Counter(
+            "serve_batches_processed",
+            description="Counter of batches executed.",
+            tag_keys=("function_name",),
+        )
+
+
+def _warn_if_max_batch_size_exceeds_max_ongoing_requests(
+    max_batch_size: int, max_concurrent_batches: int
+) -> None:
+    """Log a warning to configure `max_ongoing_requests` if it bounds batching."""
+    max_ongoing_requests = (
+        serve.get_replica_context()._deployment_config.max_ongoing_requests
+    )
+    if max_ongoing_requests < max_batch_size * max_concurrent_batches:
+        logger.warning(
+            f"`max_batch_size` ({max_batch_size}) * `max_concurrent_batches` "
+            f"({max_concurrent_batches}) is larger than `max_ongoing_requests` "
+            f"({max_ongoing_requests}). This means the replica will never achieve "
+            "the configured `max_batch_size` concurrently. Please update "
+            "`max_ongoing_requests` to be >= `max_batch_size` * `max_concurrent_batches`."
+        )
+
+
 class _BatchQueue:
     def __init__(
         self,
@@ -155,6 +231,11 @@ class _BatchQueue:
         max_concurrent_batches: int,
         handle_batch_func: Optional[Callable] = None,
         batch_size_fn: Optional[Callable[[List], int]] = None,
+        config: Optional[_BatchConfig] = None,
+        on_idle: Optional[Callable[["_BatchQueue"], None]] = None,
+        queue_length_fn: Optional[Callable[[], int]] = None,
+        warn_on_max_ongoing_requests: bool = True,
+        metrics: Optional[_BatchMetrics] = None,
     ) -> None:
         """Async queue that accepts individual items and returns batches.
 
@@ -180,54 +261,48 @@ class _BatchQueue:
                 representing the batch size. This is useful for batching based
                 on custom metrics such as total nodes in graphs, total tokens
                 in sequences, etc.
+            config: optional config shared with other queues. If given, it
+                supplies max_batch_size and batch_wait_timeout_s, and the
+                max_batch_size and batch_wait_timeout_s arguments are ignored.
+            on_idle: optional callback invoked with this queue when it has no
+                queued, pending, or running requests.
+            queue_length_fn: optional function returning the value to report
+                for the queue length metric. If None, uses this queue's size.
+            warn_on_max_ongoing_requests: whether this queue logs the
+                `max_ongoing_requests` warning. A wrapper that creates many
+                queues logs it itself instead.
+            metrics: optional metrics shared with other queues. If None, this
+                queue creates its own.
         """
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
-        self.max_batch_size = max_batch_size
-        self.batch_wait_timeout_s = batch_wait_timeout_s
+        # Only attach a shared config: writing the arguments into it could
+        # overwrite a newer value set by another thread.
+        self._config = config or _BatchConfig(max_batch_size, batch_wait_timeout_s)
         self.max_concurrent_batches = max_concurrent_batches
         self.batch_size_fn = batch_size_fn
         self.semaphore = asyncio.Semaphore(max_concurrent_batches)
+        self._warn_on_max_ongoing_requests = warn_on_max_ongoing_requests
+        self._on_idle = on_idle
+        self._queue_length_fn = queue_length_fn or self.queue.qsize
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
+        # Requests dequeued into the batch that is still being assembled.
+        self._current_batch: List[_SingleRequest] = []
+        # put() records the queue length only while the loop waits for a
+        # permit, because the loop can't record it then.
+        self._waiting_for_permit = False
 
         # Used for observability.
         self.curr_iteration_start_times: Dict[asyncio.Task, float] = {}
 
         # Initialize batching metrics.
-        self._batch_wait_time_histogram = Histogram(
-            "serve_batch_wait_time_ms",
-            description="Time requests waited for batch to fill (in milliseconds).",
-            boundaries=BATCH_WAIT_TIME_BUCKETS_MS,
-            tag_keys=("function_name",),
-        )
-        self._batch_execution_time_histogram = Histogram(
-            "serve_batch_execution_time_ms",
-            description="Time to execute the batch function (in milliseconds).",
-            boundaries=BATCH_EXECUTION_TIME_BUCKETS_MS,
-            tag_keys=("function_name",),
-        )
-        self._batch_queue_length_gauge = Gauge(
-            "serve_batch_queue_length",
-            description="Number of requests waiting in the batch queue.",
-            tag_keys=("function_name",),
-        )
-        self._batch_utilization_histogram = Histogram(
-            "serve_batch_utilization_percent",
-            description="Batch utilization as percentage (actual_batch_size / max_batch_size * 100).",
-            boundaries=BATCH_UTILIZATION_BUCKETS_PERCENT,
-            tag_keys=("function_name",),
-        )
-        self._batch_size_histogram = Histogram(
-            "serve_actual_batch_size",
-            description="The actual number of requests in each batch.",
-            boundaries=BATCH_SIZE_BUCKETS,
-            tag_keys=("function_name",),
-        )
-        self._batches_processed_counter = Counter(
-            "serve_batches_processed",
-            description="Counter of batches executed.",
-            tag_keys=("function_name",),
-        )
+        metrics = metrics or _BatchMetrics()
+        self._batch_wait_time_histogram = metrics.wait_time_histogram
+        self._batch_execution_time_histogram = metrics.execution_time_histogram
+        self._batch_queue_length_gauge = metrics.queue_length_gauge
+        self._batch_utilization_histogram = metrics.utilization_histogram
+        self._batch_size_histogram = metrics.batch_size_histogram
+        self._batches_processed_counter = metrics.batches_processed_counter
 
         self._function_name = (
             handle_batch_func.__name__ if handle_batch_func is not None else "unknown"
@@ -241,21 +316,30 @@ class _BatchQueue:
             )
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
+    @property
+    def max_batch_size(self) -> int:
+        return self._config.max_batch_size
+
+    @max_batch_size.setter
+    def max_batch_size(self, new_max_batch_size: int) -> None:
+        self._config.max_batch_size = new_max_batch_size
+
+    @property
+    def batch_wait_timeout_s(self) -> float:
+        return self._config.batch_wait_timeout_s
+
+    @batch_wait_timeout_s.setter
+    def batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
+        self._config.batch_wait_timeout_s = new_batch_wait_timeout_s
+
     def _warn_if_max_batch_size_exceeds_max_ongoing_requests(self):
         """Helper to check whether the max_batch_size is bounded.
 
         Log a warning to configure `max_ongoing_requests` if it's bounded.
         """
-        max_ongoing_requests = (
-            serve.get_replica_context()._deployment_config.max_ongoing_requests
-        )
-        if max_ongoing_requests < self.max_batch_size * self.max_concurrent_batches:
-            logger.warning(
-                f"`max_batch_size` ({self.max_batch_size}) * `max_concurrent_batches` "
-                f"({self.max_concurrent_batches}) is larger than `max_ongoing_requests` "
-                f"({max_ongoing_requests}). This means the replica will never achieve "
-                "the configured `max_batch_size` concurrently. Please update "
-                "`max_ongoing_requests` to be >= `max_batch_size` * `max_concurrent_batches`."
+        if self._warn_on_max_ongoing_requests:
+            _warn_if_max_batch_size_exceeds_max_ongoing_requests(
+                self.max_batch_size, self.max_concurrent_batches
             )
 
     def set_max_batch_size(self, new_max_batch_size: int) -> None:
@@ -266,6 +350,13 @@ class _BatchQueue:
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
         self.requests_available_event.set()
+        if self._waiting_for_permit:
+            self._record_queue_length()
+
+    def _record_queue_length(self) -> None:
+        self._batch_queue_length_gauge.set(
+            self._queue_length_fn(), tags={"function_name": self._function_name}
+        )
 
     def _compute_batch_size(self, batch: List[_SingleRequest]) -> int:
         """Compute the effective batch size using batch_size_fn or len()."""
@@ -290,6 +381,7 @@ class _BatchQueue:
         """
 
         batch = []
+        self._current_batch = batch
         first_item = await self.queue.get()  # Block until first item arrives
 
         # Cache current max_batch_size and batch_wait_timeout_s for this batch.
@@ -318,9 +410,7 @@ class _BatchQueue:
         timeout_start_time = min(first_item.enqueue_time, batch_start_time)
         while True:
             # Record queue length metric.
-            self._batch_queue_length_gauge.set(
-                self.queue.qsize(), tags={"function_name": self._function_name}
-            )
+            self._record_queue_length()
 
             remaining_batch_time_s = max(
                 batch_wait_timeout_s - (time.time() - timeout_start_time), 0
@@ -469,37 +559,6 @@ class _BatchQueue:
             for future in futures:
                 _set_exception_if_not_done(future, e)
 
-    def _split_batch_by_model_id(
-        self, batch: List[_SingleRequest]
-    ) -> List[List[_SingleRequest]]:
-        """Split a batch into sub-batches based on multiplexed_model_id.
-
-        When using model multiplexing with batching, requests for different models
-        may end up in the same batch. This method ensures that each sub-batch only
-        contains requests for the same model, preventing issues where a single batch
-        contains requests for different models.
-
-        If no requests have a multiplexed_model_id set, returns the original batch
-        as a single sub-batch.
-
-        Args:
-            batch: The batch of requests to split.
-
-        Returns:
-            A list of sub-batches, where each sub-batch contains requests for the
-            same multiplexed_model_id.
-        """
-        # Group requests by their multiplexed_model_id
-        model_id_to_requests: Dict[str, List[_SingleRequest]] = {}
-        for request in batch:
-            model_id = request.request_context.multiplexed_model_id
-            if model_id not in model_id_to_requests:
-                model_id_to_requests[model_id] = []
-            model_id_to_requests[model_id].append(request)
-
-        # Return sub-batches for each model_id
-        return list(model_id_to_requests.values())
-
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
         # When asyncio task is created, the task will inherit the request context from the current context.
@@ -510,57 +569,32 @@ class _BatchQueue:
             # Take the permit before forming the batch, so requests that arrive
             # while every permit is in use join one batch instead of each
             # waiting for a permit in a batch of its own.
-            await self.semaphore.acquire()
+            self._waiting_for_permit = True
+            try:
+                await self.semaphore.acquire()
+            finally:
+                self._waiting_for_permit = False
             try:
                 batch, _ = await self.wait_for_batch()
-
-                # Split batch by multiplexed_model_id to ensure requests for different
-                # models are processed in separate batches. This is necessary when using
-                # model multiplexing with batching, as a single batch containing requests
-                # for different models would not work correctly.
-                sub_batches = self._split_batch_by_model_id(batch)
-
-                # Process all sub-batches together under the permit taken above.
-                # This ensures sub-batches from the same original batch run concurrently
-                # rather than being serialized by the semaphore. The permit is released
-                # in _handle_completed_task.
-                promise = self._process_sub_batches(func, sub_batches)
-                task = asyncio.create_task(promise)
+                self._record_queue_length()
+                # The permit is released in _handle_completed_task.
+                task = asyncio.create_task(self._process_batch_inner(func, batch))
             except BaseException:
                 self.semaphore.release()
                 raise
+            finally:
+                self._current_batch = []
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
 
-    async def _process_sub_batches(
-        self, func: Callable, sub_batches: List[List[_SingleRequest]]
-    ) -> None:
-        """Processes multiple sub-batches concurrently under a single semaphore permit.
-
-        _process_batches acquires the permit before forming the batch, and this
-        method processes all sub-batches in parallel, ensuring that sub-batches
-        from the same original batch don't compete for semaphore permits.
-        """
-        # Create tasks for each sub-batch. We use asyncio.create_task() instead
-        # of passing coroutines directly to asyncio.gather() because create_task
-        # copies the current context, giving each sub-batch its own isolated
-        # contextvars. This prevents concurrent sub-batches from overwriting
-        # each other's _serve_batch_request_context, which would cause
-        # get_multiplexed_model_id() to return wrong values.
-        tasks = [
-            asyncio.create_task(self._process_batch_inner(func, sub_batch))
-            for sub_batch in sub_batches
-        ]
-        await asyncio.gather(*tasks)
-
     async def _process_batch_inner(
         self, func: Callable, batch: List[_SingleRequest]
     ) -> None:
-        """Processes a single batch without acquiring the semaphore.
+        """Processes a single batch.
 
-        This is the inner implementation called by _process_sub_batches after
-        the semaphore has already been acquired.
+        The caller acquires a semaphore permit before creating this task, and
+        _handle_completed_task releases it when the task finishes.
         """
         # Remove requests that have been cancelled from the batch. If
         # all requests have been cancelled, simply return and wait for
@@ -569,8 +603,7 @@ class _BatchQueue:
         if len(batch) == 0:
             return
 
-        # Compute batch size for this sub-batch. Each sub-batch may have a different
-        # size, especially when splitting by model_id, so we compute it here.
+        # Compute batch size after dropping cancelled requests.
         computed_batch_size = self._compute_batch_size(batch)
 
         # Calculate and record batch utilization percentage.
@@ -636,10 +669,17 @@ class _BatchQueue:
             )
 
     def _handle_completed_task(self, task: asyncio.Task) -> None:
-        self.semaphore.release()
-        self.tasks.remove(task)
-        del self.curr_iteration_start_times[task]
-        self._log_if_exception(task.exception())
+        try:
+            self.tasks.remove(task)
+            del self.curr_iteration_start_times[task]
+            if task.cancelled():
+                logger.debug("Task was cancelled")
+            else:
+                self._log_if_exception(task.exception())
+        finally:
+            self.semaphore.release()
+            if self._on_idle is not None and self.is_idle():
+                self._on_idle(self)
 
     @staticmethod
     def _log_if_exception(exception_maybe: Optional[BaseException]) -> None:
@@ -649,11 +689,13 @@ class _BatchQueue:
             else:
                 logger.exception("Task failed unexpectedly")
 
-    def __del__(self):
-        if (
-            self._handle_batch_task is None
-            or not get_or_create_event_loop().is_running()
-        ):
+    def is_idle(self) -> bool:
+        """Returns whether there are no queued, pending, or running requests."""
+        return self.queue.empty() and not self._current_batch and not self.tasks
+
+    def shutdown(self) -> None:
+        """Requests cancellation of the background batch-processing task."""
+        if self._handle_batch_task is None or self._handle_batch_task.done():
             return
 
         # TODO(edoakes): although we try to gracefully shutdown here, it still
@@ -661,13 +703,23 @@ class _BatchQueue:
         # already being destroyed.
         self._handle_batch_task.cancel()
 
+    def __del__(self):
+        if (
+            self._handle_batch_task is None
+            or not get_or_create_event_loop().is_running()
+        ):
+            return
+
+        self.shutdown()
+
 
 class _LazyBatchQueueWrapper:
-    """Stores a _BatchQueue and updates its settings.
+    """Stores a _BatchQueue per multiplexed model ID and updates their settings.
 
     _BatchQueue cannot be pickled, you must construct it lazily
-    at runtime inside a replica. This class initializes a queue only upon
-    first access.
+    at runtime inside a replica. This class initializes a model's queue only
+    when that model's first request arrives, and removes model queues when
+    they're idle.
     """
 
     def __init__(
@@ -678,42 +730,92 @@ class _LazyBatchQueueWrapper:
         handle_batch_func: Optional[Callable] = None,
         batch_size_fn: Optional[Callable[[List], int]] = None,
     ):
-        self._queue: Optional[_BatchQueue] = None
-        self.max_batch_size = max_batch_size
-        self.batch_wait_timeout_s = batch_wait_timeout_s
+        self._queues: Dict[str, _BatchQueue] = {}
+        self._config = _BatchConfig(max_batch_size, batch_wait_timeout_s)
         self.max_concurrent_batches = max_concurrent_batches
         self.handle_batch_func = handle_batch_func
         self.batch_size_fn = batch_size_fn
+        # Set once the first queue is created, which happens inside a replica.
+        self._has_created_queue = False
+        # Created with the first queue, inside the replica, so the metrics get
+        # its tags. Kept when queues are removed, so recreating a queue doesn't
+        # rebuild them.
+        self._metrics: Optional[_BatchMetrics] = None
+
+    @property
+    def max_batch_size(self) -> int:
+        return self._config.max_batch_size
+
+    @property
+    def batch_wait_timeout_s(self) -> float:
+        return self._config.batch_wait_timeout_s
 
     @property
     def queue(self) -> _BatchQueue:
-        """Returns _BatchQueue.
+        """Returns the default _BatchQueue.
 
-        Initializes queue when called for the first time.
+        Initializes the default queue when called for the first time.
         """
-        if self._queue is None:
-            self._queue = _BatchQueue(
+        return self.get_queue("")
+
+    def get_queue(self, multiplexed_model_id: str) -> _BatchQueue:
+        """Returns the _BatchQueue for a multiplexed model ID."""
+        queue_key = multiplexed_model_id or ""
+        if queue_key not in self._queues:
+            if self._metrics is None:
+                self._metrics = _BatchMetrics()
+            self._queues[queue_key] = _BatchQueue(
                 self.max_batch_size,
                 self.batch_wait_timeout_s,
                 self.max_concurrent_batches,
                 self.handle_batch_func,
                 self.batch_size_fn,
+                config=self._config,
+                # The default queue is kept for the lifetime of the wrapper.
+                on_idle=partial(self._remove_idle_queue, queue_key)
+                if queue_key
+                else None,
+                queue_length_fn=self._total_queue_length,
+                # Model queues are created and removed as traffic comes and
+                # goes, so the wrapper logs this warning once instead.
+                warn_on_max_ongoing_requests=False,
+                metrics=self._metrics,
             )
-        return self._queue
+            if not self._has_created_queue:
+                self._has_created_queue = True
+                self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
+        return self._queues[queue_key]
+
+    def _remove_idle_queue(self, queue_key: str, queue: _BatchQueue) -> None:
+        if self._queues.get(queue_key) is queue:
+            del self._queues[queue_key]
+            queue.shutdown()
+
+    def _total_queue_length(self) -> int:
+        return sum(queue.queue.qsize() for queue in self._queues.values())
+
+    def _queues_or_default(self) -> List[_BatchQueue]:
+        """Returns the queues, initializing the default queue if none exist."""
+        if not self._queues:
+            _ = self.queue
+        return list(self._queues.values())
+
+    def _warn_if_max_batch_size_exceeds_max_ongoing_requests(self) -> None:
+        _warn_if_max_batch_size_exceeds_max_ongoing_requests(
+            self.max_batch_size, self.max_concurrent_batches
+        )
 
     def set_max_batch_size(self, new_max_batch_size: int) -> None:
-        """Updates queue's max_batch_size."""
-
-        self.max_batch_size = new_max_batch_size
-
-        if self._queue is not None:
-            self._queue.set_max_batch_size(new_max_batch_size)
+        """Updates the max_batch_size of every queue."""
+        self._config.max_batch_size = new_max_batch_size
+        # Before the first queue, there may be no replica context to read
+        # max_ongoing_requests from.
+        if self._has_created_queue:
+            self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
     def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
-        self.batch_wait_timeout_s = new_batch_wait_timeout_s
-
-        if self._queue is not None:
-            self._queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+        """Updates the batch_wait_timeout_s of every queue."""
+        self._config.batch_wait_timeout_s = new_batch_wait_timeout_s
 
     def get_max_batch_size(self) -> int:
         return self.max_batch_size
@@ -723,33 +825,31 @@ class _LazyBatchQueueWrapper:
 
     def _get_curr_iteration_start_times(self) -> _RuntimeSummaryStatistics:
         """Gets summary statistics of current iteration's start times."""
-        return _RuntimeSummaryStatistics(
-            list(self.queue.curr_iteration_start_times.values())
-        )
+        start_times = []
+        for queue in self._queues.values():
+            start_times.extend(queue.curr_iteration_start_times.values())
+        return _RuntimeSummaryStatistics(start_times)
 
     async def _is_batching_task_alive(self) -> bool:
-        """Gets whether default _BatchQueue's background task is alive.
+        """Gets whether every _BatchQueue's background task is alive.
 
-        Returns False if the batch handler doesn't use a default _BatchQueue.
+        Initializes the default _BatchQueue if no queues exist yet.
         """
 
-        if hasattr(self.queue, "_handle_batch_task"):
-            return not self.queue._handle_batch_task.done()
-        else:
-            return False
+        return all(
+            not queue._handle_batch_task.done() for queue in self._queues_or_default()
+        )
 
     async def _get_handling_task_stack(self) -> Optional[str]:
-        """Gets the stack for the default _BatchQueue's background task.
+        """Gets the stacks for the _BatchQueues' background tasks."""
 
-        Returns empty string if the batch handler doesn't use a default _BatchQueue.
-        """
-
-        if hasattr(self.queue, "_handle_batch_task"):
+        stack_traces = []
+        for queue in self._queues_or_default():
             str_buffer = io.StringIO()
-            self.queue._handle_batch_task.print_stack(file=str_buffer)
-            return str_buffer.getvalue()
-        else:
-            return None
+            queue._handle_batch_task.print_stack(file=str_buffer)
+            stack_traces.append(str_buffer.getvalue())
+
+        return "\n".join(stack_traces)
 
 
 def _validate_max_batch_size(max_batch_size):
@@ -933,7 +1033,9 @@ def batch(
         max_concurrent_batches: the maximum number of batches that can be
             executed concurrently. If the number of concurrent batches exceeds
             this limit, the batch handler will wait for a batch to complete
-            before sending the next batch to the underlying function.
+            before sending the next batch to the underlying function. With
+            model multiplexing, requests for each multiplexed model ID are
+            batched separately, and this limit applies to each model ID.
         batch_size_fn: optional function to compute the effective batch size.
             If provided, this function takes a list of items and returns an
             integer representing the batch size. This is useful for batching
@@ -1007,10 +1109,11 @@ def batch(
                         "with more than one value."
                     )
 
-            batch_queue = lazy_batch_queue_wrapper.queue
-
             future = get_or_create_event_loop().create_future()
             request_context = serve.context._get_serve_request_context()
+            batch_queue = lazy_batch_queue_wrapper.get_queue(
+                request_context.multiplexed_model_id
+            )
             trace_context = get_trace_context()
             batch_queue.put(
                 _SingleRequest(
