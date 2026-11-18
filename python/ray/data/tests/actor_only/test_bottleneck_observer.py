@@ -25,6 +25,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     format_snapshot,
     is_circular,
     slack,
+    slack_toward,
     time_to_free,
 )
 
@@ -352,6 +353,24 @@ def test_stable_after_a_full_window_named_and_until_a_full_window_unnamed():
     assert stable.update(set(), {"A"}, now=27.0) == set()
 
 
+def test_slack_scales_only_ops_on_the_recipients_path():
+    """A -> B, and D on a branch that never meets B. Growing B from 2 to 3
+    (b'/b = 1.5) pushes 1.5x the flow through A; D carries the same flow as
+    before, so it keeps factor 1."""
+    shares = {
+        "A": OpShares(busy=0.5, obp=0.5, starved=0.0, actors=10),
+        "B": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2),
+        "D": OpShares(busy=0.5, obp=0.5, starved=0.0, actors=10),
+    }
+    next_ops = {"A": ("B",), "B": (), "D": ()}
+    by_op = slack_toward(shares, "B", 3, next_ops, SLACK_MARGIN)
+
+    # A: 10 - ceil(10 x 0.5 x 1.5 x 1.2) = 10 - 9; D: 10 - ceil(10 x 0.5 x 1.2) = 4.
+    assert by_op == {"A": 1, "D": 4}
+    # No recipient: every op at factor 1.
+    assert slack_toward(shares, None, 0, next_ops, SLACK_MARGIN)["A"] == 4
+
+
 class _Clock:
     def __init__(self):
         self.now = 0.0
@@ -513,6 +532,22 @@ def test_observer_attributes_output_backpressure_by_consumer_state(
         assert (edge.producer_blocked, edge.producer_self_limited) == (0.0, 1.0)
     names: Dict[Any, str] = {producer: "P", consumer: "C"}
     assert [names[op] for op, _ in snapshot.bottlenecks] == [expected]
+
+
+def test_victim_ttf_is_outputs_and_in_flight_work_over_consume_rate():
+    producer = _Op("P", serving=2)
+    consumer = _Op("C", serving=1, busy_slots=1.0)
+    producer.metrics.num_task_outputs_generated = 30
+    producer.metrics.num_tasks_finished = 10  # 3 outputs per task
+    observer, _, step = _observer(producer, consumer, queued=(0, 1))
+    for _ in range(5):
+        consumer.metrics.num_task_inputs_processed += 2  # 2 blocks/s
+        step()
+
+    # (4 unconsumed + 2 tasks x 3 outputs) / 2 blocks/s.
+    assert observer.victim_ttf(cast(Any, producer), 2, 4) == pytest.approx(5.0)
+    # An idle actor with nothing buffered frees at once.
+    assert observer.victim_ttf(cast(Any, producer), 0, 0) == 0.0
 
 
 def test_short_tasks_between_samples_count_as_busy():

@@ -3,7 +3,16 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, AbstractSet, Any, Callable, Dict, List, Sequence
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+)
 
 from ray.data._internal.experimental.execution.sizer.metrics import (
     OptimizerMetrics,
@@ -109,6 +118,7 @@ class PipelineOptimizer:
         profiles: "OpProfiles",
         growth_delta: Dict["ExperimentalActorPoolMapOperator", int],
         seconds_since_allocation_change: float,
+        bottleneck: Optional[Any] = None,
     ) -> List[PlacedSizingRequest]:
         """Advance in-flight work, then collect this tick's proposals.
 
@@ -133,6 +143,7 @@ class PipelineOptimizer:
             next_ops=profiles.next_ops,
             seconds_since_allocation_change=seconds_since_allocation_change,
             now=self._clock(),
+            bottleneck=bottleneck,
             **self._signals.signal_dict(),  # type: ignore[arg-type]
         )
         for rule in self._rules:

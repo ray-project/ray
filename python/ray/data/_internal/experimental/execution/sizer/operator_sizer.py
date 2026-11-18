@@ -37,6 +37,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 )
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     BottleneckObserver,
+    BottleneckTick,
 )
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
@@ -157,6 +158,8 @@ class OperatorSizer:
         # Actors held last tick for each held op (see SizingTicker), and the
         # one-time grant to that count queued when its hold releases.
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
+        # This tick's bottleneck model (set each tick before the optimizer).
+        self._bottleneck: Optional[BottleneckTick] = None
         self._grow_to_held: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Warm the non-blocking allocation cache, so the first ticks read a
         # real allocation instead of the cold-cache empty value (the client
@@ -229,7 +232,10 @@ class OperatorSizer:
         if ctx is None:
             return
         self._note_held_ops(ctx)
-        self._bottleneck_observer.log_tick(ctx.capacity)
+        # The bottleneck model, once per tick, before any rule debits free
+        # capacity: the optimizer acts on it and the log line shows it.
+        self._bottleneck = self._bottleneck_observer.tick(ctx.capacity)
+        self._bottleneck_observer.log_tick(self._bottleneck)
         # Picks up placement groups a ray_remote_args_fn created since the
         # last tick, so later views take their bundles out of the slice.
         self._register_placement_groups()
@@ -298,6 +304,7 @@ class OperatorSizer:
                 for op in self._profiles.actor_pool_ops
             },
             seconds_since_allocation_change=seconds_since_allocation_change,
+            bottleneck=self._bottleneck,
         ):
             self._apply(placed)
 

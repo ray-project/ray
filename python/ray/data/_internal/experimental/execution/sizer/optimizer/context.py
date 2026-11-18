@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, AbstractSet, Dict, Sequence, Tuple
+from typing import TYPE_CHECKING, AbstractSet, Any, Dict, Optional, Sequence, Tuple
 
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import NodeIdStr
@@ -82,6 +82,9 @@ class OptimizationContext:
     # Wants a rule could not fill from free capacity. The optimizer merges
     # these into the next sizing pass so they build a shortfall streak and can
     # qualify the op for a capacity transfer.
+    # This tick's bottleneck model (bottleneck_observer.BottleneckTick), or
+    # None when the caller did not compute one.
+    bottleneck: Optional[Any] = None
     silent_shortfalls: Dict["ExperimentalActorPoolMapOperator", OpShortfall] = field(
         default_factory=dict
     )

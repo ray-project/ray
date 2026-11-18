@@ -192,6 +192,20 @@ class Assessment(Generic[K]):
     # The most severe stable bottleneck able to grow, whose victims are listed.
     recipient: Optional[K]
     victims: Mapping[K, DonorVictims]
+    # Actors each op could give up and keep up after the recipient grows by
+    # one actor (factor 1 for ops off its path, and for every op when there
+    # is no recipient).
+    slack: Mapping[K, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BottleneckTick(Generic[K]):
+    """One sizer tick's model, computed once and shared by the optimizer and
+    the log line."""
+
+    snapshot: Snapshot[K]
+    stable: AbstractSet[K]
+    assessment: Assessment[K]
 
 
 # --- pure model ------------------------------------------------------------
@@ -330,6 +344,42 @@ def slack(actors: int, busy: float, growth: float, margin: float) -> int:
     already short for that growth."""
     needed = math.ceil(actors * busy * growth * (1 + margin))
     return actors - needed
+
+
+def on_path(op: K, recipient: K, next_ops: Mapping[K, Sequence[K]]) -> bool:
+    """Whether ``op`` carries the recipient's flow: it is upstream or
+    downstream of it."""
+    return (
+        path_between(op, recipient, next_ops) is not None
+        or path_between(recipient, op, next_ops) is not None
+    )
+
+
+def slack_toward(
+    shares: Mapping[K, OpShares],
+    recipient: Optional[K],
+    b_prime: int,
+    next_ops: Mapping[K, Sequence[K]],
+    margin: float,
+) -> Dict[K, int]:
+    """Each other op's slack if ``recipient`` grows from its current size b
+    to ``b_prime``: ops on its path carry b'/b more work; ops off it (another
+    union branch) carry the same. With no recipient, every factor is 1."""
+    growth = 1.0
+    if recipient is not None and recipient in shares:
+        b = max(1, shares[recipient].actors)
+        growth = max(b_prime, b) / b
+    slack_by_op: Dict[K, int] = {}
+    for op, op_shares in shares.items():
+        if op == recipient:
+            continue
+        factor = (
+            growth
+            if recipient is not None and on_path(op, recipient, next_ops)
+            else 1.0
+        )
+        slack_by_op[op] = slack(op_shares.actors, op_shares.busy, factor, margin)
+    return slack_by_op
 
 
 def path_between(
@@ -790,7 +840,14 @@ class BottleneckObserver:
                 summary = self._donor_victims(donor, recipient, nodes, snapshot)
                 if summary is not None:
                     victims[donor] = summary
-        return Assessment(ranked_stable, eligibility, recipient, victims)
+        slack_by_op = slack_toward(
+            snapshot.shares,
+            recipient,
+            (snapshot.shares[recipient].actors + 1) if recipient is not None else 0,
+            self._profiles.next_ops,
+            self._slack_margin,
+        )
+        return Assessment(ranked_stable, eligibility, recipient, victims, slack_by_op)
 
     def _freeable_by_node(
         self,
@@ -882,13 +939,8 @@ class BottleneckObserver:
         backlog queued ahead of the victim's outputs.
         """
         view = placement_view.build_op_placement_view(donor, rank_victims=True)
-        metrics = donor.metrics
-        outputs_per_task = metrics.num_task_outputs_generated / max(
-            1, metrics.num_tasks_finished
-        )
-        rate = self._consume_rate(donor)
         ttfs = sorted(
-            time_to_free(unconsumed + in_flight * outputs_per_task, rate)
+            self.victim_ttf(donor, in_flight, unconsumed)
             for node in nodes
             for in_flight, unconsumed in view.victim_drain_cost_by_node.get(node, [])
         )
@@ -908,20 +960,50 @@ class BottleneckObserver:
             ),
         )
 
-    def log_tick(self, capacity: "TickCapacitySnapshot") -> None:
-        if not logger.isEnabledFor(logging.DEBUG):
-            return
+    def victim_ttf(
+        self,
+        donor: "ExperimentalActorPoolMapOperator",
+        tasks_in_flight: int,
+        unconsumed_outputs: int,
+    ) -> float:
+        """Estimated seconds until one of ``donor``'s actors drains: its
+        unconsumed output blocks plus its tasks in flight x the donor's
+        outputs per task, over the rate its consumer finishes blocks. A lower
+        bound when the consumer has a backlog queued ahead of them."""
+        metrics = donor.metrics
+        outputs_per_task = metrics.num_task_outputs_generated / max(
+            1, metrics.num_tasks_finished
+        )
+        return time_to_free(
+            unconsumed_outputs + tasks_in_flight * outputs_per_task,
+            self._consume_rate(donor),
+        )
+
+    def tick(
+        self, capacity: "TickCapacitySnapshot"
+    ) -> BottleneckTick["ExperimentalActorPoolMapOperator"]:
+        """This tick's model: snapshot, stable bottlenecks (advancing their
+        persistence) and assessment. Call once per sizer tick."""
         snapshot = self.snapshot()
         stable = self._stability.update(
             {op for op, _ in snapshot.bottlenecks},
             set(snapshot.shares),
             self._clock(),
         )
+        return BottleneckTick(
+            snapshot=snapshot,
+            stable=stable,
+            assessment=self.assess(snapshot, capacity, stable),
+        )
+
+    def log_tick(
+        self, tick: BottleneckTick["ExperimentalActorPoolMapOperator"]
+    ) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
         logger.debug(
             "BottleneckObserver: %s",
-            format_snapshot(
-                snapshot, self._names, self.assess(snapshot, capacity, stable)
-            ),
+            format_snapshot(tick.snapshot, self._names, tick.assessment),
         )
 
 
@@ -960,6 +1042,11 @@ def format_snapshot(
 
     if not snapshot.shares:
         return "warming up (no op has a full window yet)"
+    slack_by_op = (
+        assessment.slack
+        if assessment is not None and assessment.slack
+        else snapshot.slack
+    )
     bottlenecks = ", ".join(
         f"{name(op)}(sev={sev:.2f}, n={snapshot.shares[op].actors})"
         for op, sev in snapshot.bottlenecks
@@ -974,7 +1061,7 @@ def format_snapshot(
         f"{name(op)} busy={s.busy:.2f} obp={s.obp:.2f} starved={s.starved:.2f} "
         f"n={s.actors}"
         + (f" unstaffed={s.unstaffed:.2f}" if s.unstaffed > 0 else "")
-        + (f" slack={snapshot.slack[op]}" if op in snapshot.slack else "")
+        + (f" slack={slack_by_op[op]}" if op in slack_by_op else "")
         for op, s in snapshot.shares.items()
     )
     line = f"bottlenecks=[{bottlenecks}] | edges=[{edges}] | ops=[{ops}]"
