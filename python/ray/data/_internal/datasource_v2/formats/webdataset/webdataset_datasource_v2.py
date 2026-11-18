@@ -196,6 +196,7 @@ class WebDatasetDatasourceV2(FileDataSourceV2):
             allow_unsafe_deserialization=self._allow_unsafe_deserialization,
             open_stream_args=dict(self._open_stream_args),
             synthesized_columns=self._synthesized_columns,
+            target_block_size=DataContext.get_current().target_max_block_size,
             partitioning=options.get("partitioning"),
             shuffle=self._shuffle,
         )

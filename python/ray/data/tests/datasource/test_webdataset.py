@@ -471,6 +471,42 @@ def test_read_webdataset_chunked_samples(
     )
 
 
+def test_read_webdataset_v2_cuts_tables_at_target_block_size(tmp_path):
+    """A 1-byte target block size yields a table per sample, and no target yields
+    one table."""
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_reader import (  # noqa: E501
+        WebDatasetReader,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FileManifest,
+    )
+
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        for i in range(10):
+            writer.write(f"{i:06d}.bin", bytes(1000))
+    manifest = FileManifest.construct_manifest(
+        paths=[path], sizes=[os.path.getsize(path)], chunk_metadatas=[None]
+    )
+
+    def table_rows(target_block_size):
+        reader = WebDatasetReader(
+            filesystem=pa.fs.LocalFileSystem(),
+            decoder=None,
+            fileselect=None,
+            filerename=None,
+            suffixes=None,
+            verbose_open=False,
+            expand_json=False,
+            allow_unsafe_deserialization=False,
+            target_block_size=target_block_size,
+        )
+        return [table.num_rows for table in reader.read(manifest)]
+
+    assert table_rows(1) == [1] * 10
+    assert table_rows(None) == [10]
+
+
 def test_read_webdataset_chunked_heterogeneous_keys(
     ray_start_2_cpus, tmp_path, use_datasource_v2
 ):

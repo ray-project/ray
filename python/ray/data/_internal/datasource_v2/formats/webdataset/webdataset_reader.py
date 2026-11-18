@@ -2,6 +2,7 @@
 
 import functools
 import io
+import sys
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 import pyarrow as pa
@@ -36,6 +37,25 @@ def rows_to_arrow(rows: List[Dict[str, Any]]) -> pa.Table:
     )
 
 
+def _estimate_bytes(value: Any) -> int:
+    """Estimate the in-memory size of a decoded sample value."""
+    if isinstance(value, (bytes, str)):
+        return len(value)
+    if isinstance(value, dict):
+        return sum(_estimate_bytes(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return sum(_estimate_bytes(v) for v in value)
+    nbytes = getattr(value, "nbytes", None)
+    if isinstance(nbytes, int):
+        # NumPy arrays and torch tensors.
+        return nbytes
+    if hasattr(value, "getbands"):
+        # PIL images.
+        width, height = value.size
+        return width * height * len(value.getbands())
+    return sys.getsizeof(value)
+
+
 @DeveloperAPI
 class WebDatasetReader(Reader[FileManifest]):
     """Reads the tar shards in a manifest and yields Arrow tables.
@@ -56,6 +76,7 @@ class WebDatasetReader(Reader[FileManifest]):
         allow_unsafe_deserialization: bool,
         open_stream_args: Optional[Dict[str, Any]] = None,
         synthesized_columns: Sequence[SynthesizedColumn] = (),
+        target_block_size: Optional[int] = None,
     ):
         """Initialize the reader.
 
@@ -74,6 +95,9 @@ class WebDatasetReader(Reader[FileManifest]):
                 ``DataContext.streaming_read_buffer_size``.
             synthesized_columns: Columns computed from the read position, such
                 as the path column.
+            target_block_size: Estimated bytes per yielded table. A table is
+                cut at this size or at ``WEBDATASET_READ_CHUNK_SIZE`` rows,
+                whichever comes first. ``None`` cuts by row count only.
         """
         self._filesystem = filesystem
         self._open_stream_args = open_stream_args or {}
@@ -87,6 +111,7 @@ class WebDatasetReader(Reader[FileManifest]):
         self._synthesized_columns: Tuple[SynthesizedColumn, ...] = tuple(
             synthesized_columns
         )
+        self._target_block_size = target_block_size
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         retried_io_errors = DataContext.get_current().retried_io_errors
@@ -116,12 +141,18 @@ class WebDatasetReader(Reader[FileManifest]):
                 expand_grayscale=True,
             )
             chunk = []
+            chunk_bytes = 0
             for row in rows:
                 chunk.append(row)
-                if len(chunk) >= WEBDATASET_READ_CHUNK_SIZE:
+                chunk_bytes += sum(_estimate_bytes(v) for v in row.values())
+                if len(chunk) >= WEBDATASET_READ_CHUNK_SIZE or (
+                    self._target_block_size is not None
+                    and chunk_bytes >= self._target_block_size
+                ):
                     yield self._finalize(chunk, unit, rows_before)
                     rows_before += len(chunk)
                     chunk = []
+                    chunk_bytes = 0
             if chunk:
                 yield self._finalize(chunk, unit, rows_before)
 

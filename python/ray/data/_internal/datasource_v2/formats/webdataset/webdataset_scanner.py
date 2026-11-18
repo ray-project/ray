@@ -35,6 +35,7 @@ class WebDatasetScanner(FileScanner):
     allow_unsafe_deserialization: bool = False
     open_stream_args: Dict[str, Any] = field(default_factory=dict)
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
+    target_block_size: Optional[int] = None
 
     def read_schema(self) -> Optional[pa.Schema]:
         return self.schema
@@ -51,4 +52,5 @@ class WebDatasetScanner(FileScanner):
             allow_unsafe_deserialization=self.allow_unsafe_deserialization,
             open_stream_args=dict(self.open_stream_args),
             synthesized_columns=self.synthesized_columns,
+            target_block_size=self.target_block_size,
         )
