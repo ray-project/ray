@@ -44,11 +44,15 @@ class ThreadRunner:
                 # a task or actor method. The training function runs in this
                 # thread and its exception is reported to the controller instead,
                 # so enter the debugger here while the failing frames are alive.
-                if rpdb._is_ray_debugger_post_mortem_enabled():
+                # Like Ray core, skip control-flow exceptions such as SystemExit.
+                if rpdb._is_ray_debugger_post_mortem_enabled() and isinstance(
+                    e, Exception
+                ):
                     try:
                         rpdb._post_mortem()
-                    except Exception:
-                        # Never let a debugger failure mask the user's exception.
+                    except BaseException:
+                        # Never let a debugger failure mask the user's exception,
+                        # or the controller would see the worker as succeeded.
                         logger.exception("Failed to start the post-mortem debugger.")
 
                 # Exclude the first 3 frames from the traceback, which are
