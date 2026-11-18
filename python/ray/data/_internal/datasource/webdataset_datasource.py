@@ -217,7 +217,7 @@ def _group_by_keys(
         if suffix in current_sample:
             raise ValueError(
                 f"{fname}: duplicate file name in tar file "
-                + f"{suffix} {current_sample.keys()}, tar is {meta.get('__url__')}"
+                + f"{suffix} {current_sample.keys()}, tar is {meta['__url__']}"
             )
         if suffixes is None or _check_suffix(suffix, suffixes):
             current_sample[suffix] = value
