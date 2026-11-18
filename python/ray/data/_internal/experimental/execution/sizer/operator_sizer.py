@@ -190,9 +190,9 @@ class OperatorSizer:
             clock=clock,
             pg_bundles=pg_bundles,
             unknown_pg_cap_by_op=unknown_pg_cap_by_op,
-            hold_target=(
-                self._policy.warmup_target if SIZER_BOTTLENECK_MODEL else None
-            ),
+            # Held ops reserve their warmup share whether or not the bottleneck
+            # model is on; only its memory-aware share is behind the flag.
+            hold_target=self._policy.warmup_target,
         )
 
     # --- lifecycle ------------------------------------------------------------

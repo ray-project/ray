@@ -161,10 +161,10 @@ SIZER_BOTTLENECK_ARROW_MARGIN: float = env_float(
     "RAY_DATA_SIZER_BOTTLENECK_ARROW_MARGIN", 0.1
 )
 # Drive cross-op sizing from the bottleneck model (bottleneck_observer.py):
-# grow the stable bottleneck, fund it from donors' slack, and reserve held
-# ops' memory-aware warmup share. Off keeps the per-op rules
-# (SilentBottleneckGrant, CapacityTransfer's recipient/donor policy,
-# blocks_upstream, the warm table's growth rows).
+# grow the stable bottleneck, fund it from donors' slack, and size warmup
+# shares memory-aware (held ops reserve their share with or without it). Off
+# keeps the per-op rules (SilentBottleneckGrant, CapacityTransfer's
+# recipient/donor policy, the warm table's growth rows).
 SIZER_BOTTLENECK_MODEL: bool = env_bool("RAY_DATA_SIZER_BOTTLENECK_MODEL", False)
 # Most a bottleneck transfer may grow the recipient in one step: b'/b.
 SIZER_BOTTLENECK_MAX_STEP_RATIO: float = env_float(

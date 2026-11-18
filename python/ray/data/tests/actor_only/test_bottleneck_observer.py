@@ -169,8 +169,8 @@ def test_last_op_working_through_its_tail_is_not_a_bottleneck():
 
 
 def test_sink_bottleneck_uses_only_its_upstream_edge():
-    """A sink that limits the pipeline (the blocks_upstream case) is found
-    from its producer's output backpressure alone."""
+    """A sink that limits the pipeline is found from its producer's output
+    backpressure alone."""
     shares = {
         "B": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=6),
         "Write": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=3),

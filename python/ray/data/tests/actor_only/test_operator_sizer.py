@@ -668,42 +668,49 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
     assert _tick(sizer).request[write].delta >= 1
 
 
-def test_op_awaiting_on_start_has_its_min_size_held_until_it_runs():
+def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
     # An op held at zero actors until its on_start runs must still find room
     # when it does. Without a hold, upstream ops can take every node's space
-    # first and the op (e.g. a Write sink) can then never place its first
-    # actor. Its min-size actors stay out of the tick's free capacity, with
-    # memory held as well as CPU, so every phase sizes and places around them.
+    # first and the op (e.g. a Write sink) can then never grow past its first
+    # actor. Its warmup share stays out of the tick's free capacity, with
+    # memory held as well as CPU, so every phase sizes and places around it;
+    # once on_start runs it grows straight to that share. Not behind the
+    # bottleneck model.
     read = _FakeOp(
-        "read", _FakePool(min_size=1, max_size=10, cpu=1, memory=2, running=1)
+        "read", _FakePool(min_size=1, max_size=10, cpu=1, memory=1, running=1)
     )
     write = _write_op(
         "write",
-        _FakePool(min_size=2, max_size=10, cpu=1, memory=3),
+        _FakePool(min_size=1, max_size=10, cpu=1, memory=1),
         inputs=[read],
         awaiting_on_start=True,
     )
     view = DatasetAllocationView(
-        reserved_by_node={"node0": ExecutionResources(cpu=8, memory=10)},
+        reserved_by_node={"node0": ExecutionResources(cpu=16, memory=20)},
         labels_by_node={"node0": {}},
     )
     sizer, _ = _bootstrapped(read, write, view=view)
+    target = sizer._policy.warmup_target(write, view.reserved_by_node["node0"])
+    assert target is not None and target > write._pool.min_size()
 
+    assert write not in _tick(sizer).request
     free = _snapshot_of(sizer).free_by_node["node0"]
-    # 8 CPU / 10 memory, minus read's running actor, minus write's 2 held.
-    assert (free.cpu, free.memory) == (5, 2)
+    # Minus read's running actor, minus write's held share.
+    assert (free.cpu, free.memory) == (16 - 1 - target, 20 - 1 - target)
 
-    # Once on_start runs, the hold is gone; write is below min size, so it is
-    # granted and placed before anything else can take the room.
+    # on_start runs on write's first input, so read has produced output.
+    read.metrics.num_task_outputs_generated = 1
     write.pending_on_start = False
-    assert _tick(sizer).request[write].delta == 2
+    request = _tick(sizer).request
+    assert request[write].delta == target
+    assert request[write].reason == "held share (hold released)"
 
 
 def _with_bottleneck_model(sizer: "_TestSizer") -> "_TestSizer":
-    """Turn on what RAY_DATA_SIZER_BOTTLENECK_MODEL selects at construction:
-    memory-aware warmup shares and holding held ops' shares."""
+    """Turn on what RAY_DATA_SIZER_BOTTLENECK_MODEL selects at construction
+    that these tests depend on: memory-aware warmup shares. (Held ops reserve
+    their share with or without it.)"""
     sizer._policy.memory_aware_warmup = True
-    sizer._ticker._hold_target = sizer._policy.warmup_target
     return sizer
 
 
@@ -820,8 +827,8 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
 
 def test_op_waiting_on_upstream_output_reserves_its_share():
     # The PR #68257 hold keeps an op at min until its upstream produces
-    # output. Under the bottleneck model its share is held meanwhile, and
-    # it grows to it once the upstream output arrives.
+    # output. Its share is held meanwhile, and it grows to it once the
+    # upstream output arrives.
     ops, view = _video_pipeline()
     sizer, _ = _bootstrapped(*ops.values(), view=view)
     _with_bottleneck_model(sizer)
@@ -1274,6 +1281,9 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
         node="g1",
         inputs=[infer],
     )
+    # Upstream is producing, so write holds no share and free shows only the
+    # bundles taken out.
+    infer.metrics.num_task_outputs_generated = 1
     sizer, _ = _bootstrapped(infer, write, view=view)
     assert sizer.reporter.registered_placement_groups == [pg]
 
