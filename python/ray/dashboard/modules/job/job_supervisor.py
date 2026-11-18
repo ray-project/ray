@@ -195,12 +195,10 @@ class JobSupervisor:
             ):
                 logs_file.flush()
                 self._job_process = JobProcess(
-                    self._entrypoint,
-                    env,
-                    logs_file,
                     core_worker.register_job_process_group,
                     core_worker.cleanup_job_process_group,
                 )
+                self._job_process.start(self._entrypoint, env, logs_file)
                 return self._job_process
             child_process = subprocess.Popen(
                 self._entrypoint,
@@ -417,6 +415,7 @@ class JobSupervisor:
 
             if self._stop_event.is_set():
                 polling_task.cancel()
+                reap_driver = True
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32" and child_process.poll() is None:
@@ -455,7 +454,11 @@ class JobSupervisor:
                             "force-killed with SIGKILL."
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
+                        reap_driver = False
 
+                if self._job_process is not None:
+                    # The monitor can kill this actor as soon as it sees STOPPED.
+                    self._job_process.close(reap_driver=reap_driver)
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set

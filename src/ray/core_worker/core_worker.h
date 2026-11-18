@@ -293,15 +293,27 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   const WorkerID &GetWorkerID() const;
 
-  /// Whether Jobs can retain an unreaped child as a process-group identity.
+  /**
+   * @brief Check whether the worker can retain an unreaped Jobs helper.
+   * @return Whether the worker supports Jobs process-group cleanup.
+   */
   bool SupportsJobProcessGroupCleanup() const;
 
-  /// Register the Jobs helper before allowing it to start the entrypoint.
-  /// The caller must keep this child unreaped until CleanupJobProcessGroup succeeds.
+  /**
+   * @brief Register the Jobs helper before it starts the entrypoint.
+   * The caller must keep the helper unreaped until CleanupJobProcessGroup succeeds.
+   * @param pid PID of a direct child that leads its own process group.
+   * @return OK on registration, or an error if the helper is invalid or registration
+   * is unavailable.
+   */
   Status RegisterJobProcessGroup(int64_t pid);
 
-  /// Close registration and signal the owned Jobs group before releasing its identity.
-  /// Safe to call concurrently with registration and repeatedly during shutdown.
+  /**
+   * @brief Close registration and signal the owned Jobs group during shutdown.
+   * Safe to call concurrently with registration and to retry after an error.
+   * @return OK if the signal was sent or there is no group to signal. The caller
+   * must still reap the helper. On error, the group remains registered.
+   */
   Status CleanupJobProcessGroup();
 
   WorkerType GetWorkerType() const { return options_.worker_type; }

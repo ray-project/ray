@@ -6,6 +6,7 @@ that group before launching the entrypoint.
 """
 
 import json
+import logging
 import os
 import select
 import signal
@@ -13,23 +14,29 @@ import subprocess
 import sys
 from typing import Callable, Dict, Optional, TextIO
 
+logger = logging.getLogger(__name__)
+
+_START_DRIVER = b"1"
+_REAP_DRIVER = b"2"
+_DRIVER_REAP_TIMEOUT_S = 1
+
 
 class JobProcess:
     """Keep the group's leader waitable until native cleanup retires its PGID."""
 
     def __init__(
         self,
-        entrypoint: str,
-        env: Dict[str, str],
-        logs_file: TextIO,
         register_group: Callable[[int], None],
         cleanup_group: Callable[[], None],
     ):
         self.returncode: Optional[int] = None
+        self._register_group = register_group
         self._cleanup_group = cleanup_group
         self._registered = False
-        self._closed = False
         self._helper = None
+        self._control_write: Optional[int] = None
+
+    def start(self, entrypoint: str, env: Dict[str, str], logs_file: TextIO):
         control_read, self._control_write = os.pipe()
         try:
             self._helper = subprocess.Popen(
@@ -51,15 +58,15 @@ class JobProcess:
             )
             # Popen has completed setsid/exec. The helper waits on the control
             # pipe, so registration failure cannot leave a running entrypoint.
-            register_group(self._helper.pid)
+            self._register_group(self._helper.pid)
             self._registered = True
-            os.write(self._control_write, b"1")
+            os.write(self._control_write, _START_DRIVER)
             message = self._read_message(timeout=30)
             if message is None or "pid" not in message:
                 raise RuntimeError("Timed out starting the Jobs entrypoint")
             self.pid = message["pid"]
         except BaseException:
-            self.close()
+            self._close_after_error()
             raise
         finally:
             os.close(control_read)
@@ -79,36 +86,76 @@ class JobProcess:
 
     def poll(self) -> Optional[int]:
         """Read the driver's status, then clean its group before reaping the helper."""
-        if self._closed:
+        if self._control_write is None or self.returncode is not None:
             return self.returncode
         try:
             message = self._read_message(timeout=0)
             if message is not None:
                 self.returncode = message["returncode"]
-                self.close()
         except BaseException:
-            self.close()
+            self._close_after_error()
             raise
+        if self.returncode is not None:
+            self.close(reap_driver=True)
         return self.returncode
 
-    def close(self):
-        """Release the process identity only after group cleanup succeeds."""
-        if self._closed:
-            return
+    def _close_after_error(self):
+        try:
+            self.close()
+        except Exception:
+            logger.exception("Failed to clean up the Jobs watchdog")
+
+    def _reap_driver(self):
+        # A graceful stop can reach here before the watchdog has reported the
+        # driver's exit. The exit message means its PID is still reserved.
+        try:
+            if self.returncode is None:
+                message = self._read_message(timeout=_DRIVER_REAP_TIMEOUT_S)
+                if message is None:
+                    raise RuntimeError("Timed out waiting for driver exit status")
+                self.returncode = message["returncode"]
+            os.write(self._control_write, _REAP_DRIVER)
+            message = self._read_message(timeout=_DRIVER_REAP_TIMEOUT_S)
+            if message != {"driver_reaped": True}:
+                raise RuntimeError("Watchdog did not confirm driver reaping")
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            logger.warning(
+                "Could not reap the Jobs driver before group cleanup: %s", error
+            )
+
+    def close(self, *, reap_driver: bool = False):
+        """Clean the process group and release the helper's PID.
+
+        Args:
+            reap_driver: Ask the watchdog to reap the driver before group
+                cleanup. The caller must be done using the driver's PID.
+        """
+        if self._control_write is not None:
+            if self._helper is not None:
+                if self._registered:
+                    if reap_driver:
+                        self._reap_driver()
+                    self._cleanup_group()
+                else:
+                    try:
+                        os.killpg(self._helper.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                self._helper.stdout.close()
+            os.close(self._control_write)
+            self._control_write = None
+
         if self._helper is not None:
-            # Never call Popen.poll()/wait() before cleanup. Even a dead helper
-            # reserves its PID while it remains an unreaped child.
-            if self._registered:
-                self._cleanup_group()
+            # Keep the helper waitable until native cleanup retires the PGID.
+            # Once the pipes are closed, retries only need to reap the helper.
+            try:
+                self._helper.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Timed out reaping the Jobs watchdog %s", self._helper.pid
+                )
             else:
-                try:
-                    os.killpg(self._helper.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            self._helper.wait(timeout=5)
-            self._helper.stdout.close()
-        os.close(self._control_write)
-        self._closed = True
+                self._helper = None
 
 
 def _report(message):
@@ -116,13 +163,14 @@ def _report(message):
 
 
 def _run_watchdog(control_fd: int, logs_fd: int, entrypoint: str):
+    driver = None
     try:
         # Group-wide stop signals must leave the watchdog alive to report the
         # driver's exit. Caught handlers reset to SIG_DFL when Popen execs the
         # shell, so the driver retains its normal signal behavior.
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda *_: None)
-        if os.read(control_fd, 1) != b"1":
+        if os.read(control_fd, 1) != _START_DRIVER:
             return
         # The isolated helper has no Python threads. Unblock SIGINT here before
         # starting a driver that requests SIGINT for normal job stop.
@@ -136,31 +184,34 @@ def _run_watchdog(control_fd: int, logs_fd: int, entrypoint: str):
         )
         os.close(logs_fd)
         _report({"pid": driver.pid})
-        reported_exit = False
         poller = select.poll()
         poller.register(control_fd, select.POLLIN)
-        while True:
-            if poller.poll(100) and not os.read(control_fd, 1):
-                return
-            if not reported_exit:
-                # Reserve the driver's PID until group cleanup. The supervisor
-                # may still be using it to handle a concurrent stop request.
-                info = os.waitid(
-                    os.P_PID, driver.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT
+        while not poller.poll(100):
+            # The supervisor may still use the driver PID for a concurrent stop.
+            info = os.waitid(os.P_PID, driver.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if info is not None:
+                returncode = (
+                    info.si_status if info.si_code == os.CLD_EXITED else -info.si_status
                 )
-                if info is not None:
-                    returncode = (
-                        info.si_status
-                        if info.si_code == os.CLD_EXITED
-                        else -info.si_status
-                    )
-                    _report({"returncode": returncode})
-                    reported_exit = True
+                _report({"returncode": returncode})
+                request = os.read(control_fd, 1)
+                # Both a reap request and EOF release the driver's PID. The
+                # helper itself stays waitable until the group is cleaned.
+                driver.wait()
+                if request == _REAP_DRIVER:
+                    _report({"driver_reaped": True})
+                    os.read(control_fd, 1)
+                return
+        if not os.read(control_fd, 1):
+            driver.poll()
+    except BrokenPipeError:
+        # The supervisor closed the status pipe during shutdown.
+        if driver is not None:
+            driver.poll()
     except Exception as error:
         _report({"error": str(error)[:1024]})
     finally:
-        # The live helper is the group leader. This also handles supervisor
-        # SIGKILL, which closes the pipe without running native cleanup.
+        # The helper is the group leader and handles abrupt supervisor loss.
         os.killpg(os.getpgrp(), signal.SIGKILL)
 
 
