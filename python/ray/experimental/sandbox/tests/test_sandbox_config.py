@@ -20,8 +20,9 @@ def test_default_sandbox_config():
     assert config.ttl_seconds is None
     assert config.rootless is True
     assert config.network == "none"
-    assert config.readonly is True
     assert config.shell == "/bin/bash"
+    # The option is gone: every sandbox has a writable root filesystem.
+    assert not hasattr(config, "readonly")
     assert config._ignore_cgroups is False
 
     # SandboxConfig requires image
@@ -35,20 +36,26 @@ def test_default_sandbox_config():
         SandboxConfig(image=None)
 
 
+@pytest.mark.parametrize("workdir", ["sub", "./sub", "../sub"])
+def test_workdir_must_be_absolute(workdir):
+    """runsc refuses a relative cwd, but only when the container starts,
+    after the image pull."""
+    with pytest.raises(ValueError, match="workdir must be an absolute path"):
+        SandboxConfig(image="busybox:latest", workdir=workdir)
+
+
 def test_gvisor_sandbox_config():
     config = GVisorSandboxConfig(
         image="ubuntu:22.04",
         cpu=2.0,
         memory="4Gi",
         env={"TEST_VAR": "value"},
-        readonly=False,
         _ignore_cgroups=True,
     )
     assert config.image == "ubuntu:22.04"
     assert config.cpu == 2.0
     assert config.memory == "4Gi"
     assert config.env == {"TEST_VAR": "value"}
-    assert config.readonly is False
     assert config._ignore_cgroups is True
 
 
@@ -217,20 +224,17 @@ def test_sandbox_network_requires_rootful():
     assert config.network == "sandbox"
 
 
-def test_disk_requires_a_writable_rootfs():
-    config = SandboxConfig(image="python:3.10-slim", readonly=False, disk="10Gi")
+def test_disk_config():
+    # Every sandbox has an overlay to cap, with or without a workdir.
+    config = SandboxConfig(image="python:3.10-slim", disk="10Gi")
     assert config.disk == "10Gi"
-    # A readonly rootfs with a workdir runs on a private writable overlay.
     config = SandboxConfig(image="python:3.10-slim", workdir="/workspace", disk="1Gi")
     assert config.disk == "1Gi"
-    # No cap is fine either way.
     assert SandboxConfig(image="python:3.10-slim").disk == 0
-    with pytest.raises(ValueError, match="readonly=False or a workdir"):
-        SandboxConfig(image="python:3.10-slim", disk="10Gi")
     with pytest.raises(ValueError, match="non-negative"):
-        SandboxConfig(image="python:3.10-slim", readonly=False, disk=-1)
+        SandboxConfig(image="python:3.10-slim", disk=-1)
     with pytest.raises(ValueError):
-        SandboxConfig(image="python:3.10-slim", readonly=False, disk="lots")
+        SandboxConfig(image="python:3.10-slim", disk="lots")
 
 
 def test_gpu_ids_config():
