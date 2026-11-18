@@ -1,11 +1,12 @@
 import sys
-import time
 
 import pytest
 
 import ray
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.utils.broadcast import broadcast
+from ray.util.state import list_actors
 
 
 # Define a simple deployment for testing
@@ -27,9 +28,15 @@ class MockLLMDeployment:
 
     async def self_destruct(self):
         """Kill this replica's actor. Used for testing dead replica handling."""
+        import asyncio
         import os
 
-        os._exit(1)
+        # Exit about 0.5s after this call starts, not inside it. The router
+        # only treats a request as delivered once the replica's "accepted"
+        # message arrives; os._exit() inside the call can kill the process
+        # before that message leaves it, so the router retries on the other
+        # replica, which then exits too and leaves no live replica.
+        asyncio.get_running_loop().call_later(0.5, os._exit, 1)
 
 
 @pytest.fixture(scope="module")
@@ -146,8 +153,15 @@ async def test_dispatch_handles_dead_replica(serve_instance, request):
         # The call may raise if the actor dies mid-request
         pass
 
-    # Give Serve a moment to detect the dead replica
-    time.sleep(2)
+    # Wait for the replica process to die. Serve may not have dropped it from
+    # the replica set yet; broadcast skips a dead replica either way.
+    def replica_died():
+        return any(
+            actor["class_name"].startswith(f"ServeReplica:{app_name}:")
+            for actor in list_actors(filters=[("state", "=", "DEAD")])
+        )
+
+    wait_for_condition(replica_died)
 
     # Dispatch should still work with the remaining replica(s)
     # The dead replica will be skipped (ValueError caught in dispatch)
