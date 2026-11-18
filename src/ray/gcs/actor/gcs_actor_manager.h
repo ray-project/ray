@@ -367,6 +367,15 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   void NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &actor,
                                const rpc::ActorDeathCause &death_cause,
                                bool force_kill = true);
+
+  /**
+   * @brief Send a kill request using the target captured before actor deregistration.
+   * @param actor_id Actor named in the original shutdown request.
+   * @param worker_id Worker running that incarnation of the actor.
+   * @param raylet_address Raylet managing that worker.
+   * @param death_cause Reason for the shutdown.
+   * @param force_kill Whether to terminate the actor immediately.
+   */
   void NotifyRayletToKillActor(const ActorID &actor_id,
                                const WorkerID &worker_id,
                                const rpc::Address &raylet_address,

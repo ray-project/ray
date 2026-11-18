@@ -52,7 +52,11 @@ bool IsProcessAlive(pid_t pid);
 static constexpr char kProcDirectory[] = "/proc";
 
 #if defined(__linux__)
-/// Start time in clock ticks since boot from /proc/<pid>/stat.
+/**
+ * @brief Read a Linux process's start time from procfs.
+ * @param pid Process to identify.
+ * @return Clock ticks since boot, or nullopt if the start time cannot be read.
+ */
 std::optional<uint64_t> ReadProcessStartTime(pid_t pid);
 #endif
 
@@ -70,7 +74,7 @@ std::optional<std::error_code> KillProc(pid_t pid);
  * platforms.
  * @param pgid The process group identifier to kill.
  * @param sig The signal to send to the process group.
- * @return The error code if the kill failed, nullopt otherwise.
+ * @return On POSIX, an error code (zero on success). On Windows, nullopt.
  */
 std::optional<std::error_code> KillProcessGroup(pid_t pgid, int sig);
 

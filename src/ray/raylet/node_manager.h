@@ -838,6 +838,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                  const NodeManagerConfig &config);
 
 #if !defined(_WIN32)
+  /** @brief Tracks a disconnected worker's group until cleanup finishes. */
   struct PendingProcessGroupCleanup {
     ActorID actor_id;
     WorkerProcessGroup group;
@@ -845,9 +846,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     boost::asio::steady_timer timer;
   };
 
+  /**
+   * @brief Retain the worker's group for cleanup after it leaves the worker pool.
+   * @param worker Worker being disconnected.
+   * @param group Process group recorded at registration.
+   * @param graceful Whether to wait for the leader to exit before signaling the group.
+   */
   void ScheduleProcessGroupCleanup(const WorkerInterface &worker,
                                    WorkerProcessGroup group,
                                    bool graceful);
+
+  /**
+   * @brief Attempt pending cleanup and schedule another poll if needed.
+   * @param worker_id Worker whose process group is being cleaned up.
+   * @return True when no further cleanup is pending, false when a retry is scheduled.
+   */
   bool PollProcessGroupCleanup(const WorkerID &worker_id);
 
   /// Owns deferred cleanup after the worker no longer belongs to the worker pool.
@@ -855,6 +868,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       pending_process_group_cleanup_;
 #endif
 
+  /**
+   * @brief Interrupt graceful cleanup for the specified actor's worker.
+   * @param worker_id Worker named in the force-kill request.
+   * @param actor_id Actor that must match the pending cleanup record.
+   * @return OK if no matching cleanup remains, or IOError if a retry is scheduled.
+   */
   Status ForceCleanupPendingProcessGroup(const WorkerID &worker_id,
                                          const ActorID &actor_id);
 

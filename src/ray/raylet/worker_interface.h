@@ -40,9 +40,11 @@ enum WorkerType : int;
 
 namespace raylet {
 
+/** @brief Identity of an isolated worker process group captured at registration. */
 struct WorkerProcessGroup {
   pid_t id;
 #if defined(__linux__)
+  /// Used to detect PID reuse before signaling a group with a live leader.
   std::optional<uint64_t> leader_start_time = std::nullopt;
 #endif
 };
