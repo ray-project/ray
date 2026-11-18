@@ -451,38 +451,47 @@ def test_preflight_all_reduce_then_a_diagnosis_that_reattempts(cluster):
     ]
 
 
-# A communicator whose two ranks launched different numbers of AllReduce, and
-# never progress: what `ncclras -f json` reports for a hung job.
-_FROZEN_RAS_REPORT = {
-    "timestamp": "2026-06-19 00:00:00",
-    "communicators": [
-        {
-            "hash": "0x2b9ffd12ea17b069",
-            "ranks": [
-                {
-                    "rank": rank,
-                    "host": "10.255.255.255",
-                    "pid": rank,
-                    "status": {
-                        "init_state": 0,
-                        "async_error": 0,
-                        "finalize_called": False,
-                        "destroy_flag": False,
-                        "abort_flag": False,
-                    },
-                    "collective_counts": {"AllReduce": count},
-                }
-                for rank, count in ((0, 5), (1, 4))
-            ],
-        }
-    ],
-}
+def _communicator(comm_hash, counts):
+    """A communicator in a `ncclras -f json` report, whose ranks launched
+    ``counts`` AllReduce."""
+    return {
+        "hash": comm_hash,
+        "ranks": [
+            {
+                "rank": rank,
+                "host": "10.255.255.255",
+                "pid": rank,
+                "status": {
+                    "init_state": 0,
+                    "async_error": 0,
+                    "finalize_called": False,
+                    "destroy_flag": False,
+                    "abort_flag": False,
+                },
+                "collective_counts": {"AllReduce": count},
+            }
+            for rank, count in enumerate(counts)
+        ],
+    }
+
+
+def _ras_report(*communicators):
+    return {"timestamp": "2026-06-19 00:00:00", "communicators": list(communicators)}
+
+
+# Its ranks launched different numbers of AllReduce, and never progress: a
+# hung communicator.
+_HUNG_COMM = _communicator("0x2b9ffd12ea17b069", (5, 4))
+# Its ranks agree on how many AllReduce they launched.
+_HEALTHY_COMM = _communicator("0x7c1f0e0d3a9b4c21", (5, 5))
 
 
 @pytest.fixture
-def fake_ncclras(tmp_path, monkeypatch):
-    """A local cluster whose `ncclras` reports a hung communicator, with the
-    NCCL hang detector on, in fail mode, confirming a hang in 2 seconds."""
+def fake_ncclras(request, tmp_path, monkeypatch):
+    """A local cluster whose `ncclras` reports a hung communicator, or the
+    report the test is parametrized with, with the NCCL hang detector on, in
+    fail mode, confirming a hang in 2 seconds."""
+    report = getattr(request, "param", _ras_report(_HUNG_COMM))
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     ncclras = bin_dir / "ncclras"
@@ -492,7 +501,7 @@ def fake_ncclras(tmp_path, monkeypatch):
         "if sys.argv[sys.argv.index('-f') + 1] == 'text':\n"
         "    print('fake ncclras text report')\n"
         "else:\n"
-        f"    print({json.dumps(json.dumps(_FROZEN_RAS_REPORT))})\n"
+        f"    print({json.dumps(json.dumps(report))})\n"
     )
     ncclras.chmod(0o755)
 
@@ -543,6 +552,51 @@ def test_the_nccl_hang_detector_reattempts_a_hung_run(fake_ncclras, tmp_path):
     assert (ras_dir / "ncclras_2026-06-19-00-00-00.json").exists()
     # Without TORCH_FR_BUFFER_SIZE, there is no Flight Recorder dump.
     assert not (hang_dir / "flight_recorder").exists()
+
+
+@pytest.mark.parametrize("fake_ncclras", [_ras_report(_HEALTHY_COMM)], indirect=True)
+def test_the_nccl_hang_detector_lets_a_healthy_run_finish(fake_ncclras, tmp_path):
+    """Like test_nccl_ras_hang_detection.py's healthy run on GPUs: when the
+    ranks agree, nothing is suspected, so the run finishes and nothing is
+    uploaded. It trains for longer than a hang takes to confirm."""
+    trainer = DataParallelTrainer(
+        lambda: time.sleep(6),
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            name="healthy",
+            storage_path=str(tmp_path / "storage"),
+            failure_config=ray.train.FailureConfig(max_failures=0),
+        ),
+    )
+    trainer.fit()
+
+    assert not (tmp_path / "storage" / "healthy" / "hang_detector").exists()
+
+
+@pytest.mark.parametrize(
+    "fake_ncclras", [_ras_report(_HUNG_COMM, _HEALTHY_COMM)], indirect=True
+)
+def test_the_nccl_hang_detector_names_only_the_hung_communicator(
+    fake_ncclras, tmp_path
+):
+    """Like test_nccl_ras_hang_detection.py's two communicators on GPUs, of
+    which only one hangs: the hang is confirmed in that one alone."""
+    trainer = DataParallelTrainer(
+        lambda: time.sleep(300),
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            name="one_hung",
+            storage_path=str(tmp_path / "storage"),
+            failure_config=ray.train.FailureConfig(max_failures=0),
+        ),
+    )
+    with pytest.raises(HealthCheckError) as error:
+        trainer.fit()
+
+    message = str(error.value)
+    assert "1 communicator(s) made no collective progress" in message
+    assert _HUNG_COMM["hash"] in message
+    assert _HEALTHY_COMM["hash"] not in message
 
 
 if __name__ == "__main__":

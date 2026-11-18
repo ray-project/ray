@@ -1,10 +1,10 @@
 """Probes of the NCCL hang detector. ``NCCLRASProbe`` polls NCCL RAS during
 training, and the others capture a hang's diagnostics. Each one wraps a helper
-in ``utils``, and passes its ``timeout_s`` to the command it runs."""
+in ``probe_utils``, and passes its ``timeout_s`` to the command it runs."""
 import os
 from typing import Optional
 
-from ray.train.health.nccl_ras.utils import (
+from ray.train.health.nccl_ras.probe_utils import (
     RASQueryError,
     dump_flight_recorder,
     dump_stack_trace,

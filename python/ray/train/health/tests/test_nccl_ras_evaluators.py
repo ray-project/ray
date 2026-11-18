@@ -31,7 +31,8 @@ from ray.train.health.nccl_ras.constants import (
     NCCLHangDetectorState,
 )
 from ray.train.health.nccl_ras.evaluators import ConfirmedHangEvaluator
-from ray.train.health.nccl_ras.utils import RASQueryError, RASReport, parse_ras_schema
+from ray.train.health.nccl_ras.probe_utils import RASQueryError
+from ray.train.health.nccl_ras.utils import RASReport, parse_ras_schema
 from ray.train.v2._internal.constants import (
     HANG_DETECTOR_DIRNAME,
     NCCL_RAS_ACTION_ENV_VAR,

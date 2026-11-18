@@ -10,7 +10,12 @@ import types
 
 import pytest
 
-from ray.train.health.nccl_ras import probes, utils
+from ray.train.health.nccl_ras import probe_utils, probes
+from ray.train.health.nccl_ras.probe_utils import (
+    RASQueryError,
+    parse_ras_addr,
+    run_ncclras,
+)
 from ray.train.health.nccl_ras.probes import (
     FlightRecorderProbe,
     NCCLRASProbe,
@@ -18,7 +23,6 @@ from ray.train.health.nccl_ras.probes import (
     NvidiaSmiProbe,
     StackTraceProbe,
 )
-from ray.train.health.nccl_ras.utils import RASQueryError, parse_ras_addr, run_ncclras
 
 # Named like Ray Train's worker thread (``ThreadRunner``) so the test reads
 # like a real dump.
@@ -69,7 +73,7 @@ def fake_c10d(monkeypatch):
 @pytest.fixture(autouse=True)
 def unanswered_sudo_check(monkeypatch):
     """Every test starts with the passwordless-sudo check not yet run."""
-    monkeypatch.setattr(utils, "_passwordless_sudo", None)
+    monkeypatch.setattr(probe_utils, "_passwordless_sudo", None)
 
 
 # ----------------------------------------------------------------------
@@ -316,7 +320,7 @@ def fake_ptrace_denied(monkeypatch, py_spy_s=0.0):
         return subprocess.CompletedProcess(cmd, 0, "native stack", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(utils.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(probe_utils.time, "monotonic", lambda: clock[0])
     return calls
 
 
