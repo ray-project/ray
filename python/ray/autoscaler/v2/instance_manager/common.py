@@ -877,6 +877,18 @@ class _MultiHostReplicaView:
 
         return dict(uncovered)
 
+    def unclaimed_vanished_by_lid(self, nt: NodeType) -> Dict[str, int]:
+        """Return vanished pod counts per unclaimed, non-torn-down active batch of `nt`."""
+        return {
+            lid: len(vc)
+            for (t, lid), vc in self.vanished_cids_by_lid.items()
+            if t == nt
+            and vc
+            and (t, lid) not in self.torn_down_lids
+            and self.requested_by_lid.get((t, lid), 0) > 0
+            and not self.claimed_reps_by_lid.get((t, lid))
+        }
+
     def unlabeled_backfill_gap(
         self, nt: NodeType, size: int, extra_queued: int = 0
     ) -> int:
@@ -884,8 +896,9 @@ class _MultiHostReplicaView:
         unlabeled = self.unlabeled_occupying_cids.get(nt)
         if not unlabeled or size <= 1:
             return 0
+        vanished_by_lid = self.unclaimed_vanished_by_lid(nt)
         unclaimed_req = sum(
-            cnt + len(self.vanished_cids_by_lid.get((t, lid), ()))
+            cnt + vanished_by_lid.get(lid, 0)
             for (t, lid), cnt in self.requested_by_lid.items()
             if t == nt
             and cnt > 0

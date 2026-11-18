@@ -7464,6 +7464,28 @@ class TestReconcilerMultiHost:
         assert ("tpu", "rep-new") in view.assigned_reps
         assert view.requested_by_lid[("tpu", "lid-a")] == 3
 
+        # Non-empty claimed_reps_by_lid subtracts open_live_slots (4 - 2 = 2) and zeroes
+        # vanished_slots before claiming a second replica: avail_req=5 (5 - 2 = 3 < 4)
+        # returns None, while avail_req=6 (6 - 2 = 4 >= 4) claims rep-second.
+        claimed_view = _MultiHostReplicaView(
+            requested_by_lid={("tpu", "lid-c"): 5},
+            claimed_reps_by_lid={("tpu", "lid-c"): {"rep-0"}},
+            rep_bound_cids_by_lid={(("tpu", "rep-0"), "lid-c"): {"p0", "p1"}},
+            rep_assigned_cids={("tpu", "rep-0"): {"p0", "p1"}},
+            vanished_cids_by_lid={("tpu", "lid-c"): {"p-van"}},
+        )
+        cands2 = [
+            CloudInstance("c2-0", "tpu", NodeKind.WORKER, True, replica_id="rep-second")
+        ]
+        assert claimed_view.pop_matching_candidate("tpu", "lid-c", 4, cands2) is None
+        claimed_view.requested_by_lid[("tpu", "lid-c")] = 6
+        popped2 = claimed_view.pop_matching_candidate("tpu", "lid-c", 4, cands2)
+        assert popped2 is not None and popped2.cloud_instance_id == "c2-0"
+        assert claimed_view.claimed_reps_by_lid[("tpu", "lid-c")] == {
+            "rep-0",
+            "rep-second",
+        }
+
     def test_legacy_multihost_unaligned_demand_no_failed_row_churn(self):
         """Repeating unaligned demand (5 tasks on numOfHosts=4 without replica_config)
         with real ResourceDemandScheduler produces 0 ALLOCATION_FAILED rows across
@@ -10175,7 +10197,6 @@ class TestReconcilerMultiHost:
         )
         assert cr_r2["spec"]["workerGroupSpecs"][0]["replicas"] == 2
 
-
     def test_scale_cluster_forwards_cloud_instance_replica_id(self):
         """Reconciler._scale_cluster forwards CloudInstance.replica_id in memory
         onto AutoscalerInstance.cloud_instance_replica_id and normalizes empty
@@ -11360,6 +11381,7 @@ class TestReconcilerMultiHost:
             tasks: int = 0,
             gangs: int = 0,
             dead: Optional[str] = None,
+            draining: Optional[str] = None,
             gang_needs_head: bool = False,
             pinned_slice: Optional[str] = None,
             run_operator: bool = True,
@@ -11376,7 +11398,11 @@ class TestReconcilerMultiHost:
                         status=(
                             NodeStatus.DEAD
                             if nm == dead
-                            else (NodeStatus.RUNNING if busy else NodeStatus.IDLE)
+                            else (
+                                NodeStatus.DRAINING
+                                if nm == draining
+                                else (NodeStatus.RUNNING if busy else NodeStatus.IDLE)
+                            )
                         ),
                         total_resources={
                             "CPU": 4.0,
@@ -11940,6 +11966,85 @@ class TestReconcilerMultiHost:
             if v.cloud_instance_id in surviving_running
         }
         assert all(st == Instance.RAY_RUNNING for st in inst_by_cid.values())
+
+    def test_unlabeled_stopping_gcs_lag_and_rejected_drain_multi_tick(self):
+        """Multi-tick KubeRay reconcile: unlabeled RAY_STOPPING or GCS-lagged pods never
+        churn QUEUED->TERMINATED remainders, and rejected drains do not poison later crashes."""
+        # 1. 2 busy RAY_RUNNING + 1 RAY_STOPPING at maxReplicas=2 scales cleanly to 2 replicas
+        # with zero QUEUED->TERMINATED sub-replica cancellations across consecutive ticks.
+        (
+            group,
+            pods,
+            store,
+            ray_busy,
+            workers,
+            step_tick,
+        ) = self._make_unlabeled_kuberay_sim(
+            "stopping-no-livelock",
+            size=4,
+            max_replicas=2,
+            pod_names=[f"u-{i}" for i in range(16)],
+        )
+        for _ in range(3):
+            step_tick(gangs=1)
+        for nm in workers():
+            ray_busy[nm] = True
+        step_tick()
+        # Remove u-3 directly from Kubernetes and transition u-2 to DRAINING -> RAY_STOPPING.
+        pods["items"] = [p for p in pods["items"] if p["metadata"]["name"] != "u-3"]
+        pods["metadata"]["resourceVersion"] = str(
+            int(pods["metadata"]["resourceVersion"]) + 1
+        )
+        ray_busy.pop("u-3")
+        res_s1 = step_tick(gangs=1, draining="u-2", run_operator=False)
+        assert len(res_s1.infeasible_gang_resource_requests) == 0
+        res_s2 = step_tick(gangs=1, draining="u-2", run_operator=True)
+        assert len(res_s2.infeasible_gang_resource_requests) == 0
+        canceled_rem = [
+            v
+            for v in store.get_instances()[0].values()
+            if v.status == Instance.TERMINATED
+            and any(
+                "rounding sub-replica QUEUED" in h.details
+                or "canceling sub-replica QUEUED" in h.details
+                for h in v.status_history
+            )
+        ]
+        assert canceled_rem == []
+        assert group.get("replicas") == 2
+
+        # 2. Rejected RAY_STOP_REQUESTED -> RAY_RUNNING followed by unsolicited u-3 crash
+        # keeps u-0..2 schedulable for a 3-task workload and queues 1 refill pod.
+        (
+            group_r,
+            _,
+            store_r,
+            ray_busy_r,
+            workers_r,
+            step_tick_r,
+        ) = self._make_unlabeled_kuberay_sim(
+            "rejected-drain-crash",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"r-{i}" for i in range(12)],
+        )
+        for _ in range(3):
+            step_tick_r(tasks=4)
+        for nm in workers_r():
+            ray_busy_r[nm] = True
+        step_tick_r(tasks=4)
+        insts_r, ver_r = store_r.get_instances()
+        upd_r = []
+        for inst in insts_r.values():
+            if inst.cloud_instance_id in {"r-0", "r-1", "r-2", "r-3"}:
+                inst.status_history.add(instance_status=Instance.RAY_STOP_REQUESTED)
+                inst.status_history.add(instance_status=Instance.RAY_RUNNING)
+                upd_r.append(inst)
+        store_r.batch_upsert_instances(upd_r, expected_storage_version=ver_r)
+        for nm in ("r-0", "r-1", "r-2"):
+            ray_busy_r[nm] = False
+        res_crash = step_tick_r(tasks=3, dead="r-3", run_operator=False)
+        assert res_crash.infeasible_resource_requests == []
 
 
 if __name__ == "__main__":
