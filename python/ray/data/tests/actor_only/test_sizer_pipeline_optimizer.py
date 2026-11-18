@@ -151,6 +151,9 @@ class _Pool:
     def num_reclaimable_draining_actors(self):
         return self._reclaimable
 
+    def num_draining_actors(self):
+        return getattr(self, "draining", 0)
+
     def has_actor(self, actor_id):
         return actor_id not in self.lost_ids
 
@@ -1463,15 +1466,22 @@ def test_victims_are_taken_fastest_to_free_and_timeout_follows_them():
     assert state.in_flight[write].timeout_s == pytest.approx(75.0)
 
 
-def test_victims_slower_than_the_cap_are_skipped():
-    """video at 0:13:31: the only donor with slack is ReadVideo, whose
-    victims take 265s to free (their outputs sit behind resize). Taking them
-    would hold their capacity idle for minutes and block every other
-    transfer, so the step is not funded."""
-    write = _op("Write", pool=_Pool(current=1))
-    read = _idle_victims_op("ReadVideo", "node", ["r0", "r1"], current=3)
-    tick = _tick(
-        recipient=write,
+def _busy_victims_op(name, node, ids, *, current):
+    """An op whose actors on ``node`` each have a task in flight and three
+    unconsumed outputs: they free only after a drain."""
+    return _op(
+        name,
+        pool=_Pool(current=current),
+        view=_view(
+            victim_ids_by_node={node: list(ids)},
+            victim_drain_cost_by_node={node: [(1, 3)] * len(ids)},
+        ),
+    )
+
+
+def _surplus_tick(write, read, *, recipient=True):
+    return _tick(
+        recipient=write if recipient else None,
         named=[(write, 1.0)],
         stable=[write],
         eligibility={write: "yes: victims"},
@@ -1479,8 +1489,48 @@ def test_victims_slower_than_the_cap_are_skipped():
         slack={read: 2},
         ttf={read: 265.0},
     )
-    _, state, requests = _apply_bottleneck(_bottleneck_rule(), tick, [write, read])
-    assert requests == [] and not state.in_flight
+
+
+def test_busy_surplus_drains_passively_without_a_transfer():
+    """video at 0:13:31: ReadVideo has slack 2 toward Write, but its actors
+    are busy (outputs behind resize), so freeing one takes minutes. No
+    transfer is opened (it would block every other one); after the surplus
+    holds for a streak, one ReadVideo actor drains on a node where a Write
+    actor fits once it frees."""
+    write = _op("Write", pool=_Pool(current=1))
+    read = _busy_victims_op("ReadVideo", "node", ["r0", "r1"], current=3)
+    rule = _bottleneck_rule()
+    state = rule.new_state()
+    drained = []
+    for _ in range(3):
+        _, state, requests = _apply_bottleneck(
+            rule, _surplus_tick(write, read), [write, read], state=state
+        )
+        assert not state.in_flight and _granted(requests) == []
+        drained.append(_donors(requests))
+    assert drained == [set(), set(), {read}]
+    (placed,) = requests
+    assert placed.request[read].nodes == ("node",)
+
+
+@pytest.mark.parametrize("case", ["no-recipient", "already-draining"])
+def test_surplus_is_not_drained(case):
+    """No shrink without a recipient that wants the capacity, and one drain at
+    a time per donor."""
+    write = _op("Write", pool=_Pool(current=1))
+    read = _busy_victims_op("ReadVideo", "node", ["r0", "r1"], current=3)
+    if case == "already-draining":
+        read.actor_pool.draining = 1
+    rule = _bottleneck_rule()
+    state = rule.new_state()
+    for _ in range(4):
+        _, state, requests = _apply_bottleneck(
+            rule,
+            _surplus_tick(write, read, recipient=case != "no-recipient"),
+            [write, read],
+            state=state,
+        )
+        assert _donors(requests) == set()
 
 
 @pytest.mark.parametrize(
