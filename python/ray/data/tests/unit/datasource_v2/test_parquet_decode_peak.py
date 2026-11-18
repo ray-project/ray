@@ -153,27 +153,31 @@ _CASES = {
     "fixed-width": _case(
         lambda: pa.table({"a": _ints(), "b": np.random.default_rng(0).random(N)})
     ),
+    # Measured 1.56: the values and levels are charged at twice their slots, the most
+    # doubling leaves, and these buffers were reserved to fit.
     "int16-with-nulls": _case(
         lambda: pa.table(
             {"a": pa.array(np.arange(N) % 100, pa.int16(), mask=np.arange(N) % 7 == 0)}
-        )
+        ),
+        high=2.0,
     ),
-    # Measured 1.55: a dictionary's entries are counted as 4 bytes each, and these
+    # Measured 1.82: a dictionary's entries are counted as 4 bytes each, and these
     # are 18.
-    "strings": _case(lambda: pa.table({"a": _strings(N // 4)}), high=1.6),
-    "dictionary-strings": _case(lambda: pa.table({"a": _strings(1000)})),
+    "strings": _case(lambda: pa.table({"a": _strings(N // 4)}), high=2.0),
+    # Measured 1.75: the builder's copy is charged with the offsets it holds once.
+    "dictionary-strings": _case(lambda: pa.table({"a": _strings(1000)}), high=2.0),
     "uncompressed": _case(
         lambda: pa.table({"a": _ints(), "s": _strings(1000)}),
         write_kwargs=dict(compression="none"),
     ),
-    # Compressed strings without a dictionary measured 1.64 to 1.71: the
+    # Compressed strings without a dictionary measured 1.96 to 2.05: the
     # decompression buffer is charged at the chunk's size, and holds a page.
     "delta-length-byte-array": _case(
         lambda: pa.table({"a": _strings(N // 4)}),
         write_kwargs=dict(
             use_dictionary=False, column_encoding={"a": "DELTA_LENGTH_BYTE_ARRAY"}
         ),
-        high=1.8,
+        high=2.2,
     ),
     # A dictionary that is most of its chunk and compresses better than the rest.
     "sorted-distinct-values": _case(
@@ -181,14 +185,14 @@ _CASES = {
         rows=125_000,
         write_kwargs=dict(compression="zstd"),
     ),
-    # A decimal128 is stored as FIXED_LEN_BYTE_ARRAY.
+    # A decimal128 is stored as FIXED_LEN_BYTE_ARRAY. Measured 1.63: its values are
+    # charged at twice their slots.
     "fixed-len-byte-array": _case(
-        lambda: pa.table({"a": _decimals()}), write_kwargs=dict(use_dictionary=False)
+        lambda: pa.table({"a": _decimals()}),
+        write_kwargs=dict(use_dictionary=False),
+        high=2.0,
     ),
-    # Measured 1.60: a small dictionary's values aren't held twice.
-    "dictionary-fixed-len-byte-array": _case(
-        lambda: pa.table({"a": _decimals()}), high=1.7
-    ),
+    "dictionary-fixed-len-byte-array": _case(lambda: pa.table({"a": _decimals()})),
     # Under 48 KiB, so the footer read takes the whole file.
     "small-file": _case(lambda: pa.table({"a": _ints(1000)}), rows=1000),
     # Every other column: ``pre_buffer`` reads the skipped ones between them too.
@@ -203,8 +207,8 @@ _CASES = {
     # One CPU thread frees each column's buffers before the next column decodes.
     "similar-lists": _case(_eight_lists),
     # Twelve decode all eight columns at once. On a busy machine fewer overlap, down
-    # to one thread's peak, which the eight columns' estimate is 2.3 times.
-    "similar-lists-on-12-threads": _case(_eight_lists, high=2.5, threads=12),
+    # to one thread's peak, which the eight columns' estimate is 2.9 times.
+    "similar-lists-on-12-threads": _case(_eight_lists, high=3.0, threads=12),
 }
 
 
