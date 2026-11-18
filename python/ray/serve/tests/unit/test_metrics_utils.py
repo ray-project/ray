@@ -1520,6 +1520,8 @@ def _bare_manager():
     m._last_counted_failure_at = 0.0
     m._pending_health_push_ref = None
     m._pending_health_push_started_at = 0.0
+    m._self_health_paused = False
+    m._self_health_epoch = 0
     m._metrics_push_lock = threading.Lock()
     m._controller_handle = Mock()
     m._metrics_pusher = MetricsPusher()
@@ -1655,6 +1657,52 @@ class TestSelfHealthPush:
         assert (
             m._controller_handle.record_replica_health.remote.call_args.args[2] is True
         )
+
+    @pytest.mark.asyncio
+    async def test_a_paused_check_neither_runs_nor_reports_until_resumed(self):
+        """The controller does not health-check an UPDATING replica, so a failure seen
+        during a reconfigure would be applied once it is RUNNING again."""
+        m = _bare_manager()
+        evals = []
+
+        async def bad(_):
+            evals.append(1)
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = bad
+        m.pause_self_health()
+        await m._eval_and_push_self_health()
+        assert evals == []
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        m.resume_self_health()
+        await m._eval_and_push_self_health()
+        assert evals == [1]
+        assert m._consecutive_failures == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("finished", [False, True])
+    async def test_a_check_running_when_a_reconfigure_starts_is_dropped(self, finished):
+        """Whether or not the reconfigure is over by the time the check returns: one
+        that ran entirely inside it leaves the pause flag clear at both ends."""
+        m = _bare_manager()
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fails_once_released(_):
+            started.set()
+            await release.wait()
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = fails_once_released
+        check = asyncio.create_task(m._eval_and_push_self_health())
+        await started.wait()
+        m.pause_self_health()
+        if finished:
+            m.resume_self_health()
+        release.set()
+        await check
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        assert m._consecutive_failures == 0
 
     @pytest.mark.asyncio
     async def test_a_cancelled_eval_does_not_retire_the_pusher(self):
@@ -1904,6 +1952,52 @@ class TestReplicaHealthVerdict:
             await r.check_health()
         assert r._healthy is True
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("overlap", ["ends_during", "spans", "starts_during"])
+    async def test_a_check_a_reconfigure_overlaps_leaves_healthy_alone(self, overlap):
+        """The verdict may describe the reconfigure, and /-/healthz would still read it
+        once the replica is RUNNING, however the two overlapped. A probe can start
+        while the pause is already on."""
+        r = _bare_replica()
+        manager = r._metrics_manager
+        r._healthy = True
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fails_once_released():
+            started.set()
+            await release.wait()
+            raise RuntimeError("intended to fail")
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = (
+            lambda: fails_once_released()
+        )
+        if overlap == "starts_during":
+            manager.pause_self_health()
+        check = asyncio.create_task(r.check_health())
+        await started.wait()
+        if overlap != "starts_during":
+            manager.pause_self_health()
+        if overlap != "ends_during":
+            manager.resume_self_health()
+        release.set()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await check
+        assert r._healthy is True
+
+    @pytest.mark.asyncio
+    async def test_without_push_health_a_pause_does_not_hold_the_verdict(self):
+        """The pause belongs to the self-check; with it off, checks set _healthy as on
+        master."""
+        r = _bare_replica(active=False)
+        r._healthy = True
+        r._metrics_manager.pause_self_health()
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: _fails()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r.check_health()
+        assert r._healthy is False
+
 
 class TestReconfigureSelfHealth:
     """How reconfigure() treats the self-check."""
@@ -1924,6 +2018,38 @@ class TestReconfigureSelfHealth:
         r._user_callable_wrapper.set_sync_method_threadpool_limit = AsyncMock()
         r._set_internal_replica_context = Mock()
         return r
+
+    @pytest.mark.asyncio
+    async def test_self_health_is_paused_while_the_user_reconfigure_runs(self):
+        from ray.serve._private.config import DeploymentConfig
+
+        r = self._replica()
+        seen = []
+
+        async def user_reconfigure(*args, **kwargs):
+            manager = r._metrics_manager
+            seen.append(
+                (manager.pause_self_health.called, manager.resume_self_health.called)
+            )
+
+        r._user_callable_wrapper.call_reconfigure = user_reconfigure
+        await r.reconfigure(DeploymentConfig(user_config={"v": 2}), None)
+        assert seen == [(True, False)]
+        r._metrics_manager.resume_self_health.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_reconfigure_still_resumes_self_health(self):
+        from unittest.mock import AsyncMock
+
+        from ray.serve._private.config import DeploymentConfig
+
+        r = self._replica()
+        r._user_callable_wrapper.call_reconfigure = AsyncMock(
+            side_effect=ValueError("intended to fail")
+        )
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r.reconfigure(DeploymentConfig(user_config={"v": 2}), None)
+        r._metrics_manager.resume_self_health.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_reconfigure_reregisters_the_self_check_with_the_new_period(

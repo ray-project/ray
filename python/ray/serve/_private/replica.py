@@ -446,6 +446,11 @@ class ReplicaMetricsManager:
         self._last_counted_failure_at: float = 0.0
         self._pending_health_push_ref: Optional[ObjectRef] = None
         self._pending_health_push_started_at: float = 0.0
+        # Set while the replica reconfigures; see pause_self_health().
+        self._self_health_paused: bool = False
+        # Bumped by each resume. A check that ends mid-reconfigure sees the pause flag;
+        # one still running when it ends sees the flag clear, so it is told by this.
+        self._self_health_epoch: int = 0
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -744,6 +749,24 @@ class ReplicaMetricsManager:
             fixed_rate=True,
         )
 
+    def pause_self_health(self) -> None:
+        """Hold the self-check while the replica reconfigures. The controller does not
+        health-check an UPDATING replica, so it would apply a failure seen now only once
+        the replica is RUNNING again, and could replace one that had since recovered."""
+        self._self_health_paused = True
+
+    def resume_self_health(self) -> None:
+        self._self_health_paused = False
+        self._self_health_epoch += 1
+
+    @property
+    def self_health_paused(self) -> bool:
+        return self._self_health_paused
+
+    @property
+    def self_health_epoch(self) -> int:
+        return self._self_health_epoch
+
     @property
     def health_check_timeout_s(self) -> float:
         return self._health_check_timeout_s
@@ -758,6 +781,9 @@ class ReplicaMetricsManager:
         return self._health_checks_started
 
     async def _eval_and_push_self_health(self):
+        if self._self_health_paused:
+            return
+        epoch = self._self_health_epoch
         # Invariant: the pusher registers this task only after setting the callable,
         # so narrow the Optional for the type checkers.
         eval_fn = self._eval_self_health_fn
@@ -777,6 +803,9 @@ class ReplicaMetricsManager:
             # CancelledError is not an Exception, and MetricsPusher only catches
             # Exception, so letting it out would retire the heartbeat for good.
             healthy = False
+        if self._self_health_paused or self._self_health_epoch != epoch:
+            # A reconfigure started part way through, so this verdict may reflect it.
+            return
         counted_at = time.time()
         if healthy:
             self.clear_self_health_failures()
@@ -2064,6 +2093,7 @@ class Replica:
         rank: ReplicaRank,
         route_prefix: Optional[str] = None,
     ):
+        self._metrics_manager.pause_self_health()
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -2116,6 +2146,8 @@ class Replica:
 
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
+        finally:
+            self._metrics_manager.resume_self_health()
 
     def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
@@ -2462,6 +2494,7 @@ class Replica:
         await self._check_health(self._metrics_manager.number_health_check())
 
     async def _check_health(self, seq: int):
+        epoch = self._metrics_manager.self_health_epoch
         try:
             # Runs the user-defined check_health on the user code loop if defined.
             # Otherwise, if the background watchdog has detected the user loop is
@@ -2471,21 +2504,27 @@ class Replica:
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
-            self._record_health_verdict(healthy=True, seq=seq)
+            self._record_health_verdict(healthy=True, epoch=epoch, seq=seq)
         except Exception as e:
             logger.warning("Replica health check failed.")
-            self._record_health_verdict(healthy=False, seq=seq)
+            self._record_health_verdict(healthy=False, epoch=epoch, seq=seq)
             raise e from None
 
-    def _record_health_verdict(self, healthy: bool, seq: int) -> None:
+    def _record_health_verdict(self, healthy: bool, epoch: int, seq: int) -> None:
         """Set _healthy, which backs /-/healthz, from a finished check.
 
         A cancelled check confirmed nothing and never gets here. With the self-check
-        on, one is dropped if a check that started after it already set the verdict.
-        seq is the one it started with.
+        on, one is dropped if a check that started after it already set the verdict,
+        or if it overlapped a reconfigure at all, as it may describe that, even if the
+        reconfigure is over by the time it ends. epoch and seq are the ones it started
+        with.
         """
         manager = self._metrics_manager
-        if self._self_health_active and seq < self._health_verdict_seq:
+        if self._self_health_active and (
+            seq < self._health_verdict_seq
+            or manager.self_health_paused
+            or manager.self_health_epoch != epoch
+        ):
             return
         self._health_verdict_seq = seq
         self._healthy = healthy
