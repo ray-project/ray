@@ -39,6 +39,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
 )
+from ray.data._internal.datasource_v2.formats.delta.delta_filesystem import (
+    add_known_file_sizes,
+)
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     FooterFileIndexer,
 )
@@ -359,8 +362,16 @@ class _DeltaLogListing:
         partition values from the log, in ``PARTITION_VALUES_COLUMN``.
         """
         self._default_shuffle(kwargs)
+        file_infos = list(self.list_file_infos(paths, pruners=kwargs.get("pruners")))
+        # Before the footer reads start, so they open the files without asking
+        # the storage for their sizes.
+        add_known_file_sizes(
+            self._filesystem, {info.path: info.size for info in file_infos}
+        )
         # pyrefly: ignore[missing-attribute]
-        manifests = super().list_files(paths, filesystem=self._filesystem, **kwargs)
+        manifests = super().list_files_from_file_infos(
+            file_infos, filesystem=self._filesystem, **kwargs
+        )
         yield from self._with_partition_values(manifests)
 
     def _with_partition_values(

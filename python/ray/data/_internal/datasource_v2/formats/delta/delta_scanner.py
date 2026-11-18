@@ -9,6 +9,9 @@ from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     DeltaPartitionPruner,
     PartitionValues,
 )
+from ray.data._internal.datasource_v2.formats.delta.delta_filesystem import (
+    add_known_file_sizes,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
@@ -17,6 +20,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+from ray.data.block import BlockMetadata
 from ray.util.annotations import DeveloperAPI
 
 
@@ -26,7 +30,8 @@ class DeltaFileReader(ParquetFileReader):
     A Delta file's path needn't hold its partition values, so the listing puts
     the ones the log records in each manifest (``PARTITION_VALUES_COLUMN``).
     The reader casts them to the columns' types as it does a value parsed from
-    a path.
+    a path. It also hands the files' sizes from the log to the table's
+    filesystem, which then opens them without asking the storage for them.
     """
 
     # Replaced, never changed in place, by each ``read``.
@@ -35,6 +40,7 @@ class DeltaFileReader(ParquetFileReader):
     @override
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         # A read task reads its manifests one after another.
+        self._add_known_file_sizes(input_split)
         extra_columns = input_split.extra_columns
         self._partition_values_by_path = (
             dict(
@@ -48,6 +54,17 @@ class DeltaFileReader(ParquetFileReader):
             else {}
         )
         yield from super().read(input_split)
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        self._add_known_file_sizes(file_manifest)
+        yield from super().read_metadata(file_manifest)
+
+    def _add_known_file_sizes(self, manifest: FileManifest) -> None:
+        add_known_file_sizes(
+            self._filesystem,
+            dict(zip(manifest.paths.tolist(), manifest.known_file_sizes)),
+        )
 
     @override
     def _get_partition_values(self, path: str) -> Dict[str, Optional[str]]:
@@ -82,9 +99,3 @@ class DeltaScanner(ParquetScanner):
         if self.partitioning is None or self.partition_predicate is None:
             return None
         return DeltaPartitionPruner(self.partition_predicate, self.schema)
-
-    @override
-    def prune_input_split(self, input_split: FileManifest) -> FileManifest:
-        # The listing already left out the files whose partition values in the
-        # log fail the predicate, and the reader filters rows by it.
-        return input_split
