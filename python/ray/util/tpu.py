@@ -153,6 +153,7 @@ def get_tpu_num_slices_for_workers(
     num_workers: int,
     resources_per_worker: Optional[Dict[str, float]] = None,
     tpu_resource_per_chip: Optional[int] = None,
+    chips_per_vm: Optional[int] = None,
 ) -> int:
     """Calculates the number of slices needed to accommodate the specified number of workers.
 
@@ -162,6 +163,7 @@ def get_tpu_num_slices_for_workers(
         num_workers: The desired number of workers.
         resources_per_worker: Optional dict of resources per worker.
         tpu_resource_per_chip: The number of logical TPU resources per physical chip.
+        chips_per_vm: Optional override for the number of physical TPU chips per VM.
 
     Returns:
         The number of slices required. Returns 1 if inputs are invalid or incomplete.
@@ -177,6 +179,7 @@ def get_tpu_num_slices_for_workers(
             accelerator_type=accelerator_type,
             resources_per_worker=resources_per_worker,
             num_slices=1,
+            chips_per_vm=chips_per_vm,
             tpu_resource_per_chip=tpu_resource_per_chip,
         )
 
@@ -978,6 +981,63 @@ def _prepare_slice_pg_specs(
     )
 
 
+def _infer_chips_per_vm_from_cluster(
+    topology: str,
+    accelerator_version: str,
+    resources_per_bundle: Optional[Dict[str, float]] = None,
+    tpu_resource_per_chip: Optional[int] = None,
+) -> Optional[int]:
+    """Infer chips_per_vm from live intact cluster slices when ambiguous (e.g. v6e 2x4)."""
+    if not ray.is_initialized():
+        return None
+    r_per_chip = (
+        tpu_resource_per_chip
+        if tpu_resource_per_chip is not None
+        else get_tpu_resource_per_chip()
+    )
+    if r_per_chip <= 0:
+        return None
+    norm_topology = topology.strip().lower()
+    try:
+        norm_version = get_tpu_version_from_type(accelerator_version.strip())
+        default_chips = get_chips_per_host(norm_topology, norm_version)
+    except Exception:
+        return None
+    intact_slices = _get_intact_tpu_slices(norm_topology, norm_version, r_per_chip)
+    if not intact_slices:
+        return None
+    bundle_tpu = (resources_per_bundle or {}).get("TPU")
+    slice_cands: Dict[str, int] = {}
+    for sname, nodes in intact_slices.items():
+        node_tpus = {(n.get("Resources") or {}).get("TPU", 0) for n in nodes}
+        if len(node_tpus) != 1:
+            continue
+        ntpu = next(iter(node_tpus))
+        if ntpu <= 0 or int(ntpu) != ntpu or int(ntpu) % r_per_chip != 0:
+            continue
+        if bundle_tpu is not None and bundle_tpu > 0 and int(ntpu) % bundle_tpu != 0:
+            continue
+        slice_cands[sname] = int(ntpu) // r_per_chip
+    if not slice_cands:
+        return None
+    all_cands = set(slice_cands.values())
+    if default_chips not in all_cands:
+        return next(iter(all_cands)) if len(all_cands) == 1 else None
+    if len(all_cands) > 1:
+        from ray._private.state import available_resources_per_node
+
+        avail = available_resources_per_node()
+        pg_used = _get_nodes_with_placed_tpu_bundles()
+        idle_cands = {
+            cand
+            for sname, cand in slice_cands.items()
+            if _tpus_idle(intact_slices[sname], avail, pg_used)
+        }
+        if default_chips not in idle_cands and len(idle_cands) == 1:
+            return next(iter(idle_cands))
+    return None
+
+
 @PublicAPI(stability="alpha")
 class SlicePlacementGroup:
     """A handle to placement group reservations for one or more TPU slices.
@@ -1075,32 +1135,28 @@ class SlicePlacementGroup:
             )
 
         self._managed_pgs: List[PlacementGroup] = []
-
-        spec = _prepare_slice_pg_specs(
+        effective_chips_per_vm = (
+            chips_per_vm
+            if chips_per_vm is not None
+            else _infer_chips_per_vm_from_cluster(
+                topology=topology,
+                accelerator_version=accelerator_version,
+                resources_per_bundle=resources_per_bundle,
+                tpu_resource_per_chip=tpu_resource_per_chip,
+            )
+        )
+        self._spec = _prepare_slice_pg_specs(
             topology=topology,
             accelerator_version=accelerator_version,
             resources_per_bundle=resources_per_bundle,
             name=name,
             lifetime=lifetime,
             num_slices=num_slices,
-            chips_per_vm=chips_per_vm,
+            chips_per_vm=effective_chips_per_vm,
             bundle_label_selector=bundle_label_selector,
             tpu_resource_per_chip=tpu_resource_per_chip,
         )
-        self._topology = spec.topology
-        self._accelerator_version = spec.accelerator_version
-        self._num_slices = spec.num_slices
-        self._tpu_resource_per_chip = spec.tpu_resource_per_chip
-        self._chips_per_host = spec.chips_per_host
-        self._logical_devices_per_host = spec.logical_devices_per_host
-        self._hosts_per_slice = spec.hosts_per_slice
-        self._num_hosts = spec.num_hosts
-        self._num_bundles = spec.num_bundles
-        self._bundles_per_slice = spec.bundles_per_slice
-        self._bundle_resources = spec.bundle_resources
-        self._bundle_label_selector = spec.bundle_label_selector
-
-        self._managed_pgs = self._reserve_slice(spec.slice_pg_kwargs)
+        self._managed_pgs = self._reserve_slice(self._spec.slice_pg_kwargs)
 
     def _reserve_slice(
         self,
@@ -1118,7 +1174,7 @@ class SlicePlacementGroup:
     @property
     def tpu_resource_per_chip(self) -> int:
         """The logical resource scaling factor per physical TPU chip."""
-        return self._tpu_resource_per_chip
+        return self._spec.tpu_resource_per_chip
 
     @property
     def slice_placement_group(self) -> Optional[PlacementGroup]:
@@ -1127,7 +1183,7 @@ class SlicePlacementGroup:
         Raises:
             ValueError: If ``num_slices > 1``.
         """
-        if self._num_slices > 1:
+        if self._spec.num_slices > 1:
             raise ValueError("num_slices > 1, use `slice_placement_groups` instead.")
         return self._managed_pgs[0] if self._managed_pgs else None
 
@@ -1142,14 +1198,36 @@ class SlicePlacementGroup:
         return self._managed_pgs
 
     @property
+    def head_placement_groups(self) -> List[PlacementGroup]:
+        """Deprecated: SlicePlacementGroup no longer creates head placement groups."""
+        warnings.warn(
+            "'head_placement_groups' on SlicePlacementGroup is deprecated and "
+            "always returns an empty list; SlicePlacementGroup no longer "
+            "creates internal head placement groups.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
+        return []
+
+    @DeveloperAPI(stability="alpha")
+    def release_head_pgs(self, slice_index: Optional[int] = None) -> None:
+        """Deprecated no-op: SlicePlacementGroup no longer creates head placement groups."""
+        warnings.warn(
+            "'release_head_pgs()' on SlicePlacementGroup is deprecated and is a "
+            "no-op; SlicePlacementGroup no longer creates internal head placement groups.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
+
+    @property
     def hosts_per_slice(self) -> int:
         """The number of hosts in each TPU slice."""
-        return self._hosts_per_slice
+        return self._spec.hosts_per_slice
 
     @property
     def bundles_per_slice(self) -> int:
         """The number of bundles in each TPU slice."""
-        return self._bundles_per_slice
+        return self._spec.bundles_per_slice
 
     def get_worker_addrs(self, slice_index: int = 0) -> List[Optional[str]]:
         """Returns the IP addresses of all worker hosts in a given slice.
@@ -1200,7 +1278,7 @@ class SlicePlacementGroup:
         amount to request from Ray (which scales with `tpu_resource_per_chip`),
         use `devices_per_host` instead.
         """
-        return self._chips_per_host
+        return self._spec.chips_per_host
 
     @property
     def devices_per_host(self) -> int:
@@ -1210,7 +1288,7 @@ class SlicePlacementGroup:
         Task or Actor that needs to consume an entire TPU host, you should
         request this value for the "TPU" resource requirement.
         """
-        return self._logical_devices_per_host
+        return self._spec.logical_devices_per_host
 
     def get_jax_env_vars(
         self,
@@ -1307,50 +1385,50 @@ class SlicePlacementGroup:
                 )
 
         return get_torchtpu_env_vars(
-            topology=self._topology,
+            topology=self._spec.topology,
             worker_hostnames=worker_hostnames,
             worker_id=worker_id,
             slicebuilder_addresses=slicebuilder_addresses,
             slicebuilder_port=slicebuilder_port,
             master_addr=master_addr,
-            tpu_resource_per_chip=self._tpu_resource_per_chip,
-            accelerator_type=self._accelerator_version,
+            tpu_resource_per_chip=self._spec.tpu_resource_per_chip,
+            accelerator_type=self._spec.accelerator_version,
         )
 
     @property
     def num_hosts(self) -> int:
         """The total number of hosts in the SlicePlacementGroup."""
-        return self._num_hosts
+        return self._spec.num_hosts
 
     @property
     def num_bundles(self) -> int:
         """The total number of bundles in the SlicePlacementGroup."""
-        return self._num_bundles
+        return self._spec.num_bundles
 
     @property
     def topology(self) -> str:
         """The physical topology of the TPU slice."""
-        return self._topology
+        return self._spec.topology
 
     @property
     def accelerator_version(self) -> str:
         """The TPU accelerator type of the slice."""
-        return self._accelerator_version
+        return self._spec.accelerator_version
 
     @property
     def num_slices(self) -> int:
         """The number of TPU slices this SlicePlacementGroup spans."""
-        return self._num_slices
+        return self._spec.num_slices
 
     @property
     def bundle_label_selector(self) -> List[Dict[str, str]]:
         """The bundle label selector list across all slice placement groups."""
-        return self._bundle_label_selector
+        return self._spec.bundle_label_selector
 
     @property
     def bundle_resources(self) -> Dict[str, float]:
         """The resources that are assigned to each bundle."""
-        return self._bundle_resources
+        return self._spec.bundle_resources
 
     def shutdown(self):
         """Remove the slice placement group(s).
@@ -1843,6 +1921,9 @@ def _compute_worker_physical_ids_from_discovery(
     return worker_physical_ids
 
 
+_subslice_discovery_tls = threading.local()
+
+
 def _discover_and_persist_subslices(
     parent_topology: str,
     accelerator_version: str,
@@ -1981,6 +2062,7 @@ def _discover_and_persist_subslices(
         # Removing the full-slice placement group also kills any discovery
         # tasks still running in its bundles, so no task keeps the TPU open.
         if full_slice is not None:
+            _subslice_discovery_tls.last_pg = full_slice.placement_group
             full_slice.shutdown()
 
 
@@ -1988,6 +2070,7 @@ def _wait_for_slice_resources_freed(
     slice_name: str,
     timeout_s: Optional[float],
     poll_interval_s: float = 0.5,
+    discovery_pg: Optional[PlacementGroup] = None,
 ) -> None:
     """Block until every node of *slice_name* reports its full TPU capacity as
     available, or *timeout_s* elapses (``None`` waits indefinitely).
@@ -2001,9 +2084,25 @@ def _wait_for_slice_resources_freed(
     from ray._private.state import available_resources_per_node
 
     deadline = None if timeout_s is None else time.monotonic() + timeout_s
+    has_real_pg = discovery_pg is not None and isinstance(
+        getattr(discovery_pg, "id", None), ray._raylet.PlacementGroupID
+    )
     while True:
         avail = available_resources_per_node()
-        pg_used_nodes = _get_nodes_with_placed_tpu_bundles()
+        if has_real_pg:
+            pg_info = placement_group_table(discovery_pg)
+            pg_used_nodes = (
+                {
+                    nid
+                    for bidx, nid in pg_info.get("bundles_to_node_id", {}).items()
+                    if nid
+                    and pg_info.get("bundles", {}).get(bidx, {}).get("TPU", 0) > 0
+                }
+                if pg_info and pg_info.get("state") != "REMOVED"
+                else set()
+            )
+        else:
+            pg_used_nodes = _get_nodes_with_placed_tpu_bundles()
         slice_nodes = [
             node
             for node in ray.nodes()
@@ -2321,6 +2420,28 @@ class SubslicePlacementGroup:
     def bundle_label_selector(self) -> List[Dict[str, str]]:
         """Label selectors used for each bundle when creating the PG."""
         return self._bundle_label_selectors
+
+    @property
+    def head_placement_groups(self) -> List[PlacementGroup]:
+        """Deprecated: SubslicePlacementGroup no longer creates head placement groups."""
+        warnings.warn(
+            "'head_placement_groups' on SubslicePlacementGroup is deprecated and "
+            "always returns an empty list; SubslicePlacementGroup no longer "
+            "creates internal head placement groups.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
+        return []
+
+    @DeveloperAPI(stability="alpha")
+    def release_head_pgs(self) -> None:
+        """Deprecated no-op: SubslicePlacementGroup no longer creates head placement groups."""
+        warnings.warn(
+            "'release_head_pgs()' on SubslicePlacementGroup is deprecated and is a "
+            "no-op; SubslicePlacementGroup no longer creates internal head placement groups.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
 
     def get_jax_env_vars(
         self,
@@ -2852,6 +2973,7 @@ def subslice_placement_group(
         # newly populated cache. chips_per_vm must match the parent discovered.
         assert discoverable is not None  # guaranteed by the check above
         discoverable_parent, discoverable_slice_name = discoverable
+        _subslice_discovery_tls.last_pg = None
         discovered_slice_name, _ = _discover_and_persist_subslices(
             discoverable_parent,
             version,
@@ -2862,4 +2984,8 @@ def subslice_placement_group(
         # remove_placement_group() is async; block until the discovery
         # reservation's TPU is released so the next iteration sees the slice as
         # idle and can claim a subslice instead of wrongly raising.
-        _wait_for_slice_resources_freed(discovered_slice_name, slice_ready_timeout_s)
+        _wait_for_slice_resources_freed(
+            discovered_slice_name,
+            slice_ready_timeout_s,
+            discovery_pg=getattr(_subslice_discovery_tls, "last_pg", None),
+        )

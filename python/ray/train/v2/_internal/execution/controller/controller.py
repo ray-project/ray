@@ -495,6 +495,7 @@ class TrainController:
                 accelerator_type=scaling_config.accelerator_type,
                 num_workers=num_workers,
                 resources_per_worker=resources_per_worker,
+                chips_per_vm=scaling_config.chips_per_vm,
             )
 
         worker_group_context = WorkerGroupContext(

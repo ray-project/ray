@@ -1726,6 +1726,32 @@ def test_create_placement_group_tpu_forwards_label_selector_and_reraises_value_e
     with pytest.raises(ValueError, match="invalid TPU bundle config"):
         wg._create_placement_group(scaling_config, wg_ctx)
 
+    # Explicit chips_per_vm=4 for two-VM 2x4 slices forwards chips_per_vm to SlicePlacementGroup.
+    mock_spg_cls.side_effect = None
+    mock_spg_cls.reset_mock()
+    two_vm_scaling_cfg = ScalingConfig(
+        num_workers=2,
+        use_tpu=True,
+        topology="2x4",
+        accelerator_type="TPU-V6E",
+        chips_per_vm=4,
+    )
+    two_vm_ctx = _default_worker_group_context(
+        num_workers=2,
+        resources_per_worker={"CPU": 1, "TPU": 4},
+        label_selector=None,
+        num_slices=1,
+    )
+    wg._create_placement_group(two_vm_scaling_cfg, two_vm_ctx)
+    mock_spg_cls.assert_called_once_with(
+        topology="2x4",
+        accelerator_version="v6e",
+        num_slices=1,
+        resources_per_bundle={"CPU": 1, "TPU": 4},
+        bundle_label_selector=None,
+        chips_per_vm=4,
+    )
+
 
 def test_create_placement_group_tpu_multi_slice_label_selector(monkeypatch):
     """Verify multi-slice TPU label_selector forwarding into mocked and real SlicePlacementGroup."""

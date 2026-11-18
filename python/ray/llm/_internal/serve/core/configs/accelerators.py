@@ -9,12 +9,14 @@ from typing_extensions import Annotated
 import ray
 import ray.util.accelerators.accelerators as accelerators
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
-from ray._private.accelerators.tpu import _is_positive_number, get_chips_per_host
+from ray._private.accelerators.tpu import _is_positive_number
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.tpu import (
+    _infer_chips_per_vm_from_cluster,
     _normalize_bundle_label_selector as normalize_bundle_label_selector,
     _prepare_slice_pg_specs,
+    _resolve_chips_per_vm,
     get_tpu_version_from_type,
     slice_placement_group,
 )
@@ -46,8 +48,8 @@ def prepare_tpu_bundles_and_label_selector(
     Note: ``TPUAccelerator.default_bundles`` retains ``accelerator_type:*``
     in the raw bundle list for callers that inspect ``placement_bundles``, while
     placement group creation routes TPU hardware selection through node labels
-    (since KubeRay TPU worker groups advertise ``ray.io/accelerator-type`` labels
-    rather than ``accelerator_type:*`` custom resources).
+    (since KubeRay autoscaler node types derive ``ray.io/accelerator-type``
+    labels rather than ``accelerator_type:*`` custom resources).
     """
     top_level_accel = (
         accelerator_type_str.strip()
@@ -153,6 +155,7 @@ class GPUConfig(AcceleratorConfig):
 class TPUConfig(AcceleratorConfig):
     kind: Literal["tpu"] = "tpu"
     topology: Optional[str] = None
+    chips_per_vm: Optional[int] = Field(default=None, gt=0)
 
 
 AnyAcceleratorConfig = Annotated[
@@ -272,7 +275,17 @@ class TPUAccelerator(AcceleratorBackend):
                 "in order to compute TPU resource requirements."
             )
         version = get_tpu_version_from_type(accelerator_type_str)
-        chips_per_host = get_chips_per_host(self._config.topology, version)
+        effective_chips_per_vm = (
+            self._config.chips_per_vm
+            if self._config.chips_per_vm is not None
+            else _infer_chips_per_vm_from_cluster(
+                topology=self._config.topology,
+                accelerator_version=version,
+            )
+        )
+        chips_per_host = _resolve_chips_per_vm(
+            effective_chips_per_vm, self._config.topology, version
+        )
 
         if num_devices > chips_per_host and num_devices % chips_per_host != 0:
             raise ValueError(
@@ -361,6 +374,7 @@ class TPUAccelerator(AcceleratorBackend):
                 accelerator_version=version,
                 resources_per_bundle=worker_bundle,
                 name=name,
+                chips_per_vm=self._config.chips_per_vm,
                 bundle_label_selector=bundle_label_selector,
             )
             logger.debug(
@@ -379,6 +393,7 @@ class TPUAccelerator(AcceleratorBackend):
             accelerator_version=version,
             resources_per_bundle=worker_bundle,
             name=name,
+            chips_per_vm=self._config.chips_per_vm,
             bundle_label_selector=bundle_label_selector,
         )
         return self._slice_pg_wrapper.placement_group

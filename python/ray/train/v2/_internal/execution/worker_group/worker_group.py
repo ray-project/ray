@@ -519,7 +519,7 @@ class WorkerGroup(ExecutionGroup):
             else list(range(num_workers))
         )
         pgs = placement_group
-        bundles_per_pg = pgs[0].bundle_count if len(pgs) > 1 else None
+        bundles_per_pg = pgs[0].bundle_count
 
         runtime_env = self._get_worker_runtime_env(
             custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
@@ -532,12 +532,8 @@ class WorkerGroup(ExecutionGroup):
         actors = [
             worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pgs[i // bundles_per_pg]
-                    if bundles_per_pg
-                    else pgs[0],
-                    placement_group_bundle_index=i % bundles_per_pg
-                    if bundles_per_pg
-                    else i,
+                    placement_group=pgs[i // bundles_per_pg],
+                    placement_group_bundle_index=i % bundles_per_pg,
                 ),
             ).remote()
             for i in indices
@@ -649,13 +645,16 @@ class WorkerGroup(ExecutionGroup):
                 accelerator_version = get_tpu_version_from_type(
                     scaling_config.accelerator_type
                 )
-                spg = SlicePlacementGroup(
-                    topology=scaling_config.topology,
-                    accelerator_version=accelerator_version,
-                    num_slices=worker_group_context.num_slices,
-                    resources_per_bundle=worker_group_context.resources_per_worker,
-                    bundle_label_selector=worker_group_context.label_selector,
-                )
+                spg_kwargs: Dict[str, Any] = {
+                    "topology": scaling_config.topology,
+                    "accelerator_version": accelerator_version,
+                    "num_slices": worker_group_context.num_slices,
+                    "resources_per_bundle": worker_group_context.resources_per_worker,
+                    "bundle_label_selector": worker_group_context.label_selector,
+                }
+                if scaling_config.chips_per_vm is not None:
+                    spg_kwargs["chips_per_vm"] = scaling_config.chips_per_vm
+                spg = SlicePlacementGroup(**spg_kwargs)
 
                 return SlicePlacementGroupHandle(spg)
 

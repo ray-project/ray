@@ -17,6 +17,7 @@ from typing import (
 import pyarrow.fs
 
 import ray
+from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray.air.config import (
     FailureConfig as FailureConfigV1,
     ScalingConfig as ScalingConfigV1,
@@ -100,6 +101,9 @@ class ScalingConfig(ScalingConfigV1):
             auto-detected for TPUs and added as Ray node labels. This arg enables
             SPMD execution of the training workload. This field is required
             when `use_tpu` is True and `num_workers` is greater than 1.
+        chips_per_vm: [Experimental] Optional override for the number of physical TPU
+            chips per VM when ``use_tpu=True`` (for example, ``chips_per_vm=4`` for a
+            two-VM ``2x4`` TPU v6e slice when scaling from zero).
     """
 
     num_workers: Union[int, Tuple[int, int]] = 1
@@ -109,6 +113,7 @@ class ScalingConfig(ScalingConfigV1):
     # Accelerator specific fields.
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
+    chips_per_vm: Optional[int] = None
 
     # Elasticity specific fields.
     elastic_resize_monitor_interval_s: float = 60.0
@@ -302,6 +307,10 @@ class ScalingConfig(ScalingConfigV1):
             raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
 
         if not self.use_tpu:
+            if self.chips_per_vm is not None:
+                raise ValueError(
+                    "`chips_per_vm` can only be specified when `use_tpu=True`."
+                )
             if self.num_tpus_per_worker > 0:
                 raise ValueError(
                     "`use_tpu` is False but `TPU` was found in "
@@ -310,6 +319,13 @@ class ScalingConfig(ScalingConfigV1):
                 )
             # If not using TPU, we are done validating TPU-specific logic.
             return
+
+        if self.chips_per_vm is not None and (
+            isinstance(self.chips_per_vm, bool)
+            or not isinstance(self.chips_per_vm, int)
+            or self.chips_per_vm <= 0
+        ):
+            raise ValueError("`chips_per_vm` must be a positive integer.")
 
         if self.num_tpus_per_worker == 0:
             raise ValueError(
@@ -333,12 +349,23 @@ class ScalingConfig(ScalingConfigV1):
 
         # Validate TPU resources when both topology and accelerator type are specified.
         if self.topology and self.accelerator_type:
+            tpu_version = get_tpu_version_from_type(self.accelerator_type.strip())
+            norm_topology = self.topology.strip().lower()
+            if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+                tpu_accelerator_version=tpu_version,
+                tpu_topology=norm_topology,
+            ):
+                raise ValueError(
+                    f"Invalid accelerator topology: '{norm_topology}' for "
+                    f"accelerator version: '{tpu_version}'"
+                )
             try:
                 workers_per_slice, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
                     accelerator_type=self.accelerator_type,
                     resources_per_worker=self.resources_per_worker,
                     num_slices=1,
+                    chips_per_vm=self.chips_per_vm,
                 )
             except Exception as e:
                 raise ValueError(
@@ -370,9 +397,9 @@ class ScalingConfig(ScalingConfigV1):
     def _resources_per_worker_not_none(self):
         if self.use_tpu:
             # Unlike V1 ScalingConfig, V2 intentionally omits `accelerator_type:TPU-*: 0.001`
-            # from bundle resources because KubeRay TPU worker groups advertise
+            # from bundle resources because KubeRay autoscaler node types derive
             # `ray.io/accelerator-type` node labels rather than `accelerator_type:*`
-            # custom resources (which would fail `_check_cluster_resources_and_raise_if_insufficient`).
+            # custom resources (which would block scale-from-zero and resource checks).
             if self.resources_per_worker is None:
                 return {"TPU": 1}
             resources_per_worker = {

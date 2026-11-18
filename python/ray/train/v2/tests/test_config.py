@@ -1,3 +1,5 @@
+import logging
+
 import pyarrow.fs
 import pytest
 
@@ -292,16 +294,21 @@ def test_scaling_config_resolve_worker_group_label_selector(caplog, propagate_lo
     assert cpu_cfg._resolve_worker_group_label_selector(2) is None
 
     # Empty/None callback selectors are ignored; non-empty callback overrides prior selector.
-    with caplog.at_level("WARNING", logger="ray.train.v2.api.config"):
-        resolved = slice_cfg._resolve_worker_group_label_selector(
-            4,
-            callback_selectors=[
-                ("NoOpCallback", None),
-                ("EmptyCallback", {}),
-                ("FirstCallback", {"zone": "us-central1"}),
-                ("SecondCallback", {"zone": "us-east1"}),
-            ],
-        )
+    cfg_logger = logging.getLogger("ray.train.v2.api.config")
+    cfg_logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level("WARNING", logger="ray.train.v2.api.config"):
+            resolved = slice_cfg._resolve_worker_group_label_selector(
+                4,
+                callback_selectors=[
+                    ("NoOpCallback", None),
+                    ("EmptyCallback", {}),
+                    ("FirstCallback", {"zone": "us-central1"}),
+                    ("SecondCallback", {"zone": "us-east1"}),
+                ],
+            )
+    finally:
+        cfg_logger.removeHandler(caplog.handler)
     assert resolved == [{"zone": "us-east1"}] * 4
     assert len({id(d) for d in resolved}) == 4
     assert "Overriding `ScalingConfig.label_selector`" in caplog.text
@@ -345,6 +352,88 @@ def test_scaling_config_default_workers():
     config_gpu = ScalingConfig(use_gpu=True)
     assert config_gpu.num_workers == 1
     assert config_gpu.total_resources == {"GPU": 1}
+
+
+def test_scaling_config_tpu_chips_per_vm_topology_validation_and_gpu_isolation():
+    """Verify R1 (chips_per_vm=4 on two-VM 2x4 TPU slices), T2 (eager topology
+    table validation in ScalingConfig.__post_init__), and G4 (GPU accelerator_type
+    isolation, non-TPU topology/accelerator_type handling, and zero-valued resource
+    stripping).
+    """
+    from ray.util.tpu import get_tpu_num_slices_for_workers
+
+    # 1. R1: Two-VM v6e 2x4 config with chips_per_vm=4 reserves 2 x 4-TPU workers = 1 slice.
+    two_vm_cfg = ScalingConfig(
+        num_workers=2,
+        use_tpu=True,
+        topology="2x4",
+        accelerator_type="TPU-V6E",
+        chips_per_vm=4,
+    )
+    assert two_vm_cfg._resources_per_worker_not_none == {"CPU": 1, "TPU": 4}
+    assert (
+        get_tpu_num_slices_for_workers(
+            topology=two_vm_cfg.topology,
+            accelerator_type=two_vm_cfg.accelerator_type,
+            num_workers=2,
+            resources_per_worker=two_vm_cfg._resources_per_worker_not_none,
+            chips_per_vm=two_vm_cfg.chips_per_vm,
+        )
+        == 1
+    )
+
+    with pytest.raises(ValueError, match="chips_per_vm"):
+        ScalingConfig(num_workers=2, use_tpu=False, chips_per_vm=4)
+    with pytest.raises(ValueError, match="chips_per_vm"):
+        ScalingConfig(
+            num_workers=2,
+            use_tpu=True,
+            topology="4x4",
+            accelerator_type="TPU-V6E",
+            chips_per_vm=0,
+        )
+
+    # 2. T2: Invalid topology for generation fails eagerly at config construction.
+    with pytest.raises(ValueError, match="Invalid accelerator topology"):
+        ScalingConfig(
+            num_workers=768,
+            use_tpu=True,
+            topology="12x16x16",
+            accelerator_type="TPU-V4",
+        )
+    with pytest.raises(ValueError, match="Invalid accelerator topology"):
+        ScalingConfig(
+            num_workers=2,
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V6E",
+        )
+
+    # 3. G4: GPU accelerator_type and use_tpu=False with topology/accelerator_type
+    # never invoke TPU label generation, and CPU=0 is stripped cleanly.
+    gpu_a100 = ScalingConfig(
+        num_workers=2,
+        use_gpu=True,
+        accelerator_type="NVIDIA-A100",
+    )
+    assert gpu_a100._resolve_worker_group_label_selector(2) is None
+
+    non_tpu_with_topo = ScalingConfig(
+        num_workers=2,
+        use_tpu=False,
+        topology="4x4",
+        accelerator_type="NVIDIA-A100",
+    )
+    assert non_tpu_with_topo._uses_slice_placement_group is False
+    assert non_tpu_with_topo._resolve_worker_group_label_selector(2) is None
+
+    zero_cpu_tpu = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        resources_per_worker={"TPU": 1, "CPU": 0},
+    )
+    assert zero_cpu_tpu._resources_per_worker_not_none == {"TPU": 1}
 
 
 if __name__ == "__main__":
