@@ -9,6 +9,7 @@ from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.ray_constants import env_float
+from ray._common.usage import usage_lib
 from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
@@ -77,7 +78,11 @@ from ray.train.v2._internal.util import (
 )
 from ray.train.v2.api.config import ScalingConfig
 from ray.types import ObjectRef
-from ray.util.placement_group import PlacementGroup, placement_group
+from ray.util.placement_group import (
+    PlacementGroup,
+    placement_group,
+    placement_group_table,
+)
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
@@ -98,6 +103,21 @@ _SERIALIZATION_FAILURE_MARKERS = (
     "PicklingError",
     "ray/cloudpickle/cloudpickle.py",
 )
+
+
+def _is_placement_group_infeasible(pg_handle: PlacementGroupHandle) -> bool:
+    """Whether the GCS found that no set of nodes in the cluster can host the
+    placement group, as opposed to the nodes being busy right now.
+
+    The GCS reports a group whose total demand exceeds the cluster total as
+    ``NO_RESOURCES``, not ``INFEASIBLE``, so callers also check the totals.
+    """
+    try:
+        table = placement_group_table(pg_handle.placement_group)
+        return table["stats"]["scheduling_state"] == "INFEASIBLE"
+    except Exception:
+        logger.debug("Failed to read the placement group state.", exc_info=True)
+        return False
 
 
 def _get_tpu_node_info() -> Tuple[Optional[str], Optional[int]]:
@@ -256,15 +276,23 @@ class WorkerGroup(ExecutionGroup):
 
     @staticmethod
     def _check_cluster_resources_and_raise_if_insufficient(
-        resources_per_worker: Dict[str, float], num_workers: int
+        resources_per_worker: Dict[str, float],
+        num_workers: int,
+        cluster_resources_are_final: bool = False,
     ) -> None:
         """Check if the cluster has enough resources before waiting for placement group.
 
         Args:
             resources_per_worker: The resources per worker.
             num_workers: The number of workers.
+            cluster_resources_are_final: Whether the current cluster resources
+                are the most the cluster can ever have. If True and the cluster
+                config doesn't report its maximum resources, check against the
+                current cluster resources.
         """
         max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
+        if not max_cluster_resources and cluster_resources_are_final:
+            max_cluster_resources = ray.cluster_resources()
         if not max_cluster_resources:
             return
 
@@ -282,6 +310,31 @@ class WorkerGroup(ExecutionGroup):
                 )
                 raise InsufficientClusterResourcesError(error_msg)
 
+    def _cluster_resources_are_final(self) -> bool:
+        """Whether the current cluster resources are all the cluster will ever have.
+
+        This is only known for a cluster that ``ray.init()`` started, which runs
+        on the local node without an autoscaler. Other clusters can add nodes,
+        so a request that doesn't fit yet might fit later.
+
+        Elastic runs and TPU runs return False: an elastic run sizes the worker
+        group from the resources it observes and retries at a different size,
+        and TPU slices are reserved through their own placement groups.
+        """
+        scaling_config = self._train_run_context.scaling_config
+        if scaling_config.elasticity_enabled or scaling_config.use_tpu:
+            return False
+        try:
+            return usage_lib.is_ray_init_cluster(
+                ray._private.worker.global_worker.gcs_client
+            )
+        except Exception:
+            logger.debug(
+                "Failed to check whether the cluster was started by ray.init().",
+                exc_info=True,
+            )
+            return False
+
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
@@ -298,11 +351,14 @@ class WorkerGroup(ExecutionGroup):
         worker_group_context = self._worker_group_context
         start_time = time_monotonic()
 
+        cluster_resources_are_final = self._cluster_resources_are_final()
+
         # Check that we have sufficient resources in the cluster before waiting for
         # a placement group.
         WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
             worker_group_context.resources_per_worker,
             worker_group_context.num_workers,
+            cluster_resources_are_final=cluster_resources_are_final,
         )
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
@@ -331,7 +387,24 @@ class WorkerGroup(ExecutionGroup):
             # based on stale information about cluster resources.
             pg_wait_start = time_monotonic()
             if not pg_handle.wait(self._worker_group_start_timeout_s):
+                infeasible = (
+                    cluster_resources_are_final
+                    and _is_placement_group_infeasible(pg_handle)
+                )
                 pg_handle.shutdown()
+                if infeasible:
+                    raise InsufficientClusterResourcesError(
+                        "Insufficient cluster resources to launch training workers.\n"
+                        "No set of nodes in the cluster can host the training "
+                        f"workers: [{worker_group_context.resources_per_worker}] * "
+                        f"{worker_group_context.num_workers} with the "
+                        f"'{worker_group_context.placement_strategy}' placement "
+                        "strategy. The cluster was started by `ray.init()` and "
+                        "can't add nodes, so retrying won't help.\n"
+                        "Reduce `num_workers` or `resources_per_worker`, change "
+                        "`placement_strategy` or `label_selector` in the "
+                        "`ScalingConfig`, or run on a cluster with enough resources."
+                    )
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
                 )
