@@ -3,6 +3,45 @@ from typing import Callable, List, NamedTuple, Optional, Tuple
 import pyarrow as pa
 import pyarrow.compute as pc
 
+# An integer column can be summed without losing information by widening it to
+# a decimal accumulator before invoking Arrow's grouped sum kernel.  Decimal128
+# has enough precision for the largest practical sum of int64/uint64 data while
+# keeping the accumulator compact enough for the vectorized aggregation path.
+_INTEGER_SUM_TYPE = pa.decimal128(38, 0)
+
+
+def _prepare_integer_sum_column(
+    agg_index: int, source_col: Optional[str], block: "pa.Table"
+) -> "pa.Table":
+    """Create a widened input column for integer sum/mean aggregations.
+
+    The original source column is left untouched.  Keeping a per-aggregation
+    derived column is important when the same source column is used by multiple
+    aggregations, and it also lets Decimal inputs retain their original type.
+    """
+
+    input_col = f"__agg{agg_index}_sum_input"
+    source = block[source_col]
+    if pa.types.is_run_end_encoded(source.type):
+        source = pc.run_end_decode(source)
+    if is_integer_arrow_type(source.type):
+        source = pc.cast(source, _INTEGER_SUM_TYPE)
+    return block.append_column(input_col, source)
+
+
+def is_integer_arrow_type(t: "pa.DataType") -> bool:
+    """Whether ``t`` is an integer, including encoded integer types."""
+    while pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
+        t = t.value_type
+    return pa.types.is_integer(t)
+
+
+def is_unsigned_integer_arrow_type(t: "pa.DataType") -> bool:
+    """Whether ``t`` is an unsigned integer, including encoded types."""
+    while pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
+        t = t.value_type
+    return pa.types.is_unsigned_integer(t)
+
 
 def is_boolean_arrow_type(t: "pa.DataType") -> bool:
     """Whether ``t`` is boolean, including dictionary/run-end encoded booleans."""
@@ -75,6 +114,13 @@ def _finalize_mean(merged: "pa.Table", component_cols: Tuple[str, ...]):
     return pc.divide(pc.cast(merged[sum_col], pa.float64()), denominator)
 
 
+def _finalize_sum(merged: "pa.Table", component_cols: Tuple[str, ...]):
+    # Integer inputs are widened to Decimal128 before aggregation, so retaining
+    # the accumulated column keeps the materialized schema stable regardless of
+    # whether the final value fits in the native integer range.
+    return merged[component_cols[0]]
+
+
 def _finalize_pct(merged: "pa.Table", component_cols: Tuple[str, ...]):
     numerator_col, denominator_col = component_cols
     numerator = pc.cast(merged[numerator_col], pa.float64())
@@ -91,13 +137,14 @@ def _finalize_pct(merged: "pa.Table", component_cols: Tuple[str, ...]):
 def sum_spec() -> ArrowAggSpec:
     return ArrowAggSpec(
         components=("sum",),
+        prep=_prepare_integer_sum_column,
         raw_agg_specs=lambda agg_index, source_col, options: [
-            (source_col, "sum", options.value_opts)
+            (f"__agg{agg_index}_sum_input", "sum", options.value_opts),
         ],
         merge_specs=lambda input_cols, options: [
-            (input_cols[0], "sum", options.value_opts)
+            (input_cols[0], "sum", options.value_opts),
         ],
-        finalize=lambda merged, component_cols: merged[component_cols[0]],
+        finalize=_finalize_sum,
     )
 
 
@@ -135,9 +182,10 @@ def minmax_spec(kind: str) -> ArrowAggSpec:
 def mean_spec() -> ArrowAggSpec:
     return ArrowAggSpec(
         components=("sum", "count"),
+        prep=_prepare_integer_sum_column,
         raw_agg_specs=lambda agg_index, source_col, options: [
-            (source_col, "sum", options.value_opts),
-            (source_col, "count", options.count_opts),
+            (f"__agg{agg_index}_sum_input", "sum", options.value_opts),
+            (f"__agg{agg_index}_sum_input", "count", options.count_opts),
         ],
         merge_specs=lambda input_cols, options: [
             (input_cols[0], "sum", options.value_opts),
