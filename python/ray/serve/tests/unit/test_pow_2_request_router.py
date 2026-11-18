@@ -2193,6 +2193,121 @@ async def test_rank_replicas_via_multiplex(
     ]
 
 
+@pytest.mark.asyncio
+async def test_rank_replicas_via_multiplex_candidates(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """Candidates are preferred in order, then fewest-models, then the rest."""
+    s = pow_2_router
+
+    replica_with_second_candidate = FakeRunningReplica("r1", model_ids={"v6"})
+    replica_with_third_candidate = FakeRunningReplica("r2", model_ids={"v5"})
+    replica_with_no_model = FakeRunningReplica("r3", model_ids=set())
+    all_replicas = [
+        replica_with_second_candidate,
+        replica_with_third_candidate,
+        replica_with_no_model,
+    ]
+    s.update_replicas(all_replicas)
+
+    assert s.rank_replicas_via_multiplex_candidates(
+        replicas=all_replicas,
+        candidate_multiplexed_model_ids=["v7", "v6", "v5"],
+    ) == [
+        [],  # rank 0: nobody has "v7"
+        [replica_with_second_candidate],  # rank 1: "v6"
+        [replica_with_third_candidate],  # rank 2: "v5"
+        [replica_with_no_model],  # rank 3: fewest models loaded
+        [],  # rank 4: everything else
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rank_replicas_via_multiplex_candidates_prefers_earlier_candidate(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """A replica holding an earlier candidate outranks one holding a later one."""
+    s = pow_2_router
+
+    replica_with_preferred = FakeRunningReplica("r1", model_ids={"v7"})
+    replica_with_fallback = FakeRunningReplica("r2", model_ids={"v6"})
+    all_replicas = [replica_with_fallback, replica_with_preferred]
+    s.update_replicas(all_replicas)
+
+    assert s.rank_replicas_via_multiplex_candidates(
+        replicas=all_replicas,
+        candidate_multiplexed_model_ids=["v7", "v6"],
+    ) == [
+        [replica_with_preferred],
+        [replica_with_fallback],
+        [],  # fewest models: both tie, but both are already ranked above
+        [],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rank_replicas_via_multiplex_candidates_shared_candidate(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """Every replica holding the same candidate shares that candidate's rank."""
+    s = pow_2_router
+
+    first_with_candidate = FakeRunningReplica("r1", model_ids={"v7"})
+    second_with_candidate = FakeRunningReplica("r2", model_ids={"v7"})
+    replica_with_other_model = FakeRunningReplica("r3", model_ids={"v1", "v2"})
+    all_replicas = [
+        first_with_candidate,
+        second_with_candidate,
+        replica_with_other_model,
+    ]
+    s.update_replicas(all_replicas)
+
+    assert s.rank_replicas_via_multiplex_candidates(
+        replicas=all_replicas,
+        candidate_multiplexed_model_ids=["v7"],
+    ) == [
+        [first_with_candidate, second_with_candidate],
+        [],  # fewest models: the two "v7" replicas tie, but both already ranked
+        [replica_with_other_model],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rank_replicas_via_multiplex_candidates_empty_list(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """An empty candidate list degrades to fewest-models-loaded then the rest."""
+    s = pow_2_router
+
+    replica_with_no_model = FakeRunningReplica("r1", model_ids=set())
+    replica_with_models = FakeRunningReplica("r2", model_ids={"v1", "v2"})
+    all_replicas = [replica_with_models, replica_with_no_model]
+    s.update_replicas(all_replicas)
+
+    assert s.rank_replicas_via_multiplex_candidates(
+        replicas=all_replicas,
+        candidate_multiplexed_model_ids=[],
+    ) == [
+        [replica_with_no_model],
+        [replica_with_models],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rank_replicas_via_multiplex_candidates_no_replicas(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """With no replicas to rank, every rank is present but empty."""
+    s = pow_2_router
+
+    s.update_replicas([])
+
+    assert s.rank_replicas_via_multiplex_candidates(
+        replicas=[],
+        candidate_multiplexed_model_ids=["v7", "v6"],
+    ) == [[], [], [], []]
+
+
 def test_request_router_backoff_params_default():
     """Test that backoff params use env var defaults when not specified."""
     router = PowerOfTwoChoicesRequestRouter(

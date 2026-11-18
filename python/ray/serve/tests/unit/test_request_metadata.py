@@ -44,6 +44,22 @@ def test_request_metadata():
     assert request_metadata.is_grpc_request is True
 
 
+def test_request_metadata_candidate_multiplexed_model_ids():
+    """`candidate_multiplexed_model_ids` defaults to empty and preserves order."""
+    request_metadata = RequestMetadata(
+        request_id="request-id",
+        internal_request_id="internal-request-id",
+    )
+    assert request_metadata.candidate_multiplexed_model_ids == ()
+
+    with_candidates = RequestMetadata(
+        request_id="request-id",
+        internal_request_id="internal-request-id",
+        candidate_multiplexed_model_ids=("v7", "v6", "v5"),
+    )
+    assert with_candidates.candidate_multiplexed_model_ids == ("v7", "v6", "v5")
+
+
 if __name__ == "__main__":
     import sys
 

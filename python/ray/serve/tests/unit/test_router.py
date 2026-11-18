@@ -128,9 +128,11 @@ class FakeReplica(RunningReplica):
         node_ip: str = "127.0.0.1",
         port: Optional[int] = 8000,
         actor_id: Optional[ray.ActorID] = None,
+        multiplexed_model_ids: Optional[Set[str]] = None,
     ):
         self._replica_id = replica_id
         self._is_cross_language = is_cross_language
+        self._multiplexed_model_ids = multiplexed_model_ids or set()
         self._queue_len_info = queue_len_info
         self._error = error
         self._reserved_slots: Set[str] = set()
@@ -229,6 +231,7 @@ class FakeReplica(RunningReplica):
             {
                 "request_id": pr.metadata.request_id,
                 "with_rejection": with_rejection,
+                "multiplexed_model_id": pr.metadata.multiplexed_model_id,
             }
         )
 
@@ -686,6 +689,32 @@ class TestBroadcast:
         assert results[0]._replica_id == r2_id
         assert r1_id in fake_request_router.dropped_replicas
 
+    async def test_resolves_multiplexed_model_id_per_replica(self, setup_router):
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        replica1 = FakeReplica(
+            ReplicaID(unique_id="r1", deployment_id=d_id),
+            multiplexed_model_ids={"v6"},
+        )
+        replica2 = FakeReplica(
+            ReplicaID(unique_id="r2", deployment_id=d_id),
+            multiplexed_model_ids={"v3"},
+        )
+        fake_request_router.set_replica_to_return(replica1)
+        fake_request_router.set_replica_to_return_on_retry(replica2)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            multiplexed_model_id="v7",
+            candidate_multiplexed_model_ids=("v7", "v6"),
+        )
+        await router.broadcast(request_metadata)
+
+        assert replica1._requests_sent[0]["multiplexed_model_id"] == "v6"
+        assert replica2._requests_sent[0]["multiplexed_model_id"] == "v7"
+        assert request_metadata.multiplexed_model_id == "v7"
+
     async def test_all_replicas_dead_raises_unavailable(self, setup_router):
         router, fake_request_router = setup_router
         d_id = DeploymentID(name="test")
@@ -977,6 +1006,97 @@ class TestAssignRequest:
         if router._request_router._use_queue_len_cache:
             assert fake_request_router.replica_queue_len_cache.get(r1_id) == 10
             assert fake_request_router.replica_queue_len_cache.get(r2_id) == 20
+
+    @pytest.mark.parametrize(
+        "multiplexed_model_id,candidate_multiplexed_model_ids,loaded_model_ids,"
+        "expected_model_id",
+        [
+            ("v7", (), {"v5", "v6"}, "v7"),
+            ("", (), {"v6"}, ""),
+            ("v7", ("v7", "v6"), {"v6"}, "v6"),
+            ("v7", ("v7", "v6"), {"v6", "v7"}, "v7"),
+            ("v7", ("v7", "v6"), {"v3"}, "v7"),
+        ],
+        ids=[
+            "single_id_is_unchanged",
+            "no_model_id_stays_empty",
+            "runs_the_candidate_the_replica_has",
+            "candidate_order_wins_over_replica_order",
+            "falls_back_to_first_candidate",
+        ],
+    )
+    async def test_multiplexed_model_id_resolved_for_chosen_replica(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        multiplexed_model_id: str,
+        candidate_multiplexed_model_ids: Tuple[str, ...],
+        loaded_model_ids: Set[str],
+        expected_model_id: str,
+    ):
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id, multiplexed_model_ids=loaded_model_ids)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            multiplexed_model_id=multiplexed_model_id,
+            candidate_multiplexed_model_ids=candidate_multiplexed_model_ids,
+        )
+        await router.assign_request(request_metadata)
+
+        assert replica._requests_sent[0]["multiplexed_model_id"] == expected_model_id
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_strict_max_ongoing_requests": True}],
+        indirect=True,
+    )
+    async def test_multiplexed_model_id_resolved_again_on_retry(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """A retried request picks from its candidates again for the new replica."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica1 = FakeReplica(
+            r1_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=False, num_ongoing_requests=10
+            ),
+            multiplexed_model_ids={"v6"},
+        )
+        fake_request_router.set_replica_to_return(replica1)
+
+        r2_id = ReplicaID(
+            unique_id="test-replica-2", deployment_id=DeploymentID(name="test")
+        )
+        replica2 = FakeReplica(
+            r2_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=True, num_ongoing_requests=0
+            ),
+            multiplexed_model_ids={"v7"},
+        )
+        fake_request_router.set_replica_to_return_on_retry(replica2)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            multiplexed_model_id="v7",
+            candidate_multiplexed_model_ids=("v7", "v6"),
+        )
+        replica_result = await router.assign_request(request_metadata)
+
+        assert replica_result._replica_id == r2_id
+        assert replica1._requests_sent[0]["multiplexed_model_id"] == "v6"
+        assert replica2._requests_sent[0]["multiplexed_model_id"] == "v7"
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -2282,6 +2402,66 @@ class TestChooseReplica:
         # The callback fires once per pick, not again on context exit.
         assert len(fake_request_router.routed_requests) == 1
         assert replica._requests_sent == []
+
+    async def test_choose_replica_resolves_multiplexed_model_id(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """The model ID is picked before dispatch so the replica runs it."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id, multiplexed_model_ids={"v6"})
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            multiplexed_model_id="v7",
+            candidate_multiplexed_model_ids=("v7", "v6"),
+        )
+        async with router.choose_replica(request_metadata) as selection:
+            assert selection._request_metadata.multiplexed_model_id == "v6"
+            await router.dispatch(selection, request_metadata)
+
+        assert replica._requests_sent[0]["multiplexed_model_id"] == "v6"
+
+    async def test_choose_replica_no_reserve_resolves_multiplexed_model_id(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """A pick-only selection and its routing callback see the replica's model."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id, multiplexed_model_ids={"v6"})
+        fake_request_router._replicas_list = [replica]
+        fake_request_router._replicas = {r1_id: replica}
+
+        async def fake_choose_replicas(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = fake_choose_replicas
+
+        routed_model_ids = []
+
+        def record_routed_model_id(pending_request, replica_id, result):
+            routed_model_ids.append(pending_request.metadata.multiplexed_model_id)
+
+        fake_request_router.on_request_routed = record_routed_model_id
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            multiplexed_model_id="v7",
+            candidate_multiplexed_model_ids=("v7", "v6"),
+        )
+        async with router.choose_replica(request_metadata, _reserve=False) as selection:
+            assert selection._request_metadata.multiplexed_model_id == "v6"
+
+        assert routed_model_ids == ["v6"]
 
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
