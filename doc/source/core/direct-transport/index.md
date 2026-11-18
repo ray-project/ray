@@ -258,6 +258,40 @@ You can also use NIXL to retrieve the result from references created by {func}`r
 :end-before: __nixl_put__and_get_end__
 ```
 
+#### Inspecting the NIXL memory pool
+
+When you pre-allocate a NIXL memory pool with {func}`ray.experimental.register_nixl_memory_pool`, Ray reuses that pool for `ray.put(_tensor_transport="nixl")` instead of registering each tensor's memory individually. Inspect the pool's live usage with {func}`ray.experimental.get_nixl_memory_pool_stats`, which runs on the actor and returns a {class}`ray.experimental.NixlMemoryPoolStats` snapshot. The snapshot reports the pool's capacity, allocated and free bytes, the largest free block, the number of live objects and free blocks, and a cumulative count of allocation failures. It carries only scalar metadata, so querying it never fetches a CUDA tensor to the driver.
+
+Register the pool in the actor's constructor and expose a `ready` method that the driver calls to wait for initialization before querying:
+
+```python
+import torch
+import ray
+from ray.experimental import get_nixl_memory_pool_stats, register_nixl_memory_pool
+
+
+@ray.remote(num_gpus=1, enable_tensor_transport=True)
+class Trainer:
+    def __init__(self):
+        register_nixl_memory_pool(1024 * 1024 * 1024, torch.device("cuda"))
+
+    def ready(self):
+        # Ray runs actor methods only after __init__ finishes, so returning
+        # True is enough to know the pool above is registered.
+        return True
+
+
+trainer = Trainer.remote()
+ray.get(trainer.ready.remote())
+stats = get_nixl_memory_pool_stats(trainer)
+```
+
+`get_nixl_memory_pool_stats` returns `None` when the actor has no registered pool, which is distinct from a registered pool that happens to be empty or full. Querying an actor that has never used NIXL returns `None` without creating a transport, importing torch, or creating an agent or pool.
+
+The snapshot describes the pool itself, not the GPU. `allocated_bytes` is the bytes carved out for live objects, including the alignment padding each carved block is rounded up toward (clamped to the free block's remaining size); it isn't CUDA free VRAM. `largest_free_block_bytes` is diagnostic: the total `free_bytes` can exceed a request while the request still fails, because a single packed tensor has to fit one hole. `allocation_failures` counts, once per failed allocation attempt, the `NixlOutOfMemoryError` errors this pool has raised over its lifetime; frees and queries never change it.
+
+The `timeout` argument bounds how long the caller waits for the result. It doesn't cancel a snapshot that's already queued or running on the actor. The actor must be created with `@ray.remote(enable_tensor_transport=True)` so the `_ray_system` concurrency group that runs the query exists.
+
 
 ### Summary
 

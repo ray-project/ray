@@ -8,6 +8,7 @@ from ray.experimental.rdt.collective_tensor_transport import (
     NCCLTensorTransport,
 )
 from ray.experimental.rdt.cuda_ipc_transport import CudaIpcTransport
+from ray.experimental.rdt.nixl_memory_pool import NixlMemoryPoolStats
 from ray.experimental.rdt.nixl_tensor_transport import (
     NixlTensorTransport,
 )
@@ -336,6 +337,110 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     """
     nixl_transport = get_tensor_transport_manager("NIXL")
     nixl_transport.register_nixl_memory_pool(size, device)
+
+
+# Upper bound on the public `get_nixl_memory_pool_stats` timeout. The timeout
+# only bounds the caller's `ray.get` wait; it does not cancel a snapshot already
+# queued or running on the actor.
+_MAX_NIXL_POOL_STATS_TIMEOUT_SECONDS = 3600.0
+
+
+def _validate_nixl_pool_stats_timeout(timeout: float) -> None:
+    """Validate the public `get_nixl_memory_pool_stats` timeout argument."""
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+        raise ValueError("timeout must be a positive finite number.")
+    # Reject non-positive and too-large values before math.isfinite: converting
+    # a huge integer to float would raise OverflowError, and formatting one
+    # would hit Python's integer-to-string digit limit, so we never echo it.
+    if timeout <= 0:
+        raise ValueError("timeout must be positive.")
+    if timeout > _MAX_NIXL_POOL_STATS_TIMEOUT_SECONDS:
+        raise ValueError(
+            f"timeout must be at most {_MAX_NIXL_POOL_STATS_TIMEOUT_SECONDS} seconds."
+        )
+    import math
+
+    if not math.isfinite(timeout):
+        raise ValueError("timeout must be finite.")
+
+
+def __ray_get_nixl_memory_pool_stats__(self):
+    """Helper that runs on the actor to snapshot its NIXL memory pool.
+
+    Reads the already-existing ``transport_managers`` singleton dict under
+    ``transport_managers_lock`` and releases it before reading transport stats.
+    It never calls ``get_tensor_transport_manager`` or
+    ``_ensure_default_transports_registered``, so querying an actor that has
+    never used NIXL creates no transport, imports no torch, and creates no agent
+    or pool. Returns ``None`` when no NIXL transport has been created or no pool
+    has been registered.
+    """
+    with transport_managers_lock:
+        nixl_transport = transport_managers.get("NIXL")
+    if nixl_transport is None:
+        return None
+    return nixl_transport.get_nixl_memory_pool_stats()
+
+
+@PublicAPI(stability="alpha")
+def get_nixl_memory_pool_stats(
+    actor: "ray.actor.ActorHandle", *, timeout: float = 10.0
+) -> Optional[NixlMemoryPoolStats]:
+    """Return a snapshot of one actor's registered NIXL memory pool, or ``None``.
+
+    This is an opt-in, synchronous diagnostic query of the provided actor
+    handle. It runs on the actor in the ``_ray_system`` concurrency group and
+    returns a typed, immutable snapshot of the memory pool created with
+    :func:`ray.experimental.register_nixl_memory_pool`.
+
+    The result is ``None`` when the actor has no successfully registered NIXL
+    memory pool. This is distinct from a configured pool that happens to be
+    empty or full: a registered pool always returns a non-``None``
+    :class:`NixlMemoryPoolStats`. Querying an actor that has never used NIXL
+    returns ``None`` without creating a transport, importing torch, or creating
+    an agent or pool.
+
+    Args:
+        actor: The actor to query. Must be created with
+            ``@ray.remote(enable_tensor_transport=True)`` so the ``_ray_system``
+            concurrency group exists.
+        timeout: Maximum time in seconds to wait for the result. Must be a
+            positive, finite number no greater than
+            ``_MAX_NIXL_POOL_STATS_TIMEOUT_SECONDS`` (3600.0). The timeout only
+            bounds the caller's ``ray.get`` wait; it does not cancel a snapshot
+            already queued or running on the actor.
+
+    Returns:
+        A :class:`NixlMemoryPoolStats` snapshot, or ``None`` if the actor has no
+        registered NIXL memory pool.
+
+    Raises:
+        TypeError: If ``actor`` is not an actor handle.
+        ValueError: If the actor does not have tensor transport enabled, or if
+            ``timeout`` is invalid.
+    """
+    import ray
+    from ray.actor import ActorHandle
+
+    if not isinstance(actor, ActorHandle):
+        raise TypeError(
+            "get_nixl_memory_pool_stats expects an actor handle, got "
+            f"{type(actor).__name__}. Pass an actor created with "
+            "@ray.remote(enable_tensor_transport=True)."
+        )
+    if not getattr(actor, "_ray_enable_tensor_transport", False):
+        raise ValueError(
+            "get_nixl_memory_pool_stats requires an actor created with "
+            "@ray.remote(enable_tensor_transport=True). The diagnostic runs in "
+            "the actor's _ray_system concurrency group, which exists only for "
+            "tensor-transport-enabled actors."
+        )
+    _validate_nixl_pool_stats_timeout(timeout)
+
+    ref = actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+        __ray_get_nixl_memory_pool_stats__
+    )
+    return ray.get(ref, timeout=timeout)
 
 
 @PublicAPI(stability="alpha")

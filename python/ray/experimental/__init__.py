@@ -2,10 +2,12 @@ from ray.experimental.dynamic_resources import set_resource
 from ray.experimental.locations import get_local_object_locations, get_object_locations
 from ray.experimental.rdt import (
     CommunicatorMetadata,
+    NixlMemoryPoolStats,
     RDTManager,
     TensorTransportManager,
     TensorTransportMetadata,
     deregister_nixl_memory,
+    get_nixl_memory_pool_stats,
     register_nixl_memory,
     register_nixl_memory_pool,
     register_tensor_transport,
@@ -25,6 +27,8 @@ __all__ = [
     "register_nixl_memory",
     "deregister_nixl_memory",
     "register_nixl_memory_pool",
+    "get_nixl_memory_pool_stats",
+    "NixlMemoryPoolStats",
     "set_nixl_cuda_stream",
     "TensorTransportManager",
     "TensorTransportMetadata",
