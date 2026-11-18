@@ -1698,8 +1698,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             self.assertIsInstance(policy[3], int)
             self.assertIn(policy[0], ["0tag", "2tag", "3tag", "4tag"])
             self.assertIn(policy[1], ["0tag", "2tag", "3tag", "4tag"])
-            self.assertIn(policy[2], [0, 2, 3, 4])
-            self.assertIn(policy[3], [0, 2, 3, 4])
+            # policy[2]: the target's current iteration (fresh result).
+            self.assertIn(policy[2], [10, 15, 20])
+            # policy[3]: the iteration of the clone checkpoint that is
+            # restored (checkpoints are saved at perturbation interval 10).
+            self.assertIn(policy[3], [10])
             for i in [4, 5]:
                 self.assertIsInstance(policy[i], dict)
                 for key in ["const_factor", "int_factor", "float_factor", "id_factor"]:
@@ -1737,8 +1740,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             self.assertIsInstance(policy[3], int)
             self.assertIn(policy[0], ["0tag", "1tag"])
             self.assertIn(policy[1], ["3tag", "4tag"])
-            self.assertIn(policy[2], [0, 1])
-            self.assertIn(policy[3], [3, 4])
+            # policy[2]: the target's current iteration (fresh result).
+            self.assertIn(policy[2], [10])
+            # policy[3]: the iteration of the clone checkpoint that is
+            # restored (checkpoints are saved at perturbation interval 10).
+            self.assertIn(policy[3], [10])
             for i in [4, 5]:
                 self.assertIsInstance(policy[i], dict)
                 for key in ["const_factor", "int_factor", "float_factor", "id_factor"]:
