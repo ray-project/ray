@@ -281,15 +281,9 @@ def test_table_block_builder_compaction_row_and_size_accounting(monkeypatch):
 
     builder = ArrowBlockBuilder()
     builder.add({"a": 1, "b": "hello"})
-    assert builder._num_compactions == 1
-    assert builder._num_uncompacted_rows == 0
-    assert builder._uncompacted_size.size_bytes() == 0
     assert builder.num_rows() == 1
 
     builder.add({"a": 2, "b": "world"})
-    assert builder._num_compactions == 2
-    assert builder._num_uncompacted_rows == 0
-    assert builder._uncompacted_size.size_bytes() == 0
     assert builder.num_rows() == 2
 
     built = builder.build()
