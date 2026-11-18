@@ -39,6 +39,7 @@ import logging
 import os
 import re
 import shlex
+import threading
 import uuid
 from typing import (
     Any,
@@ -71,6 +72,7 @@ from ray.experimental.sandbox.http._proto.sandbox_exec_pb2_grpc import (
 from ray.experimental.sandbox.http.host import HostSettings, SandboxSpec
 from ray.experimental.sandbox.http.resolver import (
     SANDBOX_ID_PREFIX,
+    HostedSandboxHandle,
     RayActorHandleResolver,
     _is_actor_gone,
     _is_actor_unavailable,
@@ -95,6 +97,11 @@ _WAIT_MAX_SECONDS = 55.0
 # actor that is not answering before reporting "still running".
 _POLL_GRACE_SECONDS = 0.5
 _SCHEDULING_GRACE_SECONDS = 10.0
+# How long SandboxGetTaskId holds a call for a sandbox that is still booting,
+# and how much longer it waits for the host to answer. Together they stay
+# under the 15 s route timeout that Envoy applies by default.
+_TASK_ID_HOLD_SECONDS = 5.0
+_TASK_ID_GRACE_SECONDS = 5.0
 _PULL_TIMEOUT_SECONDS = 1800.0
 _START_TIMEOUT_SECONDS = 120.0
 _READ_BOUND_SECONDS = 600.0
@@ -414,6 +421,17 @@ def _job_stream(info: Dict[str, Any], want_stdout: bool) -> bytes:
     return _fs_error("Other", info.get("error") or "file operation failed")
 
 
+def _check_found(result: Dict[str, Any]) -> None:
+    """Raise NOT_FOUND for a sandbox its node host doesn't have.
+
+    A hosted sandbox's id resolves while its node's host lives, so an id
+    never created, or one already released, reaches the host; the status
+    matches a sandbox actor that no longer exists.
+    """
+    if result.get("error_code") == "sandbox_not_found":
+        raise _RpcError(StatusCode.NOT_FOUND, result["message"])
+
+
 def _check_stdin(
     result: Dict[str, Any], settings: SandboxAPISettings
 ) -> Dict[str, Any]:
@@ -435,6 +453,41 @@ def _check_stdin(
             "(max_file_bytes)",
         )
     raise _RpcError(StatusCode.NOT_FOUND, result.get("message", "exec not found"))
+
+
+def _sandbox_spec(
+    settings: SandboxAPISettings,
+    image: str,
+    network: str,
+    cidr_allowlist: Optional[List[str]] = None,
+    env: Optional[Dict[str, str]] = None,
+    workdir: Optional[str] = None,
+    ttl_seconds: Optional[int] = None,
+    cpu_limit: Optional[float] = None,
+    memory_limit_mb: Optional[int] = None,
+    labels: Optional[Dict[str, str]] = None,
+) -> SandboxSpec:
+    """The host spec for a facade create (and for the warm pool's templates)."""
+    return {
+        "image": image,
+        "env": dict(env or {}),
+        "workdir": workdir,
+        "ttl_seconds": ttl_seconds,
+        "network": network,
+        "dns": None,
+        "cidr_allowlist": cidr_allowlist,
+        "shell": "/bin/bash",
+        "rootless": True,
+        "readonly": False,
+        "capabilities": list(settings.default_capabilities),
+        "cpu_limit": cpu_limit,
+        "memory_limit_mb": memory_limit_mb,
+        # The client SDK doesn't request disk for sandboxes.
+        "disk_limit_mb": None,
+        "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
+        "start_timeout_seconds": _START_TIMEOUT_SECONDS,
+        "labels": dict(labels or {}),
+    }
 
 
 def _terminated() -> Any:
@@ -665,41 +718,59 @@ class _ControlServicer(ModalClientServicer):
             ttl = min(definition.timeout_secs, ttl)
 
         # entrypoint_args are ignored: SandboxHost keeps the sandbox alive.
-        spec: SandboxSpec = {
-            "image": _decode_id("im-", definition.image_id),
-            "env": _env_from_secret_ids(definition.secret_ids),
-            "workdir": definition.workdir or None,
-            "ttl_seconds": ttl,
-            "network": network,
-            "dns": None,
-            "cidr_allowlist": cidr_allowlist,
-            "shell": "/bin/bash",
-            "rootless": True,
-            "readonly": False,
-            "capabilities": list(settings.default_capabilities),
-            "cpu_limit": cpu_limit,
-            "memory_limit_mb": memory_limit_mb,
-            # The client SDK doesn't request disk for sandboxes.
-            "disk_limit_mb": None,
-            "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
-            "start_timeout_seconds": _START_TIMEOUT_SECONDS,
-            "labels": {tag.tag_name: tag.tag_value for tag in request.tags},
-        }
+        spec = _sandbox_spec(
+            settings,
+            image=_decode_id("im-", definition.image_id),
+            network=network,
+            cidr_allowlist=cidr_allowlist,
+            env=_env_from_secret_ids(definition.secret_ids),
+            workdir=definition.workdir or None,
+            ttl_seconds=ttl,
+            cpu_limit=cpu_limit,
+            memory_limit_mb=memory_limit_mb,
+            labels={tag.tag_name: tag.tag_value for tag in request.tags},
+        )
         host_settings: HostSettings = {
             "max_output_bytes": settings.max_output_bytes,
             "max_exec_history": settings.max_exec_history,
             "max_file_bytes": settings.max_file_bytes,
         }
-        handle = await asyncio.to_thread(
-            state.resolver.create,
-            sandbox_id,
-            actor_options,
-            {"sandbox_id": sandbox_id, "spec": spec, "settings": host_settings},
-            # Named sandboxes are get-or-create so retries converge; a fresh
-            # random id needs no lookup.
-            get_if_exists=bool(definition.name),
-        )
-        handle.boot.remote()
+        ctor_kwargs = {
+            "sandbox_id": sandbox_id,
+            "spec": spec,
+            "settings": host_settings,
+        }
+        # Named sandboxes are get-or-create so retries converge; a fresh
+        # random id needs no lookup.
+        get_if_exists = bool(definition.name)
+        acreate = getattr(state.resolver, "acreate", None)
+        if acreate is not None:
+            try:
+                handle = await acreate(
+                    sandbox_id, actor_options, ctor_kwargs, get_if_exists=get_if_exists
+                )
+            except asyncio.TimeoutError:
+                # UNAVAILABLE, which clients retry: each try reserves the
+                # sandbox's resources again, so a cluster that is adding
+                # nodes keeps seeing the demand until one has room.
+                raise _RpcError(
+                    StatusCode.UNAVAILABLE,
+                    "no node has room for the sandbox's resources yet",
+                )
+            if isinstance(handle, HostedSandboxHandle):
+                # A hosted sandbox's id names its node, so the resolver picks it.
+                sandbox_id = handle.sandbox_id
+        else:
+            handle = await asyncio.to_thread(
+                state.resolver.create,
+                sandbox_id,
+                actor_options,
+                ctor_kwargs,
+                get_if_exists=get_if_exists,
+            )
+        if not isinstance(handle, HostedSandboxHandle):
+            # A node host starts the boot when it adds the sandbox.
+            handle.boot.remote()
         logger.info(
             "Created sandbox %s (image=%s, network=%s, cidr_allowlist=%s)",
             sandbox_id,
@@ -713,8 +784,15 @@ class _ControlServicer(ModalClientServicer):
     async def SandboxGetTaskId(self, request: Any, grpc_context: Any) -> Any:
         handle = await self._state.require_handle(request.sandbox_id)
         try:
+            # The SDK sleeps half a second after every empty answer, so hold
+            # the call until the sandbox runs or fails rather than answer on
+            # each step of its boot.
             info = await _bounded(
-                handle.describe.remote(wait_seconds=1.0), extra_wait=1.0
+                handle.describe.remote(
+                    wait_seconds=_TASK_ID_HOLD_SECONDS, until_booted=True
+                ),
+                extra_wait=_TASK_ID_HOLD_SECONDS,
+                grace=_TASK_ID_GRACE_SECONDS,
             )
         except _RpcError as exc:
             if exc.code != StatusCode.UNAVAILABLE:
@@ -722,6 +800,7 @@ class _ControlServicer(ModalClientServicer):
             # An unscheduled actor looks like a booting one to the client:
             # an empty task id keeps the SDK polling.
             return api_pb2.SandboxGetTaskIdResponse(task_id="")
+        _check_found(info)
         status = info["status"]
         if status in ("error", "terminated"):
             raise _RpcError(
@@ -868,6 +947,7 @@ class _RouterServicer(TaskCommandRouterServicer):
                 StatusCode.UNAVAILABLE,
                 "sandbox actor is not reachable; the cluster may still be scaling",
             )
+        _check_found(started)
         if started.get("error_code"):
             raise _RpcError(
                 StatusCode.FAILED_PRECONDITION,
@@ -1069,6 +1149,7 @@ class _RouterServicer(TaskCommandRouterServicer):
         result = await _bounded(
             handle.set_network_access.remote(cidrs), extra_wait=10.0
         )
+        _check_found(result)
         error_code = result.get("error_code")
         if error_code == "invalid":
             raise _RpcError(
@@ -1089,6 +1170,13 @@ class _RouterServicer(TaskCommandRouterServicer):
                 result.get("message", "failed to update the network policy"),
             )
         return sr_pb2.TaskSetNetworkAccessResponse()
+
+
+def _prestart(resolver: Any) -> None:
+    try:
+        logger.info("Started %d sandbox node hosts", resolver.prestart())
+    except Exception as exc:
+        logger.warning("Failed to prestart sandbox node hosts: %s", exc)
 
 
 @DeveloperAPI
@@ -1118,6 +1206,30 @@ class RaySandboxFacade(_ControlServicer, _RouterServicer):
     ) -> None:
         settings = settings or SandboxAPISettings()
         resolver = handle_resolver or RayActorHandleResolver(settings)
+        if settings.warm_pool and hasattr(resolver, "warm_templates"):
+            # Booted from the same spec a matching create would get.
+            resolver.warm_templates = [
+                {
+                    "spec": _sandbox_spec(
+                        settings,
+                        image=profile["image"],
+                        network=profile.get("network", "none"),
+                    ),
+                    "size": int(profile.get("size", 0)),
+                    # Optional: reserve each pool's CPU (size x cpu) while it
+                    # fills.
+                    "reserve": (
+                        {"CPU": float(profile["cpu"]) * int(profile.get("size", 0))}
+                        if profile.get("cpu")
+                        else None
+                    ),
+                }
+                for profile in settings.warm_pool
+            ]
+        if settings.host_mode == "node" and hasattr(resolver, "prestart"):
+            # Node hosts start in the background, so the first sandbox on
+            # each node doesn't wait for one.
+            threading.Thread(target=_prestart, args=(resolver,), daemon=True).start()
         token = os.environ.get(settings.token_env_var) or None
         self._state = _FacadeState(resolver, settings, advertise_url, token)
         # Exec starts that outlive their call (see TaskExecStart); the loop
