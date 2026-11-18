@@ -839,7 +839,7 @@ class MockReplicaActorWrapper:
 
     def record_pushed_health(
         self,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> None:
@@ -849,7 +849,7 @@ class MockReplicaActorWrapper:
         the push sets the verdict directly so end-to-end tests can exercise the
         manager's routing and the state machine.
         """
-        self.pushed_health = (checked_at, healthy, consecutive_failures)
+        self.pushed_health = (check_seq, healthy, consecutive_failures)
         self._push_stands_in_for_probe = True
         self.healthy = (
             healthy

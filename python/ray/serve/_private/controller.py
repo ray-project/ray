@@ -465,7 +465,7 @@ class ServeController:
     def record_replica_health(
         self,
         replica_id: ReplicaID,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> Optional[Tuple[float, float]]:
@@ -474,7 +474,7 @@ class ServeController:
         Returns the health-check period and timeout the replica is judged by.
         """
         return self.deployment_state_manager.record_replica_health(
-            replica_id, checked_at, healthy, consecutive_failures
+            replica_id, check_seq, healthy, consecutive_failures
         )
 
     def record_autoscaling_metrics_from_replica(

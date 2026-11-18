@@ -124,6 +124,7 @@ from ray.serve._private.default_impl import (
 from ray.serve._private.direct_ingress_grpc_util import gRPCDIReceiveStream
 from ray.serve._private.direct_ingress_http_util import ASGIDIReceiveProxy
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
+from ray.serve._private.exceptions import HealthCheckFailedError
 from ray.serve._private.grpc_util import (
     get_grpc_response_status,
     set_grpc_code_and_details,
@@ -437,8 +438,8 @@ class ReplicaMetricsManager:
         # have to probe for it.
         self._eval_self_health_fn: Optional[Callable] = None
         # Every check on this replica, probe or self-check, takes the next number as
-        # it starts, so one that ends late cannot overwrite the verdict of a check
-        # that started after it.
+        # it starts, and its result carries it, so the controller orders results by
+        # when their checks began rather than by when they arrived.
         self._health_checks_started: int = 0
         self._health_check_period_s: float = 0.0
         self._health_check_timeout_s: float = 0.0
@@ -870,7 +871,6 @@ class ReplicaMetricsManager:
             # every eval would replace a replica in half the configured time.
             self._consecutive_failures += 1
             self._last_counted_failure_at = counted_at
-        checked_at = time.time()
 
         with self._metrics_push_lock:
             in_flight = self._push_blocked(
@@ -886,7 +886,7 @@ class ReplicaMetricsManager:
                 # Actor methods are resolved dynamically on the actor handle.
                 self._controller_handle.record_replica_health.remote(  # type: ignore[attr-defined]
                     self._replica_id,
-                    checked_at,
+                    check_seq,
                     healthy,
                     self._consecutive_failures,
                 )
@@ -2552,11 +2552,21 @@ class Replica:
         if self._health_verdict_seq != seq:
             raise _SupersededHealthCheck()
 
-    async def check_health(self):
+    async def check_health(self) -> int:
+        """A probe's check. Returns its number, and with the self-check on a failure
+        carries it too, so the controller can weigh the result against pushed ones
+        by when each check started."""
         # Checks run side by side, as without the self-check: the controller does not
         # cancel a probe it timed out, so one that waited behind a stuck check would
         # time out too.
-        await self._check_health(self._metrics_manager.number_health_check())
+        seq = self._metrics_manager.number_health_check()
+        try:
+            await self._check_health(seq)
+        except Exception as e:
+            if not self._self_health_active:
+                raise
+            raise HealthCheckFailedError(seq, repr(e)) from e
+        return seq
 
     async def _check_health(self, seq: int):
         epoch = self._metrics_manager.self_health_epoch
@@ -3823,8 +3833,8 @@ class ReplicaActor:
         await self._replica_impl.initialize(deployment_config, rank, gang_context)
         return self._replica_impl.get_metadata()
 
-    async def check_health(self):
-        await self._replica_impl.check_health()
+    async def check_health(self) -> int:
+        return await self._replica_impl.check_health()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()

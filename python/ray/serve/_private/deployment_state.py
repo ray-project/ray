@@ -782,11 +782,12 @@ def _push_freshness_window_s(health_check_period_s: float) -> float:
 class PushedHealth(NamedTuple):
     """One replica's self-health as the controller received it.
 
-    checked_at is replica-clock and only ever compared against the same replica's
-    previous value; received_at is controller-clock, so freshness is immune to skew.
+    check_seq is the replica's number for the check, taken as it started, so it
+    orders this result against the same replica's others; received_at is
+    controller-clock, so freshness is immune to skew.
     """
 
-    checked_at: float
+    check_seq: int
     received_at: float
     healthy: bool
     consecutive_failures: int
@@ -824,7 +825,7 @@ class PushedHealthTracker:
         self._timer = timer
         self._pushed: Optional[PushedHealth] = None
         # The newest push already consumed, so a repeat is not applied twice.
-        self._consumed_push_checked_at: float = 0.0
+        self._consumed_check_seq: int = 0
         # When the newest applied push arrived, and when the probe it may have
         # superseded started. The two settle which observation is newer.
         self._applied_push_received_at: float = 0.0
@@ -832,20 +833,20 @@ class PushedHealthTracker:
 
     def record(
         self,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> None:
         """Stash the newest pushed result.
 
-        checked_at is replica-clock and only orders pushes from one replica. Arrival
-        is stamped here instead, on the controller clock, so freshness does not
-        depend on the replica's.
+        check_seq only orders results from one replica. Arrival is stamped here
+        instead, on the controller clock, so freshness does not depend on the
+        replica's.
         """
-        stashed = self._pushed.checked_at if self._pushed is not None else 0.0
-        if checked_at > max(self._consumed_push_checked_at, stashed):
+        stashed = self._pushed.check_seq if self._pushed is not None else 0
+        if check_seq > max(self._consumed_check_seq, stashed):
             self._pushed = PushedHealth(
-                checked_at, self._timer.time(), healthy, consecutive_failures
+                check_seq, self._timer.time(), healthy, consecutive_failures
             )
 
     def should_defer_probe(self, health_check_period_s: float) -> bool:
@@ -865,7 +866,7 @@ class PushedHealthTracker:
             return None
         pushed = self._pushed
         self._pushed = None
-        self._consumed_push_checked_at = pushed.checked_at
+        self._consumed_check_seq = pushed.check_seq
         window_s = _push_freshness_window_s(health_check_period_s)
         if self._timer.time() - pushed.received_at > window_s:
             return None  # stale; the pull path stays the fallback
@@ -1994,12 +1995,12 @@ class ActorReplicaWrapper:
 
     def record_pushed_health(
         self,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> None:
         """Stash the replica's latest pushed self-health observation."""
-        self._pushed_health_tracker.record(checked_at, healthy, consecutive_failures)
+        self._pushed_health_tracker.record(check_seq, healthy, consecutive_failures)
 
     def _should_start_new_probe(self) -> bool:
         """Determines if a new health check should be kicked off.
@@ -2557,12 +2558,12 @@ class DeploymentReplica:
 
     def record_pushed_health(
         self,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> None:
         """Stash the replica's pushed self-health for the next health check."""
-        self._actor.record_pushed_health(checked_at, healthy, consecutive_failures)
+        self._actor.record_pushed_health(check_seq, healthy, consecutive_failures)
 
     def pull_routing_stats(self) -> Optional[Dict[str, Any]]:
         """Get the latest response from the routing stats on the replica.
@@ -5840,7 +5841,7 @@ class DeploymentState:
     def record_pushed_health(
         self,
         replica_id: ReplicaID,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> Optional[Tuple[float, float]]:
@@ -5853,7 +5854,7 @@ class DeploymentState:
         """
         replica = self._replicas.get_by_id(replica_id)
         if replica is not None:
-            replica.record_pushed_health(checked_at, healthy, consecutive_failures)
+            replica.record_pushed_health(check_seq, healthy, consecutive_failures)
             if replica.actor_details.state == ReplicaState.RECOVERING:
                 # Its version is the target's until check_ready fetches its own.
                 return None
@@ -6967,7 +6968,7 @@ class DeploymentStateManager:
     def record_replica_health(
         self,
         replica_id: ReplicaID,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> Optional[Tuple[float, float]]:
@@ -6978,7 +6979,7 @@ class DeploymentStateManager:
             # to land and the replica is on its way out.
             return None
         return deployment_state.record_pushed_health(
-            replica_id, checked_at, healthy, consecutive_failures
+            replica_id, check_seq, healthy, consecutive_failures
         )
 
     def _map_actor_names_to_deployment(

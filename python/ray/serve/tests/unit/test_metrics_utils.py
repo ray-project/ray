@@ -13,6 +13,7 @@ from ray.serve._private.common import (
     ReplicaID,
     TimeStampedValue,
 )
+from ray.serve._private.exceptions import HealthCheckFailedError
 from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
     MetricsPusher,
@@ -1573,6 +1574,12 @@ def _bare_replica(active=True):
     return r
 
 
+def _probe_error(r):
+    """What a failed probe raises: with the self-check on, HealthCheckFailedError
+    carrying the check's number."""
+    return HealthCheckFailedError if r._self_health_active else RuntimeError
+
+
 class TestSelfHealthPush:
     """The replica runs its own health check on a timer and heartbeats the result."""
 
@@ -1995,7 +2002,7 @@ class TestReplicaHealthVerdict:
         r._user_callable_wrapper.call_user_health_check.side_effect = lambda: next(
             checks
         )()
-        with pytest.raises(RuntimeError, match="intended to fail"):
+        with pytest.raises(_probe_error(r), match="intended to fail"):
             await r.check_health()
         first = asyncio.create_task(r.check_health())
         await asyncio.wait_for(stuck.wait(), timeout=5)
@@ -2033,7 +2040,7 @@ class TestReplicaHealthVerdict:
         await started.wait()
         await asyncio.wait_for(r.check_health(), timeout=5)
         release.set()
-        with pytest.raises(RuntimeError, match="intended to fail"):
+        with pytest.raises(_probe_error(r), match="intended to fail"):
             await first
         assert r._healthy is active
 
@@ -2073,7 +2080,7 @@ class TestReplicaHealthVerdict:
         self_check = asyncio.create_task(m._eval_and_push_self_health())
         await started.wait()
         if probe == "fails":
-            with pytest.raises(RuntimeError, match="intended to fail"):
+            with pytest.raises(_probe_error(r), match="intended to fail"):
                 await r.check_health()
         elif probe == "passes":
             await r.check_health()
@@ -2209,7 +2216,7 @@ class TestReplicaHealthVerdict:
         if overlap != "ends_during":
             manager.resume_self_health()
         release.set()
-        with pytest.raises(RuntimeError, match="intended to fail"):
+        with pytest.raises(_probe_error(r), match="intended to fail"):
             await check
         assert r._healthy is True
 
@@ -2241,6 +2248,72 @@ class TestReplicaHealthVerdict:
         await r.initialize(None, None)
         r._user_callable_wrapper.call_user_health_check.assert_called_once()
         r._metrics_manager.start_self_health_pusher.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("active", [False, True])
+    async def test_a_probe_answers_with_its_check_number(self, active):
+        """The controller weighs a probe's result against pushed ones by that number.
+        A failure carries it only with the self-check on; off, the probe raises the
+        user's exception as on master."""
+        r = _bare_replica(active=active)
+        r._metrics_manager.number_health_check()  # a self-check took 1
+        assert await r.check_health() == 2
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: _fails()
+        with pytest.raises(_probe_error(r), match="intended to fail") as failed:
+            await r.check_health()
+        if active:
+            assert failed.value.check_seq == 3
+            assert isinstance(failed.value.__cause__, RuntimeError)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("healthy", [True, False])
+    async def test_a_push_carries_its_self_checks_number(self, healthy):
+        """Numbered from the same counter as probes, so the controller can tell which
+        of the two started first."""
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._eval_self_health_fn = r._run_self_health_check
+        assert await r.check_health() == 1  # a probe
+        if not healthy:
+            r._user_callable_wrapper.call_user_health_check.side_effect = (
+                lambda: _fails()
+            )
+        await m._eval_and_push_self_health()
+        args = m._controller_handle.record_replica_health.remote.call_args.args
+        assert args[1:3] == (2, healthy)
+
+    @pytest.mark.asyncio
+    async def test_a_push_keeps_its_own_number_when_a_probe_started_meanwhile(self):
+        """The probe took the next number, so the controller must see the push as the
+        older of the two."""
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._eval_self_health_fn = r._run_self_health_check
+        started = asyncio.Event()
+        release_self_check = asyncio.Event()
+        release_probe = asyncio.Event()
+
+        async def slow_self_check():
+            started.set()
+            await release_self_check.wait()
+
+        async def slow_probe():
+            await release_probe.wait()
+
+        checks = iter([slow_self_check, slow_probe])
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: next(
+            checks
+        )()
+        self_check = asyncio.create_task(m._eval_and_push_self_health())
+        await started.wait()
+        probe = asyncio.create_task(r.check_health())
+        await asyncio.sleep(0)  # the probe takes its number and starts its check
+        release_self_check.set()
+        await asyncio.wait_for(self_check, timeout=5)
+        push = m._controller_handle.record_replica_health.remote
+        assert push.call_args.args[1:3] == (1, True)
+        release_probe.set()
+        assert await asyncio.wait_for(probe, timeout=5) == 2
 
 
 class TestReconfigureSelfHealth:
