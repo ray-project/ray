@@ -87,6 +87,51 @@ def test_deprecated_decorator_error():
             old_func()
 
 
+def test_deprecated_decorator_error_raises_on_every_call():
+    """With error=True (or an exception class), every call must raise,
+    not just the first one (#67965)."""
+
+    @Deprecated(old="old_func", error=True)
+    def old_func():
+        return "should not run"
+
+    for _ in range(3):
+        with pytest.raises(ValueError):
+            old_func()
+
+    @Deprecated(old="OldErrorClass", error=True)
+    class OldErrorClass:
+        pass
+
+    for _ in range(3):
+        with pytest.raises(ValueError):
+            OldErrorClass()
+
+    class CustomError(Exception):
+        pass
+
+    @Deprecated(old="old_custom_func", error=CustomError)
+    def old_custom_func():
+        return "should not run"
+
+    for _ in range(3):
+        with pytest.raises(CustomError):
+            old_custom_func()
+
+
+def test_deprecated_decorator_error_raises_without_log_once():
+    """The error must not depend on log_once returning True."""
+    with patch("ray._common.deprecation.log_once") as mock_log_once:
+        mock_log_once.return_value = False
+
+        @Deprecated(old="old_func_no_log", error=True)
+        def old_func_no_log():
+            return "should not run"
+
+        with pytest.raises(ValueError):
+            old_func_no_log()
+
+
 def test_deprecated_value_constant():
     assert (
         DEPRECATED_VALUE == -1
