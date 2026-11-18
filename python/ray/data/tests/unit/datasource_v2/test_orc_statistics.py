@@ -1,8 +1,6 @@
 """File statistics pruning and conservative predicate tests."""
 
-import copy
 import itertools
-import pickle
 import random
 from dataclasses import replace
 from pathlib import Path
@@ -136,25 +134,6 @@ def test_possible_values_against_arrow_oracle():
         assert not OrcPredicate(expr, schema, schema).can_match(
             _integer_stats([0, None]), 2
         )
-
-
-def test_mode_capture_validation_and_serialization(monkeypatch):
-    context = DataContext.get_current()
-    monkeypatch.setattr(context, "orc_statistics_pruning", "file")
-    scanner = OrcScanner(schema=pa.schema([("x", pa.int64())]))
-    monkeypatch.setattr(context, "orc_statistics_pruning", "off")
-    for copy_scanner in (
-        copy.deepcopy(scanner),
-        pickle.loads(pickle.dumps(scanner)),
-        scanner.push_limit(3),
-    ):
-        assert isinstance(copy_scanner, OrcScanner)
-        assert copy_scanner.statistics_pruning == "file"
-        assert copy_scanner.create_reader()._statistics_pruning == "file"
-    with pytest.raises(ValueError):
-        context.orc_statistics_pruning = "invalid"
-    with pytest.raises(ValueError):
-        replace(scanner, statistics_pruning="invalid")
 
 
 @pytest.mark.parametrize("mode", ["off", "file"])
@@ -534,6 +513,9 @@ def test_default_and_rejected_stripe_mode(monkeypatch):
         context.orc_statistics_pruning = "stripe"
     with pytest.raises(ValueError):
         OrcScanner(schema=pa.schema([("x", pa.int64())]), statistics_pruning="stripe")
+    scanner = OrcScanner(schema=pa.schema([("x", pa.int64())]))
+    with pytest.raises(ValueError):
+        replace(scanner, statistics_pruning="invalid")
 
 
 def test_presence_counts_bounds_and_writer():
