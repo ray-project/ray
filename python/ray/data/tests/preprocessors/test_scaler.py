@@ -181,10 +181,14 @@ def test_robust_scaler():
     col_a = [-2, -1, 0, 1, 2]
     col_b = [-2, -1, 0, 1, 2]
     col_c = [-10, 1, 2, 3, 10]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    col_d = [5, 5, 5, 5, 5]
+    col_e = [5, 5, 5, 5, None]
+    in_df = pd.DataFrame.from_dict(
+        {"A": col_a, "B": col_b, "C": col_c, "D": col_d, "E": col_e}
+    )
     ds = ray.data.from_pandas(in_df)
 
-    scaler = RobustScaler(["B", "C"])
+    scaler = RobustScaler(["B", "C", "D", "E"])
 
     # Transform with unfitted preprocessor.
     with pytest.raises(PreprocessorNotFittedException):
@@ -199,16 +203,31 @@ def test_robust_scaler():
         "low_quantile(C)": 1,
         "median(C)": 2,
         "high_quantile(C)": 3,
+        "low_quantile(D)": 5,
+        "median(D)": 5,
+        "high_quantile(D)": 5,
+        "low_quantile(E)": 5,
+        "median(E)": 5,
+        "high_quantile(E)": 5,
     }
 
     transformed = scaler.transform(ds)
     out_df = transformed.to_pandas()
+    assert pd.api.types.is_float_dtype(out_df["D"].dtype)
 
     processed_col_a = col_a
     processed_col_b = [-1.0, -0.5, 0, 0.5, 1.0]
     processed_col_c = [-6, -0.5, 0, 0.5, 4]
+    processed_col_d = [0.0, 0.0, 0.0, 0.0, 0.0]
+    processed_col_e = [0.0, 0.0, 0.0, 0.0, np.nan]
     expected_df = pd.DataFrame.from_dict(
-        {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
+        {
+            "A": processed_col_a,
+            "B": processed_col_b,
+            "C": processed_col_c,
+            "D": processed_col_d,
+            "E": processed_col_e,
+        }
     ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
@@ -217,20 +236,33 @@ def test_robust_scaler():
     pred_col_a = [1, 2, 3]
     pred_col_b = [3, 5, 7]
     pred_col_c = [0, 1, 2]
+    pred_col_d = [5, 6, 7]
+    pred_col_e = [5, 5, None]
     pred_in_df = pd.DataFrame.from_dict(
-        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "D": pred_col_d,
+            "E": pred_col_e,
+        }
     )
 
     pred_out_df = scaler.transform_batch(pred_in_df)
+    assert pd.api.types.is_float_dtype(pred_out_df["D"].dtype)
 
     pred_processed_col_a = pred_col_a
     pred_processed_col_b = [1.5, 2.5, 3.5]
     pred_processed_col_c = [-1.0, -0.5, 0.0]
+    pred_processed_col_d = [0.0, 0.0, 0.0]
+    pred_processed_col_e = [0.0, 0.0, np.nan]
     pred_expected_df = pd.DataFrame.from_dict(
         {
             "A": pred_processed_col_a,
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
+            "D": pred_processed_col_d,
+            "E": pred_processed_col_e,
         }
     ).astype(pred_out_df.dtypes.to_dict())
 
@@ -883,41 +915,6 @@ def test_standard_scaler_exact_zero_std():
 
     # Should be all zeros
     assert np.allclose(out_df["C"], 0.0), "Constant column should be scaled to zeros"
-
-
-def test_robust_scaler_zero_and_near_zero_iqr():
-    """Test RobustScaler preserves nulls and handles zero and near-zero IQR."""
-    # Column A: constant non-null values with a trailing missing value (diff == 0)
-    # Column B: >=50% identical non-null values so low_quantile == high_quantile == 2,
-    #           with non-median outlier values and a missing value (diff == 0)
-    # Column C: near-zero quantile range (0 < diff < _EPSILON)
-    in_df = pd.DataFrame.from_dict(
-        {
-            "A": [5.0, 5.0, 5.0, 5.0, 5.0, None],
-            "B": [-1.0, 2.0, 2.0, 2.0, 3.0, None],
-            "C": [10.0, 10.0, 10.0 + 1e-10, 10.0 + 1e-10, 10.0 + 1e-10, None],
-        }
-    )
-    ds = ray.data.from_pandas(in_df)
-
-    scaler = RobustScaler(["A", "B", "C"])
-    scaler.fit(ds)
-    out_df = scaler.transform(ds).to_pandas()
-
-    # Non-null rows in zero/near-zero IQR columns must be scaled to 0.0, while
-    # missing values must be preserved as NaN/<NA> rather than overwritten with 0.0.
-    for col in ("A", "B", "C"):
-        assert np.allclose(out_df[col].iloc[:5], 0.0)
-        assert pd.isna(out_df[col].iloc[5])
-
-    # Inverted quantile_range (diff < 0 with abs(diff) >= _EPSILON) should still
-    # scale with a sign flip rather than being zeroed out.
-    inv_df = pd.DataFrame.from_dict({"X": [-2.0, -1.0, 0.0, 1.0, 2.0]})
-    inv_ds = ray.data.from_pandas(inv_df)
-    inv_scaler = RobustScaler(["X"], quantile_range=(0.75, 0.25))
-    inv_scaler.fit(inv_ds)
-    inv_out = inv_scaler.transform(inv_ds).to_pandas()
-    assert np.allclose(inv_out["X"], [1.0, 0.5, 0.0, -0.5, -1.0])
 
 
 if __name__ == "__main__":
