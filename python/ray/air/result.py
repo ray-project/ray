@@ -210,21 +210,29 @@ class Result:
                 for checkpoint_dir_name in checkpoint_dir_names
             ]
 
+            last_metrics_by_ckpt = {}
+            if CHECKPOINT_DIR_NAME in metrics_df.columns:
+                deduped_df = metrics_df.dropna(
+                    subset=[CHECKPOINT_DIR_NAME]
+                ).drop_duplicates(subset=[CHECKPOINT_DIR_NAME], keep="last")
+                last_metrics_by_ckpt = {
+                    ckpt_name: row.to_dict()
+                    for ckpt_name, (_, row) in zip(
+                        deduped_df[CHECKPOINT_DIR_NAME], deduped_df.iterrows()
+                    )
+                }
+
             metrics = []
             for checkpoint_dir_name in checkpoint_dir_names:
-                metrics_corresponding_to_checkpoint = metrics_df[
-                    metrics_df[CHECKPOINT_DIR_NAME] == checkpoint_dir_name
-                ]
-                if metrics_corresponding_to_checkpoint.empty:
+                ckpt_metrics = last_metrics_by_ckpt.get(checkpoint_dir_name)
+                if ckpt_metrics is None:
                     logger.warning(
                         "Could not find metrics corresponding to "
                         f"{checkpoint_dir_name}. These will default to an empty dict."
                     )
-                metrics.append(
-                    {}
-                    if metrics_corresponding_to_checkpoint.empty
-                    else metrics_corresponding_to_checkpoint.iloc[-1].to_dict()
-                )
+                    metrics.append({})
+                else:
+                    metrics.append(ckpt_metrics)
 
             latest_checkpoint = checkpoints[-1]
             # TODO(justinvyu): These are ordered by checkpoint index, since we don't
