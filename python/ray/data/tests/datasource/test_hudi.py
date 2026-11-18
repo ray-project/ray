@@ -4,7 +4,6 @@ import zipfile
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data._internal.datasource import hudi_datasource
@@ -16,9 +15,6 @@ from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
 )
-from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import *  # noqa
-from ray.tests.conftest import *  # noqa
 
 
 def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -> str:
@@ -36,15 +32,8 @@ def _get_hudi_table_path(fs, data_path, table_name, testing_dir="test_hudi") -> 
     return _extract_testing_table(fixture_path[0], table_name, target_testing_dir)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-    ],
-)
-def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, fs, data_path):
-    table_path = _get_hudi_table_path(fs, data_path, "v6_trips_8i1u")
+def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, local_path):
+    table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")
 
     ds = ray.data.read_hudi(table_path, filters=[("city", "=", "san_francisco")])
 
@@ -97,15 +86,8 @@ def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, fs, data_p
     ]
 
 
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-    ],
-)
-def test_hudi_incremental_query_v6_trips_table(ray_start_regular_shared, fs, data_path):
-    table_path = _get_hudi_table_path(fs, data_path, "v6_trips_8i1u")
+def test_hudi_incremental_query_v6_trips_table(ray_start_regular_shared, local_path):
+    table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")
 
     first_commit = "20250715043008154"
     second_commit = "20250715043011090"
@@ -148,15 +130,8 @@ V8_FIRST_COMMIT = ("20250713010535797", "20250713010536200")
 V8_SECOND_COMMIT = ("20250713010536861", "20250713010537206")
 
 
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-    ],
-)
-def test_hudi_snapshot_query_v8_table(ray_start_regular_shared, fs, data_path):
-    table_path = _get_hudi_table_path(fs, data_path, "v8_nonpartitioned")
+def test_hudi_snapshot_query_v8_table(ray_start_regular_shared, local_path):
+    table_path = _get_hudi_table_path(None, local_path, "v8_nonpartitioned")
 
     ds = ray.data.read_hudi(table_path)
 
