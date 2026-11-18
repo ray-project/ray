@@ -78,7 +78,10 @@ def _write_fake_impyla(tmp_path: Path):
         for failure in ("before_first_block", "after_first_block", "worker_crash")
         for max_errors in (0, 1, -1)
     ]
-    + [(failure, 0, "table") for failure in ("execute", "convert", "worker_crash")],
+    + [
+        (failure, 0, "table")
+        for failure in ("execute", "after_first_block", "convert", "worker_crash")
+    ],
 )
 def test_failed_read_submits_one_data_query(
     tmp_path: Path,

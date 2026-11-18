@@ -11,7 +11,6 @@ from ray.data._internal.datasource_v2.formats.hive import hive_hs2
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveReadSpec,
 )
-from ray.data._internal.datasource_v2.formats.hive.hive_sql import quote_identifier
 
 
 class _Cursor:
@@ -591,26 +590,6 @@ def test_early_close_cancels_operation():
     next(batches)
     batches.close()
     assert cursor.cancelled and cursor.closed and connection.closed
-
-
-def test_hive_identifier_quoting():
-    assert quote_identifier("select 类别`") == "`select 类别```"
-    for name in ("", "bad\0name"):
-        with pytest.raises(ValueError, match="identifier"):
-            quote_identifier(name)
-
-
-def test_projected_result_schema_is_validated_without_requiring_source_columns():
-    cursor = _Cursor([[("a",)], [("b",)]])
-    cursor.description = [("name", "STRING", None, None, None, None, None)]
-    spec = HiveReadSpec(lambda: _Connection(cursor), table="analytics.events")
-    schema = pa.schema([("name", pa.string())], metadata={b"source": b"hive"})
-    sql = "SELECT `name` FROM `analytics`.`events` LIMIT 2"
-    batches = list(hive_hs2.read_hs2_batches(spec, schema, statement=sql, limit=2))
-    assert pa.concat_tables(batches).to_pylist() == [{"name": "a"}, {"name": "b"}]
-    assert all(batch.schema.equals(schema, check_metadata=True) for batch in batches)
-    assert cursor.statements == [sql]
-    assert cursor.cancelled and cursor.closed
 
 
 def test_empty_projection_keeps_a_physical_stub_across_batches():

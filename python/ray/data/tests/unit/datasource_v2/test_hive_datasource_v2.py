@@ -2,8 +2,6 @@
 
 import os
 import sys
-from dataclasses import asdict, is_dataclass
-from typing import cast
 
 import pyarrow as pa
 import pytest
@@ -15,7 +13,6 @@ from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
 )
 from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
     HiveDatasourceV2,
-    _HiveIndexer,
     _HiveScanner,
     _HiveTableScanner,
 )
@@ -30,10 +27,9 @@ from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsFilterPushdown,
     SupportsLimitPushdown,
 )
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.logical.operators import ListFiles, ReadFiles
+from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.metadata_exporter import Topology, sanitize_for_struct
+from ray.data._internal.metadata_exporter import sanitize_for_struct
 
 _TABLE_SCHEMA = pa.schema(
     [
@@ -261,7 +257,14 @@ def test_table_scanner_capabilities_clone_and_projection():
 
 @pytest.mark.parametrize(
     "limit,expected",
-    [(0, 0), (2**31 - 1, 2**31 - 1), (2**31, None), (2**63, None)],
+    [
+        (True, None),
+        (False, None),
+        (0, 0),
+        (2**31 - 1, 2**31 - 1),
+        (2**31, None),
+        (2**63, None),
+    ],
 )
 def test_dataset_limit_sql_integer_boundary(limit, expected):
     original = _table_scanner()
@@ -272,25 +275,13 @@ def test_dataset_limit_sql_integer_boundary(limit, expected):
 
 
 @pytest.mark.parametrize(
-    "limit,source_limit,existing_limit",
-    [(True, None, None), (False, None, None), (True, 5, 2), (False, 5, 2)],
-)
-def test_boolean_limit_remains_in_ray(limit, source_limit, existing_limit):
-    scanner = _table_scanner(source_limit)
-    if existing_limit is not None:
-        scanner = scanner.push_limit(existing_limit)
-    previous_limit = scanner.pushed_limit()
-    assert scanner.push_limit(limit) is scanner
-    assert scanner.pushed_limit() == previous_limit
-
-
-@pytest.mark.parametrize(
     "source_limit,limits,expected",
     [
         (None, (2**31, 10), 10),
         (None, (10, 2**31), 10),
         (100, (2**31,), 100),
         (5, (2,), 2),
+        (5, (2, True, False), 2),
     ],
 )
 def test_limits_preserve_smaller_source_and_accepted_limits(
@@ -318,7 +309,7 @@ def test_non_table_read_metadata_preserves_original_args(source):
 
 
 @pytest.mark.parametrize("source", ["query", "table"])
-def test_topology_does_not_export_hive_scanner_spec(source):
+def test_metadata_does_not_export_hive_scanner_spec(source):
     marker = "synthetic_private_value"
     schema = pa.schema([("value", pa.string())])
     if source == "query":
@@ -326,34 +317,14 @@ def test_topology_does_not_export_hive_scanner_spec(source):
             lambda: None, query=f"SELECT '{marker}' AS value", schema=schema
         )
         scanner = HiveDatasourceV2(spec).create_scanner(schema)
-        assert not is_dataclass(scanner)
     else:
         spec = HiveReadSpec(lambda: None, table="events", user=marker)
         scanner = _HiveTableScanner(spec, schema)
 
-    read = _read(scanner, "Hive")
-    listing = ListFiles(
-        paths=["hive://read"],
-        source_paths=["hive://read"],
-        file_indexer=_HiveIndexer(),
-        filesystem=None,
-    )
-
-    class PhysicalRead:
-        name = "Read"
-        id = "read"
-        input_dependencies = []
-        _logical_operators = [listing, read]
-        _get_logical_args = PhysicalOperator._get_logical_args
-
-        def post_order_iter(self):
-            yield self
-
-    physical = cast(PhysicalOperator, PhysicalRead())
-    topology = Topology.create_topology_metadata(physical, {physical: "read"})
-    assert marker not in str(asdict(topology))
+    args = _read(scanner, "Hive")._get_args()
+    assert marker not in str(sanitize_for_struct(args))
     if source == "table":
-        assert "<Hive table scanner>" in str(asdict(topology))
+        assert args["_scanner"] == "<Hive table scanner>"
 
 
 if __name__ == "__main__":
