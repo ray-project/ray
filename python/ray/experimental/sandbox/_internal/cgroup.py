@@ -185,6 +185,11 @@ class SandboxCgroup:
             raise RuntimeError(f"Sandbox launcher {pid} isn't in {self.path}")
 
     def termination_reason(self) -> Optional[str]:
+        # Only a memory limit of the sandbox's own ends it this way. The
+        # kernel counts an OOM kill here too when an ancestor's limit, or the
+        # node running out of memory, kills one of the sandbox's processes.
+        if "memory.max" not in self.limits:
+            return None
         events = self.path / "memory.events"
         if events.exists():
             values = dict(line.split() for line in _read(events).splitlines())
