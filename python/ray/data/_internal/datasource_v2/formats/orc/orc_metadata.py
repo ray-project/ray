@@ -11,6 +11,7 @@ from pyarrow.fs import FileSystem, LocalFileSystem
 from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator import (
     DecodeError,
     Message,
+    _estimate_projected_size,
     _file_tail_message_type,
     _FileTailFields,
     _FooterFields,
@@ -38,6 +39,7 @@ class OrcFileMetadata:
     num_rows: int
     # None means the file has no supported layout interface, not an empty file.
     stripes: Optional[Tuple[OrcStripeMetadata, ...]]
+    estimated_max_stripe_bytes: Optional[int] = None
 
 
 def supports_stripe_reads() -> bool:
@@ -115,7 +117,19 @@ def read_orc_layout(
             or len(stripes) != reader.nstripes
         ):
             raise ValueError("Stripe rows/count disagree with the ORC file")
-        return OrcFileMetadata(path, size, row, tuple(stripes))
+        estimate = None
+        schema = getattr(reader, "schema", None) if allow_unsupported else None
+        if row and schema is not None and reader.writer_version != "ORIGINAL":
+            file_bytes = _estimate_projected_size(
+                footer,
+                schema,
+                schema.names,
+                collection_counts_valid=reader.row_index_stride > 0,
+            )
+            if file_bytes is not None:
+                max_rows = max((stripe.num_rows for stripe in stripes), default=0)
+                estimate = (file_bytes * max_rows + row - 1) // row
+        return OrcFileMetadata(path, size, row, tuple(stripes), estimate)
     except (DecodeError, ValueError, pa.ArrowInvalid) as error:
         raise pa.ArrowInvalid(f"Invalid ORC layout for {path}: {error}") from error
 
