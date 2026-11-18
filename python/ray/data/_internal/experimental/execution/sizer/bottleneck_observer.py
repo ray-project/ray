@@ -52,7 +52,7 @@ import logging
 import math
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     AbstractSet,
@@ -90,8 +90,9 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
-    from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
+    from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501  # noqa: E501
         ExperimentalActorPoolMapOperator,
+        SlotUsage,
     )
     from ray.data._internal.experimental.execution.sizer.models import (
         TickCapacitySnapshot,
@@ -127,10 +128,24 @@ class Arrow(enum.Enum):
 
 
 @dataclass(frozen=True)
+class EdgeShares:
+    """One edge's joint shares over the window, as fractions of the
+    producer's slot time: its output-backpressured time, split by what the
+    consumer was doing at that moment."""
+
+    # The consumer had no idle slot: it is what holds the producer back.
+    blocked: float
+    # The consumer had an idle slot: the producer's own output budget (blocks
+    # still in flight, counted against it until consumed) held it back.
+    self_limited: float
+
+
+@dataclass(frozen=True)
 class Edge(Generic[K]):
     producer: K
     consumer: K
-    producer_obp: float
+    producer_blocked: float
+    producer_self_limited: float
     consumer_starved: float
     arrow: Arrow
 
@@ -144,6 +159,9 @@ class Snapshot(Generic[K]):
     # Non-bottleneck ops' slack (actors they could give up) toward the most
     # severe bottleneck growing by one actor.
     slack: Mapping[K, int]
+    # Joint shares per (producer, consumer); an edge missing here falls back
+    # to the producer's whole output backpressure as ``blocked``.
+    edge_shares: Mapping[Tuple[K, K], EdgeShares] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -179,9 +197,20 @@ class Assessment(Generic[K]):
 # --- pure model ------------------------------------------------------------
 
 
-def classify_edge(producer_obp: float, consumer_starved: float, margin: float) -> Arrow:
-    """Which side of ``producer -> consumer`` limits the flow across it."""
-    diff = producer_obp - consumer_starved
+def classify_edge(
+    producer_blocked: float,
+    producer_self_limited: float,
+    consumer_starved: float,
+    margin: float,
+) -> Arrow:
+    """Which side of ``producer -> consumer`` limits the flow across it.
+
+    Downstream when the producer is blocked by a consumer with no idle slot
+    more than the consumer is starved; upstream when the consumer is starved,
+    or the producer is held back by its own budget while the consumer has
+    room, more than the producer is blocked.
+    """
+    diff = producer_blocked - (consumer_starved + producer_self_limited)
     if diff > margin:
         return Arrow.DOWNSTREAM
     if diff < -margin:
@@ -189,10 +218,40 @@ def classify_edge(producer_obp: float, consumer_starved: float, margin: float) -
     return Arrow.TIE
 
 
+def edge_shares_of(
+    producer: K,
+    consumer: K,
+    shares: Mapping[K, OpShares],
+    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]],
+) -> EdgeShares:
+    """The edge's joint shares, or, without them, all of the producer's
+    output backpressure counted as blocked by the consumer."""
+    joint = (edge_shares or {}).get((producer, consumer))
+    if joint is not None:
+        return joint
+    return EdgeShares(blocked=shares[producer].obp, self_limited=0.0)
+
+
+def blocked_share(
+    op: K,
+    shares: Mapping[K, OpShares],
+    next_ops: Mapping[K, Sequence[K]],
+    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]],
+) -> float:
+    """Share of ``op``'s slot time a consumer held it back: the largest over
+    its modeled out-edges, or its whole output backpressure when no consumer
+    is modeled (e.g. a non-actor-pool sink)."""
+    consumers = [c for c in next_ops.get(op, ()) if c in shares]
+    if not consumers:
+        return shares[op].obp
+    return max(edge_shares_of(op, c, shares, edge_shares).blocked for c in consumers)
+
+
 def build_edges(
     shares: Mapping[K, OpShares],
     next_ops: Mapping[K, Sequence[K]],
     margin: float,
+    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
 ) -> Tuple[Edge[K], ...]:
     """Every edge whose two ends both have shares, with its arrow."""
     edges: List[Edge[K]] = []
@@ -202,28 +261,34 @@ def build_edges(
         for consumer in consumers:
             if consumer not in shares:
                 continue
-            p_obp = shares[producer].obp
+            joint = edge_shares_of(producer, consumer, shares, edge_shares)
             c_starved = shares[consumer].starved
             edges.append(
                 Edge(
                     producer,
                     consumer,
-                    p_obp,
+                    joint.blocked,
+                    joint.self_limited,
                     c_starved,
-                    classify_edge(p_obp, c_starved, margin),
+                    classify_edge(joint.blocked, joint.self_limited, c_starved, margin),
                 )
             )
     return tuple(edges)
 
 
 def find_bottlenecks(
-    shares: Mapping[K, OpShares], edges: Sequence[Edge[K]], margin: float
+    shares: Mapping[K, OpShares],
+    edges: Sequence[Edge[K]],
+    margin: float,
+    next_ops: Mapping[K, Sequence[K]],
+    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
 ) -> List[K]:
     """Ops with shares and no outgoing arrow. A tie points nowhere.
 
-    An op output-backpressured more than ``1 - margin`` of the time is never
+    An op a consumer holds back more than ``1 - margin`` of the time is never
     one: it is waiting on something downstream. Normally that shows as an
     outgoing arrow; this covers a consumer the model has no shares for.
+    Output backpressure from the op's own budget does not count here.
     """
     has_outgoing = set()
     for edge in edges:
@@ -233,8 +298,9 @@ def find_bottlenecks(
             has_outgoing.add(edge.consumer)
     return [
         op
-        for op, op_shares in shares.items()
-        if op not in has_outgoing and op_shares.obp <= 1 - margin
+        for op in shares
+        if op not in has_outgoing
+        and blocked_share(op, shares, next_ops, edge_shares) <= 1 - margin
     ]
 
 
@@ -243,12 +309,18 @@ def severity(
     shares: Mapping[K, OpShares],
     prev_ops: Mapping[K, Sequence[K]],
     next_ops: Mapping[K, Sequence[K]],
+    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
 ) -> float:
-    """How much neighbours wait on ``op``, net of its own idle time:
-    obp(producers) + starved(consumers) - (obp(op) + starved(op))."""
-    waiting_on = sum(shares[p].obp for p in prev_ops.get(op, ()) if p in shares)
+    """How much neighbours wait on ``op``, net of the time something else
+    held it back: blocked(producers -> op) + starved(consumers) -
+    (blocked(op) + starved(op))."""
+    waiting_on = sum(
+        edge_shares_of(p, op, shares, edge_shares).blocked
+        for p in prev_ops.get(op, ())
+        if p in shares
+    )
     waiting_on += sum(shares[c].starved for c in next_ops.get(op, ()) if c in shares)
-    own = shares[op].obp + shares[op].starved
+    own = blocked_share(op, shares, next_ops, edge_shares) + shares[op].starved
     return waiting_on - own
 
 
@@ -284,13 +356,17 @@ def is_circular(
     shares: Mapping[K, OpShares],
     next_ops: Mapping[K, Sequence[K]],
     margin: float,
+    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
 ) -> bool:
     """Whether ``donor``'s outputs clear only through ``recipient``: it is
-    downstream and every op between them is output-backpressured."""
+    downstream and every op between them is held back by its consumer."""
     between = path_between(donor, recipient, next_ops)
     if between is None:
         return False
-    return all(op in shares and shares[op].obp >= 1 - margin for op in between)
+    return all(
+        op in shares and blocked_share(op, shares, next_ops, edge_shares) >= 1 - margin
+        for op in between
+    )
 
 
 def time_to_free(work_blocks: float, consume_rate: float) -> float:
@@ -310,14 +386,15 @@ def analyze(
     arrow_margin: float,
     slack_margin: float,
     min_severity: float = 0.0,
+    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
 ) -> Snapshot[K]:
-    edges = build_edges(shares, next_ops, arrow_margin)
+    edges = build_edges(shares, next_ops, arrow_margin, edge_shares)
     # Severity <= 0: no neighbour waits on the op more than it idles itself,
     # so growing it would not speed anything up. Below ``min_severity``, too
     # little waits on it to tell from noise.
     scored = (
-        (op, severity(op, shares, prev_ops, next_ops))
-        for op in find_bottlenecks(shares, edges, arrow_margin)
+        (op, severity(op, shares, prev_ops, next_ops, edge_shares))
+        for op in find_bottlenecks(shares, edges, arrow_margin, next_ops, edge_shares)
     )
     ranked = sorted(
         ((op, sev) for op, sev in scored if sev > 0 and sev >= min_severity),
@@ -339,6 +416,7 @@ def analyze(
         edges=edges,
         bottlenecks=tuple(ranked),
         slack=slack_by_op,
+        edge_shares=dict((edge_shares or {}).items()),
     )
 
 
@@ -408,6 +486,42 @@ class ShareWindow:
             starved=starved_s / slot_s,
             actors=self._latest_actors,
             unstaffed=unstaffed_s / slot_s,
+        )
+
+
+class EdgeWindow:
+    """One edge's producer slot time over the last ``window_s`` seconds,
+    with the parts output-backpressured while the consumer was saturated
+    (``blocked``) or had an idle slot (``self_limited``)."""
+
+    def __init__(self, window_s: float):
+        assert window_s > 0
+        self._window_s = window_s
+        # (dt, producer_slot_s, blocked_s, self_limited_s)
+        self._samples: Deque[Tuple[float, float, float, float]] = deque()
+        self._span_s = 0.0
+
+    def record(
+        self, dt: float, *, slot_s: float, blocked_s: float, self_limited_s: float
+    ) -> None:
+        if dt <= 0:
+            return
+        self._samples.append((dt, slot_s, blocked_s, self_limited_s))
+        self._span_s += dt
+        while self._samples and self._span_s - self._samples[0][0] >= self._window_s:
+            self._span_s -= self._samples.popleft()[0]
+
+    def shares(self) -> Optional[EdgeShares]:
+        """None until a full window has been seen, or if the producer had no
+        slot time in it."""
+        if self._span_s < self._window_s:
+            return None
+        slot_s = sum(sample[1] for sample in self._samples)
+        if slot_s <= 0:
+            return None
+        return EdgeShares(
+            blocked=sum(sample[2] for sample in self._samples) / slot_s,
+            self_limited=sum(sample[3] for sample in self._samples) / slot_s,
         )
 
 
@@ -490,6 +604,12 @@ class BottleneckObserver:
             "ExperimentalActorPoolMapOperator"
         ] = StableBottlenecks(window_s)
         self._windows: Dict["ExperimentalActorPoolMapOperator", ShareWindow] = {}
+        self._edge_windows: Dict[
+            Tuple[
+                "ExperimentalActorPoolMapOperator", "ExperimentalActorPoolMapOperator"
+            ],
+            EdgeWindow,
+        ] = {}
         # Last read of each op's cumulative busy-slot seconds.
         self._last_busy_s: Dict["ExperimentalActorPoolMapOperator", float] = {}
         # Input blocks each op's tasks finished, and output blocks taken from
@@ -503,47 +623,91 @@ class BottleneckObserver:
         now = self._clock()
         dt = 0.0 if self._last_t is None else now - self._last_t
         self._last_t = now
+        usages: Dict["ExperimentalActorPoolMapOperator", "SlotUsage"] = {}
+        queued: Dict["ExperimentalActorPoolMapOperator", int] = {}
         for op in self._profiles.actor_pool_ops:
             if op.has_completed():
                 for per_op in (self._windows, self._last_busy_s):
                     per_op.pop(op, None)
+                for edge in [e for e in self._edge_windows if op in e]:
+                    del self._edge_windows[edge]
                 continue
-            usage = op.slot_usage()
-            queued = topology[op].total_enqueued_input_blocks()
-            prev_busy_s = self._last_busy_s.get(op)
-            self._last_busy_s[op] = usage.busy_slot_seconds
-            busy_integral = (
-                0.0
-                if prev_busy_s is None
-                else max(0.0, usage.busy_slot_seconds - prev_busy_s)
+            usages[op] = op.slot_usage()
+            queued[op] = topology[op].total_enqueued_input_blocks()
+        for op, usage in usages.items():
+            self._record_op(op, usage, queued[op], dt, now)
+        # Joint per-edge shares: at this moment, is the consumer saturated
+        # (no idle slot, or input queued with no actor)? The producer's
+        # output-backpressured slots count as blocked by it if so, else as
+        # held back by the producer's own budget.
+        saturated = {
+            op: (
+                usage.busy_slots + usage.obp_slots >= usage.slots
+                if usage.slots > 0
+                else queued[op] > 0
             )
-            slot_s = usage.slots * dt
+            for op, usage in usages.items()
+        }
+        for producer, usage in usages.items():
             obp_s = usage.obp_slots * dt
-            # The integral counts output-backpressured actors' held tasks;
-            # that time is obp, not busy.
-            busy_s = min(
-                max(0.0, busy_integral - usage.obp_busy_slots * dt),
-                max(0.0, slot_s - obp_s),
-            )
-            # Idle with work queued is a dispatch gap, not starvation.
-            starved_s = max(0.0, slot_s - obp_s - busy_s) if queued == 0 else 0.0
-            window = self._windows.get(op)
-            if window is None:
-                window = self._windows[op] = ShareWindow(self._window_s)
-            window.record(
-                dt,
-                actors=usage.serving_actors,
-                slot_s=slot_s,
-                busy_s=busy_s,
-                obp_s=obp_s,
-                starved_s=starved_s,
-                unstaffed=usage.serving_actors == 0 and queued > 0,
-            )
-            for rates, value in (
-                (self._processed, op.metrics.num_task_inputs_processed),
-                (self._taken, op.metrics.num_outputs_taken),
-            ):
-                rates.setdefault(op, _CounterRate(self._window_s)).record(now, value)
+            for consumer in self._profiles.next_ops.get(producer, ()):
+                if consumer not in usages:
+                    continue
+                window = self._edge_windows.get((producer, consumer))
+                if window is None:
+                    window = self._edge_windows[(producer, consumer)] = EdgeWindow(
+                        self._window_s
+                    )
+                blocked_s = obp_s if saturated[consumer] else 0.0
+                window.record(
+                    dt,
+                    slot_s=usage.slots * dt,
+                    blocked_s=blocked_s,
+                    self_limited_s=obp_s - blocked_s,
+                )
+
+    def _record_op(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        usage: "SlotUsage",
+        queued: int,
+        dt: float,
+        now: float,
+    ) -> None:
+        prev_busy_s = self._last_busy_s.get(op)
+        self._last_busy_s[op] = usage.busy_slot_seconds
+        busy_integral = (
+            0.0
+            if prev_busy_s is None
+            else max(0.0, usage.busy_slot_seconds - prev_busy_s)
+        )
+        slot_s = usage.slots * dt
+        obp_s = usage.obp_slots * dt
+        # The integral counts output-backpressured actors' held tasks; that
+        # time is obp, not busy.
+        busy_s = min(
+            max(0.0, busy_integral - usage.obp_busy_slots * dt),
+            max(0.0, slot_s - obp_s),
+        )
+        # Idle with work queued is a dispatch gap, not starvation.
+        starved_s = max(0.0, slot_s - obp_s - busy_s) if queued == 0 else 0.0
+        window = self._windows.get(op)
+        if window is None:
+            window = self._windows[op] = ShareWindow(self._window_s)
+        window.record(
+            dt,
+            actors=usage.serving_actors,
+            slot_s=slot_s,
+            busy_s=busy_s,
+            obp_s=obp_s,
+            starved_s=starved_s,
+            unstaffed=usage.serving_actors == 0 and queued > 0,
+        )
+        for rates, value in (
+            (self._processed, op.metrics.num_task_inputs_processed),
+            (self._taken, op.metrics.num_outputs_taken),
+        ):
+            rates.setdefault(op, _CounterRate(self._window_s)).record(now, value)
 
     def snapshot(self) -> Snapshot["ExperimentalActorPoolMapOperator"]:
         shares: Dict["ExperimentalActorPoolMapOperator", OpShares] = {}
@@ -551,6 +715,16 @@ class BottleneckObserver:
             op_shares = window.shares()
             if op_shares is not None:
                 shares[op] = op_shares
+        edge_shares: Dict[
+            Tuple[
+                "ExperimentalActorPoolMapOperator", "ExperimentalActorPoolMapOperator"
+            ],
+            EdgeShares,
+        ] = {}
+        for edge, window in self._edge_windows.items():
+            joint = window.shares()
+            if joint is not None:
+                edge_shares[edge] = joint
         return analyze(
             shares,
             self._profiles.prev_ops,
@@ -558,6 +732,7 @@ class BottleneckObserver:
             arrow_margin=self._arrow_margin,
             slack_margin=self._slack_margin,
             min_severity=self._min_severity,
+            edge_shares=edge_shares,
         )
 
     def assess(
@@ -579,6 +754,7 @@ class BottleneckObserver:
                             snapshot.shares,
                             self._profiles.prev_ops,
                             self._profiles.next_ops,
+                            snapshot.edge_shares,
                         ),
                     )
                     for op in stable
@@ -594,8 +770,15 @@ class BottleneckObserver:
         eligibility = {
             op: self._eligibility(op, capacity, freeable) for op in bottlenecks
         }
+        # Stability keeps one noisy window from making or unmaking a
+        # bottleneck, but an op whose severity has since fallen below the
+        # floor is not waited on: it is no recipient while it stays stable.
         recipient = next(
-            (op for op, _ in ranked_stable if not eligibility[op].startswith("no:")),
+            (
+                op
+                for op, sev in ranked_stable
+                if sev >= self._min_severity and not eligibility[op].startswith("no:")
+            ),
             None,
         )
         victims: Dict["ExperimentalActorPoolMapOperator", DonorVictims] = {}
@@ -721,6 +904,7 @@ class BottleneckObserver:
                 snapshot.shares,
                 self._profiles.next_ops,
                 self._arrow_margin,
+                snapshot.edge_shares,
             ),
         )
 
@@ -782,7 +966,8 @@ def format_snapshot(
     )
     edges = ", ".join(
         f"{name(e.producer)}->{name(e.consumer)} "
-        f"obp={e.producer_obp:.2f}/starved={e.consumer_starved:.2f} [{e.arrow.value}]"
+        f"blocked={e.producer_blocked:.2f}/self={e.producer_self_limited:.2f}"
+        f"/starved={e.consumer_starved:.2f} [{e.arrow.value}]"
         for e in snapshot.edges
     )
     ops = ", ".join(

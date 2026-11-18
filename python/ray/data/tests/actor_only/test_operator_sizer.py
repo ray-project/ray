@@ -413,6 +413,7 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
             slots=serving * conc,
             obp_slots=blocked * conc,
             obp_busy_slots=0,
+            busy_slots=0,
             busy_slot_seconds=0.0,
         )
 

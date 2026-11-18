@@ -16,6 +16,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     Arrow,
     BottleneckObserver,
     DonorVictims,
+    EdgeShares,
     OpShares,
     ShareWindow,
     StableBottlenecks,
@@ -56,16 +57,21 @@ def _analyze(shares, *ops):
 
 
 @pytest.mark.parametrize(
-    "producer_obp, consumer_starved, expected",
+    "blocked, self_limited, consumer_starved, expected",
     [
-        (0.98, 0.0, Arrow.DOWNSTREAM),  # producer waits on consumer
-        (0.0, 0.9, Arrow.UPSTREAM),  # consumer waits on producer
-        (0.2, 0.25, Arrow.TIE),  # within the margin
-        (0.5, 0.4, Arrow.TIE),  # exactly the margin is still a tie
+        (0.98, 0.0, 0.0, Arrow.DOWNSTREAM),  # producer waits on consumer
+        (0.0, 0.0, 0.9, Arrow.UPSTREAM),  # consumer waits on producer
+        (0.2, 0.0, 0.25, Arrow.TIE),  # within the margin
+        (0.5, 0.0, 0.4, Arrow.TIE),  # exactly the margin is still a tie
+        # Output-backpressured by its own budget while the consumer has room:
+        # the producer limits the edge (video: 1 GPU actor, Write starved).
+        (0.0, 0.8, 0.57, Arrow.UPSTREAM),
     ],
 )
-def test_classify_edge(producer_obp, consumer_starved, expected):
-    assert classify_edge(producer_obp, consumer_starved, ARROW_MARGIN) is expected
+def test_classify_edge(blocked, self_limited, consumer_starved, expected):
+    assert (
+        classify_edge(blocked, self_limited, consumer_starved, ARROW_MARGIN) is expected
+    )
 
 
 def test_label_contention_names_the_labeled_stage():
@@ -209,6 +215,52 @@ def test_op_blocked_on_an_unmodeled_consumer_is_not_a_bottleneck():
 
 
 @pytest.mark.parametrize(
+    "consumer_saturated, expected",
+    [(True, "W"), (False, "B")],
+    ids=["consumer-saturated", "producer-budget-limited"],
+)
+def test_output_backpressure_is_attributed_by_what_the_consumer_was_doing(
+    consumer_saturated, expected
+):
+    """B is output-backpressured 80% of the time. If W had no idle slot then
+    (saturated), W holds B back and W is the bottleneck. If W had idle slots
+    and was starved, B's own output budget held it back, so B is: more B
+    actors means more blocks in flight. Raw obp alone cannot tell these apart
+    (video_object_detection: 1 GPU actor, Write starved 57%)."""
+    shares = {
+        "A": OpShares(busy=0.0, obp=1.0, starved=0.0, actors=7),
+        "B": OpShares(busy=0.2, obp=0.8, starved=0.0, actors=1),
+        "W": OpShares(
+            busy=1.0 if consumer_saturated else 0.4,
+            obp=0.0,
+            starved=0.0 if consumer_saturated else 0.57,
+            actors=7,
+        ),
+    }
+    b_out = (
+        EdgeShares(blocked=0.8, self_limited=0.0)
+        if consumer_saturated
+        else EdgeShares(blocked=0.0, self_limited=0.8)
+    )
+    edge_shares = {
+        ("A", "B"): EdgeShares(blocked=1.0, self_limited=0.0),
+        ("B", "W"): b_out,
+    }
+    prev_ops, next_ops = _chain("A", "B", "W")
+    snapshot = analyze(
+        shares,
+        prev_ops,
+        next_ops,
+        arrow_margin=ARROW_MARGIN,
+        slack_margin=SLACK_MARGIN,
+        min_severity=MIN_SEVERITY,
+        edge_shares=edge_shares,
+    )
+
+    assert [op for op, _ in snapshot.bottlenecks] == [expected]
+
+
+@pytest.mark.parametrize(
     "actors, busy, growth, expected",
     [
         (15, 0.02, 1.5, 14),
@@ -335,6 +387,9 @@ class _Op:
         self.busy_slots = busy_slots
         self.conc = conc
         self.busy_slot_seconds = 0.0
+        # Slots busy right now, for the joint edge signal: by default every
+        # slot not output-backpressured is busy while busy_slots > 0.
+        self.busy_now = (serving - obp_actors) * conc if busy_slots > 0 else 0
         self.completed = False
         self.metrics = SimpleNamespace(
             num_task_inputs_processed=0,
@@ -353,6 +408,7 @@ class _Op:
             slots=self.serving * self.conc,
             obp_slots=self.obp_actors * self.conc,
             obp_busy_slots=0,
+            busy_slots=self.busy_now,
             busy_slot_seconds=self.busy_slot_seconds,
         )
 
@@ -432,6 +488,33 @@ def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
     assert producer not in observer.snapshot().shares
 
 
+@pytest.mark.parametrize(
+    "consumer_busy_now, expected",
+    [(2, "C"), (1, "P")],
+    ids=["consumer-saturated", "consumer-has-an-idle-slot"],
+)
+def test_observer_attributes_output_backpressure_by_consumer_state(
+    consumer_busy_now, expected
+):
+    # P's one actor is output-backpressured every step. If C has no idle slot
+    # at those moments, C holds P back; if C has an idle slot (and, with its
+    # queue empty, is starved), P's own budget does, so P is named.
+    producer = _Op("P", serving=1, obp_actors=1)
+    consumer = _Op("C", serving=2, busy_slots=float(consumer_busy_now))
+    consumer.busy_now = consumer_busy_now
+    observer, _, step = _observer(producer, consumer, queued=(0, 0))
+    step(5)
+    snapshot = observer.snapshot()
+
+    (edge,) = snapshot.edges
+    if expected == "C":
+        assert (edge.producer_blocked, edge.producer_self_limited) == (1.0, 0.0)
+    else:
+        assert (edge.producer_blocked, edge.producer_self_limited) == (0.0, 1.0)
+    names: Dict[Any, str] = {producer: "P", consumer: "C"}
+    assert [names[op] for op, _ in snapshot.bottlenecks] == [expected]
+
+
 def test_short_tasks_between_samples_count_as_busy():
     # Each 1s step the op ran 0.4 slot-seconds of tasks that started and
     # finished between samples: per-step sampling would see it idle.
@@ -509,6 +592,10 @@ def test_assessment_eligibility_and_victims(
     # Named but not yet stable: eligibility is shown, but there is no
     # recipient, so no victims.
     assert observer.assess(snapshot, capacity, stable=set()).recipient is None
+    # Still stable but no longer waited on (R's severity is below the floor):
+    # stability does not make it a recipient.
+    lingering = observer.assess(snapshot, capacity, stable=cast(Any, {read}))
+    assert lingering.recipient is None and lingering.stable[0][0] is read
     assessment = observer.assess(snapshot, capacity, stable=cast(Any, {write}))
 
     assert [op for op, _ in snapshot.bottlenecks] == [write]

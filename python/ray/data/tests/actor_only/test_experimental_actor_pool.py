@@ -2310,6 +2310,8 @@ def test_slot_usage_counts_output_backpressured_actors_whole():
     assert (usage.serving_actors, usage.slots) == (4, 8)
     # blocked_busy holds 3 tasks but has only 2 slots.
     assert (usage.obp_slots, usage.obp_busy_slots) == (4, 2)
+    # busy holds 2 tasks on 2 slots; idle holds none.
+    assert usage.busy_slots == 2
     assert usage.busy_slot_seconds == 42.0
 
 

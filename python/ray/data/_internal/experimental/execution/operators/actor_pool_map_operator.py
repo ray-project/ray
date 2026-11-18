@@ -274,6 +274,9 @@ class SlotUsage:
     # Of ``obp_slots``, those holding a task. The busy-slot integral counts
     # them; the observer moves them from busy to output-backpressured.
     obp_busy_slots: int
+    # Slots holding a task right now on actors not output-backpressured. With
+    # ``obp_slots``, says whether the op has an idle slot at this moment.
+    busy_slots: int
     # The pool's cumulative busy-slot seconds (see
     # ``_ExperimentalActorPool.busy_slot_seconds``).
     busy_slot_seconds: float
@@ -1766,7 +1769,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         """
         zeros = TaskPullRequest.zero()
         conc = max(1, self.actor_pool.max_actor_concurrency())
-        serving = obp_actors = obp_busy = 0
+        serving = obp_actors = obp_busy = busy = 0
         for states in self.actor_pool.alive_actor_states_by_node().values():
             for actor_id, state in states.items():
                 if state.status not in (ActorStatus.IDLE, ActorStatus.ACTIVE):
@@ -1775,11 +1778,14 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 if not self._actor_pull_budget(actor_id).all_fields_gt(zeros):
                     obp_actors += 1
                     obp_busy += min(conc, state.num_tasks_in_flight)
+                else:
+                    busy += min(conc, state.num_tasks_in_flight)
         return SlotUsage(
             serving_actors=serving,
             slots=serving * conc,
             obp_slots=obp_actors * conc,
             obp_busy_slots=obp_busy,
+            busy_slots=busy,
             busy_slot_seconds=self.actor_pool.busy_slot_seconds(),
         )
 
