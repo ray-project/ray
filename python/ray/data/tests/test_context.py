@@ -131,7 +131,7 @@ def test_enable_ray_data_reconstruction_defaults_false():
     """Resolution falls back to `False` without a connection and by default."""
     from ray.data.context import DataContext
 
-    assert not ray.is_initialized()
+    ray.shutdown()
     assert DataContext().enable_ray_data_reconstruction is False
     # A bare `ray.init()` starts a job with this default.
     assert JobConfig()._disable_job_level_lineage_reconstruction is False
