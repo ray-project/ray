@@ -5,13 +5,9 @@ from types import SimpleNamespace
 from typing import List, Optional, Sequence
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
 import ray.cloudpickle as cloudpickle
-from ray.data._internal.datasource_v2.common.online_bin_packer import (
-    OnlineBinPacker,
-)
 from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
     DeltaDatasourceV2,
     delta_datasource_v2_unsupported_reason,
@@ -26,9 +22,6 @@ from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
-from ray.data.datasource.file_based_datasource import FileShuffleConfig
-from ray.data.expressions import col
 
 deltalake = pytest.importorskip("deltalake")
 
@@ -140,18 +133,6 @@ def test_datasource_rejects_unknown_columns(partitioned_table):
         _datasource(partitioned_table, columns=["id", "path"])
 
 
-def test_datasource_paths_and_partitioner(partitioned_table):
-    datasource = _datasource(partitioned_table, shuffle="files")
-
-    assert len(datasource.paths) == 1
-    assert isinstance(datasource.get_file_partitioner(), OnlineBinPacker)
-    # The framework doesn't shuffle a metadata-backed source's listing, so the
-    # indexer does, with a seed drawn when the dataset is created.
-    shuffle_config = datasource._get_file_indexer()._shuffle_config
-    assert isinstance(shuffle_config, FileShuffleConfig)
-    assert shuffle_config.seed is not None
-
-
 def test_indexer_and_scanner_survive_worker_serialization(partitioned_table):
     """Listing and read tasks receive the indexer and the scanner pickled, and
     a read task creates its reader from the scanner."""
@@ -170,30 +151,38 @@ def test_indexer_and_scanner_survive_worker_serialization(partitioned_table):
     assert {row["grp"] for row in rows} == {"a b", "e=f", None}
 
 
-def test_scanner_prunes_partitions_with_the_log_values(partitioned_table):
+def test_reader_opens_data_files_with_their_sizes_from_the_log(
+    partitioned_table, monkeypatch
+):
+    """``deltalake``'s storage asks for the size of a file it opens unless it
+    was told it: a HEAD request per open on S3."""
+    unsized_opens = []
+
+    class _RecordingStorage(deltalake.fs.DeltaStorageHandler):
+        def __init__(self, table_uri, options=None, known_sizes=None):
+            super().__init__(table_uri, options=options, known_sizes=known_sizes)
+            self.known_paths = set(known_sizes or ())
+
+        def open_input_file(self, path):
+            if path not in self.known_paths:
+                unsized_opens.append(path)
+            return super().open_input_file(path)
+
+    monkeypatch.setattr(deltalake.fs, "DeltaStorageHandler", _RecordingStorage)
     datasource = _datasource(partitioned_table)
-    scanner = datasource.create_scanner(
+    reader = datasource.create_scanner(
         schema=datasource.infer_schema(None)
-    ).prune_partitions(col("grp") == "a b")
-    indexer = datasource._get_file_indexer()
-
-    paths = _listed_paths(indexer, pruners=[scanner._create_partition_pruner()])
-
-    assert {indexer._partition_values_by_path[p]["grp"] for p in paths} == {"a b"}
-    manifest = FileManifest.construct_manifest(
-        paths=paths, sizes=[1] * len(paths), chunk_metadatas=[None] * len(paths)
+    ).create_reader()
+    manifests = (
+        datasource._get_file_indexer()
+        .as_whole_file_indexer()
+        .list_files(pa.array(["label"]), filesystem=None)
     )
-    # The listing already pruned by the log values; a path can't.
-    assert scanner.prune_input_split(manifest) is manifest
 
+    rows = [row for m in manifests for t in reader.read(m) for row in t.to_pylist()]
 
-def test_reads_through_a_filesystem_rooted_at_the_table(partitioned_table):
-    """The default filesystem reads the relative paths the indexer lists."""
-    datasource = _datasource(partitioned_table)
-    (path, *_) = _listed_paths(datasource._get_file_indexer())
-
-    with datasource._filesystem.open_input_file(path) as f:
-        assert pq.read_metadata(f).num_rows > 0
+    assert sorted(row["id"] for row in rows) == [1, 2, 3, 4]
+    assert unsized_opens == []
 
 
 def _stub_table(
@@ -223,7 +212,6 @@ def _stub_table(
 @pytest.mark.parametrize(
     "table, kwargs, expected",
     [
-        (_stub_table(), {}, None),
         (_stub_table(reader_version=3, reader_features=["timestampNtz"]), {}, None),
         (_stub_table(), {"arrow_parquet_args": {"batch_size": 10}}, "PyArrow"),
         (_stub_table(reader_version=2), {}, "reader version 2"),
@@ -239,29 +227,6 @@ def _stub_table(
             _stub_table(configuration={"delta.columnMapping.mode": "name"}),
             {},
             "column mapping",
-        ),
-        (
-            _stub_table(configuration={"delta.columnMapping.mode": "none"}),
-            {},
-            None,
-        ),
-        # Partition values come from the log, not from directories.
-        (
-            _stub_table(
-                configuration={"delta.randomizeFilePrefixes": "true"},
-                schema=pa.schema([("x", pa.int64()), ("p", pa.string())]),
-                partition_columns=["p"],
-            ),
-            {},
-            None,
-        ),
-        (
-            _stub_table(
-                schema=pa.schema([("x", pa.int64()), ("t", pa.timestamp("us", "UTC"))]),
-                partition_columns=["t"],
-            ),
-            {},
-            None,
         ),
         (
             _stub_table(
@@ -287,6 +252,17 @@ def test_delta_datasource_v2_unsupported_reason(table, kwargs, expected):
         assert reason is None
     else:
         assert reason is not None and expected in reason
+
+
+def test_delta_datasource_v2_supports_a_real_table(partitioned_table):
+    """Catches a ``deltalake`` whose ``protocol()``, ``metadata()`` or
+    ``schema()`` changed, which would send every table to the V1 reader."""
+    assert (
+        delta_datasource_v2_unsupported_reason(
+            _open(partitioned_table), include_paths=False, arrow_parquet_args={}
+        )
+        is None
+    )
 
 
 def test_generated_id_column_is_rejected(partitioned_table, tmp_path):

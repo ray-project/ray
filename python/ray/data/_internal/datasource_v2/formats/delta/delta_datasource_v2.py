@@ -1,9 +1,8 @@
 """``DataSourceV2`` for Delta Lake tables.
 
-The driver opens the table's log without its file list, pins the version and
-takes the schema from the log. Listing tasks read the file list from the log at
-that version (``DeltaFileIndexer``); the data files are Parquet and read by the
-Parquet reader (``DeltaScanner``).
+The driver pins the table version and takes the schema from the log. Listing
+tasks read the file list from the log at that version (``DeltaFileIndexer``);
+the data files are Parquet and read by the Parquet reader (``DeltaScanner``).
 
 Everything goes through a filesystem rooted at the table directory, with paths
 relative to it, as ``DeltaTable.to_pyarrow_dataset`` -- the V1 reader -- does.
@@ -25,6 +24,9 @@ from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     DeltaTableSnapshot,
     is_supported_partition_type,
     make_partitioning,
+)
+from ray.data._internal.datasource_v2.formats.delta.delta_filesystem import (
+    make_table_filesystem,
 )
 from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
     DeltaScanner,
@@ -85,6 +87,10 @@ def delta_datasource_v2_unsupported_reason(
         return f"PyArrow scan options were passed: {sorted(arrow_parquet_args)}"
     try:
         protocol = table.protocol()
+        # Reader version 2 adds only column mapping, which this reader doesn't
+        # support yet. Version 3 lists the features it needs, checked below.
+        if protocol.min_reader_version == 2:
+            return "the table needs reader version 2 (column mapping)"
         if protocol.min_reader_version not in (1, 3):
             return f"the table needs reader version {protocol.min_reader_version}"
         unsupported_features = (
@@ -114,22 +120,6 @@ def delta_datasource_v2_unsupported_reason(
     return None
 
 
-def _make_table_filesystem(
-    table_uri: str, storage_options: Optional[Dict[str, Any]]
-) -> "FileSystem":
-    """Filesystem rooted at the table directory that ``deltalake`` reads through.
-
-    The same one ``DeltaTable.to_pyarrow_dataset`` builds when no filesystem
-    is given: it takes ``storage_options`` for credentials and every URI
-    scheme ``deltalake`` does, including ``az://``, which PyArrow can't parse.
-    It is picklable.
-    """
-    import pyarrow.fs as pa_fs
-    from deltalake.fs import DeltaStorageHandler
-
-    return pa_fs.PyFileSystem(DeltaStorageHandler(table_uri, options=storage_options))
-
-
 @DeveloperAPI
 class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
     """V2 datasource for one version of a Delta Lake table."""
@@ -148,7 +138,8 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
 
         Args:
             table: The table, opened at the version to read. Its file list
-                isn't needed: open it with ``without_files=True``.
+                isn't needed: before deltalake 1.6, open it with
+                ``without_files=True``. Later versions always load it.
             storage_options: The ``deltalake`` storage options the table was
                 opened with.
             filesystem: A filesystem rooted at the table directory. ``None``
@@ -175,7 +166,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         )
         self._partitioning = make_partitioning(self._partition_columns)
         if filesystem is None:
-            filesystem = _make_table_filesystem(table.table_uri, storage_options)
+            filesystem = make_table_filesystem(table.table_uri, storage_options)
         self._filesystem = RetryingPyFileSystem.wrap(
             filesystem,
             retryable_errors=DataContext.get_current().retried_io_errors,
@@ -205,8 +196,10 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         )
         _validate_shuffle_arg(shuffle)
         # ``_read_datasource_v2`` gives a metadata-backed source's listing no
-        # file shuffle, so the indexer applies it. As for file sources, the seed
-        # for ``"files"`` is drawn when the dataset is created.
+        # file shuffle, so the indexer applies it. File sources draw the seed
+        # for ``"files"`` when the read is planned; this one is drawn when the
+        # dataset is created. Either way ``reseed_after_execution`` mixes in
+        # the execution index, so each execution shuffles differently.
         self._shuffle_config: Optional[FileShuffleConfig] = (
             FileShuffleConfig(seed=time.time_ns() % _INT32_MAX)
             if shuffle == "files"
