@@ -72,7 +72,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[int]):
+def _read_parquet_metadata(
+    path: str,
+    filesystem: "FileSystem",
+    size: Optional[int],
+    *,
+    retried_io_errors: Optional[List[str]] = None,
+):
     import pyarrow.dataset as pds
     import pyarrow.parquet as pq
 
@@ -85,7 +91,11 @@ def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[i
     return call_with_retry(
         lambda: fragment.metadata,
         description=f"read Parquet footer for {path}",
-        match=DataContext.get_current().retried_io_errors,
+        match=(
+            DataContext.get_current().retried_io_errors
+            if retried_io_errors is None
+            else retried_io_errors
+        ),
     )
 
 
@@ -380,6 +390,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
             sample,
             self._filesystem,
             format_name="Parquet",
+            read_metadata=_read_parquet_metadata,
             ray_remote_args=ray_remote_args,
             supports_distributed_reads=self.supports_distributed_reads,
         )

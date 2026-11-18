@@ -12,6 +12,7 @@ import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 
+from ray.data._internal.datasource_v2.common import schema_inference as inference
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
@@ -22,6 +23,7 @@ from ray.data._internal.datasource_v2.common.schema_inference import (
     _SCHEMA_READ_BATCH_SIZE,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import RowHashColumn
+from ray.data._internal.datasource_v2.formats.parquet import parquet_datasource_v2
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     ChunkedFile,
     FooterFileIndexer,
@@ -102,17 +104,27 @@ def _manifest_of(paths):
     )
 
 
-@pytest.mark.parametrize("size", [None, 123])
-def test_parquet_schema_reader_uses_listed_size_and_retries(monkeypatch, size):
+@pytest.mark.parametrize(
+    "mode,size,retryable",
+    [
+        ("schema", None, True),
+        ("schema", 123, True),
+        ("metadata", None, True),
+        ("metadata", 123, True),
+        ("metadata", 123, False),
+    ],
+)
+def test_parquet_schema_reader_uses_listed_size_and_retries(
+    monkeypatch, mode, size, retryable
+):
     import pyarrow.dataset as pds
 
     expected = pa.schema([("a", pa.int64())])
-    metadata = Mock()
+    metadata = Mock(num_rows=3)
     metadata.schema.to_arrow_schema.return_value = expected
     fragment = Mock()
-    metadata_property = PropertyMock(
-        side_effect=[OSError("retryable footer error"), metadata]
-    )
+    error = OSError("retryable footer error" if retryable else "permanent failure")
+    metadata_property = PropertyMock(side_effect=[error, metadata])
     type(fragment).metadata = metadata_property
     file_format = Mock()
     file_format.make_fragment.return_value = fragment
@@ -120,12 +132,41 @@ def test_parquet_schema_reader_uses_listed_size_and_retries(monkeypatch, size):
     monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
     monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
     filesystem = pafs.LocalFileSystem()
+    reader = Mock(wraps=parquet_datasource_v2._read_parquet_metadata)
+    monkeypatch.setattr(parquet_datasource_v2, "_read_parquet_metadata", reader)
 
-    assert _read_parquet_schema("test.parquet", filesystem, size) == expected
+    if mode == "schema":
+        assert _read_parquet_schema("test.parquet", filesystem, size) == expected
+        reader.assert_called_once_with("test.parquet", filesystem, size)
+    else:
+        monkeypatch.setattr(
+            inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 32
+        )
+        source = ParquetDatasourceV2(["test.parquet"], filesystem=filesystem)
+        sample = FileManifest.construct_manifest(
+            paths=["test.parquet"], sizes=[size], chunk_metadatas=[None]
+        )
+        if retryable:
+            result = source.infer_full_schema_with_metadata(
+                sample, ray_remote_args={"num_cpus": 0}
+            )
+            assert result.schema == expected
+            cached_metadata = result.metadata
+            assert cached_metadata is not None
+            assert cached_metadata[0].as_py()["num_rows"] == 3
+        else:
+            with pytest.raises(OSError, match="permanent failure"):
+                source.infer_full_schema_with_metadata(
+                    sample, ray_remote_args={"num_cpus": 0}
+                )
+        filesystem = source.filesystem
+        reader.assert_called_once_with(
+            "test.parquet", filesystem, size, retried_io_errors=["retryable"]
+        )
     file_format.make_fragment.assert_called_once_with(
         "test.parquet", filesystem=filesystem, file_size=size
     )
-    assert metadata_property.call_count == 2
+    assert metadata_property.call_count == (2 if retryable else 1)
 
 
 def test_infer_schema_unpartitioned(tmp_path):

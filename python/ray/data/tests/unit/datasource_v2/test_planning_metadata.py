@@ -14,6 +14,7 @@ from ray.data._internal.datasource_v2.common.file_metadata import (
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import FooterReader
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
+    _read_parquet_metadata,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
@@ -288,6 +289,7 @@ def test_completed_batches_release_credit_and_refill(monkeypatch):
         sample,
         pafs.LocalFileSystem(),
         format_name="Parquet",
+        read_metadata=_read_parquet_metadata,
         ray_remote_args={},
         supports_distributed_reads=True,
     )
@@ -331,6 +333,7 @@ def test_deduplicated_schemas_keep_metadata_in_file_order(
         sample,
         pafs.LocalFileSystem(),
         format_name="Parquet",
+        read_metadata=_read_parquet_metadata,
         ray_remote_args={},
         supports_distributed_reads=distributed,
     )
@@ -365,12 +368,13 @@ def test_metadata_timeout_cancels_before_driver_read(monkeypatch):
     monkeypatch.setattr(
         inference,
         "_driver_read_all_metadata",
-        lambda *a: events.append("driver") or result,
+        lambda *a, **kw: events.append("driver") or result,
     )
     actual = inference.infer_full_schema_with_metadata_from_files(
         sample,
         pafs.LocalFileSystem(),
         format_name="Parquet",
+        read_metadata=_read_parquet_metadata,
         ray_remote_args={},
         supports_distributed_reads=True,
     )
@@ -394,7 +398,14 @@ def test_driver_returns_unused_footer_credit(monkeypatch):
 
     monkeypatch.setattr(inference, "_read_schema_metadata_batch", read)
     inference._driver_read_all_metadata(
-        ["a", "b"], [1, 1], pafs.LocalFileSystem(), "Parquet", 128, 128, None
+        ["a", "b"],
+        [1, 1],
+        pafs.LocalFileSystem(),
+        "Parquet",
+        128,
+        128,
+        None,
+        read_metadata=_read_parquet_metadata,
     )
     assert credits == [64, 64]
 
@@ -435,6 +446,7 @@ def test_probe_batch_reserves_available_row_slots(monkeypatch):
         sample,
         pafs.LocalFileSystem(),
         format_name="Parquet",
+        read_metadata=_read_parquet_metadata,
         ray_remote_args={},
         supports_distributed_reads=True,
     )

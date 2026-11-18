@@ -22,11 +22,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 )
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import (
-    call_with_retry,
-    filesystem_for_sized_opens,
-    unify_schemas_with_validation,
-)
+from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -199,6 +195,7 @@ def _read_schema_metadata_batch(
     footer_credit: int = 0,
     mtimes: Optional[List[Optional[int]]] = None,
     *,
+    read_metadata: Callable,
     io_concurrency: Optional[int] = None,
 ) -> _SchemaBatchResult:
     """Read every schema once and, within budget, file metadata in the same open.
@@ -220,17 +217,8 @@ def _read_schema_metadata_batch(
         size = sizes[index] if sizes is not None else None
         metadata: Optional[FileMetadata] = None
         try:
-            import pyarrow.dataset as pds
-
-            fragment = pds.ParquetFileFormat().make_fragment(
-                path,
-                filesystem=filesystem_for_sized_opens(filesystem),
-                file_size=size,
-            )
-            parquet_metadata = call_with_retry(
-                lambda: fragment.metadata,
-                description=f"read Parquet footer for {path}",
-                match=context.retried_io_errors,
+            parquet_metadata = read_metadata(
+                path, filesystem, size, retried_io_errors=context.retried_io_errors
             )
             # This is pq.read_schema's conversion, not schema_arrow.
             schema = parquet_metadata.schema.to_arrow_schema()
@@ -435,6 +423,8 @@ def _driver_read_all_metadata(
     budget: int,
     task_budget: int,
     mtimes: Optional[List[Optional[int]]],
+    *,
+    read_metadata: Callable,
 ) -> Optional[FullSchemaInferenceResult]:
     context = DataContext.get_current()
     batch_size = _FULL_SCHEMA_INFERENCE_BATCH_SIZE
@@ -474,6 +464,7 @@ def _driver_read_all_metadata(
             row_records,
             credit,
             mtimes[start:stop] if mtimes is not None else None,
+            read_metadata=read_metadata,
             io_concurrency=16,
         )
         footer_available += credit - result.footer_bytes
@@ -507,6 +498,7 @@ def infer_full_schema_with_metadata_from_files(
     filesystem: FileSystem,
     *,
     format_name: str,
+    read_metadata: Callable,
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
 ) -> Optional[FullSchemaInferenceResult]:
@@ -567,7 +559,14 @@ def infer_full_schema_with_metadata_from_files(
     ) >= min(16, batch_size)
     if not distributed:
         return _driver_read_all_metadata(
-            paths, sizes, filesystem, format_name, budget, task_budget, mtimes
+            paths,
+            sizes,
+            filesystem,
+            format_name,
+            budget,
+            task_budget,
+            mtimes,
+            read_metadata=read_metadata,
         )
     read_remote = cached_remote_fn(_read_schema_metadata_batch, max_retries=2).options(
         num_cpus=_FULL_SCHEMA_INFERENCE_NUM_CPUS, **options
@@ -633,6 +632,7 @@ def infer_full_schema_with_metadata_from_files(
                     row_records,
                     credit,
                     mtimes[start:stop] if mtimes is not None else None,
+                    read_metadata=read_metadata,
                     io_concurrency=_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY,
                 )
                 pending[ref] = (start, stop - start, credit)
@@ -669,7 +669,14 @@ def infer_full_schema_with_metadata_from_files(
         pending.clear()
     if timed_out:
         return _driver_read_all_metadata(
-            paths, sizes, filesystem, format_name, budget, task_budget, mtimes
+            paths,
+            sizes,
+            filesystem,
+            format_name,
+            budget,
+            task_budget,
+            mtimes,
+            read_metadata=read_metadata,
         )
     schemas.sort(key=lambda item: item[0])
     return FullSchemaInferenceResult(
