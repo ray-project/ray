@@ -1,15 +1,12 @@
-import json
-import math
 import os
 import resource
-import time
-from typing import Dict, List
+from typing import List
 import traceback
 
 import numpy as np
 import psutil
 
-from benchmark import Benchmark, _query_prometheus
+from benchmark import Benchmark
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.util import _check_pyarrow_version, GiB
@@ -81,51 +78,6 @@ class RandomIntRowDatasource(Datasource):
         return read_tasks
 
 
-def _peak_worker_memory_metrics(
-    start_unix_time: float, end_unix_time: float
-) -> Dict[str, float]:
-    """Peak private worker memory per node and peak worker-node memory, from Prometheus.
-
-    Worker memory is ``ray_component_uss_mb`` (RSS minus shared pages), not
-    ``ray_component_rss_mb``: a worker's RSS includes the object store pages it has
-    mapped, so summing RSS over a node's workers counts that shared memory once per
-    worker and can exceed the node's physical memory. USS is the private heap, which
-    is where allocator retention shows up. Workers are summed per node at each
-    sample before taking the peak, so processes that peaked at different times
-    aren't added together.
-    """
-    session = json.dumps(ray.get_runtime_context().get_session_name())
-    window_ms = max(1, math.ceil((end_unix_time - start_unix_time) * 1000))
-
-    def peaks(query: str) -> List[float]:
-        series = _query_prometheus(query, end_unix_time) or []
-        return [float(s["value"][1]) for s in series]
-
-    # Subquery at Ray's 10 s scrape interval: peak over time of the per-node sum.
-    worker_uss_mb = peaks(
-        "max_over_time((sum by (ip) (ray_component_uss_mb"
-        f'{{Component=~"ray::.*",SessionName={session}}}))[{window_ms}ms:10s])'
-    )
-    node_mem_bytes = peaks(
-        "max_over_time(ray_node_mem_used"
-        f'{{RayNodeType="worker",SessionName={session}}}[{window_ms}ms])'
-    )
-
-    def max_and_mean(values: List[float], scale: float) -> List[float]:
-        if not values:
-            return [0.0, 0.0]
-        return [max(values) / scale, sum(values) / len(values) / scale]
-
-    uss_max, uss_mean = max_and_mean(worker_uss_mb, 1e3)  # MB -> GB
-    mem_max, mem_mean = max_and_mean(node_mem_bytes, 1e9)  # bytes -> GB
-    return {
-        "peak_worker_uss_per_node_gb_max": uss_max,
-        "peak_worker_uss_per_node_gb_mean": uss_mean,
-        "peak_worker_node_mem_used_gb_max": mem_max,
-        "peak_worker_node_mem_used_gb_mean": mem_mean,
-    }
-
-
 if __name__ == "__main__":
     import argparse
 
@@ -191,9 +143,7 @@ if __name__ == "__main__":
     #
     # TODO: Re-enable this once `SHUFFLE_V2` supports random shuffles.
     benchmark = Benchmark(max_sched_loop_duration_s=None)
-    start_unix_time = time.time()
     benchmark.run_fn("main", run_benchmark, args)
-    end_unix_time = time.time()
 
     ds = holder["ds"]
     ds_stats = ds.stats()
@@ -223,11 +173,6 @@ if __name__ == "__main__":
         "partition_size": partition_size,
         "peak_driver_memory": maxrss,
     }
-    try:
-        results.update(_peak_worker_memory_metrics(start_unix_time, end_unix_time))
-    except Exception:
-        print("Failed to query worker memory metrics from Prometheus")
-        print(traceback.format_exc())
     benchmark.result["main"].update(results)
 
     # Wait until after the stats have been printed to raise any exceptions.
