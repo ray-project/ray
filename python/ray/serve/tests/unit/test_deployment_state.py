@@ -11,7 +11,7 @@ import ray.serve._private.deployment_state as ds_mod
 from ray import cloudpickle
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
-from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
+from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError, RayTaskError
 from ray.serve._private.application_state import ApplicationState
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
@@ -64,6 +64,7 @@ from ray.serve._private.deployment_state import (
     DeploymentTargetState,
     DeploymentVersion,
     HealthSource,
+    ProbeOutcome,
     PushedHealthTracker,
     ReplicaHealthCheckResponse,
     ReplicaStartupStatus,
@@ -72,7 +73,10 @@ from ray.serve._private.deployment_state import (
     format_scheduling_constraints,
 )
 from ray.serve._private.endpoint_state import EndpointState
-from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
+from ray.serve._private.exceptions import (
+    DeploymentIsBeingDeletedError,
+    HealthCheckFailedError,
+)
 from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.test_utils import (
     REMOVED_GANG_PG_NAMES,
@@ -14219,9 +14223,13 @@ class TestPushedHealthTracker:
         timer = MockTimer(start_time=1000.0)
         return PushedHealthTracker(timer=timer), timer
 
-    def _resolve(self, t, probe=None, started_at=0.0, failures=0):
+    def _resolve(
+        self, t, probe=None, started_at=0.0, failures=0, check_seq=None, in_flight=False
+    ):
         return t.resolve(
-            probe or ReplicaHealthCheckResponse.NONE,
+            ProbeOutcome(
+                probe or ReplicaHealthCheckResponse.NONE, check_seq, in_flight
+            ),
             started_at,
             failures,
             health_check_period_s=10.0,
@@ -14275,34 +14283,86 @@ class TestPushedHealthTracker:
 
     # -- probe against push ---------------------------------------------------
 
-    def test_a_probe_that_resolves_wins_its_own_tick(self):
+    def test_a_push_waits_while_a_probe_is_in_flight(self):
+        """The probe's number is known only once it answers, so a push that lands
+        meanwhile cannot yet be weighed against it."""
+        t, _ = self._tracker()
+        t.record(1, False, 2)
+        assert self._resolve(t, in_flight=True).source is HealthSource.NOTHING
+        assert t.should_defer_probe(10.0)  # still in hand
+
+    @pytest.mark.parametrize("early", [True, False], ids=["tick-before", "same-tick"])
+    def test_a_push_for_a_check_older_than_the_probes_is_dropped(self, early):
+        """Arrival order is not check order: a check that started before the probe
+        can report after the probe went out. In whichever tick that report lands, the
+        probe's newer check decides."""
         t, timer = self._tracker()
-        t.record(1, False, 1)
-        r = self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, timer.time())
+        probe_started = timer.time()
+        timer.advance(1)
+        t.record(1, False, 2)
+        if early:
+            self._resolve(t, in_flight=True)
+        r = self._resolve(
+            t, ReplicaHealthCheckResponse.SUCCEEDED, probe_started, check_seq=2
+        )
         assert r.source is HealthSource.PROBE
-        # ...and the push it beat is still in hand for the next tick.
-        assert self._resolve(t).source is HealthSource.PUSH
+        assert r.response is ReplicaHealthCheckResponse.SUCCEEDED
+        assert self._resolve(t).source is HealthSource.NOTHING
+
+    @pytest.mark.parametrize("early", [True, False], ids=["tick-before", "same-tick"])
+    def test_a_push_for_a_check_newer_than_the_probes_applies_after_it(self, early):
+        t, timer = self._tracker()
+        probe_started = timer.time()
+        timer.advance(1)
+        t.record(3, False, 1)
+        if early:
+            self._resolve(t, in_flight=True)
+        r = self._resolve(
+            t, ReplicaHealthCheckResponse.SUCCEEDED, probe_started, 2, check_seq=2
+        )
+        assert r.source is HealthSource.PUSH
+        assert r.response is ReplicaHealthCheckResponse.APP_FAILURE
+        assert r.consecutive_failures == 1
+        assert self._resolve(t).source is HealthSource.NOTHING
 
     @pytest.mark.parametrize(
         "probe_response",
         [
-            ReplicaHealthCheckResponse.SUCCEEDED,
             ReplicaHealthCheckResponse.APP_FAILURE,
             ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE,
         ],
+        ids=["timeout", "unavailable"],
     )
+    @pytest.mark.parametrize("early", [True, False], ids=["tick-before", "same-tick"])
     @pytest.mark.parametrize("pushed_healthy", [True, False])
-    def test_a_probe_started_before_an_applied_push_is_superseded(
-        self, probe_response, pushed_healthy
+    def test_a_probe_with_no_answer_gives_way_to_a_push_sent_while_it_waited(
+        self, probe_response, early, pushed_healthy
     ):
+        """A timeout or an unreachable actor has no number to weigh, but the replica
+        reported in after the probe went out, so its push applies instead, however long
+        the probe took."""
         t, timer = self._tracker()
         probe_started = timer.time()
         timer.advance(1)
         t.record(1, pushed_healthy, 0 if pushed_healthy else 2)
-        self._resolve(t)  # the push is applied
+        if early:
+            self._resolve(t, in_flight=True)
+        timer.advance(30)  # a timeout takes health_check_timeout_s, past the window
         r = self._resolve(t, probe_response, probe_started)
-        assert r.source is HealthSource.SUPERSEDED_PROBE
-        assert r.response is ReplicaHealthCheckResponse.NONE
+        assert r.source is HealthSource.PUSH
+        assert (r.response is ReplicaHealthCheckResponse.SUCCEEDED) is pushed_healthy
+        assert self._resolve(t).source is HealthSource.NOTHING
+
+    @pytest.mark.parametrize("pushed", [False, True], ids=["no-push", "push-before"])
+    def test_a_timeout_with_no_push_while_it_waited_still_counts(self, pushed):
+        t, timer = self._tracker()
+        if pushed:
+            t.record(1, True, 0)
+            # Gone stale, which is why the probe went out.
+            timer.advance(_push_freshness_window_s(10.0) + 1)
+        r = self._resolve(t, ReplicaHealthCheckResponse.APP_FAILURE, timer.time())
+        assert r.source is HealthSource.PROBE
+        assert r.response is ReplicaHealthCheckResponse.APP_FAILURE
 
     @pytest.mark.parametrize("probe_delay", [0, 1])
     def test_an_unavailable_probe_started_at_or_after_a_push_is_not_superseded(
@@ -14322,17 +14382,16 @@ class TestPushedHealthTracker:
         probe_started = timer.time()
         timer.advance(1)
         t.record(1, pushed_healthy, 0 if pushed_healthy else 2)
-        self._resolve(t)
+        self._resolve(t, in_flight=True)
         r = self._resolve(t, ReplicaHealthCheckResponse.ACTOR_CRASHED, probe_started)
         assert r.source is HealthSource.PROBE
         assert r.response is ReplicaHealthCheckResponse.ACTOR_CRASHED
 
     def test_a_push_older_than_an_applied_probe_is_dropped(self):
-        t, timer = self._tracker()
-        t.record(1, False, 2)  # arrives first, before any probe resolves
-        timer.advance(5)
-        # A probe started after it resolves first, so the push is older information.
-        self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, timer.time())
+        """Sent before the probe's check ended, it can still land after."""
+        t, _ = self._tracker()
+        self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, check_seq=2)
+        t.record(1, False, 2)
         assert self._resolve(t).source is HealthSource.NOTHING
 
     # -- mirroring the replica's failure count --------------------------------
@@ -14429,7 +14488,8 @@ class TestPushedHealthWrapper:
             wrapper.record_pushed_health(1, pushed_healthy, pushed_failures)
             with patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=False):
                 assert wrapper.check_health() is True
-            assert wrapper._consecutive_health_check_failures == pushed_failures
+            # Held while the probe is out, to be weighed against it.
+            assert wrapper._consecutive_health_check_failures == failures
 
             timer.advance(1)
             with (
@@ -14437,11 +14497,29 @@ class TestPushedHealthWrapper:
                 patch.object(ds_mod.ray, "get", side_effect=probe_error),
             ):
                 assert wrapper.check_health() is expected_healthy
-
-        assert wrapper._consecutive_health_check_failures == pushed_failures
+            assert wrapper.last_health_check_failed is (
+                not pushed_healthy if expected_healthy else True
+            )
+        assert wrapper._consecutive_health_check_failures == (
+            pushed_failures if expected_healthy else failures
+        )
         assert wrapper._probe_ref is None
-        assert wrapper.last_health_check_failed is (None if expected_healthy else True)
         wrapper._actor_handle.check_health.remote.assert_called_once()
+
+    def test_a_push_held_through_a_probe_timeout_still_applies(self):
+        """A probe takes health_check_timeout_s to time out, longer than a push stays
+        fresh. Dropping the push it held would leave a hung replica probed over and
+        over with neither failure counted."""
+        wrapper, timer = self._wrapper()
+        threshold = REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        with patch.object(ds_mod.time, "time", timer.time):
+            assert wrapper.check_health() is True  # the probe goes out
+            timer.advance(1)
+            wrapper.record_pushed_health(7, False, threshold)
+            timer.advance(wrapper.health_check_timeout_s)
+            with patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=False):
+                assert wrapper.check_health() is False
+        assert wrapper._consecutive_health_check_failures == threshold
 
     def test_a_pushed_count_reaching_the_threshold_marks_the_replica_unhealthy(self):
         wrapper, timer = self._wrapper()
@@ -14466,6 +14544,57 @@ class TestPushedHealthWrapper:
         wrapper.record_pushed_health(2, True, 0)
         assert wrapper.check_health() is True
         assert wrapper.last_health_check_failed is False
+
+    def test_an_older_failure_landing_mid_probe_does_not_outvote_its_newer_pass(self):
+        """Ordered by arrival, this replaced a recovered replica: its probe's check
+        passed, but the failure of a self-check that started before the probe landed
+        while the probe was out, and its count reached the threshold."""
+        wrapper, timer = self._wrapper()
+        threshold = REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        wrapper._consecutive_health_check_failures = threshold - 1
+        with patch.object(ds_mod.time, "time", timer.time):
+            assert wrapper.check_health() is True  # the probe goes out
+            timer.advance(1)
+            wrapper.record_pushed_health(7, False, threshold)
+            timer.advance(1)
+            with (
+                patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=True),
+                patch.object(ds_mod.ray, "get", return_value=8),  # check 8 passed
+            ):
+                assert wrapper.check_health() is True
+            assert wrapper.check_health() is True
+        assert wrapper._consecutive_health_check_failures == 0
+
+    @pytest.mark.parametrize(
+        "pushed_seq,healthy,failures",
+        [(7, False, REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD), (9, True, 0)],
+        ids=["older-pass", "newer-pass"],
+    )
+    def test_a_probe_failure_is_weighed_against_a_pass_by_check_number(
+        self, pushed_seq, healthy, failures
+    ):
+        """The replica raises a failed probe as HealthCheckFailedError carrying the
+        check's number, and Ray hands it to the controller inside a RayTaskError. One
+        that would reach the threshold gives way to a newer check's pass."""
+        wrapper, timer = self._wrapper()
+        wrapper._consecutive_health_check_failures = (
+            REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1
+        )
+        error = RayTaskError(
+            "check_health", "", HealthCheckFailedError(8, "ValueError('boom')")
+        ).as_instanceof_cause()
+        with patch.object(ds_mod.time, "time", timer.time):
+            assert wrapper.check_health() is True  # the probe goes out
+            timer.advance(1)
+            wrapper.record_pushed_health(pushed_seq, True, 0)
+            timer.advance(1)
+            with (
+                patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=True),
+                patch.object(ds_mod.ray, "get", side_effect=error),
+            ):
+                assert wrapper.check_health() is healthy
+            assert wrapper.check_health() is healthy
+        assert wrapper._consecutive_health_check_failures == failures
 
 
 def test_a_heartbeat_reply_carries_the_settings_the_replica_is_judged_by(
