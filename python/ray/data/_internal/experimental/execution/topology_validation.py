@@ -14,9 +14,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.hash_aggregate import HashAggregateOperator
 from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
 from ray.data._internal.execution.operators.join import JoinOperator
-from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (
-    DiskHashShuffleMapOp,
-)
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (
     DiskHashShuffleReduceOp,
 )
@@ -45,7 +42,6 @@ _UNSUPPORTED_ACTOR_ONLY_OPS: Tuple[Type[PhysicalOperator], ...] = (
     ShuffleReduceOp,
     ZipOperator,
     GPUShuffleOperator,
-    DiskHashShuffleMapOp,
     DiskHashShuffleReduceOp,
 )
 
