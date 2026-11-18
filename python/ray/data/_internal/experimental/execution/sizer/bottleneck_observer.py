@@ -7,12 +7,22 @@ went to each of:
 - output-backpressured (obp): pull budget exhausted, so outputs can't move
 - starved: idle with an empty input queue
 
+An op with queued input but no serving actor at all (e.g. a Write sink that
+could not place its first actor) counts that time as one fully busy actor:
+it has work and no capacity, which is the tightest a stage can be. Without
+this it would have no actor time, drop out of the model, and its producer --
+fully output-backpressured on it -- would be named instead.
+
 From those, each edge ``producer -> consumer`` between actor-pool operators
 gets an arrow pointing toward the side that limits it (the arrow-based method
 for serial production lines): if obp(producer) exceeds starved(consumer) by
 more than a margin, the limit is at or past the consumer; if it falls short by
 more than the margin, the limit is at or before the producer; otherwise the
-edge is a tie. Operators with no outgoing arrow are bottlenecks.
+edge is a tie. Operators with no outgoing arrow are bottlenecks, except one
+that is itself output-backpressured nearly all the time (whatever limits it is
+downstream, outside the model, e.g. a non-actor-pool consumer), or one with
+severity <= 0 (nothing waits on it more than it waits itself, e.g. the last op
+working through its tail after every upstream op has completed).
 
 Nothing here changes a sizing decision. The sizer samples on every
 scheduling-loop step and logs one line per tick, so the named bottlenecks can
@@ -72,6 +82,9 @@ class OpShares:
     starved: float
     # Serving actors at the latest sample.
     actors: int
+    # Share of the window spent with queued input and no serving actor (each
+    # such second counts as one fully busy actor, so it is part of ``busy``).
+    unstaffed: float = 0.0
 
 
 class Arrow(enum.Enum):
@@ -140,15 +153,26 @@ def build_edges(
     return tuple(edges)
 
 
-def find_bottlenecks(shares: Mapping[K, OpShares], edges: Sequence[Edge[K]]) -> List[K]:
-    """Ops with shares and no outgoing arrow. A tie points nowhere."""
+def find_bottlenecks(
+    shares: Mapping[K, OpShares], edges: Sequence[Edge[K]], margin: float
+) -> List[K]:
+    """Ops with shares and no outgoing arrow. A tie points nowhere.
+
+    An op output-backpressured more than ``1 - margin`` of the time is never
+    one: it is waiting on something downstream. Normally that shows as an
+    outgoing arrow; this covers a consumer the model has no shares for.
+    """
     has_outgoing = set()
     for edge in edges:
         if edge.arrow is Arrow.DOWNSTREAM:
             has_outgoing.add(edge.producer)
         elif edge.arrow is Arrow.UPSTREAM:
             has_outgoing.add(edge.consumer)
-    return [op for op in shares if op not in has_outgoing]
+    return [
+        op
+        for op, op_shares in shares.items()
+        if op not in has_outgoing and op_shares.obp <= 1 - margin
+    ]
 
 
 def severity(
@@ -182,11 +206,14 @@ def analyze(
     slack_margin: float,
 ) -> Snapshot[K]:
     edges = build_edges(shares, next_ops, arrow_margin)
+    # Severity <= 0: no neighbour waits on the op more than it idles itself,
+    # so growing it would not speed anything up.
+    scored = (
+        (op, severity(op, shares, prev_ops, next_ops))
+        for op in find_bottlenecks(shares, edges, arrow_margin)
+    )
     ranked = sorted(
-        (
-            (op, severity(op, shares, prev_ops, next_ops))
-            for op in find_bottlenecks(shares, edges)
-        ),
+        ((op, sev) for op, sev in scored if sev > 0),
         key=lambda entry: entry[1],
         reverse=True,
     )
@@ -221,34 +248,49 @@ class ShareWindow:
     def __init__(self, window_s: float):
         assert window_s > 0
         self._window_s = window_s
-        # (dt, serving, busy, obp, starved)
-        self._samples: Deque[Tuple[float, int, int, int, int]] = deque()
+        # (dt, serving, busy, obp, starved, unstaffed)
+        self._samples: Deque[Tuple[float, int, int, int, int, bool]] = deque()
         self._span_s = 0.0
         self._latest_serving = 0
 
     def record(
-        self, dt: float, serving: int, busy: int, obp: int, starved: int
+        self,
+        dt: float,
+        serving: int,
+        busy: int,
+        obp: int,
+        starved: int,
+        *,
+        unstaffed: bool = False,
     ) -> None:
+        """``unstaffed``: no serving actor but input is queued. The interval
+        then counts as one fully busy actor."""
         self._latest_serving = serving
         if dt <= 0:
             return
-        self._samples.append((dt, serving, busy, obp, starved))
+        self._samples.append((dt, serving, busy, obp, starved, unstaffed))
         self._span_s += dt
         while self._samples and self._span_s - self._samples[0][0] >= self._window_s:
             self._span_s -= self._samples.popleft()[0]
 
     def shares(self) -> Optional[OpShares]:
-        """None until a full window has been seen, or if no actor served."""
+        """None until a full window has been seen, or if the op had neither a
+        serving actor nor queued input in it."""
         if self._span_s < self._window_s:
             return None
-        serving_time = sum(dt * s for dt, s, _, _, _ in self._samples)
-        if serving_time <= 0:
+        unstaffed_time = sum(dt for dt, s, *_, u in self._samples if u and s == 0)
+        actor_time = sum(dt * s for dt, s, *_ in self._samples) + unstaffed_time
+        if actor_time <= 0:
             return None
-        busy = sum(dt * b for dt, _, b, _, _ in self._samples) / serving_time
-        obp = sum(dt * o for dt, _, _, o, _ in self._samples) / serving_time
-        starved = sum(dt * st for dt, _, _, _, st in self._samples) / serving_time
+        busy = sum(dt * b for dt, _, b, *_ in self._samples) + unstaffed_time
+        obp = sum(dt * o for dt, _, _, o, *_ in self._samples)
+        starved = sum(dt * st for dt, _, _, _, st, _ in self._samples)
         return OpShares(
-            busy=busy, obp=obp, starved=starved, actors=self._latest_serving
+            busy=busy / actor_time,
+            obp=obp / actor_time,
+            starved=starved / actor_time,
+            actors=self._latest_serving,
+            unstaffed=unstaffed_time / actor_time,
         )
 
 
@@ -289,7 +331,9 @@ class BottleneckObserver:
             window = self._windows.get(op)
             if window is None:
                 window = self._windows[op] = ShareWindow(self._window_s)
-            window.record(dt, serving, busy, obp, starved)
+            window.record(
+                dt, serving, busy, obp, starved, unstaffed=serving == 0 and queued > 0
+            )
 
     def snapshot(self) -> Snapshot["ExperimentalActorPoolMapOperator"]:
         shares: Dict["ExperimentalActorPoolMapOperator", OpShares] = {}
@@ -343,6 +387,7 @@ def format_snapshot(snapshot: Snapshot[Any], names: Mapping[Any, str]) -> str:
     ops = ", ".join(
         f"{name(op)} busy={s.busy:.2f} obp={s.obp:.2f} starved={s.starved:.2f} "
         f"n={s.actors}"
+        + (f" unstaffed={s.unstaffed:.2f}" if s.unstaffed > 0 else "")
         + (f" slack={snapshot.slack[op]}" if op in snapshot.slack else "")
         for op, s in snapshot.shares.items()
     )

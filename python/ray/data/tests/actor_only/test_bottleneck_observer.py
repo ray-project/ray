@@ -93,12 +93,37 @@ def test_near_tie_reports_both_sides_most_severe_first():
     shares = {
         "A": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=10),
         "B": OpShares(busy=0.8, obp=0.2, starved=0.0, actors=8),
-        "Write": OpShares(busy=0.75, obp=0.0, starved=0.25, actors=27),
+        "Write": OpShares(busy=0.85, obp=0.0, starved=0.15, actors=27),
     }
     snapshot = _analyze(shares, "A", "B", "Write")
 
     assert [op for op, _ in snapshot.bottlenecks] == ["B", "Write"]
     assert snapshot.edges[1].arrow is Arrow.TIE
+
+
+def test_tie_side_that_waits_more_than_it_is_waited_on_is_dropped():
+    """Within the arrow margin, but Write is starved (0.25) more than B is
+    blocked on it (0.2): Write's severity is negative, so only B is named."""
+    shares = {
+        "A": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=10),
+        "B": OpShares(busy=0.8, obp=0.2, starved=0.0, actors=8),
+        "Write": OpShares(busy=0.75, obp=0.0, starved=0.25, actors=27),
+    }
+    snapshot = _analyze(shares, "A", "B", "Write")
+
+    assert snapshot.edges[1].arrow is Arrow.TIE
+    assert [op for op, _ in snapshot.bottlenecks] == ["B"]
+
+
+def test_last_op_working_through_its_tail_is_not_a_bottleneck():
+    """image_classification tail: every upstream op has completed and left
+    the model, so nothing waits on Predictor (severity -0.05)."""
+    shares = {
+        "Predictor": OpShares(busy=0.93, obp=0.0, starved=0.05, actors=10),
+    }
+    snapshot = _analyze(shares, "ReadFiles", "Preprocess", "Predictor")
+
+    assert snapshot.bottlenecks == ()
 
 
 def test_sink_bottleneck_uses_only_its_upstream_edge():
@@ -114,11 +139,41 @@ def test_sink_bottleneck_uses_only_its_upstream_edge():
 
 
 def test_ops_without_a_full_window_are_left_out():
+    # Gen and Write have no shares yet: no edges, and with no measured
+    # neighbour waiting on it, Labeled is not named either.
     shares = {"Labeled": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2)}
     snapshot = _analyze(shares, "Gen", "Labeled", "Write")
 
     assert snapshot.edges == ()
-    assert [op for op, _ in snapshot.bottlenecks] == ["Labeled"]
+    assert snapshot.bottlenecks == ()
+
+
+def test_sink_with_no_actors_is_named_not_its_blocked_producer():
+    """video_object_detection stall: Write never placed an actor, so its
+    queued input is unstaffed time (one fully busy actor), and B, fully
+    output-backpressured on it, points its arrow at it."""
+    shares = {
+        "A": OpShares(busy=0.0, obp=1.0, starved=0.0, actors=6),
+        "B": OpShares(busy=0.0, obp=1.0, starved=0.0, actors=5),
+        "Write": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=0, unstaffed=1.0),
+    }
+    snapshot = _analyze(shares, "A", "B", "Write")
+
+    assert snapshot.bottlenecks == (("Write", pytest.approx(1.0)),)
+    assert snapshot.edges[1].arrow is Arrow.DOWNSTREAM
+    assert snapshot.slack["B"] == 5
+
+
+def test_op_blocked_on_an_unmodeled_consumer_is_not_a_bottleneck():
+    """An op output-backpressured nearly all the time is waiting on something
+    downstream, even when that consumer has no shares to draw an arrow to."""
+    shares = {
+        "A": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=4),
+        "B": OpShares(busy=0.05, obp=0.95, starved=0.0, actors=5),
+    }
+    snapshot = _analyze(shares, "A", "B", "Write")
+
+    assert snapshot.bottlenecks == ()
 
 
 @pytest.mark.parametrize(
@@ -151,6 +206,21 @@ def test_share_window_is_time_weighted_and_slides():
     assert shares is not None
     assert (shares.busy, shares.obp, shares.starved) == (0.0, 0.0, 1.0)
     assert shares.actors == 2
+
+
+def test_share_window_counts_unstaffed_time_as_one_busy_actor():
+    window = ShareWindow(window_s=10.0)
+    window.record(dt=5.0, serving=0, busy=0, obp=0, starved=0, unstaffed=True)
+    window.record(dt=5.0, serving=1, busy=0, obp=1, starved=0)
+    shares = window.shares()
+    assert shares is not None
+    assert (shares.busy, shares.obp, shares.unstaffed) == (0.5, 0.5, 0.5)
+    assert shares.actors == 1
+
+    # No actors and nothing queued is no data, not a busy stage.
+    idle = ShareWindow(window_s=10.0)
+    idle.record(dt=10.0, serving=0, busy=0, obp=0, starved=0)
+    assert idle.shares() is None
 
 
 class _Clock:
@@ -210,6 +280,18 @@ def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
     assert "bottlenecks=[C(" in format_snapshot(
         snapshot, {producer: "P", consumer: "C"}
     )
+
+    # The consumer loses every actor with input still queued: it stays in the
+    # model as unstaffed, and is still the one named.
+    consumer.breakdown = (0, 0, 0, 0)
+    for _ in range(5):
+        observer.observe(topology)
+        clock.now += 1.0
+    snapshot = observer.snapshot()
+    shares = cast(Dict[Any, OpShares], snapshot.shares)
+    assert shares[consumer].unstaffed == 1.0
+    assert [op for op, _ in snapshot.bottlenecks] == [consumer]
+    assert "unstaffed=1.00" in format_snapshot(snapshot, {producer: "P", consumer: "C"})
 
     # A completed op leaves the model.
     producer.completed = True
