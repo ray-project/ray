@@ -59,11 +59,15 @@ LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
+# NOT TESTED IN CI: The examples in this docstring don't run in premerge, postmerge,
+# or any other CI job. `+SKIP_EXAMPLE` below disables them because the
+# //python/ray/rllib:doctest target crashes partway through them on CI.
+# See https://github.com/ray-project/ray/issues/68305.
 class PPOConfig(AlgorithmConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
     Examples:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
+        >>> from ray.rllib.algorithms.ppo import PPOConfig  # doctest: +SKIP_EXAMPLE
         >>> config = PPOConfig()
         >>> _ = config.environment("CartPole-v1")
         >>> _ = config.env_runners(num_env_runners=1)
