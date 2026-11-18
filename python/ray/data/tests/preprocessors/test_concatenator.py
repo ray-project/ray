@@ -22,39 +22,40 @@ class TestConcatenator:
         for i, row in enumerate(new_ds.take()):
             assert np.array_equal(row["c"], np.array([i + 1, i + 5]))
 
-    def test_raise_if_missing(self):
-        df = pd.DataFrame({"a": [1, 2, 3, 4]})
+    @pytest.mark.parametrize("raise_if_missing", [True, False])
+    @pytest.mark.parametrize("flatten", [False, True])
+    def test_raise_if_missing(self, raise_if_missing, flatten):
+        col_a = [[1, 2], [3, 4], [5, 6], [7, 8]] if flatten else [1, 2, 3, 4]
+        df = pd.DataFrame({"a": col_a})
         ds = ray.data.from_pandas(df)
         prep = Concatenator(
-            columns=["a", "b"], output_column_name="c", raise_if_missing=True
+            columns=["a", "b"],
+            output_column_name="c",
+            raise_if_missing=raise_if_missing,
+            flatten=flatten,
         )
 
-        with pytest.raises(UserCodeException):
-            with pytest.raises(ValueError, match="'b'"):
-                prep.transform(ds).materialize()
-
-    def test_missing_columns_when_raise_if_missing_false(self):
-        df = pd.DataFrame({"a": [1, 2], "c": [3, 4], "keep": [10, 20]})
-        prep = Concatenator(
-            columns=["c", "missing_col", "a"],
-            output_column_name="out",
-            raise_if_missing=False,
-        )
-        result = prep.transform_batch(df.copy())
-        assert list(result.columns) == ["keep", "out"]
-        assert [list(v) for v in result["out"]] == [[3, 1], [4, 2]]
-
-        # When all requested columns are missing and raise_if_missing=False,
-        # the output column should still be created with empty arrays to
-        # maintain schema consistency.
-        all_missing_prep = Concatenator(
-            columns=["missing_1", "missing_2"],
-            output_column_name="out",
-            raise_if_missing=False,
-        )
-        result = all_missing_prep.transform_batch(df.copy())
-        assert "out" in result.columns
-        assert [list(v) for v in result["out"]] == [[], []]
+        if raise_if_missing:
+            with pytest.raises(UserCodeException):
+                with pytest.raises(ValueError, match="'b'"):
+                    prep.transform(ds).materialize()
+        else:
+            for dtype in (None, np.int64):
+                prep_with_dtype = Concatenator(
+                    columns=["a", "b"],
+                    output_column_name="c",
+                    raise_if_missing=False,
+                    flatten=flatten,
+                    dtype=dtype,
+                )
+                for i, row in enumerate(prep_with_dtype.transform(ds).take()):
+                    expected = (
+                        np.array([*col_a[i], np.nan])
+                        if flatten
+                        else np.array([col_a[i], np.nan])
+                    )
+                    assert row["c"].dtype == np.float64
+                    np.testing.assert_allclose(row["c"], expected, equal_nan=True)
 
     def test_exclude_column(self):
         df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5], "c": [3, 4, 5, 6]})
@@ -99,7 +100,9 @@ class TestConcatenator:
         expected_df = pd.DataFrame({"c": [[5, 6], [6, 7], [7, 8], [8, 9]]})
         assert_frame_equal(concatenated_df, expected_df)
 
-        other_df = pd.DataFrame({"a": [9, 10, 11, 12], "b": [10, 11, 12, 13]})
+        other_df = pd.DataFrame(
+            {"a": [9, 10, 11, 12], "b": [10, 11, 12, 13]}, index=[10, 20, 30, 40]
+        )
         concatenated_other_df = prep.transform_batch(other_df)
         expected_df = pd.DataFrame(
             {
@@ -109,7 +112,8 @@ class TestConcatenator:
                     [11, 12],
                     [12, 13],
                 ]
-            }
+            },
+            index=[10, 20, 30, 40],
         )
         assert_frame_equal(concatenated_other_df, expected_df)
 

@@ -80,7 +80,9 @@ class Concatenator(SerializablePreprocessorBase):
         dtype: The ``dtype`` to convert the output tensors to. If unspecified,
             the ``dtype`` is determined by standard coercion rules.
         raise_if_missing: If ``True``, an error is raised if any
-            of the columns in ``columns`` don't exist.
+            of the columns in ``columns`` don't exist. If ``False``, missing
+            columns are logged as a warning and filled with ``NaN`` at their
+            corresponding positions in the output tensor.
             Defaults to ``False``.
         flatten: If ``True``, nested vectors in the columns will be flattened during
             concatenation. Defaults to ``False``.
@@ -138,11 +140,8 @@ class Concatenator(SerializablePreprocessorBase):
             else:
                 logger.warning(message)
 
-    def _stack_columns(
-        self, df: pd.DataFrame, columns: Optional[List[str]] = None, dtype=None
-    ) -> np.ndarray:
-        """Stack ``columns`` (defaulting to ``self._columns``) into one 2-D array,
-        one column at a time.
+    def _stack_columns(self, df: pd.DataFrame, dtype=None) -> np.ndarray:
+        """Stack ``self._columns`` into one 2-D array, one column at a time.
 
         ``df[self._columns].to_numpy()`` cannot be used here. For a selection of
         more than one Arrow-backed column it returns ``dtype=object`` -- an array
@@ -154,35 +153,54 @@ class Concatenator(SerializablePreprocessorBase):
         Converting each column on its own avoids the fallback: a single
         Arrow-backed column converts to its natural NumPy dtype, widening to
         ``float64`` and using ``np.nan`` if it contains nulls, exactly as a
-        NumPy-backed column would.
+        NumPy-backed column would. Missing columns (when ``raise_if_missing=False``)
+        are filled with ``np.nan`` to preserve column width and feature positions.
         """
-        target_columns = self._columns if columns is None else columns
-        stacked = [df[column].to_numpy(dtype=dtype) for column in target_columns]
+        if not self._columns:
+            return np.empty((len(df), 0), dtype=dtype or np.float64)
+        if (
+            dtype is not None
+            and any(col not in df.columns for col in self._columns)
+            and not np.issubdtype(np.dtype(dtype), np.inexact)
+            and np.dtype(dtype) != np.dtype(object)
+        ):
+            dtype = np.float64
+        stacked = [
+            df[column].to_numpy(dtype=dtype)
+            if column in df.columns
+            else np.full(len(df), np.nan, dtype=dtype or np.float64)
+            for column in self._columns
+        ]
         return np.column_stack(stacked)
 
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
 
         present_columns = [col for col in self._columns if col in df.columns]
-        if not present_columns:
-            concatenated = np.empty((len(df), 0), dtype=self._dtype or np.float64)
-        elif self._flatten:
-            concatenated = self._stack_columns(df, columns=present_columns)
+        dtype = self._dtype
+        if (
+            dtype is not None
+            and len(present_columns) < len(self._columns)
+            and not np.issubdtype(np.dtype(dtype), np.inexact)
+            and np.dtype(dtype) != np.dtype(object)
+        ):
+            dtype = np.float64
+
+        if self._flatten:
+            concatenated = self._stack_columns(df)
             concatenated = [
                 np.concatenate(
                     [
                         np.atleast_1d(elem)
-                        if self._dtype is None
-                        else np.atleast_1d(elem).astype(self._dtype)
+                        if dtype is None
+                        else np.atleast_1d(elem).astype(dtype)
                         for elem in row
                     ]
                 )
                 for row in concatenated
             ]
         else:
-            concatenated = self._stack_columns(
-                df, columns=present_columns, dtype=self._dtype
-            )
+            concatenated = self._stack_columns(df, dtype=dtype)
 
         df = df.drop(columns=present_columns)
         # Use a Pandas Series for column assignment to get more consistent
