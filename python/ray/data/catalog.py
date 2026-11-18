@@ -36,13 +36,16 @@ logger = logging.getLogger(__name__)
 
 _DELTA_UNIFORM_FORMATS_PROPERTY = "delta.universalFormat.enabledFormats"
 
-# Environment-variable names the underlying readers (pyarrow / deltalake's
-# object_store) pick up vended credentials from.
+# deltalake's object_store config keys for vended AWS credentials, passed via
+# `storage_options`. They're never written to the environment: there they would
+# override the instance role for every other S3 access in the process.
 _AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID"
 _AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY"
 _AWS_SESSION_TOKEN = "AWS_SESSION_TOKEN"
 _AWS_REGION = "AWS_REGION"
-_AWS_DEFAULT_REGION = "AWS_DEFAULT_REGION"
+
+# Environment variable the Azure readers (pyarrow / deltalake's object_store)
+# pick up a vended SAS from.
 _AZURE_STORAGE_SAS_TOKEN = "AZURE_STORAGE_SAS_TOKEN"
 
 
@@ -214,24 +217,23 @@ class DatabricksUnityCatalog(Catalog):
         table_info = self._get_table_info(table)
         creds, table_url = self._get_creds(table_info.table_id, mode)
 
-        # Some readers/writers need an explicit pyarrow filesystem:
-        #  - AWS Delta: the vended session token isn't reliably propagated through
-        #    `DeltaTable.to_pyarrow_dataset`'s auto-built filesystem.
-        #  - AWS write: an S3FileSystem built from the default credential chain
-        #    (the `filesystem=None` path) does NOT serialize its credentials, so a
-        #    worker would rebuild it from *its own* environment. Reads get away
-        #    with this because `_apply_env` can seed the vended creds into the
-        #    cluster `runtime_env` while Ray is still uninitialized; a write always
-        #    runs after Ray is initialized (a materialized Dataset already exists),
-        #    so that propagation is unavailable. Build an explicit S3FileSystem
-        #    whose creds *do* pickle into the datasink and reach the workers.
-        #  - GCP Parquet: a bare OAuth token has no env var pyarrow auto-reads,
-        #    so the data scan needs an explicit GcsFileSystem.
+        # AWS and GCP vended credentials travel only inside the objects that use
+        # them: an explicit pyarrow filesystem for the data files, and (AWS)
+        # `storage_options` for deltalake's object_store (the Delta transaction
+        # log read and the `write_delta` commit). Both pickle into the read and
+        # write tasks. They're never written to `os.environ` or the cluster
+        # `runtime_env`: there they would override the instance role for every
+        # other cloud access in the job, with a short-lived credential scoped to
+        # this one table, so writes to the user's own buckets would fail.
         filesystem = None
-        if creds.aws_temp_credentials is not None and (
-            reader is ReaderFormat.DELTA or mode is CatalogAccessMode.WRITE
-        ):
+        storage_options = None
+        if creds.aws_temp_credentials is not None:
+            # An S3FileSystem built from the default credential chain (the
+            # `filesystem=None` path) doesn't serialize its credentials, so a
+            # worker would rebuild it from its own environment. This one does.
             filesystem = self._build_s3_filesystem(creds.aws_temp_credentials)
+            if reader is ReaderFormat.DELTA:
+                storage_options = self._aws_storage_options(creds.aws_temp_credentials)
         elif creds.gcp_oauth_token is not None:
             if reader is ReaderFormat.DELTA:
                 # Unity Catalog vends a GCP OAuth token, but deltalake's
@@ -245,24 +247,27 @@ class DatabricksUnityCatalog(Catalog):
                     "credential vending is not supported as deltalake "
                     "does not have the required object_store version."
                 )
+            # A bare OAuth token has no env var pyarrow auto-reads, so the data
+            # scan needs an explicit GcsFileSystem.
             filesystem = self._build_gcs_filesystem(
                 creds.gcp_oauth_token, creds.expiration_time
             )
-
-        # Deliver vended credentials via environment variables. This is the
-        # mechanism the underlying libraries read uniformly: pyarrow (Parquet
-        # data, and S3/Azure/GCS auto-filesystems) and deltalake's object_store
-        # (the Delta transaction *log* read in `DeltaTable(...)`, which neither
-        # a pyarrow `filesystem` nor `storage_options` keyed for pyarrow would
-        # satisfy). See `_apply_env` for the worker-propagation note.
-        #
-        # TODO: remove the env-var + ray.init mechanism once credential vending
-        # is performed inside the read tasks themselves (worker-side).
-        self._apply_env(self._creds_to_env(creds))
+        elif creds.azure_user_delegation_sas is not None:
+            # Azure still delivers the SAS via the environment, which pyarrow and
+            # deltalake's object_store both read. See `_apply_env` for the
+            # worker-propagation note.
+            #
+            # TODO: move Azure to `storage_options` too.
+            self._apply_env(self._parse_azure_creds(creds.azure_user_delegation_sas))
+        else:
+            raise ValueError(
+                "No known credential type found in Databricks UC response."
+            )
 
         return ResolvedSource(
             path=table_url,
             filesystem=filesystem,
+            storage_options=storage_options,
             data_format=self._infer_format(table_info, table_url),
         )
 
@@ -360,42 +365,16 @@ class DatabricksUnityCatalog(Catalog):
         _, table_url = self._get_creds(info.table_id)
         return self._infer_format(info, table_url)
 
-    def _creds_to_env(
-        self, creds: "GenerateTemporaryTableCredentialResponse"
-    ) -> Dict[str, Optional[str]]:
-        """Translate vended credentials into environment variables."""
-        if creds.aws_temp_credentials is not None:
-            aws = creds.aws_temp_credentials
-            env = {
-                _AWS_ACCESS_KEY_ID: aws.access_key_id,
-                _AWS_SECRET_ACCESS_KEY: aws.secret_access_key,
-                _AWS_SESSION_TOKEN: aws.session_token,
-            }
-            if self.region:
-                env[_AWS_REGION] = self.region
-                env[_AWS_DEFAULT_REGION] = self.region
-            return env
-
-        if creds.azure_user_delegation_sas is not None:
-            return self._parse_azure_creds(creds.azure_user_delegation_sas)
-
-        if creds.gcp_oauth_token is not None:
-            # A bare GCP OAuth token has no env var pyarrow/deltalake auto-read;
-            # it's delivered via an explicit GcsFileSystem (data scan) and via
-            # `storage_options` (Delta log read) in `_resolve_storage` instead.
-            return {}
-
-        raise ValueError("No known credential type found in Databricks UC response.")
-
     @staticmethod
     def _apply_env(env_vars: Dict[str, Optional[str]]) -> None:
-        """Set vended credentials in the environment and propagate to workers.
+        """Set vended Azure credentials in the environment and propagate to workers.
 
-        Credentials are set on the driver's ``os.environ`` and, if Ray has not
-        been initialized yet, into the cluster ``runtime_env`` so read tasks on
-        workers inherit them. If Ray is already running we cannot retroactively
-        amend its ``runtime_env``; driver-side env still covers driver reads
-        (e.g. the Delta log) and single-node execution.
+        Only Azure uses this; AWS and GCP credentials never touch the
+        environment. Credentials are set on the driver's ``os.environ`` and, if
+        Ray has not been initialized yet, into the cluster ``runtime_env`` so
+        read tasks on workers inherit them. If Ray is already running we cannot
+        retroactively amend its ``runtime_env``; driver-side env still covers
+        driver reads (e.g. the Delta log) and single-node execution.
 
         TODO: remove once credential vending happens inside the read tasks.
         """
@@ -410,19 +389,37 @@ class DatabricksUnityCatalog(Catalog):
         if not ray.is_initialized():
             ray.init(runtime_env={"env_vars": dict(env_vars)})
 
-    def _build_s3_filesystem(self, aws: "AwsCredentials") -> "pyarrow.fs.FileSystem":
+    def _require_region(self) -> str:
         if not self.region:
             raise ValueError(
                 "The 'region' parameter is required for AWS S3 access. "
                 "Please specify the AWS region (e.g., region='us-west-2')."
             )
+        return self.region
+
+    def _aws_storage_options(self, aws: "AwsCredentials") -> Dict[str, str]:
+        """deltalake ``storage_options`` carrying the vended AWS credentials.
+
+        deltalake's object_store reads the Delta transaction log, and commits
+        ``write_delta``'s transaction, with these rather than the pyarrow
+        filesystem. Keys with no value are left out.
+        """
+        options = {
+            _AWS_ACCESS_KEY_ID: aws.access_key_id,
+            _AWS_SECRET_ACCESS_KEY: aws.secret_access_key,
+            _AWS_SESSION_TOKEN: aws.session_token,
+            _AWS_REGION: self._require_region(),
+        }
+        return {key: value for key, value in options.items() if value}
+
+    def _build_s3_filesystem(self, aws: "AwsCredentials") -> "pyarrow.fs.FileSystem":
         import pyarrow.fs as pafs
 
         return pafs.S3FileSystem(
             access_key=aws.access_key_id,
             secret_key=aws.secret_access_key,
             session_token=aws.session_token,
-            region=self.region,
+            region=self._require_region(),
         )
 
     @staticmethod
