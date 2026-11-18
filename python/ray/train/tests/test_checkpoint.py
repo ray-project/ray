@@ -213,6 +213,40 @@ def test_get_reader_path_is_unique_per_call():
     assert _get_reader_path(path).startswith(f"{path}.reader_{os.getpid()}_")
 
 
+def test_as_directory_waits_for_reader_in_other_process(
+    checkpoint: Checkpoint, tmp_path
+):
+    """A reader in another process holds the temporary directory until it exits
+    `as_directory()`, even after this process's reader exits."""
+    _skip_if_not_downloaded(checkpoint)
+    if checkpoint.filesystem.type_name == "mock":
+        pytest.skip("Mock filesystem cannot be pickled for use with Ray.")
+
+    entered = tmp_path / "entered"
+    release = tmp_path / "release"
+
+    @ray.remote
+    def hold_directory(checkpoint: Checkpoint) -> str:
+        import time
+
+        with checkpoint.as_directory() as checkpoint_dir:
+            entered.touch()
+            while not release.exists():
+                time.sleep(0.05)
+        return checkpoint_dir
+
+    ref = hold_directory.remote(checkpoint)
+    wait_for_condition(entered.exists, timeout=60)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        pass
+    assert _read_content(checkpoint_dir) == "dummy"
+
+    release.touch()
+    assert ray.get(ref) == checkpoint_dir
+    assert not Path(checkpoint_dir).exists()
+
+
 def test_as_directory_reader_arrives_during_cleanup(checkpoint: Checkpoint, tmp_path):
     """A reader that arrives while the last reader is deleting the shared
     temporary directory waits for the deletion and downloads the checkpoint

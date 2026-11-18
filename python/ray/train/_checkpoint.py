@@ -8,7 +8,7 @@ import shutil
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 import pyarrow.fs
 
@@ -30,8 +30,8 @@ _CHECKPOINT_TEMP_DIR_PREFIX = "checkpoint_tmp_"
 _STAGING_SUFFIX = ".staging"
 _DELETING_SUFFIX = ".deleting"
 _READER_SUFFIX = ".reader_"
-# The reader file that `to_directory` registers and never removes.
-_TO_DIRECTORY_SUFFIX = "to_directory"
+# Marks a temporary directory that `to_directory` returned, so it's never deleted.
+_KEEP_SUFFIX = ".keep"
 
 
 class _CheckpointMetaClass(type):
@@ -230,10 +230,8 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                 if not os.path.isdir(temp_dir):
                     self._download_to_temp_dir(temp_dir)
 
-                # Never delete this directory through adding "._to_directory" file
-                to_dir_file = _get_reader_path(temp_dir, reader_id=_TO_DIRECTORY_SUFFIX)
-                Path(to_dir_file).touch()
-
+                # Mark the directory to prevent a future `as_directory()` from deleting it
+                Path(f"{temp_dir}{_KEEP_SUFFIX}").touch()
             return temp_dir
 
         # Download to user-provided path
@@ -300,6 +298,8 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         else:
             # Load remote checkpoint
             temp_dir = self._get_temp_dirname()
+            # Each call registers its own reader file, so nested calls and threads
+            # in one process count as separate readers.
             reader_path = _get_reader_path(temp_dir)
 
             with TempFileLock(temp_dir):
@@ -307,19 +307,37 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                 if not os.path.isdir(temp_dir):
                     self._download_to_temp_dir(temp_dir)
 
-                # Add file to indicate the checkpoint is being read by this worker
                 Path(reader_path).touch()
 
             try:
                 yield temp_dir
             finally:
-                # Remove this process's reader file
-                with TempFileLock(temp_dir):
-                    os.remove(reader_path)
+                # Cleanup failures are logged rather than raised, so that they
+                # never hide an exception raised inside the user's `with` block.
+                try:
+                    # Unregistering, checking for readers and deleting all happen
+                    # under the lock, so no reader can register between the
+                    # check and the deletion. If a process dies before removing
+                    # its reader file, the directory is never deleted.
+                    with TempFileLock(temp_dir):
+                        os.remove(reader_path)
 
-                    # Check if there are any other readers, if not, delete the checkpoint
-                    if len(glob.glob(_get_reader_path(temp_dir, reader_id="*"))) == 0:
-                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        if not _list_readers(temp_dir) and not os.path.exists(
+                            f"{temp_dir}{_KEEP_SUFFIX}"
+                        ):
+                            # Rename before deleting, so that a crash partway
+                            # through never leaves a partial directory at
+                            # `temp_dir`, where it would look complete.
+                            deleting_path = f"{temp_dir}{_DELETING_SUFFIX}"
+                            shutil.rmtree(deleting_path, ignore_errors=True)
+                            os.rename(temp_dir, deleting_path)
+                            shutil.rmtree(deleting_path, ignore_errors=True)
+                except Exception:
+                    logger.warning(
+                        "Could not clean up the temporary checkpoint directory "
+                        f"{temp_dir}.",
+                        exc_info=True,
+                    )
 
     def _download_to_temp_dir(self, temp_dir: str) -> None:
         """Download the checkpoint to ``temp_dir``, unless it's already there.
@@ -401,6 +419,18 @@ def _get_reader_path(temp_dir: str, reader_id: Optional[str] = None) -> str:
     if reader_id is None:
         reader_id = f"{os.getpid()}_{uuid.uuid4().hex}"
     return f"{temp_dir.rstrip('/')}{_READER_SUFFIX}{reader_id}"
+
+
+def _list_readers(temp_dir: str) -> List[str]:
+    """List the reader files for ``temp_dir``.
+
+    Args:
+        temp_dir: The shared temporary checkpoint directory.
+
+    Returns:
+        The paths of the reader files.
+    """
+    return glob.glob(_get_reader_path(temp_dir, reader_id="*"))
 
 
 def _get_migration_error(name: str):
