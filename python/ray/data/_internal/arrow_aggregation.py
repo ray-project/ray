@@ -451,14 +451,23 @@ def _is_numeric_or_bool(t: "pa.DataType") -> bool:
     return _is_numeric(t) or is_boolean_arrow_type(t)
 
 
+def _abs_checked(column):
+    """``abs`` that raises on ``abs(INT_MIN)`` instead of wrapping. A null-typed
+    (all-null) column passes through: older pyarrow has no ``abs`` kernel for
+    it."""
+    column = _decode(column)
+    if pa.types.is_null(column.type):
+        return column
+    return pc.abs_checked(column)
+
+
 def absmax_spec() -> ArrowAggSpec:
     """``max(abs(x))``: each shard keeps its largest absolute value, and the
     reducer keeps the largest of those."""
     return ArrowAggSpec(
         components=("absmax",),
-        # abs_checked raises on abs(INT_MIN) instead of wrapping to INT_MIN.
         prep=lambda agg_index, source_col, block: block.append_column(
-            f"__d{agg_index}_abs", pc.abs_checked(_decode(block[source_col]))
+            f"__d{agg_index}_abs", _abs_checked(block[source_col])
         ),
         raw_agg_specs=lambda agg_index, source_col, options: [
             (f"__d{agg_index}_abs", "max", options.value_opts)

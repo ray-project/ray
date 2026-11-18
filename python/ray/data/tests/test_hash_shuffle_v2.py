@@ -1904,6 +1904,60 @@ def test_all_null_block_with_unsupported_type(modes):
     assert sorted(got, key=lambda r: r["k"]) == sorted(expected, key=lambda r: r["k"])
 
 
+@pytest.mark.parametrize(
+    "modes",
+    [
+        ("always", "always"),
+        ("never", "always"),
+        ("always", "never"),
+        ("never", "never"),
+    ],
+)
+@pytest.mark.parametrize(
+    "second,expected",
+    [
+        (
+            {"k": [0, 0], "v": [-3, 2]},
+            {
+                0: (3, 3.5355339059327378, -0.5, [-3, 2, None], [-3, 2]),
+                1: (None, None, None, [None], [None]),
+            },
+        ),
+        (
+            {"k": [0], "v": pa.nulls(1)},
+            {
+                0: (None, None, None, [None, None], [None]),
+                1: (None, None, None, [None], [None]),
+            },
+        ),
+    ],
+    ids=["with_numeric_block", "all_null"],
+)
+def test_null_typed_block(modes, second, expected):
+    """A block whose aggregated column is all null has Arrow type null. Each
+    aggregation must handle it alone and next to numeric shards."""
+    tables = [pa.table({"k": [0, 1], "v": pa.nulls(2)}), pa.table(second)]
+    aggs = (
+        AbsMax("v"),
+        Std("v"),
+        Quantile("v"),
+        AsList("v"),
+        TopKUnique("v", k=2),
+    )
+    rows = _aggregate_shards(aggs, tables, modes).to_pylist()
+    got = {
+        r["k"]: (
+            r["abs_max(v)"],
+            r["std(v)"],
+            r["quantile(v)"],
+            sorted(r["list(v)"], key=lambda x: (x is None, x)),
+            r["topk_unique(v)"],
+        )
+        for r in rows
+    }
+    assert got == expected
+
+
 @pytest.mark.parametrize("modes", [("always", "never"), ("never", "never")])
 def test_large_list_state(modes):
     """List state past int32 offsets is a LargeList; raw rows' state must not
