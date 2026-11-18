@@ -1,0 +1,18 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+# Attach one EFA interface to every node type that supports it (the workers;
+# the head node type does not). Anyscale fills in the subnet and the security
+# group of the cluster.
+flags:
+    efa_config:
+        device_count: 1
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    # g4dn.8xlarge is the smallest g4dn size with EFA support: 1x T4 per node.
+    - instance_type: g4dn.8xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
