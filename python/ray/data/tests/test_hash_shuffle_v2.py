@@ -1575,7 +1575,33 @@ def test_choose_partial_agg_policy(restore_data_context):
     assert _choose_partial_agg_policy(ctx).mode == PartialAggMode.ALWAYS
 
     ctx.partial_aggregation_mode = "bogus"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="partial_aggregation_mode"):
+        _choose_partial_agg_policy(ctx)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("adaptive_partial_aggregation_sample_rows", 0),
+        ("adaptive_partial_aggregation_sample_rows", -1),
+        ("adaptive_partial_aggregation_sample_rows", 1.5),
+        ("adaptive_partial_aggregation_sample_rows", True),
+        ("adaptive_partial_aggregation_unique_ratio_threshold", -0.1),
+        ("adaptive_partial_aggregation_unique_ratio_threshold", 1.5),
+        ("adaptive_partial_aggregation_unique_ratio_threshold", "0.8"),
+    ],
+)
+def test_choose_partial_agg_policy_rejects_invalid_settings(
+    restore_data_context, field, value
+):
+    from ray.data._internal.planner.plan_all_to_all_op import (
+        _choose_partial_agg_policy,
+    )
+
+    ctx = restore_data_context
+    ctx.partial_aggregation_mode = "estimate"
+    setattr(ctx, field, value)
+    with pytest.raises(ValueError, match=field):
         _choose_partial_agg_policy(ctx)
 
 
