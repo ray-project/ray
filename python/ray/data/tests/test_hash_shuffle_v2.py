@@ -1173,7 +1173,7 @@ def test_adaptive_partial_agg_e2e(
 
 
 @pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
-@pytest.mark.parametrize("mode", [None, "always", "never"])
+@pytest.mark.parametrize("mode", ["estimate", "always", "never"])
 def test_adaptive_partial_agg_e2e_more_aggs(
     ray_start_regular_shared_2_cpus, restore_data_context, use_disk, mode
 ):
@@ -1184,9 +1184,8 @@ def test_adaptive_partial_agg_e2e_more_aggs(
     ctx = restore_data_context
     ctx.use_disk_based_hash_shuffle = use_disk
     ctx.shuffle_input_batch_bytes = 0  # one map task per input block
-    ctx.enable_adaptive_partial_aggregation = True
     ctx.partial_aggregation_mode = mode
-    ctx.adaptive_partial_aggregation_probe_rows = 10
+    ctx.adaptive_partial_aggregation_sample_rows = 10
 
     # Defined here so workers unpickle it by value (the test module isn't
     # importable on them).

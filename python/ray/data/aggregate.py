@@ -385,7 +385,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         rows as they are. The reducer then calls this method to turn those
         rows into accumulators and merges them with ``combine``. Implementing
         it lets aggregations skip that pass; see
-        ``DataContext.enable_adaptive_partial_aggregation``.
+        ``DataContext.partial_aggregation_mode``.
 
         Args:
             block: Raw rows: the group key columns and the column this
