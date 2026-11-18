@@ -48,6 +48,7 @@ from typing import (
     Union,
 )
 
+from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_ALLOWLIST,
     normalize_cidr_allowlist,
@@ -212,6 +213,9 @@ class SandboxHost:
         spec: Sandbox creation spec (validated request data).
         settings: Server limits (``max_output_bytes``, ``max_exec_history``).
         runtime_factory: Test seam; defaults to ``SandboxRuntime``.
+        on_exit: Called instead of killing this actor once the sandbox is
+            gone (terminate or TTL), for a host that shares its actor with
+            other sandboxes (``SandboxNodeHost``).
     """
 
     def __init__(
@@ -220,9 +224,14 @@ class SandboxHost:
         spec: SandboxSpec,
         settings: HostSettings,
         runtime_factory: Optional[Callable[[], "SandboxRuntime"]] = None,
+        on_exit: Optional[Callable[[], None]] = None,
     ) -> None:
         self._sandbox_id = sandbox_id
+        self._on_exit = on_exit
         self._spec = spec
+        # Set when a pre-booted sandbox is adopted (see adopt): the create's
+        # env, which the container booted without, goes on every exec.
+        self._exec_env: Dict[str, str] = {}
         self._max_output_bytes = int(settings.get("max_output_bytes", 10 * 1024**2))
         self._max_exec_history = int(settings.get("max_exec_history", 256))
         self._max_file_bytes = int(settings.get("max_file_bytes", 256 * 1024**2))
@@ -385,6 +394,35 @@ class SandboxHost:
             self._set_status("error")
             await self._delete_sandbox_instance()
 
+    def adopt(
+        self,
+        sandbox_id: str,
+        spec: SandboxSpec,
+        settings: HostSettings,
+        on_exit: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """Take over this running, pre-booted sandbox for a new create.
+
+        The container booted from a template spec (same image and isolation
+        settings, see ``SandboxNodeHost``); the create's id, TTL, labels,
+        and limits apply from now on, and its env goes on every exec.
+        """
+        self._sandbox_id = sandbox_id
+        self._spec = spec
+        self._exec_env = dict(spec.get("env") or {})
+        self._max_output_bytes = int(
+            settings.get("max_output_bytes", self._max_output_bytes)
+        )
+        self._max_exec_history = int(
+            settings.get("max_exec_history", self._max_exec_history)
+        )
+        self._max_file_bytes = int(settings.get("max_file_bytes", self._max_file_bytes))
+        self._on_exit = on_exit
+        self._created_at = datetime.now(timezone.utc)
+        ttl_seconds = spec.get("ttl_seconds")
+        if ttl_seconds is not None and self._ttl_task is None:
+            self._ttl_task = asyncio.create_task(self._ttl_watchdog(ttl_seconds))
+
     async def _ttl_watchdog(self, ttl_seconds: float) -> None:
         await asyncio.sleep(ttl_seconds)
         logger.info(
@@ -398,11 +436,16 @@ class SandboxHost:
     def _self_destruct(self) -> None:
         """Kill this actor so the TTL reclaims its name and reservation.
 
+        A hosted sandbox (``on_exit`` set) leaves its shared host instead.
+
         ``ray.kill`` on the self-handle (rather than ``exit_actor``) because
         the watchdog runs as a self-spawned asyncio task, outside any Ray
         method invocation, where ``exit_actor``'s control-flow exception has
         nothing to catch it. No-op outside an actor (unit tests).
         """
+        if self._on_exit is not None:
+            self._on_exit()
+            return
         try:
             import ray
 
@@ -467,6 +510,12 @@ class SandboxHost:
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------
+
+    def container_running(self) -> bool:
+        """Whether the runtime still has this sandbox's container running."""
+        if self._runtime is None or self._instance_id is None:
+            return False
+        return self._runtime.get_status(self._instance_id) == SandboxStatus.RUNNING
 
     def _not_running_error(self) -> Optional[Dict[str, Any]]:
         """The conflict error for work on a sandbox that isn't running, or None.
@@ -608,6 +657,8 @@ class SandboxHost:
         shell: Optional[str],
         user: Optional[str],
     ) -> None:
+        if self._exec_env:
+            env = {**self._exec_env, **(env or {})}
         try:
             result = await self._runtime.exec_async(
                 self._instance_id,

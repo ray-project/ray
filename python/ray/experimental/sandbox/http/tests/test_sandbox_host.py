@@ -871,6 +871,30 @@ def test_host_joins_starts_with_the_same_exec_key() -> None:
     assert status == "completed"
 
 
+def test_adopted_sandbox_runs_execs_with_the_creates_env() -> None:
+    """A pre-booted sandbox booted without the create's env, so a host that
+    adopts one passes that env with every exec (an exec's own env wins)."""
+
+    async def scenario():
+        runtime = FakeSandboxRuntime()
+        host = SandboxHost(
+            "warm-1", {"image": "img"}, {}, runtime_factory=lambda: runtime
+        )
+        await host.boot()
+        host.adopt(
+            "sb-adopted",
+            {"image": "img", "env": {"SECRET": "s", "MODE": "create"}},
+            {"max_exec_history": 8},
+        )
+        await host.start_exec(["env"], env={"MODE": "exec"}, exec_key="k")
+        await host.get_exec_by_key("k", wait_seconds=5)
+        return host._sandbox_id, runtime.exec_calls[-1]["env"]
+
+    sandbox_id, env = asyncio.run(scenario())
+    assert sandbox_id == "sb-adopted"
+    assert env == {"SECRET": "s", "MODE": "exec"}
+
+
 def test_host_forgets_keys_of_evicted_execs() -> None:
     """Exec keys go with the finished execs the history cap evicts."""
 
