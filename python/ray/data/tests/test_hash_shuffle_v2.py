@@ -886,7 +886,7 @@ def _partial_agg_test_table(num_rows: int, num_keys: int) -> pa.Table:
     )
 
 
-def _make_partial_agg_transformer(mode, probe_rows=100, threshold=0.8):
+def _make_partial_agg_transformer(mode, sample_rows=100, threshold=0.8):
     from ray.data._internal.execution.operators.hash_aggregate_v2 import (
         PartialAggPolicy,
         _make_aggregating_transformer,
@@ -896,7 +896,7 @@ def _make_partial_agg_transformer(mode, probe_rows=100, threshold=0.8):
         ("k",),
         _partial_agg_test_aggs(),
         policy=PartialAggPolicy(
-            mode=mode, probe_rows=probe_rows, unique_ratio_threshold=threshold
+            mode=mode, sample_rows=sample_rows, unique_ratio_threshold=threshold
         ),
     )
 
@@ -905,13 +905,13 @@ def _is_partial(table: pa.Table) -> bool:
     return any(name.startswith("__agg") for name in table.schema.names)
 
 
-def test_partial_agg_probe_skips_high_cardinality():
+def test_partial_agg_estimate_skips_high_cardinality():
     from ray.data._internal.execution.operators.hash_aggregate_v2 import (
         PartialAggMode,
     )
 
     table = _partial_agg_test_table(num_rows=1000, num_keys=1000)
-    out = _make_partial_agg_transformer(PartialAggMode.PROBE)(table)
+    out = _make_partial_agg_transformer(PartialAggMode.ESTIMATE)(table)
 
     assert not _is_partial(out)
     # Pruned to keys + the columns the aggregations read.
@@ -919,27 +919,59 @@ def test_partial_agg_probe_skips_high_cardinality():
     assert out.num_rows == 1000
 
 
-def test_partial_agg_probe_keeps_low_cardinality():
+def test_partial_agg_estimate_keeps_low_cardinality():
     from ray.data._internal.execution.operators.hash_aggregate_v2 import (
         PartialAggMode,
     )
 
     table = _partial_agg_test_table(num_rows=1000, num_keys=10)
-    out = _make_partial_agg_transformer(PartialAggMode.PROBE)(table)
+    out = _make_partial_agg_transformer(PartialAggMode.ESTIMATE)(table)
 
     assert _is_partial(out)
     assert out.num_rows == 10
 
 
-def test_partial_agg_probe_skips_probing_small_blocks():
+def test_partial_agg_estimate_skips_sampling_small_blocks():
     from ray.data._internal.execution.operators.hash_aggregate_v2 import (
         PartialAggMode,
     )
 
     table = _partial_agg_test_table(num_rows=50, num_keys=50)
-    out = _make_partial_agg_transformer(PartialAggMode.PROBE, probe_rows=100)(table)
+    out = _make_partial_agg_transformer(PartialAggMode.ESTIMATE, sample_rows=100)(table)
 
     assert _is_partial(out)
+
+
+def test_partial_agg_estimate_samples_whole_block():
+    """Unique keys up front, then a few repeated keys: the first rows alone
+    look unique, but the block as a whole collapses well, so it aggregates."""
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    head = _partial_agg_test_table(num_rows=100, num_keys=100)
+    tail = _partial_agg_test_table(num_rows=5000, num_keys=10)
+    table = pa.concat_tables([head, tail])
+    out = _make_partial_agg_transformer(PartialAggMode.ESTIMATE, sample_rows=100)(table)
+
+    assert _is_partial(out)
+
+
+@pytest.mark.parametrize(
+    "rows_per_key,expected",
+    [(1, 100_000), (2, 50_000), (5, 20_000), (20_000, 5)],
+)
+def test_estimate_distinct_keys(rows_per_key, expected):
+    """A sample of a block with a few rows per key sees most keys once; the
+    estimate should still recover the block's distinct count."""
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _estimate_distinct_keys,
+    )
+
+    table = pa.table({"k": np.arange(100_000) // rows_per_key})
+    estimate = _estimate_distinct_keys(table, ["k"], sample_rows=5_000)
+
+    assert estimate == pytest.approx(expected, rel=0.1)
 
 
 @pytest.mark.parametrize("mode,expect_partial", [("always", True), ("never", False)])
@@ -1060,16 +1092,13 @@ def test_choose_partial_agg_policy(restore_data_context):
 
     ctx = restore_data_context
 
-    ctx.enable_adaptive_partial_aggregation = False
-    assert _choose_partial_agg_policy(ctx).mode == PartialAggMode.ALWAYS
-
-    ctx.enable_adaptive_partial_aggregation = True
-    ctx.partial_aggregation_mode = None
-    ctx.adaptive_partial_aggregation_probe_rows = 123
+    # Estimating is the default.
+    assert ctx.partial_aggregation_mode == "estimate"
+    ctx.adaptive_partial_aggregation_sample_rows = 123
     ctx.adaptive_partial_aggregation_unique_ratio_threshold = 0.5
     policy = _choose_partial_agg_policy(ctx)
-    assert policy.mode == PartialAggMode.PROBE
-    assert policy.probe_rows == 123
+    assert policy.mode == PartialAggMode.ESTIMATE
+    assert policy.sample_rows == 123
     assert policy.unique_ratio_threshold == 0.5
 
     ctx.partial_aggregation_mode = "never"
@@ -1078,20 +1107,13 @@ def test_choose_partial_agg_policy(restore_data_context):
     ctx.partial_aggregation_mode = "always"
     assert _choose_partial_agg_policy(ctx).mode == PartialAggMode.ALWAYS
 
-    # A forced probe still uses the configured probe size and threshold.
-    ctx.partial_aggregation_mode = "probe"
-    policy = _choose_partial_agg_policy(ctx)
-    assert policy.mode == PartialAggMode.PROBE
-    assert policy.probe_rows == 123
-    assert policy.unique_ratio_threshold == 0.5
-
     ctx.partial_aggregation_mode = "bogus"
     with pytest.raises(ValueError):
         _choose_partial_agg_policy(ctx)
 
 
 @pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
-@pytest.mark.parametrize("mode", [None, "always", "never"])
+@pytest.mark.parametrize("mode", ["estimate", "always", "never"])
 def test_adaptive_partial_agg_e2e(
     ray_start_regular_shared_2_cpus, restore_data_context, use_disk, mode
 ):
@@ -1104,9 +1126,8 @@ def test_adaptive_partial_agg_e2e(
     ctx = restore_data_context
     ctx.use_disk_based_hash_shuffle = use_disk
     ctx.shuffle_input_batch_bytes = 0  # one map task per input block
-    ctx.enable_adaptive_partial_aggregation = True
     ctx.partial_aggregation_mode = mode
-    ctx.adaptive_partial_aggregation_probe_rows = 10
+    ctx.adaptive_partial_aggregation_sample_rows = 10
 
     high = pd.DataFrame({"k": np.arange(200), "v": np.arange(200) % 7})
     low = pd.DataFrame({"k": np.arange(200) % 5, "v": np.arange(200) % 3})

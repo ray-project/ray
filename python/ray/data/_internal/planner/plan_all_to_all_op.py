@@ -263,14 +263,12 @@ def _plan_sort_v2(
 
 def _choose_partial_agg_policy(data_context: DataContext) -> PartialAggPolicy:
     """Picks how the map side of a SHUFFLE_V2 aggregation pre-aggregates."""
-    if not data_context.enable_adaptive_partial_aggregation:
-        return PartialAggPolicy(mode=PartialAggMode.ALWAYS)
-    mode = PartialAggMode(data_context.partial_aggregation_mode or "probe")
-    if mode != PartialAggMode.PROBE:
+    mode = PartialAggMode(data_context.partial_aggregation_mode)
+    if mode != PartialAggMode.ESTIMATE:
         return PartialAggPolicy(mode=mode)
     return PartialAggPolicy(
-        mode=PartialAggMode.PROBE,
-        probe_rows=data_context.adaptive_partial_aggregation_probe_rows,
+        mode=PartialAggMode.ESTIMATE,
+        sample_rows=data_context.adaptive_partial_aggregation_sample_rows,
         unique_ratio_threshold=(
             data_context.adaptive_partial_aggregation_unique_ratio_threshold
         ),

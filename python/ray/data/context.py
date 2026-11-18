@@ -176,16 +176,12 @@ DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION = env_bool(
     "RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION", True
 )
 
-DEFAULT_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION = env_bool(
-    "RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION", True
-)
-
 DEFAULT_PARTIAL_AGGREGATION_MODE = os.environ.get(
-    "RAY_DATA_PARTIAL_AGGREGATION_MODE", None
+    "RAY_DATA_PARTIAL_AGGREGATION_MODE", "estimate"
 )
 
-DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_PROBE_ROWS = env_integer(
-    "RAY_DATA_ADAPTIVE_PARTIAL_AGGREGATION_PROBE_ROWS", 100_000
+DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS = env_integer(
+    "RAY_DATA_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS", 100_000
 )
 
 DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_UNIQUE_RATIO_THRESHOLD = env_float(
@@ -946,22 +942,21 @@ class DataContext:
             ``SHUFFLE_V2`` strategy, e.g. right after a join on those keys.
             Defaults to the ``RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION``
             environment variable (``True`` when unset).
-        enable_adaptive_partial_aggregation: Whether a ``SHUFFLE_V2`` group-by
-            may skip its map-side partial aggregation when the group keys are
-            nearly unique, shipping column-pruned rows to the reducers instead.
-            Defaults to the ``RAY_DATA_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION``
-            environment variable (``True`` when unset).
-        partial_aggregation_mode: How map tasks choose, when
-            ``enable_adaptive_partial_aggregation`` is set: ``"probe"`` makes
-            each map task decide by probing its input, ``"always"``
-            pre-aggregates in every map task, and ``"never"`` skips it in every
-            map task. ``None`` (default) means ``"probe"``.
-        adaptive_partial_aggregation_probe_rows: Number of leading rows a map
-            task inspects to decide whether to skip partial aggregation. Tasks
-            with fewer input rows always aggregate.
+        partial_aggregation_mode: Whether the map tasks of a ``SHUFFLE_V2``
+            group-by pre-aggregate their input. ``"estimate"`` (default) makes
+            each map task skip partial aggregation when its group keys are
+            nearly unique, shipping column-pruned rows to the reducers
+            instead. ``"always"`` pre-aggregates in every map task, which
+            turns adaptive skipping off, and ``"never"`` skips it in every map
+            task. Defaults to the ``RAY_DATA_PARTIAL_AGGREGATION_MODE``
+            environment variable.
+        adaptive_partial_aggregation_sample_rows: Number of rows a map task
+            samples, spread across its whole input, to estimate how many
+            distinct keys the input has. Tasks with fewer input rows always
+            aggregate.
         adaptive_partial_aggregation_unique_ratio_threshold: A map task skips
-            partial aggregation when distinct keys divided by probed rows is
-            above this ratio.
+            partial aggregation when its estimated distinct keys divided by
+            its input rows is above this ratio.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -1129,14 +1124,11 @@ class DataContext:
         DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION
     )
 
-    # Whether a SHUFFLE_V2 group-by may skip its map-side partial aggregation
-    # when the group keys are nearly unique (see the Args docstring).
-    enable_adaptive_partial_aggregation: bool = (
-        DEFAULT_ENABLE_ADAPTIVE_PARTIAL_AGGREGATION
-    )
-    partial_aggregation_mode: Optional[str] = DEFAULT_PARTIAL_AGGREGATION_MODE
-    adaptive_partial_aggregation_probe_rows: int = (
-        DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_PROBE_ROWS
+    # Whether SHUFFLE_V2 group-by map tasks pre-aggregate (see the Args
+    # docstring).
+    partial_aggregation_mode: str = DEFAULT_PARTIAL_AGGREGATION_MODE
+    adaptive_partial_aggregation_sample_rows: int = (
+        DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS
     )
     adaptive_partial_aggregation_unique_ratio_threshold: float = (
         DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_UNIQUE_RATIO_THRESHOLD

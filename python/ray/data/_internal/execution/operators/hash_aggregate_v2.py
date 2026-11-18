@@ -2,6 +2,7 @@ import enum
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.types as pa_types
@@ -26,8 +27,8 @@ class PartialAggMode(str, enum.Enum):
     ALWAYS = "always"
     # Never pre-aggregate: ship column-pruned rows, aggregate once on the reducer.
     NEVER = "never"
-    # Decide per map task by counting distinct keys in a subset of its input rows.
-    PROBE = "probe"
+    # Decide per map task by estimating its distinct keys from a sample of rows.
+    ESTIMATE = "estimate"
 
 
 @dataclass(frozen=True)
@@ -37,13 +38,14 @@ class PartialAggPolicy:
     Pre-aggregating pays off only when it collapses many rows per key (low cardinality). With
     nearly unique keys it costs a full hash aggregation (and its memory) on the
     mapper, shrinks nothing, and can even grow the shuffled bytes (e.g. Mean
-    ships a sum and a count per row). Under ``PROBE`` a map task groups its
-    first ``probe_rows`` rows by key and skips partial aggregation when
-    distinct keys / probed rows exceeds ``unique_ratio_threshold``.
+    ships a sum and a count per row). Under ``ESTIMATE`` a map task samples
+    ``sample_rows`` rows spread across its input, estimates the input's distinct
+    keys from the sample, and skips partial aggregation when estimated distinct
+    keys / input rows exceeds ``unique_ratio_threshold``.
     """
 
-    mode: PartialAggMode = PartialAggMode.PROBE
-    probe_rows: int = 100_000
+    mode: PartialAggMode = PartialAggMode.ESTIMATE
+    sample_rows: int = 100_000
     unique_ratio_threshold: float = 0.8
 
 
@@ -267,14 +269,53 @@ def _should_skip_partial_aggregation(
         return False
     if policy.mode == PartialAggMode.NEVER:
         return True
-    if block.num_rows < policy.probe_rows:
+    if block.num_rows < policy.sample_rows:
         # Small inputs are cheap to aggregate and can't blow up memory.
         return False
-    # Probe a subset of the data to see if the key cardinality is high enough
-    # to justify skipping partial aggregation.
-    probe = block.select(keys).slice(0, policy.probe_rows)
-    num_groups = probe.group_by(keys, use_threads=False).aggregate([]).num_rows
-    return num_groups > policy.unique_ratio_threshold * probe.num_rows
+    num_distinct = _estimate_distinct_keys(block, keys, policy.sample_rows)
+    return num_distinct > policy.unique_ratio_threshold * block.num_rows
+
+
+def _estimate_distinct_keys(
+    block: pa.Table, keys: List[str], sample_rows: int
+) -> float:
+    """Estimates the number of distinct keys in ``block`` from a sample.
+
+    Rows are sampled uniformly across the whole block, so a block whose key
+    cardinality changes partway through (e.g. unique keys first, then a few
+    repeated keys) is judged as a whole. The distinct count in the sample
+    alone overstates uniqueness: if every key appears twice in the block, a
+    small sample still sees each key about once. So it is scaled up with the
+    Haas-Stokes "Duj1" estimator, which Postgres ``ANALYZE`` uses for
+    ``n_distinct``::
+
+        D = n * d / (n - f1 + f1 * n / N)
+
+    where ``N`` is the block's rows, ``n`` the sampled rows, ``d`` the distinct
+    keys in the sample and ``f1`` the keys seen exactly once in it.
+
+    Reference: P. J. Haas and L. Stokes, "Estimating the number of classes in a
+    finite population", Journal of the American Statistical Association 93(444),
+    1998.
+    """
+    total = block.num_rows
+    if sample_rows >= total:
+        sample = block.select(keys)
+    else:
+        # Fixed seed: the same block always gets the same decision.
+        rng = np.random.default_rng(0)
+        indices = rng.choice(total, size=sample_rows, replace=False, shuffle=False)
+        sample = block.select(keys).take(np.sort(indices))
+    counts = (
+        sample.group_by(keys, use_threads=False)
+        .aggregate([([], "count_all")])
+        .column("count_all")
+    )
+    n = sample.num_rows
+    d = len(counts)
+    f1 = pc.sum(pc.equal(counts, 1)).as_py() or 0
+    denominator = n - f1 + f1 * n / total
+    return n * d / denominator
 
 
 def _make_vectorized_aggregating_transformer(
