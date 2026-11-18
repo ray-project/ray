@@ -2,7 +2,7 @@ import logging
 import math
 import time
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._common.utils import binary_to_hex
@@ -277,7 +277,10 @@ class Reconciler:
         )
 
         Reconciler._handle_extra_cloud_instances(
-            instance_manager, non_terminated_cloud_instances, ray_nodes
+            instance_manager,
+            non_terminated_cloud_instances,
+            ray_nodes,
+            autoscaling_config=autoscaling_config,
         )
 
         Reconciler._handle_ray_status_transition(
@@ -1104,12 +1107,9 @@ class Reconciler:
         view_cache: _ReplicaViewCache,
     ) -> ReconcileStepContext:
         im_instances, version = Reconciler._get_im_instances(instance_manager)
-        known_cloud_instance_ids: Set[CloudInstanceId] = {
-            inst.cloud_instance_id
-            for inst in im_instances
-            if inst.cloud_instance_id and inst.status not in _TERMINAL_INSTANCE_STATUSES
-        }
-        known_cloud_instance_ids.update(non_terminated_cloud_instances.keys())
+        known_cloud_instance_ids: Set[CloudInstanceId] = set(
+            non_terminated_cloud_instances.keys()
+        )
 
         single_host_in_flight: Dict[NodeType, Dict[str, int]] = defaultdict(
             lambda: defaultdict(int)
@@ -1170,7 +1170,7 @@ class Reconciler:
             # No QUEUED instances
             return
 
-        if isinstance(cloud_provider, ICloudInstanceProvider):
+        if cloud_provider is not None:
             try:
                 pending_delete_types = (
                     cloud_provider.get_node_types_with_pending_deletes(terminating_cids)
@@ -2015,11 +2015,7 @@ class Reconciler:
         }
         present_by_rep: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
         for cid, c_inst in cloud_instances.items():
-            if (
-                c_inst.node_kind != NodeKind.HEAD
-                and c_inst.node_type in replica_sizes
-                and c_inst.replica_id
-            ):
+            if c_inst.replica_id:
                 present_by_rep[(c_inst.node_type, c_inst.replica_id)].add(cid)
         term_cids = {
             (
@@ -2465,6 +2461,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         ray_nodes: List[NodeState],
+        autoscaling_config: Optional[AutoscalingConfig] = None,
     ):
         """For extra cloud instances (i.e. cloud instances that are non terminated as
         returned by cloud provider, but not managed by the instance manager), we
@@ -2490,13 +2487,79 @@ class Reconciler:
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
             ray_nodes: The ray cluster's states of ray nodes.
+            autoscaling_config: Optional autoscaling config used to bound queued
+                replacement cancellation by min_worker_nodes.
         """
+        active_statuses = (
+            IMInstance.REQUESTED,
+            IMInstance.ALLOCATED,
+            IMInstance.RAY_INSTALLING,
+            IMInstance.RAY_RUNNING,
+        )
+        before_ids: Set[str] = set()
+        active_before: Counter = Counter()
+        queued_by_type: Dict[NodeType, List[IMInstance]] = defaultdict(list)
+        if autoscaling_config is not None:
+            instances_before, _ = Reconciler._get_im_instances(instance_manager)
+            for inst in instances_before:
+                before_ids.add(inst.instance_id)
+                if inst.node_kind == NodeKind.HEAD:
+                    continue
+                if inst.status == IMInstance.QUEUED and not inst.launch_request_id:
+                    queued_by_type[inst.instance_type].append(inst)
+                elif inst.status in active_statuses:
+                    active_before[inst.instance_type] += 1
+
         Reconciler._handle_extra_cloud_instances_from_ray_nodes(
             instance_manager, ray_nodes
         )
         Reconciler._handle_extra_cloud_instances_from_cloud_provider(
-            instance_manager, non_terminated_cloud_instances
+            instance_manager,
+            non_terminated_cloud_instances,
         )
+
+        if autoscaling_config is not None and any(queued_by_type.values()):
+            instances_after, version = Reconciler._get_im_instances(instance_manager)
+            adopted_by_type: Counter = Counter(
+                inst.instance_type
+                for inst in instances_after
+                if inst.instance_id not in before_ids
+                and inst.node_kind == NodeKind.WORKER
+                and inst.cloud_instance_id in non_terminated_cloud_instances
+            )
+            cancel_updates = {}
+            node_type_configs = autoscaling_config.get_node_type_configs() or {}
+            for nt, adopted in adopted_by_type.items():
+                cfg = node_type_configs.get(nt)
+                q_list = queued_by_type.get(nt)
+                if cfg is None or not q_list or adopted <= 0:
+                    continue
+                min_deficit = max(0, cfg.min_worker_nodes - active_before[nt])
+                to_cancel = min(adopted, min_deficit, len(q_list))
+                if to_cancel <= 0:
+                    continue
+                q_list.sort(
+                    key=lambda i: (
+                        sorted(
+                            InstanceUtil.get_status_transition_times_ns(
+                                i, IMInstance.QUEUED
+                            )
+                        ),
+                        i.instance_id,
+                    )
+                )
+                for q_inst in q_list[:to_cancel]:
+                    cancel_updates[q_inst.instance_id] = IMInstanceUpdateEvent(
+                        instance_id=q_inst.instance_id,
+                        new_instance_status=IMInstance.TERMINATED,
+                        details=(
+                            "allocation satisfied by unmanaged cloud instance refill"
+                        ),
+                    )
+            if cancel_updates:
+                Reconciler._update_instance_manager(
+                    instance_manager, version, cancel_updates
+                )
 
     @staticmethod
     def _handle_extra_cloud_instances_from_cloud_provider(

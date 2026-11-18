@@ -762,8 +762,6 @@ class _MultiHostReplicaView:
         remaining_failures: int = 0,
     ) -> Optional[CloudInstance]:
         """Pop and bind the best unassigned cloud pod for `(nt, lid)`."""
-        if not candidates:
-            return None
         match_idx = None
         avail_req = max(
             0,

@@ -7407,8 +7407,8 @@ class TestReconcilerMultiHost:
         assert view.requested_by_lid[("tpu-a", "lid-1")] == 0
 
     def test_replica_view_pop_candidate_uncovered_slots_and_unlabeled_gap(self):
-        """Code-Taste #2 & R6: Direct unit tests for pop_matching_candidate,
-        uncovered_replica_slots_by_type, and unlabeled_backfill_gap."""
+        """Direct unit tests for pop_matching_candidate, uncovered_replica_slots_by_type,
+        and unlabeled_backfill_gap."""
         view = _MultiHostReplicaView(
             requested_by_lid={("tpu", "lid-a"): 4, ("tpu", "lid-b"): 2},
             rep_occupying={("tpu", "rep-deg"): 3},
@@ -7432,10 +7432,10 @@ class TestReconcilerMultiHost:
         assert ("tpu", "rep-new") in view.assigned_reps
         assert view.requested_by_lid[("tpu", "lid-a")] == 3
 
-    def test_tg1_legacy_multihost_unaligned_demand_no_failed_row_churn(self):
-        """R1 / TG1: Repeating unaligned demand (5 tasks on numOfHosts=4 without
-        replica_config) with real ResourceDemandScheduler produces 0 ALLOCATION_FAILED
-        rows across 300 ticks."""
+    def test_legacy_multihost_unaligned_demand_no_failed_row_churn(self):
+        """Repeating unaligned demand (5 tasks on numOfHosts=4 without replica_config)
+        with real ResourceDemandScheduler produces 0 ALLOCATION_FAILED rows across
+        300 ticks."""
         (
             cr,
             pods,
@@ -7514,10 +7514,10 @@ class TestReconcilerMultiHost:
         )
         assert tpu_statuses == {"RAY_RUNNING": 4, "REQUESTED": 1}
 
-    def test_tg2_single_host_in_step_stale_list_and_genuine_delete(self):
-        """R2 / TG2: Reconciler tick with an older in-step pod LIST still patches
-        spec.replicas=6 immediately, whereas a genuine operator deletion advancing
-        resourceVersion shrinks observed count."""
+    def test_single_host_in_step_not_older_than_and_genuine_delete(self):
+        """Reconciler tick forwards NotOlderThan on in-step pod LIST, recovers across
+        API-server resourceVersion rollbacks, and shrinks observed count on genuine
+        operator deletions."""
         (
             cr,
             pods,
@@ -7555,22 +7555,14 @@ class TestReconcilerMultiHost:
         self.run_tick(im, cfg, cloud_provider=provider, ray_state=head_state)
 
         real_get = client.get
-        lists = {"n": 0}
+        seen_paths = []
 
-        def stale_get(path):
-            out = real_get(path)
+        def spy_get(path):
             if "pods" in path:
-                lists["n"] += 1
-                if lists["n"] > 1:
-                    return {
-                        "metadata": {"resourceVersion": "10"},
-                        "items": [
-                            p for p in out["items"] if p["metadata"]["name"] != "cpu-4"
-                        ],
-                    }
-            return out
+                seen_paths.append(path)
+            return real_get(path)
 
-        client.get = stale_get
+        client.get = spy_get
         client.patch_calls.clear()
         sched = MagicMock()
         sched.schedule.return_value = SchedulingReply(
@@ -7580,6 +7572,10 @@ class TestReconcilerMultiHost:
             im, cfg, scheduler=sched, cloud_provider=provider, ray_state=head_state
         )
         client.get = real_get
+        assert any(
+            "resourceVersion=10&resourceVersionMatch=NotOlderThan" in p
+            for p in seen_paths
+        )
         assert cr["spec"]["workerGroupSpecs"][0]["replicas"] == 6
         assert len(client.patch_calls) == 1
 
@@ -7592,7 +7588,7 @@ class TestReconcilerMultiHost:
             im, cfg, scheduler=sched, cloud_provider=provider, ray_state=head_state
         )
 
-        lists["n"] = 0
+        lists = {"n": 0}
 
         def genuine_delete_get(path):
             out = real_get(path)
@@ -7619,9 +7615,9 @@ class TestReconcilerMultiHost:
         assert cr["spec"]["workerGroupSpecs"][0]["replicas"] == 6
         assert client.patch_calls == []
 
-    def test_tg3_invalid_num_of_hosts_terminate_fails_closed_across_ticks(self):
-        """R3 / TG3: Worker group with explicit numOfHosts=0 rejects termination
-        without patching workersToDelete across repeated reconcile ticks."""
+    def test_invalid_num_of_hosts_terminate_fails_closed_across_ticks(self):
+        """Worker group with explicit numOfHosts=0 rejects termination without
+        patching workersToDelete across repeated reconcile ticks."""
         (
             cr,
             pods,
@@ -7707,10 +7703,10 @@ class TestReconcilerMultiHost:
         assert statuses["cpu-a"] in (Instance.TERMINATING, Instance.TERMINATION_FAILED)
         assert statuses["cpu-b"] == Instance.RAY_RUNNING
 
-    def test_tg4_pending_delete_provider_error_defers_launch_and_exits_step(self):
-        """R4 / TG4: Transient API failure in get_node_types_with_pending_deletes
-        logs a warning, defers QUEUED launches, completes GC/metrics/state, and
-        exits reconcile_step cleanly."""
+    def test_pending_delete_provider_error_defers_launch_and_exits_step(self):
+        """Transient API failure in get_node_types_with_pending_deletes logs a warning,
+        defers QUEUED launches, completes GC/metrics/state, and exits reconcile_step
+        cleanly."""
         (
             _,
             pods,
@@ -7827,10 +7823,10 @@ class TestReconcilerMultiHost:
             )
         assert not provider._in_reconcile_step
 
-    def test_tg5_real_scheduler_multihost_and_partial_queued_cancellation(self):
-        """R5 / TG5: Real ResourceDemandScheduler scales KubeRay multi-host groups
-        up and down cleanly, and partial QUEUED cancellation with internal
-        replica_config rounds remaining QUEUED rows to whole replicas."""
+    def test_real_scheduler_multihost_and_partial_queued_cancellation(self):
+        """Real ResourceDemandScheduler scales KubeRay multi-host groups up and down
+        cleanly, and partial QUEUED cancellation with internal replica_config rounds
+        remaining QUEUED rows to whole replicas."""
         (
             cr,
             pods,
@@ -8005,12 +8001,11 @@ class TestReconcilerMultiHost:
         assert cr2["spec"]["workerGroupSpecs"][0]["replicas"] == 3
 
     @pytest.mark.parametrize("request_count", [4, 1])
-    def test_tg6_unlabeled_pods_with_replica_config_refills_single_pod_loss(
+    def test_unlabeled_pods_with_replica_config_refills_single_pod_loss(
         self, request_count
     ):
-        """R6 / TG6: Losing one unlabeled pod at maxReplicas (11/12) or below
-        maxReplicas (7/8) refills back to the exact target without flooring to 0
-        or overshooting."""
+        """Losing one unlabeled pod at maxReplicas (11/12) or below maxReplicas (7/8)
+        refills back to the exact target without flooring to 0 or overshooting."""
         (
             cr,
             pods,
@@ -8132,10 +8127,10 @@ class TestReconcilerMultiHost:
         insts_sub, _ = store_sub.get_instances()
         assert sum(i.status == Instance.REQUESTED for i in insts_sub.values()) == 1
 
-    def test_tg7_autoscaler_restart_mid_flight_converges(self):
-        """TG7: Restarting the autoscaler (fresh IM + KubeRayProvider) against
-        labeled pods with (a) an in-flight replica, (b) pending workersToDelete,
-        and (c) a held/degraded replica converges cleanly without replica inflation."""
+    def test_autoscaler_restart_mid_flight_converges(self):
+        """Restarting the autoscaler (fresh IM + KubeRayProvider) against labeled
+        pods with (a) an in-flight replica, (b) pending workersToDelete, and
+        (c) a held/degraded replica converges cleanly without replica inflation."""
         cr, pods, client, _, cfg, _, _, head_state, _pod = self._make_kuberay_e2e_env(
             cluster_id="tg7_init",
             worker_groups=[
@@ -8302,10 +8297,10 @@ class TestReconcilerMultiHost:
             cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"]["workersToDelete"]
         ) == [f"r1-{i}" for i in range(4)]
 
-    def test_tg8_real_scheduler_lowered_max_with_ray_stopping_replica(self):
-        """TG8: Lowering max_worker_nodes while a multi-host replica is in
-        RAY_STOPPING causes ResourceDemandScheduler to emit TerminationRequests for
-        the draining nodes; Reconciler skips them without aborting the tick."""
+    def test_real_scheduler_lowered_max_with_ray_stopping_replica(self):
+        """Lowering max_worker_nodes while a multi-host replica is in RAY_STOPPING
+        causes ResourceDemandScheduler to emit TerminationRequests for the draining
+        nodes; Reconciler skips them without aborting the tick."""
         (
             _,
             pods,
@@ -8381,8 +8376,8 @@ class TestReconcilerMultiHost:
             Instance.RAY_STOPPING
         ] * 4
 
-    def test_tg10_invalid_replica_config_raises_before_entering_step(self):
-        """TG10: When AutoscalingConfig.get_node_type_configs raises ValueError on a
+    def test_invalid_replica_config_raises_before_entering_step(self):
+        """When AutoscalingConfig.get_node_type_configs raises ValueError on a
         non-multiple max_workers, Reconciler.reconcile fails fast before mutating IM
         state or leaving the provider in reconcile_step."""
         bad_cfg = AutoscalingConfig(
@@ -8428,11 +8423,11 @@ class TestReconcilerMultiHost:
         assert not provider._in_reconcile_step
 
     @pytest.mark.parametrize("labeled", [True, False])
-    def test_tg11_seeded_operator_model_multitick_convergence(self, labeled):
-        """TG11: Seeded multi-tick simulation against a realistic KubeRay operator
-        model (incomplete labeled replica cleanup, whole-replica delete, terminating
-        pods with deletionTimestamp, unlabeled per-pod reconcile + R6 pod loss at
-        maxReplicas, transient API errors, drain rejections, and autoscaler restarts)."""
+    def test_seeded_operator_model_multitick_convergence(self, labeled):
+        """Seeded multi-tick simulation against a realistic KubeRay operator model
+        (incomplete labeled replica cleanup, whole-replica delete, terminating pods
+        with deletionTimestamp, unlabeled per-pod reconcile + pod loss at maxReplicas,
+        transient API errors, drain rejections, and autoscaler restarts)."""
 
         class _OperatorSimClient(MockKubernetesHttpApiClient):
             def __init__(self, cr, rng):
@@ -8787,6 +8782,553 @@ class TestReconcilerMultiHost:
                 if i.instance_type == "tpu" and i.status == Instance.RAY_RUNNING
             )
             assert running == demand_reps * 4
+
+    def test_min_replicas_operator_refill_satisfies_deferred_queued_replacement(self):
+        """When the autoscaler deletes a worker of a group at minReplicas=1 (either
+        after raylet death or after allocation timeout) and the KubeRay operator
+        refills the group via the minReplicas floor, adopting the operator's refill
+        cancels the deferred QUEUED replacement instead of launching a 2nd worker."""
+        for mode in ("dead_raylet", "alloc_timeout"):
+            group = {
+                "groupName": "cpu",
+                "replicas": 1,
+                "minReplicas": 1,
+                "maxReplicas": 4,
+                "template": {"spec": {"containers": [{}]}},
+            }
+            cfgs = {
+                "cpu": NodeTypeConfig(
+                    name="cpu",
+                    resources={"CPU": 4},
+                    min_worker_nodes=1,
+                    max_worker_nodes=4,
+                )
+            }
+            (
+                cr,
+                pods,
+                _,
+                provider,
+                cfg,
+                store,
+                im,
+                head_state,
+                make_pod,
+            ) = self._make_kuberay_e2e_env(
+                f"min1-{mode}", [group], cfgs, initial_pods=[]
+            )
+            pods["items"].append(make_pod("cpu-a", "cpu"))
+            sched = ResourceDemandScheduler(None)
+            monitor = CloudResourceMonitor()
+
+            def _tick(worker_statuses):
+                nodes = list(head_state.node_states)
+                for pod_nm, st in worker_statuses.items():
+                    nodes.append(
+                        NodeState(
+                            node_id=pod_nm.encode().ljust(28, b"0"),
+                            instance_id=pod_nm,
+                            ray_node_type_name="cpu",
+                            status=st,
+                            total_resources={"CPU": 4},
+                            available_resources={"CPU": 4},
+                        )
+                    )
+                Reconciler.reconcile(
+                    im,
+                    sched,
+                    provider,
+                    monitor,
+                    ClusterResourceState(node_states=nodes),
+                    provider.get_non_terminated(),
+                    cfg,
+                    cloud_provider_errors=provider.poll_errors(),
+                )
+                wg = cr["spec"]["workerGroupSpecs"][0]
+                return wg["replicas"], wg.get("scaleStrategy", {}).get(
+                    "workersToDelete"
+                )
+
+            if mode == "dead_raylet":
+                assert _tick({"cpu-a": NodeStatus.RUNNING}) == (1, None)
+                assert _tick({"cpu-a": NodeStatus.DEAD}) == (1, ["cpu-a"])
+            else:
+                assert _tick({}) == (1, None)
+                insts, ver = store.get_instances()
+                a_inst = next(
+                    i for i in insts.values() if i.cloud_instance_id == "cpu-a"
+                )
+                expired_ns = (
+                    time.time_ns()
+                    - (
+                        cfg.get_instance_reconcile_config().allocate_status_timeout_s
+                        + 60
+                    )
+                    * 10**9
+                )
+                del a_inst.status_history[:]
+                a_inst.status_history.add(
+                    instance_status=Instance.ALLOCATED, timestamp_ns=expired_ns
+                )
+                store.batch_upsert_instances([a_inst], expected_storage_version=ver)
+                assert _tick({}) == (1, ["cpu-a"])
+
+            # Operator deletes cpu-a, clears finished workersToDelete, and recreates
+            # cpu-b under minReplicas=1; autoscaler adopts cpu-b and cancels the
+            # deferred QUEUED replacement so replicas stays 1 across ticks.
+            pods["items"] = [
+                p for p in pods["items"] if p["metadata"]["name"] != "cpu-a"
+            ] + [make_pod("cpu-b", "cpu")]
+            cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {"workersToDelete": []}
+            assert _tick({"cpu-b": NodeStatus.RUNNING}) == (1, [])
+            assert _tick({"cpu-b": NodeStatus.RUNNING}) == (1, [])
+            insts_after, _ = store.get_instances()
+            non_term = [
+                i
+                for i in insts_after.values()
+                if i.instance_type == "cpu" and i.status != Instance.TERMINATED
+            ]
+            assert len(non_term) == 1
+            assert non_term[0].cloud_instance_id == "cpu-b"
+
+    def test_terminating_keyless_worker_never_sweeps_other_keyless_workers(self):
+        """Terminating a worker with replica_key None never sweeps unrelated keyless
+        workers into TERMINATING."""
+        cfgs = {
+            "cpu": NodeTypeConfig(
+                name="cpu", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=4
+            ),
+            "tpu": NodeTypeConfig(
+                name="tpu",
+                resources={"TPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=4,
+                replica_config=WorkerReplicaConfig(workers_per_replica=2),
+            ),
+        }
+        groups = [
+            {
+                "groupName": "cpu",
+                "replicas": 2,
+                "minReplicas": 0,
+                "maxReplicas": 4,
+                "template": {"spec": {"containers": [{}]}},
+            },
+            {
+                "groupName": "tpu",
+                "replicas": 0,
+                "minReplicas": 0,
+                "maxReplicas": 2,
+                "numOfHosts": 2,
+                "template": {"spec": {"containers": [{}]}},
+            },
+        ]
+        (
+            cr,
+            pods,
+            _,
+            provider,
+            cfg,
+            store,
+            im,
+            head_state,
+            make_pod,
+        ) = self._make_kuberay_e2e_env("keyless-sweep", groups, cfgs, initial_pods=[])
+        pods["items"].extend([make_pod("cpu-0", "cpu"), make_pod("cpu-1", "cpu")])
+        sched = MagicMock()
+        sched.schedule.return_value = SchedulingReply()
+        self.run_tick(
+            im, cfg, scheduler=sched, cloud_provider=provider, ray_state=head_state
+        )
+        insts, ver = store.get_instances()
+        c0 = next(i for i in insts.values() if i.cloud_instance_id == "cpu-0")
+        c0.status = Instance.RAY_STOPPED
+        c0.status_history.add(instance_status=Instance.RAY_STOPPED, timestamp_ns=100)
+        store.batch_upsert_instances([c0], expected_storage_version=ver)
+
+        self.run_tick(
+            im, cfg, scheduler=sched, cloud_provider=provider, ray_state=head_state
+        )
+        assert cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"][
+            "workersToDelete"
+        ] == ["cpu-0"]
+        insts2, _ = store.get_instances()
+        c1 = next(i for i in insts2.values() if i.cloud_instance_id == "cpu-1")
+        assert c1.status == Instance.ALLOCATED
+
+    def test_pending_delete_deferral_stays_scoped_per_node_type(self):
+        """A pending workersToDelete entry on one worker group defers only that
+        group's QUEUED launches while allowing other groups to launch immediately."""
+        cfgs = {
+            "cpu": NodeTypeConfig(
+                name="cpu", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=4
+            ),
+            "gpu": NodeTypeConfig(
+                name="gpu", resources={"GPU": 1}, min_worker_nodes=0, max_worker_nodes=4
+            ),
+        }
+        groups = [
+            {
+                "groupName": "cpu",
+                "replicas": 1,
+                "minReplicas": 0,
+                "maxReplicas": 4,
+                "scaleStrategy": {"workersToDelete": ["cpu-0"]},
+                "template": {"spec": {"containers": [{}]}},
+            },
+            {
+                "groupName": "gpu",
+                "replicas": 0,
+                "minReplicas": 0,
+                "maxReplicas": 4,
+                "template": {"spec": {"containers": [{}]}},
+            },
+        ]
+        (
+            cr,
+            pods,
+            _,
+            provider,
+            cfg,
+            store,
+            im,
+            head_state,
+            make_pod,
+        ) = self._make_kuberay_e2e_env("per-type-defer", groups, cfgs, initial_pods=[])
+        pods["items"].append(make_pod("cpu-0", "cpu"))
+        sched = MagicMock()
+        sched.schedule.return_value = SchedulingReply(
+            to_launch=[
+                LaunchRequest(id="l-cpu", instance_type="cpu", count=1),
+                LaunchRequest(id="l-gpu", instance_type="gpu", count=1),
+            ]
+        )
+        self.run_tick(
+            im, cfg, scheduler=sched, cloud_provider=provider, ray_state=head_state
+        )
+        assert cr["spec"]["workerGroupSpecs"][0]["replicas"] == 1
+        assert cr["spec"]["workerGroupSpecs"][1]["replicas"] == 1
+        insts, _ = store.get_instances()
+        by_type_status = {
+            (i.instance_type, i.status)
+            for i in insts.values()
+            if i.node_kind != NodeKind.HEAD and not i.cloud_instance_id
+        }
+        assert by_type_status == {
+            ("cpu", Instance.QUEUED),
+            ("gpu", Instance.REQUESTED),
+        }
+
+    def test_terminate_skips_vanished_pod_and_labeled_non_replica_config_group(self):
+        """Provider terminate inside reconcile_step skips already-vanished pods cleanly,
+        and replica-labeled pods on a group without replica_config keep replica_key None,
+        single-host allocation matching, and accurate single-host in-flight/surviving counts."""
+        cfgs = {
+            "tpu-legacy": NodeTypeConfig(
+                name="tpu-legacy",
+                resources={"TPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=8,
+            ),
+            "tpu-mh": NodeTypeConfig(
+                name="tpu-mh",
+                resources={"TPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=8,
+                replica_config=WorkerReplicaConfig(workers_per_replica=2),
+            ),
+        }
+        groups = [
+            {
+                "groupName": "tpu-legacy",
+                "replicas": 2,
+                "minReplicas": 0,
+                "maxReplicas": 4,
+                "numOfHosts": 2,
+                "template": {"spec": {"containers": [{}]}},
+            },
+            {
+                "groupName": "tpu-mh",
+                "replicas": 0,
+                "minReplicas": 0,
+                "maxReplicas": 4,
+                "numOfHosts": 2,
+                "template": {"spec": {"containers": [{}]}},
+            },
+        ]
+        cr, pods, _, provider, cfg, store, im, _, make_pod = self._make_kuberay_e2e_env(
+            "legacy-lbl", groups, cfgs, initial_pods=[]
+        )
+        pods["items"].extend(
+            [
+                make_pod("leg-0", "tpu-legacy", rep="leg-r0"),
+                make_pod("leg-1", "tpu-legacy", rep="leg-r0"),
+                make_pod("leg-2", "tpu-legacy", rep="leg-r1"),
+                make_pod("leg-3", "tpu-legacy", rep="leg-r1"),
+            ]
+        )
+        cloud = provider.get_non_terminated()
+        leg_im = create_instance(
+            "im-leg-0",
+            status=Instance.RAY_RUNNING,
+            instance_type="tpu-legacy",
+            cloud_instance_id="leg-0",
+        )
+        assert _get_replica_key(leg_im, cloud, {"tpu-mh": 2}) is None
+
+        # Terminate one whole legacy replica + a vanished pod ID inside reconcile_step.
+        with provider.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=set(cloud.keys()))
+        ):
+            provider.terminate(
+                ids=["leg-0", "leg-1", "vanished-pod"], request_id="t-leg"
+            )
+        assert provider.poll_errors() == []
+        assert cr["spec"]["workerGroupSpecs"][0]["replicas"] == 1
+        assert sorted(
+            cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"]["workersToDelete"]
+        ) == ["leg-0", "leg-1"]
+
+        # Newly materialized labeled pods on a group without replica_config deduplicate
+        # against single_host_in_flight instead of over-scaling replicas.
+        pods["items"] = [
+            p for p in pods["items"] if p["metadata"]["name"] not in {"leg-0", "leg-1"}
+        ] + [
+            make_pod("leg-4", "tpu-legacy", rep="leg-r2"),
+            make_pod("leg-5", "tpu-legacy", rep="leg-r2"),
+        ]
+        cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {"workersToDelete": []}
+        cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        with provider.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids={"head-0", "leg-2", "leg-3"},
+                single_host_in_flight={"tpu-legacy": {"prior-leg": 2}},
+            )
+        ):
+            provider.launch(shape={"tpu-legacy": 2}, request_id="next-leg")
+        assert cr["spec"]["workerGroupSpecs"][0]["replicas"] == 3
+
+        # Allocation on a non-replica_config group in a mixed cluster uses standard
+        # candidate popping rather than multi-host replica_view matching.
+        _, ver = store.get_instances()
+        store.batch_upsert_instances(
+            updates=[
+                create_instance(
+                    "req-leg-a",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu-legacy",
+                    launch_request_id="lid-partial",
+                    status_times=[(Instance.REQUESTED, 10)],
+                ),
+                create_instance(
+                    "req-leg-b",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu-legacy",
+                    launch_request_id="lid-partial",
+                    status_times=[(Instance.REQUESTED, 11)],
+                ),
+            ],
+            expected_storage_version=ver,
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            im,
+            {
+                "leg-p0": CloudInstance(
+                    "leg-p0", "tpu-legacy", NodeKind.WORKER, True, replica_id="leg-rp"
+                )
+            },
+            [
+                LaunchNodeError(
+                    request_id="lid-partial",
+                    node_type="tpu-legacy",
+                    count=1,
+                    timestamp_ns=20,
+                    details="cap",
+                )
+            ],
+            autoscaling_config=cfg,
+        )
+        alloc_insts, _ = store.get_instances()
+        assert {
+            alloc_insts["req-leg-a"].status,
+            alloc_insts["req-leg-b"].status,
+        } == {Instance.ALLOCATED, Instance.ALLOCATION_FAILED}
+
+    def test_seeded_min_replicas_raylet_death_and_operator_outage_convergence(self):
+        """Seeded multi-tick simulation with minReplicas >= 1, injected raylet deaths,
+        and temporary KubeRay operator outages converges back to exact minReplicas
+        without surplus pods or stuck QUEUED/REQUESTED rows."""
+        for seed in range(15):
+            rng = random.Random(7000 + seed)
+            min_rep = rng.choice([1, 2])
+            group = {
+                "groupName": "cpu",
+                "replicas": min_rep,
+                "minReplicas": min_rep,
+                "maxReplicas": 6,
+                "template": {"spec": {"containers": [{}]}},
+            }
+            cfgs = {
+                "cpu": NodeTypeConfig(
+                    name="cpu",
+                    resources={"CPU": 4},
+                    min_worker_nodes=min_rep,
+                    max_worker_nodes=6,
+                    idle_timeout_s=15.0,
+                )
+            }
+            (
+                cr,
+                pods,
+                _,
+                provider,
+                cfg,
+                store,
+                im,
+                head_state,
+                make_pod,
+            ) = self._make_kuberay_e2e_env(
+                f"min-chaos-{seed}", [group], cfgs, initial_pods=[]
+            )
+            cfg._configs["idle_timeout_s"] = 15.0
+            sched = ResourceDemandScheduler(None)
+            monitor = CloudResourceMonitor()
+            pod_seq = 0
+            dead_pods = set()
+            idle_ticks = Counter()
+            outage_until = -1
+
+            def _op_step(tick_idx):
+                nonlocal pod_seq
+                if tick_idx < outage_until:
+                    return
+                wg = cr["spec"]["workerGroupSpecs"][0]
+                wtd = set(wg.get("scaleStrategy", {}).get("workersToDelete") or [])
+                if wtd:
+                    pods["items"] = [
+                        p for p in pods["items"] if p["metadata"]["name"] not in wtd
+                    ]
+                    for nm in wtd:
+                        dead_pods.discard(nm)
+                        idle_ticks.pop(nm, None)
+                live_workers = [
+                    p
+                    for p in pods["items"]
+                    if p["metadata"]["labels"].get("ray.io/node-type") == "worker"
+                ]
+                target = max(wg.get("replicas") or 0, wg.get("minReplicas") or 0)
+                while len(live_workers) < target:
+                    pod_seq += 1
+                    nm = f"cpu-{pod_seq}"
+                    p_obj = make_pod(nm, "cpu")
+                    pods["items"].append(p_obj)
+                    live_workers.append(p_obj)
+                pods["metadata"]["resourceVersion"] = str(10 + tick_idx)
+
+            for t in range(45):
+                if t in (5, 14) and rng.random() < 0.7:
+                    outage_until = t + rng.randint(1, 3)
+                _op_step(t)
+                live_names = [
+                    p["metadata"]["name"]
+                    for p in pods["items"]
+                    if p["metadata"]["labels"].get("ray.io/node-type") == "worker"
+                ]
+                if t in (3, 10, 18) and live_names:
+                    dead_pods.add(rng.choice(live_names))
+                demand_count = (
+                    0 if seed < 5 else (rng.choice([0, 2, 3]) if t < 20 else 0)
+                )
+                nodes = list(head_state.node_states)
+                rem_demand = demand_count
+                for nm in live_names:
+                    if nm in dead_pods:
+                        nodes.append(
+                            NodeState(
+                                node_id=nm.encode().ljust(28, b"0"),
+                                instance_id=nm,
+                                ray_node_type_name="cpu",
+                                status=NodeStatus.DEAD,
+                                total_resources={"CPU": 4},
+                                available_resources={"CPU": 4},
+                            )
+                        )
+                    elif rem_demand > 0:
+                        rem_demand -= 1
+                        idle_ticks[nm] = 0
+                        nodes.append(
+                            NodeState(
+                                node_id=nm.encode().ljust(28, b"0"),
+                                instance_id=nm,
+                                ray_node_type_name="cpu",
+                                status=NodeStatus.RUNNING,
+                                total_resources={"CPU": 4},
+                                available_resources={"CPU": 0},
+                            )
+                        )
+                    else:
+                        idle_ticks[nm] += 1
+                        nodes.append(
+                            NodeState(
+                                node_id=nm.encode().ljust(28, b"0"),
+                                instance_id=nm,
+                                ray_node_type_name="cpu",
+                                status=NodeStatus.IDLE,
+                                total_resources={"CPU": 4},
+                                available_resources={"CPU": 4},
+                                idle_duration_ms=idle_ticks[nm] * 5000,
+                            )
+                        )
+                reqs = (
+                    [
+                        ResourceRequestByCount(
+                            request=ResourceRequestUtil.make({"CPU": 4}),
+                            count=demand_count,
+                        )
+                    ]
+                    if demand_count > 0
+                    else []
+                )
+                Reconciler.reconcile(
+                    im,
+                    sched,
+                    provider,
+                    monitor,
+                    ClusterResourceState(
+                        node_states=nodes, pending_resource_requests=reqs
+                    ),
+                    provider.get_non_terminated(),
+                    cfg,
+                    cloud_provider_errors=provider.poll_errors(),
+                )
+                # Simulate raylet graceful stop completion for RAY_STOP_REQUESTED nodes.
+                insts_cur, _ = store.get_instances()
+                for inst in insts_cur.values():
+                    if (
+                        inst.status == Instance.RAY_STOP_REQUESTED
+                        and inst.cloud_instance_id
+                    ):
+                        dead_pods.add(inst.cloud_instance_id)
+                if seed < 5:
+                    assert cr["spec"]["workerGroupSpecs"][0]["replicas"] == min_rep
+
+            _op_step(45)
+            wg_final = cr["spec"]["workerGroupSpecs"][0]
+            live_final = [
+                p["metadata"]["name"]
+                for p in pods["items"]
+                if p["metadata"]["labels"].get("ray.io/node-type") == "worker"
+            ]
+            assert wg_final["replicas"] == min_rep
+            assert len(live_final) == min_rep
+            insts_end, _ = store.get_instances()
+            transient = [
+                i
+                for i in insts_end.values()
+                if i.instance_type == "cpu"
+                and i.status in (Instance.QUEUED, Instance.REQUESTED)
+            ]
+            assert transient == []
 
 
 if __name__ == "__main__":
