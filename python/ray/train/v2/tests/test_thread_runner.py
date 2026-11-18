@@ -171,7 +171,6 @@ def test_run_twice_exception(thread_runner):
         thread_runner.run(lambda: None)
 
 
-
 @pytest.mark.parametrize("post_mortem_enabled", [True, False])
 def test_post_mortem_debugging(thread_runner, monkeypatch, post_mortem_enabled):
     """With RAY_DEBUG_POST_MORTEM=1, the runner enters the Ray debugger while the

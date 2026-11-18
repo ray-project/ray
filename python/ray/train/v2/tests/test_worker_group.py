@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
-import ray._private.ray_constants as ray_constants
 import ray.train.health as health
+import ray.train.v2._internal.execution.worker_group.worker_group as worker_group_module
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state import state as ray_state
 from ray.exceptions import RayActorError, RayTaskError
@@ -37,7 +37,6 @@ from ray.train.v2._internal.execution.context import (
     DistributedContext,
     get_train_context,
 )
-import ray.train.v2._internal.execution.worker_group.worker_group as worker_group_module
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
@@ -483,7 +482,6 @@ def test_insufficient_cluster_resources_startup_failure(monkeypatch):
         wg._start()
 
 
-
 @pytest.mark.parametrize(
     "resources_per_worker,num_workers",
     [
@@ -559,22 +557,6 @@ def test_infeasible_placement_keeps_retrying_for_elastic_runs(monkeypatch):
 
     with pytest.raises(WorkerGroupStartupTimeoutError):
         wg._start()
-
-
-def test_ray_train_worker_repr_includes_rank(capfd):
-    """The worker repr, which Ray uses as the log prefix, includes the rank once
-    the controller assigns it, and the worker tells the log monitor about it."""
-    worker = RayTrainWorker()
-    assert repr(worker) == "RayTrainWorker"
-
-    worker._world_rank = 1
-    worker._update_log_prefix()
-
-    assert repr(worker) == "RayTrainWorker(world_rank=1)"
-    out, err = capfd.readouterr()
-    token = f"{ray_constants.LOG_PREFIX_ACTOR_NAME}RayTrainWorker(world_rank=1)\n"
-    assert token in out
-    assert token in err
 
 
 # TODO: consider test_poll_status methods that verify that _world_rank_to_ongoing_poll

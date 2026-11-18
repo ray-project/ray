@@ -148,28 +148,6 @@ class Worker:
 class RayTrainWorker(PushSplitReceiverMixin):
     def __init__(self):
         self._callbacks: List[WorkerCallback] = []
-        # Set once the controller assigns this worker a rank.
-        self._world_rank: Optional[int] = None
-
-    def __repr__(self) -> str:
-        # Ray uses an actor's repr as the prefix of its log lines and in
-        # error messages, for example ``(RayTrainWorker(world_rank=1) pid=123)``.
-        if self._world_rank is None:
-            return "RayTrainWorker"
-        return f"RayTrainWorker(world_rank={self._world_rank})"
-
-    def _update_log_prefix(self):
-        """Update the prefix of this worker's forwarded log lines to its repr.
-
-        Ray reads the actor repr for the log prefix once, after ``__init__``,
-        which is before the controller assigns a rank. Writing the actor name
-        token again makes the log monitor use the new repr for every following
-        line. Write to the streams directly because Ray Train patches ``print``.
-        """
-        token = f"{ray_constants.LOG_PREFIX_ACTOR_NAME}{self!r}\n"
-        for stream in (sys.stdout, sys.stderr):
-            stream.write(token)
-            stream.flush()
 
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> T:
         return fn(*fn_args, **fn_kwargs)
@@ -372,9 +350,6 @@ class RayTrainWorker(PushSplitReceiverMixin):
         patch_print_function()
         # Set the train context global variable for the worker.
         set_train_context(context)
-
-        self._world_rank = distributed_context.world_rank
-        self._update_log_prefix()
 
         # user facing train fn utils
         set_train_fn_utils(DistributedTrainFnUtils())

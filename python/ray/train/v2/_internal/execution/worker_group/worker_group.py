@@ -7,9 +7,9 @@ import traceback
 from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray._common.usage import usage_lib
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.ray_constants import env_float
-from ray._common.usage import usage_lib
 from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
