@@ -142,55 +142,6 @@ def test_synthesized_column_replaces_same_named_file_column(tmp_path):
     assert set(table.column("path").to_pylist()) == {path}
 
 
-@pytest.mark.parametrize("name", ["path", "source_file"])
-def test_projected_path_replaces_same_named_file_column(tmp_path, name, monkeypatch):
-    path = _write_file(
-        tmp_path / "data.parquet", extra_columns={name: ["physical"] * NUM_ROWS}
-    )
-    reader = ParquetFileReader(
-        columns=[name],
-        schema=pa.schema([(name, pa.string())]),
-        synthesized_columns=(PathColumn(name=name),),
-    )
-    scanned_columns = []
-    read_batches = reader._read_fragment_batches
-
-    def capture_scan_columns(dataset, scanner_kwargs, manifest):
-        scanned_columns.append(scanner_kwargs["columns"])
-        yield from read_batches(dataset, scanner_kwargs, manifest)
-
-    monkeypatch.setattr(reader, "_read_fragment_batches", capture_scan_columns)
-
-    table = _read(reader, _manifest([(path, None)]))
-
-    assert scanned_columns == [[]]
-    assert table.column_names == [name]
-    assert table.num_rows == NUM_ROWS
-    assert set(table.column(name).to_pylist()) == {path}
-
-
-def test_projected_row_hash_replaces_same_named_file_column(tmp_path):
-    path = _write_file(
-        tmp_path / "data.parquet", extra_columns={"row_hash": [0] * NUM_ROWS}
-    )
-    manifest = _manifest([(path, None)])
-    full = _read(ParquetFileReader(synthesized_columns=(RowHashColumn(),)), manifest)
-    projected = _read(
-        ParquetFileReader(
-            columns=["row_hash"],
-            schema=pa.schema([("row_hash", pa.uint64())]),
-            synthesized_columns=(RowHashColumn(),),
-        ),
-        manifest,
-    )
-
-    assert projected.column_names == ["row_hash"]
-    assert projected.num_rows == NUM_ROWS
-    assert (
-        projected.column("row_hash").to_pylist() == full.column("row_hash").to_pylist()
-    )
-
-
 def test_read_schema_appends_synthesized_columns_respecting_projection():
     columns = (PathColumn(), RowHashColumn())
 

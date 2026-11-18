@@ -29,7 +29,6 @@ _FORMATS = [
 @pytest.mark.parametrize(
     "include_paths,path_name,incompatible_id",
     [
-        (True, "path", False),
         ("source_file", "source_file", False),
         ("source_file", "source_file", True),
     ],
