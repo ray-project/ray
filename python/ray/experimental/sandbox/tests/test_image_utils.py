@@ -2217,3 +2217,148 @@ def test_erofs_pull_skips_seeds_behind_long_names(
     # hold them again.
     with open(images[0], "rb") as f:
         assert f.read().count(b"x" * 300) == 1
+
+
+def _sparse_layer(tmp_path, tar_format):
+    """A gzipped layer, made by GNU tar, holding an 8 MiB sparse file with a
+    little data in it."""
+    src = tmp_path / f"sparse-src-{tar_format}"
+    src.mkdir()
+    with open(src / "sparse", "wb") as f:
+        f.truncate(8 << 20)
+        f.seek(4 << 20)
+        f.write(b"data in the middle")
+    out = tmp_path / f"sparse-{tar_format}.tar.gz"
+    subprocess.run(
+        [
+            "tar",
+            "--sparse",
+            f"--format={tar_format}",
+            "-czf",
+            str(out),
+            "-C",
+            str(src),
+            "sparse",
+        ],
+        check=True,
+    )
+    return out.read_bytes()
+
+
+@pytest.mark.parametrize("tar_format", ["gnu", "pax"])
+def test_erofs_pull_leaves_sparse_files_to_extraction(
+    tmp_path, erofs_pull, monkeypatch, tar_format
+):
+    """A layer erofs-pull can't build faithfully, here a sparse file, makes
+    it step aside: extraction builds the image."""
+    if not shutil.which("tar"):
+        pytest.skip("GNU tar is not installed")
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    layers = [_sparse_layer(tmp_path, tar_format)]
+    images = []
+    with _serve_image(monkeypatch, layers) as image:
+        for name in ("erofs-pull", "extracted"):
+            if name == "extracted":
+                monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", "0")
+            image_dir = pull_and_extract_container_image(
+                image, images_dir=str(tmp_path / name)
+            )
+            images.append(os.path.join(image_dir, ROOTFS_IMAGE))
+    (warning,) = warnings
+    assert "doesn't build" in warning and "sparse" in warning.lower()
+    tree = _erofs_tree(images[0])
+    assert tree == _erofs_tree(images[1])
+    data = tree["/sparse"][4]
+    assert len(data) == 8 << 20 and data[4 << 20 :].startswith(b"data in the middle")
+
+
+def test_erofs_pull_fails_on_a_file_in_the_way(tmp_path, erofs_pull, monkeypatch):
+    """A member under a path that is a file fails the pull, as extraction
+    fails it, rather than being dropped."""
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    layers = [_layer(("app", b"a file", {}), ("app/config.yaml", b"x: 1", {}))]
+    with _serve_image(monkeypatch, layers) as image:
+        with pytest.raises(SandboxCreationError):
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+    assert any("isn't a directory" in warning for warning in warnings)
+
+
+def test_erofs_pull_dies_with_its_worker(tmp_path, erofs_pull, monkeypatch):
+    """erofs-pull doesn't outlive the process that started it."""
+    import psutil
+
+    stalled = threading.Event()
+
+    def stall(index, handler, blob):
+        handler.send_response(200)
+        handler.send_header("Content-Length", str(len(blob)))
+        handler.end_headers()
+        handler.wfile.write(blob[:100])
+        handler.wfile.flush()
+        stalled.wait(30)
+
+    layers = [_layer(("big", os.urandom(1 << 20), {}))]
+    with _serve_image(monkeypatch, layers, stall) as image:
+        worker = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from ray.experimental.sandbox._internal import image_utils;"
+                "image_utils.pull_and_extract_container_image(sys.argv[1], images_dir=sys.argv[2])",
+                image,
+                str(tmp_path / "images"),
+            ],
+            # Not the test's directory, whose packages could shadow modules.
+            cwd=tmp_path,
+        )
+        try:
+            deadline = time.monotonic() + 30
+            pulls = []
+            while not pulls and time.monotonic() < deadline:
+                pulls = [
+                    p
+                    for p in psutil.Process(worker.pid).children()
+                    if "erofs" in " ".join(p.cmdline())
+                ]
+                time.sleep(0.1)
+            assert pulls, "erofs-pull didn't start"
+            worker.kill()
+            worker.wait()
+            gone, alive = psutil.wait_procs(pulls, timeout=10)
+            assert alive == []
+        finally:
+            stalled.set()
+            worker.kill()
+
+
+def test_erofs_pull_slots_limit_concurrent_builds(tmp_path, monkeypatch):
+    """With one slot, a second build waits until the first is done."""
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL_MAX_CONCURRENT", "1")
+    order = []
+    holding = threading.Event()
+    release = threading.Event()
+
+    def first():
+        with image_utils._erofs_pull_slot(str(tmp_path)):
+            order.append("first in")
+            holding.set()
+            release.wait(10)
+            order.append("first out")
+
+    def second():
+        holding.wait(10)
+        with image_utils._erofs_pull_slot(str(tmp_path)):
+            order.append("second in")
+
+    threads = [threading.Thread(target=first), threading.Thread(target=second)]
+    for t in threads:
+        t.start()
+    holding.wait(10)
+    time.sleep(0.5)
+    assert order == ["first in"]
+    release.set()
+    for t in threads:
+        t.join(10)
+    assert order == ["first in", "first out", "second in"]

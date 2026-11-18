@@ -336,34 +336,13 @@ load("@rules_rust//crate_universe:repositories.bzl", "crate_universe_dependencie
 
 crate_universe_dependencies()
 
-load("@rules_rust//crate_universe:defs.bzl", "crate", "crates_repository")
+load("@rules_rust//crate_universe:defs.bzl", "crates_repository")
 
 # The crates erofs-pull uses, pinned by its Cargo.lock. After changing its
 # Cargo.toml or Cargo.lock, repin with:
 #   CARGO_BAZEL_REPIN=1 bazel sync --only=erofs_pull_crates
 crates_repository(
     name = "erofs_pull_crates",
-    annotations = {
-        # rapidgzip-sys's build script runs CMake (and nasm, for ISA-L) itself.
-        # Under Bazel, its native library comes from rules_foreign_cc instead
-        # (//src/ray/sandbox/erofs_pull:rapidgzip_native); the patch adds the
-        # CMake options that build needs.
-        "rapidgzip-sys": [crate.annotation(
-            additive_build_file_content = """
-filegroup(
-    name = "native_srcs",
-    # Cargo.toml anchors the source root rules_foreign_cc infers (the
-    # shallowest directory) at the crate's root.
-    srcs = ["Cargo.toml"] + glob(["native/**", "vendor/**"]),
-    visibility = ["//visibility:public"],
-)
-""",
-            deps = ["@io_ray//src/ray/sandbox/erofs_pull:rapidgzip_native"],
-            gen_build_script = False,
-            patch_args = ["-p1"],
-            patches = ["@io_ray//thirdparty/patches:rapidgzip-sys-bazel.patch"],
-        )],
-    },
     cargo_lockfile = "//src/ray/sandbox/erofs_pull:Cargo.lock",
     lockfile = "//src/ray/sandbox/erofs_pull:cargo-bazel-lock.json",
     manifests = ["//src/ray/sandbox/erofs_pull:Cargo.toml"],

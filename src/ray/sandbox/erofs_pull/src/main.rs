@@ -14,6 +14,7 @@
 
 mod erofs;
 mod fetch;
+mod gzip;
 mod layer;
 mod tree;
 
@@ -55,6 +56,9 @@ struct Spec {
     /// kernels), which gVisor requires.
     #[serde(default = "default_block_size")]
     block_size: u64,
+    /// The pid of the process that started the pull, to exit if it's gone.
+    #[serde(default)]
+    parent_pid: Option<u32>,
     /// rapidgzip threads per layer; 0 for all cores.
     #[serde(default)]
     gzip_threads: u32,
@@ -192,7 +196,7 @@ fn run(spec: Spec) -> Result<(), String> {
                 if let Some(previous) = wait_for {
                     let _ = previous.recv();
                 }
-                let result = layer::read_layer(BlobReader::new(b2), threads, &out).map(|e| (e, Instant::now()));
+                let result = layer::read_layer(b2, threads, &out).map(|e| (e, Instant::now()));
                 let _ = done.send(());
                 result
             })
@@ -263,6 +267,10 @@ fn run(spec: Spec) -> Result<(), String> {
 }
 
 fn main() {
+    // Die with the Ray worker that started the pull, rather than finish a
+    // pull nobody waits for. (PR_SET_PDEATHSIG follows the thread that
+    // spawned us, which waits for us in subprocess.run.)
+    unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) };
     let spec: Spec = match serde_json::from_reader(io::stdin()) {
         Ok(s) => s,
         Err(e) => {
@@ -270,6 +278,14 @@ fn main() {
             std::process::exit(2);
         }
     };
+    // A worker that died before the prctl took effect left us reparented.
+    if spec
+        .parent_pid
+        .is_some_and(|pid| pid != unsafe { libc::getppid() } as u32)
+    {
+        eprintln!("erofs-pull: the process that started the pull is gone");
+        std::process::exit(1);
+    }
     if let Err(e) = run(spec) {
         eprintln!("erofs-pull: {e}");
         std::process::exit(1);

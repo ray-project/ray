@@ -411,6 +411,16 @@ def ray_deps_setup():
     # need bzlmod. Declared after rules_foreign_cc and before
     # rules_rust_dependencies(), whose maybe() calls keep Ray's own pins of
     # rules_cc, bazel_skylib, platforms and rules_shell.
+    # rapidgzip (parallel gzip decoding) for //src/ray/sandbox/erofs_pull, from
+    # its upstream library repository at a release tag.
+    auto_http_archive(
+        name = "rapidgzip",
+        build_file = "@io_ray//bazel:rapidgzip.BUILD",
+        sha256 = "69637d58fea7ec136b870b71e33a922a0a808feb782f3c0e16010dafe1780c8e",
+        strip_prefix = "librapidarchive-rapidgzip-v0.16.1",
+        url = "https://github.com/mxmlnkn/librapidarchive/archive/refs/tags/rapidgzip-v0.16.1.tar.gz",
+    )
+
     auto_http_archive(
         name = "rules_rust",
         sha256 = "5ffd9ff1f6f2f14f2057b7cbaa91a5e6acd9a4cbded5ac81dad9beb36859601e",

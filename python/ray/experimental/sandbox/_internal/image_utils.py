@@ -17,6 +17,7 @@ import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1390,6 +1391,55 @@ _EROFS_PULL_PACKAGED = os.path.join(
 )
 
 
+# rapidgzip's decoding threads per erofs-pull: one per CPU up to this many.
+# More use more memory without making pulls faster (pytorch/pytorch peaked at
+# 1.1 GB on 32 threads and 0.8 GB on 16, in the same time).
+_EROFS_PULL_MAX_GZIP_THREADS = 16
+# How many erofs-pull builds a node runs at once, by default max(2, CPUs / 8);
+# set to change it. Other pulls wait for a slot.
+_EROFS_PULL_MAX_CONCURRENT_ENV = "RAY_SANDBOX_EROFS_PULL_MAX_CONCURRENT"
+_EROFS_PULL_SLOTS_DIR = ".erofs-pull-slots"
+
+
+def _available_cpus() -> int:
+    try:
+        return len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return os.cpu_count() or 1
+
+
+@contextlib.contextmanager
+def _erofs_pull_slot(images_dir: str) -> Iterator[None]:
+    """Hold one of the node's erofs-pull slots, waiting for one to be free.
+
+    Each slot is an ``flock`` on a file under ``images_dir``, so pulls in
+    every Ray worker on the node share them, and a slot frees itself when
+    its holder exits. Eviction skips the directory, as its name starts with
+    a dot.
+    """
+    try:
+        slots = int(os.environ[_EROFS_PULL_MAX_CONCURRENT_ENV])
+    except (KeyError, ValueError):
+        slots = max(2, _available_cpus() // 8)
+    slots = max(1, slots)
+    slots_dir = os.path.join(images_dir, _EROFS_PULL_SLOTS_DIR)
+    os.makedirs(slots_dir, exist_ok=True)
+    while True:
+        for i in range(slots):
+            slot = open(os.path.join(slots_dir, f"{i}.lock"), "a")
+            try:
+                fcntl.flock(slot, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                slot.close()
+                continue
+            try:
+                yield
+            finally:
+                slot.close()
+            return
+        time.sleep(0.1)
+
+
 def _erofs_pull_binary() -> Optional[str]:
     """The erofs-pull binary to build images with, or None for none."""
     binary = os.environ.get(_EROFS_PULL_ENV) or _EROFS_PULL_PACKAGED
@@ -1452,6 +1502,9 @@ def _build_image_with_erofs_pull(
         "out": out_path,
         "block_size": mmap.PAGESIZE,
         "timeout_seconds": timeout_seconds,
+        "gzip_threads": min(_available_cpus(), _EROFS_PULL_MAX_GZIP_THREADS),
+        # erofs-pull exits if this process is gone (it also dies with it).
+        "parent_pid": os.getpid(),
         # The proxies urllib uses for Ray's own registry requests.
         "proxies": {
             scheme: url
@@ -1466,9 +1519,10 @@ def _build_image_with_erofs_pull(
     if paths.capath:
         env.setdefault("SSL_CERT_DIR", paths.capath)
     try:
-        result = subprocess.run(
-            [binary], input=json.dumps(spec).encode(), capture_output=True, env=env
-        )
+        with _erofs_pull_slot(blob_dir):
+            result = subprocess.run(
+                [binary], input=json.dumps(spec).encode(), capture_output=True, env=env
+            )
         failure = result.returncode and (
             result.stderr.decode(errors="replace").strip()
             or f"exit status {result.returncode}"

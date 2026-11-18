@@ -8,8 +8,12 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::os::unix::fs::FileExt;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use tar::EntryType;
+
+use crate::fetch::{Blob, BlobReader};
+use crate::gzip::GzipReader;
 
 /// The output image: data blocks are handed out from block 1 on (block 0
 /// holds the superblock). The block size is the host's page size: gVisor
@@ -114,18 +118,22 @@ impl Read for Pipe {
     }
 }
 
+fn unsupported<R: Read>(entry: &tar::Entry<R>, what: &str) -> io::Error {
+    let path = entry.path_bytes();
+    io::Error::other(format!(
+        "{:?} is {what}, which erofs-pull doesn't build",
+        String::from_utf8_lossy(&path)
+    ))
+}
+
 /// Gzip layers decompress with rapidgzip, in parallel across `threads`
-/// (0: rapidgzip's default, all cores); its workers read ahead in the blob,
-/// waiting where it hasn't arrived yet.
-pub fn read_layer(reader: crate::fetch::BlobReader, threads: u32, out: &Out) -> io::Result<Vec<Entry>> {
-    let mut buffered = BufReader::with_capacity(1 << 20, reader.clone());
+/// (0: one per core); its threads read ahead in the blob, waiting where it
+/// hasn't arrived yet.
+pub fn read_layer(blob: Arc<Blob>, threads: u32, out: &Out) -> io::Result<Vec<Entry>> {
+    let mut buffered = BufReader::with_capacity(1 << 20, BlobReader::new(blob.clone()));
     let head = buffered.fill_buf()?;
     let stream = if head.starts_with(&[0x1f, 0x8b]) {
-        let rgz = rapidgzip::ReaderBuilder::new()
-            .parallelism(threads)
-            .open_cloneable_reader(reader)
-            .map_err(|e| io::Error::other(format!("rapidgzip: {e}")))?;
-        Pipe::spawn(rgz)
+        Pipe::spawn(GzipReader::open(blob, threads)?)
     } else if head.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
         return Err(io::Error::other("zstd layers are not supported by this prototype"));
     } else {
@@ -144,8 +152,14 @@ pub fn read_layer(reader: crate::fetch::BlobReader, threads: u32, out: &Out) -> 
         let etype = header.entry_type();
         if let Ok(Some(pax)) = entry.pax_extensions() {
             for ext in pax.flatten() {
+                let key = ext.key().unwrap_or("");
+                if key.starts_with("GNU.sparse.") {
+                    // A PAX sparse file: its data here is the sparse map and
+                    // the data blocks, not the file.
+                    return Err(unsupported(&entry, "a sparse file (PAX)"));
+                }
                 let v = ext.value().ok().map(|v| v.split('.').next().unwrap_or("").to_string());
-                match (ext.key().unwrap_or(""), v.and_then(|v| v.parse::<u64>().ok())) {
+                match (key, v.and_then(|v| v.parse::<u64>().ok())) {
                     ("uid", Some(v)) => uid = v as u32,
                     ("gid", Some(v)) => gid = v as u32,
                     ("mtime", Some(v)) => mtime = v,
@@ -176,7 +190,10 @@ pub fn read_layer(reader: crate::fetch::BlobReader, threads: u32, out: &Out) -> 
             EntryType::Symlink => Kind::Sym(entry.link_name_bytes().map(|l| l.into_owned()).unwrap_or_default()),
             EntryType::Link => Kind::Hard(entry.link_name_bytes().map(|l| l.into_owned()).unwrap_or_default()),
             EntryType::Char | EntryType::Block | EntryType::Fifo => Kind::Other,
-            _ => continue,
+            // Anything else erofs-pull doesn't model the way extraction
+            // (Python's tarfile) does: GNU sparse files, PAX global headers,
+            // volume labels and the like. Extraction builds such a layer.
+            other => return Err(unsupported(&entry, &format!("an entry of type {other:?}"))),
         };
         entries.push(Entry {
             path,

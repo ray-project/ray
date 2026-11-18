@@ -153,10 +153,12 @@ impl Tree {
         Some(cur)
     }
 
-    /// Applies a layer's entry. Fails where extraction does on a name longer
-    /// than `MAX_NAME`: a parent directory, file or directory it would create
-    /// (`os.makedirs` and `os.open` raise ENAMETOOLONG); a symlink or hard
-    /// link of such a name is skipped, as extraction ignores the error there.
+    /// Applies a layer's entry. Fails where extraction does: on a name longer
+    /// than `MAX_NAME` for a parent directory, file or directory it would
+    /// create (`os.makedirs` and `os.open` raise ENAMETOOLONG), and on a
+    /// parent that isn't a directory (`os.makedirs` raises); a symlink or
+    /// hard link of a long name is skipped, as extraction ignores the error
+    /// there.
     pub fn apply(&mut self, e: &Entry) -> Result<(), String> {
         let too_long = || {
             format!(
@@ -164,6 +166,9 @@ impl Tree {
                 String::from_utf8_lossy(&e.path)
             )
         };
+        // makedirs fails on a parent that's a file (or a symlink to one):
+        // extraction's os.makedirs raises there too, and the pull fails.
+        let not_a_directory = || format!("a parent of {:?} isn't a directory", String::from_utf8_lossy(&e.path));
         let path = &e.path[e.path.iter().take_while(|&&c| c == b'/').count()..];
         if path.split(|&c| c == b'/').any(|c| c == b"..") {
             return Ok(());
@@ -249,7 +254,9 @@ impl Tree {
                 if base.len() > MAX_NAME {
                     return Ok(());
                 }
-                let Some(p) = self.makedirs(&parent) else { return Ok(()) };
+                let Some(p) = self.makedirs(&parent) else {
+                    return Err(not_a_directory());
+                };
                 self.children(p).unwrap().insert(base, target);
                 return Ok(());
             }
@@ -270,7 +277,9 @@ impl Tree {
                 _ => Err(too_long()),
             };
         }
-        let Some(p) = self.makedirs(&parent) else { return Ok(()) };
+        let Some(p) = self.makedirs(&parent) else {
+            return Err(not_a_directory());
+        };
         let id = self.add(Node {
             kind,
             mode,
@@ -379,6 +388,22 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_file_in_the_way_of_a_parent_fails_as_extraction_does() {
+        let reg = || Kind::Reg { blk: 0, size: 0 };
+        let mut tree = Tree::new(0);
+        tree.apply(&entry(b"app".to_vec(), reg())).unwrap();
+        tree.apply(&entry(b"target".to_vec(), reg())).unwrap();
+        for kind in [reg(), Kind::Sym(b"x".to_vec()), Kind::Hard(b"target".to_vec())] {
+            let err = tree.apply(&entry(b"app/config.yaml".to_vec(), kind)).unwrap_err();
+            assert!(err.contains("isn't a directory"), "{err}");
+        }
+        // The seeds still skip what's in their way, as extraction's do.
+        tree.apply(&entry(b"run".to_vec(), reg())).unwrap();
+        tree.apply(&entry(b"dev".to_vec(), reg())).unwrap();
+        tree.seed();
     }
 
     #[test]

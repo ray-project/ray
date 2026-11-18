@@ -46,7 +46,7 @@ impl Remote {
         let mut proxied = HashMap::new();
         for scheme in ["http", "https"] {
             if let Some(url) = proxies.get(scheme).filter(|url| !url.is_empty()) {
-                let (address, authorization) = parse_proxy(url);
+                let (address, authorization) = parse_proxy(url)?;
                 let proxy = ureq::Proxy::new(address)
                     .map_err(|e| format!("unsupported {scheme} proxy {:?}: {e}", redact(url)))?;
                 proxied.insert(scheme.to_string(), (agent(timeout, Some(proxy)), authorization));
@@ -114,11 +114,11 @@ fn proxy_bypass(no_proxy: Option<&str>, host: &str) -> bool {
 /// plain HTTP (HTTPS goes through it with CONNECT), whatever scheme the URL
 /// names, and the credentials are percent-decoded and used only if both are
 /// there. Returns the proxy URL for ureq and the `Proxy-Authorization` value.
-fn parse_proxy(url: &str) -> (String, Option<String>) {
+fn parse_proxy(url: &str) -> Result<(String, Option<String>), String> {
     let rest = match url.split_once("://") {
         Some((scheme, rest)) if scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https") => rest,
         // socks5://... and the like: let ureq refuse what it can't do.
-        Some(_) => return (url.to_string(), None),
+        Some(_) => return Ok((url.to_string(), None)),
         None => url,
     };
     let end = match rest.find('@') {
@@ -127,15 +127,21 @@ fn parse_proxy(url: &str) -> (String, Option<String>) {
     };
     let authority = &rest[..end.unwrap_or(rest.len())];
     let Some((userinfo, hostport)) = authority.rsplit_once('@') else {
-        return (format!("http://{authority}"), None);
+        return Ok((format!("http://{authority}"), None));
     };
     match userinfo.split_once(':') {
         Some((user, password)) if !user.is_empty() && !password.is_empty() => {
             let (user, password) = (percent_decode(user), percent_decode(password));
+            // ureq splits the user from the password at the first ':' and the
+            // credentials from the host at the last '@', so any password
+            // works, but a user name with a ':' can't be given to it.
+            if user.contains(':') {
+                return Err("a proxy user name with ':' isn't supported".into());
+            }
             let authorization = format!("Basic {}", base64(format!("{user}:{password}").as_bytes()));
-            (format!("http://{user}:{password}@{hostport}"), Some(authorization))
+            Ok((format!("http://{user}:{password}@{hostport}"), Some(authorization)))
         }
-        _ => (format!("http://{hostport}"), None),
+        _ => Ok((format!("http://{hostport}"), None)),
     }
 }
 
@@ -287,6 +293,12 @@ impl Blob {
         }))
     }
 
+    /// The partial or cached blob file, open for reading.
+    pub(crate) fn raw_fd(&self) -> std::os::fd::RawFd {
+        use std::os::fd::AsRawFd;
+        self.file.as_raw_fd()
+    }
+
     pub fn cached(&self) -> bool {
         self.cached
     }
@@ -324,7 +336,7 @@ impl Blob {
     }
 
     /// Waits until the first `end` bytes are available.
-    fn wait_until(&self, end: u64) -> io::Result<()> {
+    pub(crate) fn wait_until(&self, end: u64) -> io::Result<()> {
         let mut st = self.state.lock().unwrap();
         loop {
             if let Some(e) = &st.error {
@@ -483,6 +495,34 @@ impl Blob {
     }
 }
 
+/// `message` with every URL's query string cut off. ureq's errors name the
+/// URL, and a redirected blob's is presigned storage whose query string is a
+/// credential (`X-Amz-Signature=...`); these messages end up in Ray's logs.
+fn without_queries(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(start) = rest.find("://") {
+        // The URL runs to the next whitespace, quote or bracket.
+        let end = rest[start..]
+            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | ')'))
+            .map_or(rest.len(), |i| start + i);
+        let url = &rest[..end];
+        match url.find('?') {
+            // A trailing ':' (ureq's "<url>: <error>") isn't part of the query.
+            Some(q) => {
+                out.push_str(&url[..q]);
+                if url.ends_with(':') {
+                    out.push(':');
+                }
+            }
+            None => out.push_str(url),
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Resolves a redirect's `Location` against the URL that answered it.
 fn join_url(base: &str, location: &str) -> String {
     if location.contains("://") {
@@ -520,8 +560,11 @@ fn request(remote: &Remote, url: &str, auth: bool, range: Option<(u64, u64)>) ->
     }
     match req.call() {
         Ok(r) => Ok(r),
-        Err(ureq::Error::Status(code, r)) => Err(format!("HTTP {code}: {}", r.into_string().unwrap_or_default())),
-        Err(e) => Err(e.to_string()),
+        Err(ureq::Error::Status(code, r)) => {
+            let body: String = r.into_string().unwrap_or_default().chars().take(300).collect();
+            Err(without_queries(&format!("HTTP {code}: {body}")))
+        }
+        Err(e) => Err(without_queries(&e.to_string())),
     }
 }
 
@@ -571,10 +614,8 @@ pub fn download_all(remote: Arc<Remote>, blobs: &[Arc<Blob>], connections: usize
         .collect()
 }
 
-/// Reader over a blob that may still be downloading: a read waits until
-/// every byte it asks for has arrived. Clones read independently, which is
-/// what rapidgzip's parallel workers need.
-#[derive(Clone)]
+/// Sequential reader over a blob that may still be downloading: a read waits
+/// until every byte it asks for has arrived.
 pub struct BlobReader {
     blob: Arc<Blob>,
     pos: u64,
@@ -599,24 +640,33 @@ impl Read for BlobReader {
     }
 }
 
-impl io::Seek for BlobReader {
-    fn seek(&mut self, to: io::SeekFrom) -> io::Result<u64> {
-        let pos = match to {
-            io::SeekFrom::Start(p) => p as i64,
-            io::SeekFrom::Current(d) => self.pos as i64 + d,
-            io::SeekFrom::End(d) => self.blob.size as i64 + d,
-        };
-        if pos < 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "seek before start"));
-        }
-        self.pos = pos as u64;
-        Ok(self.pos)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{base64, digest_hex, join_url, parse_proxy, proxy_bypass};
+    use super::{base64, digest_hex, join_url, parse_proxy, proxy_bypass, without_queries};
+
+    #[test]
+    fn query_strings_stay_out_of_error_messages() {
+        let url = "https://bucket.s3.amazonaws.com/blob?X-Amz-Credential=AKIA%2F&X-Amz-Signature=abc";
+        assert_eq!(
+            without_queries(&format!("{url}: Connection Failed: Connect error")),
+            "https://bucket.s3.amazonaws.com/blob: Connection Failed: Connect error"
+        );
+        assert_eq!(
+            without_queries(&format!("HTTP 403: <Error><Url>{url}</Url></Error>")),
+            "HTTP 403: <Error><Url>https://bucket.s3.amazonaws.com/blob</Url></Error>"
+        );
+        assert_eq!(without_queries("no url here?"), "no url here?");
+        assert_eq!(
+            without_queries("a http://x/y and http://z/w?q=1 end"),
+            "a http://x/y and http://z/w end"
+        );
+    }
+
+    #[test]
+    fn proxy_user_names_with_a_colon_are_refused() {
+        assert!(parse_proxy("http://us%3Aer:pass@proxy:3128").is_err());
+        assert!(parse_proxy("http://user:pa%3Ass@proxy:3128").is_ok());
+    }
 
     #[test]
     fn no_proxy_matches_as_urllib_does() {
@@ -645,18 +695,18 @@ mod tests {
 
     #[test]
     fn proxy_urls_read_as_urllib_reads_them() {
-        let plain = |url: &str| parse_proxy(url).0;
+        let plain = |url: &str| parse_proxy(url).unwrap().0;
         assert_eq!(plain("http://proxy:3128"), "http://proxy:3128");
         assert_eq!(plain("https://proxy:3128/"), "http://proxy:3128");
         assert_eq!(plain("proxy:3128"), "http://proxy:3128");
         assert_eq!(plain("socks5://proxy:1080"), "socks5://proxy:1080");
         // Credentials only when both are there, percent-decoded.
         assert_eq!(
-            parse_proxy("http://user@proxy:3128"),
+            parse_proxy("http://user@proxy:3128").unwrap(),
             ("http://proxy:3128".into(), None)
         );
         assert_eq!(
-            parse_proxy("http://us%65r:p%40ss/w@proxy:3128/x"),
+            parse_proxy("http://us%65r:p%40ss/w@proxy:3128/x").unwrap(),
             (
                 "http://user:p@ss/w@proxy:3128".into(),
                 Some(format!("Basic {}", base64(b"user:p@ss/w")))

@@ -1,5 +1,5 @@
 load("@erofs_pull_crates//:defs.bzl", "all_crate_deps")
-load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
 
 # erofs-pull builds a Ray Sandbox root filesystem (an EROFS image gVisor
@@ -19,8 +19,9 @@ rust_binary(
         "-Cstrip=symbols",
     ],
     target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//visibility:public"],
-    deps = all_crate_deps(normal = True),
+    # Packaged into the wheel by //:erofs_pull_files.
+    visibility = ["//:__pkg__"],
+    deps = all_crate_deps(normal = True) + [":gzip_shim"],
 )
 
 rust_test(
@@ -30,45 +31,19 @@ rust_test(
     target_compatible_with = ["@platforms//os:linux"],
 )
 
-# rapidgzip-sys's native library (rapidgzip's C API over librapidarchive, with
-# zlib-ng), linked into the rapidgzip-sys crate in place of its
-# build script (see the crates_repository annotation in WORKSPACE and
-# thirdparty/patches/rapidgzip-sys-bazel.patch).
-cmake(
-    name = "rapidgzip_native",
-    cache_entries = {
-        # No ISA-L: its x86 assembly needs nasm, and rapidgzip's own decoder
-        # is within ~5% of it here.
-        "RAPIDGZIP_NO_ISAL": "ON",
-        # No LTO: GCC's bitcode-only LTO objects don't link into a Rust binary.
-        "RAPIDGZIP_NO_IPO": "ON",
-        # Install libzlibstatic.a next to the C API.
-        "RAPIDGZIP_INSTALL_DEPS": "ON",
-        # The system allocator, not rpmalloc: rpmalloc keeps freed memory
-        # cached per decoder thread, which doubled erofs-pull's peak memory
-        # (2.5 GB against 1.2 GB pulling pytorch/pytorch on 32 cores) for
-        # about 0.2 s of a 5.8 s pull.
-        "RAPIDGZIP_NO_RPMALLOC": "ON",
-        "CMAKE_INSTALL_LIBDIR": "lib",
-    },
-    # Make, not Ninja; see bazel/rocksdb.BUILD.
-    generate_args = ["-GUnix Makefiles"],
-    lib_source = "@erofs_pull_crates__rapidgzip-sys-1.2.1//:native_srcs",
-    # rapidgzip is C++. The link of erofs_pull must name libstdc++ after
-    # these libraries: devtoolset's libstdc++ (manylinux) puts the symbols
-    # newer than the system's libstdc++.so.6 in a static
-    # libstdc++_nonshared.a, which only resolves references made before it.
-    # libc follows for what that archive needs from libc_nonshared.a.
+# erofs-pull's own C API over rapidgzip (src/gzip.cpp; Rust side src/gzip.rs).
+cc_library(
+    name = "gzip_shim",
+    srcs = ["src/gzip.cpp"],
+    # This is C++. The link of erofs_pull must name libstdc++ after it:
+    # devtoolset's libstdc++ (manylinux) puts the symbols newer than the
+    # system's libstdc++.so.6 in a static libstdc++_nonshared.a, which only
+    # resolves references made before it; libc follows for what that archive
+    # needs from libc_nonshared.a.
     linkopts = [
         "-lstdc++",
         "-lc",
     ],
-    # Static libraries resolve left to right: the C API, then what it uses.
-    out_static_libs = [
-        "librapidgzip-capi.a",
-        "libzlibstatic.a",
-    ],
     target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["@erofs_pull_crates__rapidgzip-sys-1.2.1//:__pkg__"],
-    working_directory = "native/rapidgzip-capi",
+    deps = ["@rapidgzip"],
 )
