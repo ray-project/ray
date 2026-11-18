@@ -12,6 +12,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state import state as ray_state
 from ray.exceptions import RayActorError, RayTaskError
 from ray.runtime_env import RuntimeEnv
+from ray.train.backend import Backend, BackendConfig
 from ray.train.health._internal.probe_utils import ScheduledProbe
 from ray.train.health.probe import ProbeResult, WorkerProbe
 from ray.train.v2._internal.callbacks import backend_setup
@@ -30,6 +31,7 @@ from ray.train.v2._internal.exceptions import (
 )
 from ray.train.v2._internal.execution.callback import (
     ReplicaGroupCallback,
+    WorkerCallback,
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import (
@@ -907,6 +909,116 @@ def test_backend_setup_callback_propagates_unexpected_shutdown_error():
     )
     with pytest.raises(ValueError, match="unexpected backend bug"):
         cb.before_execution_group_shutdown(MagicMock())
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["actor_exit", "task_error", "unfinished", "clean_finish"],
+)
+def test_backend_setup_callback_only_shuts_down_cleanly_finished_polled_group(
+    tmp_path, mode
+):
+    """Verify `BackendSetupCallback` skips collective `on_shutdown` whenever a
+    polled worker group has errors or has not finished (worker crash, task
+    exception, preemption drain timeout, NCCL hang, or mid-step elastic resize),
+    preventing main actor threads from hanging in collective teardown and
+    stalling `_shutdown_workers`, while still running `on_shutdown` after normal
+    training completion (`status.finished and not status.errors`).
+    """
+    trigger_file = tmp_path / "trigger.txt"
+    started_dir = tmp_path / "started"
+    started_dir.mkdir()
+    worker_shutdown_dir = tmp_path / "worker_shutdown"
+    worker_shutdown_dir.mkdir()
+    on_shutdown_ranks = []
+
+    class TestCollectiveBackend(Backend):
+        def on_shutdown(self, worker_group, backend_config):
+            if mode == "clean_finish":
+                ranks = worker_group.execute(
+                    lambda: get_train_context().get_world_rank()
+                )
+                on_shutdown_ranks.append(ranks)
+                return
+            on_shutdown_ranks.append([])
+            # Simulate `_JaxBackend.on_shutdown` / `_TorchBackend.on_shutdown`:
+            # dispatches a blocking collective teardown task onto all workers'
+            # single-threaded main actor loops before calling `ray.get`.
+            futures = worker_group.execute_async(lambda: time.sleep(30))
+            try:
+                ray.get(futures, timeout=30)
+            except Exception:
+                pass
+
+    class TestBackendConfig(BackendConfig):
+        @property
+        def backend_cls(self):
+            return TestCollectiveBackend
+
+    class RecordWorkerShutdownCallback(WorkerCallback):
+        def before_worker_shutdown(self):
+            rank = get_train_context().get_world_rank()
+            (worker_shutdown_dir / f"rank_{rank}").touch()
+
+    def train_fn():
+        rank = get_train_context().get_world_rank()
+        (started_dir / f"rank_{rank}").touch()
+        while not trigger_file.exists():
+            time.sleep(0.01)
+        if mode == "clean_finish":
+            return
+        if mode in ("actor_exit", "task_error") and rank == 0:
+            if mode == "actor_exit":
+                os._exit(1)
+            raise RuntimeError("Rank 0 training failure")
+        time.sleep(30)
+
+    wg = _default_inactive_worker_group(
+        worker_group_context=_default_worker_group_context(
+            train_fn_ref=DummyObjectRefWrapper(train_fn),
+        ),
+        callbacks=[
+            BackendSetupCallback(TestBackendConfig()),
+            RecordWorkerShutdownCallback(),
+        ],
+    )
+    wg._start()
+
+    deadline = time.monotonic() + 5
+    while len(list(started_dir.iterdir())) < 4:
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+
+    trigger_file.touch()
+    while True:
+        status = wg.poll_status()
+        if mode in ("actor_exit", "task_error") and status.errors:
+            assert 0 in status.errors
+            break
+        if mode == "unfinished":
+            assert not status.errors
+            assert not status.finished
+            break
+        if mode == "clean_finish" and status.finished:
+            assert not status.errors
+            break
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+
+    shutdown_start = time.monotonic()
+    wg.shutdown()
+    shutdown_elapsed = time.monotonic() - shutdown_start
+
+    if mode == "clean_finish":
+        assert on_shutdown_ranks == [[0, 1, 2, 3]]
+    else:
+        assert not on_shutdown_ranks
+    # Surviving workers must not be wedged in `on_shutdown` and must complete
+    # `before_worker_shutdown` well under `_shutdown_workers`'s 5s patience timeout.
+    assert shutdown_elapsed < 1.5
+    surviving_ranks = {1, 2, 3} if mode == "actor_exit" else {0, 1, 2, 3}
+    for rank in surviving_ranks:
+        assert (worker_shutdown_dir / f"rank_{rank}").exists()
 
 
 @pytest.mark.parametrize("replace_rg", [False, True], ids=["start", "replace_rg"])
