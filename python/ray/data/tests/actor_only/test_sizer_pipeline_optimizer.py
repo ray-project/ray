@@ -109,6 +109,8 @@ class _Pool:
         # Claimed actors that left the pool without starting (cancelled/died).
         self.lost_ids = set(lost_ids)
         self.running_ids = list(running_ids)
+        # (limit, node_id) of every reclaim_draining_actors call.
+        self.reclaims = []
 
     def total_size(self):
         return self._current
@@ -140,6 +142,10 @@ class _Pool:
 
     def has_actor(self, actor_id):
         return actor_id not in self.lost_ids
+
+    def reclaim_draining_actors(self, *, limit, node_id=None):
+        self.reclaims.append((limit, node_id))
+        return limit
 
     def get_logical_ids(self):
         pending = [a for ids in self.pending_ids.values() for a in ids]
@@ -813,7 +819,10 @@ def test_capacity_transfer_places_the_recipient_once_donor_capacity_frees():
 
 def test_capacity_transfer_times_out_while_still_owed():
     # A donor that never frees its slot leaves the recipient owed: after the
-    # timeout the transfer closes as timed out and stops holding capacity.
+    # timeout the transfer closes as timed out and stops holding capacity. Its
+    # victim may never finish draining (its outputs can need the recipient to
+    # be consumed), so the timeout gives it back to the donor; otherwise each
+    # retry would strand one more donor actor.
     donor = _donor_op()
     recipient = _op("recipient")
     metrics = _Metrics()
@@ -839,6 +848,7 @@ def test_capacity_transfer_times_out_while_still_owed():
     assert not state.in_flight
     assert metrics.actions[-1] == (rule.name, "recipient", "timeout")
     assert late.free["node"].cpu == 0.5  # no longer held
+    assert donor._pool.reclaims == [(1, "node")]
 
 
 def test_capacity_transfer_timeout_restarts_when_actors_are_placed():
@@ -881,6 +891,9 @@ def test_capacity_transfer_timeout_restarts_when_actors_are_placed():
     assert metrics.actions[-1] == (rule.name, "recipient", "timeout")
     (cancel,) = cancelled
     assert cancel.nodes == ("node",)
+    # The victim's node was placed on, so its victim drained and is not
+    # reclaimed.
+    assert donor._pool.reclaims == []
 
 
 def test_transfer_whose_recipient_never_grew_closes_as_lost():

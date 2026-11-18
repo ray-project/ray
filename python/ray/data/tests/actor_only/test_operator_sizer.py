@@ -644,6 +644,37 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
     assert _tick(sizer).request[write].delta >= 1
 
 
+def test_op_awaiting_on_start_has_its_min_size_held_until_it_runs():
+    # An op held at zero actors until its on_start runs must still find room
+    # when it does. Without a hold, upstream ops can take every node's space
+    # first and the op (e.g. a Write sink) can then never place its first
+    # actor. Its min-size actors stay out of the tick's free capacity, with
+    # memory held as well as CPU, so every phase sizes and places around them.
+    read = _FakeOp(
+        "read", _FakePool(min_size=1, max_size=10, cpu=1, memory=2, running=1)
+    )
+    write = _write_op(
+        "write",
+        _FakePool(min_size=2, max_size=10, cpu=1, memory=3),
+        inputs=[read],
+        awaiting_on_start=True,
+    )
+    view = DatasetAllocationView(
+        reserved_by_node={"node0": ExecutionResources(cpu=8, memory=10)},
+        labels_by_node={"node0": {}},
+    )
+    sizer, _ = _bootstrapped(read, write, view=view)
+
+    free = _snapshot_of(sizer).free_by_node["node0"]
+    # 8 CPU / 10 memory, minus read's running actor, minus write's 2 held.
+    assert (free.cpu, free.memory) == (5, 2)
+
+    # Once on_start runs, the hold is gone; write is below min size, so it is
+    # granted and placed before anything else can take the room.
+    write.pending_on_start = False
+    assert _tick(sizer).request[write].delta == 2
+
+
 def test_warmup_latches_off_on_critical_op_first_output():
     ops, topo = _linear_pipeline(running=1)
     # Critical op = deepest task-launching op, i.e. the last non-sink map -> infer.

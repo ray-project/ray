@@ -30,6 +30,9 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 from ray.data._internal.experimental.execution.operators.placement_constraints import (  # noqa: E501
     is_constrained,
 )
+from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
+    pack_actors,
+)
 from ray.data._internal.experimental.execution.sizer.models import (
     TickCapacitySnapshot,
     TickContext,
@@ -252,19 +255,69 @@ class SizingTicker:
                 view_for_match, per_actor
             )
 
+        constrained_op_count_by_node = self._constrained_op_count_by_node(
+            schedulable_nodes_by_op
+        )
+        self._hold_floor_for_ops_awaiting_on_start(
+            free,
+            schedulable_nodes_by_op,
+            per_actor_resources_by_op,
+            constrained_op_count_by_node,
+        )
+
         return TickCapacitySnapshot(
             free_by_node=free,
             reserved_by_node=reserved,
             nodes_to_reclaim=nodes_to_reclaim,
             schedulable_nodes_by_op=schedulable_nodes_by_op,
             per_actor_resources_by_op=per_actor_resources_by_op,
-            constrained_op_count_by_node=self._constrained_op_count_by_node(
-                schedulable_nodes_by_op
-            ),
+            constrained_op_count_by_node=constrained_op_count_by_node,
             pg_free_by_bundle=self._pg_bundles.free_by_bundle(),
             schedulable_bundles_by_op=dict(self._pg_bundles.bundles_by_op),
             unknown_pg_headroom_by_op=self._unknown_pg_headroom(),
         )
+
+    def _hold_floor_for_ops_awaiting_on_start(
+        self,
+        free: Dict[NodeIdStr, ExecutionResources],
+        schedulable_nodes_by_op: Dict[
+            "ExperimentalActorPoolMapOperator", AbstractSet[NodeIdStr]
+        ],
+        per_actor_resources_by_op: Dict[
+            "ExperimentalActorPoolMapOperator", ExecutionResources
+        ],
+        constrained_op_count_by_node: Dict[NodeIdStr, int],
+    ) -> None:
+        """Take each op still waiting on its ``on_start`` out of ``free``
+        (mutated) for its min-size actors.
+
+        Such an op (e.g. a Write sink) gets no actor until its first input
+        arrives, so nothing else would hold room for it, and by then upstream
+        ops can have taken every node's space. Holding its floor here keeps
+        that room out of every phase's free map. The tick it is released, it
+        is below min size, so it is granted and placed first and claims the
+        room back. The floor is held whole per actor, on the least contended
+        nodes, as the ledger would place it; what does not fit is not held.
+        """
+        for op in self._profiles.non_pg_ops:
+            if not op.awaiting_on_start() or op.has_completed():
+                continue
+            pool = op.actor_pool
+            num_to_hold = pool.min_size() - pool.serving_size()
+            if num_to_hold <= 0:
+                continue
+            nodes = sorted(
+                (n for n in free if n in schedulable_nodes_by_op[op]),
+                key=lambda n: (constrained_op_count_by_node.get(n, 0), n),
+            )
+            held = pack_actors(free, nodes, per_actor_resources_by_op[op], num_to_hold)
+            logger.debug(
+                "OperatorSizer: holding %d/%d min-size actor(s) for %s until "
+                "its on_start runs",
+                len(held),
+                num_to_hold,
+                op.name,
+            )
 
     def _constrained_op_count_by_node(
         self,
