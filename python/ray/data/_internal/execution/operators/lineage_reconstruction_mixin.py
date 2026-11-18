@@ -79,6 +79,12 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
             for input_op in self.input_dependencies
         )
 
+    def _is_sink_operator(self) -> bool:
+        """Whether this op's tasks write to a sink, ending their lineage."""
+        from ray.data._internal.logical.operators.write_operator import Write
+
+        return any(isinstance(op, Write) for op in self._logical_operators)
+
     def _lineage_task_id_for(self, task_index: int) -> str:
         """The lineage id of this operator's ``task_index``-th fresh task. This provides a logical ID (stable across task reconstruction attempts) for lineage tracking."""
         return f"{self.id}:{task_index}"

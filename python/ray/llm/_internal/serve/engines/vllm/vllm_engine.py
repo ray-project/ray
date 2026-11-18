@@ -27,9 +27,6 @@ from vllm.exceptions import VLLMClientError
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.constants import (
-    RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
-)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -647,10 +644,7 @@ class VLLMEngine(LLMEngine):
         # resolving it per request would block the engine's event loop.
         engine_cls = AsyncLLM
         if is_kv_aware(self.llm_config):
-            engine_cls = enable_token_tracking(
-                AsyncLLM,
-                report_decode_progress=RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
-            )
+            engine_cls = enable_token_tracking(AsyncLLM)
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,

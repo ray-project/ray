@@ -973,34 +973,6 @@ py_test(
 )
 
 py_test(
-    name = "test_hash_shuffle_disk_smoke",
-    size = "medium",
-    srcs = ["tests/test_hash_shuffle_disk_smoke.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_hash_shuffle_disk_repartition",
-    size = "medium",
-    srcs = ["tests/test_hash_shuffle_disk_repartition.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
@@ -1990,6 +1962,20 @@ py_test(
     srcs = ["tests/test_sort.py"],
     tags = [
         "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_random_shuffle_v2",
+    size = "medium",
+    srcs = ["tests/test_random_shuffle_v2.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],

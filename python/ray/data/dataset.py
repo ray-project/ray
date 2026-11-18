@@ -115,6 +115,7 @@ from ray.data._internal.util import (
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.aggregate import (
     AggregateFn,
     AggregateFnV2,
@@ -4419,7 +4420,7 @@ class Dataset:
         descending: Union[bool, List[bool]] = False,
         boundaries: Optional[List[Union[int, float]]] = None,
     ) -> "Dataset":
-        """Sort the dataset by the specified key column or key function.
+        """Sort the dataset by the specified one or more key columns.
         The `key` parameter must be specified (i.e., it cannot be `None`).
 
         .. note::
@@ -7677,7 +7678,7 @@ class Dataset:
                         }
                     )
                 else:
-                    meta = schema.empty_table().to_pandas()
+                    meta = _create_empty_table(schema).to_pandas()
 
         dfs = []
         for ref_bundle in self.iter_internal_ref_bundles():
@@ -7717,7 +7718,7 @@ class Dataset:
         if isinstance(schema, PandasBlockSchema):
             dtypes = pd.Series(schema.types, index=schema.names)
         elif isinstance(schema, pa.Schema):
-            dtypes = schema.empty_table().to_pandas().dtypes
+            dtypes = _create_empty_table(schema).to_pandas().dtypes
         else:
             raise NotImplementedError(f"Unsupported format of schema {schema}")
         index_value = parse_index(pd.RangeIndex(-1))
@@ -7846,7 +7847,9 @@ class Dataset:
                     # `BlockAccessor.to_pandas()` path used for non-empty blocks
                     # so the two agree on column types (types_mapper, tensor
                     # casting, etc.).
-                    df = BlockAccessor.for_block(base_schema.empty_table()).to_pandas()
+                    df = BlockAccessor.for_block(
+                        _create_empty_table(base_schema)
+                    ).to_pandas()
                 else:
                     import pandas
 
