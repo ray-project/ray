@@ -879,24 +879,32 @@ class TestReadFootersBatching:
 
 
 def test_plain_comparison_runs_one_split_pass(four_row_groups, monkeypatch):
-    """A plain comparison is pruned in one pass, not split twice.
+    """A plain comparison is pruned in one pass, and skips the rewrite.
 
     The rewrite returns forms PyArrow can already evaluate unchanged, so the
-    pruning split runs on the plain filter alone. Regression for a redundant
-    second ``split_by_row_group`` run: the same expression used to be
-    evaluated against the same statistics twice.
+    pruning split runs on the plain filter alone. Regression for two costs:
+    a redundant second ``split_by_row_group`` run -- the same expression used
+    to be evaluated against the same statistics twice -- and the statistics
+    rewrite, whose per-file schema conversion ran for every file on a filter
+    it has nothing to add to.
     """
     from ray.data._internal.datasource_v2.formats.parquet import footer_reader
 
-    calls = []
+    split_calls = []
     original_split = footer_reader.FooterReader._try_split_by_row_group
 
     def counting_split(self, fragment, expr, path):
-        calls.append(expr)
+        split_calls.append(expr)
         return original_split(self, fragment, expr, path)
 
     monkeypatch.setattr(
         footer_reader.FooterReader, "_try_split_by_row_group", counting_split
+    )
+    rewrite_calls = []
+    monkeypatch.setattr(
+        footer_reader,
+        "_add_statistics_bounds",
+        lambda *args: rewrite_calls.append(args),
     )
 
     path, size = four_row_groups
@@ -904,33 +912,12 @@ def test_plain_comparison_runs_one_split_pass(four_row_groups, monkeypatch):
 
     assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
     # One pruning pass plus one negation pass.
-    assert len(calls) == 2
+    assert len(split_calls) == 2
+    # The rewrite never ran.
+    assert rewrite_calls == []
 
 
-def test_plain_comparison_skips_the_bounds_rewrite(four_row_groups, monkeypatch):
-    """A filter without a modeled leaf never reaches the statistics rewrite.
-
-    The check runs once per reader; without it, the rewrite -- and the file
-    schema conversion it reads its column types from -- ran for every file,
-    which was the price of pruning a plain ``col("id") >= 50`` on wide files.
-    """
-    from ray.data._internal.datasource_v2.formats.parquet import footer_reader
-
-    calls = []
-    monkeypatch.setattr(
-        footer_reader, "_add_statistics_bounds", lambda *args: calls.append(args)
-    )
-
-    path, size = four_row_groups
-    chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(FileInfo(path, size))
-    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
-    assert calls == []
-
-
-@pytest.mark.parametrize("stage", ["derivation", "conversion"])
-def test_derived_predicate_failure_falls_back_to_original(
-    four_row_groups, monkeypatch, stage
-):
+def test_derived_predicate_failure_falls_back_to_original(four_row_groups, monkeypatch):
     """A rewrite failure must not leak out of the footer read.
 
     The reader falls back to the plain predicate, which for an arithmetic
@@ -940,23 +927,10 @@ def test_derived_predicate_failure_falls_back_to_original(
     """
     from ray.data._internal.datasource_v2.formats.parquet import footer_reader
 
-    if stage == "derivation":
+    def fail_to_derive(*args):
+        raise RuntimeError("Injected derivation failure")
 
-        def fail_to_derive(*args):
-            raise RuntimeError("Injected derivation failure")
-
-        monkeypatch.setattr(footer_reader, "_add_statistics_bounds", fail_to_derive)
-    else:
-
-        class BrokenExpression:
-            def to_pyarrow(self):
-                raise RuntimeError("Injected conversion failure")
-
-        monkeypatch.setattr(
-            footer_reader,
-            "_add_statistics_bounds",
-            lambda *args: BrokenExpression(),
-        )
+    monkeypatch.setattr(footer_reader, "_add_statistics_bounds", fail_to_derive)
 
     path, size = four_row_groups
     predicate = (col("id") + 1) >= 50

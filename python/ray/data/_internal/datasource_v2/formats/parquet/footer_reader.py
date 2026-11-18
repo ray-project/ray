@@ -112,6 +112,22 @@ class _FilterLeaves(NamedTuple):
     has_float_leaf: bool = False
 
 
+class _FileFilter(NamedTuple):
+    """The filter forms one file's schema is read with.
+
+    ``file_filter`` is the physical predicate as PyArrow evaluates it;
+    ``prune_filter`` is the form row groups are pruned with (see
+    ``_prune_expression``). ``filter_columns`` are the physical predicate's
+    top-level columns, and ``complete_filter`` says whether it covers the
+    whole filter.
+    """
+
+    file_filter: "pc.Expression" | None
+    prune_filter: "pc.Expression" | None
+    filter_columns: set[str]
+    complete_filter: bool
+
+
 class FooterReader:
     """Reads Parquet footers and chunks files into row-group runs.
 
@@ -180,9 +196,6 @@ class FooterReader:
         self.filter: "pc.Expression" | None = (
             filter_expr.to_pyarrow() if filter_expr is not None else None
         )
-        # Whether the predicate holds a leaf shape the statistics bounds
-        # rewrite models. A predicate PyArrow already prunes by itself skips
-        # the rewrite, and with it the rewrite's per-file schema conversion.
         self._has_modelable_leaves = _has_modelable_leaf(self._predicate)
         # Top-level columns the predicate reads. A row group whose value in any
         # of them may be a null or a NaN cannot be an exact-survivor count --
@@ -271,22 +284,17 @@ class FooterReader:
                 has_float_leaf = has_float_leaf or _is_float_leaf(column)
         return _FilterLeaves(indices, matched == columns, has_float_leaf)
 
-    def _filter_for_file(
-        self, path: str, schema: ParquetSchema
-    ) -> tuple[pc.Expression | None, pc.Expression | None, set[str], bool]:
+    def _filter_for_file(self, path: str, schema: ParquetSchema) -> _FileFilter:
         """Select safe physical conditions and whether they cover the full filter.
 
-        Alongside the physical predicate this returns the form PyArrow prunes
-        with, which carries the statistics bounds of the leaves PyArrow cannot
-        prune with (see ``_add_statistics_bounds``); it is the plain predicate
-        when the rewrite has nothing to model.
+        The form PyArrow prunes with comes from ``_prune_expression``.
         """
         if self._predicate is None or (
             self.partitioning is None and self.logical_schema is None
         ):
-            return (
+            return _FileFilter(
                 self.filter,
-                self._prune_expression(self._predicate, schema),
+                self._prune_expression(self._predicate, self.filter, schema),
                 self.filter_columns,
                 True,
             )
@@ -330,36 +338,39 @@ class FooterReader:
                 physical = safe.data_predicate
                 complete = False
         if physical is None:
-            return None, None, set(), complete
+            return _FileFilter(None, None, set(), complete)
         expression = (
             self.filter if physical is self._predicate else physical.to_pyarrow()
         )
-        return (
+        return _FileFilter(
             expression,
-            self._prune_expression(physical, schema),
+            self._prune_expression(physical, expression, schema),
             set(get_column_references(physical)),
             complete,
         )
 
     def _prune_expression(
-        self, predicate: "Expr" | None, schema: ParquetSchema
+        self,
+        predicate: "Expr" | None,
+        plain: "pc.Expression" | None,
+        schema: ParquetSchema,
     ) -> "pc.Expression" | None:
         """Lower the per-file physical predicate to the PyArrow pruning form.
 
         The leaves PyArrow cannot prune with get their statistics bounds added
         first (see ``_add_statistics_bounds``), so the comparisons PyArrow can
-        evaluate do the pruning. Predicates without such a leaf lower
-        unchanged.
+        evaluate do the pruning. Predicates without such a leaf, and rewrite
+        failures, lower unchanged: ``plain`` is returned as-is, so identity
+        with ``file_filter`` marks "the rewrite added nothing".
         """
-        if predicate is None:
-            return None
-        plain = self.filter if predicate is self._predicate else predicate.to_pyarrow()
         if not self._has_modelable_leaves:
             return plain
         try:
-            return _add_statistics_bounds(
-                predicate, schema.to_arrow_schema()
-            ).to_pyarrow()
+            bounds = _add_statistics_bounds(predicate, schema.to_arrow_schema())
+            # The rewrite returns its input untouched when it has nothing to
+            # add; reusing ``plain`` then keeps ``prune_filter is file_filter``
+            # exact, so an unevaluable form never splits twice.
+            return plain if bounds is predicate else bounds.to_pyarrow()
         except Exception as e:
             logger.debug(
                 "Could not derive Parquet statistics bounds: %s",
@@ -451,13 +462,10 @@ class FooterReader:
         # single schema, so resolve them once rather than rescanning every leaf
         # for each group. The read-column lookup reads leaf paths off row group 0,
         # which a file with no row groups has none of; it sizes nothing either way.
-        (
-            file_filter,
-            prune_filter,
-            filter_columns,
-            complete_filter,
-        ) = self._filter_for_file(path, metadata.schema)
-        filter_leaves = self._locate_filter_columns(metadata.schema, filter_columns)
+        per_file = self._filter_for_file(path, metadata.schema)
+        filter_leaves = self._locate_filter_columns(
+            metadata.schema, per_file.filter_columns
+        )
         leaf_indices = (
             self._read_leaf_indices(metadata.row_group(0))
             if metadata.num_row_groups
@@ -477,20 +485,22 @@ class FooterReader:
             # the listing stop early and the resumed job return too few rows.
             fragment = fragment.subset(row_group_ids=unprocessed_rg_ids)
 
-        if file_filter is not None and filter_leaves.all_filter_columns_found:
+        if per_file.file_filter is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
             # contradict the filter, so we never emit chunks the reader would
             # skip anyway. Each returned fragment views a single surviving group.
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
             surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, prune_filter, path
+                fragment, per_file.prune_filter, path
             )
-            if surviving is None and prune_filter is not file_filter:
+            if surviving is None and per_file.prune_filter is not per_file.file_filter:
                 # The added bounds could not be evaluated against this file's
                 # statistics (a type mismatch or similar). Fall back to the
                 # plain filter, so pruning never comes out weaker than it.
-                surviving = self._try_split_by_row_group(fragment, file_filter, path)
+                surviving = self._try_split_by_row_group(
+                    fragment, per_file.file_filter, path
+                )
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
             )
@@ -502,7 +512,9 @@ class FooterReader:
             # which is always safe (falls back to the post-filter stop).
             # ``prune_filter`` matches the same rows as the original, and its
             # negation can prune where ``~original`` cannot.
-            not_fully_ids = self._try_split_by_row_group(fragment, ~prune_filter, path)
+            not_fully_ids = self._try_split_by_row_group(
+                fragment, ~per_file.prune_filter, path
+            )
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a
             # group that still holds a row the filter does not return, and then
@@ -512,12 +524,12 @@ class FooterReader:
             # -- which holds however clever the engine's statistics pruning gets.
             # PyArrow declines the null prune today but already makes the NaN one.
             fully_by_idx: dict[int, bool] = {
-                i: complete_filter
+                i: per_file.complete_filter
                 and i not in not_fully
                 and self._rg_can_fully_match(metadata.row_group(i), filter_leaves)
                 for i in rg_indices
             }
-        elif file_filter is not None:
+        elif per_file.file_filter is not None:
             # A predicate column is absent from this file's schema. PyArrow's
             # split_by_row_group raises ArrowInvalid ("No match for FieldRef.Name")
             # in that case, which would abort the whole read_footers batch.
@@ -528,7 +540,7 @@ class FooterReader:
         else:
             rg_indices = unprocessed_rg_ids
             # No physical predicate does not prove a missing path condition.
-            fully_by_idx = dict.fromkeys(rg_indices, complete_filter)
+            fully_by_idx = dict.fromkeys(rg_indices, per_file.complete_filter)
 
         per_rg = [
             self._row_group_run(

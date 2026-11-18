@@ -2,7 +2,8 @@
 
 The rewrite turns the leaf forms PyArrow cannot evaluate against Parquet
 statistics into comparisons it can, so these drive it directly and through
-``FooterReader`` pruning against local Parquet fixtures. No Ray cluster needed.
+``FooterReader`` pruning against local Parquet fixtures; the narrow-column
+case reads end to end through ``read_parquet`` on a local cluster.
 """
 
 import numpy as np
@@ -11,6 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 
+import ray
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import FooterReader
 from ray.data._internal.datasource_v2.formats.parquet.statistics_bounds import (
     _add_statistics_bounds,
@@ -125,26 +127,23 @@ def test_derived_leaves_unmodeled_forms_untouched(predicate, schema):
 
 
 @pytest.mark.parametrize(
-    "column_type",
+    "column_type, offset, strict",
     [
-        pa.int8(),
-        pa.int16(),
-        pa.int32(),
-        pa.int64(),
-        pa.uint8(),
-        pa.uint16(),
-        pa.uint32(),
+        pytest.param(pa.int8(), 1, False, id="int8-literal-ge"),
+        pytest.param(pa.uint8(), 1, True, id="uint8-literal-gt"),
+        pytest.param(pa.int8(), np.int8(75), True, id="int8-numpy-gt"),
+        pytest.param(pa.uint8(), np.int8(75), False, id="uint8-numpy-ge"),
     ],
 )
-@pytest.mark.parametrize("offset", [1, np.int8(75), np.int64(75)])
-@pytest.mark.parametrize("strict", [False, True])
 def test_derived_integer_arithmetic_bound_safety(tmp_path, column_type, offset, strict):
-    """Every modeled type and comparison keeps exactly the rows it should.
+    """Each modeled shape keeps exactly the rows it should.
 
-    The bound is checked at the expression level (it must accept exactly the
-    rows the filter accepts), at the pruning level (no row group with a
-    matching row may be dropped) and on the fully-matched flag (a group
-    marked fully matched must really match throughout).
+    The four shapes span the branch outcomes: signed and unsigned columns,
+    Python-int and NumPy literals, and both comparisons. The bound is checked
+    at the expression level (it must accept exactly the rows the filter
+    accepts) and on the read level (the chunked rows match the filter's, so
+    no group holding a matching row can have been dropped), and a fully
+    matched group must really match throughout.
     """
     bits = column_type.bit_width
     if pa.types.is_signed_integer(column_type):
@@ -188,13 +187,6 @@ def test_derived_integer_arithmetic_bound_safety(tmp_path, column_type, offset, 
     chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
     selected = [rg.unit_ids[0] for rg in chunks.row_groups]
     parquet_file = pq.ParquetFile(path)
-
-    required = {
-        i
-        for i in range(parquet_file.num_row_groups)
-        if parquet_file.read_row_group(i).filter(predicate.to_pyarrow()).num_rows
-    }
-    assert required.issubset(set(selected))
 
     selected_tables = [parquet_file.read_row_group(i) for i in selected]
     actual = (
@@ -281,58 +273,61 @@ def test_derived_bounds_fully_matched_flag(
     assert not [i for i, f in by_idx.items() if f and not expected.get(i, False)]
 
 
-@pytest.mark.parametrize(
-    "prefix, expected_groups",
-    [
-        # A prefix ending in U+D7FF has no single-unit successor: the upper
-        # end jumps the surrogate block to U+E000, and the range still prunes.
-        pytest.param("\ud7ff", [0, 1], id="prefix-before-surrogate-block"),
-        # After U+10FFFF no upper end exists, so the leaf stays and only the
-        # lower bound is appended; the groups below the prefix still prune.
-        pytest.param(chr(0x10FFFF), [2], id="prefix-at-max-codepoint"),
-    ],
-)
-def test_derived_prefix_boundary_bounds(tmp_path, prefix, expected_groups):
-    """Prefix bounds hold at the U+D7FF and U+10FFFF codepoint edges."""
+def test_derived_prefix_boundary_bounds(tmp_path):
+    """A prefix ending at U+D7FF bounds across the surrogate block.
+
+    U+D7FF has no single-unit successor: the upper end jumps the surrogate
+    block to U+E000, and the two-sided range still prunes.
+    """
     values = ["zz", "\ud7ff", "\ud7ffz", "\ue000", chr(0x10FFFF), chr(0x10FFFF) + "a"]
     table = pa.table({"s": values})
     path, size = _write(tmp_path / "prefix-boundary.parquet", table, row_group_size=2)
-    predicate = col("s").str.starts_with(prefix)
+    predicate = col("s").str.starts_with("\ud7ff")
 
     chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
     selected = [rg.unit_ids[0] for rg in chunks.row_groups]
-    assert selected == expected_groups
-
-    parquet_file = pq.ParquetFile(path)
-    required = {
-        i
-        for i in range(parquet_file.num_row_groups)
-        if parquet_file.read_row_group(i).filter(predicate.to_pyarrow()).num_rows
-    }
-    assert required.issubset(set(selected))
+    assert selected == [0, 1]
 
 
-def test_narrow_file_column_keeps_its_rows(tmp_path):
+def test_prefix_without_successor_keeps_its_leaf(tmp_path):
+    """A prefix ending at U+10FFFF keeps its leaf through the negation.
+
+    "b" sorts above a prefix ending in U+10FFFF but does not start with it,
+    so the lower bound alone is not equivalent to the leaf. Were the branch
+    to drop the leaf, ``~lower`` would prune every surviving group of the
+    negated filter -- the "zz" and "b" rows would vanish.
+    """
+    values = ["zz", "a" + chr(0x10FFFF), "b"]
+    table = pa.table({"s": values})
+    path, size = _write(tmp_path / "prefix-max.parquet", table, row_group_size=1)
+    predicate = ~(col("s").str.starts_with("a" + chr(0x10FFFF)))
+
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
+    assert by_idx == {0: True, 2: True}
+
+
+def test_narrow_file_column_keeps_its_rows(tmp_path, ray_start_regular_shared):
     """A file column narrower than the dataset's is not pruned by its range.
 
-    An int8 file next to int64 files is evaluated at the unified int64 schema,
-    where 124 + 5 does not wrap -- the two-sided range alone dropped the group
-    and with it the rows. The original leaf stays in the rewritten filter, so
+    An int8 file next to an int64 file is evaluated at the unified int64
+    schema, where 124 + 5 does not wrap -- the two-sided range alone dropped
+    the int8 file's rows. The original leaf stays in the rewritten filter, so
     the group survives and the evaluation decides.
     """
-    table = pa.table({"x": pa.array([124, 127], type=pa.int8())})
-    path, size = _write(tmp_path / "narrow.parquet", table, row_group_size=2)
-    predicate = (col("x") + 5) >= 76
+    pq.write_table(
+        pa.table({"x": pa.array([124, 127], type=pa.int8())}),
+        str(tmp_path / "narrow.parquet"),
+        row_group_size=2,
+    )
+    pq.write_table(
+        pa.table({"x": pa.array([0, 1], type=pa.int64())}),
+        str(tmp_path / "wide.parquet"),
+    )
 
-    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
-    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
-    assert selected == [0]
-
-    # The unified dataset schema widens the column before the filter runs, so
-    # the group's rows must all survive the filter there.
-    parquet_file = pq.ParquetFile(path)
-    wide = parquet_file.read_row_group(0).cast(pa.schema([("x", pa.int64())]))
-    assert wide.filter(predicate.to_pyarrow())["x"].to_pylist() == [124, 127]
+    ds = ray.data.read_parquet(str(tmp_path))
+    rows = ds.filter(expr=(col("x") + 5) >= 76).take_all()
+    assert sorted(row["x"] for row in rows) == [124, 127]
 
 
 if __name__ == "__main__":

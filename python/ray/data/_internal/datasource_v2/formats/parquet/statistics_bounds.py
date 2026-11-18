@@ -33,9 +33,10 @@ def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
     each is converted into comparisons it can prune with today:
 
     - ``(col + c) >= t`` / ``(col + c) > t``: the equivalent column range.
-      A signed column also keeps its original leaf, because the kernel that
-      runs the filter can compute at a wider width than the file column,
-      where sums past the column's maximum do not wrap.
+      A signed column also keeps its original leaf, and so does an unsigned
+      column unless its literal is an int64, because the kernel that runs
+      the filter can compute at a wider width than the file column, where
+      sums past the column's maximum do not wrap.
     - ``str.starts_with(col, p)``: the string range the prefix spans.
 
     Every other form is returned untouched: PyArrow already prunes plain
@@ -113,13 +114,8 @@ def _bound_addition_comparison(expr: Expr, schema: pa.Schema) -> Expr | None:
     ):
         return None
 
-    bit_width = value_type.bit_width
-    if pa.types.is_signed_integer(value_type):
-        min_value = -(1 << (bit_width - 1))
-        max_value = (1 << (bit_width - 1)) - 1
-    else:
-        min_value = 0
-        max_value = (1 << bit_width) - 1
+    info = np.iinfo(value_type.to_pandas_dtype())
+    min_value, max_value = info.min, info.max
 
     # Python ints avoid overflow in NumPy scalar subtraction.
     offset_val = int(offset)
@@ -140,7 +136,7 @@ def _bound_addition_comparison(expr: Expr, schema: pa.Schema) -> Expr | None:
         # Unsigned kernels promote to int64, so the lower side alone is exact.
         return lower
     # Rows where x + c overflows the file's type are left to the leaf.
-    return (expr & lower) | (lower & (column <= max_value - offset_val))
+    return lower & (expr | (column <= max_value - offset_val))
 
 
 def _bound_starts_with(expr: Expr, schema: pa.Schema) -> Expr | None:
