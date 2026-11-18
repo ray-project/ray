@@ -27,24 +27,10 @@ Debug with the same trainer and scaling configuration that fails, scaled down as
 
 The following example runs a two-worker, CPU-only version of a training function on a local cluster:
 
-```python
-import ray.train
-from ray.train import FailureConfig, RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer
-
-
-def train_func():
-    rank = ray.train.get_context().get_world_rank()
-    # Training logic.
-    ray.train.report({"rank": rank})
-
-
-trainer = TorchTrainer(
-    train_func,
-    scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
-    run_config=RunConfig(failure_config=FailureConfig(max_failures=0)),
-)
-result = trainer.fit()
+```{literalinclude} ../doc_code/debugging.py
+:language: python
+:start-after: __reproduce_start__
+:end-before: __reproduce_end__
 ```
 
 To unit test a training function, write the test the same way: start a small local cluster in a fixture, run a trainer with one or two CPU workers, and assert on the {class}`~ray.train.Result` or on the exception that `fit()` raises.
