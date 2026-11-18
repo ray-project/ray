@@ -559,7 +559,7 @@ def _node_resolver(monkeypatch, nodes, **settings):
 
 def test_hosted_ids_resolve_without_scanning_the_nodes(monkeypatch):
     """A hosted sandbox id names its node by a prefix, which an index maps
-    to the node; a prefix two nodes share names neither."""
+    to the node; a prefix two nodes share is left to a lookup that asks."""
     nodes = ["aaaaaaaaaa" + "1" * 46, "bbbbbbbbbb" + "2" * 46, "bbbbbbbbbb" + "3" * 46]
     resolver = _node_resolver(monkeypatch, nodes)
     resolver._cpu_nodes(refresh=True)
@@ -568,8 +568,48 @@ def test_hosted_ids_resolve_without_scanning_the_nodes(monkeypatch):
     handle = resolver.cached(sandbox_id)
     assert handle.host_name == "host-a" and handle.sandbox_id == sandbox_id
     assert resolver.cached(_hosted_sandbox_id(nodes[1])) is None
-    assert resolver._node_for_prefix("bbbbbbbbbb") is None
-    assert resolver._node_for_prefix("aaaaaaaaaa") == nodes[0]
+    assert resolver._nodes_for_prefix("bbbbbbbbbb") == tuple(nodes[1:])
+    assert resolver._nodes_for_prefix("aaaaaaaaaa") == (nodes[0],)
+
+
+def test_a_sandbox_on_a_node_that_shares_its_id_prefix_is_still_found(monkeypatch):
+    """A sandbox id holds only the start of its node's id. When two alive
+    nodes share it, the sandbox is on the one whose host lists it, and a
+    sandbox that neither holds reads as it does on any host."""
+    import ray
+
+    nodes = ["bbbbbbbbbb" + "2" * 46, "bbbbbbbbbb" + "3" * 46]
+    resolver = _node_resolver(monkeypatch, nodes)
+    resolver._cpu_nodes(refresh=True)
+    on_second = _hosted_sandbox_id(nodes[1])
+    held = {"host-2": ["sb-other"], "host-3": [on_second]}
+    for node_id, host_name in zip(nodes, held):
+        resolver._node_hosts[node_id] = (
+            host_name,
+            SimpleNamespace(sandbox_ids=SimpleNamespace(remote=lambda h=host_name: h)),
+        )
+    asked = []
+    monkeypatch.setattr(
+        ray, "get", lambda ref, timeout=None: asked.append(ref) or held[ref]
+    )
+    handle = resolver.get(on_second)
+    assert handle.host_name == "host-3" and handle.sandbox_id == on_second
+    assert asked == ["host-2", "host-3"]
+    # Found once, the handle is cached: no host is asked again.
+    assert resolver.get(on_second) is handle and len(asked) == 2
+    # A sandbox that neither host holds gets the first host's answer.
+    gone = _hosted_sandbox_id(nodes[0])
+    assert resolver.get(gone).host_name == "host-2"
+    # A host that doesn't answer is passed over.
+    resolver.forget(on_second)
+
+    def flaky(ref, timeout=None):
+        if ref == "host-2":
+            raise TimeoutError("the host is stuck")
+        return held[ref]
+
+    monkeypatch.setattr(ray, "get", flaky)
+    assert resolver.get(on_second).host_name == "host-3"
 
 
 def test_admit_skips_full_hosts_and_stops_after_its_probes(monkeypatch):

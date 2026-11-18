@@ -288,7 +288,9 @@ class RayActorHandleResolver:
         # prefix names (None for a prefix two nodes share). Replaced as a
         # whole on each refresh, so readers need no lock or copy.
         self._nodes: Tuple[str, ...] = ()
-        self._node_prefixes: Dict[str, Optional[str]] = {}
+        # Sandbox-id prefix -> the alive nodes whose ids start with it: one,
+        # but for two nodes in about 2**40 pairs (see _hosted).
+        self._node_prefixes: Dict[str, Tuple[str, ...]] = {}
         # Each node's total resources, which its host admits against.
         self._node_resources: Dict[str, Dict[str, float]] = {}
         self._nodes_at = 0.0
@@ -570,10 +572,10 @@ class RayActorHandleResolver:
                 if n.get("Alive") and n.get("Resources", {}).get("CPU", 0) > 0
             }
             nodes = tuple(sorted(resources))
-            prefixes: Dict[str, Optional[str]] = {}
+            prefixes: Dict[str, Tuple[str, ...]] = {}
             for node_id in nodes:
                 prefix = node_id[:_NODE_PREFIX_CHARS]
-                prefixes[prefix] = None if prefix in prefixes else node_id
+                prefixes[prefix] = prefixes.get(prefix, ()) + (node_id,)
             with self._lock:
                 self._nodes, self._nodes_at = nodes, time.monotonic()
                 self._node_prefixes = prefixes
@@ -609,12 +611,12 @@ class RayActorHandleResolver:
             raise RuntimeError("no alive node with CPUs to host a sandbox")
         return nodes[next(self._spread) % len(nodes)]
 
-    def _node_for_prefix(self, prefix: str) -> Optional[str]:
-        """The alive node whose id starts with ``prefix``, if exactly one does."""
+    def _nodes_for_prefix(self, prefix: str) -> Tuple[str, ...]:
+        """The alive nodes whose ids start with ``prefix``: nearly always one."""
         if prefix not in self._node_prefixes:
             # A node that joined since the last listing.
             self._cpu_nodes(refresh=True)
-        return self._node_prefixes.get(prefix)
+        return self._node_prefixes.get(prefix, ())
 
     async def acreate(
         self,
@@ -706,26 +708,60 @@ class RayActorHandleResolver:
         The id names the node; the node's host is the one live actor with
         that host name. A sandbox whose host has restarted since reads as
         terminated there.
+
+        The id holds only the start of the node's id, which two alive nodes
+        share once in about 2**40 pairs. The sandbox is then on the one whose
+        host lists it. If neither does, the first answers, as any host does
+        for a sandbox it doesn't hold.
         """
         import ray
 
         match = _HOSTED_ID.fullmatch(name)
         if match is None:
             return None
-        node_id = self._node_for_prefix(match.group(1))
-        if node_id is None:
+        hosts = [
+            entry
+            for entry in map(
+                self._existing_node_host, self._nodes_for_prefix(match.group(1))
+            )
+            if entry is not None
+        ]
+        if not hosts:
             return None
+        entry = hosts[0]
+        if len(hosts) > 1:
+            for candidate in hosts:
+                try:
+                    held = ray.get(
+                        candidate[1].sandbox_ids.remote(), timeout=_LIST_HOSTS_SECONDS
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Sandbox node host %s didn't list its sandboxes: %s",
+                        candidate[0],
+                        exc,
+                    )
+                    continue
+                if name in held:
+                    entry = candidate
+                    break
+        return HostedSandboxHandle(entry[1], entry[0], name, self)
+
+    def _existing_node_host(self, node_id: str) -> Optional[Tuple[str, Any]]:
+        """The host on ``node_id`` if one runs there. It's never created here."""
+        import ray
+
         with self._lock:
             entry = self._node_hosts.get(node_id)
-        if entry is None:
-            host_name = f"{NODE_HOST_PREFIX}{node_id}"
-            try:
-                host = ray.get_actor(host_name, namespace=self._settings.namespace)
-            except ValueError:
-                return None
-            with self._lock:
-                entry = self._node_hosts.setdefault(node_id, (host_name, host))
-        return HostedSandboxHandle(entry[1], entry[0], name, self)
+        if entry is not None:
+            return entry
+        host_name = f"{NODE_HOST_PREFIX}{node_id}"
+        try:
+            host = ray.get_actor(host_name, namespace=self._settings.namespace)
+        except ValueError:
+            return None
+        with self._lock:
+            return self._node_hosts.setdefault(node_id, (host_name, host))
 
     def create(
         self,
@@ -784,10 +820,12 @@ class RayActorHandleResolver:
         if match is None:
             return None
         # A node id is never reused, so a prefix the last listing knows still
-        # names its node; one it doesn't know is left to ``get``.
-        node_id = self._node_prefixes.get(match.group(1))
-        if node_id is None:
+        # names its node; one it doesn't know, or one that two nodes share,
+        # is left to ``get``.
+        nodes = self._node_prefixes.get(match.group(1), ())
+        if len(nodes) != 1:
             return None
+        (node_id,) = nodes
         with self._lock:
             entry = self._node_hosts.get(node_id)
         if entry is None:
