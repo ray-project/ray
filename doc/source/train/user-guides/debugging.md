@@ -62,7 +62,7 @@ Ray Train writes output from the training function and from its own components t
 
 ### Console output
 
-Ray forwards the stdout and stderr of every worker and of the controller to the driver console. Each line starts with the actor class name and process ID, such as `(RayTrainWorker pid=61382)` or `(TrainController pid=61363)`. The prefix doesn't include the worker rank. To map process IDs to ranks, use the table that the controller prints each time it starts a worker group:
+Ray forwards the stdout and stderr of every worker and of the controller to the driver console. Each line starts with the actor class name and process ID, such as `(RayTrainWorker pid=61382)` or `(TrainController pid=61363)`. The prefix doesn't include the worker rank. The {ref}`Ray Train log files <train-debugging-log-files>` record the rank on every line, so filter them to read the output of one rank. To map the process IDs in the console to ranks, use the table that the controller prints each time it starts a worker group:
 
 ```text
 (TrainController pid=61363) Started training worker group of size 2:
@@ -73,6 +73,8 @@ Ray forwards the stdout and stderr of every worker and of the controller to the 
 Ray deduplicates identical lines that several processes log, and prints them once with a `[repeated Nx across cluster]` suffix. When every rank logs the same message, the deduplicated line shows the prefix of only one of them. To see every line from every rank, set `RAY_DEDUP_LOGS=0` before you start Ray. See {ref}`log-deduplication`.
 
 The controller prints its state transitions to the console, such as `Requesting resources`, `Attempting to start training worker group`, and `Started training worker group`, and a `[FailurePolicy]` summary each time a failure occurs. Use these lines to tell which stage a run is in.
+
+(train-debugging-log-files)=
 
 ### Ray Train log files
 
