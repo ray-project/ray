@@ -2394,6 +2394,106 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             if op["path"].endswith("/replicas")
         ] == [2, 3]
 
+    def test_single_host_timeout_replay_clamping_and_live_min_replicas_update(self):
+        """Verify:
+        1. Replaying a shared single-host request_id on partial timeout retry
+           clamps to the retried shape rather than re-adding materialized pods
+           or co-launched sibling single-host worker groups.
+        2. Live RayCluster updates raising minReplicas alongside replicas do
+           not credit minReplicas capacity to _external_unmaterialized, while
+           surplus external replicas above minReplicas remain preserved.
+        """
+        # 1. Partial single-host timeout retry on shared request_id="L1".
+        prov_sh, client_sh = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "sh-a",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "sh-b",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            pods=[],
+        )
+        known_t1 = set(prov_sh.get_non_terminated())
+        with prov_sh.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=known_t1)
+        ):
+            prov_sh.launch(shape={"sh-a": 2, "sh-b": 3}, request_id="L1")
+        assert prov_sh._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] == 2
+        assert prov_sh._ray_cluster["spec"]["workerGroupSpecs"][1]["replicas"] == 3
+
+        # Materialize 1 sh-a + 3 sh-b pods; 1 sh-a timed out back to QUEUED and
+        # retries with shape={"sh-a": 1} under request_id="L1", followed by a
+        # fresh {"sh-a": 1, "sh-b": 1} request "L2" in the same step.
+        client_sh._pod_list["items"].extend(
+            [
+                self._make_multihost_pod("sh-a-0", group="sh-a"),
+                self._make_multihost_pod("sh-b-0", group="sh-b"),
+                self._make_multihost_pod("sh-b-1", group="sh-b"),
+                self._make_multihost_pod("sh-b-2", group="sh-b"),
+            ]
+        )
+        client_sh._pod_list["metadata"]["resourceVersion"] = "2"
+        known_t3 = set(prov_sh.get_non_terminated())
+        with prov_sh.reconcile_step(
+            ReconcileStepContext(known_cloud_instance_ids=known_t3)
+        ):
+            prov_sh.launch(shape={"sh-a": 1}, request_id="L1")
+            prov_sh.launch(shape={"sh-a": 1, "sh-b": 1}, request_id="L2")
+        assert prov_sh._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] == 3
+        assert prov_sh._ray_cluster["spec"]["workerGroupSpecs"][1]["replicas"] == 4
+
+        # 2. Live RayCluster update raising minReplicas alongside replicas.
+        prov_min, client_min = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "cpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "tpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            pods=[],
+        )
+        prov_min.get_non_terminated()
+        # External user edits CR: cpu raises minReplicas=2, replicas=2 (0 surplus);
+        # tpu raises minReplicas=1, replicas=3 (2 surplus external replicas = 8 workers).
+        client_min._ray_cluster["spec"]["workerGroupSpecs"][0]["minReplicas"] = 2
+        client_min._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        client_min._ray_cluster["spec"]["workerGroupSpecs"][1]["minReplicas"] = 1
+        client_min._ray_cluster["spec"]["workerGroupSpecs"][1]["replicas"] = 3
+        known_min = set(prov_min.get_non_terminated())
+        assert prov_min._external_unmaterialized["cpu"] == 0
+        assert prov_min._external_unmaterialized["tpu"] == 8
+        with prov_min.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known_min,
+                unclaimed_replicas_by_lid={"tpu": {}},
+            )
+        ):
+            prov_min.launch(shape={"cpu": 2}, request_id="min-cpu")
+            prov_min.launch(shape={"tpu": 4}, request_id="min-tpu")
+        assert prov_min._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] == 2
+        assert prov_min._ray_cluster["spec"]["workerGroupSpecs"][1]["replicas"] == 3
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

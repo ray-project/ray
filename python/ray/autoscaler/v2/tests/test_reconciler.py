@@ -2547,9 +2547,9 @@ class TestReconciler:
             NodeState(node_id=b"r-1", status=NodeStatus.DRAINING, instance_id="c-1"),
         ]
         cloud_instances = {
-            "c-head": CloudInstance("c-head", "head", True, NodeKind.HEAD),
-            "c-1": CloudInstance("c-1", "type-1", True, NodeKind.WORKER),
-            "c-2": CloudInstance("c-2", "type-1", True, NodeKind.WORKER),
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            "c-1": CloudInstance("c-1", "type-1", NodeKind.WORKER, True),
+            "c-2": CloudInstance("c-2", "type-1", NodeKind.WORKER, True),
         }
         scheduler = MockScheduler(
             to_terminate=[

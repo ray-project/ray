@@ -334,6 +334,9 @@ class InstanceUtil:
                 # Ray stop request failed (e.g. idle node no longer idle),
                 # ray is still running.
                 Instance.RAY_RUNNING,
+                # A cloud instance is being terminated (e.g. sibling worker in
+                # a multi-worker replica entered teardown).
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
@@ -621,6 +624,9 @@ class _ReplicaViewBuildState:
         default_factory=lambda: defaultdict(list)
     )
     live_untagged_td_cids: Set[Tuple[NodeType, str]] = field(default_factory=set)
+    rep_occupying_cids: Dict[Tuple[NodeType, str], Set[str]] = field(
+        default_factory=lambda: defaultdict(set)
+    )
     term_tagged_rows: List[Tuple[NodeType, str, str, str, bool, int, Instance]] = field(
         default_factory=list
     )
@@ -1034,7 +1040,8 @@ class _MultiHostReplicaView:
 
         self.rep_assigned_cids.setdefault(rk, set()).add(inst.cloud_instance_id)
         if st in _OCCUPYING_CLOUD_STATUSES:
-            self.rep_occupying[rk] = self.rep_occupying.get(rk, 0) + 1
+            state.rep_occupying_cids[rk].add(inst.cloud_instance_id)
+            self.rep_occupying[rk] = len(state.rep_occupying_cids[rk])
         if st in _DRAINING_INSTANCE_STATUSES:
             self.draining_reps.add(rk)
             self.ray_running_reps.add(rk)

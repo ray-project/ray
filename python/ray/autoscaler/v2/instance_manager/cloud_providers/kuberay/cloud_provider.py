@@ -91,6 +91,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._requests = set()
         self._accepted_launch_workers: Dict[str, Dict[NodeType, int]] = {}
         self._claimed_pre_step_lids: Set[Tuple[NodeType, str]] = set()
+        self._max_tracked_request_entries = 4096
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
 
@@ -183,6 +184,12 @@ class KubeRayProvider(ICloudInstanceProvider):
                 self._ray_cluster.get("spec", {}).get("workerGroupSpecs", [])
             )
         }
+        if self._claimed_pre_step_lids:
+            self._claimed_pre_step_lids = {
+                (nt, lid)
+                for nt, lid in self._claimed_pre_step_lids
+                if lid not in self._requests
+            }
         for nt, counts in step.pre_sh_in_flight.items():
             for lid, cnt in counts.items():
                 if (
@@ -311,11 +318,17 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         if request_id in self._requests:
-            # This request is already processed.
+            # This request is already processed. Clamp to the retried shape so
+            # partial single-host timeout retries do not re-add materialized pods
+            # or co-launched sibling worker groups.
             if self._active_step is not None:
-                self._record_step_launch(
-                    self._accepted_launch_workers.get(request_id, {}), request_id, {}
-                )
+                accepted = self._accepted_launch_workers.get(request_id, {})
+                replay_shape = {
+                    nt: min(req_w, accepted.get(nt, 0))
+                    for nt, req_w in shape.items()
+                    if req_w > 0
+                }
+                self._record_step_launch(replay_shape, request_id, {})
             return
 
         scale_request = None
@@ -348,11 +361,17 @@ class KubeRayProvider(ICloudInstanceProvider):
             # accepted worker counts so a replay does not add to_launch again or
             # discard prior cap/alignment rejections.
             self._requests.add(request_id)
+            self._accepted_launch_workers.pop(request_id, None)
             self._accepted_launch_workers[request_id] = {
                 nt: max(0, req_w - min(req_w, rejected_nodes.get(nt, 0)))
                 for nt, req_w in shape.items()
                 if req_w > 0
             }
+            while (
+                len(self._accepted_launch_workers) > self._max_tracked_request_entries
+            ):
+                oldest_req = next(iter(self._accepted_launch_workers))
+                del self._accepted_launch_workers[oldest_req]
 
             if self._active_step is not None:
                 self._record_step_launch(shape, request_id, rejected_nodes)
@@ -597,6 +616,8 @@ class KubeRayProvider(ICloudInstanceProvider):
 
             known_cids = step.known_cloud_instance_ids if step is not None else set()
             ext_w = self._external_unmaterialized.get(node_type, 0)
+            if step is None:
+                ext_w += max(0, min_w - effective_observed - ext_w)
             req_pos = max(0, req_w)
             if num_of_hosts > 1 and (
                 step is None or node_type in step.pre_mh_in_flight
@@ -631,16 +652,9 @@ class KubeRayProvider(ICloudInstanceProvider):
                     # Exact backfill of an incomplete unlabeled replica is already
                     # accounted for in `obs_ungrouped_reps` ceiling units.
                     cur_unaligned = 0
-                pre_rem_reps = max(0, sum(pre_map.values()) - newly_materialized_reps)
-                step_extra_reps = sum(
-                    c for k, c in step_map.items() if k != request_id
-                ) + max(
-                    step_map.get(request_id, 0),
-                    max(0, req_reps - pre_map.get(request_id, 0)),
+                in_flight_reps = self._compute_in_flight_units(
+                    pre_map, step_map, request_id, req_reps, newly_materialized_reps
                 )
-                in_flight_reps = pre_rem_reps + step_extra_reps
-                if step is None:
-                    ext_w += max(0, min_w - effective_observed - ext_w)
                 num_workers_dict[node_type] = (
                     effective_observed
                     + ext_w
@@ -663,16 +677,9 @@ class KubeRayProvider(ICloudInstanceProvider):
                 ) + sum(
                     1 for p in ungrouped_pods if p.cloud_instance_id not in known_cids
                 )
-                pre_rem_w = max(0, sum(pre_sh_map.values()) - new_pods)
-                step_extra_w = sum(
-                    c for k, c in step_sh_map.items() if k != request_id
-                ) + max(
-                    step_sh_map.get(request_id, 0),
-                    max(0, req_pos - pre_sh_map.get(request_id, 0)),
+                in_flight_w = self._compute_in_flight_units(
+                    pre_sh_map, step_sh_map, request_id, req_pos, new_pods
                 )
-                in_flight_w = pre_rem_w + step_extra_w
-                if step is None:
-                    ext_w += max(0, min_w - effective_observed - ext_w)
                 removed_rep_ids = {id(r_pods) for r_pods in removed_replicas}
                 surviving_actual_pods = (
                     sum(
@@ -886,6 +893,21 @@ class KubeRayProvider(ICloudInstanceProvider):
                 )
             )
 
+    @staticmethod
+    def _compute_in_flight_units(
+        pre_map: Dict[str, int],
+        step_map: Dict[str, int],
+        request_id: str,
+        req_units: int,
+        newly_materialized: int,
+    ) -> int:
+        pre_rem = max(0, sum(pre_map.values()) - newly_materialized)
+        step_extra = sum(c for k, c in step_map.items() if k != request_id) + max(
+            step_map.get(request_id, 0),
+            max(0, req_units - pre_map.get(request_id, 0)),
+        )
+        return pre_rem + step_extra
+
     def _update_external_cr_capacity(
         self, autoscaler_patched_types: Optional[Set[NodeType]] = None
     ) -> None:
@@ -914,11 +936,9 @@ class KubeRayProvider(ICloudInstanceProvider):
             if nt in patched:
                 continue
             _, _, _, eff_obs = self._group_observed_pods(pods_by_type[nt], hosts)
-            unbacked = max(0, replicas_w - eff_obs)
+            unbacked = max(0, replicas_w - max(eff_obs, min_w))
             if self._last_seen_cr_workers is None:
-                self._external_unmaterialized[nt] = max(
-                    0, replicas_w - max(eff_obs, min_w)
-                )
+                self._external_unmaterialized[nt] = unbacked
             else:
                 prev_spec_w = self._last_seen_cr_workers.get(nt, 0)
                 ext = max(

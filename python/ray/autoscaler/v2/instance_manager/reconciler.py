@@ -1915,16 +1915,32 @@ class Reconciler:
             )
             active_by_type: Dict[NodeType, int] = defaultdict(int)
             queued_by_type: Dict[NodeType, int] = defaultdict(int)
+            seen_multihost_cids: Set[Tuple[NodeType, CloudInstanceId]] = set()
             active_total = 0
             for inst in im_instances:
                 st = status_overrides.get(inst.instance_id, inst.status)
                 if st == IMInstance.QUEUED and inst.node_kind != NodeKind.HEAD:
                     queued_by_type[inst.instance_type] += 1
                 if inst.instance_type in replica_sizes:
-                    counts = (
+                    if (
+                        st == IMInstance.REQUESTED
+                        and inst.launch_request_id
+                        and (inst.instance_type, inst.launch_request_id)
+                        in view.torn_down_lids
+                    ):
+                        counts = False
+                    elif (
                         InstanceUtil.is_ray_running_reachable(st)
                         or st == IMInstance.RAY_STOPPING
-                    )
+                    ):
+                        if inst.cloud_instance_id:
+                            cid_key = (inst.instance_type, inst.cloud_instance_id)
+                            counts = cid_key not in seen_multihost_cids
+                            seen_multihost_cids.add(cid_key)
+                        else:
+                            counts = True
+                    else:
+                        counts = False
                 else:
                     # Preserve base single-host replacement semantics when a
                     # single-host node is draining, while still counting live

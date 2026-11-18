@@ -82,6 +82,7 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.RAY_STOP_REQUESTED] == {
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
+            Instance.TERMINATING,
             Instance.TERMINATED,
             Instance.RAY_RUNNING,
         }

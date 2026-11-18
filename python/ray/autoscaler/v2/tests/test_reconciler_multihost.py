@@ -1376,16 +1376,11 @@ class TestReconcilerMultiHost:
         Reconciler._terminate_instances(
             im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
         )
-        # Every sibling whose status permits TERMINATING transitions atomically;
-        # RAY_STOP_REQUESTED has no transition to TERMINATING and stays untouched.
-        expected_rep0 = (
-            ["w-0", "w-2", "w-3"]
-            if sibling_status == Instance.RAY_STOP_REQUESTED
-            else ["w-0", "w-1", "w-2", "w-3"]
-        )
+        # Every sibling whose status permits TERMINATING (including
+        # RAY_RUNNING, RAY_STOP_REQUESTED, and RAY_STOPPING) transitions atomically.
         assert sorted((e.instance_id, e.new_instance_status) for e in sub.events) == [
             (wid, Instance.TERMINATING)
-            for wid in [*expected_rep0, "w-4", "w-5", "w-6", "w-7"]
+            for wid in ["w-0", "w-1", "w-2", "w-3", "w-4", "w-5", "w-6", "w-7"]
         ]
 
         # Once the cloud provider removes rep-0, all four siblings converge to TERMINATED.
@@ -3847,8 +3842,8 @@ class TestReconcilerMultiHost:
 
     def test_multihost_already_terminating_replica_sweeps_late_siblings(self):
         """A replica that already has a TERMINATING member immediately transitions
-        late-arriving or drain-rejected siblings and skips solicited RAY_STOPPED
-        holds, while leaving RAY_STOP_REQUESTED siblings and other replicas intact."""
+        late-arriving, RAY_STOP_REQUESTED, and solicited RAY_STOPPED siblings,
+        while leaving other replicas intact."""
         now_ns = time.time_ns()
         cfg = MockAutoscalingConfig(
             configs={
@@ -3869,8 +3864,8 @@ class TestReconcilerMultiHost:
             store,
             [
                 # rep-1 already has w-0 TERMINATING from a prior tick; late-arriving
-                # w-1 (RAY_RUNNING) and solicited w-2 (RAY_STOPPED) must both enter
-                # TERMINATING, while w-3 (RAY_STOP_REQUESTED) stays untouched.
+                # w-1 (RAY_RUNNING), solicited w-2 (RAY_STOPPED), and w-3
+                # (RAY_STOP_REQUESTED) must all enter TERMINATING atomically.
                 create_instance(
                     "w-0",
                     status=Instance.TERMINATING,
@@ -3946,7 +3941,7 @@ class TestReconcilerMultiHost:
         assert insts["w-0"].status == Instance.TERMINATING
         assert insts["w-1"].status == Instance.TERMINATING
         assert insts["w-2"].status == Instance.TERMINATING
-        assert insts["w-3"].status == Instance.RAY_STOP_REQUESTED
+        assert insts["w-3"].status == Instance.TERMINATING
         assert insts["b-0"].status == Instance.RAY_RUNNING
         assert insts["b-1"].status == Instance.RAY_STOPPED
 
@@ -5555,6 +5550,9 @@ class TestReconcilerMultiHost:
         if pod_present and replica_id is not None:
             assert "lid-1" in view.rep_lids[("tpu", replica_id)]
             assert ("tpu", replica_id) in view.non_fillable_reps
+        else:
+            assert view.rep_lids == {}
+            assert view.non_fillable_reps == set()
 
     @pytest.mark.parametrize(
         "history_status",
@@ -5680,6 +5678,8 @@ class TestReconcilerMultiHost:
         )
         if replica_id is not None:
             assert shadowed_view.rep_lids[("tpu", replica_id)] == {"lid-new"}
+        else:
+            assert shadowed_view.rep_lids == {}
         assert ("tpu", "lid-old") not in shadowed_view.torn_down_lids
         assert ("tpu", "lid-new") not in shadowed_view.torn_down_lids
 
@@ -5752,9 +5752,11 @@ class TestReconcilerMultiHost:
         b1_view = _MultiHostReplicaView.build(b1_rows, live_cloud, {"tpu": 4})
         assert ("tpu", "lid-1") in b1_view.torn_down_lids
         assert ("tpu", "lid-2") not in b1_view.torn_down_lids
+        assert ("tpu", "lid-1") not in b1_view.claimed_reps_by_lid
         if replica_id is not None:
             assert b1_view.rep_lids[("tpu", replica_id)] == {"lid-2"}
-            assert ("tpu", "lid-1") not in b1_view.claimed_reps_by_lid
+        else:
+            assert b1_view.rep_lids == {}
 
         # B2: Old r1 already GC'd while stale u1 terminal teardown stays in IM;
         # newer r2 reusing p0 must stay unaffected both live and if r2 vanishes.
@@ -5824,10 +5826,12 @@ class TestReconcilerMultiHost:
         )
         assert ("tpu", "lid-1") not in b3_healthy.torn_down_lids
         assert ("tpu", "lid-2") not in b3_healthy.torn_down_lids
+        assert ("tpu", "lid-1") not in b3_healthy.claimed_reps_by_lid
+        assert b3_healthy.vanished_cids_by_lid == {("tpu", "lid-1"): {"p0"}}
         if replica_id is not None:
             assert b3_healthy.rep_lids[("tpu", replica_id)] == {"lid-2"}
-            assert ("tpu", "lid-1") not in b3_healthy.claimed_reps_by_lid
-            assert b3_healthy.vanished_cids_by_lid == {("tpu", "lid-1"): {"p0"}}
+        else:
+            assert b3_healthy.rep_lids == {}
 
         b3_live_u2 = create_instance(
             "u2-live",
@@ -5846,10 +5850,12 @@ class TestReconcilerMultiHost:
         )
         assert ("tpu", "lid-2") in b3_tick4.torn_down_lids
         assert ("tpu", "lid-1") not in b3_tick4.torn_down_lids
+        assert ("tpu", "lid-1") not in b3_tick4.claimed_reps_by_lid
+        assert b3_tick4.vanished_cids_by_lid == {("tpu", "lid-1"): {"p0"}}
         if replica_id is not None:
             assert b3_tick4.rep_lids[("tpu", replica_id)] == {"lid-2"}
-            assert ("tpu", "lid-1") not in b3_tick4.claimed_reps_by_lid
-            assert b3_tick4.vanished_cids_by_lid == {("tpu", "lid-1"): {"p0"}}
+        else:
+            assert b3_tick4.rep_lids == {}
 
         b3_term_u2 = create_instance(
             "u2-term",
@@ -6591,6 +6597,8 @@ class TestReconcilerMultiHost:
         }
         if reused_node_type == "tpu-b":
             assert ("tpu-a", "rep-2") not in view.rep_lids
+        else:
+            assert ("tpu-b", "rep-2") not in view.rep_lids
 
     def test_multihost_reused_cid_live_row_cross_node_type_isolation(self):
         """Cross-node-type live and teardown rows referencing a cloud_instance_id
@@ -9690,6 +9698,459 @@ class TestReconcilerMultiHost:
                 if v.instance_id.startswith("q-") and v.status == Instance.TERMINATED
             )
             assert canceled_cnt == (0 if min_rep_cc == 0 else 1)
+
+    def test_multihost_ray_stop_requested_atomic_sweep_and_occupancy_dedup(self):
+        """Verify:
+        1. Atomic multi-worker TERMINATING sweep transitions RAY_STOP_REQUESTED
+           siblings in the same tick when a sibling crashes unsolicited, so a
+           subsequent RayStopError cannot revert them to RAY_RUNNING.
+        2. Mid-boot teardown excludes REQUESTED rows in view.torn_down_lids from
+           active_by_type, and raylet restarts on a draining pod deduplicate
+           rep_occupying and active_by_type by cloud_instance_id.
+        """
+        # 1. R3: i-1..i-3 are already RAY_STOP_REQUESTED when sibling i-0 (p-0)
+        # dies unsolicited (missing from ray_nodes -> RAY_STOPPED -> TERMINATING).
+        tpu_cfg = self._replica_nt_cfg("tpu", max_w=8, workers_per_replica=4)
+        store_s = InstanceStorage(cluster_id="r3_sweep", storage=InMemoryStorage())
+        sub_s = MockSubscriber()
+        im_s = InstanceManager(
+            instance_storage=store_s, instance_status_update_subscribers=[sub_s]
+        )
+        now_ns = time.time_ns()
+        self._add_instances(
+            store_s,
+            [
+                create_instance(
+                    "i-0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id="p-0",
+                    ray_node_id=binary_to_hex(b"r-0".ljust(28, b"0")),
+                    launch_request_id="lid-0",
+                    status_times=[
+                        (Instance.ALLOCATED, now_ns - 10),
+                        (Instance.RAY_RUNNING, now_ns - 5),
+                    ],
+                )
+            ]
+            + [
+                create_instance(
+                    f"i-{k}",
+                    status=Instance.RAY_STOP_REQUESTED,
+                    instance_type="tpu",
+                    cloud_instance_id=f"p-{k}",
+                    ray_node_id=binary_to_hex(f"r-{k}".encode().ljust(28, b"0")),
+                    launch_request_id="lid-0",
+                    status_times=[
+                        (Instance.ALLOCATED, now_ns - 10),
+                        (Instance.RAY_RUNNING, now_ns - 6),
+                        (Instance.RAY_STOP_REQUESTED, now_ns - 2),
+                    ],
+                )
+                for k in (1, 2, 3)
+            ],
+        )
+        cloud_s = {
+            f"p-{k}": CloudInstance(
+                f"p-{k}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+            )
+            for k in range(4)
+        }
+        ray_nodes_s = [
+            NodeState(
+                node_id=f"r-{k}".encode().ljust(28, b"0"),
+                instance_id=f"p-{k}",
+                ray_node_type_name="tpu",
+                status=NodeStatus.IDLE,
+            )
+            for k in (1, 2, 3)
+        ]
+        cfg_s = MockAutoscalingConfig(configs={"node_type_configs": {"tpu": tpu_cfg}})
+        self.run_tick(
+            im_s,
+            cfg_s,
+            cloud_instances=cloud_s,
+            ray_state=ClusterResourceState(node_states=ray_nodes_s),
+        )
+        insts_s, _ = store_s.get_instances()
+        assert {i.instance_id: i.status for i in insts_s.values()} == {
+            f"i-{k}": Instance.TERMINATING for k in range(4)
+        }
+        # Late RayStopError on i-1..i-3 is ignored because all 4 are TERMINATING.
+        self.run_tick(
+            im_s,
+            cfg_s,
+            cloud_instances=cloud_s,
+            ray_state=ClusterResourceState(node_states=ray_nodes_s),
+            ray_stop_errors=[RayStopError(im_instance_id=f"i-{k}") for k in (1, 2, 3)],
+        )
+        insts_after_err, _ = store_s.get_instances()
+        assert {i.instance_id: i.status for i in insts_after_err.values()} == {
+            f"i-{k}": Instance.TERMINATING for k in range(4)
+        }
+
+        # 2a. R4 (mid-boot teardown): 1 RAY_INSTALL_FAILED + 1 ALLOCATED + 2
+        # REQUESTED on lid-td (max_worker_nodes=8, size=4). Tearing-down replica
+        # occupies 4 slots (not 6), so launching 4 new workers succeeds.
+        head_im = create_instance(
+            "h-0",
+            status=Instance.RAY_RUNNING,
+            instance_type="head",
+            cloud_instance_id="c-head",
+            ray_node_id=binary_to_hex(b"r-head".ljust(28, b"0")),
+            node_kind=NodeKind.HEAD,
+        )
+        head_rn = NodeState(
+            node_id=b"r-head".ljust(28, b"0"),
+            instance_id="c-head",
+            ray_node_type_name="head",
+            status=NodeStatus.RUNNING,
+        )
+        store_m = InstanceStorage(cluster_id="r4_midboot", storage=InMemoryStorage())
+        im_m = InstanceManager(
+            instance_storage=store_m, instance_status_update_subscribers=[]
+        )
+        self._add_instances(
+            store_m,
+            [
+                head_im,
+                create_instance(
+                    "i-fail",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="p-0",
+                    launch_request_id="lid-td",
+                    status_times=[(Instance.ALLOCATED, now_ns - 600 * s_to_ns)],
+                ),
+                create_instance(
+                    "i-alloc",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="p-1",
+                    launch_request_id="lid-td",
+                    status_times=[(Instance.ALLOCATED, now_ns - 4)],
+                ),
+                create_instance(
+                    "i-req-2",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-td",
+                ),
+                create_instance(
+                    "i-req-3",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="lid-td",
+                ),
+            ],
+        )
+        cloud_m = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            "p-0": CloudInstance("p-0", "tpu", NodeKind.WORKER, True, replica_id="r0"),
+            "p-1": CloudInstance("p-1", "tpu", NodeKind.WORKER, True, replica_id="r0"),
+        }
+        self.run_tick(
+            im_m,
+            MockAutoscalingConfig(
+                configs={
+                    "node_type_configs": {"tpu": tpu_cfg},
+                    "max_num_worker_nodes": 8,
+                    "upscaling_speed": 10.0,
+                    "instance_reconcile_config": InstanceReconcileConfig(
+                        allocate_status_timeout_s=10
+                    ),
+                }
+            ),
+            scheduler=MockScheduler(
+                to_launch=[LaunchRequest(id="l-new", instance_type="tpu", count=4)]
+            ),
+            cloud_instances=cloud_m,
+            ray_state=ClusterResourceState(node_states=[head_rn]),
+        )
+        insts_m, _ = store_m.get_instances()
+        assert sum(1 for v in insts_m.values() if v.status == Instance.REQUESTED) == 4
+        assert insts_m["i-req-2"].status == Instance.ALLOCATION_FAILED
+        assert insts_m["i-req-3"].status == Instance.ALLOCATION_FAILED
+
+        # 2b. R4 (raylet restart on draining pod): p-0 has both a RAY_STOPPING row
+        # and a restarted RAY_RUNNING row while p-1..p-3 are RAY_RUNNING.
+        store_d = InstanceStorage(cluster_id="r4_dedup", storage=InMemoryStorage())
+        im_d = InstanceManager(
+            instance_storage=store_d, instance_status_update_subscribers=[]
+        )
+        restart_rows = [
+            head_im,
+            create_instance(
+                "i-old-stop",
+                status=Instance.RAY_STOPPING,
+                instance_type="tpu",
+                cloud_instance_id="p-0",
+                ray_node_id=binary_to_hex(b"r-old".ljust(28, b"0")),
+                launch_request_id="lid-r0",
+            ),
+            create_instance(
+                "i-new-run",
+                status=Instance.RAY_RUNNING,
+                instance_type="tpu",
+                cloud_instance_id="p-0",
+                ray_node_id=binary_to_hex(b"r-0".ljust(28, b"0")),
+                launch_request_id="",
+            ),
+        ] + [
+            create_instance(
+                f"i-{k}",
+                status=Instance.RAY_RUNNING,
+                instance_type="tpu",
+                cloud_instance_id=f"p-{k}",
+                ray_node_id=binary_to_hex(f"r-{k}".encode().ljust(28, b"0")),
+                launch_request_id="lid-r0",
+            )
+            for k in (1, 2, 3)
+        ]
+        self._add_instances(store_d, restart_rows)
+        cloud_d = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            **cloud_s,
+        }
+        view_d = _MultiHostReplicaView.build(restart_rows, cloud_d, {"tpu": 4})
+        assert view_d.rep_occupying[("tpu", "rep-0")] == 4
+        ray_nodes_d = [
+            head_rn,
+            NodeState(
+                node_id=b"r-old".ljust(28, b"0"),
+                instance_id="p-0",
+                ray_node_type_name="tpu",
+                status=NodeStatus.DRAINING,
+            ),
+        ] + [
+            NodeState(
+                node_id=f"r-{k}".encode().ljust(28, b"0"),
+                instance_id=f"p-{k}",
+                ray_node_type_name="tpu",
+                status=NodeStatus.RUNNING,
+            )
+            for k in range(4)
+        ]
+        self.run_tick(
+            im_d,
+            MockAutoscalingConfig(
+                configs={
+                    "node_type_configs": {"tpu": tpu_cfg},
+                    "max_num_worker_nodes": 8,
+                    "upscaling_speed": 10.0,
+                }
+            ),
+            scheduler=MockScheduler(
+                to_launch=[LaunchRequest(id="l-second", instance_type="tpu", count=4)]
+            ),
+            cloud_instances=cloud_d,
+            ray_state=ClusterResourceState(node_states=ray_nodes_d),
+        )
+        insts_d, _ = store_d.get_instances()
+        assert sum(1 for v in insts_d.values() if v.status == Instance.REQUESTED) == 4
+
+    def test_multihost_real_scheduler_r1_r2_end_to_end_seams(self):
+        """Drive unmocked Reconciler.reconcile + ResourceDemandScheduler +
+        KubeRayProvider across multiple ticks for:
+        1. R1: shared single-host launch_request_id partial timeout retry across
+           sh-a and sh-b followed by fresh demand.
+        2. R2: live RayCluster update raising minReplicas alongside replicas.
+        """
+        sched = ResourceDemandScheduler()
+
+        # 1. R1: 3-tick single-host shared launch_request_id timeout retry.
+        (
+            cr_r1,
+            pods_r1,
+            _,
+            prov_r1,
+            cfg_r1,
+            store_r1,
+            im_r1,
+            head_r1,
+            make_pod_r1,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="r1_e2e",
+            worker_groups=[
+                {
+                    "groupName": "sh-a",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "sh-b",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            node_type_configs={
+                "sh-a": NodeTypeConfig(
+                    name="sh-a",
+                    resources={"CPU": 2, "A": 1},
+                    min_worker_nodes=0,
+                    max_worker_nodes=10,
+                ),
+                "sh-b": NodeTypeConfig(
+                    name="sh-b",
+                    resources={"CPU": 2, "B": 1},
+                    min_worker_nodes=0,
+                    max_worker_nodes=10,
+                ),
+            },
+        )
+        cfg_r1._configs["instance_reconcile_config"] = InstanceReconcileConfig(
+            request_status_timeout_s=10,
+            max_num_retry_request_to_allocate=3,
+        )
+        # Tick 1: launch 2 sh-a + 3 sh-b sharing one single-host launch_request_id.
+        self.run_tick(
+            im_r1,
+            cfg_r1,
+            scheduler=sched,
+            cloud_provider=prov_r1,
+            ray_state=ClusterResourceState(
+                node_states=list(head_r1.node_states),
+                pending_resource_requests=[
+                    ResourceRequestByCount(
+                        request=ResourceRequestUtil.make({"CPU": 2, "A": 1}),
+                        count=2,
+                    ),
+                    ResourceRequestByCount(
+                        request=ResourceRequestUtil.make({"CPU": 2, "B": 1}),
+                        count=3,
+                    ),
+                ],
+            ),
+        )
+        assert cr_r1["spec"]["workerGroupSpecs"][0]["replicas"] == 2
+        assert cr_r1["spec"]["workerGroupSpecs"][1]["replicas"] == 3
+
+        # Tick 2: 1 sh-a + 3 sh-b pods materialize and register; the 2nd sh-a
+        # stays unallocated and ages past request_status_timeout_s.
+        pods_r1["items"].extend(
+            [make_pod_r1("sh-a-0", "sh-a")]
+            + [make_pod_r1(f"sh-b-{k}", "sh-b") for k in range(3)]
+        )
+        pods_r1["metadata"]["resourceVersion"] = "2"
+        live_rns = [
+            NodeState(
+                node_id=b"sh-a-0".ljust(28, b"0"),
+                instance_id="sh-a-0",
+                ray_node_type_name="sh-a",
+                status=NodeStatus.RUNNING,
+                total_resources={"CPU": 2, "A": 1},
+                available_resources={},
+            )
+        ] + [
+            NodeState(
+                node_id=f"sh-b-{k}".encode().ljust(28, b"0"),
+                instance_id=f"sh-b-{k}",
+                ray_node_type_name="sh-b",
+                status=NodeStatus.RUNNING,
+                total_resources={"CPU": 2, "B": 1},
+                available_resources={},
+            )
+            for k in range(3)
+        ]
+        self.run_tick(
+            im_r1,
+            cfg_r1,
+            scheduler=sched,
+            cloud_provider=prov_r1,
+            ray_state=ClusterResourceState(
+                node_states=list(head_r1.node_states) + live_rns,
+                pending_resource_requests=[
+                    ResourceRequestByCount(
+                        request=ResourceRequestUtil.make({"CPU": 2, "A": 1}),
+                        count=1,
+                    )
+                ],
+            ),
+        )
+        # Age the remaining REQUESTED sh-a row past request_status_timeout_s=10s.
+        insts_r1, _ = store_r1.get_instances()
+        stuck_sh_a = [
+            v
+            for v in insts_r1.values()
+            if v.instance_type == "sh-a" and v.status == Instance.REQUESTED
+        ]
+        assert len(stuck_sh_a) == 1
+        stuck_sh_a[0].status_history[-1].timestamp_ns -= 20 * s_to_ns
+        store_r1.upsert_instance(stuck_sh_a[0])
+
+        # Tick 3: stuck sh-a retries REQUESTED -> QUEUED -> REQUESTED while +1 new
+        # sh-a and +1 new sh-b demand arrive; CR must scale to sh-a=3, sh-b=4.
+        self.run_tick(
+            im_r1,
+            cfg_r1,
+            scheduler=sched,
+            cloud_provider=prov_r1,
+            ray_state=ClusterResourceState(
+                node_states=list(head_r1.node_states) + live_rns,
+                pending_resource_requests=[
+                    ResourceRequestByCount(
+                        request=ResourceRequestUtil.make({"CPU": 2, "A": 1}),
+                        count=2,
+                    ),
+                    ResourceRequestByCount(
+                        request=ResourceRequestUtil.make({"CPU": 2, "B": 1}),
+                        count=1,
+                    ),
+                ],
+            ),
+        )
+        assert cr_r1["spec"]["workerGroupSpecs"][0]["replicas"] == 3
+        assert cr_r1["spec"]["workerGroupSpecs"][1]["replicas"] == 4
+
+        # 2. R2: Live CR update raising minReplicas=2 and replicas=2 together.
+        (
+            cr_r2,
+            _,
+            _,
+            prov_r2,
+            cfg_r2,
+            _,
+            im_r2,
+            head_r2,
+            _,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="r2_e2e",
+            worker_groups=[
+                {
+                    "groupName": "tpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 10,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            node_type_configs={
+                "tpu": NodeTypeConfig(
+                    name="tpu",
+                    resources={"CPU": 4, "TPU": 4},
+                    min_worker_nodes=0,
+                    max_worker_nodes=40,
+                    replica_config=WorkerReplicaConfig(workers_per_replica=4),
+                )
+            },
+        )
+        # Tick 1 syncs initial CR at minReplicas=0, replicas=0.
+        self.run_tick(
+            im_r2, cfg_r2, scheduler=sched, cloud_provider=prov_r2, ray_state=head_r2
+        )
+        # Live CR edit raises minReplicas=2 and replicas=2 simultaneously.
+        cr_r2["spec"]["workerGroupSpecs"][0]["minReplicas"] = 2
+        cr_r2["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        cfg_r2._configs["node_type_configs"]["tpu"].min_worker_nodes = 8
+        self.run_tick(
+            im_r2, cfg_r2, scheduler=sched, cloud_provider=prov_r2, ray_state=head_r2
+        )
+        assert cr_r2["spec"]["workerGroupSpecs"][0]["replicas"] == 2
 
 
 if __name__ == "__main__":
