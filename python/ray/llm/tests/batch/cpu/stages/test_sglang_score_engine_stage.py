@@ -264,24 +264,12 @@ def _nested_object_array(entries):
     [
         (np.ones((2, 3), dtype=np.float32), 2, torch.float32),
         (np.ones(3, dtype=np.float32), 1, torch.float32),
-        ([[0.1, 0.2, 0.3]], 1, torch.float64),
         (_nested_object_array([np.ones(3), np.zeros(3)]), 2, torch.float64),
-        (torch.ones(2, 3, dtype=torch.bfloat16), 2, torch.bfloat16),
-        ([torch.ones(3, dtype=torch.bfloat16)] * 3, 3, torch.bfloat16),
-        (
-            _nested_object_array([torch.ones(3, dtype=torch.bfloat16)] * 2),
-            2,
-            torch.bfloat16,
-        ),
     ],
     ids=[
         "ndarray_2d",
         "ndarray_1d",
-        "list",
         "object_ndarray",
-        "bf16_tensor",
-        "bf16_tensor_list",
-        "bf16_object_ndarray",
     ],
 )
 def test_convert_to_embed_override_tensors(embeds, expected_count, dtype):
@@ -300,7 +288,6 @@ def test_convert_to_embed_override_tensors_empty(embeds):
     [
         (np.zeros((2, 2, 2)), "shaped"),
         (_nested_object_array([np.ones(2), np.ones(3)]), "same shape"),
-        ([torch.ones(2), torch.ones(3)], "same shape"),
     ],
 )
 def test_convert_to_embed_override_tensors_errors(embeds, match):

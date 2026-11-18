@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
-from pydantic import BaseModel, Field, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from ray.llm._internal.batch.constants import SGLANG_MIS_DELIMITER_TOKEN_ID
 from ray.llm._internal.batch.processor.utils import build_cpu_stage_map_kwargs
@@ -69,6 +69,8 @@ class SGLangScoreOptions(BaseModelExtended):
 class SGLangScoreRequest(BaseModel):
     """A score request to the SGLang engine: one query and its items."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     query_token_ids: List[int]
     # One token ID list per item.
     item_token_ids: List[List[int]]
@@ -76,9 +78,6 @@ class SGLangScoreRequest(BaseModel):
     query_embed_overrides: Optional[List[Any]] = None
     # One entry per item: a list of [1, hidden_dim] tensors, or None.
     item_embed_overrides: Optional[List[Optional[List[Any]]]] = None
-
-    class Config:
-        arbitrary_types_allowed = True
 
 
 class _SGLangScoreTask(_SGLangTask):
@@ -118,14 +117,12 @@ class _SGLangScoreTask(_SGLangTask):
         cls,
         config: "SGLangEngineProcessorConfig",
         stage_cfg: TokenizerStageConfig,
-        add_special_tokens: bool = True,
     ) -> StatefulStage:
         from ray.llm._internal.batch.stages import SGLangScoreTokenizeStage
 
         kwargs = dict(
             model=stage_cfg.model_source,
             trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
-            add_special_tokens=add_special_tokens,
             enable_mis=bool(config.engine_kwargs.get("enable_mis")),
             item_first=config.task_kwargs["item_first"],
             score_extraction_token_id=config.task_kwargs["score_extraction_token_id"],
@@ -209,7 +206,7 @@ class _SGLangScoreTask(_SGLangTask):
             item_scores = [[list(row) for row in entry] for entry in result.scores]
         return {
             "scores": item_scores,
-            "num_input_tokens": getattr(result, "prompt_tokens", 0) or 0,
+            "num_input_tokens": result.prompt_tokens,
         }
 
 
@@ -250,13 +247,6 @@ def _validate_score_token_ids(options: Dict[str, Any], hf_config: Any) -> None:
         options: The prepared `task_kwargs`.
         hf_config: The model's Hugging Face config, or None if unavailable.
     """
-    architectures = getattr(hf_config, "architectures", None) or []
-    if options["label_token_ids"] is None and any(
-        arch.endswith("ForCausalLM") for arch in architectures
-    ):
-        raise ValueError(
-            f"task_kwargs['label_token_ids'] is required for {architectures[0]}."
-        )
     vocab_size = getattr(hf_config, "vocab_size", None)
     if not isinstance(vocab_size, int) or vocab_size <= 0:
         return
@@ -281,8 +271,8 @@ def _convert_to_embed_override_tensors(
     """Convert embedding overrides into the per-position tensors SGLang expects.
 
     Args:
-        embeds: The overrides for one sequence: `None`, or an array, list, or
-            tensor shaped `[num_overrides, hidden_dim]` or `[hidden_dim]`.
+        embeds: The overrides for one sequence: `None`, or an array or list
+            shaped `[num_overrides, hidden_dim]` or `[hidden_dim]`.
 
     Returns:
         A list of `[1, hidden_dim]` tensors, or `None` if there are no overrides.
@@ -290,55 +280,28 @@ def _convert_to_embed_override_tensors(
     if is_missing(embeds):
         return None
 
-    tensor = _to_stacked_tensor(embeds)
-    if tensor is None or tensor.numel() == 0:
-        return None
-
-    if tensor.ndim == 1:
-        tensor = tensor.unsqueeze(0)
-    elif tensor.ndim != 2:
-        raise ValueError(
-            "Embedding overrides must be shaped [num_overrides, hidden_dim], "
-            f"got {tuple(tensor.shape)}."
-        )
-    return [row.unsqueeze(0) for row in tensor]
-
-
-def _to_stacked_tensor(embeds: Any) -> Optional["torch.Tensor"]:
-    """Stack embedding overrides into one tensor.
-
-    Torch tensors are stacked with `torch.stack` because numpy has no bfloat16
-    dtype; everything else goes through `np.asarray`.
-    """
-    import torch
-
-    if isinstance(embeds, torch.Tensor):
-        return embeds
-
-    if isinstance(embeds, (list, tuple, np.ndarray)):
-        entries = list(embeds)
-        if entries and all(isinstance(entry, torch.Tensor) for entry in entries):
-            return _stack_tensor_entries(entries)
-
     array = np.asarray(embeds)
-    if array.size == 0:
-        return None
     if array.dtype == object:
         # Ray Data stores a nested list column as an object ndarray of ndarrays.
-        return _stack_tensor_entries(
-            [torch.as_tensor(np.asarray(entry)) for entry in array]
+        try:
+            array = np.stack([np.asarray(entry) for entry in array])
+        except ValueError as e:
+            shapes = [np.shape(entry) for entry in embeds]
+            raise ValueError(
+                f"Embedding overrides must all have the same shape, got {shapes}."
+            ) from e
+    if array.size == 0:
+        return None
+
+    if array.ndim == 1:
+        array = array[np.newaxis]
+    elif array.ndim != 2:
+        raise ValueError(
+            "Embedding overrides must be shaped [num_overrides, hidden_dim], "
+            f"got {array.shape}."
         )
-    return torch.as_tensor(array)
 
-
-def _stack_tensor_entries(entries: List["torch.Tensor"]) -> "torch.Tensor":
-    """`torch.stack` that raises `ValueError` on mismatched shapes."""
     import torch
 
-    try:
-        return torch.stack(entries)
-    except RuntimeError as e:
-        shapes = [tuple(entry.shape) for entry in entries]
-        raise ValueError(
-            f"Embedding overrides must all have the same shape, got {shapes}."
-        ) from e
+    tensor = torch.as_tensor(array)
+    return [row.unsqueeze(0) for row in tensor]

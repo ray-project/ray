@@ -17,7 +17,6 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
         expected_input_keys: List[str],
         model: str,
         trust_remote_code: bool = False,
-        add_special_tokens: bool = True,
         enable_mis: bool = False,
         item_first: bool = False,
         score_extraction_token_id: Optional[int] = None,
@@ -28,26 +27,25 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
         text:
 
         - With multi-item scoring, or with embedding overrides in the row, the
-          query is tokenized on its own, with special tokens if
-          `add_special_tokens` is set, and each item without.
+          query is tokenized on its own with special tokens, and each item
+          without.
         - Otherwise, each `query + item` text (`item + query` with
-          `item_first`) is tokenized as one sequence and `query_token_ids` is
-          empty, because the engine concatenates the two. With score
-          extraction, a query containing the extraction token is rejected,
-          as SGLang does, since its tokens would be scored as part of an item.
+          `item_first`) is tokenized as one sequence with special tokens, and
+          `query_token_ids` is empty, because the engine concatenates the two.
+          With score extraction, a query containing the extraction token is
+          rejected, as SGLang does, since its tokens would be scored as part
+          of an item.
 
         Args:
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
             model: The model to use for tokenization.
             trust_remote_code: Whether to trust remote code when loading the model.
-            add_special_tokens: Whether to add the tokenizer's special tokens.
             enable_mis: Whether the engine runs multi-item scoring.
             item_first: Whether each item goes before the query.
             score_extraction_token_id: The score extraction token ID, if set.
         """
         super().__init__(data_column, expected_input_keys, model, trust_remote_code)
-        self.add_special_tokens = add_special_tokens
         self.enable_mis = enable_mis
         self.item_first = item_first
         self.score_extraction_token_id = score_extraction_token_id
@@ -84,7 +82,7 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
                 )
             plans.append((separate, len(items)))
 
-        for query_ids in self._tokenize(queries_to_check, self.add_special_tokens):
+        for query_ids in self._tokenize(queries_to_check, True):
             if self.score_extraction_token_id in query_ids:
                 raise ValueError(
                     "The query contains the score extraction token "
@@ -92,7 +90,7 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
                     "items."
                 )
 
-        special_ids = self._tokenize(special_texts, self.add_special_tokens)
+        special_ids = self._tokenize(special_texts, True)
         plain_ids = self._tokenize(plain_texts, False)
 
         special_pos = plain_pos = 0
