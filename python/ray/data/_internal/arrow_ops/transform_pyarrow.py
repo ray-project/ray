@@ -65,14 +65,6 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
-def _create_empty_table(schema: "pyarrow.Schema"):
-    import pyarrow as pa
-
-    arrays = [pa.array([], type=t) for t in schema.types]
-
-    return pa.table(arrays, schema=schema)
-
-
 def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     """Check if any column type becomes unhashable after to_pandas() conversion.
 
