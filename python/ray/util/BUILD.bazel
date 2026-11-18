@@ -1,14 +1,20 @@
 load("//bazel:python.bzl", "doctest")
 
 # NOTE: `iter.py`, `iter_metrics.py`, and `client_connect.py` only contain deprecated
-# APIs, so we're excluding them.
+# APIs, so we're excluding them. state/ has no BUILD file of its own, so its
+# modules (the ray.util.state API) are collected here. Its __init__.py is
+# excluded because pytest on a package's __init__.py collects the whole package.
 doctest(
     files = glob(
-        ["*.py"],
+        [
+            "*.py",
+            "state/*.py",
+        ],
         exclude = [
             "client_connect.py",
             "iter.py",
             "iter_metrics.py",
+            "state/__init__.py",
         ],
     ),
     tags = ["team:core"],

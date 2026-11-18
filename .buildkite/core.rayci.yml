@@ -213,7 +213,7 @@ steps:
     instance_type: large
     commands:
       # doc tests
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... //:python_ray_doctest core
         --only-tags doctest
         --python-version 3.10 --build-name corebuild-py3.10
         --parallelism-per-worker 3
@@ -442,10 +442,10 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //:all
         //python/ray/tests/resource_isolation:test_resource_isolation_integration
         //python/ray/tests/resource_isolation:test_resource_isolation_config core
-        --privileged --cache-test-results
+        --privileged --cache-test-results --except-tags doctest
         --python-version 3.10 --build-name corebuild-py3.10
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/ray/common/cgroup2/tests/... core
-        --build-type clang --cache-test-results
+        --build-type clang --cache-test-results --except-tags doctest
         --python-version 3.10 --build-name corebuild-py3.10
       - docker run --privileged -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild-py3.10 /bin/bash
@@ -457,7 +457,7 @@ steps:
     instance_type: medium
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker --
-        //:all //src/... core --except-tags=cgroup --build-type clang
+        //:all //src/... core --except-tags=cgroup,doctest --build-type clang
         --python-version 3.10 --build-name corebuild-py3.10
         --cache-test-results --parallelism-per-worker 2
 
@@ -471,7 +471,7 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup,doctest
         --build-type asan-clang --cache-test-results --parallelism-per-worker 2
         --python-version 3.10 --build-name corebuild-py3.10
     depends_on:
@@ -484,7 +484,7 @@ steps:
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --python-version 3.10 --build-name corebuild-py3.10
-        --build-type ubsan --except-tags no_ubsan,cgroup
+        --build-type ubsan --except-tags no_ubsan,cgroup,doctest
         --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
@@ -496,7 +496,7 @@ steps:
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --python-version 3.10 --build-name corebuild-py3.10
-        --build-type tsan-clang --except-tags no_tsan,cgroup
+        --build-type tsan-clang --except-tags no_tsan,cgroup,doctest
         --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
