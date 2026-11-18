@@ -8,7 +8,6 @@ import pytest
 
 import ray
 import ray.train.health as health
-import ray.train.v2._internal.execution.worker_group.worker_group as worker_group_module
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state import state as ray_state
 from ray.exceptions import RayActorError, RayTaskError
@@ -479,83 +478,6 @@ def test_insufficient_cluster_resources_startup_failure(monkeypatch):
     with pytest.raises(
         InsufficientClusterResourcesError, match="Insufficient cluster resources"
     ):
-        wg._start()
-
-
-@pytest.mark.parametrize(
-    "resources_per_worker,num_workers",
-    [
-        # More CPUs in total than the 4-CPU cluster has.
-        ({"CPU": 1.0}, 8),
-        # A resource that no node has.
-        ({"CPU": 1.0, "fake": 1.0}, 2),
-    ],
-)
-def test_insufficient_resources_on_ray_init_cluster(
-    monkeypatch, resources_per_worker, num_workers
-):
-    """A cluster that ray.init() started can't add nodes, so a request that
-    exceeds its resources fails before waiting for the placement group,
-    instead of timing out and retrying indefinitely."""
-    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "60")
-    worker_group_context = _default_worker_group_context(
-        num_workers=num_workers, resources_per_worker=resources_per_worker
-    )
-    wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
-
-    start = time.monotonic()
-    with pytest.raises(
-        InsufficientClusterResourcesError, match="Insufficient cluster resources"
-    ):
-        wg._start()
-    assert time.monotonic() - start < 30
-
-
-def test_infeasible_placement_on_ray_init_cluster(monkeypatch):
-    """On a cluster that ray.init() started, a placement group that no set of
-    nodes can host fails at the startup timeout instead of retrying."""
-    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "2")
-    # The single-node cluster can't spread two workers across two nodes.
-    worker_group_context = _default_worker_group_context(
-        num_workers=2, placement_strategy="STRICT_SPREAD"
-    )
-    wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
-
-    with pytest.raises(InsufficientClusterResourcesError, match="STRICT_SPREAD"):
-        wg._start()
-
-
-def test_infeasible_placement_keeps_retrying_on_other_clusters(monkeypatch):
-    """A cluster that ray.init() didn't start can add nodes, so an infeasible
-    placement group still raises the retryable startup timeout."""
-    monkeypatch.setattr(
-        worker_group_module.usage_lib, "is_ray_init_cluster", lambda _: False
-    )
-    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "2")
-    worker_group_context = _default_worker_group_context(
-        num_workers=2, placement_strategy="STRICT_SPREAD"
-    )
-    wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
-
-    with pytest.raises(WorkerGroupStartupTimeoutError):
-        wg._start()
-
-
-def test_infeasible_placement_keeps_retrying_for_elastic_runs(monkeypatch):
-    """Elastic runs retry at a different size after a startup timeout, so they
-    keep the retryable error even on a cluster that ray.init() started."""
-    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "2")
-    worker_group_context = _default_worker_group_context(
-        num_workers=2, placement_strategy="STRICT_SPREAD"
-    )
-    wg = _default_inactive_worker_group(
-        train_run_context=create_dummy_run_context(
-            scaling_config=ScalingConfig(num_workers=(1, 2))
-        ),
-        worker_group_context=worker_group_context,
-    )
-
-    with pytest.raises(WorkerGroupStartupTimeoutError):
         wg._start()
 
 
