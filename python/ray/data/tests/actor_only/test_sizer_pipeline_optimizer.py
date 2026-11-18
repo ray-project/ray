@@ -1324,6 +1324,7 @@ def _tick(
     shares=None,
     slack=None,
     ttf=None,
+    target=None,
 ) -> Any:
     """A BottleneckTick double: ``named`` [(op, severity)] this tick,
     ``stable`` the stable set, ``slack`` donor -> slack at any b', ``ttf``
@@ -1341,6 +1342,8 @@ def _tick(
         ),
         victim_ttf=lambda donor, tasks, unconsumed: (ttf or {}).get(donor, 0.0),
         slack_for=lambda r, b_prime: dict(slack or {}),
+        # op -> b'; unset ops are unbounded, so the step cap decides.
+        growth_target=lambda op: (target or {}).get(op, 10**6),
     )
 
 
@@ -1494,7 +1497,6 @@ def test_free_growth_runs_while_the_cluster_resizes_but_transfers_wait():
         free_tick,
         [write],
         free_cpu=3.0,
-        growth={write: 1},
         settle=2.0,
     )
     assert _granted(grown) == [write]
@@ -1515,17 +1517,18 @@ def test_free_growth_runs_while_the_cluster_resizes_but_transfers_wait():
 
 def test_named_bottleneck_grows_into_free_capacity_before_it_is_stable():
     # Growing into free capacity drains nothing, so it needs no stability:
-    # Write is named this tick only, with room on its node, and grows by its
-    # growth step without a transfer.
+    # Write is named this tick only, with room on its node, and grows toward
+    # its growth target (2 -> 4) without a transfer.
     write = _op("Write", pool=_Pool(current=2))
     tick = _tick(
         recipient=None,
         named=[(write, 0.6)],
         eligibility={write: "yes: free"},
         shares={write: None},
+        target={write: 4},
     )
     _, state, requests = _apply_bottleneck(
-        _bottleneck_rule(), tick, [write], free_cpu=3.0, growth={write: 2}
+        _bottleneck_rule(), tick, [write], free_cpu=3.0
     )
     assert _granted(requests) == [write]
     (placed,) = requests

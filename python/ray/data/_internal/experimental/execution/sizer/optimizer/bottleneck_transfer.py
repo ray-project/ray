@@ -95,13 +95,14 @@ class BottleneckTransfer(CapacityTransfer):
     Per tick:
 
     1. Free capacity: the most severe bottleneck named this tick (severity
-       at or above the floor) with room on a node it may use grows there by
-       one step. Growing into free capacity drains nothing and is cheap to
+       at or above the floor) with room on a node it may use grows there
+       toward its growth target b' = ceil(b / (1 - w)), w the largest share
+       of time a neighbour waits on it. Growing into free capacity drains nothing and is cheap to
        undo, so it does not wait for the bottleneck to be stable.
     2. Otherwise, with no transfer in flight, the assessment's recipient
        (most severe stable bottleneck at or above the floor that can use
        capacity) is funded from donors: pick b', the largest size up to the
-       step cap that donors can fund, every non-bottleneck op giving at most
+       model's growth target (``growth_target``) that donors can fund, every non-bottleneck op giving at most
        its slack at b' (b'/b more work on the recipient's path, the same off
        it). Victims are taken pending first, then fastest to free. The
        transfer's timeout follows its slowest victim's estimated
@@ -128,7 +129,7 @@ class BottleneckTransfer(CapacityTransfer):
             if tick.assessment.eligibility.get(op) == "yes: free" and self._can_grow(
                 op, ctx
             ):
-                grown = self._grow_into_free(op, ctx)
+                grown = self._grow_into_free(op, tick.growth_target(op), ctx)
                 if grown is not None:
                     requests.append(grown)
                     return requests
@@ -153,14 +154,18 @@ class BottleneckTransfer(CapacityTransfer):
         )
 
     def _grow_into_free(
-        self, recipient: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
+        self,
+        recipient: "ExperimentalActorPoolMapOperator",
+        b_prime: int,
+        ctx: OptimizationContext,
     ) -> Optional[PlacedSizingRequest]:
-        """One growth step into free capacity, or None if no actor fits."""
+        """Grow toward ``b_prime`` (the model's growth target) as far as free
+        capacity allows, or None if no actor fits."""
         per_actor = recipient.actor_pool.per_actor_resource_usage()
         nodes = free_schedulable_nodes(ctx, recipient)
         if not any(max_placeable_actors(ctx.free[n], per_actor) >= 1 for n in nodes):
             return None
-        step = max(1, ctx.growth_delta.get(recipient, 1))
+        step = max(1, b_prime - recipient.actor_pool.serving_size())
         num_to_reclaim = min(
             step, recipient.actor_pool.num_reclaimable_draining_actors()
         )
@@ -211,7 +216,10 @@ class BottleneckTransfer(CapacityTransfer):
             return (not pending, ttf, candidate.eviction_rank)
 
         best: Optional[Tuple[int, List[NodePlan], Dict]] = None
-        for b_prime in range(b + 1, max_step_size(b, bounded_max_size(pool)) + 1):
+        top = min(
+            max_step_size(b, bounded_max_size(pool)), tick.growth_target(recipient)
+        )
+        for b_prime in range(b + 1, max(top, b + 1) + 1):
             slack_by_op = tick.slack_for(recipient, b_prime)
             donors: List[DonorCapacity] = []
             for donor in views:

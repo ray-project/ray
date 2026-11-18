@@ -72,6 +72,7 @@ from typing import (
 
 from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
+    SIZER_BOTTLENECK_MAX_STEP_RATIO,
     SIZER_BOTTLENECK_MIN_SEVERITY,
     SIZER_BOTTLENECK_SLACK_MARGIN,
     SIZER_BOTTLENECK_WINDOW_S,
@@ -215,6 +216,9 @@ class BottleneckTick(Generic[K]):
     slack_for: Callable[[K, int], Mapping[K, int]] = field(
         default=lambda recipient, b_prime: {}, compare=False
     )
+    # How big a bottleneck should get this step (``growth_target``): op ->
+    # b'.
+    growth_target: Callable[[K], int] = field(default=lambda op: 0, compare=False)
 
 
 # --- pure model ------------------------------------------------------------
@@ -325,6 +329,35 @@ def find_bottlenecks(
         if op not in has_outgoing
         and blocked_share(op, shares, next_ops, edge_shares) <= 1 - margin
     ]
+
+
+def growth_target(
+    op: K,
+    shares: Mapping[K, OpShares],
+    prev_ops: Mapping[K, Sequence[K]],
+    next_ops: Mapping[K, Sequence[K]],
+    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]],
+    max_ratio: float,
+    max_size: int,
+) -> int:
+    """How big a bottleneck should get: b' = ceil(b / (1 - w)), where w is
+    the largest share of time a neighbour waits on it (a producer blocked by
+    it, or a consumer starved). A producer blocked w of the time could make
+    1 / (1 - w) times as much, so the bottleneck needs that much more
+    throughput. At least b + 1, at most b x ``max_ratio`` and ``max_size``.
+    """
+    b = shares[op].actors if op in shares else 0
+    waits = [
+        edge_shares_of(p, op, shares, edge_shares).blocked
+        for p in prev_ops.get(op, ())
+        if p in shares
+    ]
+    waits += [shares[c].starved for c in next_ops.get(op, ()) if c in shares]
+    w = min(max(waits, default=0.0), 1.0)
+    base = max(b, 1)
+    cap = max(b + 1, min(max_size, math.floor(base * max_ratio)))
+    wanted = cap if w >= 1.0 else math.ceil(base / (1.0 - w))
+    return max(b + 1, min(cap, wanted))
 
 
 def severity(
@@ -1018,6 +1051,15 @@ class BottleneckObserver:
                 b_prime,
                 self._profiles.next_ops,
                 self._slack_margin,
+            ),
+            growth_target=lambda op: growth_target(
+                op,
+                snapshot.shares,
+                self._profiles.prev_ops,
+                self._profiles.next_ops,
+                snapshot.edge_shares,
+                SIZER_BOTTLENECK_MAX_STEP_RATIO,
+                bounded_max_size(op.actor_pool),
             ),
         )
 

@@ -23,6 +23,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     analyze,
     classify_edge,
     format_snapshot,
+    growth_target,
     is_circular,
     slack,
     slack_toward,
@@ -369,6 +370,37 @@ def test_slack_scales_only_ops_on_the_recipients_path():
     assert by_op == {"A": 1, "D": 4}
     # No recipient: every op at factor 1.
     assert slack_toward(shares, None, 0, next_ops, SLACK_MARGIN)["A"] == 4
+
+
+@pytest.mark.parametrize(
+    "producer_blocked, consumer_starved, actors, expected",
+    [
+        # Producer blocked 20%: it could make 1.25x, so 8 -> 10.
+        (0.2, 0.0, 8, 10),
+        # Consumer starved 50%: 2x, capped at 1.5x, so 6 -> 9.
+        (0.0, 0.5, 6, 9),
+        # Nothing waits much: still at least one more.
+        (0.01, 0.0, 4, 5),
+        # Fully blocked producer: the step cap decides.
+        (1.0, 0.0, 4, 6),
+        # No actors yet: at least one.
+        (1.0, 0.0, 0, 1),
+    ],
+)
+def test_growth_target_follows_how_long_neighbours_wait(
+    producer_blocked, consumer_starved, actors, expected
+):
+    shares = {
+        "A": OpShares(busy=0.0, obp=producer_blocked, starved=0.0, actors=10),
+        "B": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=actors),
+        "C": OpShares(busy=0.5, obp=0.0, starved=consumer_starved, actors=4),
+    }
+    prev_ops, next_ops = _chain("A", "B", "C")
+    edge_shares = {("A", "B"): EdgeShares(blocked=producer_blocked, self_limited=0.0)}
+    assert (
+        growth_target("B", shares, prev_ops, next_ops, edge_shares, 1.5, 100)
+        == expected
+    )
 
 
 class _Clock:
