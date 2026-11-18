@@ -28,25 +28,17 @@ def _calculate_blocks_rows(
         for i, (_, metadata) in enumerate(blocks_with_metadata)
         if metadata.num_rows is None
     ]
-    fetched_map = {}
     if missing_indices:
         fetched_num_rows = ray.get(
             [get_num_rows.remote(blocks_with_metadata[i][0]) for i in missing_indices]
         )
-        fetched_map = dict(zip(missing_indices, fetched_num_rows))
-        try:
-            for i, num_rows in fetched_map.items():
-                block, metadata = blocks_with_metadata[i]
-                blocks_with_metadata[i] = (
-                    block,
-                    replace(metadata, num_rows=num_rows),
-                )
-        except TypeError:
-            pass
-    return [
-        fetched_map.get(i, metadata.num_rows)
-        for i, (_, metadata) in enumerate(blocks_with_metadata)
-    ]
+        for i, num_rows in zip(missing_indices, fetched_num_rows):
+            block, metadata = blocks_with_metadata[i]
+            blocks_with_metadata[i] = (
+                block,
+                replace(metadata, num_rows=num_rows),
+            )
+    return [metadata.num_rows for _, metadata in blocks_with_metadata]
 
 
 def _generate_valid_indices(
