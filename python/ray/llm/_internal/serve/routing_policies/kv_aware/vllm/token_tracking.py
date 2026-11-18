@@ -47,6 +47,9 @@ def enable_token_tracking(
             # router booked (e.g. HAProxy's fallback path) publish too. Routers
             # have no booking for them, so the selection service keeps each such
             # event for 30 s in case a booking arrives, then drops it.
+            # TODO (jeffreywang): Track per request, not per generate call. Beam
+            # search runs many generate calls, so the first one frees the
+            # request's load early.
             tracker = RequestTokenTracker(
                 publisher, get_serve_request_id() or request_id
             )

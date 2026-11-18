@@ -302,10 +302,6 @@ class LLMRouter(_LLMRouter):
         subscribes to."""
         return self._kv_token_tracker._svc.list_worker_publishers()
 
-    def get_block_size(self):
-        """(Test only) The KV-cache block size the tracker pinned."""
-        return self._kv_token_tracker.get_block_size()
-
     async def select_worker(
         self,
         request_id,

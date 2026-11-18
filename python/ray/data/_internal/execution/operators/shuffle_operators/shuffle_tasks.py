@@ -1,11 +1,21 @@
 """Shared remote tasks + helpers for ShuffleMapOp / ShuffleReduceOp."""
 
+import abc
 import logging
 import math
 import time
 import typing
 from dataclasses import replace
-from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import pyarrow as pa
 
@@ -16,6 +26,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.util import yield_block_with_stats
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -36,6 +47,28 @@ logger = logging.getLogger(__name__)
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[List[pa.Table]]], Iterable[Block]]
 BlockTransformer = Callable[["pa.Table"], "pa.Table"]
+
+
+class TaskScopedPartitioner(abc.ABC):
+    """A partitioner whose partition function depends on the map task index.
+
+    Map tasks call ``bind(task_index)`` once and partition every block with the
+    returned function. Used where mappers must not share state, e.g. random
+    shuffle seeds.
+    """
+
+    @abc.abstractmethod
+    def bind(self, task_index: int) -> PartitionFn:
+        ...
+
+
+def resolve_partition_fn(
+    partition_fn: Union[PartitionFn, TaskScopedPartitioner], task_index: int
+) -> PartitionFn:
+    if isinstance(partition_fn, TaskScopedPartitioner):
+        return partition_fn.bind(task_index)
+    return partition_fn
+
 
 # Peak working-set of a shuffle map/reduce task is ~2x the input bytes
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
@@ -141,7 +174,9 @@ def _shuffle_map_task(
     output_schema = TableBlockAccessor.try_convert_block_type(
         shard_source_blocks[0], block_type=BlockType.ARROW
     ).schema
-    empty_shard = _encode_partition_ipc(output_schema.empty_table(), ipc_write_options)
+    empty_shard = _encode_partition_ipc(
+        _create_empty_table(output_schema), ipc_write_options
+    )
 
     shard_sizes: Dict[int, Tuple[int, int]] = {}
     partition_bufs: List[pa.Buffer] = []

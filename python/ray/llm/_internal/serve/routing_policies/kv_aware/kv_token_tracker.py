@@ -240,10 +240,6 @@ class KVTokenTracker:
         self._create_selection_service()
         self._start_replica_tracking()
 
-    def get_block_size(self) -> int:
-        """Return the KV-cache block size used for decode-block accounting."""
-        return self._block_size
-
     def subscribe_token_endpoints(self, callback: Callable[[List[str]], None]) -> None:
         """Call ``callback`` with the token endpoints of workers as they join.
 
@@ -580,9 +576,8 @@ class KVTokenTracker:
             request_id: Unique identifier for the request being routed.
             token_ids: Prompt token ids used to compute KV-cache overlap.
             allowed_worker_ids: Candidate worker ids the router may select from.
-            expected_output_tokens: The request's output-token cap. With
-                select-time reservation this lets selection service decay decode
-                load without per-token progress events.
+            expected_output_tokens: The request's output-token cap, passed to
+                the selection service.
             lora_name: The adapter name vLLM stamps on the request's KV-cache
                 events. The selection service salts its KV hashes with it, so
                 omitting it on a LoRA request scores against the wrong
