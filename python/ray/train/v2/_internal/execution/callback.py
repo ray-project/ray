@@ -7,6 +7,7 @@ from ray.train.v2.api.config import ScalingConfig
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    from ray.train.health import HealthDecision
     from ray.train.v2._internal.execution.context import TrainRunContext
     from ray.train.v2._internal.execution.controller import (
         TrainControllerState,
@@ -166,6 +167,11 @@ class ControllerCallback(RayTrainCallback):
         resize_decision: "ResizeDecision",
     ):
         """Called before the controller executes a resize decision."""
+        pass
+
+    def after_health_decision(self, health_decision: "HealthDecision"):
+        """Called after the health checks decide on something other than a
+        ``Noop``, before the controller acts on it."""
         pass
 
     def after_controller_finish(self, result: "Result"):

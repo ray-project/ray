@@ -1151,6 +1151,13 @@ class PhysicalOperator(Operator):
         """
         return False
 
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        """True if no downstream operator can start until this one has
+        completed, i.e. its whole output must exist before any of it is usable.
+        """
+        return False
+
     def shutdown(self, timer: Timer, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 

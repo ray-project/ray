@@ -38,6 +38,7 @@ from ray.data._internal.util import (
     _is_local_scheme,
     _resolve_custom_scheme,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -482,7 +483,7 @@ def _raise_on_pickle_object_meta_parquet(local_meta_dir: str, root_uri: str) -> 
         try:
             # Unpickling untrusted data can execute arbitrary code. Reject object
             # columns unless the user has explicitly opted in.
-            raise_on_pickle_object_columns(schema.empty_table())
+            raise_on_pickle_object_columns(_create_empty_table(schema))
         except ValueError as e:
             rel = path.relative_to(meta_dir).as_posix()
             raise ValueError(f"{root_uri!r}: meta/{rel}: {e}") from e

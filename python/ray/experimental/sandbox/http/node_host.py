@@ -109,7 +109,6 @@ def warm_key(spec: SandboxSpec) -> Optional[tuple]:
         spec.get("network", "none"),
         tuple(cidrs) if cidrs is not None else None,
         bool(spec.get("rootless", True)),
-        bool(spec.get("readonly", True)),
         tuple(capabilities) if capabilities is not None else None,
         spec.get("shell"),
         tuple(spec.get("dns") or ()),
