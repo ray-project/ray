@@ -647,6 +647,31 @@ class TestExperimentalActorPool(unittest.TestCase):
         pool.refresh_actor_state()
         assert pool.select_actors(bundle=_make_bundle(1000)) is None
 
+    def test_output_backpressured_actor_capped_at_concurrency(self):
+        """With the probe set, an actor whose output budget is used up is
+        admitted at most ``max_actor_concurrency`` tasks; once its budget
+        frees, the extra slot comes back. Without a probe nothing changes."""
+        for backpressured in (True, False, None):
+            with self.subTest(backpressured=backpressured):
+                pool = self._create_pool(max_tasks_in_flight=2)
+                actor = self._add_ready_actor(pool)
+                if backpressured is not None:
+                    value: bool = backpressured
+
+                    def probe(_actor_id: str, value: bool = value) -> bool:
+                        return value
+
+                    pool.set_output_backpressured_probe(probe)
+                pool.refresh_actor_state()
+
+                assert self._select_and_submit(pool, _make_bundle(1000)) == actor
+                pool.refresh_actor_state()
+                second = pool.select_actors(bundle=_make_bundle(1000))
+                if backpressured:
+                    assert second is None
+                else:
+                    assert second is not None
+
     # ---- scheduling priority tests ----
 
     def test_least_loaded_actor_preferred(self):

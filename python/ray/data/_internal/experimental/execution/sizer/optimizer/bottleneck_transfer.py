@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from typing_extensions import override
 
 from ray.data._internal.execution.execution_flags import (
+    SIZER_BOTTLENECK_ARROW_MARGIN,
     SIZER_BOTTLENECK_MAX_STEP_RATIO,
     SIZER_BOTTLENECK_MAX_TIMEOUT_S,
     SIZER_TRANSFER_TIMEOUT_S,
@@ -99,6 +100,8 @@ class BottleneckTransfer(CapacityTransfer):
        toward its growth target b' = ceil(b / (1 - w)), w the largest share
        of time a neighbour waits on it. Growing into free capacity drains nothing and is cheap to
        undo, so it does not wait for the bottleneck to be stable.
+       With no bottleneck named, every op that is nearly always busy grows
+       one actor into free capacity instead (balanced stages).
     2. Otherwise, with no transfer in flight, the assessment's recipient
        (most severe stable bottleneck at or above the floor that can use
        capacity) is funded from donors: pick b', the largest size up to the
@@ -133,6 +136,11 @@ class BottleneckTransfer(CapacityTransfer):
                 if grown is not None:
                     requests.append(grown)
                     return requests
+        if not tick.snapshot.bottlenecks:
+            balanced = self._grow_balanced(tick, ctx)
+            if balanced:
+                requests.extend(balanced)
+                return requests
         refusal = self._precondition_refusal(ctx)
         if refusal is not None:
             self._metrics.record_refusal(self.name, refusal)
@@ -153,11 +161,35 @@ class BottleneckTransfer(CapacityTransfer):
             and op.actor_pool.num_pending_actors() == 0
         )
 
+    def _grow_balanced(
+        self, tick: "BottleneckTick", ctx: OptimizationContext
+    ) -> List[PlacedSizingRequest]:
+        """With no bottleneck named, grow every op that is nearly always
+        busy (busy share at least 1 - arrow margin) one step into free
+        capacity: the stages are balanced and all of them are the limit."""
+        requests: List[PlacedSizingRequest] = []
+        for op, shares in tick.snapshot.shares.items():
+            pool = op.actor_pool
+            if (
+                shares.busy < 1.0 - SIZER_BOTTLENECK_ARROW_MARGIN
+                or op.has_completed()
+                or pool.serving_size() >= bounded_max_size(pool)
+                or not self._can_grow(op, ctx)
+            ):
+                continue
+            grown = self._grow_into_free(
+                op, pool.serving_size() + 1, ctx, reason="balanced"
+            )
+            if grown is not None:
+                requests.append(grown)
+        return requests
+
     def _grow_into_free(
         self,
         recipient: "ExperimentalActorPoolMapOperator",
         b_prime: int,
         ctx: OptimizationContext,
+        reason: str = "bottleneck",
     ) -> Optional[PlacedSizingRequest]:
         """Grow toward ``b_prime`` (the model's growth target) as far as free
         capacity allows, or None if no actor fits."""
@@ -175,7 +207,8 @@ class BottleneckTransfer(CapacityTransfer):
         if not targets and not num_to_reclaim:
             return None
         logger.debug(
-            "PipelineOptimizer: bottleneck %s grows +%d into free capacity",
+            "PipelineOptimizer: %s %s grows +%d into free capacity",
+            reason,
             recipient.name,
             len(targets) + num_to_reclaim,
         )
@@ -184,7 +217,7 @@ class BottleneckTransfer(CapacityTransfer):
             ScaleUpRequest.on_nodes(
                 targets,
                 num_to_reclaim=num_to_reclaim,
-                reason="optimizer: bottleneck grows into free capacity",
+                reason=f"optimizer: {reason} grows into free capacity",
             ),
         )
 

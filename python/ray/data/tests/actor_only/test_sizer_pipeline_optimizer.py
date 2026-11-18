@@ -1536,6 +1536,54 @@ def test_named_bottleneck_grows_into_free_capacity_before_it_is_stable():
     assert not state.in_flight
 
 
+def test_balanced_stages_each_grow_one_step_into_free_capacity():
+    # No bottleneck named and every stage nearly always busy: each busy op
+    # grows one actor into free capacity. An idle op, an op at its max size
+    # and an op with pending actors stay put.
+    read = _op("Read", pool=_Pool(current=2))
+    infer = _op("Infer", pool=_Pool(current=4))
+    idle = _op("Idle", pool=_Pool(current=2))
+    full = _op("Full", pool=_Pool(current=3))
+    full.actor_pool._max_size = 3
+    pending = _op("Pending", pool=_Pool(current=2, pending=1))
+    busy = SimpleNamespace(busy=0.95)
+    tick = _tick(
+        named=[],
+        shares={
+            read: busy,
+            infer: busy,
+            idle: SimpleNamespace(busy=0.5),
+            full: busy,
+            pending: busy,
+        },
+    )
+    ctx, state, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [read, infer, idle, full, pending], free_cpu=5.0
+    )
+    assert sorted(op.name for op in _granted(requests)) == ["Infer", "Read"]
+    for placed in requests:
+        (op,) = placed.request
+        assert len(placed.request[op].nodes) == 1
+    assert ctx.free["node"].cpu == pytest.approx(3.0)
+    assert not state.in_flight
+
+
+def test_balanced_growth_waits_while_a_bottleneck_is_named():
+    # A named bottleneck (even one that cannot grow) means the stages are
+    # not balanced, so busy non-bottlenecks are not grown.
+    read = _op("Read", pool=_Pool(current=2))
+    write = _op("Write", pool=_Pool(current=2))
+    tick = _tick(
+        named=[(write, 0.05)],
+        eligibility={write: "no: below severity floor"},
+        shares={read: SimpleNamespace(busy=0.95), write: SimpleNamespace(busy=1.0)},
+    )
+    _, _, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [read, write], free_cpu=5.0
+    )
+    assert _granted(requests) == []
+
+
 def test_one_bottleneck_transfer_at_a_time():
     write = _op("Write", pool=_Pool(current=1))
     read = _idle_victims_op("ReadVideo", "node", ["r0", "r1"], current=7)

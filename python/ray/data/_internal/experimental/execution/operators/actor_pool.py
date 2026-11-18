@@ -221,6 +221,10 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # another actor to free up or start. Set by the operator each refresh
         # via ``set_average_task_duration``; read by ``_task_slot_limit``.
         self._tasks_are_slow: bool = True
+        # Whether an actor's output pull budget is used up. Set by the
+        # operator under ``RAY_DATA_SIZER_BOTTLENECK_MODEL``; read by
+        # ``_task_slot_limit``.
+        self._output_backpressured: Optional[Callable[[ActorId], bool]] = None
 
         # Global fallback heap of all alive actors that may accept another
         # task (see ``_is_available_for_scheduling``: under the per-actor
@@ -327,9 +331,21 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             duration_s is None or duration_s >= ACTOR_ONLY_SLOW_TASK_THRESHOLD_S
         )
 
+    def set_output_backpressured_probe(
+        self, probe: Optional[Callable[[ActorId], bool]]
+    ) -> None:
+        """Set the check for whether an actor's output pull budget is used
+        up; while it is, the actor is admitted at most
+        ``max_actor_concurrency`` tasks."""
+        self._output_backpressured = probe
+
     def _task_slot_limit(self, state: _ExperimentalActorState) -> int:
         """Adjust the max # of tasks that can be submitted per actor based
-        on task completion time.
+        on task completion time and output backpressure.
+
+        An output-backpressured actor cannot start queued tasks until its
+        outputs are consumed, so queueing more only lengthens its drain if
+        it is chosen as a transfer victim.
 
         With slow tasks, an actor gets no more than it runs at once. A task
         queued behind a running one waits the whole running task, while an
@@ -341,6 +357,10 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         producer's output budget. The extra slot only saves dispatch and
         input-fetch latency, small next to a slow task.
         """
+        if self._output_backpressured is not None and self._output_backpressured(
+            state.actor_id
+        ):
+            return min(state.max_tasks_in_flight, self.max_actor_concurrency())
         if self._tasks_are_slow:
             return min(state.max_tasks_in_flight, self.max_actor_concurrency())
         return state.max_tasks_in_flight
