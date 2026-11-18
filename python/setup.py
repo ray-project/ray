@@ -31,10 +31,19 @@ BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA", "0") == "1"
 BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
 BUILD_REDIS = os.getenv("RAY_BUILD_REDIS", "1") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
+SKIP_THIRDPARTY_INSTALL_CONDA_FORGE = (
+    os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE") == "1"
+)
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
+# TODO(ray-core, ray-ci): the version of these vendored packages should be
+# pinned, so that the build is reproducible.
+THIRDPARTY_PIP_PACKAGES = [
+    "psutil",
+    "colorama",
+]
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
@@ -421,6 +430,12 @@ if setup_spec.type == SetupType.RAY:
         "pyyaml",
         "requests",
     ]
+    if SKIP_THIRDPARTY_INSTALL_CONDA_FORGE:
+        # Exact pins are for vendoring only, relax them to avoid downstream conflicts.
+        setup_spec.install_requires.extend(
+            pkg.replace("==", ">=")
+            for pkg in THIRDPARTY_PIP_PACKAGES + RUNTIME_ENV_AGENT_PIP_PACKAGES
+        )
 
 
 def is_native_windows_or_msys():
@@ -484,11 +499,7 @@ def build(build_python, build_java, build_cpp, build_redis):
         raise OSError(msg)
 
     # Vendor thirdparty packages.
-    #
-    # TODO(ray-core, ray-ci): the version of these vendored packages should be
-    # pinned, so that the build is reproducible.
-    if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
-        pip_packages = ["psutil", "colorama"]
+    if not SKIP_THIRDPARTY_INSTALL_CONDA_FORGE:
         subprocess.check_call(
             [
                 sys.executable,
@@ -498,7 +509,7 @@ def build(build_python, build_java, build_cpp, build_redis):
                 "-q",
                 "--target=" + os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR),
             ]
-            + pip_packages,
+            + THIRDPARTY_PIP_PACKAGES,
             env=dict(os.environ, CC="gcc"),
         )
 
