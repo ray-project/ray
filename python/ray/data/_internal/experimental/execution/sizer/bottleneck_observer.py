@@ -24,9 +24,14 @@ more than a margin, the limit is at or past the consumer; if it falls short by
 more than the margin, the limit is at or before the producer; otherwise the
 edge is a tie. Operators with no outgoing arrow are bottlenecks, except one
 that is itself output-backpressured nearly all the time (whatever limits it is
-downstream, outside the model, e.g. a non-actor-pool consumer), or one with
-severity <= 0 (nothing waits on it more than it waits itself, e.g. the last op
-working through its tail after every upstream op has completed).
+downstream, outside the model, e.g. a non-actor-pool consumer), or one whose
+severity is below a floor (nothing waits on it much more than it waits itself,
+e.g. a near-tie edge during ramp-up, or the last op working through its tail
+after every upstream op has completed).
+
+A bottleneck is *stable* once it has been named for a full window, and stays
+stable until it has gone a full window unnamed, so one noisy window neither
+makes nor unmakes it. Only a stable bottleneck is considered as a recipient.
 
 Each logged tick also says whether each bottleneck could use capacity
 (eligibility: free room on a node it may use, or room other ops' actors there
@@ -67,6 +72,7 @@ from typing import (
 
 from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
+    SIZER_BOTTLENECK_MIN_SEVERITY,
     SIZER_BOTTLENECK_SLACK_MARGIN,
     SIZER_BOTTLENECK_WINDOW_S,
 )
@@ -159,9 +165,13 @@ class DonorVictims:
 class Assessment(Generic[K]):
     """What a tick's bottlenecks could do with capacity (logged only)."""
 
-    # Per bottleneck: "yes: free" / "yes: victims" / "no: <reason>".
+    # Stable bottlenecks (see the module docstring), most severe first, with
+    # their severity this tick.
+    stable: Tuple[Tuple[K, float], ...]
+    # Per bottleneck or stable bottleneck: "yes: free" / "yes: victims" /
+    # "no: <reason>".
     eligibility: Mapping[K, str]
-    # The most severe bottleneck able to grow, whose victims are listed.
+    # The most severe stable bottleneck able to grow, whose victims are listed.
     recipient: Optional[K]
     victims: Mapping[K, DonorVictims]
 
@@ -299,16 +309,18 @@ def analyze(
     *,
     arrow_margin: float,
     slack_margin: float,
+    min_severity: float = 0.0,
 ) -> Snapshot[K]:
     edges = build_edges(shares, next_ops, arrow_margin)
     # Severity <= 0: no neighbour waits on the op more than it idles itself,
-    # so growing it would not speed anything up.
+    # so growing it would not speed anything up. Below ``min_severity``, too
+    # little waits on it to tell from noise.
     scored = (
         (op, severity(op, shares, prev_ops, next_ops))
         for op in find_bottlenecks(shares, edges, arrow_margin)
     )
     ranked = sorted(
-        ((op, sev) for op, sev in scored if sev > 0),
+        ((op, sev) for op, sev in scored if sev > 0 and sev >= min_severity),
         key=lambda entry: entry[1],
         reverse=True,
     )
@@ -399,6 +411,42 @@ class ShareWindow:
         )
 
 
+class StableBottlenecks(Generic[K]):
+    """Bottlenecks that have persisted: named continuously for ``hold_s``
+    to become stable, unnamed continuously for ``hold_s`` to stop being."""
+
+    def __init__(self, hold_s: float):
+        self._hold_s = hold_s
+        self._named_since: Dict[K, float] = {}
+        self._unnamed_since: Dict[K, float] = {}
+        self._stable: set = set()
+
+    def update(
+        self, named: AbstractSet[K], present: AbstractSet[K], now: float
+    ) -> AbstractSet[K]:
+        """Fold in one tick's named bottlenecks; ops no longer ``present``
+        in the model (e.g. completed) drop out at once. Returns the stable
+        set."""
+        for op in list(self._named_since):
+            if op not in named:
+                del self._named_since[op]
+        for op in named:
+            self._named_since.setdefault(op, now)
+            self._unnamed_since.pop(op, None)
+            if now - self._named_since[op] >= self._hold_s:
+                self._stable.add(op)
+        for op in list(self._stable):
+            if op not in present:
+                self._stable.discard(op)
+                self._unnamed_since.pop(op, None)
+            elif op not in named:
+                since = self._unnamed_since.setdefault(op, now)
+                if now - since >= self._hold_s:
+                    self._stable.discard(op)
+                    del self._unnamed_since[op]
+        return frozenset(self._stable)
+
+
 class _CounterRate:
     """Rate of a cumulative counter over the last ``window_s`` seconds."""
 
@@ -430,12 +478,17 @@ class BottleneckObserver:
         window_s: float = SIZER_BOTTLENECK_WINDOW_S,
         arrow_margin: float = SIZER_BOTTLENECK_ARROW_MARGIN,
         slack_margin: float = SIZER_BOTTLENECK_SLACK_MARGIN,
+        min_severity: float = SIZER_BOTTLENECK_MIN_SEVERITY,
     ):
         self._profiles = profiles
         self._clock = clock
         self._window_s = window_s
         self._arrow_margin = arrow_margin
         self._slack_margin = slack_margin
+        self._min_severity = min_severity
+        self._stability: StableBottlenecks[
+            "ExperimentalActorPoolMapOperator"
+        ] = StableBottlenecks(window_s)
         self._windows: Dict["ExperimentalActorPoolMapOperator", ShareWindow] = {}
         # Last read of each op's cumulative busy-slot seconds.
         self._last_busy_s: Dict["ExperimentalActorPoolMapOperator", float] = {}
@@ -504,22 +557,45 @@ class BottleneckObserver:
             self._profiles.next_ops,
             arrow_margin=self._arrow_margin,
             slack_margin=self._slack_margin,
+            min_severity=self._min_severity,
         )
 
     def assess(
         self,
         snapshot: Snapshot["ExperimentalActorPoolMapOperator"],
         capacity: "TickCapacitySnapshot",
+        stable: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> Assessment["ExperimentalActorPoolMapOperator"]:
-        """Eligibility of each bottleneck, and the victims a transfer to the
-        most severe one that can grow would draw from."""
+        """Eligibility of each bottleneck and stable bottleneck, and the
+        victims a transfer to the most severe stable one that can grow would
+        draw from."""
+        ranked_stable = tuple(
+            sorted(
+                (
+                    (
+                        op,
+                        severity(
+                            op,
+                            snapshot.shares,
+                            self._profiles.prev_ops,
+                            self._profiles.next_ops,
+                        ),
+                    )
+                    for op in stable
+                    if op in snapshot.shares
+                ),
+                key=lambda entry: entry[1],
+                reverse=True,
+            )
+        )
         bottlenecks = [op for op, _ in snapshot.bottlenecks]
+        bottlenecks += [op for op, _ in ranked_stable if op not in bottlenecks]
         freeable = self._freeable_by_node(capacity, exclude=set(bottlenecks))
         eligibility = {
             op: self._eligibility(op, capacity, freeable) for op in bottlenecks
         }
         recipient = next(
-            (op for op in bottlenecks if not eligibility[op].startswith("no:")),
+            (op for op, _ in ranked_stable if not eligibility[op].startswith("no:")),
             None,
         )
         victims: Dict["ExperimentalActorPoolMapOperator", DonorVictims] = {}
@@ -531,7 +607,7 @@ class BottleneckObserver:
                 summary = self._donor_victims(donor, recipient, nodes, snapshot)
                 if summary is not None:
                     victims[donor] = summary
-        return Assessment(eligibility, recipient, victims)
+        return Assessment(ranked_stable, eligibility, recipient, victims)
 
     def _freeable_by_node(
         self,
@@ -652,9 +728,16 @@ class BottleneckObserver:
         if not logger.isEnabledFor(logging.DEBUG):
             return
         snapshot = self.snapshot()
+        stable = self._stability.update(
+            {op for op, _ in snapshot.bottlenecks},
+            set(snapshot.shares),
+            self._clock(),
+        )
         logger.debug(
             "BottleneckObserver: %s",
-            format_snapshot(snapshot, self._names, self.assess(snapshot, capacity)),
+            format_snapshot(
+                snapshot, self._names, self.assess(snapshot, capacity, stable)
+            ),
         )
 
 
@@ -710,7 +793,11 @@ def format_snapshot(
         for op, s in snapshot.shares.items()
     )
     line = f"bottlenecks=[{bottlenecks}] | edges=[{edges}] | ops=[{ops}]"
-    if assessment is None or not assessment.eligibility:
+    if assessment is None:
+        return line
+    stable = ", ".join(f"{name(op)}(sev={sev:.2f})" for op, sev in assessment.stable)
+    line += f" | stable=[{stable}]"
+    if not assessment.eligibility:
         return line
     eligible = ", ".join(
         f"{name(op)}: {verdict}" for op, verdict in assessment.eligibility.items()

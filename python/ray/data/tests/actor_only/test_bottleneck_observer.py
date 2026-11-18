@@ -18,6 +18,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     DonorVictims,
     OpShares,
     ShareWindow,
+    StableBottlenecks,
     analyze,
     classify_edge,
     format_snapshot,
@@ -28,6 +29,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
 
 ARROW_MARGIN = 0.1
 SLACK_MARGIN = 0.2
+MIN_SEVERITY = 0.1
 
 
 def _chain(*ops: str) -> Tuple[Dict[str, Sequence[str]], Dict[str, Sequence[str]]]:
@@ -49,6 +51,7 @@ def _analyze(shares, *ops):
         next_ops,
         arrow_margin=ARROW_MARGIN,
         slack_margin=SLACK_MARGIN,
+        min_severity=MIN_SEVERITY,
     )
 
 
@@ -97,18 +100,37 @@ def test_image_classification_never_names_the_upstream_reader():
 
 
 def test_near_tie_reports_both_sides_most_severe_first():
-    """video_object_detection steady state: B -> Write is a near-tie, so
-    neither side has an outgoing arrow and both are reported; B, which its
-    upstream waits on, ranks first."""
+    """B -> C is a near-tie (0.2 vs 0.15), so neither has an outgoing arrow;
+    both have neighbours waiting on them (A on B, D on C), so both are
+    reported, B first."""
     shares = {
         "A": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=10),
         "B": OpShares(busy=0.8, obp=0.2, starved=0.0, actors=8),
-        "Write": OpShares(busy=0.85, obp=0.0, starved=0.15, actors=27),
+        "C": OpShares(busy=0.85, obp=0.0, starved=0.15, actors=6),
+        "D": OpShares(busy=0.7, obp=0.0, starved=0.3, actors=4),
     }
-    snapshot = _analyze(shares, "A", "B", "Write")
+    snapshot = _analyze(shares, "A", "B", "C", "D")
 
-    assert [op for op, _ in snapshot.bottlenecks] == ["B", "Write"]
     assert snapshot.edges[1].arrow is Arrow.TIE
+    assert snapshot.bottlenecks == (
+        ("B", pytest.approx(0.85)),
+        ("C", pytest.approx(0.35)),
+    )
+
+
+def test_ramp_up_tie_is_below_the_severity_floor():
+    """image_classification ramp-up: ReadFiles -> Preprocess is a tie (0.00
+    vs 0.03), so ReadFiles had no outgoing arrow, but at severity 0.03 it is
+    noise, not a bottleneck: only Predictor is named."""
+    shares = {
+        "ReadFiles": OpShares(busy=0.99, obp=0.0, starved=0.0, actors=33),
+        "Preprocess": OpShares(busy=0.58, obp=0.38, starved=0.03, actors=31),
+        "Predictor": OpShares(busy=0.73, obp=0.0, starved=0.16, actors=7),
+    }
+    snapshot = _analyze(shares, "ReadFiles", "Preprocess", "Predictor")
+
+    assert snapshot.edges[0].arrow is Arrow.TIE
+    assert [op for op, _ in snapshot.bottlenecks] == ["Predictor"]
 
 
 def test_tie_side_that_waits_more_than_it_is_waited_on_is_dropped():
@@ -256,6 +278,26 @@ def test_circular_only_when_every_op_between_is_output_backpressured():
     assert not is_circular("W", "R", shares, next_ops, ARROW_MARGIN)  # upstream
     flowing = dict(shares, B=OpShares(busy=0.7, obp=0.3, starved=0.0, actors=2))
     assert not is_circular("R", "W", flowing, next_ops, ARROW_MARGIN)
+
+
+def test_stable_after_a_full_window_named_and_until_a_full_window_unnamed():
+    stable = StableBottlenecks(hold_s=10.0)
+    present = {"A", "B"}
+    assert stable.update({"A"}, present, now=0.0) == set()
+    assert stable.update({"A"}, present, now=9.0) == set()
+    assert stable.update({"A"}, present, now=10.0) == {"A"}
+
+    # A one-tick blip of B neither unmakes A nor makes B.
+    assert stable.update({"B"}, present, now=12.0) == {"A"}
+    assert stable.update({"A"}, present, now=14.0) == {"A"}
+
+    # B takes over: A stays stable until it has gone a full window unnamed.
+    assert stable.update({"B"}, present, now=16.0) == {"A"}
+    assert stable.update({"B"}, present, now=25.0) == {"A"}
+    assert stable.update({"B"}, present, now=26.0) == {"B"}
+
+    # An op leaving the model (e.g. completed) is dropped at once.
+    assert stable.update(set(), {"A"}, now=27.0) == set()
 
 
 class _Clock:
@@ -464,11 +506,16 @@ def test_assessment_eligibility_and_victims(
     )
 
     snapshot = observer.snapshot()
-    assessment = observer.assess(snapshot, capacity)
+    # Named but not yet stable: eligibility is shown, but there is no
+    # recipient, so no victims.
+    assert observer.assess(snapshot, capacity, stable=set()).recipient is None
+    assessment = observer.assess(snapshot, capacity, stable=cast(Any, {write}))
 
     assert [op for op, _ in snapshot.bottlenecks] == [write]
+    assert assessment.stable == ((write, pytest.approx(1.0)),)
     assert assessment.eligibility == {write: expected}
     line = format_snapshot(snapshot, {read: "R", gpu: "B", write: "W"}, assessment)
+    assert "stable=[W(sev=1.00)]" in line
     assert f"eligible=[W: {expected}]" in line
     if expected.startswith("no:"):
         assert assessment.recipient is None and "victims for" not in line
