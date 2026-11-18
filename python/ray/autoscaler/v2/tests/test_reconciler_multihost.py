@@ -77,7 +77,7 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     ResourceRequestByCount,
 )
-from ray.core.generated.common_pb2 import PlacementStrategy
+from ray.core.generated.common_pb2 import LabelSelectorOperator, PlacementStrategy
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     InstanceUpdateEvent,
@@ -11348,6 +11348,8 @@ class TestReconcilerMultiHost:
             gangs: int = 0,
             dead: Optional[str] = None,
             gang_needs_head: bool = False,
+            pinned_slice: Optional[str] = None,
+            run_operator: bool = True,
         ):
             states = list(head_state.node_states)
             for nm, busy in ray_busy.items():
@@ -11406,6 +11408,12 @@ class TestReconcilerMultiHost:
                 bs.locality_requirement.locality_constraint.placement_strategy = (
                     PlacementStrategy.STRICT_PACK
                 )
+                if pinned_slice is not None:
+                    bs.locality_requirement.label_selector.label_constraints.add(
+                        label_key=slice_key,
+                        operator=LabelSelectorOperator.LABEL_OPERATOR_IN,
+                        label_values=[pinned_slice],
+                    )
             with patch.object(cfg, "get_pending_idle_timeout_s", return_value=None):
                 res = TestReconcilerMultiHost.run_tick(
                     im,
@@ -11415,7 +11423,8 @@ class TestReconcilerMultiHost:
                     ray_state=state,
                     _logger=MagicMock(),
                 )
-            step_operator()
+            if run_operator:
+                step_operator()
             return res
 
         return group, pods, store, ray_busy, workers, step_tick
@@ -11646,6 +11655,130 @@ class TestReconcilerMultiHost:
         assert group.get("replicas") == 2
         assert len(workers()) == 8
         assert len(res_scale.infeasible_gang_resource_requests) == 0
+
+    def test_unlabeled_two_torndown_slices_refill_and_recover_two_gangs(self):
+        """When two 4-host slices lose 2 pods each (2/4 + 2/4 = 4 survivors, 4 % 4 == 0)
+        at maxReplicas=2, two 4-host gangs launch all 4 refill pods and recover to 8 workers."""
+        (group, _, _, ray_busy, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
+            "two-2of4-refill",
+            size=4,
+            max_replicas=2,
+            pod_names=[f"u-{i}" for i in range(16)],
+        )
+        for _ in range(3):
+            step_tick(gangs=2)
+        for nm in workers():
+            ray_busy[nm] = False
+        step_tick()
+        assert workers() == [f"u-{i}" for i in range(8)]
+
+        # Kill 2 pods on slice-0 (u-2, u-3) and 2 pods on slice-1 (u-6, u-7) without
+        # letting the operator auto-recreate while replicas drops to 1 (4 pods).
+        for victim in ("u-2", "u-3", "u-6", "u-7"):
+            step_tick(gangs=2, dead=victim, run_operator=False)
+        # Reconcile K8s deletions -> 4 surviving pods across two 2/4 slices (replicas=1).
+        step_tick(gangs=2)
+        res = None
+        for _ in range(3):
+            res = step_tick(gangs=2)
+        assert group.get("replicas") == 2
+        assert len(workers()) == 8
+        assert len(res.infeasible_gang_resource_requests) == 0
+
+    def test_unlabeled_mid_boot_partial_eviction_recovers_after_placeholder_ttl(self):
+        """When 3 of 4 ALLOCATED pods vanish mid-boot at minReplicas=0, maxReplicas=1,
+        the pending gang stays feasible via backfill placeholders before TTL and
+        recovers to 4 real workers once request_status_timeout_s expires."""
+        (group, pods, _, _, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
+            "vanished-ttl-recover",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"u-{i}" for i in range(12)],
+        )
+        step_tick(gangs=1)
+        step_tick(gangs=1)
+        assert workers() == ["u-0", "u-1", "u-2", "u-3"]
+
+        # Direct K8s eviction of u-1..u-3 mid-boot (vanished_batches, not torn_down_lids).
+        pods["items"] = [
+            p
+            for p in pods["items"]
+            if p["metadata"]["name"] not in {"u-1", "u-2", "u-3"}
+        ]
+        pods["metadata"]["resourceVersion"] = str(
+            int(pods["metadata"]["resourceVersion"]) + 1
+        )
+        now_t = [1000.0]
+        with patch(
+            "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: now_t[0]
+        ):
+            # Before TTL (1000s -> 1100s < 1600s): placeholders satisfy gang without launch.
+            res_pre = step_tick(gangs=1, run_operator=False)
+            assert len(res_pre.infeasible_gang_resource_requests) == 0
+            now_t[0] = 1100.0
+            res_mid = step_tick(gangs=1, run_operator=False)
+            assert len(res_mid.infeasible_gang_resource_requests) == 0
+            assert len(workers()) == 1
+
+            # Past request_status_timeout_s (1700s): TTL expires -> launches 3-pod refill!
+            now_t[0] = 1700.0
+            for _ in range(3):
+                res_post = step_tick(gangs=1)
+            assert group.get("replicas") == 1
+            assert len(workers()) == 4
+            assert len(res_post.infeasible_gang_resource_requests) == 0
+
+    def test_unlabeled_staggered_boot_pod_death_recovers_within_max_replicas(self):
+        """When u-0 is RAY_RUNNING on slice-0, u-1 dies (putting L0 in torn_down_lids),
+        and u-2, u-3 remain ALLOCATED on L0 at maxReplicas=1, the pending gang refills
+        the 1 missing slot and recovers to 4 workers without exceeding maxReplicas."""
+        head_res = "TPU-v6e-16-head"
+        (group, _, _, ray_busy, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
+            "staggered-boot-death",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"u-{i}" for i in range(12)],
+            head_res=head_res,
+        )
+        step_tick(gangs=1, gang_needs_head=True)
+        step_tick(gangs=1, gang_needs_head=True)
+        assert workers() == ["u-0", "u-1", "u-2", "u-3"]
+
+        # Only u-0 and u-1 register with Ray while u-2, u-3 are still ALLOCATED; u-1 dies!
+        ray_busy["u-0"] = False
+        ray_busy["u-1"] = False
+        step_tick(gangs=1, dead="u-1", gang_needs_head=True, run_operator=False)
+        res = None
+        for _ in range(3):
+            res = step_tick(gangs=1, gang_needs_head=True)
+        assert group.get("replicas") == 1
+        assert len(workers()) == 4
+        assert len(res.infeasible_gang_resource_requests) == 0
+
+    def test_unlabeled_pinned_gang_refills_torndown_slice_e2e(self):
+        """A rescheduling gang pinned to slice-0 on a 3/4 torn-down unlabeled KubeRay
+        group launches the 1-pod refill and recovers to 4 workers on slice-0."""
+        (group, _, _, ray_busy, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
+            "pinned-refill-e2e",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"u-{i}" for i in range(8)],
+        )
+        for _ in range(3):
+            step_tick(gangs=1)
+        for nm in workers():
+            ray_busy[nm] = False
+        step_tick()
+        assert workers() == ["u-0", "u-1", "u-2", "u-3"]
+
+        # Kill u-3 without immediate operator auto-recreation so replicas drops to 0 (3/4).
+        step_tick(dead="u-3", run_operator=False)
+        res = None
+        for _ in range(3):
+            res = step_tick(gangs=1, pinned_slice="slice-0")
+        assert group.get("replicas") == 1
+        assert workers() == ["u-0", "u-1", "u-2", "u-4"]
+        assert len(res.infeasible_gang_resource_requests) == 0
 
 
 if __name__ == "__main__":

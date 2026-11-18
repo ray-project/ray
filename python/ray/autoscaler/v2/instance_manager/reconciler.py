@@ -1826,6 +1826,9 @@ class Reconciler:
                 cloud_resource_monitor.get_recoverable_resource_availabilities()
             ),
             replica_view=pre_view,
+            backfill_placeholder_ttl_s=float(
+                autoscaling_config.get_instance_reconcile_config().request_status_timeout_s
+            ),
         )
 
         if isinstance(cloud_provider, KubeRayProvider):
