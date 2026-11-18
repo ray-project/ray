@@ -14,22 +14,20 @@
 
 #include "ray/object_manager/plasma/object_store.h"
 
+#include <functional>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 using ray::NodeID;
 using ray::ObjectID;
 using ray::ObjectInfo;
 using ray::WorkerID;
-using testing::_;
-using testing::Invoke;
-using testing::Test;
 
 namespace plasma {
 namespace {
@@ -82,29 +80,63 @@ const ObjectID kId2 = []() {
 }();
 }  // namespace
 
-class MockAllocator : public IAllocator {
+// Hand-written fake allocator. Each method records how many times it was called
+// and delegates to an optional, test-settable std::function hook so that tests can
+// inject behavior (and assert on the argument) at the call site.
+class FakeAllocator : public IAllocator {
  public:
-  MOCK_METHOD1(Allocate, std::optional<Allocation>(size_t bytes));
-  MOCK_METHOD1(FallbackAllocate, std::optional<Allocation>(size_t bytes));
-  MOCK_METHOD1(Free, void(Allocation));
-  MOCK_CONST_METHOD0(GetFootprintLimit, int64_t());
-  MOCK_CONST_METHOD0(Allocated, int64_t());
-  MOCK_CONST_METHOD0(FallbackAllocated, int64_t());
+  std::optional<Allocation> Allocate(size_t bytes) override {
+    allocate_call_count++;
+    if (allocate_hook) {
+      return allocate_hook(bytes);
+    }
+    return std::nullopt;
+  }
+  std::optional<Allocation> FallbackAllocate(size_t bytes) override {
+    fallback_allocate_call_count++;
+    if (fallback_allocate_hook) {
+      return fallback_allocate_hook(bytes);
+    }
+    return std::nullopt;
+  }
+  void Free(Allocation allocation) override {
+    free_call_count++;
+    if (free_hook) {
+      free_hook(allocation);
+    }
+  }
+  int64_t GetFootprintLimit() const override { return footprint_limit; }
+  int64_t Allocated() const override { return allocated; }
+  int64_t FallbackAllocated() const override { return fallback_allocated; }
+
+  std::function<std::optional<Allocation>(size_t)> allocate_hook;
+  std::function<std::optional<Allocation>(size_t)> fallback_allocate_hook;
+  std::function<void(const Allocation &)> free_hook;
+
+  int allocate_call_count = 0;
+  int fallback_allocate_call_count = 0;
+  int free_call_count = 0;
+
+  int64_t footprint_limit = 0;
+  int64_t allocated = 0;
+  int64_t fallback_allocated = 0;
 };
 
 TEST(ObjectStoreTest, PassThroughTest) {
-  MockAllocator allocator;
+  FakeAllocator allocator;
   ObjectStore store(allocator);
   {
     auto info = CreateObjectInfo(kId1, 10);
     auto allocation = CreateAllocation(Allocation(), 10);
     auto alloc_str = Serialize(allocation);
 
-    EXPECT_CALL(allocator, Allocate(10)).Times(1).WillOnce(Invoke([&](size_t bytes) {
+    allocator.allocate_hook = [&](size_t bytes) {
       EXPECT_EQ(bytes, 10);
       return std::optional<Allocation>(std::move(allocation));
-    }));
+    };
+    int allocate_count_before = allocator.allocate_call_count;
     auto entry = store.CreateObject(info, {}, /*fallback_allocate*/ false);
+    EXPECT_EQ(allocator.allocate_call_count, allocate_count_before + 1);
     EXPECT_NE(entry, nullptr);
     EXPECT_EQ(entry->ref_count_, 0);
     EXPECT_EQ(entry->state_, ObjectState::PLASMA_CREATED);
@@ -129,11 +161,12 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(nullptr, store.SealObject(kId2));
 
     // delete sealed
-    EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation_arg) {
+    allocator.free_hook = [&](const Allocation &allocation_arg) {
       EXPECT_EQ(alloc_str, Serialize(allocation_arg));
-    }));
-
+    };
+    int free_count_before = allocator.free_call_count;
     EXPECT_TRUE(store.DeleteObject(kId1));
+    EXPECT_EQ(allocator.free_call_count, free_count_before + 1);
     EXPECT_EQ(nullptr, store.GetObject(kId1));
 
     // delete already deleted
@@ -148,25 +181,25 @@ TEST(ObjectStoreTest, PassThroughTest) {
     auto alloc_str = Serialize(allocation);
     auto info = CreateObjectInfo(kId2, 12);
     // allocation failure
-    EXPECT_CALL(allocator, Allocate(12)).Times(1).WillOnce(Invoke([&](size_t bytes) {
+    allocator.allocate_hook = [&](size_t bytes) {
       EXPECT_EQ(bytes, 12);
       return std::optional<Allocation>();
-    }));
-
+    };
+    int allocate_count_before = allocator.allocate_call_count;
     EXPECT_EQ(nullptr, store.CreateObject(info, {}, /*fallback_allocate*/ false));
+    EXPECT_EQ(allocator.allocate_call_count, allocate_count_before + 1);
 
     // fallback allocation successful
     allocation = CreateAllocation(Allocation(), 12, /* fallback_allocated */ true);
     alloc_str = Serialize(allocation);
 
-    EXPECT_CALL(allocator, FallbackAllocate(12))
-        .Times(1)
-        .WillOnce(Invoke([&](size_t bytes) {
-          EXPECT_EQ(bytes, 12);
-          return std::optional<Allocation>(std::move(allocation));
-        }));
-
+    allocator.fallback_allocate_hook = [&](size_t bytes) {
+      EXPECT_EQ(bytes, 12);
+      return std::optional<Allocation>(std::move(allocation));
+    };
+    int fallback_allocate_count_before = allocator.fallback_allocate_call_count;
     auto entry = store.CreateObject(info, {}, /*fallback_allocate*/ true);
+    EXPECT_EQ(allocator.fallback_allocate_call_count, fallback_allocate_count_before + 1);
     EXPECT_NE(entry, nullptr);
     EXPECT_EQ(entry->ref_count_, 0);
     EXPECT_EQ(entry->state_, ObjectState::PLASMA_CREATED);
@@ -175,11 +208,12 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_TRUE(entry->allocation_.fallback_allocated_);
 
     // delete unsealed
-    EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation_arg) {
+    allocator.free_hook = [&](const Allocation &allocation_arg) {
       EXPECT_EQ(alloc_str, Serialize(allocation_arg));
-    }));
-
+    };
+    int free_count_before = allocator.free_call_count;
     EXPECT_TRUE(store.DeleteObject(kId2));
+    EXPECT_EQ(allocator.free_call_count, free_count_before + 1);
   }
 }
 }  // namespace plasma

@@ -1,11 +1,9 @@
 # __fake_config_start__
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
   name: rayservice-fake-emails
 spec:
-  serviceUnhealthySecondThreshold: 300
-  deploymentUnhealthySecondThreshold: 300
   serveConfigV2: |
     applications:
       - name: fake

@@ -194,36 +194,6 @@ class API:
         return attribute
 
     @staticmethod
-    def introspect_annotation_type(obj: object) -> AnnotationType:
-        """
-        Read an object's *live* annotation type from the module.
-
-        from_autosummary/from_autoclass stamp every parsed doc-side entry as
-        PUBLIC_API unconditionally; those fields are placeholders, not
-        observations. The check must learn a documented name's real annotation
-        from the object the name resolves to, which is what this reads from the
-        ``_annotated_type`` attribute the @PublicAPI/@Deprecated decorators set.
-        Objects that carry no annotation (for example methods of an annotated
-        class) resolve to UNKNOWN.
-
-        Only an annotation the object *owns* counts. ``_annotated_type`` is a
-        plain class attribute, so an undecorated subclass reads its base's value
-        -- which would classify a subclass of a @Deprecated class as deprecated
-        and fail the resolve check on a documented name nobody deprecated.
-        Inheriting the marker resolves to UNKNOWN, the same accepted case as a
-        documented method of an annotated class.
-        """
-        if not _is_directly_annotated(obj):
-            return AnnotationType.UNKNOWN
-        annotated_type = getattr(obj, "_annotated_type", None)
-        if annotated_type is None:
-            return AnnotationType.UNKNOWN
-        try:
-            return AnnotationType(annotated_type.value)
-        except (AttributeError, ValueError):
-            return AnnotationType.UNKNOWN
-
-    @staticmethod
     def canonical_name_of(obj: object, fallback_name: str) -> str:
         """
         Canonical name of an already-resolved object.
@@ -372,26 +342,25 @@ class API:
         Classify each documented API by whether it points at a real, public
         object -- documented names must be a subset of the public code surface.
 
-        Returns ``(unresolved, non_public)``:
+        Returns ``(unresolved, private)``:
 
         - ``unresolved``: documented names that do not import to a live object
           -- a deleted, renamed, or misspelled autosummary / autoclass entry.
           This is the breakage that today only the Sphinx render catches.
-        - ``non_public``: documented names that resolve, but whose *live*
-          annotation is non-public (``@Deprecated``) or whose canonical name is
-          private (``_foo`` / ``._internal.``). A private canonical name that a
-          public module re-exports through its ``__all__`` is public; see
+        - ``private``: documented names that resolve, but whose canonical name
+          is private (``_foo`` / ``._internal.``). A private canonical name that
+          a public module re-exports through its ``__all__`` is public; see
           _is_public_reexport().
 
-        Objects that resolve but carry no annotation are accepted -- the Sphinx
-        autosummary import check only warns on import failure, and documented
-        methods (``Dataset.map_batches``) are public by virtue of their
-        annotated class even though the method itself is not decorated. The
-        annotation is read live from the resolved object rather than trusting
-        the placeholder fields stamped on the parsed doc-side API.
+        The annotation is deliberately not consulted. The API policy
+        (doc/source/ray-contribute/api-policy.md) requires ``@Deprecated`` APIs
+        to be documented, so a documented deprecated object is correct, not a
+        stale entry. Objects that carry no annotation are accepted too:
+        documented methods (``Dataset.map_batches``) are public by virtue of
+        their annotated class even though the method itself is not decorated.
         """
         unresolved = []
-        non_public = []
+        private = []
 
         for api in api_in_docs:
             # A doc entry may be white-listed by its documented (raw) name even
@@ -404,22 +373,20 @@ class API:
                 unresolved.append(api.name)
                 continue
 
-            # Identity and annotation both come from this single resolved
-            # object; see canonical_name_of() for why they must not be split
-            # across get_canonical_name()'s separate walk.
+            # Identity comes from this single resolved object; see
+            # canonical_name_of() for why it must not come from
+            # get_canonical_name()'s separate walk.
             canonical_name = API.canonical_name_of(obj, api.name)
             if canonical_name in white_list_apis:
                 continue
 
-            annotation_type = API.introspect_annotation_type(obj)
             resolved_api = API(
                 name=canonical_name,
-                annotation_type=annotation_type,
+                annotation_type=AnnotationType.UNKNOWN,
                 code_type=api.code_type,
             )
             # Override hooks are public extension points despite their leading
-            # underscore, so the private-name rule does not apply to them; a
-            # deprecated annotation still does.
+            # underscore, so the private-name rule does not apply to them.
             is_private = resolved_api._is_private_name() and not API._is_override_hook(
                 obj
             )
@@ -428,10 +395,10 @@ class API:
             # canonical path of a re-exported symbol is not a doc bug.
             if is_private and API._is_public_reexport(api.name, canonical_name):
                 is_private = False
-            if resolved_api.is_deprecated() or is_private:
-                non_public.append(canonical_name)
+            if is_private:
+                private.append(canonical_name)
 
-        return unresolved, non_public
+        return unresolved, private
 
     @staticmethod
     def find_duplicate_doc_apis(

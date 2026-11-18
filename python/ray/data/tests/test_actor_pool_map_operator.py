@@ -33,10 +33,13 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+    _actor_task_rerun_policy,
     _ActorPool,
     _MapWorker,
 )
@@ -146,9 +149,13 @@ class TestActorPool(unittest.TestCase):
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
     ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
-        actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
+        actor_options = {"num_cpus": 1, "_labels": labels}
+        actor = PoolWorker.options(**actor_options).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
+        # Mirrors `ActorPoolMapOperator._start_actor`, which registers the exact
+        # creation request with the pool as it creates each actor.
+        self._pool.record_resource_request(actor, actor_resource_dict(actor_options))
         return actor, ready_ref, ExecutionResources(cpu=1)
 
     def _create_actor_pool(
@@ -172,6 +179,7 @@ class TestActorPool(unittest.TestCase):
             map_worker_cls_name=map_worker_cls_name,
             config=config,
         )
+        self._pool = pool
         return pool
 
     def _add_pending_actor(
@@ -217,6 +225,20 @@ class TestActorPool(unittest.TestCase):
         assert pool.max_size() == 4
         assert pool.current_size() == 0
         assert pool.max_tasks_in_flight_per_actor() == 4
+
+    def test_resource_requests_track_pending_actors(self):
+        """The pool reports one exact request per actor it is holding."""
+        pool = self._create_actor_pool()
+
+        self._add_pending_actor(pool)
+
+        assert pool.get_resource_requests() == [{"CPU": 1}]
+
+        # Removing the actor releases its request, so a finished pool stops
+        # asking the cluster autoscaler for capacity.
+        pool._try_remove_pending_actor()
+
+        assert pool.get_resource_requests() == []
 
     def test_can_scale_down(self):
         pool = self._create_actor_pool(min_size=1, max_size=4)
@@ -1212,11 +1234,14 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
-    # max_resource_usage: 2 actors * (1 gpu)
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
+    # GPU ops default to 1 CPU per actor.
+    # min_resource_usage: 1 actor * (1 cpu, 1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 cpu, 1 gpu)
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=1, object_store_memory=0
+    )
     assert max_resource_usage_bound == ExecutionResources(
-        gpu=2, object_store_memory=float("inf")
+        cpu=2, gpu=2, object_store_memory=float("inf")
     )
 
 
@@ -1238,10 +1263,12 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # Unbounded pools should return infinite max resources for GPU (which is used),
-    # but 0 for CPU/memory (which are not specified) to prevent hoarding.
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
-    assert max_resource_usage_bound == ExecutionResources.for_limits(cpu=0, memory=0)
+    # Unbounded pools should return infinite max resources for GPU and CPU (GPU
+    # ops default to 1 CPU), but 0 for memory (not specified) to prevent hoarding.
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=1, object_store_memory=0
+    )
+    assert max_resource_usage_bound == ExecutionResources.for_limits(memory=0)
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
@@ -1355,6 +1382,58 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
     assert actor_pool_map_op.has_completed()
+
+
+def test_dead_actor_released_and_replaced_e2e(shutdown_only, restore_data_context):
+    """A dead actor must be released from the pool and replaced (#62746).
+
+    With a fixed-size pool and `max_errored_blocks = -1`, an actor that dies
+    mid-pipeline (e.g. `sys.exit(0)` inside the UDF) used to stay in
+    `_running_actors` forever: the pool's size never dropped, the autoscaler
+    never created a replacement, and the pipeline silently hung.
+    """
+    import sys as _sys
+
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_errored_blocks = -1
+
+    @ray.remote(num_cpus=0)
+    class DeathFlag:
+        def __init__(self):
+            self._died = False
+
+        def should_die(self) -> bool:
+            died, self._died = self._died, True
+            return not died
+
+    flag = DeathFlag.remote()
+
+    class DiesOnce:
+        def __init__(self):
+            self._counter = 0
+
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter == 3 and ray.get(flag.should_die.remote()):
+                _sys.exit(0)
+            return batch
+
+    ds = (
+        ray.data.range(20, override_num_blocks=20)
+        .map_batches(
+            DiesOnce,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=1),
+        )
+        .materialize()
+    )
+
+    # The pipeline completes (instead of hanging), with only the blocks that
+    # were in flight on the dead actor dropped.
+    assert ds.count() > 0
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
@@ -1896,6 +1975,34 @@ def test_merge_ray_remote_args_op_wins_on_collision(restore_data_context):
     )
     merged = op._merge_ray_remote_args()
     assert merged["label_selector"] == {"subcluster": "val", "node": "X"}
+
+
+@pytest.mark.parametrize(
+    "actor_args, reruns",
+    [
+        # By default the operator gives actors unlimited task retries.
+        ({}, True),
+        # With ``max_restarts=0`` it leaves ``max_task_retries`` at Ray's 0.
+        ({"max_restarts": 0}, False),
+        ({"max_task_retries": 0}, False),
+    ],
+)
+def test_actor_task_rerun_policy_follows_max_task_retries(
+    restore_data_context, actor_args, reruns
+):
+    """An actor task counts as rerun on ``actor_task_retry_on_errors`` only when
+    its actor's ``max_task_retries`` lets Ray rerun it, so a task that won't
+    rerun emits its buffered rows before an error the job skips."""
+    context = DataContext.get_current()
+    context.actor_task_retry_on_errors = [ValueError]
+    actor_args = ActorPoolMapOperator._apply_default_remote_args(actor_args, context)
+    task_args = ActorPoolMapOperator._apply_default_actor_task_remote_args(
+        None, context
+    )
+
+    policy = _actor_task_rerun_policy(task_args, actor_args)
+
+    assert policy.may_rerun(ValueError("bad input")) is reruns
 
 
 if __name__ == "__main__":

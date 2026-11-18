@@ -33,6 +33,9 @@ orjson
 # transformers 5.x, breaking `import transformers` at runtime.
 peft>=0.18
 petastorm
+# Ray Data joins each hash partition with Polars, so the join benchmarks in
+# release_data_tests.yaml need it present in the image.
+polars
 protobuf
 pyarrow
 pybase64
@@ -46,8 +49,8 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
-triton==3.5.0
-torch==2.9.0
+triton==3.6.0
+torch==2.10.0
 torchaudio
 torchmetrics
 torchtext

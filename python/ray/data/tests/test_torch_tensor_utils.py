@@ -5,8 +5,10 @@ import pyarrow as pa
 import pytest
 import torch
 
+from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data.util.torch_utils import (
     concat_tensors_to_device,
+    convert_ndarray_to_torch_tensor,
     convert_table_to_torch_tensor,
     move_tensors_to_device,
 )
@@ -105,6 +107,18 @@ class TestConvertTableToTorch:
         assert not suspicious_stats
 
 
+def test_convert_ndarray_with_none_rows_names_the_null_rows():
+    """An object array that holds None cannot become a tensor, and the error says
+    the rows are missing rather than ragged."""
+    with_none = create_ragged_ndarray([np.zeros(2), None])
+    ragged = create_ragged_ndarray([np.zeros(2), np.zeros(3)])
+
+    with pytest.raises(RuntimeError, match="holds None"):
+        convert_ndarray_to_torch_tensor(with_none)
+    with pytest.raises(RuntimeError, match="ragged tensor"):
+        convert_ndarray_to_torch_tensor(ragged)
+
+
 def test_move_tensors_to_device():
     """Test that move_tensors_to_device moves and concatenates tensors correctly."""
     device = torch.device("cpu")
@@ -143,6 +157,30 @@ def test_move_tensors_to_device():
     out = move_tensors_to_device(batch, device)
     assert torch.equal(out["a"], torch.ones(1))
     assert torch.equal(out["b"], torch.ones(2))
+
+
+def test_move_tensors_to_device_no_concat():
+    """With concat=False, nested sequences are moved tensor-by-tensor and the
+    structure is preserved — independently shaped tensors are allowed."""
+    device = torch.device("cpu")
+
+    # Dict[str, List[torch.Tensor]] with ragged shapes (would raise with
+    # concat=True). NOTE: mapping values must be homogeneous (all sequences);
+    # wrap flat tensors in single-element lists.
+    batch = {"masks": [torch.ones(2, 3), torch.ones(4, 5)], "flat": [torch.ones(1)]}
+    out = move_tensors_to_device(batch, device, concat=False)
+    assert isinstance(out["masks"], list)
+    assert torch.equal(out["masks"][0], torch.ones(2, 3))
+    assert torch.equal(out["masks"][1], torch.ones(4, 5))
+    assert isinstance(out["flat"], list)
+    assert torch.equal(out["flat"][0], torch.ones(1))
+
+    # Nested sequences keep their container types.
+    batch = [(torch.ones(1), torch.ones(2)), [torch.ones(3)]]
+    out = move_tensors_to_device(batch, device, concat=False)
+    assert isinstance(out[0], tuple) and isinstance(out[1], list)
+    assert torch.equal(out[0][1], torch.ones(2))
+    assert torch.equal(out[1][0], torch.ones(3))
 
 
 def test_move_invalid_batch_type():

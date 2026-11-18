@@ -20,6 +20,7 @@ end-to-end story is finalized. Class names and endpoint names may change.
 """
 
 import time
+from pathlib import Path
 
 import pytest
 import ray
@@ -33,7 +34,7 @@ from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.serve.schema import ApplicationStatus
 from rlhf_utils import TrainerActor
 
-MODEL_ID = "facebook/opt-125m"
+MODEL_ID = "Qwen/Qwen3.5-0.8B"
 BASE_URL = "http://localhost:8000"
 TENSOR_PARALLEL_SIZE = 2
 NUM_REPLICAS = 1
@@ -110,8 +111,13 @@ def call_collective_rpc_sync(method: str, args: list = None) -> dict:
 # =============================================================================
 
 
+@pytest.mark.requires_3GPU
 def test_collective_rpc_weight_sync():
     """Test the complete RLHF weight synchronization workflow."""
+
+    ray.init(
+        runtime_env={"py_modules": [str(Path(__file__).with_name("rlhf_utils.py"))]}
+    )
 
     # Start Ray Serve with DevIngress
     llm_config = get_llm_config()
@@ -199,4 +205,4 @@ def test_collective_rpc_weight_sync():
 
 
 if __name__ == "__main__":
-    pytest.main(["-xvs", __file__])
+    raise SystemExit(pytest.main(["-xvs", __file__]))

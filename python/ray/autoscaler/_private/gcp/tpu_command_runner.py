@@ -300,8 +300,7 @@ class TPUCommandRunner(CommandRunnerInterface):
 def _maybe_remove_head_resource(
     environment_variables: Dict[str, Any], worker_id: int, accelerator_type: str
 ):
-    """
-    node_provider will provide a resource "TPU-{TPU_POD_TYPE}-head" which:
+    """node_provider will provide a resource "TPU-{TPU_POD_TYPE}-head" which:
     1) allows application developers to target worker 0 of an arbitary TPU pod, and
     2) signals to the autoscaler how to address the demand for more TPU pods.
 

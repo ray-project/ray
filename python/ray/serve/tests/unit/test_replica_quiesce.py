@@ -1,10 +1,12 @@
 import asyncio
 import sys
-from unittest.mock import MagicMock
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ray.serve._private.common import RequestMetadata
+from ray.serve._private.constants import MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S
 from ray.serve._private.replica import Replica
 
 
@@ -14,6 +16,25 @@ def _make_metadata(*, is_direct_ingress: bool) -> RequestMetadata:
         internal_request_id="test-internal-request",
         is_direct_ingress=is_direct_ingress,
     )
+
+
+@contextmanager
+def _record_sleeps(events):
+    """Records `asyncio.sleep` calls into `events` instead of waiting.
+
+    Asserting on measured wall clock instead needs a margin above the platform
+    clock resolution, which is 15.625ms on Windows (CPython < 3.13).
+    """
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(delay, result=None, *args, **kwargs):
+        events.append(("sleep", delay))
+        # Still yield, so ordering against the other awaits is unchanged.
+        await real_sleep(0)
+        return result
+
+    with patch("asyncio.sleep", fake_sleep):
+        yield
 
 
 class FakeUvicornServer:
@@ -50,8 +71,9 @@ def _make_shutdown_fake(
     grpc_task=None,
     internal_grpc_port=12345,
     grace_period_s: float = 1.0,
+    is_direct_ingress: bool = False,
 ):
-    """Builds a minimal stand-in for `Replica` for `perform_graceful_shutdown`.
+    """Builds a minimal stand-in for `Replica` for `_perform_graceful_shutdown`.
 
     Returns the fake and the ordered list of events it records.
     """
@@ -61,7 +83,11 @@ def _make_shutdown_fake(
     fake._shutting_down = False
     fake._quiescing = False
     fake._user_callable_initialized = initialized
-    fake._ingress = False
+    # Set explicitly: on a MagicMock this would otherwise be truthy and silently
+    # select the behind-HAProxy drain path. Direct ingress is derived from
+    # `_ingress` + RAY_SERVE_ENABLE_DIRECT_INGRESS, so the tests that want the
+    # direct-ingress path patch that flag on as well.
+    fake._ingress = is_direct_ingress
     fake._deployment_config.graceful_shutdown_timeout_s = grace_period_s
     fake._direct_ingress_http_server = (
         FakeUvicornServer(events) if with_http_server else None
@@ -74,13 +100,19 @@ def _make_shutdown_fake(
     fake._internal_grpc_port = internal_grpc_port
     fake._server = FakeGrpcServer(events, "inter_deployment_stop")
 
-    async def drain(min_draining_period_s):
-        # Quiescing must only start AFTER the drain: during the drain the
-        # replica must keep serving normally.
+    async def drain(min_draining_period_s=0.0, check_immediately=False):
+        # The drain runs before quiescing, so the replica keeps serving
+        # normally while it drains.
         assert fake._quiescing is False
         events.append(("drain", min_draining_period_s))
 
     fake._drain_ongoing_requests = drain
+
+    async def drain_behind_haproxy(min_draining_period_s):
+        assert fake._quiescing is False
+        events.append(("drain_behind_haproxy", min_draining_period_s))
+
+    fake._drain_behind_haproxy = drain_behind_haproxy
 
     async def shutdown():
         events.append(("shutdown",))
@@ -158,7 +190,7 @@ class TestPerformGracefulShutdown:
             grace_period_s=1.0,
         )
 
-        await Replica.perform_graceful_shutdown(fake)
+        await Replica._perform_graceful_shutdown(fake)
 
         assert fake._shutting_down is True
         assert fake._quiescing is True
@@ -193,7 +225,7 @@ class TestPerformGracefulShutdown:
             grace_period_s=0.05,
         )
 
-        await Replica.perform_graceful_shutdown(fake)
+        await Replica._perform_graceful_shutdown(fake)
 
         # `asyncio.wait_for` cancels the awaited task on timeout.
         assert http_task.cancelled()
@@ -208,7 +240,7 @@ class TestPerformGracefulShutdown:
         http_task = MagicMock()
         fake, events = _make_shutdown_fake(http_task=http_task)
 
-        await Replica.perform_graceful_shutdown(fake)
+        await Replica._perform_graceful_shutdown(fake)
 
         assert http_task.cancel.called
         assert [e[0] for e in events] == [
@@ -226,9 +258,298 @@ class TestPerformGracefulShutdown:
             internal_grpc_port=None,
         )
 
-        await Replica.perform_graceful_shutdown(fake)
+        await Replica._perform_graceful_shutdown(fake)
 
         assert events == [("shutdown",)]
+
+    @pytest.mark.asyncio
+    async def test_behind_haproxy_uses_two_phase_drain(self):
+        """With HAProxy enabled, shutdown runs the two-phase drain."""
+        fake, events = _make_shutdown_fake(is_direct_ingress=True)
+
+        with patch(
+            "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+        ), patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", True):
+            await Replica._perform_graceful_shutdown(fake)
+
+        assert [e[0] for e in events] == [
+            "drain_behind_haproxy",
+            "inter_deployment_stop",
+            "shutdown",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_without_haproxy_keeps_serving_until_drained(self):
+        """With HAProxy disabled, shutdown runs the plain drain.
+
+        Nothing in front would retry a refused connection, so the replica
+        keeps accepting for the whole drain.
+        """
+        fake, events = _make_shutdown_fake(is_direct_ingress=True)
+
+        with patch(
+            "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+        ), patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", False):
+            await Replica._perform_graceful_shutdown(fake)
+
+        assert [e[0] for e in events] == [
+            "drain",
+            "inter_deployment_stop",
+            "shutdown",
+        ]
+
+
+class TestDrainBehindHAProxy:
+    @staticmethod
+    def _make_fake():
+        events = []
+        fake = MagicMock()
+        fake._direct_ingress_http_server = FakeUvicornServer(events)
+        fake._stop_accepting_direct_ingress = (
+            lambda: Replica._stop_accepting_direct_ingress(fake)
+        )
+
+        async def drain(min_draining_period_s=0.0, check_immediately=False):
+            events.append(("drain", min_draining_period_s, check_immediately))
+
+        fake._drain_ongoing_requests = drain
+        return fake, events
+
+    @pytest.mark.asyncio
+    async def test_closes_listeners_before_waiting_for_in_flight(self):
+        """The HTTP listener closes before we wait for in-flight requests.
+
+        A request that arrives after that is refused, so the caller can retry
+        it elsewhere instead of having it cut off when the replica exits.
+        """
+        fake, events = self._make_fake()
+
+        await Replica._drain_behind_haproxy(fake, 0.0)
+
+        assert [e[0] for e in events] == ["http_should_exit", "drain"]
+        # Phase 1 already waited, so don't wait again, and check the request
+        # count before sleeping (see `check_immediately`).
+        assert events[-1] == ("drain", 0.0, True)
+
+    @pytest.mark.asyncio
+    async def test_serves_the_full_deregistration_window_first(self):
+        """The listener stays open for the whole draining period.
+
+        That is the window load balancers need to deregister the replica.
+        """
+        fake, events = self._make_fake()
+
+        with _record_sleeps(events):
+            await Replica._drain_behind_haproxy(fake, 0.05)
+
+        assert events == [
+            ("sleep", 0.05),
+            ("http_should_exit", True),
+            ("drain", 0.0, True),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_no_http_server_is_a_no_op(self):
+        """A replica with no direct ingress HTTP server still drains."""
+        fake, events = self._make_fake()
+        fake._direct_ingress_http_server = None
+
+        await Replica._drain_behind_haproxy(fake, 0.0)
+
+        assert [e[0] for e in events] == ["drain"]
+
+
+class TestDrainOngoingRequests:
+    @staticmethod
+    def _make_fake(wait_loop_period_s: float, num_ongoing: int = 0):
+        """Returns the fake and its ordered list of sleeps and count checks."""
+        events = []
+        fake = MagicMock()
+        fake._deployment_config.graceful_shutdown_wait_loop_s = wait_loop_period_s
+
+        def get_num_ongoing_requests():
+            events.append(("check",))
+            return num_ongoing
+
+        fake.get_num_ongoing_requests = get_num_ongoing_requests
+        return fake, events
+
+    @pytest.mark.asyncio
+    async def test_check_immediately_skips_the_first_sleep(self):
+        """With the flag set, an idle replica returns without sleeping first.
+
+        Callers that already waited out the draining period use this: another
+        wait loop can overrun the controller's force-kill deadline, which
+        would cut the shutdown short before the servers close gracefully.
+        """
+        fake, events = self._make_fake(wait_loop_period_s=10)
+
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake, check_immediately=True)
+
+        assert events == [("check",)]
+
+    @pytest.mark.asyncio
+    async def test_sleeps_before_the_first_check_by_default(self):
+        """Without the flag, the request count is checked after a wait loop."""
+        fake, events = self._make_fake(wait_loop_period_s=0.05)
+
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake)
+
+        assert events == [("sleep", 0.05), ("check",)]
+
+    @staticmethod
+    @contextmanager
+    def _fake_clock(clock):
+        """Each `asyncio.sleep` advances the replica's `time.monotonic` instead
+        of waiting. Yields the mocked logger.
+
+        A loop that sleeps for 0 never advances this clock, so callers wrap the
+        drain in `asyncio.wait_for` to fail instead of hanging.
+        """
+        real_sleep = asyncio.sleep
+
+        async def fake_sleep(delay, result=None, *args, **kwargs):
+            clock[0] += delay
+            await real_sleep(0)
+            return result
+
+        # Replace only the replica's `time`: the event loop also reads
+        # `time.monotonic`, and `asyncio.wait_for` needs its real clock.
+        fake_time = MagicMock(monotonic=lambda: clock[0])
+        with patch("asyncio.sleep", fake_sleep), patch(
+            "ray.serve._private.replica.time", fake_time
+        ), patch("ray.serve._private.replica.logger") as logger:
+            yield logger
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("wait_loop_period_s", [0, 0.001])
+    async def test_short_wait_loop_sleeps_the_floor(self, wait_loop_period_s):
+        """`graceful_shutdown_wait_loop_s=0` is allowed, but must not make the
+        drain loop spin with `asyncio.sleep(0)`; values below the floor are
+        raised to it too."""
+        fake, events = self._make_fake(wait_loop_period_s=wait_loop_period_s)
+
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake)
+
+        assert events == [("sleep", MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S), ("check",)]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "wait_loop_period_s,expected_checks,expected_logs",
+        [
+            # Checks every 10ms for 5s, but logs once per second. 501, not 500:
+            # summing 0.01s sleeps in `_fake_clock` drifts just below 5.0, so
+            # the request still looks ongoing at the 500th check.
+            (0, 501, 5),
+            # The default wait loop is longer than the log interval, so every
+            # check that is still waiting logs, as before.
+            (2, 3, 2),
+        ],
+    )
+    async def test_waiting_log_is_rate_limited(
+        self, wait_loop_period_s, expected_checks, expected_logs
+    ):
+        """One request stays ongoing for 5s."""
+        clock = [0.0]
+        fake, events = self._make_fake(wait_loop_period_s)
+
+        def get_num_ongoing_requests():
+            events.append(("check",))
+            return 1 if clock[0] < 5 else 0
+
+        fake.get_num_ongoing_requests = get_num_ongoing_requests
+
+        with self._fake_clock(clock) as logger:
+            await asyncio.wait_for(Replica._drain_ongoing_requests(fake), timeout=2)
+
+        waiting_logs = [
+            c for c in logger.info.call_args_list if c.args[0].startswith("Waiting")
+        ]
+        assert len(events) == expected_checks
+        assert len(waiting_logs) == expected_logs
+
+    @pytest.mark.asyncio
+    async def test_idle_min_draining_period_is_rate_limited(self):
+        """With direct ingress, an idle replica still waits out the minimum
+        draining period; a zero wait loop must not log on every check."""
+        clock = [0.0]
+        fake, events = self._make_fake(wait_loop_period_s=0)
+
+        with self._fake_clock(clock) as logger:
+            await asyncio.wait_for(
+                Replica._drain_ongoing_requests(fake, min_draining_period_s=30),
+                timeout=2,
+            )
+
+        waiting_logs = [
+            c for c in logger.info.call_args_list if c.args[0].startswith("Waiting")
+        ]
+        assert len(waiting_logs) == 30
+
+
+class TestGracefulShutdownIsIdempotent:
+    """The controller re-issues the stop when it restarts, so the shutdown
+    must run once and later calls must await that same run."""
+
+    @staticmethod
+    def _make_fake(shutdown_body):
+        fake = MagicMock()
+        fake._graceful_shutdown_task = None
+        fake._event_loop = asyncio.get_event_loop()
+        fake._perform_graceful_shutdown = shutdown_body
+        return fake
+
+    @pytest.mark.asyncio
+    async def test_second_call_does_not_start_a_second_shutdown(self):
+        calls = []
+
+        async def body():
+            calls.append("shutdown")
+            await asyncio.sleep(0.05)
+
+        fake = self._make_fake(body)
+        await asyncio.gather(
+            Replica.perform_graceful_shutdown(fake),
+            Replica.perform_graceful_shutdown(fake),
+        )
+
+        assert calls == ["shutdown"]
+
+    @pytest.mark.asyncio
+    async def test_second_call_waits_for_the_first_to_finish(self):
+        finished = []
+
+        async def body():
+            await asyncio.sleep(0.05)
+            finished.append(True)
+
+        fake = self._make_fake(body)
+        first = asyncio.ensure_future(Replica.perform_graceful_shutdown(fake))
+        await asyncio.sleep(0)  # let the first call create the task
+
+        # A caller arriving mid-shutdown must not return before it completes.
+        await Replica.perform_graceful_shutdown(fake)
+        assert finished == [True]
+        await first
+
+    @pytest.mark.asyncio
+    async def test_cancelled_caller_does_not_abort_the_shutdown(self):
+        finished = []
+
+        async def body():
+            await asyncio.sleep(0.05)
+            finished.append(True)
+
+        fake = self._make_fake(body)
+        caller = asyncio.ensure_future(Replica.perform_graceful_shutdown(fake))
+        await asyncio.sleep(0)
+        caller.cancel()
+
+        await asyncio.sleep(0.1)
+        assert finished == [True]
 
 
 if __name__ == "__main__":

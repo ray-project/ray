@@ -63,7 +63,7 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
             config=ctx.issue_detectors_config.hash_shuffle_detector_config,
         )
 
-    def detect(self) -> List[Issue]:
+    def detect_periodic(self) -> List[Issue]:
         issues = []
         current_time = time.time()
 

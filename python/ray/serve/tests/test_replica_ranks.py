@@ -363,10 +363,11 @@ def test_rank_assignment_with_autoscaling(serve_instance):
     # Send concurrent requests to trigger autoscaling
     _ = [handle.remote() for _ in range(10)]
 
-    # Wait for scale-up to happen and ranks to be reassigned
+    # Wait for scale-up to happen and ranks to be reassigned. The window mean
+    # ramps at ~1 request/s, then upscale_delay_s and replica startup follow.
     wait_for_condition(
         lambda: check_num_replicas_eq("AutoscalingRankTracker", 4, use_controller=True),
-        timeout=20,
+        timeout=30,
     )
 
     # Check that ranks are still contiguous after scale-up
@@ -380,14 +381,19 @@ def test_rank_assignment_with_autoscaling(serve_instance):
 
     signal_actor.send.remote()
 
-    # Wait for scale-down (no more load)
+    # Wait for scale-down (no more load). The 10s look-back window must drain
+    # below target and then downscale_delay_s pass: ~9s on an idle machine once the
+    # requests have been in flight for a full window, so the 10s default is too tight.
     wait_for_condition(
         lambda: check_num_replicas_eq("AutoscalingRankTracker", 2, use_controller=True),
+        timeout=30,
     )
 
-    # Check that ranks are reassigned and contiguous after scale-down
+    # Check that ranks are reassigned and contiguous after scale-down. The stopped
+    # replicas release their ranks only once their graceful shutdown completes.
     wait_for_condition(
         lambda: check_rank_assignment_complete("AutoscalingRankTracker", 2),
+        timeout=30,
     )
 
     final_ranks = get_replica_ranks("AutoscalingRankTracker")
@@ -429,11 +435,14 @@ def test_rank_persistence_across_controller_restart(serve_instance):
         lambda: check_deployment_status(
             "PersistentRankTracker", DeploymentStatus.HEALTHY
         ),
+        timeout=30,
     )
 
-    # Wait for rank assignment to be restored
+    # Wait for rank assignment to be restored. The dying controller can still
+    # answer the status check above, so this wait absorbs the whole restart.
     wait_for_condition(
         lambda: check_rank_assignment_complete("PersistentRankTracker", 3),
+        timeout=30,
     )
 
     # Check that ranks are preserved for surviving replicas
@@ -548,7 +557,8 @@ def test_multiple_deployments_independent_ranks(serve_instance):
 def test_rank_stability_on_replica_death(serve_instance):
     """Test that when one replica dies, other replicas keep their ranks."""
 
-    @serve.deployment(num_replicas=4)
+    # Detect the kill fast: the default 10s health-check period ate half the budget.
+    @serve.deployment(num_replicas=4, health_check_period_s=1)
     class StableRankTracker:
         def __call__(self):
             return "hello"
@@ -583,7 +593,11 @@ def test_rank_stability_on_replica_death(serve_instance):
 
     wait_for_condition(_check, timeout=20)
 
-    # get_replica_ranks
+    # A rank reassignment, if one is needed, runs a control-loop tick after the
+    # replacement turns RUNNING; the sibling test below waits for it too.
+    wait_for_condition(
+        lambda: check_rank_assignment_complete("StableRankTracker", 4),
+    )
     final_ranks = get_replica_ranks("StableRankTracker")
     assert len(final_ranks) == 4
     assert check_rank_contiguity(final_ranks)
@@ -596,7 +610,8 @@ def test_rank_stability_on_replica_death(serve_instance):
 def test_node_rank_stability_on_replica_death(serve_instance):
     """Test that node_rank and local_rank are correctly maintained when replicas die."""
 
-    @serve.deployment(num_replicas=4)
+    # Detect the kill fast: the default 10s health-check period ate half the budget.
+    @serve.deployment(num_replicas=4, health_check_period_s=1)
     class NodeRankStabilityTracker:
         def __call__(self):
             context = serve.get_replica_context()

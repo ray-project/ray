@@ -37,8 +37,7 @@ def _get_service_name(default_name: str) -> str:
 
 
 class OpenTelemetryMetricRecorder:
-    """
-    A class to record OpenTelemetry metrics. This is the main entry point for exporting
+    """A class to record OpenTelemetry metrics. This is the main entry point for exporting
     all ray telemetries to Prometheus server.
     It uses OpenTelemetry's Prometheus exporter to export metrics.
     """
@@ -80,6 +79,7 @@ class OpenTelemetryMetricRecorder:
         self._counter_observations_by_name = defaultdict(dict)
         self._sum_observations_by_name = defaultdict(dict)
         self._histogram_bucket_midpoints = defaultdict(list)
+        self._histogram_bucket_mismatch_warned = set()
         self._gauge_metric_ttl_s = self._resolve_gauge_ttl_seconds(
             gauge_metric_ttl_seconds
         )
@@ -119,8 +119,7 @@ class OpenTelemetryMetricRecorder:
     def _create_observable_callback(
         self, metric_name: str, metric_type: MetricType
     ) -> Callable[[dict], List[Observation]]:
-        """
-        Factory method to create callbacks for observable metrics.
+        """Factory method to create callbacks for observable metrics.
 
         Args:
             metric_name: name of the metric for which the callback is being created
@@ -236,9 +235,7 @@ class OpenTelemetryMetricRecorder:
                 self._gauge_observations_by_name[name] = {}
 
     def register_counter_metric(self, name: str, description: str) -> None:
-        """
-        Register an observable counter metric with the given name and description.
-        """
+        """Register an observable counter metric with the given name and description."""
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -263,9 +260,7 @@ class OpenTelemetryMetricRecorder:
                 self._counter_observations_by_name[name] = {}
 
     def register_sum_metric(self, name: str, description: str) -> None:
-        """
-        Register an observable sum metric with the given name and description.
-        """
+        """Register an observable sum metric with the given name and description."""
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -292,9 +287,7 @@ class OpenTelemetryMetricRecorder:
     def register_histogram_metric(
         self, name: str, description: str, buckets: List[float]
     ) -> None:
-        """
-        Register a histogram metric with the given name and description.
-        """
+        """Register a histogram metric with the given name and description."""
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -332,14 +325,11 @@ class OpenTelemetryMetricRecorder:
                 self._histogram_bucket_midpoints[name] = midpoints
 
     def get_histogram_bucket_midpoints(self, name: str) -> List[float]:
-        """
-        Get the bucket midpoints for a histogram metric with the given name.
-        """
+        """Get the bucket midpoints for a histogram metric with the given name."""
         return self._histogram_bucket_midpoints[name]
 
     def set_metric_value(self, name: str, tags: dict, value: float):
-        """
-        Set the value of a metric with the given name and tags.
+        """Set the value of a metric with the given name and tags.
 
         For observable metrics (gauge, counter, sum), this stores the value internally
         and returns immediately. The value will be exported asynchronously when
@@ -394,12 +384,20 @@ class OpenTelemetryMetricRecorder:
         name: str,
         data_points: List[dict],
     ) -> None:
-        """
-        Record pre-aggregated histogram data for multiple data points in a single batch.
+        """Record pre-aggregated histogram data for multiple data points in a single batch.
 
         This method takes pre-aggregated bucket counts and reconstructs individual
         observations using bucket midpoints. It acquires the lock once and performs
         all record() calls for ALL data points, minimizing lock contention.
+
+        A metric name is registered once per node, but several processes may emit it
+        with different bucket bounds (e.g. two vLLM engines configured with different
+        max_model_len). Data points whose bucket count disagrees with the registered
+        bounds cannot be reconstructed, so they are skipped rather than raising, which
+        would otherwise abort ingestion for the rest of the reporting component's
+        metrics. Exact pass-through of bucket_counts/sum, which would let such
+        emitters through, is tracked in
+        https://github.com/ray-project/ray/issues/64852.
 
         Note: The histogram sum value will be an approximation since we use bucket midpoints instead of actual values.
         """
@@ -419,9 +417,15 @@ class OpenTelemetryMetricRecorder:
             for dp in data_points:
                 tags = dp["tags"]
                 bucket_counts = dp["bucket_counts"]
-                assert len(bucket_counts) == len(
-                    bucket_midpoints
-                ), "Number of bucket counts and midpoints must match"
+                if len(bucket_counts) != len(bucket_midpoints):
+                    if name not in self._histogram_bucket_mismatch_warned:
+                        self._histogram_bucket_mismatch_warned.add(name)
+                        logger.warning(
+                            f"Metric {name} was reported with {len(bucket_counts)} "
+                            f"buckets but {len(bucket_midpoints)} were expected; "
+                            "skipping the data point."
+                        )
+                    continue
 
                 filtered_tags = {
                     k: v for k, v in tags.items() if k not in high_cardinality_labels
@@ -435,9 +439,7 @@ class OpenTelemetryMetricRecorder:
                         instrument.record(midpoint, attributes=filtered_tags)
 
     def record_and_export(self, records: List[Record], global_tags=None):
-        """
-        Record a list of telemetry records and export them to Prometheus.
-        """
+        """Record a list of telemetry records and export them to Prometheus."""
         global_tags = global_tags or {}
 
         for record in records:

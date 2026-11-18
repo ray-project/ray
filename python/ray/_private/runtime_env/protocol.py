@@ -1,5 +1,7 @@
 import os
+import shutil
 from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from ray._common.runtime_env_uri import Protocol
 
@@ -40,6 +42,8 @@ class ProtocolsProvider:
             "abfss",
             # File storage path, assumes everything packed in one zip file.
             "file",
+            # A directory that is already present on every node. Assumes absolute path.
+            "local",
         }
 
     @classmethod
@@ -260,7 +264,7 @@ class ProtocolsProvider:
         open_file = None
 
         if protocol == "file":
-            source_uri = source_uri[len("file://") :]
+            source_uri = url2pathname(source_uri[len("file://") :])
 
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
@@ -287,7 +291,7 @@ class ProtocolsProvider:
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
             with open(dest_file, "wb") as fout:
-                fout.write(fin.read())
+                shutil.copyfileobj(fin, fout)
 
 
 def _download_remote_uri(self, source_uri, dest_file):

@@ -16,15 +16,19 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
-from ray._common.utils import get_or_create_event_loop
+from ray._common.utils import binary_to_hex, get_or_create_event_loop
 from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
 import ray._private.ray_constants as ray_constants
-from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
+from ray.core.generated.gcs_service_pb2 import (
+    GetAllResourceUsageReply,
+    GetDrainingNodesReply,
+)
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
+    CGetDrainingNodesReply,
     ConnectOnSingletonIoContext,
     MultiItemPyCallback,
     OptionalItemPyCallback,
@@ -334,7 +338,15 @@ cdef class InnerGcsClient:
     def drain_nodes(
         self, node_ids: Sequence[bytes], timeout: Optional[int | float] = None
     ) -> List[bytes]:
-        """returns a list of node_ids that are successfully drained."""
+        """Drain the given nodes.
+
+        Args:
+            node_ids: Node IDs as binary bytes (not hex strings).
+            timeout: Optional RPC timeout in seconds.
+
+        Returns:
+            The IDs of the successfully drained nodes, as binary bytes.
+        """
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[CNodeID] c_node_ids
@@ -451,6 +463,35 @@ cdef class InnerGcsClient:
     #############################################################
     # NodeResources methods
     #############################################################
+    def get_draining_nodes(
+        self, timeout: Optional[int | float] = None
+    ) -> Dict[str, int]:
+        """Get the nodes that are being drained.
+
+        Returns:
+            A dict mapping each draining node's ID, as a hex string, to its
+            draining deadline timestamp in ms (0 means no deadline).
+        """
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef CGetDrainingNodesReply c_reply
+        cdef c_string serialized_reply
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get()
+                .NodeResources()
+                .GetDrainingNodes(timeout_ms, c_reply)
+            )
+            serialized_reply = c_reply.SerializeAsString()
+
+        reply = GetDrainingNodesReply()
+        reply.ParseFromString(serialized_reply)
+        return {
+            binary_to_hex(
+                draining_node.node_id
+            ): draining_node.draining_deadline_timestamp_ms
+            for draining_node in reply.draining_nodes
+        }
+
     def get_all_resource_usage(
         self, timeout: Optional[int | float] = None
     ) -> GetAllResourceUsageReply:
@@ -664,7 +705,7 @@ cdef class InnerGcsClient:
         ray_stopper for idle and preemption-based node termination.
 
         Args:
-            node_id: Binary node ID of the target node.
+            node_id: The target node's ID as a hex string (not binary).
             reason: A `DrainNodeReason` enum value. `IDLE_TERMINATION`
                 requests are rejectable by the raylet; `PREEMPTION`
                 requests are non-rejectable.
@@ -700,7 +741,11 @@ cdef class InnerGcsClient:
             node_id: c_string,
             resources: unordered_map[c_string, cython.double],
             timeout_s=None):
-        """Send the ResizeRayletResourceInstances request to GCS."""
+        """Send the ResizeRayletResourceInstances request to GCS.
+
+        Args:
+            node_id: The target node's ID as a hex string.
+        """
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             unordered_map[c_string, cython.double] total_resources

@@ -1,6 +1,7 @@
 import collections
 from typing import Any, Dict, List
 
+import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import SerializablePreprocessorBase
@@ -97,14 +98,17 @@ class FeatureHasher(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to apply the hashing trick to."""
         return self._columns
 
     @property
     def num_features(self) -> int:
+        """The number of features used to represent the vocabulary."""
         return self._num_features
 
     @property
     def output_column(self) -> str:
+        """The name of the column that contains the hashed features."""
         return self._output_column
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -113,7 +117,17 @@ class FeatureHasher(SerializablePreprocessorBase):
             hash_counts = collections.defaultdict(int)
             for column in self._columns:
                 hashed_value = simple_hash(column, self._num_features)
-                hash_counts[hashed_value] += row[column]
+                value = row[column]
+                # An Arrow-backed column represents a missing value with
+                # `pd.NA`, which absorbs whatever it is added to: `0 + pd.NA` is
+                # `pd.NA`, so a single missing token count would leave every
+                # bucket it touches missing and degrade the whole output column
+                # to `dtype=object`. `np.nan` propagates the same way but stays
+                # a float, so the bucket remains numeric -- which is what a
+                # NumPy-backed column produced.
+                if pd.isna(value):
+                    value = np.nan
+                hash_counts[hashed_value] += value
             return {f"hash_{i}": hash_counts[i] for i in range(self._num_features)}
 
         feature_columns = df.loc[:, self._columns].apply(
@@ -130,9 +144,19 @@ class FeatureHasher(SerializablePreprocessorBase):
         return df
 
     def get_input_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor reads.
+
+        Returns:
+            The columns to apply the hashing trick to.
+        """
         return self._columns
 
     def get_output_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor writes.
+
+        Returns:
+            A list that contains ``output_column``.
+        """
         return [self._output_column]
 
     def __repr__(self):

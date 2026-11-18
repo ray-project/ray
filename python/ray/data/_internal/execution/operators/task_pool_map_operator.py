@@ -15,18 +15,27 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    ReportsExtraResourceUsage,
     TaskContext,
+    task_resource_dict,
 )
+from ray.data._internal.execution.interfaces.task_context import RerunPolicy
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.remote_fn import (
+    _add_system_error_to_retry_exceptions,
+    cached_remote_fn,
+)
+from ray.data._internal.utils.cached_ray_internals import (
+    get_local_ongoing_lineage_reconstruction_tasks,
+)
 from ray.data.context import DataContext
 
 
-class TaskPoolMapOperator(MapOperator):
+class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     """A MapOperator implementation that executes tasks on a task pool."""
 
     def __init__(
@@ -162,19 +171,33 @@ class TaskPoolMapOperator(MapOperator):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
+    @override
+    def _get_dynamic_ray_remote_args(
+        self, input_bundle: Optional[RefBundle] = None
+    ) -> Dict[str, Any]:
+        ray_remote_args = super()._get_dynamic_ray_remote_args(input_bundle)
+        # `.options()` replaces `_labels` wholesale, so user labels would erase the
+        # operator id that lineage reconstruction accounting keys on. Merge instead.
+        ray_remote_args["_labels"] = {
+            **(ray_remote_args.pop("_labels", None) or {}),
+            self._OPERATOR_ID_LABEL_KEY: self.id,
+        }
+        return ray_remote_args
+
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
+        dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
+            rerun_policy=_task_rerun_policy(dynamic_ray_remote_args),
         )
-
-        dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
+        resource_request = task_resource_dict(dynamic_ray_remote_args)
 
         if (
             "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
@@ -203,7 +226,12 @@ class TaskPoolMapOperator(MapOperator):
                 logical_usage
             )
 
-        self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
+        self._submit_data_task(
+            gen,
+            bundle,
+            task_done_callback=task_done_callback,
+            task_resource_request=resource_request,
+        )
 
     def progress_str(self) -> str:
         return ""
@@ -222,6 +250,35 @@ class TaskPoolMapOperator(MapOperator):
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
             memory=self._ray_remote_args.get("memory", 0),
+        )
+
+    def extra_resource_usage(self) -> ExecutionResources:
+        """Returns resources occupied by lineage reconstruction tasks.
+
+        When an output object is lost, Ray Core re-runs the task that produced
+        it. Those retries aren't submitted by this operator, so they don't show
+        up in the operator's own accounting, but they occupy real resources. The
+        resource manager adds this on top of the standard usage so backpressure
+        doesn't hand out budget that Ray Core has already spent.
+
+        Returns zero when
+        `DataContext.enable_lineage_reconstruction_resource_accounting` is off.
+        """
+        if not self.data_context.enable_lineage_reconstruction_resource_accounting:
+            return ExecutionResources.zero()
+
+        return self.incremental_resource_usage().scale(
+            self._num_lineage_reconstruction_tasks()
+        )
+
+    def _num_lineage_reconstruction_tasks(self) -> int:
+        # Reconstruction tasks inherit the labels of the task they replay, so
+        # they carry the `_OPERATOR_ID_LABEL_KEY` attached in `__init__`.
+        task_infos = get_local_ongoing_lineage_reconstruction_tasks()
+        return sum(
+            num_tasks
+            for task_info, num_tasks in task_infos
+            if task_info.labels.get(self._OPERATOR_ID_LABEL_KEY) == self.id
         )
 
     def min_scheduling_resources(
@@ -279,3 +336,19 @@ class TaskPoolMapOperator(MapOperator):
                 "to increase the number of concurrent tasks by configuring "
                 "`override_num_blocks` earlier in the pipeline."
             )
+
+
+def _task_rerun_policy(ray_remote_args: Dict[str, Any]) -> RerunPolicy:
+    """The errors on which Ray reruns a task with ``ray_remote_args``.
+
+    ``cached_remote_fn`` defaults ``max_retries`` to -1 (unlimited); with 0, Ray
+    reruns on nothing. Otherwise it also reruns on ``RaySystemError``, which
+    ``cached_remote_fn`` adds to ``retry_exceptions``.
+    """
+    if ray_remote_args.get("max_retries", -1) == 0:
+        return RerunPolicy.from_retry_exceptions(False)
+    retried = ray_remote_args.get("retry_exceptions", False)
+    # A copy, since adding ``RaySystemError`` appends to a list in place.
+    args = {"retry_exceptions": list(retried) if isinstance(retried, list) else retried}
+    _add_system_error_to_retry_exceptions(args)
+    return RerunPolicy.from_retry_exceptions(args["retry_exceptions"])

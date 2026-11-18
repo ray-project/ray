@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
 
 import ray
 import ray._private.state
@@ -18,6 +17,7 @@ from ray._common.utils import binary_to_hex
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.test_utils import (
     check_call_subprocess,
+    request_with_auth_token,
     wait_for_aggregator_agent_if_enabled,
 )
 from ray.core.generated import gcs_pb2, gcs_service_pb2
@@ -185,7 +185,7 @@ def test_timeline_request(shutdown_only):
 
     # Make sure the API works.
     def verify():
-        resp = requests.get(f"{dashboard_url}/api/v0/tasks/timeline")
+        resp = request_with_auth_token("GET", f"{dashboard_url}/api/v0/tasks/timeline")
         resp.raise_for_status()
         assert resp.json(), "No result has returned"
         return True
@@ -423,7 +423,7 @@ def _profile_task_event(component_type, component_id, event_name):
     return task_event
 
 
-def test_profile_events_reads_from_dashboard_head(monkeypatch):
+def test_profile_events_reads_from_dashboard_head(monkeypatch, create_auth_token):
     """With the migration flag on, profile_events() fetches task events from the dashboard
     head through a reused client that resolves the address once and reuses its session."""
     monkeypatch.setattr(
@@ -483,7 +483,9 @@ def test_profile_events_reads_from_gcs_by_default(monkeypatch):
     assert result[binary_to_hex(component_id)][0]["event_type"] == "driver:startup"
 
 
-def test_profile_events_gcs_and_head_paths_return_same_data(monkeypatch):
+def test_profile_events_gcs_and_head_paths_return_same_data(
+    monkeypatch, create_auth_token
+):
     """Migration parity: the GCS read path and the dashboard-head read path return the
     same profile_events() output for the same set of stored task events."""
     component_id = b"\x03" * 28

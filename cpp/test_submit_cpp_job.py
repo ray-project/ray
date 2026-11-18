@@ -1,7 +1,14 @@
 import os
+import secrets
 import shutil
 import sys
 import tempfile
+
+# RayConfig reads the auth mode once at import, so set the mode before importing
+# ray. A per-process random token, inherited by subprocesses (the head and the
+# submitted C++ job), lets them agree without a hard-coded secret.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
 
 import pytest
 
@@ -16,7 +23,7 @@ from ray.tests.conftest import _ray_start
 
 @pytest.fixture(scope="module")
 def headers():
-    return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+    return {"Connection": "keep-alive"}
 
 
 @pytest.fixture(scope="module")

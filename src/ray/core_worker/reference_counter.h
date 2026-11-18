@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <string>
@@ -56,11 +57,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
       bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
-        lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
         free_object_on_nodes_async_(std::move(free_object_on_nodes_async)),
+        lineage_pinning_enabled_(lineage_pinning_enabled),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
@@ -106,8 +107,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      const std::optional<std::string> &tensor_transport = std::nullopt) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+      const std::optional<std::string> &tensor_transport = std::nullopt,
+      MoveState move_state = MoveState::NOT_MOVABLE) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -209,6 +210,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   std::vector<ObjectID> FlushObjectsToRecover() override;
 
+  void MarkObjectForRecovery(const ObjectID &object_id) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   bool HasReference(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddObjectRefStats(
@@ -259,6 +263,21 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences() override;
 
   std::optional<std::string> GetTensorTransport(const ObjectID &object_id) const override;
+
+  std::optional<MoveState> GetMoveState(const ObjectID &object_id) const override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  bool HasConsumeOnceObjects() const override;
+
+  std::vector<std::optional<MoveState>> GetMoveStates(
+      const std::vector<ObjectID> &object_ids) const override ABSL_LOCKS_EXCLUDED(mutex_);
+
+  StatusOr<std::vector<bool>> TryCommitMoves(
+      const std::vector<ObjectID> &object_ids) override ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
+    lineage_pinning_enabled_.store(lineage_pinning_enabled);
+  }
 
  private:
   /// Contains information related to nested object refs only.
@@ -433,6 +452,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
+    /// Set once a raylet subscribes to this object's locations. This acts like a
+    /// prefilter. Inline objects would never have a subscription, so those objects
+    /// that never had one could skip all subscriber related operations and
+    /// acquiring the related lock to speed up the object owner.
+    bool has_ever_had_location_subscriber = false;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -455,6 +479,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// task resubmission. See https://github.com/ray-project/ray/pull/59625.
     LineageReconstructionEligibility lineage_eligibility_ =
         LineageReconstructionEligibility::ELIGIBLE;
+
+    /// Only set on owned objects; borrowers always see NOT_MOVABLE.
+    MoveState move_state_ = MoveState::NOT_MOVABLE;
 
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
@@ -521,8 +548,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                               LineageReconstructionEligibility lineage_eligibility,
                               bool add_local_ref,
                               const std::optional<NodeID> &pinned_at_node_id,
-                              const std::optional<std::string> &tensor_transport)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                              const std::optional<std::string> &tensor_transport,
+                              MoveState move_state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -531,9 +558,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
                         rpc::Address *owner_address = nullptr) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  std::optional<MoveState> GetMoveStateInternal(const ObjectID &object_id) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Unsets the raylet address
   /// that the object was pinned at or spilled at, if the address was set.
   void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Queues the object for recovery if it is still in scope.
+  void MarkObjectForRecoveryInternal(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// This should be called whenever the object is out of scope or manually freed.
@@ -728,12 +762,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// object's owner.
   rpc::Address rpc_address_;
 
-  /// Feature flag for lineage pinning. If this is false, then we will keep the
-  /// lineage ref count, but this will not be used to decide when the object's
-  /// Reference can be deleted. The object's lineage ref count is the number of
-  /// tasks that depend on that object that may be retried in the future.
-  const bool lineage_pinning_enabled_;
-
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
 
@@ -798,6 +826,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
 
+  /// Feature flag for lineage pinning. If this is false, then we will keep the
+  /// lineage ref count, but this will not be used to decide when the object's
+  /// Reference can be deleted. The object's lineage ref count is the number of
+  /// tasks that depend on that object that may be retried in the future.
+  std::atomic<bool> lineage_pinning_enabled_;
+
   /// Sticky: set to true the first time this worker becomes the owner of
   /// any non-actor object. Never reset. Gates owner-side metric emission
   /// so non-owners do not pollute per-worker metric cardinality.
@@ -808,6 +842,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::atomic<size_t> owned_objects_in_memory_{0};
   std::atomic<size_t> owned_objects_spilled_{0};
   std::atomic<size_t> owned_objects_in_plasma_{0};
+
+  /// Number of references whose move state isn't NOT_MOVABLE. Atomic so that
+  /// HasConsumeOnceObjects can read it without the lock.
+  std::atomic<size_t> num_consume_once_objects_{0};
 
   /// Track sizes of owned objects by state.
   /// These are atomic to allow lock-free reads via public getters.

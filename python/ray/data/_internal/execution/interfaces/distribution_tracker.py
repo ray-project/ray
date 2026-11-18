@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Optional, Union
+from typing import Optional, TypedDict
 
 try:
     from datasketches import kll_doubles_sketch
@@ -7,6 +7,23 @@ try:
     _DATASKETCHES_AVAILABLE = True
 except ImportError:
     _DATASKETCHES_AVAILABLE = False
+
+
+class DistributionStats(TypedDict):
+    """Statistics calculated by a ``DistributionTracker``."""
+
+    sum: float
+    num_samples: int
+    mean: float
+    variance: float
+    min: Optional[float]
+    max: Optional[float]
+    p25: Optional[float]
+    p50: Optional[float]
+    p75: Optional[float]
+    p90: Optional[float]
+    p95: Optional[float]
+    p99: Optional[float]
 
 
 class DistributionTracker:
@@ -25,9 +42,11 @@ class DistributionTracker:
         self._min = float("inf")
         self._max = float("-inf")
         self._sketch = kll_doubles_sketch(200) if _DATASKETCHES_AVAILABLE else None
+        self._sum = 0.0
 
     def add_sample(self, value: float) -> None:
         self._count += 1
+        self._sum += value
 
         delta = value - self._mean
         self._mean += delta / self._count
@@ -52,6 +71,7 @@ class DistributionTracker:
             # Merging an accumulator into itself would double its samples
             # (count, m2, and the sketch), so treat it as a no-op.
             return
+        self._sum += other.sum
         if other._count == 0:
             return
         if self._count == 0:
@@ -137,8 +157,13 @@ class DistributionTracker:
     def p99(self) -> Optional[float]:
         return self._quantile(0.99)
 
-    def as_dict(self) -> Dict[str, Optional[Union[int, float]]]:
+    @property
+    def sum(self) -> float:
+        return self._sum
+
+    def as_dict(self) -> DistributionStats:
         return {
+            "sum": self.sum,
             "num_samples": self.num_samples,
             "mean": self.mean,
             "variance": self.variance,

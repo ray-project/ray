@@ -214,14 +214,36 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
     print(ray.available_resources())
     data = [dict(__key__=str(i), a=str(i), b=str(i**2)) for i in range(100)]
     ds = ray.data.from_items(data).repartition(1)
-    ds.write_webdataset(path=tmp_path, try_create_dir=True)
-    paths = glob.glob(f"{tmp_path}/*.tar")
-    assert len(paths) == 1
-    with open(paths[0], "rb") as stream:
-        tf = tarfile.open(fileobj=stream)
-        for i in range(100):
-            assert tf.extractfile(f"{i}.a").read().decode("utf-8") == str(i)
-            assert tf.extractfile(f"{i}.b").read().decode("utf-8") == str(i**2)
+
+    def assert_archive(path, expected_a):
+        paths = glob.glob(f"{path}/*.tar")
+        assert len(paths) == 1
+        with tarfile.open(paths[0]) as tf:
+            for i in range(100):
+                assert tf.extractfile(f"{i}.a").read().decode("utf-8") == expected_a(i)
+                assert tf.extractfile(f"{i}.b").read().decode("utf-8") == str(i**2)
+
+    default_path = tmp_path / "default"
+    ds.write_webdataset(path=default_path, try_create_dir=True)
+    assert_archive(default_path, lambda i: str(i))
+
+    def encode_a(sample):
+        sample = dict(sample)
+        sample["a"] = f"encoded-{sample['a']}".encode("utf-8")
+        return sample
+
+    callable_path = tmp_path / "callable"
+    ds.write_webdataset(path=callable_path, encoder=encode_a)
+    assert_archive(callable_path, lambda i: f"encoded-{i}")
+
+    def prefix_a(sample):
+        sample = dict(sample)
+        sample["a"] = f"prefixed-{sample['a']}"
+        return sample
+
+    chained_path = tmp_path / "chained"
+    ds.write_webdataset(path=chained_path, encoder=[prefix_a, encode_a])
+    assert_archive(chained_path, lambda i: f"encoded-prefixed-{i}")
 
 
 def custom_decoder(sample):
@@ -467,6 +489,33 @@ def test_read_webdataset_forwards_ray_remote_args(ray_start_2_cpus, tmp_path):
 
     # smoke run
     assert len(ds.take_all()) == 1
+
+
+def test_default_decoder_rejects_disallowed_image_format():
+    # EPS bytes in a member named `.jpg`. PIL picks a plugin by file signature,
+    # not extension, and the EPS plugin shells out to Ghostscript. The default
+    # decoder must refuse formats outside its raster allowlist rather than
+    # dispatch untrusted bytes to such a parser.
+    from PIL import UnidentifiedImageError
+
+    from ray.data._internal.datasource.webdataset_datasource import _default_decoder
+
+    eps_bytes = (
+        b"%!PS-Adobe-3.0 EPSF-3.0\n" b"%%BoundingBox: 0 0 100 100\n" b"showpage\n"
+    )
+    with pytest.raises(UnidentifiedImageError):
+        _default_decoder({"__key__": "0001", "jpg": eps_bytes})
+
+
+def test_default_decoder_allows_png(tmp_path):
+    from PIL import Image
+
+    from ray.data._internal.datasource.webdataset_datasource import _default_decoder
+
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), (1, 2, 3)).save(buf, "PNG")
+    out = _default_decoder({"__key__": "0001", "png": buf.getvalue()})
+    assert out["png"].shape == (4, 4, 3)
 
 
 if __name__ == "__main__":

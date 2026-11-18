@@ -157,7 +157,7 @@ class RayReportCallback(_Callback):
 
         should_checkpoint = when in self._checkpoint_on
         if should_checkpoint:
-            checkpoint = TensorflowCheckpoint.from_model(self.model)
+            checkpoint = TensorflowCheckpoint._from_model_internal(self.model)
             self._save_and_report_checkpoint(metrics, checkpoint)
             # Clean up temporary checkpoint
             shutil.rmtree(checkpoint.path, ignore_errors=True)
@@ -173,17 +173,15 @@ class ReportCheckpointCallback(RayReportCallback):
         Metrics are always reported with checkpoints, even if the event isn't specified
         in ``report_metrics_on``.
 
-    Example:
-        .. testcode:: python
-
-            ############# Using it in TrainSession ###############
-            from ray.air.integrations.keras import ReportCheckpointCallback
-            def train_loop_per_worker():
-                strategy = tf.distribute.MultiWorkerMirroredStrategy()
-                with strategy.scope():
-                    model = build_model()
-
-                model.fit(dataset_shard, callbacks=[ReportCheckpointCallback()])
+    Examples:
+        >>> ############# Using it in TrainSession ###############
+        >>> from ray.air.integrations.keras import ReportCheckpointCallback
+        >>> def train_loop_per_worker():
+        ...     strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        ...     with strategy.scope():
+        ...         model = build_model()
+        ...
+        ...     model.fit(dataset_shard, callbacks=[ReportCheckpointCallback()])
 
     Args:
         metrics: Metrics to report. If this is a list, each item describes

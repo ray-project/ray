@@ -1,0 +1,205 @@
+from typing import Any, Optional, Tuple
+
+import gymnasium as gym
+
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.typing import MultiAgentDict
+
+
+@PublicAPI
+class PettingZooEnv(MultiAgentEnv):
+    """An interface to the PettingZoo MARL environment library.
+
+    See: https://github.com/Farama-Foundation/PettingZoo
+
+    Inherits from MultiAgentEnv and exposes a given AEC
+    (actor-environment-cycle) game from the PettingZoo project via the
+    MultiAgentEnv public API.
+
+    Note that the wrapper has the following important limitation:
+
+    Environments are positive sum games (-> Agents are expected to cooperate
+       to maximize reward). This isn't a hard restriction, it just that
+       standard algorithms aren't expected to work well in highly competitive
+       games.
+
+    Also note that the earlier existing restriction of all agents having the same
+    observation- and action spaces has been lifted. Different agents can now have
+    different spaces and the entire environment's e.g. `self.action_space` is a Dict
+    mapping agent IDs to individual agents' spaces. Same for `self.observation_space`.
+
+    Examples:
+        >>> from pettingzoo.butterfly import pistonball_v6  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+        >>> env = PettingZooEnv(pistonball_v6.env())
+        >>> obs, infos = env.reset()
+        >>> # only returns the observation for the agent which should be stepping
+        >>> print(obs)
+        {'piston_0': array([[[...]]], shape=(457, 120, 3), dtype=uint8)}
+        >>> obs, rewards, terminateds, truncateds, infos = env.step({
+        ...     "piston_0": env.action_space["piston_0"].sample()
+        ... })
+        >>> # only returns the observation, reward, info, etc, for
+        >>> # the agent who's turn is next.
+        >>> print(obs)
+        {'piston_1': array([[[...]]], shape=(457, 120, 3), dtype=uint8)}
+        >>> print(rewards)
+        {'piston_1': 0}
+        >>> print(terminateds)
+        {'piston_1': False, '__all__': False}
+        >>> print(truncateds)
+        {'piston_1': False, '__all__': False}
+        >>> print(infos)
+        {'piston_1': {}}
+
+    Args:
+        env: The PettingZoo AEC env to wrap.
+    """
+
+    def __init__(self, env: Any):
+        super().__init__()
+        self.env = env
+        env.reset()
+
+        self._agent_ids = set(self.env.agents)
+
+        # If these important attributes are not set, try to infer them.
+        if not self.agents:
+            self.agents = list(self._agent_ids)
+        if not self.possible_agents:
+            self.possible_agents = self.agents.copy()
+
+        # Set these attributes for sampling in `VectorMultiAgentEnv`s.
+        self.observation_spaces = {
+            aid: self.env.observation_space(aid) for aid in self._agent_ids
+        }
+        self.action_spaces = {
+            aid: self.env.action_space(aid) for aid in self._agent_ids
+        }
+
+        self.observation_space = gym.spaces.Dict(self.observation_spaces)
+        self.action_space = gym.spaces.Dict(self.action_spaces)
+
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        info = self.env.reset(seed=seed, options=options)
+        return (
+            {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
+            info or {},
+        )
+
+    def step(
+        self, action: MultiAgentDict
+    ) -> Tuple[
+        MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
+    ]:
+        """Steps the env with the action of the agent whose turn it is.
+
+        Agents that are terminated or truncated get stepped with None and are
+        included in the returned dicts, until the env reaches an agent that's
+        still active, or no agents remain.
+
+        Args:
+            action: A dict mapping agent IDs to actions. Only the action of the
+                agent whose turn it is, `env.agent_selection`, is used.
+
+        Returns:
+            Dicts of observations, rewards, terminateds, truncateds, and infos,
+            keyed by agent ID. The terminateds and truncateds dicts also have an
+            `"__all__"` key, which is True once no agents remain and every agent
+            in that dict is terminated, or truncated, respectively.
+        """
+        self.env.step(action[self.env.agent_selection])
+        obs_d = {}
+        rew_d = {}
+        terminated_d = {}
+        truncated_d = {}
+        info_d = {}
+        while self.env.agents:
+            obs, rew, terminated, truncated, info = self.env.last()
+            agent_id = self.env.agent_selection
+            obs_d[agent_id] = obs
+            rew_d[agent_id] = rew
+            terminated_d[agent_id] = terminated
+            truncated_d[agent_id] = truncated
+            info_d[agent_id] = info
+            if (
+                self.env.terminations[self.env.agent_selection]
+                or self.env.truncations[self.env.agent_selection]
+            ):
+                self.env.step(None)
+            else:
+                break
+
+        all_gone = not self.env.agents
+        terminated_d["__all__"] = all_gone and all(terminated_d.values())
+        truncated_d["__all__"] = all_gone and all(truncated_d.values())
+
+        return obs_d, rew_d, terminated_d, truncated_d, info_d
+
+    def close(self):
+        """Closes the wrapped PettingZoo env."""
+        self.env.close()
+
+    def render(self):
+        return self.env.render(self.render_mode)
+
+    @property
+    def get_sub_environments(self):
+        """The unwrapped PettingZoo env."""
+        return self.env.unwrapped
+
+
+@PublicAPI
+class ParallelPettingZooEnv(MultiAgentEnv):
+    """An interface to PettingZoo's Parallel API environments.
+
+    Exposes a PettingZoo Parallel env, in which all agents act at the same time,
+    through the MultiAgentEnv public API. The terminateds and truncateds dicts
+    that `step()` returns have an `"__all__"` key, which is True when every agent
+    in that dict is terminated, or truncated, respectively.
+
+    Args:
+        env: The PettingZoo Parallel env to wrap.
+    """
+
+    def __init__(self, env: Any):
+        super().__init__()
+        self.par_env = env
+        self.par_env.reset()
+        self._agent_ids = set(self.par_env.agents)
+
+        # If these important attributes are not set, try to infer them.
+        if not self.agents:
+            self.agents = list(self._agent_ids)
+        if not self.possible_agents:
+            self.possible_agents = self.agents.copy()
+
+        self.observation_space = gym.spaces.Dict(
+            {aid: self.par_env.observation_space(aid) for aid in self._agent_ids}
+        )
+        self.action_space = gym.spaces.Dict(
+            {aid: self.par_env.action_space(aid) for aid in self._agent_ids}
+        )
+
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        obs, info = self.par_env.reset(seed=seed, options=options)
+        return obs, info or {}
+
+    def step(self, action_dict):
+        obss, rews, terminateds, truncateds, infos = self.par_env.step(action_dict)
+        terminateds["__all__"] = all(terminateds.values())
+        truncateds["__all__"] = all(truncateds.values())
+        return obss, rews, terminateds, truncateds, infos
+
+    def close(self):
+        """Closes the wrapped PettingZoo env."""
+        self.par_env.close()
+
+    def render(self):
+        return self.par_env.render(self.render_mode)
+
+    @property
+    def get_sub_environments(self):
+        """The unwrapped PettingZoo env."""
+        return self.par_env.unwrapped

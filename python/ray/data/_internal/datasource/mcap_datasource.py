@@ -7,9 +7,13 @@ time-series data.
 
 import json
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Union
 
+# ``TimeRange`` lives with the V2 datasource so that ``datasource_v2`` does not
+# depend on this legacy module. It is re-exported here for existing imports.
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (  # noqa: F401
+    TimeRange,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import Block
@@ -21,32 +25,6 @@ if TYPE_CHECKING:
     from mcap.reader import Channel, Message, Schema
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class TimeRange:
-    """Time range for filtering MCAP messages.
-
-    Attributes:
-        start_time: Start time in nanoseconds (inclusive).
-        end_time: End time in nanoseconds (exclusive).
-    """
-
-    start_time: int
-    end_time: int
-
-    def __post_init__(self):
-        """Validate time range after initialization."""
-        if self.start_time >= self.end_time:
-            raise ValueError(
-                f"start_time ({self.start_time}) must be less than "
-                f"end_time ({self.end_time})"
-            )
-        if self.start_time < 0 or self.end_time < 0:
-            raise ValueError(
-                f"time values must be non-negative, got start_time={self.start_time}, "
-                f"end_time={self.end_time}"
-            )
 
 
 @DeveloperAPI
@@ -170,7 +148,7 @@ class MCAPDatasource(FileBasedDatasource):
             yield builder.build()
 
     def _should_include_message(
-        self, schema: "Schema", channel: "Channel", message: "Message"
+        self, schema: Optional["Schema"], channel: "Channel", message: "Message"
     ) -> bool:
         """Check if a message should be included based on filters.
 
@@ -179,7 +157,8 @@ class MCAPDatasource(FileBasedDatasource):
         MCAP reader, so only message_types filtering is needed here.
 
         Args:
-            schema: MCAP schema object containing message type information.
+            schema: MCAP schema object containing message type information, or
+                ``None`` when the channel declares no schema.
             channel: MCAP channel object containing topic and metadata.
             message: MCAP message object containing the actual data.
 
@@ -193,7 +172,11 @@ class MCAPDatasource(FileBasedDatasource):
         return True
 
     def _message_to_dict(
-        self, schema: "Schema", channel: "Channel", message: "Message", path: str
+        self,
+        schema: Optional["Schema"],
+        channel: "Channel",
+        message: "Message",
+        path: str,
     ) -> Dict[str, Any]:
         """Convert MCAP message to dictionary format.
 
@@ -201,7 +184,8 @@ class MCAPDatasource(FileBasedDatasource):
         format suitable for Ray Data processing.
 
         Args:
-            schema: MCAP schema object containing message type and encoding info.
+            schema: MCAP schema object containing message type and encoding
+                info, or ``None`` when the channel declares no schema.
             channel: MCAP channel object containing topic and channel metadata.
             message: MCAP message object containing the actual message data.
             path: Path to the source file (for include_paths functionality).

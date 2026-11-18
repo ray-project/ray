@@ -4,7 +4,8 @@ Covers only what this prototype actually supports: ``SaveMode.APPEND`` and
 ``SaveMode.OVERWRITE`` (no ``ERROR``/``IGNORE``, no dynamic partition
 overwrite), Hive-style partitioning, ``storage_options`` passthrough to the
 driver-side commit calls, and ``schema_mode``-governed schema evolution on
-APPEND (adding new columns only -- never changing an existing column's type).
+APPEND (adding new top-level or nested fields only -- never changing an
+existing field's type).
 
 Master's existing ``test_delta.py`` covers ``ray.data.read_delta`` and is not
 modified here.
@@ -15,13 +16,12 @@ from typing import Any, Callable, Dict, List, Optional
 from unittest import mock
 
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data import SaveMode
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.catalog_test_utils import FakeCatalog
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.delta_test_utils import write_column_mapped_table
 from ray.tests.conftest import *  # noqa
 
 try:
@@ -29,17 +29,10 @@ try:
 except ImportError:
     _deltalake_check = None
 
-_pa_version = get_pyarrow_version()
-pytestmark = [
-    pytest.mark.skipif(
-        _deltalake_check is None,
-        reason="Missing optional dependency: pip install deltalake",
-    ),
-    pytest.mark.skipif(
-        _pa_version is None or _pa_version < parse_version("15.0.0"),
-        reason="deltalake requires pyarrow >= 15.0",
-    ),
-]
+pytestmark = pytest.mark.skipif(
+    _deltalake_check is None,
+    reason="Missing optional dependency: pip install deltalake",
+)
 
 
 @pytest.fixture
@@ -54,6 +47,18 @@ def _write_append(rows: List[Dict[str, Any]], path: str, **kwargs) -> None:
 
 def _read_all(path: str) -> List[Dict[str, Any]]:
     return ray.data.read_delta(path).take_all()
+
+
+def _read_committed_parquet_rows(path: str) -> List[Dict[str, Any]]:
+    """Read committed files with their physical schemas, without schema casts."""
+    import pyarrow.parquet as pq
+    from deltalake import DeltaTable
+
+    return [
+        row
+        for uri in DeltaTable(path).file_uris()
+        for row in pq.ParquetFile(uri).read().to_pylist()
+    ]
 
 
 def _log_exists(path: str) -> bool:
@@ -849,8 +854,9 @@ def test_storage_options_passed_to_create_write_transaction(
 
 # ----------------------------------------------------------------------
 # Schema reconciliation on APPEND: schema_mode="merge" (default) evolves
-# the table's schema to add new columns; schema_mode="error" rejects them.
-# A type-incompatible existing column always raises, regardless of mode.
+# the table's schema to add new top-level or nested fields; schema_mode="error"
+# rejects them. A type-incompatible existing field always raises, regardless
+# of mode.
 # ----------------------------------------------------------------------
 
 
@@ -878,6 +884,224 @@ def test_append_multiple_new_columns_evolves_schema(temp_delta_path):
         {"id": 1, "a": None, "b": None},
         {"id": 2, "a": "x", "b": 5},
     ]
+
+
+def test_append_nested_fields_evolves_schema(temp_delta_path):
+    """New fields inside structs, lists of structs, and maps are preserved.
+
+    Regression test: schema unification accepted these additions, but the
+    evolution planner only added new top-level columns. The write therefore
+    committed successfully while Delta kept the old nested schema and silently
+    dropped the new field values on every read.
+    """
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    base_payload_value_type = pa.struct([pa.field("x", pa.int64(), nullable=False)])
+    base_payload_type = pa.struct(
+        [pa.field("inner", base_payload_value_type, nullable=False)]
+    )
+    base_event_type = pa.struct([pa.field("code", pa.int64(), nullable=False)])
+    base_attribute_type = pa.map_(pa.string(), base_payload_type)
+    base_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("payload", base_payload_type, nullable=False),
+            pa.field("events", pa.list_(base_event_type), nullable=False),
+            pa.field("attributes", base_attribute_type, nullable=False),
+        ]
+    )
+    base = pa.Table.from_arrays(
+        [
+            pa.array([1], type=pa.int64()),
+            pa.array([{"inner": {"x": 10}}], type=base_payload_type),
+            pa.array([[{"code": 100}]], type=pa.list_(base_event_type)),
+            pa.array([[("a", {"inner": {"x": 1000}})]], type=base_attribute_type),
+        ],
+        schema=base_schema,
+    )
+    ray.data.from_arrow(base).write_delta(temp_delta_path)
+
+    incoming_payload_value_type = pa.struct(
+        [
+            pa.field("x", pa.int64(), nullable=False),
+            pa.field("y", pa.string(), nullable=False),
+        ]
+    )
+    incoming_payload_type = pa.struct(
+        [pa.field("inner", incoming_payload_value_type, nullable=False)]
+    )
+    incoming_event_type = pa.struct(
+        [
+            pa.field("code", pa.int64(), nullable=False),
+            pa.field("label", pa.string(), nullable=False),
+        ]
+    )
+    incoming_attribute_type = pa.map_(pa.string(), incoming_payload_type)
+    incoming_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("payload", incoming_payload_type, nullable=False),
+            pa.field("events", pa.list_(incoming_event_type), nullable=False),
+            pa.field("attributes", incoming_attribute_type, nullable=False),
+        ]
+    )
+    incoming = pa.Table.from_arrays(
+        [
+            pa.array([2], type=pa.int64()),
+            pa.array(
+                [{"inner": {"x": 20, "y": "kept"}}],
+                type=incoming_payload_type,
+            ),
+            pa.array(
+                [[{"code": 200, "label": "kept"}]],
+                type=pa.list_(incoming_event_type),
+            ),
+            pa.array(
+                [[("b", {"inner": {"x": 2000, "y": "kept"}})]],
+                type=incoming_attribute_type,
+            ),
+        ],
+        schema=incoming_schema,
+    )
+    ray.data.from_arrow(incoming).write_delta(temp_delta_path)
+
+    table_schema = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow())
+    payload_y = table_schema.field("payload").type.field("inner").type.field("y")
+    event_label = table_schema.field("events").type.value_type.field("label")
+    attribute_y = (
+        table_schema.field("attributes").type.item_type.field("inner").type.field("y")
+    )
+    assert payload_y.nullable
+    assert event_label.nullable
+    assert attribute_y.nullable
+
+    assert (
+        sorted(_read_committed_parquet_rows(temp_delta_path), key=lambda row: row["id"])
+        == base.to_pylist() + incoming.to_pylist()
+    )
+
+    out = sorted(_read_all(temp_delta_path), key=lambda row: row["id"])
+    assert out == [
+        {
+            "id": 1,
+            "payload": {"inner": {"x": 10, "y": None}},
+            "events": [{"code": 100, "label": None}],
+            "attributes": [("a", {"inner": {"x": 1000, "y": None}})],
+        },
+        {
+            "id": 2,
+            "payload": {"inner": {"x": 20, "y": "kept"}},
+            "events": [{"code": 200, "label": "kept"}],
+            "attributes": [("b", {"inner": {"x": 2000, "y": "kept"}})],
+        },
+    ]
+
+
+@pytest.mark.parametrize("side", ["key", "value", "both"])
+@pytest.mark.parametrize("schema_mode", ["merge", "error"])
+def test_append_map_nested_fields(temp_delta_path, side, schema_mode):
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    base_type = pa.struct([pa.field("x", pa.int64(), nullable=False)])
+    extended_type = pa.struct(
+        [
+            pa.field("x", pa.int64(), nullable=False),
+            pa.field("y", pa.string(), nullable=False),
+        ]
+    )
+    key_added = side in ("key", "both")
+    value_added = side in ("value", "both")
+    base_map = pa.map_(base_type, base_type)
+    # Value-only evolution must not relax the existing key's child nullability.
+    incoming_map = pa.map_(
+        extended_type if key_added else pa.struct([pa.field("x", pa.int64())]),
+        extended_type if value_added else base_type,
+    )
+    base = pa.table({"m": pa.array([[({"x": 1}, {"x": 10})]], type=base_map)})
+    key = {"x": 2, **({"y": "key"} if key_added else {})}
+    value = {"x": 20, **({"y": "value"} if value_added else {})}
+    incoming = pa.table({"m": pa.array([[(key, value)]], type=incoming_map)})
+    ray.data.from_arrow(base).write_delta(temp_delta_path)
+    before = DeltaTable(temp_delta_path)
+    version = before.version()
+    schema = pa.schema(before.schema().to_arrow())
+
+    if schema_mode == "error":
+        path = r"m\{key\}\.y" if key_added else r"m\{value\}\.y"
+        with pytest.raises(ValueError, match=path):
+            ray.data.from_arrow(incoming).write_delta(
+                temp_delta_path, schema_mode=schema_mode
+            )
+        after = DeltaTable(temp_delta_path)
+        assert after.version() == version
+        assert pa.schema(after.schema().to_arrow()) == schema
+        assert _read_all(temp_delta_path) == base.to_pylist()
+        return
+
+    ray.data.from_arrow(incoming).write_delta(temp_delta_path, schema_mode=schema_mode)
+    evolved = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow()).field("m").type
+    assert not evolved.key_type.field("x").nullable
+    assert not evolved.item_type.field("x").nullable
+    if key_added:
+        assert evolved.key_type.field("y").nullable
+    if value_added:
+        assert evolved.item_type.field("y").nullable
+
+    assert (
+        sorted(
+            _read_committed_parquet_rows(temp_delta_path),
+            key=lambda row: row["m"][0][0]["x"],
+        )
+        == base.to_pylist() + incoming.to_pylist()
+    )
+
+    old_key = {"x": 1, **({"y": None} if key_added else {})}
+    old_value = {"x": 10, **({"y": None} if value_added else {})}
+    out = sorted(_read_all(temp_delta_path), key=lambda row: row["m"][0][0]["x"])
+    assert out == [{"m": [(old_key, old_value)]}, {"m": [(key, value)]}]
+
+
+def test_map_value_evolution_preserves_key_field():
+    import pyarrow as pa
+
+    from ray.data._internal.datasource.delta_datasink import _nested_schema_additions
+
+    existing_key = pa.field(
+        "key",
+        pa.struct([pa.field("x", pa.int64(), nullable=False)]),
+        nullable=False,
+        metadata={b"description": b"existing key"},
+    )
+    incoming_key = pa.field(
+        "key", pa.struct([pa.field("x", pa.int64())]), nullable=False
+    )
+    existing = pa.field(
+        "m", pa.map_(existing_key, pa.struct([("a", pa.int64())]), keys_sorted=True)
+    )
+    incoming = pa.field(
+        "m",
+        pa.map_(incoming_key, pa.struct([("a", pa.int64()), ("b", pa.string())])),
+    )
+    patch, paths = _nested_schema_additions(existing, incoming)
+    assert paths == ["m{value}.b"]
+    assert patch is not None
+    assert patch.type.key_field.equals(existing_key, check_metadata=True)
+    assert patch.type.keys_sorted
+
+
+def test_append_nested_field_rejected_with_schema_mode_error(temp_delta_path):
+    _write_append([{"id": 1, "payload": {"x": 10}}], temp_delta_path)
+
+    with pytest.raises(ValueError, match=r"payload\.y.*not present"):
+        _write_append(
+            [{"id": 2, "payload": {"x": 20, "y": "rejected"}}],
+            temp_delta_path,
+            schema_mode="error",
+        )
+
+    assert _read_all(temp_delta_path) == [{"id": 1, "payload": {"x": 10}}]
 
 
 def test_append_multiple_new_columns_preserves_incoming_column_order(temp_delta_path):
@@ -1466,8 +1690,8 @@ def test_worker_refresh_restores_environment_mutated_by_resolve(temp_delta_path)
     """A worker-side ``catalog.resolve()`` must not leave credentials behind in
     the worker process's environment.
 
-    Unity Catalog delivers vended credentials by writing them into
-    ``os.environ`` (``_apply_env``) and never restores them. A Ray worker
+    A ``Catalog`` may deliver vended credentials by writing them into
+    ``os.environ`` and never restoring them (Unity Catalog used to). A Ray worker
     process outlives the task and is reused for unrelated ones, so anything
     left there leaks into whatever runs next. The refreshed filesystem carries
     the credentials the write actually uses, so nothing needs them in the
@@ -1715,6 +1939,65 @@ def test_catalog_without_table_identifier_rejected(temp_delta_path):
 
     # Without a catalog it's simply unused, so omitting it is fine.
     assert DeltaDatasink(temp_delta_path)._table_identifier is None
+
+
+# ----------------------------------------------------------------------
+# Column mapping.
+# ----------------------------------------------------------------------
+
+
+def _data_files(path: str) -> List[str]:
+    return sorted(
+        os.path.relpath(os.path.join(root, name), path)
+        for root, _, names in os.walk(path)
+        if "_delta_log" not in root
+        for name in names
+        if name.endswith(".parquet")
+    )
+
+
+# Reader 2 / writer 5 tables declare no reader features, and deltalake 1.6.6
+# commits files to them, which engines that apply the mapping read as nulls.
+@pytest.mark.parametrize("mapping_mode", ["name", "id"])
+def test_write_rejects_column_mapping(temp_delta_path, mapping_mode):
+    """Rejected before any data file is written, and nothing is committed."""
+    write_column_mapped_table(temp_delta_path, mapping_mode)
+    files_before = _data_files(temp_delta_path)
+
+    with pytest.raises(NotImplementedError) as excinfo:
+        _write_append([{"id": 3}], temp_delta_path)
+
+    message = str(excinfo.value)
+    assert f"`delta.columnMapping.mode` is {mapping_mode!r}" in message
+    assert "https://github.com/ray-project/ray/issues/64854" in message
+    assert _delta_log_json_count(temp_delta_path) == 1
+    assert _data_files(temp_delta_path) == files_before
+
+
+def test_empty_overwrite_rejects_column_mapping(temp_delta_path):
+    """An empty dataset skips ``on_write_start``, so the commit checks too."""
+    write_column_mapped_table(temp_delta_path, "name")
+
+    with pytest.raises(NotImplementedError, match="column mapping"):
+        ray.data.from_items([]).write_delta(temp_delta_path, mode=SaveMode.OVERWRITE)
+
+    assert _delta_log_json_count(temp_delta_path) == 1
+
+
+def test_write_column_mapping_mode_none(temp_delta_path):
+    """An explicit ``none`` mode is no column mapping, so the write goes ahead."""
+    import pyarrow as pa
+    from deltalake import write_deltalake
+
+    write_deltalake(
+        temp_delta_path,
+        pa.table({"id": [1, 2]}),
+        configuration={"delta.columnMapping.mode": "none"},
+    )
+
+    _write_append([{"id": 3}], temp_delta_path)
+
+    assert sorted(row["id"] for row in _read_all(temp_delta_path)) == [1, 2, 3]
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import pytest
 
 from ray import serve
 from ray._common.test_utils import SignalActor, async_wait_for_condition
+from ray.actor import ActorHandle
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 
 
@@ -16,6 +17,15 @@ def disconnect_task_and_event() -> Tuple[asyncio.Event, asyncio.Task]:
         return await event.wait()
 
     return event, asyncio.ensure_future(wait_for_event())
+
+
+async def wait_for_one_waiter(signal_actor: ActorHandle):
+    """Block until the in-flight request is parked in `signal_actor.wait`."""
+
+    async def one_waiter():
+        return await signal_actor.cur_num_waiters.remote() == 1
+
+    await async_wait_for_condition(one_waiter)
 
 
 @pytest.mark.asyncio
@@ -82,10 +92,7 @@ class TestUnary:
         )
         h.remote()
 
-        async def one_waiter():
-            return await signal_actor.cur_num_waiters.remote() == 1
-
-        await async_wait_for_condition(one_waiter)
+        await wait_for_one_waiter(signal_actor)
 
         gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
 
@@ -109,7 +116,10 @@ class TestUnary:
             stream=False,
         )
 
-        gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
+        # Only start the timeout clock once the request is executing on the replica.
+        response = h.remote()
+        await wait_for_one_waiter(signal_actor)
+        gen = ProxyResponseGenerator(response, timeout_s=0.1)
 
         with pytest.raises(TimeoutError):
             await gen.__anext__()
@@ -133,10 +143,7 @@ class TestUnary:
         )
         h.remote()
 
-        async def one_waiter():
-            return await signal_actor.cur_num_waiters.remote() == 1
-
-        await async_wait_for_condition(one_waiter)
+        await wait_for_one_waiter(signal_actor)
 
         gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
 
@@ -171,6 +178,7 @@ class TestUnary:
         )
 
         gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
+        await wait_for_one_waiter(signal_actor)
 
         async def get_next():
             return await gen.__anext__()
@@ -257,10 +265,7 @@ class TestStreaming:
         )
         h.remote()
 
-        async def one_waiter():
-            return await signal_actor.cur_num_waiters.remote() == 1
-
-        await async_wait_for_condition(one_waiter)
+        await wait_for_one_waiter(signal_actor)
 
         gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
 
@@ -285,7 +290,10 @@ class TestStreaming:
             stream=True,
         )
 
-        gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
+        # Only start the timeout clock once the request is executing on the replica.
+        response = h.remote()
+        await wait_for_one_waiter(signal_actor)
+        gen = ProxyResponseGenerator(response, timeout_s=0.1)
         assert (await gen.__anext__()) == "hi"
         with pytest.raises(TimeoutError):
             await gen.__anext__()
@@ -310,10 +318,7 @@ class TestStreaming:
         )
         h.remote()
 
-        async def one_waiter():
-            return await signal_actor.cur_num_waiters.remote() == 1
-
-        await async_wait_for_condition(one_waiter)
+        await wait_for_one_waiter(signal_actor)
 
         gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
 
@@ -350,6 +355,7 @@ class TestStreaming:
 
         gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
         assert (await gen.__anext__()) == "hi"
+        await wait_for_one_waiter(signal_actor)
 
         async def get_next():
             return await gen.__anext__()
@@ -387,6 +393,7 @@ class TestStreaming:
             disconnected_task=disconnect_task,
         )
         assert (await gen.__anext__()) == "hi"
+        await wait_for_one_waiter(signal_actor)
 
         gen.stop_checking_for_disconnect()
 

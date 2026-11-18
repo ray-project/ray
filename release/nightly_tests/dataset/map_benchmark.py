@@ -111,9 +111,10 @@ def main(args: argparse.Namespace) -> None:
             )
 
     def benchmark_fn():
-        ctx = ray.data.DataContext.get_current()
-        ctx.use_datasource_v2 = False
-        # Use V1 for this benchmark, since V2 is currently spilling
+        # Leave ``num_cpus`` unset: the fusion rule canonicalizes an unspecified
+        # ``num_cpus`` to 1, so any other value here (0.99 included) makes the
+        # read incompatible with the downstream ``map_batches`` ops and they stop
+        # fusing. Unfused, every read output crosses the object store.
         ds = ray.data.read_parquet(path)
 
         # Apply the map transformation.

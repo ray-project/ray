@@ -1,18 +1,22 @@
+import asyncio
 import copy
 import json
 import logging
 import os
 import sys
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import numpy as np
 import pytest
 import requests
 from google.protobuf import text_format
+from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
 from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
 
@@ -27,6 +31,7 @@ from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
@@ -43,6 +48,7 @@ from ray.dashboard.modules.reporter.reporter_head import (
     _query_flag,
     _task_cpu_profiling_response,
 )
+from ray.dashboard.modules.reporter.reporter_models import StatsPayload
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -144,6 +150,7 @@ STATS_TEMPLATE = {
     },
     "gpus": [],
     "gpu_processes": {},
+    "npus": [],
     "tpus": [],
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
@@ -257,6 +264,100 @@ def test_export_histogram_data_normalizes_mixed_attribute_sets():
             "bucket_counts": [1, 0, 0],
         },
     ]
+
+
+def _histogram_metric(name, bounds, bucket_counts, model_name):
+    metric = OTelMetric(name=name, description="Test Histogram")
+    data_point = metric.histogram.data_points.add()
+    data_point.count = sum(bucket_counts)
+    data_point.explicit_bounds.extend(bounds)
+    data_point.bucket_counts.extend(bucket_counts)
+    data_point.attributes.append(
+        KeyValue(key="model_name", value=AnyValue(string_value=model_name))
+    )
+    return metric
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_export_histogram_data_skips_emitter_with_different_bounds(
+    mock_get_meter, mock_set_meter_provider
+):
+    """Two co-located emitters (e.g. vLLM engines with different max_model_len) send
+    the same metric name with different bucket bounds. A metric name is only
+    registered once per node, so the second emitter's data point cannot be
+    reconstructed. It must be skipped without raising, leaving the first emitter's
+    data intact."""
+    from opentelemetry.metrics import NoOpHistogram
+
+    from ray._private.telemetry.open_telemetry_metric_recorder import (
+        OpenTelemetryMetricRecorder,
+    )
+
+    real_histogram = NoOpHistogram(name="vllm_request_prompt_tokens")
+    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
+    mock_meter = MagicMock()
+    mock_meter.create_histogram.return_value = mock_histogram
+    mock_get_meter.return_value = mock_meter
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
+
+    # First emitter registers the metric with max_model_len=8192 derived bounds.
+    ReporterAgent._export_histogram_data(
+        agent,
+        _histogram_metric(
+            "vllm_request_prompt_tokens", [1.0, 2.0, 5.0], [0, 1, 0, 0], "len8k-qwen"
+        ),
+    )
+    # Second emitter reports the same name with max_model_len=32768 derived bounds.
+    # This must not raise.
+    ReporterAgent._export_histogram_data(
+        agent,
+        _histogram_metric(
+            "vllm_request_prompt_tokens",
+            [1.0, 2.0, 5.0, 10.0, 20.0],
+            [0, 0, 2, 0, 0, 0],
+            "len32k-qwen",
+        ),
+    )
+
+    recorded_models = [
+        call.kwargs["attributes"]["model_name"]
+        for call in mock_histogram.record.call_args_list
+    ]
+    assert recorded_models == ["len8k-qwen"]
+
+
+def test_ingest_keeps_remaining_metrics_after_a_mismatching_histogram():
+    """A histogram whose bounds disagree with the registered ones must not discard
+    the rest of the reporting component's batch."""
+    from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+
+    request = metrics_service_pb2.ExportMetricsServiceRequest()
+    scope_metrics = request.resource_metrics.add().scope_metrics.add()
+
+    bad = scope_metrics.metrics.add()
+    bad.CopyFrom(
+        _histogram_metric("some_histogram", [1.0, 2.0], [0, 1, 0], "len8k-qwen")
+    )
+
+    good = scope_metrics.metrics.add()
+    good.name = "some_gauge"
+    good.gauge.data_points.add().as_double = 1.0
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = MagicMock()
+    agent._export_failure_warned = set()
+    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.side_effect = RuntimeError(
+        "boom"
+    )
+
+    ReporterAgent._ingest_exported_metrics(agent, request)
+
+    agent._open_telemetry_metric_recorder.set_metric_value.assert_called_once_with(
+        "some_gauge", {}, 1.0
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -699,6 +800,141 @@ def test_report_stats_gpu_power_and_temperature(tmp_path):
         assert "GpuIndex" in r.tags
         assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
         assert r.tags.get("GpuUuid") == expected_uuids[r.tags["GpuIndex"]]
+
+
+def test_report_stats_ascend_npu_metrics(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["npus"] = [
+        {
+            "index": 0,
+            "card_id": 2,
+            "device_id": 0,
+            "physical_id": 4,
+            "name": "Ascend910",
+            "utilization_aicore": 97,
+            "memory_used": 4270 * 1024 * 1024,
+            "memory_total": 65536 * 1024 * 1024,
+            "health_status": 2,
+            "power_mw": 940700,
+            "temperature_c": 71,
+            "processes_pids": {
+                4242: {"pid": 4242, "npu_memory_usage": 2048 * 1024 * 1024}
+            },
+        }
+    ]
+
+    records = agent._to_records(stats, {})
+    npu_records = {
+        record.gauge.name: record
+        for record in records
+        if record.gauge.name.startswith("node_npu")
+    }
+
+    assert set(npu_records) == {
+        "node_npus_available",
+        "node_npus_utilization",
+        "node_npu_hbm_used",
+        "node_npu_hbm_available",
+        "node_npu_power_milliwatts",
+        "node_npu_temperature_celsius",
+        "node_npu_health",
+    }
+    assert npu_records["node_npus_available"].value == 1
+    assert npu_records["node_npus_utilization"].value == 97
+    assert npu_records["node_npu_hbm_used"].value == 4270 * 1024 * 1024
+    assert npu_records["node_npu_hbm_available"].value == (65536 - 4270) * 1024 * 1024
+    assert npu_records["node_npu_power_milliwatts"].value == 940700
+    assert npu_records["node_npu_temperature_celsius"].value == 71
+    assert npu_records["node_npu_health"].value == 2
+    assert npu_records["node_npus_available"].tags == {
+        "ip": stats["ip"],
+        "NpuIndex": "0",
+        "NpuPhysicalId": "4",
+        "NpuCardId": "2",
+        "NpuDeviceId": "0",
+        "NpuDeviceName": "Ascend910",
+        "RayNodeType": "head",
+        "IsHeadNode": "true",
+    }
+
+    stats_payload = json.loads(agent._generate_stats_payload(stats))
+    assert stats_payload["npus"][0]["physicalId"] == 4
+    assert stats_payload["npus"][0]["memoryUsed"] == 4270 * 1024 * 1024
+    assert stats_payload["npus"][0]["processesPids"] == [
+        {"pid": 4242, "npuMemoryUsage": 2048 * 1024 * 1024}
+    ]
+
+
+def test_stats_payload_accepts_legacy_reporter_without_npus(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+
+    legacy_payload = json.loads(
+        agent._generate_stats_payload(copy.deepcopy(STATS_TEMPLATE))
+    )
+    legacy_payload.pop("npus")
+
+    parsed_payload = StatsPayload.parse_obj(legacy_payload)
+
+    assert parsed_payload.npus == []
+
+
+def test_reporter_maps_npu_process_memory_to_worker_metrics():
+    worker = MagicMock()
+    worker.status.return_value = psutil.STATUS_RUNNING
+    worker.as_dict.return_value = {
+        "pid": 4242,
+        "cmdline": ["ray::NpuActor"],
+        "cpu_percent": 0.0,
+    }
+
+    agent = object.__new__(ReporterAgent)
+    agent._workers = {}
+    agent._async_get_worker_processes = AsyncMock(return_value={(4242, 1.0): worker})
+    agent._async_get_agent_processes = AsyncMock(return_value={})
+    agent._ip = "127.0.0.1"
+    agent._latest_worker_proc_names = set()
+    agent._latest_gpu_worker_proc_names = set()
+    agent._latest_npu_worker_proc_names = set()
+
+    npus = [
+        {"processes_pids": {4242: {"pid": 4242, "npu_memory_usage": 2 * 1024 * 1024}}},
+        {"processes_pids": {4242: {"pid": 4242, "npu_memory_usage": 3 * 1024 * 1024}}},
+    ]
+    workers = asyncio.run(agent._async_get_workers_and_agents(npus=npus))
+
+    assert workers[0]["npu_memory_usage"] == 5 * 1024 * 1024
+    records = agent.generate_worker_stats_record(workers)
+    npu_records = [
+        record for record in records if record.gauge.name == "component_npu_memory_mb"
+    ]
+    assert len(npu_records) == 1
+    assert npu_records[0].value == 5
+    assert npu_records[0].tags == {
+        "ip": "127.0.0.1",
+        "Component": "ray::NpuActor",
+    }
+
+    workers[0]["npu_memory_usage"] = 0
+    reset_records = agent.generate_worker_stats_record(workers)
+    reset_npu_records = [
+        record
+        for record in reset_records
+        if record.gauge.name == "component_npu_memory_mb"
+    ]
+    assert len(reset_npu_records) == 1
+    assert reset_npu_records[0].value == 0
 
 
 def test_report_stats_gpu_without_power_temperature(tmp_path):
@@ -1283,7 +1519,9 @@ def test_get_task_traceback_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{webui_url}/task/traceback", params=params)
+        resp = request_with_auth_token(
+            "GET", f"{webui_url}/task/traceback", params=params
+        )
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert "Process" in resp.text
@@ -1331,7 +1569,9 @@ def test_get_memory_profile_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{webui_url}/memory_profile", params=params)
+        resp = request_with_auth_token(
+            "GET", f"{webui_url}/memory_profile", params=params
+        )
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert resp.status_code == 200
@@ -1384,7 +1624,9 @@ def test_get_task_traceback_non_running_task(shutdown_only):
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{webui_url}/task/traceback", params=params)
+            resp = request_with_auth_token(
+                "GET", f"{webui_url}/task/traceback", params=params
+            )
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -1423,7 +1665,9 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{webui_url}/task/cpu_profile", params=params)
+            resp = request_with_auth_token(
+                "GET", f"{webui_url}/task/cpu_profile", params=params
+            )
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -1460,8 +1704,8 @@ def test_task_get_memory_profile_missing_params(shutdown_only):
 
     # Make sure the API works.
     def verify():
-        resp = requests.get(
-            f"{webui_url}/memory_profile", params=missing_node_id_params
+        resp = request_with_auth_token(
+            "GET", f"{webui_url}/memory_profile", params=missing_node_id_params
         )
         content = resp.content.decode("utf-8")
         assert "task's node id is required" in content, content
@@ -1475,7 +1719,7 @@ def test_get_cluster_metadata(ray_start_with_dashboard):
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
     url = f"{webui_url}/api/v0/cluster_metadata"
 
-    resp = requests.get(url)
+    resp = request_with_auth_token("GET", url)
     assert resp.status_code == 200
     resp_data = resp.json()["data"]
     meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=True)
@@ -1881,7 +2125,7 @@ def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
     webui_url = format_web_url(address_info["webui_url"])
 
     def verify():
-        resp = requests.get(f"{webui_url}/api/profiling_enabled")
+        resp = request_with_auth_token("GET", f"{webui_url}/api/profiling_enabled")
         resp.raise_for_status()
         data = resp.json()["data"]
         assert data["profilingEnabled"] is True
@@ -1908,6 +2152,40 @@ def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
         return True
 
     wait_for_condition(verify, timeout=20)
+
+
+def test_export_processes_metrics_off_event_loop() -> None:
+    request = metrics_service_pb2.ExportMetricsServiceRequest()
+    scope_metrics = request.resource_metrics.add().scope_metrics.add()
+    histogram = scope_metrics.metrics.add()
+    histogram.histogram.data_points.add().count = 1
+    gauge = scope_metrics.metrics.add()
+    gauge.gauge.data_points.add().as_double = 1.0
+
+    agent = object.__new__(ReporterAgent)
+    metric_calls: list[tuple[str, int]] = []
+
+    def record_histogram(_: object) -> None:
+        metric_calls.append(("histogram", threading.get_ident()))
+
+    def record_number(_: object) -> None:
+        metric_calls.append(("number", threading.get_ident()))
+
+    agent._export_histogram_data = record_histogram
+    agent._export_number_data = record_number
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        agent._otlp_ingest_executor = executor
+        asyncio.run(
+            ReporterAgent.Export(
+                agent,
+                request=request,
+                context=MagicMock(),
+            )
+        )
+
+    assert [kind for kind, _ in metric_calls] == ["histogram", "number"]
+    assert all(thread_id != threading.get_ident() for _, thread_id in metric_calls)
 
 
 if __name__ == "__main__":

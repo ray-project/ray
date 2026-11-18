@@ -27,6 +27,7 @@
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -105,6 +106,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        /*redis_request_payload_bytes_sum=*/redis_request_payload_bytes_sum_,
+        /*redis_response_payload_bytes_sum=*/redis_response_payload_bytes_sum_,
+        /*redis_command_count_counter=*/redis_command_count_counter_,
         /*resource_usage_gauge=*/fake_resource_usage_gauge_,
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
@@ -167,6 +171,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   void StampContext(grpc::ClientContext &context) {
     context.AddMetadata(kClusterIdKey, gcs_client_->GetClusterId().Hex());
+    rpc::AuthenticationTokenLoader::instance().GetToken()->SetMetadata(context);
   }
 
   void RestartGcsServer() {
@@ -200,6 +205,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        /*redis_request_payload_bytes_sum=*/redis_request_payload_bytes_sum_,
+        /*redis_response_payload_bytes_sum=*/redis_response_payload_bytes_sum_,
+        /*redis_command_count_counter=*/redis_command_count_counter_,
         /*resource_usage_gauge=*/fake_resource_usage_gauge_,
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
@@ -511,6 +519,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge task_events_stored_gauge_;
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
+  observability::FakeCounter redis_request_payload_bytes_sum_;
+  observability::FakeCounter redis_response_payload_bytes_sum_;
+  observability::FakeCounter redis_command_count_counter_;
   observability::FakeCounter fake_dropped_events_counter_;
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram scheduler_placement_time_ms_histogram_;
@@ -538,6 +549,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   request.add_node_ids(node_info2->node_id());
   {
     grpc::ClientContext context;
+    StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
@@ -549,6 +561,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   ASSERT_TRUE(RegisterNode(*node_info1));
   {
     grpc::ClientContext context;
+    StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
@@ -576,6 +589,7 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_FALSE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
+    ASSERT_TRUE(gcs_client_->Nodes().IsGcsLeader());
   }
 
   ASSERT_TRUE(RegisterNode(*node_info1));
@@ -586,6 +600,7 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_TRUE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
+    ASSERT_TRUE(gcs_client_->Nodes().IsGcsLeader());
   }
 }
 
@@ -1108,6 +1123,21 @@ TEST_P(GcsClientTest, TestRegisterHeadNode) {
       ASSERT_TRUE(node.state() == rpc::GcsNodeInfo::DEAD);
     }
   }
+}
+
+TEST_P(GcsClientTest, TestReregisterSameHeadNode) {
+  auto head_node_info = GenNodeInfo(1);
+  head_node_info->set_is_head_node(true);
+  ASSERT_TRUE(RegisterNode(*head_node_info));
+
+  // A retry after losing the registration reply must not treat this head as
+  // a different head replacing the existing one.
+  ASSERT_TRUE(RegisterNode(*head_node_info));
+
+  const auto nodes = GetNodeInfoList();
+  ASSERT_EQ(nodes.size(), 1);
+  EXPECT_EQ(nodes[0].node_id(), head_node_info->node_id());
+  EXPECT_EQ(nodes[0].state(), rpc::GcsNodeInfo::ALIVE);
 }
 
 TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {

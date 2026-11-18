@@ -180,6 +180,7 @@ class ParquetDatasink(_FileDatasink):
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
+        min_bytes_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -197,6 +198,7 @@ class ParquetDatasink(_FileDatasink):
         self.arrow_parquet_args = arrow_parquet_args
         self.min_rows_per_file = min_rows_per_file
         self.max_rows_per_file = max_rows_per_file
+        self.min_bytes_per_file = min_bytes_per_file
         self.partition_cols = partition_cols
 
         if self.partition_cols and self.min_rows_per_file is not None:
@@ -207,6 +209,18 @@ class ParquetDatasink(_FileDatasink):
                 "`max_rows_per_file` instead.",
                 DeprecationWarning,
                 stacklevel=3,
+            )
+
+        if self.min_bytes_per_file is not None and self.min_bytes_per_file <= 0:
+            raise ValueError("min_bytes_per_file must be a positive integer")
+
+        if self.min_bytes_per_file is not None and any(
+            value is not None
+            for value in (self.min_rows_per_file, self.max_rows_per_file)
+        ):
+            raise ValueError(
+                "min_bytes_per_file cannot be used with min_rows_per_file or "
+                "max_rows_per_file"
             )
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
@@ -321,13 +335,13 @@ class ParquetDatasink(_FileDatasink):
         # Check if filename is already templatized
         if "{i}" in filename:
             # Filename is already templatized, but may need file extension
-            if FILE_FORMAT not in filename:
+            if not filename.endswith(f".{FILE_FORMAT}"):
                 # Add file extension to templatized filename
                 basename_template = f"{filename}.{FILE_FORMAT}"
             else:
                 # Already has extension, use as-is
                 basename_template = filename
-        elif FILE_FORMAT not in filename:
+        elif not filename.endswith(f".{FILE_FORMAT}"):
             # No extension and not templatized, add extension and template
             basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
         else:
@@ -399,3 +413,7 @@ class ParquetDatasink(_FileDatasink):
     @property
     def min_rows_per_write(self) -> Optional[int]:
         return self.min_rows_per_file
+
+    @property
+    def min_bytes_per_write(self) -> Optional[int]:
+        return self.min_bytes_per_file

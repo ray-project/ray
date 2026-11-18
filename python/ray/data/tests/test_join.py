@@ -1,29 +1,41 @@
 from typing import Optional
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
-from ray.data._internal.logical.operators import JoinType
+from ray.data._internal.logical.operators import Join, JoinType
 from ray.data._internal.util import MiB, rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
+from ray.data.expressions import col
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture(
     autouse=True,
-    params=[ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.SHUFFLE_V2],
-    ids=["shufflev1", "shufflev2"],
+    params=[
+        (ShuffleStrategy.HASH_SHUFFLE, False),
+        (ShuffleStrategy.SHUFFLE_V2, False),
+        (ShuffleStrategy.SHUFFLE_V2, True),
+    ],
+    ids=["shufflev1", "shufflev2", "shufflev2disk"],
 )
 def hash_shuffle_version(request, restore_data_context):
-    """Run every join test on both v1 (old actor-based) & v2 shuffle."""
-    DataContext.get_current().shuffle_strategy = request.param
-    return request.param
+    """Run every join test on v1 (old actor-based), v2 (object-store), and v2
+    disk-based (file-transport) shuffle."""
+    strategy, use_disk = request.param
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = strategy
+    ctx.use_disk_based_hash_shuffle = use_disk
+    if strategy == ShuffleStrategy.SHUFFLE_V2:
+        # One map task per input bundle, so reducers see multiple shards per
+        # partition (the default batching folds small test data into one mapper).
+        ctx.shuffle_input_batch_bytes = 0
+    return strategy
 
 
 @pytest.mark.parametrize(
@@ -372,6 +384,83 @@ def test_invalid_join_not_matching_key_columns(
     )
 
 
+@pytest.mark.parametrize(
+    "right_items, expected_error",
+    [
+        ([{"right_id": 1, "right_value": "b"}], None),
+        ([{"other": 1, "right_value": "b"}], ValueError),
+        ([{"right_id": "1", "right_value": "b"}], ValueError),
+    ],
+)
+def test_validate_schemas_asymmetric_join_keys(
+    ray_start_regular_shared_2_cpus, right_items, expected_error
+):
+    left = ray.data.from_items([{"left_id": 1, "left_value": "a"}])
+    right = ray.data.from_items(right_items)
+
+    if expected_error is not None:
+        with pytest.raises(expected_error, match="Key columns are expected"):
+            left.join(
+                right,
+                join_type="inner",
+                num_partitions=1,
+                on=("left_id",),
+                right_on=("right_id",),
+                validate_schemas=True,
+            )
+    else:
+        left.join(
+            right,
+            join_type="inner",
+            num_partitions=1,
+            on=("left_id",),
+            right_on=("right_id",),
+            validate_schemas=True,
+        )
+
+
+def test_validate_schemas_multi_key_uses_join_key_order(
+    ray_start_regular_shared_2_cpus,
+):
+    left = ray.data.from_items([{"a": 1, "b": "x"}])
+    right = ray.data.from_items([{"b": "x", "a": 1}])
+
+    left.join(
+        right,
+        join_type="inner",
+        num_partitions=1,
+        on=("b", "a"),
+        right_on=("b", "a"),
+        validate_schemas=True,
+    )
+
+
+@pytest.mark.parametrize(
+    "on, right_on",
+    [
+        (("a", "a"), ("a", "b")),
+        (("a", "b"), ("a", "a")),
+    ],
+)
+def test_validate_schemas_rejects_duplicate_join_keys(
+    ray_start_regular_shared_2_cpus,
+    on,
+    right_on,
+):
+    left = ray.data.from_items([{"a": 1, "b": 7}])
+    right = ray.data.from_items([{"a": 1, "b": 1}])
+
+    with pytest.raises(ValueError, match="Join key columns must be unique"):
+        left.join(
+            right,
+            join_type="inner",
+            num_partitions=2,
+            on=on,
+            right_on=right_on,
+            validate_schemas=True,
+        )
+
+
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
@@ -410,6 +499,59 @@ def test_anti_join_no_matches(
     expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ],
+)
+@pytest.mark.parametrize("empty_side", ["left", "right"])
+def test_join_with_unknown_schema_empty_side(
+    ray_start_regular_shared_2_cpus,
+    hash_shuffle_version,
+    join_type,
+    empty_side,
+):
+    if hash_shuffle_version != ShuffleStrategy.SHUFFLE_V2:
+        pytest.skip("Unknown-schema empty-side handling is specific to shuffle V2")
+
+    non_empty = ray.data.from_items([{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
+    unknown_schema_empty = ray.data.range(0).map_batches(lambda batch: batch)
+
+    if empty_side == "left":
+        left, right = unknown_schema_empty, non_empty
+    else:
+        left, right = non_empty, unknown_schema_empty
+
+    result = left.join(
+        right,
+        join_type=join_type,
+        on=("id",),
+        num_partitions=1,
+    ).take_all()
+
+    preserves_non_empty_side = (
+        join_type == "full_outer"
+        or join_type in ("left_outer", "left_anti")
+        and empty_side == "right"
+        or join_type in ("right_outer", "right_anti")
+        and empty_side == "left"
+    )
+    expected = (
+        [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]
+        if preserves_non_empty_side
+        else []
+    )
+    assert sorted(result, key=lambda row: row["id"]) == expected
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
@@ -561,12 +703,6 @@ def test_should_not_index_empty_schema_tables():
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("10.0.0"),
-    reason="""Joins use empty arrays with type coercion. This pyarrow
-    version does not support type coercion of extension types, which
-    are needed for tensors.""",
-)
 @pytest.mark.parametrize(
     "join_type",
     [
@@ -889,6 +1025,575 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     )
 
 
+def _optimized_plan(ds: Dataset):
+    """Optimize the never-executed plan and check re-optimizing it is a no-op
+    (execution rewires the dataset's DAG to the optimized one).
+    """
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.tests.test_util import assert_plans_structurally_equal
+
+    plan = LogicalOptimizer().optimize(ds._logical_plan)
+    assert_plans_structurally_equal(LogicalOptimizer().optimize(plan), plan)
+    return plan
+
+
+def _assert_filter_with(op, expected_predicate) -> None:
+    """Assert ``op`` is an expression Filter with exactly ``expected_predicate``."""
+    from ray.data._internal.logical.operators import Filter
+
+    assert isinstance(op, Filter), f"Expected a Filter, got {op}"
+    assert op.predicate_expr is not None, f"Expected an expression Filter, got {op}"
+    assert op.predicate_expr.structurally_equals(
+        expected_predicate
+    ), f"Expected predicate {expected_predicate!r}, got {op.predicate_expr!r}"
+
+
+def _assert_num_filters(plan, expected: int) -> None:
+    from ray.data._internal.logical.operators import Filter
+    from ray.data.tests.test_util import get_operators_of_type
+
+    filters = get_operators_of_type(plan, Filter)
+    assert (
+        len(filters) == expected
+    ), f"Expected {expected} Filters in {plan.dag.dag_str}"
+
+
+def _unique_key_join_inputs():
+    """Left ids 0-31, right ids 0-19: left rows above 19 have no match."""
+    left_ds = ray.data.from_items([{"id": i, "left_val": i * 10} for i in range(32)])
+    right_ds = ray.data.from_items([{"id": i, "right_val": i * 100} for i in range(20)])
+    return left_ds, right_ds
+
+
+def _duplicate_key_join_inputs():
+    """Both sides keyed by ``i % 4``, so each key matches 4 x 4 row pairs."""
+    left_ds = ray.data.from_items([{"k": i % 4, "left_val": i} for i in range(16)])
+    right_ds = ray.data.from_items([{"k": i % 4, "right_val": i} for i in range(16)])
+    return left_ds, right_ds
+
+
+@pytest.mark.parametrize(
+    "join_type,right_pushes",
+    [("inner", True), ("left_outer", False)],
+    ids=["inner", "left_outer"],
+)
+def test_join_predicate_pushdown_splits_conjuncts(
+    ray_start_regular_shared_2_cpus, join_type, right_pushes
+):
+    """One-sided conjuncts go to their side (if the join type allows); the rest
+    stays as a residual filter above the join (#66832).
+    """
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+    from ray.data.tests.test_util import get_operators_of_type
+
+    left_ds, right_ds = _unique_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,
+        on=("id",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    left_pred = col("left_val") >= 50
+    right_pred = col("right_val") < 1500
+    cross_pred = (col("left_val") + col("right_val")) > 1000
+    filtered_ds = joined.filter(expr=left_pred & right_pred & cross_pred)
+
+    plan = _optimized_plan(filtered_ds)
+    (join,) = get_operators_of_type(plan, Join)
+    left_input, right_input = join.input_dependencies
+    _assert_filter_with(left_input, left_pred)
+    if right_pushes:
+        _assert_filter_with(right_input, right_pred)
+        residual = cross_pred
+        _assert_num_filters(plan, 3)
+    else:
+        assert not isinstance(right_input, Filter)
+        residual = right_pred & cross_pred
+        _assert_num_filters(plan, 2)
+    _assert_filter_with(plan.dag, residual)
+    assert plan.dag.input_dependencies[0] is join
+
+    expected_pd = left_ds.to_pandas().merge(
+        right_ds.to_pandas(),
+        on="id",
+        how="inner" if join_type == "inner" else "left",
+    )
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 50)
+        & (expected_pd["right_val"] < 1500)
+        & (expected_pd["left_val"] + expected_pd["right_val"] > 1000)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 5  # ids 10-14
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_chained_one_sided_filters_both_push(ray_start_regular_shared_2_cpus):
+    """Two chained one-sided filters are fused into one two-sided AND, which is
+    split again at the join so both halves push (#66832).
+    """
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    left_ds, right_ds = _unique_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    left_pred = col("left_val") >= 50
+    right_pred = col("right_val") < 1500
+    filtered_ds = joined.filter(expr=left_pred).filter(expr=right_pred)
+
+    plan = _optimized_plan(filtered_ds)
+    join = plan.dag
+    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+    _assert_filter_with(join.input_dependencies[0], left_pred)
+    _assert_filter_with(join.input_dependencies[1], right_pred)
+    _assert_num_filters(plan, 2)
+
+    expected_pd = left_ds.to_pandas().merge(right_ds.to_pandas(), on="id")
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 50) & (expected_pd["right_val"] < 1500)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 10  # ids 5-14
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+@pytest.mark.parametrize(
+    "join_type,right_derives",
+    [("inner", True), ("left_outer", False)],
+    ids=["inner", "left_outer"],
+)
+def test_join_derives_one_sided_predicates_from_disjunction(
+    ray_start_regular_shared_2_cpus, join_type, right_derives
+):
+    """TPC-H q7 shape: the OR stays above the join, but each allowed side gets
+    the weaker predicate it implies (#66832).
+    """
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+    from ray.data.tests.test_util import get_operators_of_type
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    predicate = ((col("left_val") == 1) & (col("right_val") == 5)) | (
+        (col("left_val") == 5) & (col("right_val") == 1)
+    )
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    (join,) = get_operators_of_type(plan, Join)
+    left_input, right_input = join.input_dependencies
+    _assert_filter_with(left_input, (col("left_val") == 1) | (col("left_val") == 5))
+    if right_derives:
+        _assert_filter_with(
+            right_input, (col("right_val") == 5) | (col("right_val") == 1)
+        )
+        _assert_num_filters(plan, 3)
+    else:
+        assert not isinstance(right_input, Filter)
+        _assert_num_filters(plan, 2)
+    _assert_filter_with(plan.dag, predicate)
+    assert plan.dag.input_dependencies[0] is join
+
+    # The derived one-sided filters alone would also let (1, 1) and (5, 5) through.
+    expected_pd = left_ds.to_pandas().merge(
+        right_ds.to_pandas(),
+        on="k",
+        how="inner" if join_type == "inner" else "left",
+    )
+    expected_pd = expected_pd[
+        ((expected_pd["left_val"] == 1) & (expected_pd["right_val"] == 5))
+        | ((expected_pd["left_val"] == 5) & (expected_pd["right_val"] == 1))
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 2
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_no_derivation_when_a_branch_is_other_sided(
+    ray_start_regular_shared_2_cpus,
+):
+    """``left_only | right_only`` implies nothing about either side alone."""
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    predicate = (col("left_val") == 1) | (col("right_val") == 5)
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, predicate)
+    join = plan.dag.input_dependencies[0]
+    assert isinstance(join, Join)
+    assert not any(isinstance(op, Filter) for op in join.input_dependencies)
+    _assert_num_filters(plan, 1)
+
+    expected_pd = left_ds.to_pandas().merge(right_ds.to_pandas(), on="k")
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] == 1) | (expected_pd["right_val"] == 5)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 7  # 4 + 4 pairs sharing k == 1, minus (1, 5)
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_derived_predicates_chain_through_nested_joins(
+    ray_start_regular_shared_2_cpus,
+):
+    """A derived predicate that is still two-sided at an inner join is derived
+    again there, so every base table gets its own filter.
+    """
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    a_ds = ray.data.from_items([{"k": i, "a": i} for i in range(8)])
+    b_ds = ray.data.from_items([{"k": i, "b": i} for i in range(8)])
+    c_ds = ray.data.from_items([{"k": i, "c": i} for i in range(8)])
+    join_kwargs = dict(
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    joined = a_ds.join(b_ds, **join_kwargs).join(c_ds, **join_kwargs)
+    predicate = ((col("a") == 1) & (col("b") == 1) & (col("c") == 1)) | (
+        (col("a") == 2) & (col("b") == 2) & (col("c") == 2)
+    )
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, predicate)
+    outer_join = plan.dag.input_dependencies[0]
+    assert isinstance(outer_join, Join)
+    inner_side, c_side = outer_join.input_dependencies
+    _assert_filter_with(c_side, (col("c") == 1) | (col("c") == 2))
+    _assert_filter_with(
+        inner_side,
+        ((col("a") == 1) & (col("b") == 1)) | ((col("a") == 2) & (col("b") == 2)),
+    )
+    inner_join = inner_side.input_dependencies[0]
+    assert isinstance(inner_join, Join)
+    a_side, b_side = inner_join.input_dependencies
+    _assert_filter_with(a_side, (col("a") == 1) | (col("a") == 2))
+    _assert_filter_with(b_side, (col("b") == 1) | (col("b") == 2))
+    _assert_num_filters(plan, 5)
+
+    expected_pd = (
+        a_ds.to_pandas().merge(b_ds.to_pandas(), on="k").merge(c_ds.to_pandas(), on="k")
+    )
+    expected_pd = expected_pd[expected_pd["k"].isin([1, 2])].reset_index(drop=True)
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_derived_predicate_fuses_with_pushed_conjunct_on_same_side(
+    ray_start_regular_shared_2_cpus,
+):
+    """A derived predicate lands in the same Filter as the conjunct pushed to that
+    side, in predicate order, instead of stacking a second Filter.
+    """
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    exact = col("left_val") >= 5
+    disjunction = ((col("left_val") == 1) & (col("right_val") == 5)) | (
+        (col("left_val") == 5) & (col("right_val") == 1)
+    )
+    filtered_ds = joined.filter(expr=exact & disjunction)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, disjunction)
+    join = plan.dag.input_dependencies[0]
+    assert isinstance(join, Join)
+    left_input, right_input = join.input_dependencies
+    derived_left = (col("left_val") == 1) | (col("left_val") == 5)
+    _assert_filter_with(left_input, exact & derived_left)
+    _assert_filter_with(right_input, (col("right_val") == 5) | (col("right_val") == 1))
+    _assert_num_filters(plan, 3)
+
+    expected_pd = left_ds.to_pandas().merge(right_ds.to_pandas(), on="k")
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 5)
+        & (
+            ((expected_pd["left_val"] == 1) & (expected_pd["right_val"] == 5))
+            | ((expected_pd["left_val"] == 5) & (expected_pd["right_val"] == 1))
+        )
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 1  # only (5, 1) survives left_val >= 5
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
+    """Pandas inputs have no Arrow output schema; routing needs only the input
+    column names, so a suffixed collision pushes like a unique column.
+    """
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    left_pd = pd.DataFrame(
+        {"k": [0, 1, 2, 3], "left_val": [0, 10, 20, 30], "val": [0, 1, 2, 3]}
+    )
+    right_pd = pd.DataFrame(
+        {"k": [0, 1, 2, 3], "right_val": [0, 1, 2, 3], "val": [10, 11, 12, 13]}
+    )
+    left_ds = ray.data.from_pandas(left_pd)
+    right_ds = ray.data.from_pandas(right_pd)
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    unique_pred = col("left_val") >= 10
+    colliding_pred = col("val_r") == 11
+    filtered_ds = joined.filter(expr=unique_pred & colliding_pred)
+    assert joined._logical_plan.dag.infer_schema() is None
+
+    plan = _optimized_plan(filtered_ds)
+    join = plan.dag
+    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+    _assert_filter_with(join.input_dependencies[0], unique_pred)
+    _assert_filter_with(join.input_dependencies[1], col("val") == 11)
+    _assert_num_filters(plan, 2)
+
+    expected_pd = left_pd.merge(right_pd, on="k", suffixes=("_l", "_r"))
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 10) & (expected_pd["val_r"] == 11)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 1  # k == 1
+    assert rows_same(filtered_ds.to_pandas()[list(expected_pd.columns)], expected_pd)
+
+
+def test_join_pandas_inputs_right_column_named_like_left_suffixed(
+    ray_start_regular_shared_2_cpus,
+):
+    """A right column named like a suffixed left collision (``v_l``) is a name
+    both sides would emit, so a predicate on it stays above the join.
+    """
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds = ray.data.from_pandas(pd.DataFrame({"k": [0, 1, 2, 3], "v": [0, 1, 2, 3]}))
+    right_ds = ray.data.from_pandas(
+        pd.DataFrame(
+            {"k": [0, 1, 2, 3], "v": [10, 11, 12, 13], "v_l": [100, 101, 102, 103]}
+        )
+    )
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    assert joined._logical_plan.dag.infer_schema() is None
+    predicate = col("v_l") == 1
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, predicate)
+    join = plan.dag.input_dependencies[0]
+    assert isinstance(join, Join)
+    assert not any(isinstance(op, Filter) for op in join.input_dependencies)
+
+    rows = filtered_ds.take_all()
+    assert len(rows) == 1 and rows[0]["k"] == 1 and rows[0]["v_l"] == 1
+
+
+def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_cpus):
+    """Executing twice re-optimizes the already derived plan; the derived filters
+    must not stack up.
+    """
+    from ray.data._internal.datasource_v2.common.pushdown_utils import (
+        flatten_predicate_chain,
+    )
+    from ray.data._internal.logical.operators import Filter
+    from ray.data.expressions import Operation, col
+    from ray.data.tests.test_util import get_operators_of_type
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    predicate = ((col("left_val") == 1) & (col("right_val") == 5)) | (
+        (col("left_val") == 5) & (col("right_val") == 1)
+    )
+    filtered_ds = joined.filter(expr=predicate)
+
+    first = filtered_ds.to_pandas()
+    first_plan_str = filtered_ds._logical_plan.dag.dag_str
+    assert len(get_operators_of_type(filtered_ds._logical_plan, Filter)) == 3
+
+    second = filtered_ds.to_pandas()
+    assert filtered_ds._logical_plan.dag.dag_str == first_plan_str
+    assert rows_same(first, second)
+
+    # A filter added on top of the optimized plan fuses with the residual; its
+    # conjunct is pushed, the residual's implications are not pushed again.
+    extended = filtered_ds.filter(expr=col("left_val") < 100)
+    third = extended.to_pandas()
+    assert rows_same(first, third)
+    filters = get_operators_of_type(extended._logical_plan, Filter)
+    assert len(filters) == 3
+    conjuncts = [
+        conjunct
+        for f in filters
+        for conjunct in flatten_predicate_chain(f.predicate_expr, Operation.AND)
+    ]
+    # Residual OR, left: derived OR + new conjunct, right: derived OR.
+    assert len(conjuncts) == 4, [str(c) for c in conjuncts]
+    for i, a in enumerate(conjuncts):
+        assert not any(a.structurally_equals(b) for b in conjuncts[i + 1 :]), str(a)
+
+
+@pytest.mark.parametrize(
+    "join_type,left_suffix,right_suffix,column,pushed_to",
+    [
+        ("inner", None, "_r", "val", "left"),
+        ("inner", None, "_r", "val_r", "right"),
+        ("inner", "_l", None, "val", "right"),
+        ("inner", "_l", None, "val_l", "left"),
+        ("inner", "_l", "_r", "val_l", "left"),
+        ("inner", "_l", "_r", "val_r", "right"),
+        # ``val`` is the left column; a right outer join cannot push left.
+        ("right_outer", None, "_r", "val", None),
+        ("right_outer", None, "_r", "val_r", "right"),
+    ],
+)
+def test_join_colliding_payload_column_routes_by_suffix(
+    ray_start_regular_shared_2_cpus,
+    join_type,
+    left_suffix,
+    right_suffix,
+    column,
+    pushed_to,
+):
+    """A filter on a suffixed output name is pushed to the input that produces it,
+    rebound to the input's own column name.
+    """
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds = ray.data.from_items([{"k": i, "val": i} for i in range(4)])
+    right_ds = ray.data.from_items([{"k": i, "val": i + 10} for i in range(6)])
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,
+        on=("k",),
+        left_suffix=left_suffix,
+        right_suffix=right_suffix,
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    # Left values are 0-3, right values 10-15; both targets select k == 1.
+    is_left_column = column == "val_l" or (column == "val" and left_suffix is None)
+    target = 1 if is_left_column else 11
+    predicate = col(column) == target
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    if pushed_to is None:
+        _assert_filter_with(plan.dag, predicate)
+        join = plan.dag.input_dependencies[0]
+        assert isinstance(join, Join)
+        assert not any(isinstance(op, Filter) for op in join.input_dependencies)
+        _assert_num_filters(plan, 1)
+    else:
+        join = plan.dag
+        assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+        side = 0 if pushed_to == "left" else 1
+        _assert_filter_with(join.input_dependencies[side], col("val") == target)
+        assert not isinstance(join.input_dependencies[1 - side], Filter)
+        _assert_num_filters(plan, 1)
+
+    expected_pd = left_ds.to_pandas().merge(
+        right_ds.to_pandas(),
+        on="k",
+        how="inner" if join_type == "inner" else "right",
+        suffixes=(left_suffix, right_suffix),
+    )
+    expected_pd = expected_pd[expected_pd[column] == target].reset_index(drop=True)
+    assert len(expected_pd) == 1
+    assert rows_same(filtered_ds.to_pandas()[list(expected_pd.columns)], expected_pd)
+
+
+@pytest.mark.parametrize(
+    "join_type,right_pushes",
+    [("inner", True), ("left_outer", False)],
+    ids=["inner", "left_outer"],
+)
+def test_join_same_name_key_conjunct_pushes_to_every_side(
+    ray_start_regular_shared_2_cpus, join_type, right_pushes
+):
+    """A conjunct on a same-named key is pushed to every side the join type allows."""
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    predicate = col("k") == 1
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    join = plan.dag
+    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+    left_input, right_input = join.input_dependencies
+    _assert_filter_with(left_input, predicate)
+    if right_pushes:
+        _assert_filter_with(right_input, predicate)
+        _assert_num_filters(plan, 2)
+    else:
+        assert not isinstance(right_input, Filter)
+        _assert_num_filters(plan, 1)
+
+    expected_pd = left_ds.to_pandas().merge(
+        right_ds.to_pandas(),
+        on="k",
+        how="inner" if join_type == "inner" else "left",
+    )
+    expected_pd = expected_pd[expected_pd["k"] == 1].reset_index(drop=True)
+    assert len(expected_pd) == 16  # 4 left rows x 4 right rows with k == 1
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
 def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cpus):
     """Regression test for https://github.com/ray-project/ray/issues/60013.
 
@@ -1012,6 +1717,867 @@ def test_overlapping_non_key_columns_without_suffixes(
         assert "Left and right columns suffixes cannot be both None" in str(
             exc_info.value.cause
         )
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_join_tables_suffix_colliding_with_existing_column(side):
+    """A suffix that renames a column onto a name already used on the same side
+    must raise a clear ValueError naming it, not a Polars DuplicateError."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    # The side carrying the suffix also already holds the suffixed name, and
+    # that name is not shared with the other side, so nothing renames it out
+    # of the way and renaming ``value`` would duplicate it.
+    if side == "left":
+        left = pa.table({"id": [1, 2], "value": [10, 20], "value_l": [0, 0]})
+        right = pa.table({"id": [1], "value": [99]})
+        suffixes = {"left_columns_suffix": "_l"}
+        expected = "Left columns suffix '_l' collides with existing left columns"
+    else:
+        left = pa.table({"id": [1, 2], "value": [10, 20]})
+        right = pa.table({"id": [1], "value": [99], "value_r": [0]})
+        suffixes = {"right_columns_suffix": "_r"}
+        expected = "Right columns suffix '_r' collides with existing right columns"
+
+    with pytest.raises(ValueError) as exc_info:
+        join_tables(
+            left,
+            right,
+            join_type=JoinType.INNER,
+            left_key_col_names=("id",),
+            right_key_col_names=("id",),
+            **suffixes,
+        )
+
+    assert expected in str(exc_info.value)
+    assert f"value_{side[0]}" in str(exc_info.value)
+
+
+def test_join_tables_suffix_not_flagged_when_name_is_free():
+    """The check must not fire when the suffixed name is unused: a left key
+    sharing a name with a right payload column is renamed on the right only."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [1, 2], "value": [10, 20]})
+    right = pa.table({"id": [1], "value": [99]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix="_l",
+    )
+    assert joined.column_names == ["id", "value_l", "value"]
+
+
+def test_join_tables_suffix_when_occupant_is_also_renamed():
+    """An already-suffixed column is not a conflict when the same mapping
+    renames it too, since Polars applies the mapping in one step. This is the
+    shape a self-join or a chained join hits once an earlier join has left
+    suffixed columns behind."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    # Both ``value`` and ``value_l`` are shared non-key columns, so both sides
+    # rename both: the left mapping is {value: value_l, value_l: value_l_l}.
+    left = pa.table({"id": [1, 2], "value": [10, 20], "value_l": [1, 2]})
+    right = pa.table({"id": [1], "value": [99], "value_l": [9]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix="_l",
+        right_columns_suffix="_r",
+    )
+    assert joined.column_names == [
+        "id",
+        "value_l",
+        "value_l_l",
+        "value_r",
+        "value_l_r",
+    ]
+    assert joined.to_pylist() == [
+        {"id": 1, "value_l": 10, "value_l_l": 1, "value_r": 99, "value_l_r": 9}
+    ]
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI, JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI],
+)
+def test_join_tables_semi_anti_suffixes_do_not_rename_kept_side(join_type):
+    """Semi/anti results contain one side only; suffixes must not rewrite names."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [1, 2], "value": [10, 20]})
+    right = pa.table({"id": [1], "value": [99]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=join_type,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix="_l",
+        right_columns_suffix="_r",
+    )
+    assert "value" in joined.column_names
+    assert "value_l" not in joined.column_names
+    assert "value_r" not in joined.column_names
+
+    rows = joined.to_pylist()
+    if join_type is JoinType.LEFT_SEMI:
+        assert rows == [{"id": 1, "value": 10}]
+    elif join_type is JoinType.LEFT_ANTI:
+        assert rows == [{"id": 2, "value": 20}]
+    elif join_type is JoinType.RIGHT_SEMI:
+        assert rows == [{"id": 1, "value": 99}]
+    else:
+        assert rows == []
+
+
+@pytest.mark.parametrize(
+    "join_type", ["left_semi", "left_anti", "right_semi", "right_anti"]
+)
+def test_semi_anti_overlapping_columns_ignore_suffixes(
+    ray_start_regular_shared_2_cpus, join_type
+):
+    """Dataset.join semi/anti must keep original column names when suffixes are set."""
+    left = ray.data.from_items([{"id": 1, "value": 10}, {"id": 2, "value": 20}])
+    right = ray.data.from_items([{"id": 1, "value": 99}])
+    joined = left.join(
+        right,
+        join_type=join_type,
+        on=("id",),
+        num_partitions=1,
+        left_suffix="_l",
+        right_suffix="_r",
+    )
+    result = sorted(joined.take_all(), key=lambda row: row["id"])
+    assert all("value" in row and "value_l" not in row for row in result)
+
+    if join_type == "left_semi":
+        assert result == [{"id": 1, "value": 10}]
+    elif join_type == "left_anti":
+        assert result == [{"id": 2, "value": 20}]
+    elif join_type == "right_semi":
+        assert result == [{"id": 1, "value": 99}]
+    else:
+        assert result == []
+
+
+@pytest.mark.parametrize("join_type", ["right_semi", "right_anti"])
+def test_right_semi_anti_asymmetric_keys(ray_start_regular_shared_2_cpus, join_type):
+    """Right semi/anti must swap join keys when Polars rewrites them as left joins."""
+    left = ray.data.from_items(
+        [{"id": 0, "lval": 10}, {"id": 1, "lval": 20}, {"id": 2, "lval": 30}]
+    )
+    right = ray.data.from_items(
+        [
+            {"user_id": 0, "rval": 100},
+            {"user_id": 1, "rval": 200},
+            {"user_id": 3, "rval": 300},
+        ]
+    )
+
+    joined = left.join(
+        right,
+        join_type=join_type,
+        num_partitions=2,
+        on=("id",),
+        right_on=("user_id",),
+    )
+    result = sorted(joined.take_all(), key=lambda row: row["user_id"])
+
+    if join_type == "right_semi":
+        assert result == [
+            {"user_id": 0, "rval": 100},
+            {"user_id": 1, "rval": 200},
+        ]
+    else:
+        assert result == [{"user_id": 3, "rval": 300}]
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [JoinType.INNER, JoinType.LEFT_OUTER, JoinType.FULL_OUTER],
+)
+def test_join_tables_asymmetric_keys_coalesce_into_left(join_type):
+    """Inner/left/full joins coalesce the key into the left name.
+
+    Matches the Arrow kernel, which drops the right key column.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [0, 1, 2], "lval": [10, 20, 30]})
+    right = pa.table({"user_id": [0, 1, 3], "rval": [100, 200, 300]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=join_type,
+        left_key_col_names=("id",),
+        right_key_col_names=("user_id",),
+    )
+    assert "id" in joined.column_names
+    assert "user_id" not in joined.column_names
+
+    # Plan-time schema inference joins empty tables; it must agree.
+    empty_joined = join_tables(
+        left.schema.empty_table(),
+        right.schema.empty_table(),
+        join_type=join_type,
+        left_key_col_names=("id",),
+        right_key_col_names=("user_id",),
+    )
+    assert empty_joined.column_names == joined.column_names
+
+    rows = {row["id"]: row for row in joined.to_pylist()}
+    if join_type is JoinType.INNER:
+        assert set(rows) == {0, 1}
+    elif join_type is JoinType.LEFT_OUTER:
+        assert set(rows) == {0, 1, 2}
+        assert rows[2]["rval"] is None
+    else:
+        assert set(rows) == {0, 1, 2, 3}
+        assert rows[2]["rval"] is None
+        assert rows[3]["lval"] is None
+
+
+def test_join_tables_right_outer_asymmetric_keys_coalesce_into_right():
+    """A right outer join coalesces the key into the *right* name.
+
+    The preserved side owns the coalesced key, so ``right_on`` survives and
+    ``on`` does not. This matches the Arrow kernel.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [0, 1, 2], "lval": [10, 20, 30]})
+    right = pa.table({"user_id": [0, 1, 3], "rval": [100, 200, 300]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.RIGHT_OUTER,
+        left_key_col_names=("id",),
+        right_key_col_names=("user_id",),
+    )
+    assert "user_id" in joined.column_names
+    assert "id" not in joined.column_names
+
+    rows = {row["user_id"]: row for row in joined.to_pylist()}
+    assert set(rows) == {0, 1, 3}
+    assert rows[3]["lval"] is None
+    assert rows[3]["rval"] == 300
+
+
+def test_join_tables_right_outer_keeps_coalesced_key_when_left_shares_name():
+    """If the left has a non-key named like the right key, Polars suffixes
+    the coalesced key. That suffixed column is the key and must survive.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [0, 1, 2], "user_id": [9, 8, 7], "lval": [10, 20, 30]})
+    right = pa.table({"user_id": [0, 1, 3], "rval": [100, 200, 300]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.RIGHT_OUTER,
+        left_key_col_names=("id",),
+        right_key_col_names=("user_id",),
+    )
+    # "user_id" is the left payload; "user_id_right" is the coalesced key.
+    assert "user_id" in joined.column_names
+    assert "user_id_right" in joined.column_names
+
+    rows = {row["user_id_right"]: row for row in joined.to_pylist()}
+    assert set(rows) == {0, 1, 3}
+    assert rows[0]["user_id"] == 9
+    assert rows[3]["user_id"] is None
+    assert rows[3]["rval"] == 300
+
+
+@pytest.mark.parametrize("join_type", [JoinType.INNER, JoinType.LEFT_OUTER])
+@pytest.mark.parametrize("id_right_side", ["left", "right"])
+def test_join_tables_keeps_payload_column_named_like_suffixed_key(
+    join_type, id_right_side
+):
+    """A payload column named ``{right_key}_right`` must survive the join.
+
+    Post-join cleanup drops Polars-generated suffixed right keys. The
+    Polars suffix defaults to ``_right`` even when the caller passed none,
+    so a real ``id_right`` column on an ``id`` join must not be treated as
+    a duplicate key.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    if id_right_side == "left":
+        left = pa.table({"id": [1, 2], "id_right": [10, 20], "lval": [100, 200]})
+        right = pa.table({"id": [1], "rval": [99]})
+    else:
+        left = pa.table({"id": [1, 2], "lval": [100, 200]})
+        right = pa.table({"id": [1], "id_right": [10], "rval": [99]})
+
+    joined = join_tables(
+        left,
+        right,
+        join_type=join_type,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+    )
+    assert "id_right" in joined.column_names
+    rows = {row["id"]: row for row in joined.to_pylist()}
+    assert rows[1]["id_right"] == 10
+    if join_type is JoinType.LEFT_OUTER:
+        assert 2 in rows
+        if id_right_side == "left":
+            assert rows[2]["id_right"] == 20
+        else:
+            assert rows[2]["id_right"] is None
+
+
+def test_right_outer_asymmetric_keys(ray_start_regular_shared_2_cpus):
+    """Dataset.join right_outer keeps `right_on` as the coalesced key name.
+
+    The preserved (right) side owns the key, so unmatched right rows carry
+    their own key value and `on` is not part of the output.
+    """
+    left = ray.data.from_items(
+        [{"id": 0, "lval": 10}, {"id": 1, "lval": 20}, {"id": 2, "lval": 30}]
+    )
+    right = ray.data.from_items(
+        [
+            {"user_id": 0, "rval": 100},
+            {"user_id": 1, "rval": 200},
+            {"user_id": 3, "rval": 300},
+        ]
+    )
+
+    joined = left.join(
+        right,
+        join_type="right_outer",
+        num_partitions=2,
+        on=("id",),
+        right_on=("user_id",),
+    )
+    result = sorted(joined.take_all(), key=lambda row: row["user_id"])
+    assert result == [
+        {"user_id": 0, "lval": 10, "rval": 100},
+        {"user_id": 1, "lval": 20, "rval": 200},
+        {"user_id": 3, "lval": None, "rval": 300},
+    ]
+
+
+def test_join_tables_empty_yields_schema():
+    """A 0-row Polars streaming join must still yield a schema-carrying table."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import (
+        _join_tables_iter,
+        join_tables,
+    )
+
+    left = pa.schema(
+        [pa.field("k", pa.string()), pa.field("lval", pa.int32())]
+    ).empty_table()
+    right = pa.schema(
+        [pa.field("k", pa.string()), pa.field("rval", pa.float32())]
+    ).empty_table()
+
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("k",),
+        right_key_col_names=("k",),
+    )
+    # Polars exports String as large_string.
+    assert joined.schema == pa.schema(
+        [
+            pa.field("k", pa.large_string()),
+            pa.field("lval", pa.int32()),
+            pa.field("rval", pa.float32()),
+        ]
+    )
+
+    batches = list(
+        _join_tables_iter(
+            left,
+            right,
+            join_type=JoinType.INNER,
+            left_key_col_names=("k",),
+            right_key_col_names=("k",),
+        )
+    )
+    assert len(batches) == 1
+    assert batches[0].num_rows == 0
+    assert batches[0].schema == joined.schema
+
+
+def test_chained_join_with_empty_partitions(ray_start_regular_shared_2_cpus):
+    """A 0-row Polars streaming join must still yield a schema-carrying table.
+
+    Mimics a TPCH-style chain (nation ⋈ region ⋈ supplier) where the first
+    join uses more partitions than distinct keys, so many partitions have
+    0 matching rows. If those partitions yield nothing, BlockOutputBuffer
+    manufactures a 0-column sentinel that poisons the second join.
+    """
+    import pyarrow as pa
+
+    nation = ray.data.from_arrow(
+        pa.table(
+            {
+                "n_nationkey": pa.array(range(5), type=pa.int64()),
+                "n_regionkey": pa.array([10, 11, 12, 13, 14], type=pa.int64()),
+            }
+        )
+    )
+    region = ray.data.from_arrow(
+        pa.table(
+            {
+                "r_regionkey": pa.array(range(3), type=pa.int64()),
+                "r_name": ["X", "Y", "Z"],
+            }
+        )
+    )
+    supplier = ray.data.from_arrow(
+        pa.table(
+            {
+                "s_suppkey": pa.array(range(20), type=pa.int64()),
+                "s_nationkey": pa.array([i % 5 for i in range(20)], type=pa.int64()),
+            }
+        )
+    )
+
+    nation_region = nation.join(
+        region,
+        join_type="inner",
+        on=("n_regionkey",),
+        right_on=("r_regionkey",),
+        num_partitions=16,
+    )
+    result = nation_region.join(
+        supplier,
+        join_type="inner",
+        on=("n_nationkey",),
+        right_on=("s_nationkey",),
+        num_partitions=16,
+    )
+
+    assert len(result.take_all()) == 0
+
+
+def test_streaming_join(ray_start_regular_shared_2_cpus):
+    """Join results are streamed out as many blocks for joins whose
+    per-partition output does not fit into memory.
+
+    ``target_max_block_size=None`` disables output reshaping, so the output
+    block count directly exposes the join kernel's streamed batches.
+    """
+    import pyarrow as pa
+
+    DataContext.get_current().target_max_block_size = None
+
+    N = 10000
+    dupes = pa.table({"id": np.ones(N)})
+
+    ds = ray.data.from_arrow(dupes)
+
+    joined_ds = ds.join(ds, join_type="full_outer", num_partitions=1)
+
+    num_blocks = 0
+    total_rows = 0
+
+    for rb in joined_ds.iter_internal_ref_bundles():
+        num_blocks += 1
+        total_rows += rb.num_rows()
+
+    assert total_rows == N**2
+    assert num_blocks >= 1000
+
+
+def _join_condition_inputs():
+    """Left ``(k, a, x)`` and right ``(k2, b, y)``; ``k = k2`` matches one in
+    four rows and ``a = b`` one in three, so the composite key prunes pairs
+    that the first key alone would keep."""
+    left = ray.data.from_items([{"k": i % 4, "a": i % 3, "x": i} for i in range(24)])
+    right = ray.data.from_items(
+        [{"k2": i % 4, "b": i % 3, "y": i * 10} for i in range(12)]
+    )
+    return left, right
+
+
+def _expected_condition_join(left: Dataset, right: Dataset, how: str):
+    """``k = k2`` is the ``on`` pair, coalesced into ``k``; ``a = b`` is the
+    ``condition`` pair, so both of its columns stay."""
+    expected = left.to_pandas().merge(
+        right.to_pandas(), left_on=["k", "a"], right_on=["k2", "b"], how=how
+    )
+    return expected.drop(columns=["k2"])
+
+
+def _optimized_join(ds: Dataset) -> Join:
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    optimized = LogicalOptimizer().optimize(ds._logical_plan)
+    assert isinstance(optimized.dag, Join), optimized.dag.dag_str
+    return optimized.dag
+
+
+@pytest.mark.parametrize("join_type", ["inner", "left_outer"])
+@pytest.mark.parametrize(
+    "condition",
+    [col("a") == col("b"), col("b") == col("a")],
+    ids=["left_eq_right", "right_eq_left"],
+)
+def test_join_condition_extracts_equi_keys(
+    ray_start_regular_shared_2_cpus, join_type, condition
+):
+    """An equality between a left and a right column in ``condition`` becomes
+    a condition key, whichever side of ``==`` each column is on."""
+    left, right = _join_condition_inputs()
+
+    joined = left.join(
+        right,
+        join_type=join_type,
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=condition,
+    )
+
+    join_op = _optimized_join(joined)
+    assert join_op.left_key_columns == ("k",)
+    assert join_op.right_key_columns == ("k2",)
+    assert join_op.left_condition_key_columns == ("a",)
+    assert join_op.right_condition_key_columns == ("b",)
+    assert join_op.condition is None
+
+    expected = _expected_condition_join(
+        left, right, "inner" if join_type == "inner" else "left"
+    )
+    actual = joined.to_pandas()
+    assert sorted(actual.columns) == ["a", "b", "k", "x", "y"]
+    assert rows_same(actual[expected.columns], expected)
+    assert joined.schema().names == list(actual.columns)
+
+
+def test_join_condition_matches_composite_key_join(ray_start_regular_shared_2_cpus):
+    left, right = _join_condition_inputs()
+
+    via_keys = left.join(
+        right, "inner", num_partitions=4, on=("k", "a"), right_on=("k2", "b")
+    )
+    via_condition = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=col("a") == col("b"),
+    )
+
+    assert rows_same(
+        via_condition.to_pandas().drop(columns=["b"]), via_keys.to_pandas()
+    )
+
+
+def test_join_condition_skips_pairs_already_in_keys(ray_start_regular_shared_2_cpus):
+    """A conjunct repeating an ``on``/``right_on`` pair is dropped rather than
+    hashed twice; the other conjuncts are still extracted."""
+    left, right = _join_condition_inputs()
+
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=(col("k") == col("k2")) & (col("a") == col("b")),
+    )
+
+    join_op = _optimized_join(joined)
+    assert join_op.left_key_columns == ("k",)
+    assert join_op.left_condition_key_columns == ("a",)
+    assert join_op.right_condition_key_columns == ("b",)
+    assert join_op.condition is None
+    expected = _expected_condition_join(left, right, "inner")
+    assert rows_same(joined.to_pandas()[expected.columns], expected)
+
+
+def test_join_condition_residual_is_rejected(ray_start_regular_shared_2_cpus):
+    """Non-equality conjuncts stay on the operator as the residual condition,
+    which nothing can execute yet, so planning fails instead of silently
+    dropping them."""
+    left, right = _join_condition_inputs()
+
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=(col("a") == col("b")) & (col("x") < col("y")),
+    )
+
+    join_op = _optimized_join(joined)
+    assert join_op.left_condition_key_columns == ("a",)
+    assert join_op.right_condition_key_columns == ("b",)
+    assert join_op.condition.structurally_equals(col("x") < col("y"))
+
+    with pytest.raises(NotImplementedError, match="Only equalities"):
+        joined.materialize()
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [col("a") == col("a"), col("a") == 1, col("x") < col("y")],
+    ids=["same_side", "literal", "non_equality"],
+)
+def test_join_condition_without_cross_side_equality_is_rejected(
+    ray_start_regular_shared_2_cpus, condition
+):
+    left, right = _join_condition_inputs()
+
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=condition,
+    )
+
+    join_op = _optimized_join(joined)
+    assert join_op.left_key_columns == ("k",)
+    assert join_op.left_condition_key_columns == ()
+    assert join_op.condition.structurally_equals(condition)
+    with pytest.raises(NotImplementedError, match="Only equalities"):
+        joined.materialize()
+
+
+def test_join_condition_unknown_column_is_rejected(ray_start_regular_shared_2_cpus):
+    """Input schemas are inferable here, so the bad column fails at ``join()``."""
+    left, right = _join_condition_inputs()
+
+    with pytest.raises(ValueError, match="'missing'.*not a column of either"):
+        left.join(
+            right,
+            "inner",
+            num_partitions=4,
+            on=("k",),
+            right_on=("k2",),
+            condition=col("missing") == col("b"),
+        )
+
+
+def test_join_condition_ambiguous_column_is_rejected(ray_start_regular_shared_2_cpus):
+    left, right = _join_condition_inputs()
+    # ``a`` now exists on both sides, so ``col("a")`` can't be attributed.
+    right = right.rename_columns({"b": "a"})
+
+    with pytest.raises(ValueError, match="'a'.*ambiguous"):
+        left.join(
+            right,
+            "inner",
+            num_partitions=4,
+            on=("k",),
+            right_on=("k2",),
+            right_suffix="_r",
+            condition=col("a") == col("y"),
+        )
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        col("k") == col("b"),
+        (col("a") == col("b")) & (col("a") == col("y")),
+        (col("a") == col("b")) & (col("x") == col("b")),
+    ],
+    ids=["reuses_on_column", "left_column_twice", "right_column_twice"],
+)
+def test_join_condition_repeated_key_column_is_rejected(
+    ray_start_regular_shared_2_cpus, condition
+):
+    """Hash partitioning needs distinct column names per side, so a second
+    equality on a column that is already matched on is rejected rather than
+    hashed twice (``validate_schemas`` is off by default)."""
+    left, right = _join_condition_inputs()
+
+    with pytest.raises(ValueError, match="already a join key.*filter"):
+        left.join(
+            right,
+            "inner",
+            num_partitions=4,
+            on=("k",),
+            right_on=("k2",),
+            condition=condition,
+        )
+
+
+def test_join_condition_resolution_is_cached(ray_start_regular_shared_2_cpus):
+    left, right = _join_condition_inputs()
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=col("a") == col("b"),
+    )
+    op = joined._logical_plan.dag
+
+    with patch.object(
+        type(op.input_dependencies[0]),
+        "infer_schema",
+        side_effect=AssertionError("schema inferred again"),
+    ):
+        resolved = op.resolve_condition()
+
+    assert resolved.left_condition_key_columns == ("a",)
+    assert resolved.right_condition_key_columns == ("b",)
+
+
+_ON_CLAUSE_MATCHED = {"id": 1, "id1": 10, "a": "x", "id2": 10, "c": "p"}
+_ON_CLAUSE_LEFT_ONLY = {"id": 2, "id1": 20, "a": "y", "id2": None, "c": None}
+_ON_CLAUSE_RIGHT_ONLY = {"id": 2, "id1": None, "a": None, "id2": 99, "c": "q"}
+
+
+@pytest.mark.parametrize(
+    "join_type, expected",
+    [
+        ("inner", [_ON_CLAUSE_MATCHED]),
+        ("left_outer", [_ON_CLAUSE_MATCHED, _ON_CLAUSE_LEFT_ONLY]),
+        ("right_outer", [_ON_CLAUSE_MATCHED, _ON_CLAUSE_RIGHT_ONLY]),
+        (
+            "full_outer",
+            [_ON_CLAUSE_MATCHED, _ON_CLAUSE_LEFT_ONLY, _ON_CLAUSE_RIGHT_ONLY],
+        ),
+        ("left_semi", [{"id": 1, "id1": 10, "a": "x"}]),
+        ("left_anti", [{"id": 2, "id1": 20, "a": "y"}]),
+        ("right_semi", [{"id": 1, "id2": 10, "c": "p"}]),
+        ("right_anti", [{"id": 2, "id2": 99, "c": "q"}]),
+    ],
+)
+def test_join_condition_keeps_both_columns(
+    ray_start_regular_shared_2_cpus, join_type, expected
+):
+    """A ``condition`` pair has ``ON``-clause semantics: ``id1`` and ``id2``
+    both stay in the output with their own values, so an unmatched row has a
+    null in the other side's column instead of the two being coalesced. The
+    ``on`` key ``id`` is still coalesced."""
+    left = ray.data.from_items(
+        [{"id": 1, "id1": 10, "a": "x"}, {"id": 2, "id1": 20, "a": "y"}]
+    )
+    right = ray.data.from_items(
+        [{"id": 1, "id2": 10, "c": "p"}, {"id": 2, "id2": 99, "c": "q"}]
+    )
+
+    joined = left.join(
+        right,
+        join_type,
+        num_partitions=2,
+        on=("id",),
+        condition=col("id1") == col("id2"),
+    )
+
+    def _sorted(rows):
+        return sorted(rows, key=lambda row: repr(sorted(row.items())))
+
+    actual = joined.take_all()
+    assert _sorted(actual) == _sorted(expected)
+    assert sorted(joined.schema().names) == sorted(expected[0])
+
+
+def test_join_condition_unresolvable_does_not_break_schema_inference(
+    ray_start_regular_shared_2_cpus,
+):
+    """``Join.infer_schema`` is called by ``Dataset.__repr__`` and by other
+    rules; an unresolvable condition must make it return ``None``, not raise
+    (``resolve_condition`` is where the error is reported)."""
+    left, right = _join_condition_inputs()
+    op = Join(
+        left._logical_plan.dag,
+        right._logical_plan.dag,
+        "inner",
+        ("k",),
+        ("k2",),
+        num_partitions=2,
+        condition=col("missing") == col("b"),
+    )
+
+    assert op.infer_schema() is None
+    with pytest.raises(ValueError, match="'missing'"):
+        op.resolve_condition()
+
+
+def test_join_condition_validate_schemas_checks_extracted_keys(
+    ray_start_regular_shared_2_cpus,
+):
+    """``validate_schemas=True`` type-checks every pair the join matches on,
+    including the one extracted from ``condition``."""
+    left, _ = _join_condition_inputs()
+    right = ray.data.from_items(
+        [{"k2": i % 4, "b": float(i % 3), "y": i * 10} for i in range(12)]
+    )
+
+    with pytest.raises(ValueError, match="same types"):
+        left.join(
+            right,
+            "inner",
+            num_partitions=4,
+            on=("k",),
+            right_on=("k2",),
+            condition=col("a") == col("b"),
+            validate_schemas=True,
+        )
+
+
+def test_join_condition_needs_inferable_schemas(ray_start_regular_shared_2_cpus):
+    """A row UDF hides the output schema, so the condition's columns can't be
+    attributed to a side and the join reports it."""
+    left, right = _join_condition_inputs()
+    left = left.map(lambda row: row)
+
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=col("a") == col("b"),
+    )
+
+    with pytest.raises(ValueError, match="could not be inferred"):
+        joined.materialize()
+
+
+def test_join_condition_requires_keys(ray_start_regular_shared_2_cpus):
+    left, right = _join_condition_inputs()
+
+    with pytest.raises(ValueError, match="`condition` alone is not supported"):
+        left.join(
+            right, "inner", num_partitions=4, on=(), condition=col("a") == col("b")
+        )
+
+    with pytest.raises(ValueError, match="Expected an `Expr` as `condition`"):
+        left.join(right, "inner", num_partitions=4, on=("k",), condition="a == b")
 
 
 if __name__ == "__main__":

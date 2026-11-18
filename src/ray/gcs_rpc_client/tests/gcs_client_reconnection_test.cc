@@ -65,6 +65,9 @@ class GcsClientReconnectionTest : public ::testing::Test {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        /*redis_request_payload_bytes_sum=*/redis_request_payload_bytes_sum_,
+        /*redis_response_payload_bytes_sum=*/redis_response_payload_bytes_sum_,
+        /*redis_command_count_counter=*/redis_command_count_counter_,
         /*resource_usage_gauge=*/fake_resource_usage_gauge_,
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
@@ -205,6 +208,9 @@ class GcsClientReconnectionTest : public ::testing::Test {
   observability::FakeGauge task_events_stored_gauge_;
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
+  observability::FakeCounter redis_request_payload_bytes_sum_;
+  observability::FakeCounter redis_response_payload_bytes_sum_;
+  observability::FakeCounter redis_command_count_counter_;
   observability::FakeCounter fake_dropped_events_counter_;
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram scheduler_placement_time_ms_histogram_;
@@ -304,8 +310,11 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p2.set_value();
       }));
-  ASSERT_EQ(std::future_status::timeout, f2.wait_for(1s));
 
+  // Time the no-reconnect window from when the channel enters TRANSIENT_FAILURE.
+  // The 2s backoff gets up to 20% jitter, so the first retry can come 1.6s after
+  // that; waiting a full second before looking (as this test used to) left the
+  // window overlapping it.
   ASSERT_TRUE(WaitUntil(
       [channel]() {
         auto status = channel->GetState(false);
@@ -314,6 +323,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
       1s));
 
   auto now = std::chrono::steady_clock::now();
+  ASSERT_EQ(std::future_status::timeout, f2.wait_for(100ms));
   StartGCS();
 
   // For 2s, there is no reconnection

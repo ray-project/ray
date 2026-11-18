@@ -90,11 +90,14 @@ class BatchMetadata:
             maintain ordering.
         num_rows: Number of rows in this batch (for ``iter_rows_total``).
         stage_timings: Per-stage timing windows.
+        row_ids: The row IDs of this batch. Only set when data iterator
+            checkpointing is enabled, to record which rows were yielded.
     """
 
     batch_idx: int
     num_rows: int = 0
     stage_timings: BatchStageTimings = field(default_factory=BatchStageTimings)
+    row_ids: Optional[Block] = None
 
 
 @dataclass

@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from google.protobuf.json_format import Parse
 
+from ray.core.generated.events_submission_job_lifecycle_event_pb2 import (
+    SubmissionJobLifecycleEvent,
+)
 from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobErrorType,
@@ -130,23 +133,28 @@ class TestJobSubmitRequestValidation:
 
 
 def test_uri_to_http_and_back():
-    assert uri_to_http_components("gcs://hello.zip") == ("gcs", "hello.zip")
-    assert uri_to_http_components("gcs://hello.whl") == ("gcs", "hello.whl")
+    for extension in [".zip", ".tar.gz", ".tgz", ".tar.xz", ".whl"]:
+        package_name = f"hello{extension}"
+        assert uri_to_http_components(f"gcs://{package_name}") == (
+            "gcs",
+            package_name,
+        )
 
     with pytest.raises(ValueError, match="'blah' is not a valid Protocol"):
         uri_to_http_components("blah://halb.zip")
 
-    with pytest.raises(ValueError, match="does not end in .zip or .whl"):
+    with pytest.raises(ValueError, match="does not end in a supported format"):
         assert uri_to_http_components("gcs://hello.not_zip")
 
-    with pytest.raises(ValueError, match="does not end in .zip or .whl"):
+    with pytest.raises(ValueError, match="does not end in a supported format"):
         assert uri_to_http_components("gcs://hello")
 
     assert http_uri_components_to_uri("gcs", "hello.zip") == "gcs://hello.zip"
     assert http_uri_components_to_uri("blah", "halb.zip") == "blah://halb.zip"
     assert http_uri_components_to_uri("blah", "halb.whl") == "blah://halb.whl"
 
-    for original_uri in ["gcs://hello.zip", "gcs://fasdf.whl"]:
+    for extension in [".zip", ".tar.gz", ".tgz", ".tar.xz", ".whl"]:
+        original_uri = f"gcs://hello{extension}"
         new_uri = http_uri_components_to_uri(*uri_to_http_components(original_uri))
         assert new_uri == original_uri
 
@@ -294,6 +302,12 @@ def test_get_all_jobs_filters_out_none_job_info():
     assert result == {"job1": job_info_1}
     for job_id, job_info in result.items():
         asdict(job_info)  # This should not raise an exception
+
+
+def test_job_status_matches_lifecycle_proto_state():
+    """JobStatus and SubmissionJobLifecycleEvent.State must stay in sync."""
+    proto_states = set(SubmissionJobLifecycleEvent.State.keys()) - {"UNSPECIFIED"}
+    assert {s.name for s in JobStatus} == proto_states
 
 
 if __name__ == "__main__":

@@ -760,6 +760,77 @@ def test_map_operator_no_default_memory_when_disabled(
     assert not op.min_scheduling_resources().memory
 
 
+@pytest.mark.parametrize(
+    "ray_remote_args, expected_num_cpus",
+    [
+        # No resources specified: default to 1 CPU.
+        ({}, 1),
+        # GPU-only: also default to 1 CPU so the scheduler accounts for the CPU work
+        # GPU UDFs do and doesn't overpack CPU tasks onto the GPU node.
+        ({"num_gpus": 1}, 1),
+        ({"num_gpus": 0.5}, 1),
+        # Explicit num_cpus is always respected, including opting out with 0.
+        ({"num_gpus": 1, "num_cpus": 0}, 0),
+        ({"num_gpus": 1, "num_cpus": 2}, 2),
+        ({"num_cpus": 0}, 0),
+    ],
+)
+@pytest.mark.parametrize(
+    "compute_strategy",
+    [ray.data.TaskPoolStrategy(), ray.data.ActorPoolStrategy(size=1)],
+)
+def test_map_operator_default_num_cpus(
+    ray_start_regular_shared, ray_remote_args, expected_num_cpus, compute_strategy
+):
+    data_context = ray.data.DataContext.get_current()
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+        ray_remote_args=ray_remote_args,
+    )
+
+    assert op._ray_remote_args.get("num_cpus", 0) == expected_num_cpus
+    for key, value in ray_remote_args.items():
+        assert op._ray_remote_args[key] == value
+
+
+def test_map_operator_resource_requests_track_inflight_tasks(ray_start_regular_shared):
+    """Exact requests are reported while a task is in flight and released after."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[np.ones(1024)]])
+    )
+    transformer = create_map_transformer_from_block_fn(_mul2_transform)
+
+    op = MapOperator.create(
+        transformer,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestResourceRequests",
+        compute_strategy=TaskPoolStrategy(),
+        # Schedule on the first bundle so the task is in flight right away.
+        min_rows_per_bundle=1,
+        ray_remote_args={"num_cpus": 1},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    # Adding input submits the task immediately.
+    op.add_input(input_op.get_next(), 0)
+    requests = op.get_resource_requests()
+    assert len(requests) == 1
+    assert requests[0] == {"CPU": 1}
+
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+    while op.has_next():
+        op.get_next()
+
+    # No leak: the request is dropped once the task completes.
+    assert op.get_resource_requests() == []
+    assert op.has_completed()
+
+
 if __name__ == "__main__":
     import sys
 

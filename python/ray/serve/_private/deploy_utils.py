@@ -33,9 +33,9 @@ def get_deploy_args(
     serialized_request_router_cls: Optional[bytes] = None,
     serialized_deployment_actors: Optional[Dict[str, bytes]] = None,
     uses_multiplexing: bool = False,
+    router_application: bool = False,
 ) -> Dict:
-    """
-    Takes a deployment's configuration, and returns the arguments needed
+    """Takes a deployment's configuration, and returns the arguments needed
     for the controller to deploy it.
     """
     if deployment_config is None:
@@ -60,6 +60,7 @@ def get_deploy_args(
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
         "uses_multiplexing": uses_multiplexing,
+        "router_application": router_application,
     }
 
     return controller_deploy_args
@@ -75,6 +76,7 @@ def deploy_args_to_deployment_info(
     ingress_request_router: bool = False,
     route_prefix: Optional[str] = None,
     uses_multiplexing: bool = False,
+    router_application: bool = False,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -84,17 +86,6 @@ def deploy_args_to_deployment_info(
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
 
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        # Model multiplexing relies on the multiplexed model ID being propagated through
-        # the proxy, which direct ingress bypasses (the model ID is never populated).
-        # Only the *statically* detectable case is caught here; dynamically-initialized
-        # multiplexing is caught at replica initialization.
-        if uses_multiplexing:
-            raise RayServeException(
-                f'Ingress deployment "{deployment_name}" in application "{app_name}" uses '
-                "model multiplexing (`@serve.multiplexed`), which is not supported on the "
-                "ingress deployment when direct ingress or HAProxy is enabled."
-            )
-
         # Floor the timeout so the controller's force-kill can't cut the
         # direct-ingress drain (min draining period) short.
         floor_s = (
@@ -163,6 +154,7 @@ def deploy_args_to_deployment_info(
         route_prefix=route_prefix,
         ingress=ingress,
         ingress_request_router=ingress_request_router,
+        router_application=router_application,
     )
 
 

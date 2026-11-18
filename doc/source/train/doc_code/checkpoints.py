@@ -248,8 +248,7 @@ class CustomRayTrainReportCallback(Callback):
             metrics["custom_metric"] = 123
 
             checkpoint = None
-            global_rank = ray.train.get_context().get_world_rank() == 0
-            if global_rank == 0 and should_checkpoint:
+            if should_checkpoint:
                 # Save model checkpoint file to tmpdir
                 ckpt_path = os.path.join(tmpdir, "ckpt.pt")
                 trainer.save_checkpoint(ckpt_path, weights_only=False)
@@ -258,6 +257,7 @@ class CustomRayTrainReportCallback(Callback):
 
             # Report to train session
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
+            trainer.strategy.barrier()
 # __lightning_custom_save_example_end__
 
 # __lightning_restore_example_start__

@@ -17,24 +17,17 @@ class ActorPool:
         actors: List of Ray actor handles to use in this pool.
 
     Examples:
-        .. testcode::
-
-            import ray
-            from ray.util.actor_pool import ActorPool
-
-            @ray.remote
-            class Actor:
-                def double(self, v):
-                    return 2 * v
-
-            a1, a2 = Actor.remote(), Actor.remote()
-            pool = ActorPool([a1, a2])
-            print(list(pool.map(lambda a, v: a.double.remote(v),
-                                [1, 2, 3, 4])))
-
-        .. testoutput::
-
-            [2, 4, 6, 8]
+        >>> import ray
+        >>> from ray.util.actor_pool import ActorPool
+        >>> @ray.remote
+        ... class Actor:
+        ...     def double(self, v):
+        ...         return 2 * v
+        >>> a1, a2 = Actor.remote(), Actor.remote()
+        >>> pool = ActorPool([a1, a2])
+        >>> print(list(pool.map(lambda a, v: a.double.remote(v),
+        ...                     [1, 2, 3, 4])))
+        [2, 4, 6, 8]
     """
 
     def __init__(self, actors: list):
@@ -78,24 +71,17 @@ class ActorPool:
             Iterator over results from applying fn to the actors and values.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1, a2 = Actor.remote(), Actor.remote()
-                pool = ActorPool([a1, a2])
-                print(list(pool.map(lambda a, v: a.double.remote(v),
-                                    [1, 2, 3, 4])))
-
-            .. testoutput::
-
-                [2, 4, 6, 8]
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1, a2 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1, a2])
+            >>> print(list(pool.map(lambda a, v: a.double.remote(v),
+            ...                     [1, 2, 3, 4])))
+            [2, 4, 6, 8]
         """
         # Ignore/Cancel all the previous submissions
         # by calling `has_next` and `gen_next` repeatedly.
@@ -134,25 +120,18 @@ class ActorPool:
             Iterator over results from applying fn to the actors and values.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1, a2 = Actor.remote(), Actor.remote()
-                pool = ActorPool([a1, a2])
-                print(list(pool.map_unordered(lambda a, v: a.double.remote(v),
-                                              [1, 2, 3, 4])))
-
-            .. testoutput::
-                :options: +MOCK
-
-                [6, 8, 4, 2]
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1, a2 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1, a2])
+            >>> results = pool.map_unordered(lambda a, v: a.double.remote(v),
+            ...                              [1, 2, 3, 4])
+            >>> set(results) == {2, 4, 6, 8}
+            True
         """
         # Ignore/Cancel all the previous submissions
         # by calling `has_next` and `gen_next_unordered` repeatedly.
@@ -185,25 +164,18 @@ class ActorPool:
             value: Value to compute a result for.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1, a2 = Actor.remote(), Actor.remote()
-                pool = ActorPool([a1, a2])
-                pool.submit(lambda a, v: a.double.remote(v), 1)
-                pool.submit(lambda a, v: a.double.remote(v), 2)
-                print(pool.get_next(), pool.get_next())
-
-            .. testoutput::
-
-                2 4
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1, a2 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1, a2])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> pool.submit(lambda a, v: a.double.remote(v), 2)
+            >>> print(pool.get_next(), pool.get_next())
+            2 4
         """
         if self._idle_actors:
             actor = self._idle_actors.pop()
@@ -222,28 +194,21 @@ class ActorPool:
             True if there are any pending results not yet returned.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1, a2 = Actor.remote(), Actor.remote()
-                pool = ActorPool([a1, a2])
-                pool.submit(lambda a, v: a.double.remote(v), 1)
-                print(pool.has_next())
-                print(pool.get_next())
-                print(pool.has_next())
-
-            .. testoutput::
-
-                True
-                2
-                False
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1, a2 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1, a2])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.has_next())
+            True
+            >>> print(pool.get_next())
+            2
+            >>> print(pool.has_next())
+            False
         """
         return bool(self._future_to_actor)
 
@@ -271,24 +236,17 @@ class ActorPool:
             TimeoutError: if the timeout is reached.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1, a2 = Actor.remote(), Actor.remote()
-                pool = ActorPool([a1, a2])
-                pool.submit(lambda a, v: a.double.remote(v), 1)
-                print(pool.get_next())
-
-            .. testoutput::
-
-                2
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1, a2 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1, a2])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.get_next())
+            2
         """
         if not self.has_next():
             raise StopIteration("No more results to get")
@@ -348,28 +306,19 @@ class ActorPool:
             TimeoutError: if the timeout is reached.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1, a2 = Actor.remote(), Actor.remote()
-                pool = ActorPool([a1, a2])
-                pool.submit(lambda a, v: a.double.remote(v), 1)
-                pool.submit(lambda a, v: a.double.remote(v), 2)
-                print(pool.get_next_unordered())
-                print(pool.get_next_unordered())
-
-            .. testoutput::
-                :options: +MOCK
-
-                4
-                2
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1, a2 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1, a2])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> pool.submit(lambda a, v: a.double.remote(v), 2)
+            >>> results = [pool.get_next_unordered(), pool.get_next_unordered()]
+            >>> set(results) == {2, 4}
+            True
         """
         if not self.has_next():
             raise StopIteration("No more results to get")
@@ -423,28 +372,21 @@ class ActorPool:
             True if there are any idle actors and no pending submits.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1 = Actor.remote()
-                pool = ActorPool([a1])
-                pool.submit(lambda a, v: a.double.remote(v), 1)
-                print(pool.has_free())
-                print(pool.get_next())
-                print(pool.has_free())
-
-            .. testoutput::
-
-                False
-                2
-                True
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1 = Actor.remote()
+            >>> pool = ActorPool([a1])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.has_free())
+            False
+            >>> print(pool.get_next())
+            2
+            >>> print(pool.has_free())
+            True
         """
         return len(self._idle_actors) > 0 and len(self._pending_submits) == 0
 
@@ -456,23 +398,18 @@ class ActorPool:
             None if no actor was free to be removed.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1 = Actor.remote()
-                pool = ActorPool([a1])
-                pool.submit(lambda a, v: a.double.remote(v), 1)
-                assert pool.pop_idle() is None
-                assert pool.get_next() == 2
-                assert pool.pop_idle() == a1
-
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1 = Actor.remote()
+            >>> pool = ActorPool([a1])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> assert pool.pop_idle() is None
+            >>> assert pool.get_next() == 2
+            >>> assert pool.pop_idle() == a1
         """
         if self.has_free():
             return self._idle_actors.pop()
@@ -485,19 +422,15 @@ class ActorPool:
             actor: The Ray actor handle to add to the pool's idle set.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.util.actor_pool import ActorPool
-
-                @ray.remote
-                class Actor:
-                    def double(self, v):
-                        return 2 * v
-
-                a1, a2 = Actor.remote(), Actor.remote()
-                pool = ActorPool([a1])
-                pool.push(a2)
+            >>> import ray
+            >>> from ray.util.actor_pool import ActorPool
+            >>> @ray.remote
+            ... class Actor:
+            ...     def double(self, v):
+            ...         return 2 * v
+            >>> a1, a2 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1])
+            >>> pool.push(a2)
         """
         busy_actors = []
         if self._future_to_actor.values():

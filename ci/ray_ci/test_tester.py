@@ -15,6 +15,7 @@ from ci.ray_ci.tester import (
     _get_new_tests,
     _get_tag_matcher,
     _get_test_targets,
+    _narrow_to_high_impact_tests,
 )
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 
@@ -268,6 +269,16 @@ def test_add_default_except_tags() -> None:
     }
     assert _add_default_except_tags("") == "manual"
     assert _add_default_except_tags("manual") == "manual"
+
+
+def test_narrow_to_high_impact_tests() -> None:
+    with mock.patch.dict(os.environ, {"RAYCI_MICROCHECK_RUN": "1"}):
+        assert _narrow_to_high_impact_tests(False, False)
+        assert not _narrow_to_high_impact_tests(False, True)
+        assert not _narrow_to_high_impact_tests(True, True)
+    with mock.patch.dict(os.environ, {"RAYCI_MICROCHECK_RUN": "0"}):
+        assert not _narrow_to_high_impact_tests(False, False)
+        assert _narrow_to_high_impact_tests(True, False)
 
 
 def test_get_all_test_query() -> None:

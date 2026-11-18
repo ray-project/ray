@@ -265,18 +265,9 @@ def test_worker_crash_increment_stats():
     def crasher():
         exit(1)
 
-    @ray.remote
-    def oomer():
-        mem = []
-        while True:
-            mem.append([0] * 1000000000)
-
     with ray.init() as ctx:
         with pytest.raises(ray.exceptions.WorkerCrashedError):
             ray.get(crasher.options(max_retries=1).remote())
-
-        with pytest.raises(ray.exceptions.OutOfMemoryError):
-            ray.get(oomer.options(max_retries=0).remote())
 
         gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
         wait_for_condition(
@@ -290,7 +281,31 @@ def test_worker_crash_increment_stats():
         assert "worker_crash_system_error" in result
         assert result["worker_crash_system_error"] == "2"
 
-        assert "worker_crash_oom" in result
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_worker_oom_increment_stats():
+    @ray.remote
+    def oomer():
+        time.sleep(1000)
+
+    # A threshold of 0 makes the memory monitor OOM-kill the running task without
+    # exhausting host memory, which would OOM-kill workers of tests sharing the host.
+    with ray.init(_system_config={"memory_usage_threshold": 0}) as ctx:
+        with pytest.raises(ray.exceptions.OutOfMemoryError):
+            ray.get(oomer.options(max_retries=0).remote())
+
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
+        wait_for_condition(
+            lambda: "worker_crash_oom"
+            in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
+            timeout=4,
+        )
+
+        result = ray_usage_lib.get_extra_usage_tags_to_report(gcs_client)
+
         assert result["worker_crash_oom"] == "1"
 
 
@@ -719,6 +734,10 @@ def test_usage_stats_enabled_endpoint(
 ):
     import requests
 
+    from ray._private.authentication.http_token_authentication import (
+        get_auth_headers_if_auth_enabled,
+    )
+
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
         m.setenv("RAY_USAGE_STATS_PROMPT_ENABLED", "0")
@@ -728,7 +747,10 @@ def test_usage_stats_enabled_endpoint(
         webui_url = context["webui_url"]
         assert wait_until_server_available(webui_url)
         webui_url = format_web_url(webui_url)
-        response = requests.get(f"{webui_url}/usage_stats_enabled")
+        response = requests.get(
+            f"{webui_url}/usage_stats_enabled",
+            headers=get_auth_headers_if_auth_enabled({}),
+        )
         assert response.status_code == 200
         assert response.json()["result"] is True
         assert response.json()["data"]["usageStatsEnabled"] is False
@@ -742,13 +764,19 @@ def test_usage_stats_enabled_endpoint(
 def test_get_cluster_id(ray_start_cluster, reset_usage_stats):
     import requests
 
+    from ray._private.authentication.http_token_authentication import (
+        get_auth_headers_if_auth_enabled,
+    )
+
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     context = ray.init(address=cluster.address)
     webui_url = context["webui_url"]
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
-    response = requests.get(f"{webui_url}/cluster_id")
+    response = requests.get(
+        f"{webui_url}/cluster_id", headers=get_auth_headers_if_auth_enabled({})
+    )
     assert response.status_code == 200
     assert response.json()["result"] is True
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)

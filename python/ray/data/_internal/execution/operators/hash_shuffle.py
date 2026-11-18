@@ -38,16 +38,14 @@ from ray._private.ray_constants import (
 from ray._raylet import StreamingGeneratorStats
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    _create_empty_table,
-    hash_partition,
-)
+from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -62,6 +60,7 @@ from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeO
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -81,6 +80,8 @@ from ray.data.context import (
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -479,11 +480,13 @@ def _derive_max_shuffle_aggregators(
     # As such we establish that the max number of shuffle
     # aggregators (workers):
     #
-    #   - Should not exceed total # of CPUs (to fully utilize cluster resources
-    #   while avoiding thrashing these due to over-allocation)
+    #   - Should request at least one aggregator so a cluster with no workers
+    #     can scale up
+    #   - Otherwise should not exceed total # of CPUs (to fully utilize cluster
+    #     resources while avoiding thrashing these due to over-allocation)
     #   - Should be capped at fixed size (128 by default)
     return min(
-        math.ceil(total_cluster_resources.cpu),
+        max(1, math.ceil(total_cluster_resources.cpu)),
         data_context.max_hash_shuffle_aggregators
         or DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
     )
@@ -678,8 +681,12 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self,
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
-        super().start(options, block_ref_counter)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
 
     @property
     def shuffle_name(self) -> str:
@@ -861,6 +868,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._try_finalize()
         return len(self._output_queue) > 0
 
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        # Partitions are finalized only after every input has been shuffled.
+        return True
+
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
         if not self._shuffle_started:
@@ -1035,6 +1047,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         return shuffling_tasks + finalizing_tasks
 
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        requests = self._get_base_resource_requests()
+        if self._aggregator_pool is not None:
+            # Report aggregator demand even before ``AggregatorPool.start()`` has
+            # issued the ``.remote()`` calls, so a capacity-starved shuffle can
+            # already trigger scale-up.
+            aggregator_request = self._aggregator_pool.get_resource_request()
+            requests.extend(
+                dict(aggregator_request)
+                for _ in range(self._aggregator_pool.num_aggregators)
+            )
+        return requests
+
     def _get_active_shuffling_tasks(self) -> List[MetadataOpTask]:
         return list(
             itertools.chain.from_iterable(
@@ -1092,6 +1117,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             exc: Optional[Exception],
             task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
+            aborted: bool,
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
             #       emitted (current limitation, since it's emitted along with
@@ -1830,6 +1856,10 @@ class AggregatorPool:
     @property
     def num_aggregators(self):
         return self._num_aggregators
+
+    def get_resource_request(self) -> Dict[str, float]:
+        """Return the exact resource request used to create each aggregator."""
+        return actor_resource_dict(self._aggregator_ray_remote_args)
 
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]

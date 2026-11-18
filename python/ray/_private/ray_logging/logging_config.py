@@ -89,12 +89,24 @@ class LoggingConfig:
                 )
 
     def to_dict(self) -> Dict[str, object]:
-        """Serialize to a plain dict suitable for JSON transport."""
+        """Serialize to a plain dict suitable for JSON transport.
+
+        Returns:
+            A dict that maps each field name to its value.
+        """
         return asdict(self)
 
     @classmethod
     def from_dict(cls, d: Dict[str, object]) -> "LoggingConfig":
-        """Create a LoggingConfig from a dict, ignoring unknown keys."""
+        """Create a LoggingConfig from a dict, ignoring unknown keys.
+
+        Args:
+            d: A dict that maps field names to values, such as the output of
+                :meth:`to_dict`.
+
+        Returns:
+            A LoggingConfig built from the keys of ``d`` that match a field.
+        """
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in known})
 

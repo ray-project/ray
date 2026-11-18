@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import time
+from typing import Optional
 
 import ray
 from ray._common.network_utils import build_address
@@ -13,7 +14,10 @@ from ray._common.ray_constants import (
 from ray._common.utils import env_integer, try_to_create_directory
 from ray._private import ray_constants
 from ray._private.ray_logging import setup_component_logger
-from ray._private.services import get_node_ip_address
+from ray._private.services import (
+    canonicalize_bootstrap_address_or_die,
+    get_node_ip_address,
+)
 from ray._private.utils import get_all_node_info_until_retrieved
 from ray._raylet import GcsClient
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -61,10 +65,14 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
 
 
-def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
+def run_kuberay_autoscaler(
+    cluster_name: str, cluster_namespace: str, gcs_address: Optional[str] = None
+):
     """Wait until the Ray head container is ready. Then start the autoscaler."""
-    head_ip = get_node_ip_address()
-    ray_address = build_address(head_ip, 6379)
+    ray_address = canonicalize_bootstrap_address_or_die(
+        gcs_address or build_address(get_node_ip_address(), 6379)
+    )
+    monitor_ip = get_node_ip_address()
     while True:
         try:
             # Autoscaler Ray version might not exactly match GCS version, so skip the
@@ -106,7 +114,7 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             address=gcs_client.address,
             config_reader=KubeRayConfigReader(autoscaling_config_producer),
             log_dir=log_dir,
-            monitor_ip=head_ip,
+            monitor_ip=monitor_ip,
         ).run()
     else:
         Monitor(
@@ -114,7 +122,7 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
             # In this case, it's a callable.
             autoscaling_config=autoscaling_config_producer,
-            monitor_ip=head_ip,
+            monitor_ip=monitor_ip,
             # Let the autoscaler process exit after it hits 5 exceptions.
             # (See ray.autoscaler._private.constants.AUTOSCALER_MAX_NUM_FAILURES.)
             # Kubernetes will then restart the autoscaler container.

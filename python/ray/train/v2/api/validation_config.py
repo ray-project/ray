@@ -12,6 +12,15 @@ class ValidationFn(Protocol):
     """Protocol for a function that validates a checkpoint."""
 
     def __call__(self, checkpoint: "Checkpoint", **kwargs: Any) -> Dict:
+        """Validate a checkpoint.
+
+        Args:
+            checkpoint: The checkpoint to validate.
+            **kwargs: The ``fn_kwargs`` from the ``ValidationTaskConfig``.
+
+        Returns:
+            A dictionary of validation metrics.
+        """
         ...
 
 
@@ -25,7 +34,9 @@ class ValidationTaskConfig:
             Note that we always pass `checkpoint` as the first argument to the
             validation function.
         timeout_s: Timeout in seconds for this validation task.
-            ``None`` is no timeout.
+            In ``ValidationConfig.task_config``, ``None`` means no timeout.
+            In a ``ValidationTaskConfig`` passed to report(), ``None`` uses
+            ``ValidationConfig.task_config.timeout_s``.
     """
 
     fn_kwargs: Optional[Dict[str, Any]] = None

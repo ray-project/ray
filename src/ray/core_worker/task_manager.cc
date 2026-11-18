@@ -39,6 +39,9 @@ constexpr int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 constexpr int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+// Retry reason for a task resubmitted to recover a lost object it created.
+constexpr char kLineageReconstructionRetryReason[] = "LINEAGE_RECONSTRUCTION";
+
 namespace {
 
 rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
@@ -347,7 +350,17 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
     const std::string &call_site,
-    int max_retries) {
+    int max_retries,
+    bool consume_once) {
+  // If consume_once is true, the task must be an actor task without a streaming
+  // generator or dynamic returns.
+  // TODO(karticam): Allow streaming generators in a follow-up PR. Dynamic returns stay
+  //  unsupported.
+  RAY_CHECK(!consume_once || (spec.IsActorTask() && !spec.IsStreamingGenerator() &&
+                              !spec.ReturnsDynamic()))
+      << absl::StrFormat(
+             "consume_once is only supported on non-generator actor tasks, got task %s",
+             spec.TaskId().Hex());
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
@@ -380,6 +393,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   std::vector<ObjectID> return_ids;
   return_ids.reserve(num_returns);
   auto tensor_transport = spec.TensorTransport();
+  const MoveState move_state = consume_once ? MoveState::MOVABLE : MoveState::NOT_MOVABLE;
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
@@ -406,7 +420,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         lineage_eligibility,
                                         /*add_local_ref=*/true,
                                         /*pinned_at_node_id=*/std::optional<NodeID>(),
-                                        tensor_transport);
+                                        tensor_transport,
+                                        move_state);
     }
 
     return_ids.push_back(return_id);
@@ -525,6 +540,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   // issue #54260.
   RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                 << spec.AttemptNumber() << ": " << spec.DebugString();
+  RecordTaskRetrySubmission(spec, kLineageReconstructionRetryReason);
   async_retry_task_callback_(spec, /*delay_ms=*/0);
 
   return std::nullopt;
@@ -613,6 +629,7 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
   // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
   // FailPendingTask are not called when this is. Therefore, RemoveFinishedTaskReferences
   // never happened for this task.
+  RecordTaskRetrySubmission(spec, kLineageReconstructionRetryReason);
   async_retry_task_callback_(spec, /*delay_ms*/ 0);
 }
 
@@ -1566,6 +1583,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                   << " for attempt number: " << spec.AttemptNumber();
     uint32_t delay_ms =
         GetTaskRetryDelayMs(spec.AttemptNumber(), error_info.error_type());
+    RecordTaskRetrySubmission(spec, rpc::ErrorType_Name(error_info.error_type()));
     async_retry_task_callback_(spec, delay_ms);
     return true;
   } else {
@@ -1810,7 +1828,9 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
     submissible_tasks_.erase(it);
   }
 
-  return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
+  // LineageReleasedCallback expects the number of bytes released (>= 0). The
+  // footprint only decreases here, so return the negated delta.
+  return total_lineage_footprint_bytes_prev - total_lineage_footprint_bytes_;
 }
 
 void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) {
@@ -2209,6 +2229,12 @@ void TaskManager::RecordMetrics() {
   task_counter_.ForEachEntry(
       [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t value)
           ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { RecordTaskState(key, value); });
+}
+
+void TaskManager::RecordTaskRetrySubmission(const TaskSpecification &spec,
+                                            const std::string &reason) {
+  task_retry_submissions_counter_.Record(1,
+                                         {{"Reason", reason}, {"Name", spec.GetName()}});
 }
 
 void TaskManager::RecordTaskState(

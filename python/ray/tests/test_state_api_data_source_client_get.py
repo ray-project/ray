@@ -127,7 +127,7 @@ class TestListActors:
         class A:
             pass
 
-        @ray.remote(num_gpus=1)
+        @ray.remote(resources={"nonexistent_resource": 1})
         class UnschedulableActor:
             pass
 
@@ -477,7 +477,7 @@ def test_list_get_workers(shutdown_only):
 def test_list_cluster_events(shutdown_only):
     ray.init()
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"nonexistent_resource": 1})
     def f():
         pass
 
@@ -515,7 +515,7 @@ def test_list_get_tasks(shutdown_only):
 
         time.sleep(30)
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"nonexistent_resource": 1})
     def impossible():
         pass
 

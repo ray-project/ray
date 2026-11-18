@@ -31,7 +31,7 @@ namespace gcs {
 
 namespace {
 
-class MockRayletClient : public rpc::FakeRayletClient {
+class FakeRayletClientForTest : public rpc::FakeRayletClient {
  public:
   void GetResourceLoad(const rpc::ClientCallback<rpc::GetResourceLoadReply> &) override {
     num_calls_++;
@@ -60,11 +60,11 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
                         /*enable_lag_probe=*/false,
                         /*used_for_health_check=*/false) {}
 
-  std::shared_ptr<MockRayletClient> ClientFor(const NodeID &node_id) {
+  std::shared_ptr<FakeRayletClientForTest> ClientFor(const NodeID &node_id) {
     absl::MutexLock lock(&mutex_);
     auto &client = clients_[node_id];
     if (client == nullptr) {
-      client = std::make_shared<MockRayletClient>();
+      client = std::make_shared<FakeRayletClientForTest>();
     }
     return client;
   }
@@ -104,7 +104,7 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
 
   InstrumentedIOContextWithThread pull_io_thread_;
   absl::Mutex mutex_;
-  absl::flat_hash_map<NodeID, std::shared_ptr<MockRayletClient>> clients_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<FakeRayletClientForTest>> clients_;
   absl::flat_hash_map<NodeID, int> factory_calls_;
   std::unique_ptr<rpc::RayletClientPool> pool_;
 };

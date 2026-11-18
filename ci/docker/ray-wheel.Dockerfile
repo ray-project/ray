@@ -42,8 +42,7 @@ COPY --from=ray-core /ray_py_proto.zip /tmp/
 
 # Source files needed for wheel build
 COPY --chown=forge ci/build/build-manylinux-wheel.sh ci/build/
-COPY --chown=forge README.rst pyproject.toml ./
-COPY --chown=forge rllib/ rllib/
+COPY --chown=forge README.md pyproject.toml ./
 COPY --chown=forge python/ python/
 
 USER forge

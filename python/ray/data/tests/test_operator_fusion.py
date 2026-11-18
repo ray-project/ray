@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.bundle_queue import EstimateSize
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -478,10 +479,20 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
         return {"id": [x + 1 for x in batch["id"]]}
 
     n = 10
+    ctx = DataContext.get_current()
     ds = ray.data.range(n)
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+    if (
+        ctx.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+        and ctx.use_disk_based_hash_shuffle
+    ):
+        # Disk shuffle v2 keeps the upstream map as its own operator.
+        assert "ReadRange->MapBatches(fn)" in ds.stats()
+        assert "DiskRandomShuffleMap(partitions=" in ds.stats()
+        _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
+        return
     assert "ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
 
@@ -534,6 +545,35 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ctx.target_max_block_size = old_target_max_block_size
 
 
+@pytest.mark.parametrize(
+    "filter_kwargs, map_batches_kwargs",
+    [
+        # Map->Map fusion refused: compute strategies differ.
+        ({"compute": ray.data.TaskPoolStrategy(size=2)}, {"batch_size": None}),
+        # Map->Map fusion refused: Filter can modify #rows and MapBatches sets
+        # batch_size.
+        ({}, {"batch_size": 5}),
+    ],
+)
+def test_random_shuffle_fuses_at_most_one_upstream_map(
+    ray_start_regular_shared_2_cpus, filter_kwargs, map_batches_kwargs
+):
+    from ray.data._internal.util import explain_plan
+
+    # Two MapOperators left unfused by map fusion must not both be fused into the
+    # shuffle: only one `ctx.upstream_map_transformer` survives, so the outer map
+    # (here, Filter) would be silently dropped.
+    ds = ray.data.from_items(list(range(100)), override_num_blocks=10)
+    ds = ds.filter(lambda r: r["item"] % 2 == 0, **filter_kwargs)
+    ds = ds.map_batches(lambda b: b, **map_batches_kwargs)
+    ds = ds.random_shuffle()
+
+    assert sorted(extract_values("item", ds.take_all())) == list(range(0, 100, 2))
+    explain_str = explain_plan(ds._logical_plan)
+    assert "Filter(<lambda>)->MapBatches(<lambda>)->RandomShuffle" not in explain_str
+    assert "MapBatches(<lambda>)->RandomShuffle" in explain_str
+
+
 @pytest.mark.parametrize("shuffle", (True, False))
 def test_read_map_batches_operator_fusion_with_repartition_operator(
     ray_start_regular_shared_2_cpus, shuffle, configure_shuffle_method
@@ -547,8 +587,13 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
     ds = ds.repartition(2, shuffle=shuffle)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
 
-    # Operator fusion is only supported for shuffle repartition.
-    if shuffle:
+    ctx = DataContext.get_current()
+    if shuffle and ctx.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+        assert "ReadRange->MapBatches(fn)" in ds.stats()
+        prefix = "Disk" if ctx.use_disk_based_hash_shuffle else ""
+        assert f"{prefix}SliceShuffleMap(partitions=2)" in ds.stats()
+        assert f"{prefix}SliceShuffleReduce(partitions=2)" in ds.stats()
+    elif shuffle:
         assert "ReadRange->MapBatches(fn)->Repartition" in ds.stats()
     else:
         assert "ReadRange->MapBatches(fn)->Repartition" not in ds.stats()
@@ -557,25 +602,37 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
 
 
+@pytest.mark.parametrize("use_disk", [False, True])
+@pytest.mark.parametrize("keys", [None, ["id"]])
 def test_fuse_map_into_shuffle_reduce(
-    ray_start_regular_shared_2_cpus, restore_data_context
+    ray_start_regular_shared_2_cpus, restore_data_context, use_disk, keys
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
 
-    ds = ray.data.range(100).repartition(4, keys=["id"]).map_batches(lambda b: b)
+    ds = (
+        ray.data.range(100)
+        .repartition(4, shuffle=True, keys=keys)
+        .map_batches(lambda b: b)
+    )
     dag = get_execution_plan(ds._logical_plan)[0].dag
 
-    assert dag.name == (
-        "HashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
+    prefix = "Disk" if use_disk else ""
+    reduce_name = (
+        "HashShuffleReduce(keys=('id',), partitions=4)"
+        if keys
+        else "SliceShuffleReduce(partitions=4)"
     )
+    assert dag.name == f"{prefix}{reduce_name}->MapBatches(<lambda>)"
     assert dag._fused_output_map_transformer is not None
 
     assert sorted(extract_values("id", ds.take_all())) == list(range(100))
 
 
+@pytest.mark.parametrize("use_disk", [False, True])
 def test_fused_shuffle_reduce_preserves_operator_config(
-    ray_start_regular_shared_2_cpus, restore_data_context
+    ray_start_regular_shared_2_cpus, restore_data_context, use_disk
 ):
     """Fusing a map into ShuffleReduceOp must carry over operator-level config.
 
@@ -585,6 +642,7 @@ def test_fused_shuffle_reduce_preserves_operator_config(
     """
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
 
     ds = (
         ray.data.range(100)
@@ -593,9 +651,8 @@ def test_fused_shuffle_reduce_preserves_operator_config(
     )
     dag = get_execution_plan(ds._logical_plan)[0].dag
 
-    assert dag.name == (
-        "HashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
-    )
+    prefix = "DiskHashShuffleReduce" if use_disk else "HashShuffleReduce"
+    assert dag.name == (f"{prefix}(keys=('id',), partitions=4)->MapBatches(<lambda>)")
     assert dag._fused_output_map_transformer is not None
     assert dag._peak_memory_multiplier == 3
 
@@ -750,6 +807,49 @@ def test_read_map_chain_operator_fusion_e2e(
     )
     assert name in ds.stats()
     _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
+
+
+@pytest.mark.skipif(
+    not actor_only_backend_enabled(),
+    reason="Actor->Actor fusion only happens under the actor-only backend.",
+)
+def test_fused_callable_class_actor_udfs_e2e(ray_start_regular_shared_2_cpus):
+    """Two callable-class actor UDFs fused together must each register their
+    instance in the shared ``_map_actor_context``.
+
+    Regression test: under the actor-only backend, Actor->Actor fusion merges
+    two callable-class UDFs into a single actor. Previously each operator's
+    ``init_fn`` bailed out if the actor context already existed, so only the
+    upstream UDF's instance got registered and the downstream UDF's lookup
+    raised ``KeyError`` at runtime.
+    """
+
+    class Decode:
+        def __init__(self, scale):
+            self.scale = scale
+
+        def __call__(self, batch):
+            batch["decoded"] = [x * self.scale for x in batch["id"]]
+            return batch
+
+    class Preprocess:
+        def __init__(self, offset):
+            self.offset = offset
+
+        def __call__(self, batch):
+            batch["out"] = [x + self.offset for x in batch["decoded"]]
+            return batch
+
+    ds = ray.data.range(10, override_num_blocks=2)
+    ds = ds.map_batches(Decode, fn_constructor_args=(10,), concurrency=1)
+    ds = ds.map_batches(Preprocess, fn_constructor_args=(1,), concurrency=1)
+
+    # Both UDFs must have run, so the fused actor registered both instances.
+    out = sorted(ds.take_all(), key=lambda r: r["id"])
+    assert [r["out"] for r in out] == [i * 10 + 1 for i in range(10)], out
+
+    # Confirm the two ops were actually fused into a single operator.
+    assert "MapBatches(Decode)->MapBatches(Preprocess)" in ds.stats(), ds.stats()
 
 
 def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):

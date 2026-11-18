@@ -1,19 +1,63 @@
+import asyncio
 import logging
 import sys
 import time
 import traceback
 
 import pytest
-import requests
 
 import ray
-from ray._private.test_utils import format_web_url, wait_until_server_available
+from ray._private.test_utils import (
+    format_web_url,
+    request_with_auth_token,
+    wait_until_server_available,
+)
 from ray.dashboard.modules.node import actor_consts
+from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
+
+
+def test_actor_info_associates_npus_by_pid(monkeypatch):
+    node_id = "node-id"
+    worker_id = "worker-id"
+    pid = 1234
+    actor = {
+        "address": {"nodeId": node_id, "workerId": worker_id},
+        "requiredResources": {},
+    }
+    process_stats = {"pid": pid, "cpuPercent": 5}
+    matching_npu = {
+        "index": 0,
+        "name": "Ascend910",
+        "processesPids": [{"pid": pid, "npuMemoryUsage": 1024}],
+    }
+    non_matching_npu = {
+        "index": 1,
+        "name": "Ascend910",
+        "processesPids": [{"pid": pid + 1, "npuMemoryUsage": 2048}],
+    }
+
+    monkeypatch.setattr(DataSource, "core_worker_stats", {worker_id: {"pid": pid}})
+    monkeypatch.setattr(
+        DataSource,
+        "node_physical_stats",
+        {
+            node_id: {
+                "workers": [process_stats],
+                "npus": [matching_npu, non_matching_npu],
+                "mem": [4096, 2048, 50],
+            }
+        },
+    )
+
+    actor_info = asyncio.run(DataOrganizer._get_actor_info(actor))
+
+    assert actor_info["npus"] == [matching_npu]
+    assert actor_info["processStats"] == process_stats
 
 
 def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
@@ -88,7 +132,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            resp = requests.get(f"{webui_url}/logical/actors")
+            resp = request_with_auth_token("GET", f"{webui_url}/logical/actors")
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
@@ -192,7 +236,9 @@ def test_actor_with_ids(disable_aiohttp_cache, ray_start_with_dashboard):
         time.sleep(1)
         try:
             actor_idx = 2
-            resp = requests.get(f"{webui_url}/logical/actors/{actor_ids[actor_idx]}")
+            resp = request_with_auth_token(
+                "GET", f"{webui_url}/logical/actors/{actor_ids[actor_idx]}"
+            )
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actor_detail = resp_data["detail"]
@@ -206,8 +252,8 @@ def test_actor_with_ids(disable_aiohttp_cache, ray_start_with_dashboard):
 
             actor_idxs = [0, 1, 4]
             actor_idxs_to_id_str = ",".join([str(actor_ids[i]) for i in actor_idxs])
-            resp = requests.get(
-                f"{webui_url}/logical/actors?ids={actor_idxs_to_id_str}"
+            resp = request_with_auth_token(
+                "GET", f"{webui_url}/logical/actors?ids={actor_idxs_to_id_str}"
             )
             resp_json = resp.json()
             resp_actors = resp_json["data"]["actors"]
@@ -244,7 +290,7 @@ def test_nil_node(enable_test_module, disable_aiohttp_cache, ray_start_with_dash
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"nonexistent_resource": 1})
     class InfeasibleActor:
         pass
 
@@ -256,12 +302,14 @@ def test_nil_node(enable_test_module, disable_aiohttp_cache, ray_start_with_dash
     while True:
         time.sleep(1)
         try:
-            resp = requests.get(f"{webui_url}/logical/actors")
+            resp = request_with_auth_token("GET", f"{webui_url}/logical/actors")
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
             assert len(actors) == 1
-            response = requests.get(webui_url + "/test/dump?key=node_actors")
+            response = request_with_auth_token(
+                "GET", webui_url + "/test/dump?key=node_actors"
+            )
             response.raise_for_status()
             result = response.json()
             assert actor_consts.NIL_NODE_ID not in result["data"]["nodeActors"]
@@ -292,7 +340,7 @@ def test_actor_cleanup(
         def do_task(self):
             return self.num
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"nonexistent_resource": 1})
     class InfeasibleActor:
         pass
 
@@ -317,7 +365,7 @@ def test_actor_cleanup(
     while True:
         time.sleep(1)
         try:
-            resp = requests.get(f"{webui_url}/logical/actors")
+            resp = request_with_auth_token("GET", f"{webui_url}/logical/actors")
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
@@ -351,7 +399,7 @@ def test_actor_cleanup(
     while True:
         time.sleep(1)
         try:
-            resp = requests.get(f"{webui_url}/logical/actors")
+            resp = request_with_auth_token("GET", f"{webui_url}/logical/actors")
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]

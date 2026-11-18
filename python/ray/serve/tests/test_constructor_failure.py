@@ -73,8 +73,8 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
 
     wait_for_condition(_one_replica_running, timeout=30)
 
-    # Wait well past the failed-to-start threshold
-    # (max(num_replicas * 3, 6) = 6 for 2 replicas)
+    # Wait past the failed-to-start threshold
+    # (min(max_constructor_retry_count, num_replicas * 3) = 6 here)
     # to prove the deployment stays stuck and never transitions.
     def _enough_retries_and_still_stable() -> bool:
         fail_count = ray.get(failed_store.get_fail_count.remote())

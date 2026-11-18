@@ -26,7 +26,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_scheduler import (
-    DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
@@ -77,7 +76,7 @@ def create_deployment_scheduler(
     create_placement_group_fn_override: Optional[CreatePlacementGroupFn] = None,
 ) -> DeploymentScheduler:
     head_node_id = head_node_id_override or get_head_node_id()
-    return DefaultDeploymentScheduler(
+    return DeploymentScheduler(
         cluster_node_info_cache,
         head_node_id,
         create_placement_group_fn=create_placement_group_fn_override

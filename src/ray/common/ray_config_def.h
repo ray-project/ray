@@ -36,7 +36,7 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// will be converted to AuthenticationMode enum defined in
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
-RAY_CONFIG(std::string, AUTH_MODE, "disabled")
+RAY_CONFIG(std::string, AUTH_MODE, "token")
 
 /// Whether to enable Kubernetes token-based authentication for RPC calls.
 RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
@@ -391,6 +391,16 @@ RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 /// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
 RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 
+/// Whether the GCS records per-command Redis payload byte metrics
+/// (gcs_redis_request_payload_bytes, gcs_redis_response_payload_bytes,
+/// gcs_redis_command_count). Recording costs two ray::stats::Metric::Record
+/// calls for the first accepted submission, using a snapshot captured under the
+/// Redis mutex and recorded after unlocking. The successful reply adds one
+/// recording call under the Redis IO mutex. Set to false to
+/// skip label construction, payload accounting, and these recording calls if
+/// that overhead is measurable in a high-throughput GCS.
+RAY_CONFIG(bool, gcs_redis_payload_metrics_enabled, true)
+
 /// Whether GCS namespace cleanup deletes Redis keys with UNLINK instead of DEL.
 /// This is disabled by default. With Redis's default lazyfree-lazy-user-del=no,
 /// DEL reclaims memory synchronously; Redis operators can configure DEL itself
@@ -401,6 +411,43 @@ RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 /// When enabled, the Redis server must support UNLINK and the configured user must
 /// have permission to run it. Ray does not probe for support or fall back to DEL.
 RAY_CONFIG(bool, redis_namespace_cleanup_use_unlink, false)
+
+/// TCP keepalive probe interval for external Redis connections, in seconds.
+/// Idle GCS<->Redis flows can be silently removed by NAT, proxies, or managed
+/// service gateways. Keepalive detects idle, unresponsive connections and can
+/// preserve flows through devices that count probes as activity. Keep this
+/// smaller than the shortest idle timeout on the network path. Set to 0 to
+/// disable TCP keepalive entirely. Valid values are 0 through 32767.
+RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
+
+/// Number of unanswered TCP keepalive probes before an external Redis
+/// connection is declared dead, so detection takes roughly
+/// redis_tcp_keepalive_interval_seconds * (1 + this value).
+///
+/// This is deliberately decoupled from the probe interval: the interval must be
+/// short enough to keep an idle flow alive, while declaring a connection dead
+/// must be slow enough to ride out transient congestion. In versions without
+/// in-place Redis reconnect support, a connection declared dead escalates to a
+/// GCS crash once the request retry budget is exhausted. The default gives an
+/// idle, unresponsive connection roughly 2 minutes before detection.
+/// TODO(https://github.com/ray-project/ray/issues/66074): Reevaluate the
+/// detection window together with request and reconnect budgets after in-place
+/// reconnect is available. A 60-90 second window is a candidate to test, not a
+/// guaranteed recovery bound.
+///
+/// Linux (including musl) applies idle, interval, and count when the TCP socket
+/// options are available. macOS applies idle only; Windows uses a system-fixed
+/// probe count. Other platforms use OS timing defaults. On POSIX, rejected
+/// timing options warn and retain their previous values, so the requested
+/// detection window may not apply. Valid values are 1 through 127 when TCP
+/// keepalive is enabled.
+RAY_CONFIG(int64_t, redis_tcp_keepalive_probes, 3)
+
+/// Whether the GCS records gcs_storage_operation_count and
+/// gcs_storage_operation_latency_ms on the Redis backend. Adds two metric
+/// records per storage operation. The in-memory and RocksDB backends always
+/// record them.
+RAY_CONFIG(bool, gcs_redis_storage_metrics_enabled, true)
 
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
@@ -472,13 +519,27 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
-/// ActorTableData entry ≈ 200-400B serialize (~600B-1.5KB deserialized).
-/// Worst-case footprint: 100,000 x ~600B-1.5KB =~ 60-150MB
+/// ActorTableData entry ≈ 200-400B serialized (~600B-1.5KB deserialized),
+/// plus `previous_incarnations` for actors that have restarted: up to ~600B
+/// serialized (~2KB deserialized) at the default
+/// `maximum_actor_previous_incarnations` of 10. An actor sitting at that cap
+/// is therefore ≈ 800B-1KB serialized (~2.4-4KB deserialized).
+/// Worst-case footprint: 100,000 x ~2.4-4KB =~ 240-400MB, which assumes every
+/// cached actor exhausted its restart history; actors that never restarted
+/// are unchanged at ~600B-1.5KB.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead workers in GCS server memory cache.
 /// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
 /// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
+/// Maximum number of previous incarnations retained on `ActorTableData` for
+/// looking up logs from prior actor incarnations. When exceeded, the
+/// oldest entry is evicted FIFO. Set to 0 to disable history tracking.
+/// PreviousActorIncarnation entry ≈ ~60B serialized. Worst-case added
+/// footprint per actor: 10 x ~60B =~ 600B, which also multiplies against
+/// `maximum_gcs_destroyed_actor_cached_count` in the GCS destroyed-actor
+/// cache — see the footprint note there before raising this.
+RAY_CONFIG(uint32_t, maximum_actor_previous_incarnations, 10)
 /// Maximum number of dead nodes in GCS server memory cache.
 /// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
 /// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB
@@ -657,6 +718,10 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
+
+/// Whether the dashboard agent collects GPU metrics. Disabling this avoids
+/// polling GPU management libraries such as NVML.
+RAY_CONFIG(bool, enable_gpu_metrics_collection, true)
 
 /// Determine if the high cardinality labels such as WorkerId, task and actor Name
 /// should be used in the metrics. For the complete definition, see
@@ -933,7 +998,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
 RAY_CONFIG(std::string,
            custom_unit_instance_resources,
-           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU,MBLT")
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU,MBLT,MLU")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -1235,3 +1300,11 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+/// If true, Python workers are forked from a warm fork server process
+/// instead of starting a new Python interpreter from scratch.
+RAY_CONFIG(bool, enable_worker_fork_server, false)
+
+/// Timeout in milliseconds for a fork server socket request before falling back to
+/// starting a fresh worker process.
+RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 500)

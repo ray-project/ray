@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray._common.retry import call_with_retry
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
@@ -21,13 +21,14 @@ from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
+from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 from ray.data.datasource.path_util import _filesystem_root_from_uri
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow as pa
     import pyarrow.fs as pafs
-    from deltalake import DeltaTable
+    from deltalake import DeltaTable, Metadata
     from deltalake.transaction import AddAction
 
     from ray.data.catalog import Catalog
@@ -45,6 +46,83 @@ _SUPPORTED_SCHEMA_MODES = {"merge", "error"}
 # ``os.environ`` is process-wide, so two threads building GCS filesystems at
 # once could otherwise observe (or restore) each other's value.
 _gcs_env_lock = threading.Lock()
+
+
+def _nested_schema_additions(
+    existing_field: "pa.Field",
+    incoming_field: "pa.Field",
+    *,
+    path: Optional[str] = None,
+) -> Tuple[Optional["pa.Field"], List[str]]:
+    """Build a schema patch for fields added below an existing nested field.
+
+    ``DeltaTable.alter.add_columns`` merges a partial struct/array/map field
+    into the existing field. The patch therefore contains only new descendants,
+    with each new field made nullable so rows written before the evolution
+    remain valid.
+    """
+    import pyarrow as pa
+
+    path = path or incoming_field.name
+    existing_type = existing_field.type
+    incoming_type = incoming_field.type
+
+    if pa.types.is_struct(existing_type) and pa.types.is_struct(incoming_type):
+        existing_children = {field.name: field for field in existing_type}
+        patch_children = []
+        added_paths = []
+        for incoming_child in incoming_type:
+            child_path = f"{path}.{incoming_child.name}"
+            existing_child = existing_children.get(incoming_child.name)
+            if existing_child is None:
+                patch_children.append(incoming_child.with_nullable(True))
+                added_paths.append(child_path)
+                continue
+
+            child_patch, child_paths = _nested_schema_additions(
+                existing_child,
+                incoming_child,
+                path=child_path,
+            )
+            if child_patch is not None:
+                patch_children.append(child_patch)
+                added_paths.extend(child_paths)
+
+        if not patch_children:
+            return None, []
+        patch_type = pa.struct(patch_children)
+    elif pa.types.is_list(existing_type) and pa.types.is_list(incoming_type):
+        value_patch, added_paths = _nested_schema_additions(
+            existing_type.value_field,
+            incoming_type.value_field,
+            path=f"{path}[]",
+        )
+        if value_patch is None:
+            return None, []
+        patch_type = pa.list_(value_patch)
+    elif pa.types.is_map(existing_type) and pa.types.is_map(incoming_type):
+        key_patch, key_paths = _nested_schema_additions(
+            existing_type.key_field,
+            incoming_type.key_field,
+            path=f"{path}{{key}}",
+        )
+        item_patch, item_paths = _nested_schema_additions(
+            existing_type.item_field,
+            incoming_type.item_field,
+            path=f"{path}{{value}}",
+        )
+        if key_patch is None and item_patch is None:
+            return None, []
+        patch_type = pa.map_(
+            key_patch or existing_type.key_field,
+            item_patch or existing_type.item_field,
+            keys_sorted=existing_type.keys_sorted,
+        )
+        added_paths = key_paths + item_paths
+    else:
+        return None, []
+
+    return existing_field.with_type(patch_type), added_paths
 
 
 @dataclass
@@ -70,9 +148,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     ``SaveMode.OVERWRITE``.
 
     Schema evolution on APPEND (``schema_mode``):
-        A column present in the incoming data but not in the table is either
-        added (``"merge"``, the default) or rejected (``"error"``). A column
-        both schemas have with an incompatible type always raises.
+        A field present in the incoming data but not in the table is either
+        added (``"merge"``, the default) or rejected (``"error"``). This
+        includes fields nested inside structs, arrays, and maps. A field both
+        schemas have with an incompatible type always raises.
 
         The schema is evolved in ``on_write_complete``, immediately before the
         data commit, so a failure anywhere earlier leaves the table's schema
@@ -124,25 +203,25 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 ``user_storage_options`` (the latter winning).
             schema_mode: How an ``APPEND`` reconciles its incoming schema
                 against an existing table's schema, when the incoming data
-                has a column the table doesn't. Has no effect on
+                has a top-level or nested field the table doesn't. Has no effect on
                 ``OVERWRITE`` (which always replaces the table's schema
                 wholesale) or on a brand-new table (nothing to reconcile
                 against yet). One of:
 
-                * ``"merge"`` (default): add the new column(s) to the table
+                * ``"merge"`` (default): add the new field(s) to the table
                   before committing, as an ``ALTER TABLE ADD COLUMN``-style
-                  operation. New columns are always added as nullable --
+                  operation. New fields are always added as nullable --
                   every row already in the table has no value for a
-                  brand-new column, so a non-nullable declaration would make
+                  brand-new field, so a non-nullable declaration would make
                   the schema self-contradictory.
                 * ``"error"``: reject the write with a clear ``ValueError``
                   instead of evolving the schema. Nothing about the table
                   changes.
 
-                Either way, a column both schemas already have, but with an
+                Either way, a field both schemas already have, but with an
                 incompatible type, always raises -- schema evolution here
-                only ever *adds* columns, it never changes an existing
-                column's type.
+                only ever *adds* fields, it never changes an existing
+                field's type.
             user_storage_options: The exact storage_options the caller passed to
                 :meth:`Dataset.write_delta` directly, before any catalog-resolved
                 defaults were merged in. Kept separately so a credential refresh
@@ -247,31 +326,32 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         from deltalake import DeltaTable
 
-        def _read_existing_partition_by() -> Optional[List[str]]:
-            """The table's partition columns, or None if it doesn't exist yet."""
+        def _read_existing_metadata() -> Optional["Metadata"]:
+            """The table's metadata, or None if it doesn't exist yet."""
             if not DeltaTable.is_deltatable(
                 self._path, storage_options=self._storage_options
             ):
                 return None
-            return list(
-                DeltaTable(self._path, storage_options=self._storage_options)
-                .metadata()
-                .partition_columns
-            )
+            return DeltaTable(
+                self._path, storage_options=self._storage_options
+            ).metadata()
 
         # Retried and credential-refreshed like the commit's own calls in
         # ``on_write_complete``: these are the same kind of driver-side Delta
         # log reads, so an expired token or a throttled request here would
         # otherwise fail the whole job before any refresh could happen. The
-        # validation below stays outside the retry -- a partition mismatch is a
-        # logical error that must not be retried.
-        existing_partition_by = self._with_retry(
-            _read_existing_partition_by,
-            description=f"read partition columns of Delta table '{self._path}'",
+        # validation below stays outside the retry -- a column-mapped table or
+        # a partition mismatch is a logical error that must not be retried.
+        existing_metadata = self._with_retry(
+            _read_existing_metadata,
+            description=f"read metadata of Delta table '{self._path}'",
             refresh=self._refresh_driver_filesystem,
         )
-        if existing_partition_by is None:
+        if existing_metadata is None:
             return
+
+        _raise_if_column_mapped(existing_metadata, self._path)
+        existing_partition_by = list(existing_metadata.partition_columns)
 
         if not self._partition_by:
             self._partition_by = existing_partition_by
@@ -376,6 +456,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # boundary.
             def _commit(schema: "pa.Schema" = schema) -> None:
                 dt = DeltaTable(self._path, storage_options=self._storage_options)
+                # Checked again here because ``on_write_start`` doesn't run
+                # for an empty dataset, and the table may have changed since.
+                _raise_if_column_mapped(dt.metadata(), self._path)
                 if delta_mode == "append":
                     dt = self._reconcile_schema_with_existing_table(schema, dt)
                 dt.create_write_transaction(
@@ -422,14 +505,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             reader=ReaderFormat.DELTA,
             mode=CatalogAccessMode.WRITE,
         )
-        # `catalog.resolve()` also writes freshly-vended credentials into this
-        # process's own environment as a side effect (e.g.
-        # `DatabricksUnityCatalog._apply_env`) -- that's what the deltalake
-        # calls in `on_write_complete` actually pick up, for any cloud the
-        # catalog supports, since delta-rs resolves credentials from the
-        # environment on each call rather than caching them at import time.
-        # The explicit fields below are applied too, for completeness, but
-        # aren't required for the driver's own commit to succeed.
+        # The deltalake calls in `on_write_complete` take their credentials
+        # from `self._storage_options`, and the worker-side Parquet writes from
+        # `self._filesystem`; the catalog returns fresh credentials in both
+        # (`DatabricksUnityCatalog` doesn't touch the environment).
         if resolved.storage_options:
             # Merge with the caller's *original* storage_options
             # (`_user_storage_options`), not the current (possibly now-stale)
@@ -528,14 +607,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         ``catalog=``, a non-``None`` filesystem here can only have come from
         the catalog.
 
-        This must be decided *without* calling ``resolve()``, because
-        ``resolve()`` itself has credential-delivery side effects: Unity
-        Catalog's ``_apply_env`` writes the vended credentials into this
-        process's environment and never restores them. For a shape a worker
-        can't use anyway (Azure, which has no explicit-filesystem path
-        today), calling ``resolve()`` just to discover that would leave live
-        credentials in a worker process that Ray then reuses for unrelated
-        tasks.
+        This must be decided *without* calling ``resolve()``: it is a network
+        call, and a ``Catalog`` implementation may have credential-delivery
+        side effects (such as writing to the environment) that would leave
+        live credentials in a worker process Ray then reuses for unrelated
+        tasks. For a shape a worker can't use anyway (Azure, which has no
+        explicit-filesystem path today), that cost buys nothing.
         """
         return self._catalog is not None and self._filesystem is not None
 
@@ -581,9 +658,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         from ray.data.catalog import CatalogAccessMode, ReaderFormat
 
-        # ``resolve()`` may also seed the vended credentials into this
-        # process's environment without restoring them (Unity Catalog's
-        # ``_apply_env``). A worker process outlives this task and gets reused
+        # A ``Catalog`` implementation may seed vended credentials into this
+        # process's environment as a side effect (``DatabricksUnityCatalog``
+        # no longer does). A worker process outlives this task and gets reused
         # for unrelated ones, so undo whatever it changed -- the refreshed
         # filesystem below carries the credentials we actually write with, so
         # nothing downstream needs them in the environment.
@@ -611,10 +688,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         """Reconcile ``schema`` (the schema being committed) against ``dt``'s
         current table schema, per ``self._schema_mode``.
 
-        A column in ``schema`` that ``dt`` doesn't have is either added to the
+        A field in ``schema`` that ``dt`` doesn't have is either added to the
         table (``schema_mode="merge"``) or rejected (``schema_mode="error"``).
-        A column both schemas have with an incompatible type always raises,
-        regardless of ``schema_mode`` -- only adding columns is ever safe to
+        A field both schemas have with an incompatible type always raises,
+        regardless of ``schema_mode`` -- only adding fields is ever safe to
         do automatically.
 
         Returns the ``DeltaTable`` to commit against: ``dt`` itself, or a
@@ -624,8 +701,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         existing_schema = pa.schema(dt.schema().to_arrow())
 
-        # Check types before evolving, so a write that both adds a column and
-        # conflicts on an existing one fails without having already committed
+        # Check types before evolving, so a write that both adds a field and
+        # conflicts with an existing one fails without having already committed
         # the (permanent) schema change.
         #
         # ``unify_schemas`` reports an incompatibility as ArrowTypeError or
@@ -640,47 +717,61 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 f"Cannot write to Delta table '{self._path}': the incoming "
                 f"data's schema is not compatible with the table's existing "
                 f"schema ({e}). schema_mode={self._schema_mode!r} only "
-                "supports adding new columns, not changing an existing "
-                "column's type."
+                "supports adding new fields, not changing an existing "
+                "field's type."
             ) from e
 
         # Walk the incoming schema's field order, not a set difference: set
         # iteration order for strings is hash-randomized per process, which
         # would make the table's final column order vary between runs.
         existing_names = set(existing_schema.names)
-        new_fields = [
-            schema.field(name) for name in schema.names if name not in existing_names
-        ]
+        new_fields = []
+        new_field_paths = []
+        for name in schema.names:
+            incoming_field = schema.field(name)
+            if name not in existing_names:
+                # Existing rows have no value for a new top-level field.
+                new_fields.append(incoming_field.with_nullable(True))
+                new_field_paths.append(name)
+                continue
+
+            nested_patch, nested_paths = _nested_schema_additions(
+                existing_schema.field(name),
+                incoming_field,
+            )
+            if nested_patch is not None:
+                new_fields.append(nested_patch)
+                new_field_paths.extend(nested_paths)
+
         if new_fields:
             if self._schema_mode == "error":
                 raise ValueError(
-                    f"Cannot write to Delta table '{self._path}': column(s) "
-                    f"{[f.name for f in new_fields]} are not present in the "
+                    f"Cannot write to Delta table '{self._path}': field(s) "
+                    f"{new_field_paths} are not present in the "
                     "table's existing schema. Pass schema_mode='merge' "
-                    "(the default) to add new columns automatically, or "
+                    "(the default) to add new fields automatically, or "
                     "remove them from the incoming data."
                 )
-            dt = self._evolve_schema_for_new_columns(dt, new_fields)
+            dt = self._evolve_schema_for_new_fields(dt, new_fields)
 
         return dt
 
-    def _evolve_schema_for_new_columns(
+    def _evolve_schema_for_new_fields(
         self, dt: "DeltaTable", new_fields: List["pa.Field"]
     ) -> "DeltaTable":
         """Add ``new_fields`` to the table's schema in their own transaction
         and return a reloaded ``DeltaTable``.
 
-        New columns are forced nullable: rows already in the table have no
-        value for them, and ``alter.add_columns`` won't reject a non-nullable
-        field on its own. ``alter.add_columns`` is also the only API that
-        actually evolves the schema -- passing a wider ``schema=`` to the
-        data-commit calls is silently ignored.
+        ``new_fields`` are already prepared as nullable top-level fields or
+        partial nested patches whose new descendants are nullable. This keeps
+        rows already in the table valid. ``alter.add_columns`` is also the only
+        API that actually evolves the schema -- passing a wider ``schema=`` to
+        the data-commit calls is silently ignored.
         """
         import pyarrow as pa
         from deltalake import DeltaTable, Schema as DeltaSchema
 
-        nullable_fields = [f.with_nullable(True) for f in new_fields]
-        delta_schema = DeltaSchema.from_arrow(pa.schema(nullable_fields))
+        delta_schema = DeltaSchema.from_arrow(pa.schema(new_fields))
         dt.alter.add_columns(delta_schema.fields)
         return DeltaTable(self._path, storage_options=self._storage_options)
 
@@ -796,6 +887,29 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         )
 
 
+def _raise_if_column_mapped(metadata: "Metadata", path: str) -> None:
+    """Refuse to write to a table that uses column mapping.
+
+    The data files of a column-mapped table store their columns under
+    physical names (such as ``col-<uuid>``) or field ids, which only the log
+    maps to the table's column names. This datasink writes files with the
+    column names themselves, so engines that apply the mapping would read
+    every written column as null. deltalake 1.5.0 refuses such a commit, but
+    later versions (such as 1.6.6) accept it.
+    """
+    mode = (metadata.configuration or {}).get("delta.columnMapping.mode") or "none"
+    if mode.lower() != "none":
+        raise NotImplementedError(
+            f"Cannot write to Delta table '{path}': it uses column mapping "
+            f"(`delta.columnMapping.mode` is {mode!r}), which "
+            "`Dataset.write_delta` doesn't support yet. Its data files must "
+            "store columns under physical names that only the Delta log maps "
+            "to the table's column names, so files written with the column "
+            "names would read back as nulls. Follow "
+            "https://github.com/ray-project/ray/issues/64854 for support."
+        )
+
+
 def _explicit_filesystem_from_storage_options(
     path: str, storage_options: Optional[Dict[str, str]]
 ) -> Optional["pafs.FileSystem"]:
@@ -896,8 +1010,6 @@ def _parse_partition_values(
             unquoted_key = urllib.parse.unquote(key)
             unquoted_value = urllib.parse.unquote(value)
             values[unquoted_key] = (
-                None
-                if unquoted_value == "__HIVE_DEFAULT_PARTITION__"
-                else unquoted_value
+                None if unquoted_value == HIVE_DEFAULT_PARTITION else unquoted_value
             )
     return {col: values.get(col) for col in partition_by}

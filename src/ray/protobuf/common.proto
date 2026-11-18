@@ -470,6 +470,11 @@ message JobConfig {
   repeated string py_driver_sys_path = 8;
   // Python logging configurations that will be passed to Ray tasks/actors.
   bytes serialized_py_logging_config = 9;
+  // Whether to turn off Ray Core lineage reconstruction for this job, leaving
+  // the application responsible for reconstructing its own lost objects. When
+  // true, the job's workers never pin object lineage. When false, the
+  // cluster-level system config `lineage_pinning_enabled` applies.
+  bool disable_job_level_lineage_reconstruction = 10;
 }
 
 message StreamingGeneratorReturnIdInfo {
@@ -779,6 +784,9 @@ message TaskArg {
   // The tensor transport to use for this object. If not specified, then use the
   // default object store.
   optional string tensor_transport = 6;
+  // True if this task consumes the object, which was created with consume_once.
+  // Only set on pass-by-ref arguments; cleared if the argument is inlined.
+  bool is_move = 7;
 }
 
 message ReturnObject {

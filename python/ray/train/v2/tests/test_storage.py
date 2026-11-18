@@ -8,9 +8,16 @@ import pytest
 import ray
 import ray.cloudpickle as ray_pickle
 from ray.train import Checkpoint
-from ray.train.tests.test_new_persistence import _resolve_storage_type
+from ray.train.tests.test_new_persistence import (
+    _create_mock_custom_fs,
+    _resolve_storage_type,
+)
 from ray.train.v2._internal.constants import VALIDATE_STORAGE_MARKER_FILENAME
-from ray.train.v2._internal.execution.storage import StorageContext, _list_at_fs_path
+from ray.train.v2._internal.execution.storage import (
+    StorageContext,
+    _list_at_fs_path,
+    _upload_to_fs_path,
+)
 
 
 @pytest.fixture(params=["nfs", "cloud", "custom_fs"])
@@ -149,6 +156,32 @@ def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
         Checkpoint.from_directory(tmp_path / "regular"), checkpoint_dir_name
     )
     assert _list_at_fs_path(storage.storage_filesystem, checkpoint_fs_path) == ["1.txt"]
+
+
+@pytest.mark.parametrize("fs_type", ["local", "custom_fs"])
+def test_upload_single_file(fs_type, tmp_path):
+    """Uploading a single file should place the file at ``fs_path`` (as a file,
+    not under a directory), mirroring ``_download_from_fs_path`` for files."""
+    local_file = tmp_path / "model.pt"
+    local_file.write_text("weights-data")
+
+    if fs_type == "local":
+        fs = pyarrow.fs.LocalFileSystem()
+        fs_path = str(tmp_path / "uploaded" / "model.pt")
+    else:
+        fs = _create_mock_custom_fs(tmp_path / "custom_fs")
+        fs_path = "model.pt"
+
+    _upload_to_fs_path(local_path=str(local_file), fs=fs, fs_path=fs_path)
+
+    file_info = fs.get_file_info(fs_path)
+    assert (
+        file_info.type == pyarrow.fs.FileType.File
+    ), f"Expected a file at {fs_path}, got {file_info.type}"
+
+    if fs_type == "local":
+        with open(fs_path) as f:
+            assert f.read() == "weights-data"
 
 
 if __name__ == "__main__":

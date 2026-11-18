@@ -92,6 +92,8 @@ class StandardScaler(SerializablePreprocessorBase):
             will be raised.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
         self._columns = columns
@@ -101,10 +103,15 @@ class StandardScaler(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately scale."""
         return self._columns
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -279,6 +286,8 @@ class MinMaxScaler(SerializablePreprocessorBase):
             will be raised.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
         self._columns = columns
@@ -288,21 +297,46 @@ class MinMaxScaler(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately scale."""
         return self._columns
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        aggregates = [Agg(col) for Agg in [Min, Max] for col in self._columns]
-        self.stats_ = dataset.aggregate(*aggregates)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=Min, columns=self._columns
+        )
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=Max, columns=self._columns
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_min_max_scaler(s: pd.Series):
             s_min = self.stats_[f"min({s.name})"]
             s_max = self.stats_[f"max({s.name})"]
+
+            # A column with no observed values has no minimum or maximum, so
+            # `fit` stores None for both and there is no range to scale into.
+            # Propagate nulls, as `StandardScaler` does for an uncomputable mean
+            # or std.
+            #
+            # Without this, `s_max - s_min` raises `TypeError` on two Nones. The
+            # user does not see that error, though: this function is applied by
+            # `DataFrame.transform`, which responds to a per-column failure by
+            # retrying with the whole frame, and the retry fails on `s.name`
+            # instead -- reporting `'DataFrame' object has no attribute 'name'`,
+            # which names neither the column nor the missing values.
+            if s_min is None or s_max is None:
+                s[:] = np.nan
+                return s
+
             diff = s_max - s_min
 
             # Handle division by zero and near-zero values for numerical stability.
@@ -410,6 +444,8 @@ class MaxAbsScaler(SerializablePreprocessorBase):
             will be raised.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
         self._columns = columns
@@ -419,20 +455,38 @@ class MaxAbsScaler(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately scale."""
         return self._columns
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        aggregates = [AbsMax(col) for col in self._columns]
-        self.stats_ = dataset.aggregate(*aggregates)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=AbsMax, columns=self._columns
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_abs_max_scaler(s: pd.Series):
             s_abs_max = self.stats_[f"abs_max({s.name})"]
+
+            # A column with no observed values has no absolute maximum, so
+            # `fit` stores None and there is nothing to scale by. Propagate
+            # nulls, as `StandardScaler` does for an uncomputable mean or std.
+            #
+            # Dividing by None below already produces this result for an
+            # Arrow-backed column, because pandas treats None as a null scalar
+            # there, but it raises `TypeError` for a NumPy-backed one. Stating
+            # the case explicitly makes the two agree.
+            if s_abs_max is None:
+                s[:] = np.nan
+                return s
 
             # Handle division by zero.
             # All values are 0.
@@ -556,6 +610,8 @@ class RobustScaler(SerializablePreprocessorBase):
 
     DEFAULT_QUANTILE_PRECISION = 800
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -574,42 +630,61 @@ class RobustScaler(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately scale."""
         return self._columns
 
     @property
     def quantile_range(self) -> Tuple[float, float]:
+        """The lower and upper quantiles used to scale the data."""
         return self._quantile_range
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     @property
     def quantile_precision(self) -> int:
+        """The accuracy parameter, K, of the KLL sketch used to compute quantiles.
+
+        Higher values yield lower error but use more memory.
+        """
         return self._quantile_precision
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        quantiles = [
-            self._quantile_range[0],
-            0.50,
-            self._quantile_range[1],
+        # One single-quantile sketch per statistic, so each result lands under
+        # its own stats_ key (the plan routes one result per aggregator alias).
+        stat_quantiles = [
+            ("low_quantile", self._quantile_range[0]),
+            ("median", 0.50),
+            ("high_quantile", self._quantile_range[1]),
         ]
-        aggregates = [
-            ApproximateQuantile(
-                on=col,
-                quantiles=quantiles,
-                quantile_precision=self._quantile_precision,
-            )
-            for col in self._columns
-        ]
-        aggregated = dataset.aggregate(*aggregates)
 
-        self.stats_ = {}
-        for col in self._columns:
-            low_q, med_q, high_q = aggregated[f"approx_quantile({col})"]
-            self.stats_[f"low_quantile({col})"] = low_q
-            self.stats_[f"median({col})"] = med_q
-            self.stats_[f"high_quantile({col})"] = high_q
+        def unpack_quantile(quantiles_for_column):
+            # A column with no observed values has no quantiles: the sketch is
+            # empty and the aggregation returns nothing to unpack. Store None
+            # and let `_transform_pandas` propagate nulls, rather than failing
+            # here with an unpacking error.
+            if not quantiles_for_column:
+                return None
+            return quantiles_for_column[0]
+
+        for stat_name, quantile in stat_quantiles:
+            self._stat_computation_plan.add_aggregator(
+                aggregator_fn=lambda col, q=quantile, name=stat_name: (
+                    ApproximateQuantile(
+                        on=col,
+                        quantiles=[q],
+                        quantile_precision=self._quantile_precision,
+                        alias_name=f"{name}({col})",
+                    )
+                ),
+                post_process_fn=unpack_quantile,
+                columns=self._columns,
+            )
 
         return self
 
@@ -618,6 +693,12 @@ class RobustScaler(SerializablePreprocessorBase):
             s_low_q = self.stats_[f"low_quantile({s.name})"]
             s_median = self.stats_[f"median({s.name})"]
             s_high_q = self.stats_[f"high_quantile({s.name})"]
+
+            # No quantiles, so nothing to centre or scale by. See `_fit`.
+            if s_low_q is None or s_median is None or s_high_q is None:
+                s[:] = np.nan
+                return s
+
             diff = s_high_q - s_low_q
 
             # Handle division by zero.

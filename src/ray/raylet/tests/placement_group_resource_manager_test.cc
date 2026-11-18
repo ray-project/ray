@@ -20,12 +20,12 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/clock.h"
 
@@ -78,17 +78,13 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   ray::Clock clock_;
   ray::observability::FakeGauge fake_gauge_;
-  std::unique_ptr<gcs::MockGcsClient> gcs_client_;
+  std::unique_ptr<gcs::FakeGcsClient> gcs_client_;
   std::function<bool(scheduling::NodeID)> is_node_available_fn_;
-  rpc::GcsNodeAddressAndLiveness node_info_;
   void SetUp() {
-    gcs_client_ = std::make_unique<gcs::MockGcsClient>();
+    gcs_client_ = std::make_unique<gcs::FakeGcsClient>();
     is_node_available_fn_ = [this](scheduling::NodeID node_id) {
       return gcs_client_->Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
     };
-    EXPECT_CALL(*gcs_client_->mock_node_accessor,
-                GetNodeAddressAndLiveness(::testing::_, ::testing::_))
-        .WillRepeatedly(::testing::Return(node_info_));
   }
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {

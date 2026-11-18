@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data._internal.random_config import RandomSeedConfig
+from ray.data._internal.stats_summary_actor import list_stats_summaries
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import (
     Dataset,
@@ -66,6 +67,7 @@ from ray.data.read_api import (  # noqa: F401
     read_delta,
     read_delta_sharing_tables,
     read_kafka,
+    read_hive,
     read_hudi,
     read_iceberg,
     read_images,
@@ -92,6 +94,7 @@ from ray.data.catalog import (
     ReaderFormat,
     ResolvedSource,
     DatabricksUnityCatalog,
+    GravitinoCatalog,
 )
 
 # Module-level cached global functions for callable classes. It needs to be defined here
@@ -114,7 +117,11 @@ try:
     # written with earlier version of Ray Data, we enable auto-loading of serialized
     # tensor extensions.
     #
-    # NOTE: `PyExtensionType` is deleted from Arrow >= 21.0
+    # NOTE: `PyExtensionType` is deleted from Arrow >= 21.0, which is below Ray
+    # Data's supported minimum. This branch is only reachable in environments
+    # that run an older pyarrow with `RAY_DISABLE_PYARROW_VERSION_CHECK=1` (e.g.
+    # release tests reading datasets written with the legacy pickled tensor
+    # type).
     pyarrow_version = get_pyarrow_version()
     if pyarrow_version is None or pyarrow_version >= parse_version("21.0.0"):
         pass
@@ -129,6 +136,8 @@ try:
             pyarrow_version >= parse_version("14.0.1")
             and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
         ):
+            # pyrefly: ignore[missing-attribute]  # gone in pyarrow >= 21; this
+            # branch only runs on older pyarrow (version-guarded above).
             pa.PyExtensionType.set_auto_load(True)
 
 except ModuleNotFoundError:
@@ -159,6 +168,7 @@ __all__ = [
     "SinkMode",
     "SaveMode",
     "TaskPoolStrategy",
+    "list_stats_summaries",
     "from_daft",
     "from_dask",
     "from_items",
@@ -187,6 +197,7 @@ __all__ = [
     "read_delta",
     "read_delta_sharing_tables",
     "read_kafka",
+    "read_hive",
     "read_hudi",
     "read_iceberg",
     "read_images",
@@ -210,6 +221,7 @@ __all__ = [
     "ReaderFormat",
     "ResolvedSource",
     "DatabricksUnityCatalog",
+    "GravitinoCatalog",
     "KafkaAuthConfig",
     "Preprocessor",
 ]

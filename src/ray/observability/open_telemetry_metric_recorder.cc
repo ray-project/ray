@@ -198,6 +198,13 @@ OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
           meter_provider_));
 }
 
+bool OpenTelemetryMetricRecorder::ForceFlush(std::chrono::microseconds timeout) {
+  if (is_shutdown_.load()) {
+    return false;
+  }
+  return meter_provider_->ForceFlush(timeout);
+}
+
 void OpenTelemetryMetricRecorder::Shutdown() {
   bool expected = false;
   if (!is_shutdown_.compare_exchange_strong(expected, true)) {

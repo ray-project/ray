@@ -1,8 +1,10 @@
 import os
 import pickle
+from unittest.mock import Mock
 
 import lance
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from packaging.version import Version
 from pytest_lazy_fixtures import lf as lazy_fixture
@@ -13,11 +15,15 @@ from ray.data import Schema
 from ray.data._internal.datasource.lance_datasink import (
     _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
     LanceDatasink,
+    _align_block_to_schema,
+    _null_column,
     _write_fragment,
 )
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.expressions import col
 
 # Skip tests for older pylance versions (<=0.3.19) due to incompatible lance API changes with pyarrow v9.0.0
 pytestmark = pytest.mark.skipif(
@@ -290,6 +296,95 @@ def test_lance_write_append_errors_if_missing(data_path, ray_start_regular_share
     assert not os.path.exists(table_path)
 
 
+def test_align_block_to_schema_reorders_fills_and_validates():
+    """Unit test for the schema-alignment helper used before Lance writes."""
+    schema = pa.schema(
+        [
+            pa.field("a", pa.int64()),
+            pa.field("b", pa.string()),
+            pa.field("c", pa.float64()),
+        ]
+    )
+
+    # Already aligned: returned unchanged.
+    aligned = pa.table({"a": [1], "b": ["x"], "c": [1.0]})
+    assert _align_block_to_schema(aligned, schema) is aligned
+
+    # Same fields, different order: reordered to the schema's order. This guards
+    # the reorder behavior we preserved from ``reorder_columns_by_schema``.
+    reordered = pa.table({"c": [1.0], "a": [1], "b": ["x"]})
+    out = _align_block_to_schema(reordered, schema)
+    assert out.schema.names == ["a", "b", "c"]
+    assert out["a"].to_pylist() == [1]
+
+    # Missing column: filled with nulls of the target type.
+    subset = pa.table({"a": [1, 2], "b": ["x", "y"]})
+    out = _align_block_to_schema(subset, schema)
+    assert out.schema.names == ["a", "b", "c"]
+    assert out.schema.field("c").type == pa.float64()
+    assert out["c"].null_count == 2
+
+    # Column not in the target schema: clear error instead of a silent drop.
+    with pytest.raises(ValueError, match="not present in the target Lance schema"):
+        _align_block_to_schema(pa.table({"a": [1], "z": [9]}), schema)
+
+
+def test_null_column_supports_extension_and_nested_types():
+    """``_null_column`` builds all-null columns for extension types (e.g. Lance's
+    ``arrow.json``), where ``pa.nulls`` may not construct directly, and for
+    nested types."""
+
+    class _MyExtensionType(pa.ExtensionType):
+        def __init__(self):
+            super().__init__(pa.string(), "test.myext")
+
+        def __arrow_ext_serialize__(self):
+            return b""
+
+        @classmethod
+        def __arrow_ext_deserialize__(cls, storage_type, serialized):
+            return cls()
+
+    ext = _null_column(_MyExtensionType(), 3)
+    assert len(ext) == 3
+    assert ext.null_count == 3
+
+    nested = _null_column(pa.list_(pa.int64()), 2)
+    assert len(nested) == 2
+    assert nested.null_count == 2
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_append_fills_missing_columns_with_null(data_path):
+    """Appending a subset of the dataset's columns fills the rest with null
+    instead of failing on the field-set mismatch."""
+    table_path = os.path.join(data_path, "subset_append")
+    schema = pa.schema(
+        [
+            pa.field("a", pa.int64()),
+            pa.field("b", pa.int64()),
+            pa.field("c", pa.int64()),
+        ]
+    )
+
+    ray.data.from_items([{"a": 1, "b": 4, "c": 7}]).write_lance(
+        table_path, schema=schema, mode=SaveMode.CREATE
+    )
+
+    # New rows provide only (a, b); "c" must be written as null, not raise.
+    ray.data.from_items([{"a": 10, "b": 40}, {"a": 11, "b": 41}]).write_lance(
+        table_path, mode=SaveMode.APPEND
+    )
+
+    tbl = lance.dataset(table_path).to_table()
+    assert tbl.num_rows == 3
+    assert tbl.schema.names == ["a", "b", "c"]
+    rows = {row["a"]: row for row in tbl.to_pylist()}
+    assert rows[1]["c"] == 7  # existing row untouched
+    assert rows[10]["b"] == 40 and rows[10]["c"] is None
+    assert rows[11]["b"] == 41 and rows[11]["c"] is None
+
+
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
 def test_lance_write_min_rows_per_file(data_path, ray_start_regular_shared):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
@@ -366,6 +461,17 @@ def test_lance_read_with_version(data_path, ray_start_regular_shared):
         [5, "f"],
         [6, "g"],
     ]
+
+    ds_filtered = ray.data.read_lance(
+        path, version=initial_version, scanner_options={"filter": "one >= 3"}
+    )
+    count = ds_filtered.count()
+    train, test = ds_filtered.train_test_split(test_size=0.2)
+    train_ids = {row["one"] for row in train.take_all()}
+    test_ids = {row["one"] for row in test.take_all()}
+    assert (count, train.count(), test.count()) == (4, 3, 1)
+    assert train_ids.isdisjoint(test_ids)
+    assert train_ids | test_ids == {3, 4, 5, 6}
 
 
 @pytest.fixture
@@ -483,6 +589,125 @@ def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_sh
         ds.take_all()
 
     assert not marker.exists(), "pickle.load executed attacker code"
+
+
+@pytest.fixture
+def lance_count_dataset(tmp_path):
+    path = str(tmp_path / "counts.lance")
+    table = pa.table({"id": range(28)})
+    return lance.write_dataset(table, path, max_rows_per_file=7, max_rows_per_group=7)
+
+
+@pytest.mark.parametrize("filter_kind", ["argument", "arrow", "pushdown", "combined"])
+def test_lance_filtered_planning_does_not_scan(
+    lance_count_dataset, monkeypatch, filter_kind
+):
+    if filter_kind == "arrow":
+        source = LanceDatasource(
+            lance_count_dataset.uri,
+            scanner_options={"filter": pc.field("id") >= 21},
+        )
+    else:
+        source = LanceDatasource(
+            lance_count_dataset.uri,
+            filter=None if filter_kind == "pushdown" else "id >= 21",
+        )
+    if filter_kind in {"pushdown", "combined"}:
+        source = source.apply_predicate(col("id") < 27)
+
+    scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
+    fragment_count = Mock(side_effect=AssertionError("Filtered count must be unknown"))
+    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+    monkeypatch.setattr(
+        type(lance_count_dataset.get_fragments()[0]), "count_rows", fragment_count
+    )
+    tasks = source.get_read_tasks(3)
+    assert tasks
+    assert all(task.metadata.num_rows is None for task in tasks)
+    scanner.assert_not_called()
+    fragment_count.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"limit": 3},
+        {"limit": 0},
+        {"nearest": {"column": "vector", "q": [0.0], "k": 1}},
+        {"future_row_set_option": True},
+        {"fast_search": True},
+        {"include_deleted_rows": True},
+        {"filter": {"expr_filter": "id > 0"}},
+    ],
+)
+def test_lance_row_set_options_have_unknown_count(lance_count_dataset, options):
+    source = LanceDatasource(lance_count_dataset.uri, scanner_options=dict(options))
+    tasks = source.get_read_tasks(1)
+    assert tasks
+    assert all(task.metadata.num_rows is None for task in tasks)
+
+
+def test_lance_unfiltered_count_uses_fragment_metadata(
+    lance_count_dataset, monkeypatch
+):
+    source = LanceDatasource(
+        lance_count_dataset.uri, scanner_options={"fast_search": False}
+    )
+    scanner = Mock(side_effect=AssertionError("Unfiltered count must not scan data"))
+    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+    tasks = source.get_read_tasks(1)
+    assert [task.metadata.num_rows for task in tasks] == [28]
+    scanner.assert_not_called()
+
+
+@pytest.mark.parametrize("filter_kind", ["argument", "pushdown"])
+def test_lance_filtered_count_and_split(
+    lance_count_dataset, ray_start_regular_shared, monkeypatch, filter_kind
+):
+    scanner = None
+    if filter_kind == "pushdown":
+        scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
+        monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+        ds = ray.data.read_lance(lance_count_dataset.uri, override_num_blocks=4)
+        ds = ds.filter(expr=col("id") >= 21)
+        rows = ds.take(1)
+        assert len(rows) == 1 and rows[0]["id"] >= 21
+    else:
+        ds = ray.data.read_lance(
+            lance_count_dataset.uri, filter="id >= 21", override_num_blocks=4
+        )
+
+    count = ds.count()
+    train, test = ds.train_test_split(test_size=0.2)
+    train_ids = {row["id"] for row in train.take_all()}
+    test_ids = {row["id"] for row in test.take_all()}
+    assert (count, train.count(), test.count()) == (7, 5, 2)
+    assert (len(train_ids), len(test_ids)) == (5, 2)
+    assert train_ids.isdisjoint(test_ids)
+    assert train_ids | test_ids == set(range(21, 28))
+    if scanner is not None:
+        scanner.assert_not_called()
+    else:
+        assert (
+            ray.data.read_lance(lance_count_dataset.uri, filter="id > 100").count() == 0
+        )
+
+
+def test_lance_random_filter_split(tmp_path, ray_start_regular_shared):
+    # Use enough rows that either split is overwhelmingly likely to be non-empty.
+    path = str(tmp_path / "random.lance")
+    lance.write_dataset(pa.table({"id": range(1000)}), path)
+    ds = ray.data.read_lance(path, filter="random() < 0.5", override_num_blocks=1)
+    train, test = ds.train_test_split(test_size=0.2)
+    train_rows = train.take_all()
+    test_rows = test.take_all()
+    train_ids = {row["id"] for row in train_rows}
+    test_ids = {row["id"] for row in test_rows}
+    assert train_ids.isdisjoint(test_ids)
+    assert train.count() + test.count() == len(train_ids | test_ids)
+    total = len(train_ids | test_ids)
+    assert len(train_ids) == int(total * 0.8)
+    assert len(test_ids) == total - int(total * 0.8)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,18 @@
 import copy
 import os
+import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Dict
+
+# RayConfig reads the auth mode once at import, so set the mode before importing
+# ray. A per-process random token, inherited by subprocesses, lets the cluster
+# and this process agree without a hard-coded secret.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
 
 import pytest
 import requests
@@ -12,13 +20,21 @@ import requests
 import ray
 from ray import serve
 from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
+from ray._private.test_utils import request_with_auth_token
+from ray.experimental.internal_kv import _internal_kv_del
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
 )
-from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.test_utils import get_num_alive_replicas
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
+)
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import get_application_url, get_num_alive_replicas
 from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
@@ -54,7 +70,7 @@ applications:
 
 
 def deploy_config_multi_app(config: Dict, url: str):
-    put_response = requests.put(url, json=config, timeout=30)
+    put_response = request_with_auth_token("PUT", url, json=config, timeout=30)
     assert put_response.status_code == 200
     print("PUT request sent successfully.")
 
@@ -163,8 +179,126 @@ def test_put_get_multi_app(ray_start_stop):
 def test_put_bad_schema(ray_start_stop):
     config = {"not_a_real_field": "value"}
 
-    put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=5
+    )
     assert put_response.status_code == 400
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+@pytest.mark.parametrize(
+    "exporter_import_path",
+    [
+        # Can't be imported.
+        "serve_missing_tracing_exporter_mod:exp",
+        # Imports, but takes arguments, which custom exporters can't.
+        "ray.serve.tests.test_standalone:tracing_exporter_with_args",
+        # Imports, but raises when the controller calls it.
+        "ray.serve.tests.test_standalone:raising_tracing_exporter",
+    ],
+)
+def test_put_bad_tracing_exporter(ray_start_stop, exporter_import_path):
+    """An unusable tracing exporter fails the deploy with a 400.
+
+    It's validated when the controller starts, in the controller's env. The
+    failed start must not leave a controller behind, so a corrected deploy
+    then succeeds.
+    """
+    config = {
+        "tracing_config": {
+            "enabled": True,
+            "exporter_import_path": exporter_import_path,
+        },
+        "applications": [],
+    }
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 400
+    assert exporter_import_path in put_response.text
+
+    config["tracing_config"] = {"enabled": False}
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 200
+
+
+def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
+    """Return whether a span file for ``component`` contains ``span_name``."""
+    if not os.path.isdir(spans_dir):
+        return False
+    for fname in os.listdir(spans_dir):
+        if component not in fname:
+            continue
+        try:
+            with open(os.path.join(spans_dir, fname)) as f:
+                if span_name in f.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_put_tracing_config_on_fresh_cluster_produces_traces(ray_start_stop):
+    """The first serve deploy's tracing_config applies end to end.
+
+    On a fresh cluster the deploy passes tracing_config into the controller
+    constructor, so proxies get it at construction and replicas at startup, and
+    a request produces traces for both.
+    """
+    config = {
+        "tracing_config": {"enabled": True, "sampling_ratio": 1.0},
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/",
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+            }
+        ],
+    }
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 200
+    wait_for_condition(
+        lambda: serve.status().applications["app1"].status == ApplicationStatus.RUNNING,
+        timeout=60,
+    )
+
+    # The controller started with the deployed tracing config.
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    tracing_config = ray.get(controller.get_tracing_config.remote())
+    assert tracing_config.enabled is True
+    assert tracing_config.sampling_ratio == 1.0
+
+    # Under HAProxy or direct ingress the Python proxy isn't in the request path,
+    # so only the replica emits request spans.
+    expect_proxy_spans = not (
+        RAY_SERVE_ENABLE_HA_PROXY or RAY_SERVE_ENABLE_DIRECT_INGRESS
+    )
+    url = get_application_url(app_name="app1")
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+
+    def traces_produced() -> bool:
+        requests.get(url, timeout=10)
+        replica_traced = _span_file_contains(
+            spans_dir, "replica", "replica_handle_request"
+        )
+        proxy_traced = not expect_proxy_spans or _span_file_contains(
+            spans_dir, "proxy", "proxy_http_request"
+        )
+        return replica_traced and proxy_traced
+
+    try:
+        wait_for_condition(traces_produced, timeout=60)
+    finally:
+        shutil.rmtree(spans_dir, ignore_errors=True)
 
 
 @pytest.mark.skipif(
@@ -189,7 +323,9 @@ def test_put_duplicate_apps(ray_start_stop):
             },
         ],
     }
-    put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=5
+    )
     # Check for validation error in the response.
     assert (
         put_response.status_code == 400
@@ -219,7 +355,9 @@ def test_put_duplicate_routes(ray_start_stop):
             },
         ],
     }
-    put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=5
+    )
     # Check for validation error in the response.
     assert (
         put_response.status_code == 400
@@ -289,7 +427,7 @@ def test_delete_multi_app(ray_start_stop):
         print("Deployments are live and reachable over HTTP.\n")
 
         print("Sending DELETE request for config.")
-        delete_response = requests.delete(SERVE_HEAD_URL, timeout=15)
+        delete_response = request_with_auth_token("DELETE", SERVE_HEAD_URL, timeout=15)
         assert delete_response.status_code == 200
         print("DELETE request sent successfully.")
 
@@ -320,8 +458,70 @@ def test_delete_multi_app(ray_start_stop):
 def test_get_serve_instance_details_not_started(ray_start_stop):
     """Test REST API when Serve hasn't started yet."""
     # Parse the response to ensure it's formatted correctly.
-    serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
+    serve_details = ServeInstanceDetails(
+        **request_with_auth_token("GET", SERVE_HEAD_URL).json()
+    )
     assert serve_details.target_groups == []
+
+
+@pytest.fixture
+def no_working_dir_cache(monkeypatch):
+    # Delete working_dir packages from the node as soon as nothing uses them,
+    # so a restarting actor has to download its package again.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", "0")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_rest_api_recovers_after_controller_runtime_env_setup_error(
+    no_working_dir_cache, ray_start_stop, tmp_path
+):
+    """The REST API recovers once a new controller is started, even when the
+    cached controller handle fails with RuntimeEnvSetupError instead of
+    RayActorError."""
+    (tmp_path / "module.py").write_text("")
+    ray.shutdown()
+    ray.init("auto", runtime_env={"working_dir": str(tmp_path)})
+    package_uri = ray.get_runtime_context().runtime_env["working_dir"]
+    serve.run(serve.deployment(lambda: "hi").bind(), name="app1")
+    wait_for_condition(
+        lambda: request_with_auth_token("GET", SERVE_HEAD_URL).status_code == 200
+    )
+
+    # The controller inherited the job's working_dir. End that job, delete the
+    # package from the GCS and the node, then restart every Serve actor so the
+    # controller restart can't set it up.
+    ray.shutdown()
+    ray.init("auto")
+    _internal_kv_del(package_uri.encode())
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    package_dir = Path(session_dir) / "runtime_resources" / "working_dir_files"
+    shutil.rmtree(package_dir / Path(package_uri).stem, ignore_errors=True)
+    for actor in list_actors(filters=[("state", "=", "ALIVE")]):
+        if actor.ray_namespace == SERVE_NAMESPACE and actor.name:
+            ray.kill(
+                ray.get_actor(actor.name, namespace=SERVE_NAMESPACE),
+                no_restart=False,
+            )
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    # If the restart is scheduled before the killed actors release the
+    # package, the raylet retries the worker about a minute later and fails then.
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        ray.get(controller.check_alive.remote(), timeout=180)
+
+    serve.start()
+    new_controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    new_controller_id = new_controller._actor_id.hex()
+    assert new_controller_id != controller._actor_id.hex()
+
+    def rest_api_reports_new_controller():
+        response = request_with_auth_token("GET", SERVE_HEAD_URL)
+        assert response.status_code == 200
+        details = ServeInstanceDetails(**response.json())
+        return details.controller_info.actor_id == new_controller_id
+
+    wait_for_condition(rest_api_reports_new_controller, timeout=30)
 
 
 @pytest.mark.skipif(
@@ -400,7 +600,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     def applications_running():
-        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
 
         serve_details = ServeInstanceDetails(**response.json())
@@ -412,7 +612,9 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     wait_for_condition(applications_running, timeout=15)
     print("All applications are in a RUNNING state.")
 
-    serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
+    serve_details = ServeInstanceDetails(
+        **request_with_auth_token("GET", SERVE_HEAD_URL).json()
+    )
     # CHECK: proxy location, HTTP host, and HTTP port
     assert serve_details.proxy_location == "HeadOnly"
     assert serve_details.http_options.host == "127.0.0.1"
@@ -474,6 +676,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
                     == deployment.deployment_config.num_replicas
                 )
                 assert len(deployment.replicas) == deployment.target_num_replicas
+                assert (
+                    deployment.num_running_replicas_at_target_version
+                    == deployment.target_num_replicas
+                )
             assert (
                 deployment.required_resources
                 == expected_values[app]["required_resources"][deployment.name]
@@ -534,7 +740,7 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
     assert deploy.returncode == 0
 
     def applications_running():
-        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
 
         serve_details = ServeInstanceDetails(**response.json())
@@ -561,7 +767,9 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
         },
     }
 
-    serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
+    serve_details = ServeInstanceDetails(
+        **request_with_auth_token("GET", SERVE_HEAD_URL).json()
+    )
 
     app_details = serve_details.applications
     # CHECK: application details
@@ -655,7 +863,9 @@ class TestScaleDeploymentEndpoint:
         self, app_name="test_app", deployment_name="hello_world"
     ):
         """Get deployment details from serve instance."""
-        serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
+        serve_details = ServeInstanceDetails(
+            **request_with_auth_token("GET", SERVE_HEAD_URL).json()
+        )
         app_details = serve_details.applications[app_name]
 
         return app_details.deployments[deployment_name]
@@ -668,7 +878,8 @@ class TestScaleDeploymentEndpoint:
         verify_actual_replicas=True,
     ):
         """Scale a deployment and verify both target and actual replica counts."""
-        response = requests.post(
+        response = request_with_auth_token(
+            "POST",
             SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
                 app_name=app_name, deployment_name=deployment_name
             ),
@@ -861,7 +1072,8 @@ class TestScaleDeploymentEndpoint:
 
         wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
 
-        response = requests.post(
+        response = request_with_auth_token(
+            "POST",
             SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
                 app_name="test_app", deployment_name="hello_world"
             ),
@@ -962,7 +1174,8 @@ class TestScaleDeploymentEndpoint:
     def test_error_case(self, ray_start_stop):
         serve.start()
 
-        error_response = requests.post(
+        error_response = request_with_auth_token(
+            "POST",
             SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
                 app_name="nonexistent", deployment_name="hello_world"
             ),
@@ -972,7 +1185,8 @@ class TestScaleDeploymentEndpoint:
         assert error_response.status_code == 404
         assert "not found" in error_response.json()["error"].lower()
 
-        error_response = requests.post(
+        error_response = request_with_auth_token(
+            "POST",
             SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
                 app_name="test_app", deployment_name="hello_world"
             ),
@@ -1010,7 +1224,8 @@ class TestScaleDeploymentEndpoint:
             )
 
             # Step 2: Try to scale - should fail
-            response = requests.post(
+            response = request_with_auth_token(
+                "POST",
                 SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
                     app_name="test_app", deployment_name="hello_world"
                 ),
@@ -1054,7 +1269,8 @@ class TestScaleDeploymentEndpoint:
             )
 
             # Step 6: Try to scale again - should fail
-            response = requests.post(
+            response = request_with_auth_token(
+                "POST",
                 SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
                     app_name="test_app", deployment_name="hello_world"
                 ),
@@ -1100,7 +1316,7 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
 
     # Wait for declarative apps to be running
     def declarative_apps_running():
-        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return len(serve_details.applications) == 2 and all(
@@ -1124,7 +1340,7 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
 
     # Wait for imperative apps to be running
     def all_apps_running():
-        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return len(
@@ -1138,7 +1354,7 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
     print("All applications (declarative + imperative) are running.")
 
     # Test 1: No api_type parameter - should return all applications
-    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert len(serve_details.applications) == 4
@@ -1146,7 +1362,9 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
     assert app_names == {"declarative_app1", "declarative_app2", "app1", "app2"}
 
     # Test 2: Filter by declarative applications
-    response = requests.get(SERVE_HEAD_URL + "?api_type=declarative", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=declarative", timeout=15
+    )
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert len(serve_details.applications) == 2
@@ -1156,7 +1374,9 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
         assert app.source == "declarative"
 
     # Test 3: Filter by imperative applications
-    response = requests.get(SERVE_HEAD_URL + "?api_type=imperative", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=imperative", timeout=15
+    )
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert len(serve_details.applications) == 2
@@ -1166,7 +1386,9 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
         assert app.source == "imperative"
 
     # Test 4: Filter by unknown - should return 400 error (unknown is not a valid user input)
-    response = requests.get(SERVE_HEAD_URL + "?api_type=unknown", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=unknown", timeout=15
+    )
     assert response.status_code == 400
     assert "Invalid 'api_type' value" in response.text
     assert "Must be one of: imperative, declarative" in response.text
@@ -1180,13 +1402,17 @@ def test_get_serve_instance_details_invalid_api_type(ray_start_stop):
     Test that invalid api_type values return appropriate error responses.
     """
     # Test with invalid api_type value
-    response = requests.get(SERVE_HEAD_URL + "?api_type=invalid_type", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=invalid_type", timeout=15
+    )
     assert response.status_code == 400
     assert "Invalid 'api_type' value" in response.text
     assert "Must be one of: imperative, declarative" in response.text
 
     # Test with another invalid value
-    response = requests.get(SERVE_HEAD_URL + "?api_type=python", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=python", timeout=15
+    )
     assert response.status_code == 400
     assert "Invalid 'api_type' value" in response.text
 
@@ -1213,7 +1439,7 @@ def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
     deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     def app_running():
-        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return (
@@ -1228,8 +1454,8 @@ def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
     test_cases = ["DECLARATIVE", "Declarative", "declarative", "DeClArAtIvE"]
 
     for api_type_value in test_cases:
-        response = requests.get(
-            f"{SERVE_HEAD_URL}?api_type={api_type_value}", timeout=15
+        response = request_with_auth_token(
+            "GET", f"{SERVE_HEAD_URL}?api_type={api_type_value}", timeout=15
         )
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
@@ -1270,7 +1496,7 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     def both_apps_running():
-        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return (
@@ -1284,7 +1510,7 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     wait_for_condition(both_apps_running, timeout=15)
 
     # Verify both apps have correct external_scaler_enabled values
-    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert len(serve_details.applications) == 2
@@ -1310,7 +1536,7 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     deploy_config_multi_app(config_default, SERVE_HEAD_URL)
 
     def app_default_running():
-        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return (
@@ -1322,7 +1548,7 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     wait_for_condition(app_default_running, timeout=15)
 
     # Verify default value is False
-    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert "app_default" in serve_details.applications

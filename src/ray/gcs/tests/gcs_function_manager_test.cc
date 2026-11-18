@@ -18,20 +18,20 @@
 
 #include <memory>
 
-#include "mock/ray/gcs/gcs_kv_manager.h"
+#include "ray/gcs/fake_gcs_kv_manager.h"
 
 namespace ray {
 
 class GCSFunctionManagerTest : public ::testing::Test {
  public:
   void SetUp() override {
-    fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
+    fake_kv_ = std::make_unique<gcs::FakeInternalKV>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*fake_kv_, io_context_);
   }
 
  protected:
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
-  std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
+  std::unique_ptr<gcs::FakeInternalKV> fake_kv_;
   instrumented_io_context io_context_;
 
   // Helper method to check if a key exists in the fake KV store

@@ -62,9 +62,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
 
   virtual ~GcsResourceManager() = default;
 
-  /// Handle the resource update.
-  void ConsumeSyncMessage(
-      std::shared_ptr<const rpc::syncer::RaySyncMessage> message) override;
+  /// Apply resource views received through the ray syncer to the cluster resource view.
+  ///
+  /// \param message_type The type every message in `messages` has.
+  /// \param messages The messages received together, applied as one batch.
+  void ConsumeSyncMessages(
+      rpc::syncer::MessageType message_type,
+      std::vector<std::shared_ptr<const rpc::syncer::RaySyncMessage>> messages) override;
 
   /// Handle get available resources of all nodes.
   /// Autoscaler-specific RPC called from Python.
@@ -116,8 +120,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
-  std::string ToString() const;
-
   std::string DebugString() const;
 
   /// Update resource usage of given node.
@@ -149,19 +151,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   /// \param data The resource loads reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
-  /// Returns the mapping from node id to latest resource report.
-  ///
-  /// \returns The mapping from node id to latest resource report.
-  const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
-
-  /// Get the placement group load info. This is used for autoscaler.
-  const std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
-    if (placement_group_load_.has_value()) {
-      return placement_group_load_.value();
-    }
-    return nullptr;
-  }
-
  private:
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
@@ -176,10 +165,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   /// Debug info.
   enum CountType {
     GET_ALL_AVAILABLE_RESOURCES_REQUEST = 1,
-    REPORT_RESOURCE_USAGE_REQUEST = 2,
-    GET_ALL_RESOURCE_USAGE_REQUEST = 3,
-    GET_All_TOTAL_RESOURCES_REQUEST = 4,
-    CountType_MAX = 5,
+    GET_ALL_RESOURCE_USAGE_REQUEST = 2,
+    GET_All_TOTAL_RESOURCES_REQUEST = 3,
+    CountType_MAX = 4,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 

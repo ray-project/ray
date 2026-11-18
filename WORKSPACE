@@ -10,27 +10,104 @@ http_archive(
     ],
 )
 
+# bazel_skylib, rules_cc and rules_java are declared up front, before anything
+# loads from them. The first declaration of a repo wins: the maybe() calls in
+# py_repositories(), protobuf_deps() and rules_java_dependencies() skip theirs,
+# and a later plain http_archive is ignored once the repo has been loaded.
+# Without this, rules_python 0.40.0 pulls bazel_skylib 1.3.0 and rules_cc
+# 0.0.13, both too old for protobuf 29 (it needs paths.is_normalized() from
+# skylib 1.7.0).
 http_archive(
-    name = "rules_java",
-    sha256 = "302bcd9592377bf9befc8e41aa97ec02df12813d47af9979e4764f3ffdcc5da8",
+    name = "bazel_skylib",
+    sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
     urls = [
-        "https://github.com/bazelbuild/rules_java/releases/download/7.12.4/rules_java-7.12.4.tar.gz",
+        "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
     ],
 )
 
-load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
+http_archive(
+    name = "rules_cc",
+    sha256 = "bbf1ae2f83305b7053b11e4467d317a7ba3517a12cef608543c1b1c5bf48a4df",
+    strip_prefix = "rules_cc-0.0.16",
+    urls = [
+        "https://github.com/bazelbuild/rules_cc/releases/download/0.0.16/rules_cc-0.0.16.tar.gz",
+    ],
+)
 
-rules_java_dependencies()
+# 8.12.0 is the ceiling while wheels build on manylinux2014: from 8.13.0 on,
+# the prebuilt java_tools (singlejar, ijar, one_version) need GLIBCXX_3.4.21,
+# newer than CentOS 7's libstdc++.
+http_archive(
+    name = "rules_java",
+    sha256 = "1558508fc6c348d7f99477bd21681e5746936f15f0436b5f4233e30832a590f9",
+    urls = [
+        "https://github.com/bazelbuild/rules_java/releases/download/8.12.0/rules_java-8.12.0.tar.gz",
+    ],
+)
 
-rules_java_toolchains()
+# Bazel 8 autoloads sh_binary/sh_test from rules_shell. Declared here (the
+# version protobuf 29 pins) so its toolchains can be registered below; Bazel's
+# implicit declaration only comes after the end of this file.
+http_archive(
+    name = "rules_shell",
+    sha256 = "410e8ff32e018b9efd2743507e7595c26e2628567c42224411ff533b57d27c28",
+    strip_prefix = "rules_shell-0.2.0",
+    url = "https://github.com/bazelbuild/rules_shell/releases/download/v0.2.0/rules_shell-v0.2.0.tar.gz",
+)
+
+# rules_python arrives transitively at 0.9.0 (from rules_foreign_cc 0.9.0), which
+# predates bzlmod and pins pip 22.0.4. 0.40.0 is deliberate, not the newest: it is
+# the last release that still ships python/pip_install/repositories.bzl (loaded
+# below) and still accepts py_runtime_pair(py2_runtime = ...) (bazel/BUILD.bazel).
+# Both are gone in 1.0.0. Declared here so the maybe() in grpc_deps(),
+# protobuf_deps() and rules_foreign_cc_dependencies() skips theirs.
+http_archive(
+    name = "rules_python",
+    sha256 = "690e0141724abb568267e003c7b6d9a54925df40c275a870a4d934161dc9dd53",
+    strip_prefix = "rules_python-0.40.0",
+    urls = [
+        "https://github.com/bazelbuild/rules_python/releases/download/0.40.0/rules_python-0.40.0.tar.gz",
+    ],
+)
+
+# rules_python >= ~0.23 needs this to create @rules_python_internal; 0.9.0 did not.
+load("@rules_python//python:repositories.bzl", "py_repositories")
+
+py_repositories()
 
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
 
+# Must run after ray_deps_setup(): rules_java_dependencies() declares its own
+# com_google_protobuf (29.0-rc2) through maybe(), and would otherwise replace
+# Ray's pin.
+load("@rules_java//java:rules_java_deps.bzl", "rules_java_dependencies")
+
+rules_java_dependencies()
+
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
+load("@com_google_protobuf//bazel/private:proto_bazel_features.bzl", "proto_bazel_features")  # buildifier: disable=bzl-visibility
+
+proto_bazel_features(name = "proto_bazel_features")
+
+load("@rules_java//java:repositories.bzl", "rules_java_toolchains")
+
+rules_java_toolchains()
+
 load("//bazel:ray_deps_build_all.bzl", "ray_deps_build_all")
 
 ray_deps_build_all()
+
+# sh_binary/sh_test need a registered shell toolchain. Bzlmod registers it
+# automatically; WORKSPACE has to. Without it, every sh_binary fails on
+# Windows ("No suitable shell toolchain found").
+load("@rules_shell//shell:repositories.bzl", "rules_shell_toolchains")
+
+rules_shell_toolchains()
 
 # This needs to be run after grpc_deps() in ray_deps_build_all() to make
 # sure all the packages loaded by grpc_deps() are available. However a
@@ -41,11 +118,10 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-# Please keep this in sync with the .bazelversion file.
-versions.check(
-    maximum_bazel_version = "7.5.0",
-    minimum_bazel_version = "7.5.0",
-)
+# Floor only: .bazelversion is the exact pin, and bazelisk applies it before this
+# file is evaluated. A maximum here is a second, redundant gate that additionally
+# blocks running a newer Bazel against the tree to find out what it breaks.
+versions.check(minimum_bazel_version = "7.5.0")
 
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 
@@ -55,6 +131,12 @@ load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
     name = "python3_10",
+    # rules_python >= ~0.23 chmods the hermetic interpreter read-only and then fails
+    # if the current user can still write to it. Ray's CI containers run as root, so
+    # that check fires on every job. The read-only install exists to keep .pyc writes
+    # out of the fetched tree; this toolchain is CI-infra only (see bazel/BUILD.bazel)
+    # and the containers are ephemeral, so the determinism it protects is not at risk.
+    ignore_root_user_error = True,
     python_version = "3.10",
     register_toolchains = False,
 )

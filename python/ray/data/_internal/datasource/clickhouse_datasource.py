@@ -2,6 +2,7 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -39,8 +40,7 @@ def _is_filter_string_safe(filter_str: str) -> bool:
 
 @DeveloperAPI
 class ClickHouseDatasource(Datasource):
-    """
-    A Ray datasource for reading from ClickHouse.
+    """A Ray datasource for reading from ClickHouse.
 
     Args:
         table: Fully qualified table or view identifier (e.g.,
@@ -244,15 +244,18 @@ class ClickHouseDatasource(Datasource):
         try:
             with client.query_arrow_stream(query) as stream:
                 record_batches = list(stream)  # Collect all record batches
-            return pa.Table.from_batches(record_batches)
+            table = pa.Table.from_batches(record_batches)
         except Exception as e:
             raise RuntimeError(f"Failed to execute block query: {e}")
         finally:
             client.close()
+        # Unpickling untrusted data can execute arbitrary code. Reject object
+        # columns unless the user has explicitly opted in.
+        raise_on_pickle_object_columns(table)
+        return table
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        """
-        Estimate the in-memory data size for the query.
+        """Estimate the in-memory data size for the query.
 
         Returns:
             Estimated in-memory data size in bytes, or
@@ -266,8 +269,7 @@ class ClickHouseDatasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        """
-        Create read tasks for the ClickHouse query.
+        """Create read tasks for the ClickHouse query.
 
         Args:
             parallelism: The desired number of partitions to read the data into.

@@ -50,7 +50,6 @@ from ray.air.integrations.wandb import (
     WANDB_POPULATE_RUN_LOCATION_HOOK,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
-    RunDisabled,
     WandbLoggerCallback,
     _QueueItem,
     _WandbLoggingActor,
@@ -246,6 +245,7 @@ class TestWandbLogger:
         assert logger_state.kwargs["id"] == trial.trial_id
         assert logger_state.kwargs["name"] == trial.trial_name
         assert logger_state.kwargs["group"] == trial.experiment_dir_name
+        assert logger_state.kwargs["reinit"] == "finish_previous"
         assert "config" in logger_state.exclude
 
         del logger
@@ -562,25 +562,40 @@ def test_wandb_logger_rank_zero_only(trial, monkeypatch):
     # Test case 1: rank_zero_only=True, rank 0
     mock_session.world_rank = 0
     with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
-        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
-        assert not isinstance(run, RunDisabled)
+        mock_wandb = Mock()
+        setup_wandb(project="test_project", rank_zero_only=True, _wandb=mock_wandb)
+        assert mock_wandb.init.call_args.kwargs.get("mode") != "disabled"
 
     # Test case 2: rank_zero_only=True, non-rank-0
     mock_session.world_rank = 1
     with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
-        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
-        assert isinstance(run, RunDisabled)
+        mock_wandb = Mock()
+        setup_wandb(project="test_project", rank_zero_only=True, _wandb=mock_wandb)
+        assert mock_wandb.init.call_args.kwargs.get("mode") == "disabled"
 
     # Test case 3: rank_zero_only=False, any rank
     mock_session.world_rank = 1
     with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
-        run = setup_wandb(project="test_project", rank_zero_only=False, _wandb=Mock())
-        assert not isinstance(run, RunDisabled)
+        mock_wandb = Mock()
+        setup_wandb(project="test_project", rank_zero_only=False, _wandb=mock_wandb)
+        assert mock_wandb.init.call_args.kwargs.get("mode") != "disabled"
 
     # Test case 4: rank_zero_only=True, no session
     with patch("ray.air.integrations.wandb.get_session", return_value=None):
-        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
-        assert not isinstance(run, RunDisabled)
+        mock_wandb = Mock()
+        setup_wandb(project="test_project", rank_zero_only=True, _wandb=mock_wandb)
+        assert mock_wandb.init.call_args.kwargs.get("mode") != "disabled"
+
+
+def test_setup_wandb_reinit(monkeypatch):
+    """wandb deprecated boolean values for `reinit`."""
+    monkeypatch.setenv(WANDB_ENV_VAR, "abcde")
+    mock_wandb = Mock()
+
+    with patch("ray.air.integrations.wandb.get_session", return_value=None):
+        setup_wandb(project="test_project", _wandb=mock_wandb)
+
+    assert mock_wandb.init.call_args.kwargs["reinit"] == "finish_previous"
 
 
 if __name__ == "__main__":

@@ -10,6 +10,9 @@ import pandas as pd
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
+from ray.train.health import Diagnose, Evict, HealthDecision, Noop, Reattempt
+from ray.train.health._internal.manager import HealthManager
+from ray.train.v2._internal.callbacks.health_callback import HealthCallback
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
@@ -75,6 +78,7 @@ from ray.train.v2._internal.util import (
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    HealthCheckError,
     PreemptionError,
     TrainingFailedError,
 )
@@ -157,7 +161,7 @@ class TrainController:
             )
         else:
             validation_manager = None
-        report_handler = ReportCallbackHandler(
+        self._report_handler = ReportCallbackHandler(
             report_callbacks=(
                 [self._checkpoint_manager]
                 + ([validation_manager] if validation_manager else [])
@@ -177,7 +181,7 @@ class TrainController:
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
-            [report_handler]
+            [self._report_handler]
             + ([validation_manager] if validation_manager else [])
             + [
                 c
@@ -220,6 +224,16 @@ class TrainController:
             )
 
             self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
+
+        self._health_manager = None
+        self._health_callback = None
+        health_config = self._run_config.health_config
+        if health_config is not None:
+            self._health_manager = HealthManager(health_config.inflight_checks)
+            self._health_callback = HealthCallback(
+                self._health_manager, health_config.preflight_checks
+            )
+            self._worker_group_callbacks_to_propagate.append(self._health_callback)
 
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
@@ -311,10 +325,17 @@ class TrainController:
             # Standard: full restart.
             if self._worker_group:
                 self._shutdown_worker_group()
-            self._start_worker_group(
-                num_workers=decision.num_workers,
-                resources_per_worker=decision.resources_per_worker,
-            )
+            try:
+                self._start_worker_group(
+                    num_workers=decision.num_workers,
+                    resources_per_worker=decision.resources_per_worker,
+                )
+            except HealthCheckError as e:
+                # Only HealthCallback.after_worker_group_start raises this: a
+                # pre-flight check that requires idle workers decided to
+                # Reattempt or Evict. WorkerGroup._start() shut down the
+                # started workers before re-raising it.
+                return self._execute_health_decision(e.decision)
 
         return TrainControllerLoopIterationResult(
             run_attempt_id=self._get_run_attempt_id(),
@@ -644,9 +665,17 @@ class TrainController:
         if isinstance(
             controller_state, (InitializingState, RestartingState, ReschedulingState)
         ):
-            return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state
+            result = (
+                self._make_and_handle_scaling_decision_for_non_running_worker_group(
+                    controller_state
+                )
             )
+            if result.next_state is controller_state:
+                # Nothing to start yet (e.g. an elastic run waiting for
+                # `min_workers` to fit). Sleep before asking again, which also
+                # yields the event loop so calls like `abort()` can reach this actor.
+                await asyncio.sleep(self._health_check_interval_s)
+            return result
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
@@ -667,6 +696,7 @@ class TrainController:
             # PreemptingState to wait out the grace window before restarting.
             preemption_info = worker_group_status.get_preemption_info()
             if preemption_info is not None:
+                self._relax_collectives_during_preemption(preemption_info)
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
@@ -684,6 +714,15 @@ class TrainController:
                 return self._execute_failure_decision(
                     failure_decision, training_failed_error=worker_group_error
                 )
+
+            if self._health_manager is not None:
+                health_decision = self._health_manager.evaluate(
+                    worker_group_status.worker_statuses
+                )
+                if not isinstance(health_decision, Noop):
+                    health_result = self._execute_health_decision(health_decision)
+                    if health_result:
+                        return health_result
 
             scaling_decision = (
                 self._scaling_policy.make_decision_for_running_worker_group(
@@ -721,6 +760,68 @@ class TrainController:
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
+    def _execute_health_decision(
+        self, decision: HealthDecision
+    ) -> Optional[TrainControllerLoopIterationResult]:
+        """Act on a health decision: from the pre-flight checks before
+        training, or from the in-flight checks or a ``Diagnose`` during
+        training.
+
+        A ``Reattempt`` restarts the worker group through the failure policy,
+        like a worker error. An ``Evict`` restarts it outside the failure
+        policy. A ``Diagnose`` starts its checks while training continues, and
+        a later ``HealthManager.evaluate()`` decides on their results. If a
+        check requires idle workers, the ``Diagnose`` restarts the worker group
+        outside the failure policy instead, and the checks run at the start of
+        the next attempt, like pre-flight checks.
+
+        Args:
+            decision: The health decision, other than a ``Noop``.
+
+        Returns:
+            The result of the iteration, or ``None`` to keep running.
+        """
+        failure_result = self._run_controller_hook("after_health_decision", decision)
+        if failure_result:
+            return failure_result
+
+        error = HealthCheckError(decision)
+        if isinstance(decision, Diagnose):
+            if not any(check.requires_idle_workers for check in decision.checks):
+                logger.info("Diagnosing while training continues: %s", decision.reason)
+                self._health_manager.start_on_demand_checks(decision.checks)
+                return None
+            logger.warning(
+                "Restarting the worker group to diagnose: %s", decision.reason
+            )
+            self._health_callback.run_at_next_start(decision.checks)
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self.get_state(),
+                next_state=self._get_retry_state(self.get_state(), error),
+            )
+
+        if isinstance(decision, Reattempt):
+            logger.warning("Reattempting: %s", decision.reason)
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=error
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=error
+            )
+        if isinstance(decision, Evict):
+            logger.warning(
+                "Evicting nodes %s and restarting the worker group: %s",
+                decision.target_nodes,
+                decision.reason,
+            )
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self.get_state(),
+                next_state=self._get_retry_state(self.get_state(), error),
+            )
+        return None
+
     @staticmethod
     def _is_training_succeeded(
         worker_group_status: WorkerGroupPollStatus,
@@ -732,18 +833,85 @@ class TrainController:
     def _is_preemption_deadline_exceeded(
         preemption_info: "PreemptionInfo",
         detected_at_s: float,
+        extra_grace_s: float = 0.0,
     ) -> bool:
-        """Whether the preemption deadline has passed.
+        """Whether the preemption deadline, plus any extra grace, has passed.
 
         `deadline_ms` is when the preempted node will be taken away (epoch ms),
         used as-is. When it is unknown (None), fall back to
         `DEFAULT_PREEMPTION_DEADLINE_S` after the preemption was first detected
         so we don't wait forever.
+
+        `extra_grace_s` keeps the surviving workers running past that point, so
+        a checkpoint that outlasts the drain window still has a chance to
+        finish. The preempted node is already gone by then, so this only
+        delays the restart.
         """
         deadline_ms = preemption_info.deadline_ms
         if deadline_ms is None:
             deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
-        return time_seconds() * 1000 >= deadline_ms
+        return time_seconds() * 1000 >= deadline_ms + extra_grace_s * 1000
+
+    def _relax_collectives_during_preemption(
+        self, preemption_info: "PreemptionInfo"
+    ) -> None:
+        """Let healthy ranks finish collectives without the preempted ones.
+
+        Narrows the `SynchronizationActor` and the `ReportCallbackHandler`
+        consolidation gate to the surviving ranks, so a worker reclaimed before
+        it reaches `report()` does not strand the rest. Only Ray Train's own
+        preemption and checkpoint collectives opt in; the public
+        `ray.train.collective` APIs stay strict.
+
+        """
+        if not self._run_config.failure_config.relax_collectives_on_preemption:
+            return
+
+        worker_group = self.get_worker_group()
+        if worker_group is None:
+            return
+
+        preempted = set(preemption_info.preempted_ranks)
+        surviving = sorted(set(range(len(worker_group))) - preempted)
+
+        # TODO(lehui): make rank 0 relaxable too. It is excluded because
+        # `SynchronizationActor` keeps a single `_reduced_data`, written by
+        # rank 0, so releasing without it broadcasts `None`. Lifting this means
+        # keeping each rank's payload and picking the lowest expected rank
+        # instead.
+        if 0 in preempted:
+            logger.info(
+                "Rank 0 is being preempted (preempted ranks: %s), so "
+                "`relax_collectives_during_preemption` is ignored.",
+                sorted(preempted),
+            )
+            return
+        if not surviving:
+            return
+
+        try:
+            applied = worker_group.set_required_barrier_ranks(surviving)
+        except Exception:
+            # Never let this wedge the control loop: without it the survivors
+            # just fall back to the last committed checkpoint, as before.
+            logger.warning(
+                "Failed to relax the synchronization barrier to ranks %s.",
+                surviving,
+                exc_info=True,
+            )
+            return
+
+        if not applied:
+            return
+
+        self._report_handler.set_required_ranks(surviving)
+        logger.info(
+            "Preemption detected on ranks %s. Relaxed the report barrier to "
+            "ranks %s so they can commit a just-in-time checkpoint without "
+            "them.",
+            sorted(preempted),
+            surviving,
+        )
 
     async def _handle_preempting_state(
         self, controller_state: PreemptingState
@@ -783,7 +951,9 @@ class TrainController:
         )
 
         deadline_exceeded = self._is_preemption_deadline_exceeded(
-            preemption_info, controller_state.detected_at_s
+            preemption_info,
+            controller_state.detected_at_s,
+            self._run_config.failure_config.preemption_grace_s,
         )
         if worker_group_status.finished or deadline_exceeded:
             preemption_error = PreemptionError(
@@ -845,6 +1015,10 @@ class TrainController:
         except AsyncioActorExit:
             raise
         except Exception as e:
+            if self.get_state().is_terminal():
+                # `abort()` ran while `_step` was awaiting, so this error comes
+                # from the aborted worker group and isn't a training failure.
+                return
             # Preserve the original error type if it is already a
             # TrainingFailedError (e.g. WorkerGroupError); otherwise
             # wrap it in a ControllerError.
@@ -870,6 +1044,10 @@ class TrainController:
                 self._state = ErroredState(training_failed_error=training_error)
                 return
 
+        if self.get_state().is_terminal():
+            # `abort()` ran while `_step` was awaiting. Don't overwrite its
+            # terminal state with the state this iteration computed.
+            return
         self._set_state(result.next_state)
 
     async def run(self):

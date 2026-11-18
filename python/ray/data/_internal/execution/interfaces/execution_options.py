@@ -341,11 +341,19 @@ class ExecutionResources:
             # Explicitly handle the zero case, because `0 * inf` is undefined.
             return ExecutionResources.zero()
 
+        def _mul(a: float) -> float:
+            # A resource requirement of 0 stays 0 regardless of the scaling
+            # factor. Handle this explicitly because `0 * inf` is NaN (e.g. when
+            # scaling by an infinite task count).
+            if a == 0:
+                return 0.0
+            return a * f
+
         return ExecutionResources(
-            cpu=self.cpu * f,
-            gpu=self.gpu * f,
-            object_store_memory=self.object_store_memory * f,
-            memory=self.memory * f,
+            cpu=_mul(self.cpu),
+            gpu=_mul(self.gpu),
+            object_store_memory=_mul(self.object_store_memory),
+            memory=_mul(self.memory),
         )
 
     def floordiv(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -383,8 +391,8 @@ class ExecutionOptions:
             operators. Off by default.
         actor_locality_enabled: Deprecated. Ray Data manages actor locality
             internally.
-        verbose_progress: Whether to report progress individually per operator. By
-            default, only AllToAll operators and global progress is reported. This
+        verbose_progress: Whether to report progress individually per operator. When
+            off, only AllToAll operators and global progress are reported. This
             option is useful for performance debugging. On by default.
         label_selector: A mapping of label key to label value. When set, every task
             and actor launched by this Dataset (including shuffle, sort, and

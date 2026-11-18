@@ -130,6 +130,14 @@ def convert_ndarray_to_torch_tensor(
 
     # Object dtype cannot be converted into PyTorch Tensor.
     if ndarray.dtype.type is np.object_:
+        if any(item is None for item in ndarray):
+            raise RuntimeError(
+                "Numpy array of object dtype cannot be converted to a Torch Tensor "
+                "because it holds None (a null row). Drop or fill the null rows "
+                "upstream, or if using `iter_torch_batches()` API, pass in a "
+                "`collate_fn` argument to specify custom logic to convert the Numpy "
+                "array batch to a Torch tensor batch."
+            )
         raise RuntimeError(
             "Numpy array of object dtype cannot be converted to a Torch Tensor. This "
             "may because the numpy array is a ragged tensor--it contains items of "
@@ -468,11 +476,12 @@ def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = DEFAULT_TENSOR_NON_BLOCKING_TRANSFER,
+    concat: bool = True,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
-    Concatenate nested lists/tuples of tensors along the first (batch) dimension.
-    For example, for the input
+    By default, concatenate nested lists/tuples of tensors along the first
+    (batch) dimension. For example, for the input
     ((feature_0_chunk_0,), (feature_1_chunk_0, feature_1_chunk_1))
     the output will be (feature_0_chunk_0, feature_1_chunk_0+1)
     where each feature is concatenated along the batch dimension.
@@ -488,6 +497,11 @@ def move_tensors_to_device(
         device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
+        concat: If True (the default), nested sequences of tensors are
+            concatenated along the first (batch) dimension during the
+            transfer, which requires each sequence's tensors to share dtype
+            and trailing shape. If False, every tensor is moved individually
+            and the input structure is preserved.
 
     Returns:
         The input tensors moved to the specified device
@@ -500,12 +514,24 @@ def move_tensors_to_device(
     elif _is_tensor_sequence(batch):
         return type(batch)([t.to(device, non_blocking=non_blocking) for t in batch])
     elif _is_nested_tensor_sequence(batch):
+        if not concat:
+            return type(batch)(
+                [
+                    move_tensors_to_device(t, device, non_blocking, concat=False)
+                    for t in batch
+                ]
+            )
         return type(batch)(
             [concat_tensors_to_device(t, device, non_blocking) for t in batch]
         )
     elif _is_tensor_mapping(batch):
         return {k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()}
     elif _is_tensor_sequence_mapping(batch):
+        if not concat:
+            return {
+                k: move_tensors_to_device(v, device, non_blocking, concat=False)
+                for k, v in batch.items()
+            }
         return {
             k: concat_tensors_to_device(v, device, non_blocking)
             for k, v in batch.items()

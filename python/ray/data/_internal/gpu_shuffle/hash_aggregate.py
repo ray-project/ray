@@ -6,7 +6,6 @@ import pickle
 import time
 import types
 import typing
-from collections import defaultdict
 from typing import (
     Any,
     Dict,
@@ -29,14 +28,13 @@ from ray.data._internal.gpu_shuffle.hash_shuffle import (
     GPUShuffleOperator,
     _derive_num_gpu_ranks,
 )
-from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.table_block import _resolve_aggregated_column_names
 from ray.data.aggregate import AggregateFn, AggregateFnV2, Count, Max, Mean, Min, Sum
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
-    BlockStats,
     Schema,
 )
 from ray.data.context import DataContext
@@ -44,8 +42,6 @@ from ray.data.datatype import DataType
 
 if typing.TYPE_CHECKING:
     import cudf
-
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 
 logger = logging.getLogger(__name__)
@@ -1046,15 +1042,9 @@ class GPUAggregationPlan:
         self._shuffle_key_columns = key_columns
 
         # Resolve duplicate aggregation names the same way TableBlockAccessor does.
-        counts: Dict[str, int] = defaultdict(int)
-        resolved_names: List[str] = []
-        for agg in gpu_aggregates:
-            name = agg.name
-            if counts[name] > 0:
-                name = TableBlockAccessor._munge_conflict(name, counts[name])
-            counts[agg.name] += 1
-            resolved_names.append(name)
-        self._output_names = tuple(resolved_names)
+        self._output_names = tuple(
+            _resolve_aggregated_column_names([agg.name for agg in gpu_aggregates])
+        )
 
         # Generate unique accumulator prefixes for each resolved name
         self._accumulator_prefixes = tuple(
@@ -1610,6 +1600,9 @@ class GPUHashAggregateActor:
 class GPUHashAggregateOperator(GPUShuffleOperator):
     """GPU-native hash aggregate using RAPIDS MPF for the shuffle stage."""
 
+    _FINALIZE_PROGRESS_BAR_NAME = "GPU Aggregation"
+    _preserves_row_count = False
+
     def __init__(
         self,
         data_context: DataContext,
@@ -1671,20 +1664,3 @@ class GPUHashAggregateOperator(GPUShuffleOperator):
         )
 
         self._aggregation_plan = aggregation_plan
-
-    def get_sub_progress_bar_names(self) -> List[str]:
-        return ["GPU Shuffle", "GPU Aggregation"]
-
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "GPU Shuffle":
-            self._shuffle_bar = pg
-        elif name == "GPU Aggregation":
-            self._reduce_bar = pg
-
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
-        shuffle_name = f"{self._name}_shuffle"
-        aggregate_name = f"{self._name}_aggregate"
-        return {
-            shuffle_name: self._shuffled_blocks_stats,
-            aggregate_name: self._output_blocks_stats,
-        }

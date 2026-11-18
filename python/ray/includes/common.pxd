@@ -403,6 +403,18 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      CLabelSelector label_selector,
                      optional[c_string] tensor_transport,
                      c_vector[CFallbackOption] fallback_strategy)
+        CTaskOptions(c_string name, int num_returns,
+                     unordered_map[c_string, double] &resources,
+                     c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield,
+                     c_string serialized_runtime_env,
+                     c_bool enable_task_events,
+                     const unordered_map[c_string, c_string] &labels,
+                     CLabelSelector label_selector,
+                     optional[c_string] tensor_transport,
+                     c_vector[CFallbackOption] fallback_strategy,
+                     c_bool consume_once)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -523,6 +535,10 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
         c_bool IsGcsLeader() const
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetDrainingNodes(
+            int64_t timeout_ms,
+            CGetDrainingNodesReply &reply)
+
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms,
             CGetAllResourceUsageReply &serialized_reply)
@@ -808,6 +824,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         const c_string &SerializeAsString() const
 
     cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
+        const c_string& SerializeAsString() const
+
+    cdef cppclass CGetDrainingNodesReply "ray::rpc::GetDrainingNodesReply":
         const c_string& SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":

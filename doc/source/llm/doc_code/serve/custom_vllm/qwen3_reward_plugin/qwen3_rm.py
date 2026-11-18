@@ -51,10 +51,10 @@ class Qwen3CustomRewardModel(Qwen3ForCausalLM):
         self.pooler = DispatchPooler.for_seq_cls(pooler_config, classifier=self.score)
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
-        skip_prefixes = ["score."]  # reward head loads separately, below
-        if self.config.tie_word_embeddings:
-            skip_prefixes.append("lm_head.")  # tied: no lm_head weight to load
-        loader = AutoWeightsLoader(self, skip_prefixes=skip_prefixes)
+        weights = (
+            (name, weight) for name, weight in weights if not name.startswith("score.")
+        )
+        loader = AutoWeightsLoader(self)
         loaded = loader.load_weights(weights)
         if self._load_reward_head():
             loaded.add("score.weight")

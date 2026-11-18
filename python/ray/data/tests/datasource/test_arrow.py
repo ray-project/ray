@@ -118,6 +118,27 @@ def test_from_arrow_refs(ray_start_regular_shared, sample_dataframes):
     assert "FromArrow" in ds.stats()
 
 
+@pytest.mark.parametrize("use_refs", [False, True])
+@pytest.mark.parametrize("batch_size", [2, 5, 7])
+def test_from_arrow_ipc_bytes(ray_start_regular_shared, use_refs, batch_size):
+    table = pa.table({"value": [0, None, 2, 3, 4], "label": list("abcde")})
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table, max_chunksize=2)
+    data = sink.getvalue().to_pybytes()
+
+    if use_refs:
+        ds = ray.data.from_arrow_refs(ray.put(data))
+    else:
+        ds = ray.data.from_arrow(data)
+
+    batches = list(ds.iter_batches(batch_size=batch_size, batch_format="pyarrow"))
+    assert [batch.num_rows for batch in batches] == (
+        [2, 2, 1] if batch_size == 2 else [5]
+    )
+    assert pa.concat_tables(batches).equals(table)
+
+
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"id": list(range(n))})

@@ -257,6 +257,13 @@ def main(
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
 
+    # Against "1", so that a 0 is not forwarded to every step as a 1.
+    if os.environ.get("TRIGGER_OBSERVABILITY_AGENT") == "1":
+        env["TRIGGER_OBSERVABILITY_AGENT"] = "1"
+
+    if os.environ.get("OBS_AGENT_COMMENT_ON_GITHUB_ISSUE") == "1":
+        env["OBS_AGENT_COMMENT_ON_GITHUB_ISSUE"] = "1"
+
     # Pipe through RAYCI_BUILD_ID from the forge step.
     # TODO(khluu): convert the steps to rayci steps and stop passing through
     # RAYCI_BUILD_ID.

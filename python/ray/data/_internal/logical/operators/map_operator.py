@@ -11,6 +11,8 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
+    Tuple,
     Union,
 )
 
@@ -22,12 +24,17 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
+    AliasExpr,
+    ColumnExpr,
     Expr,
     StarExpr,
+    expand_projection_exprs,
     expand_star_exprs,
     exprlist_to_fields,
+    is_rename_expr,
 )
 from ray.data.preprocessor import Preprocessor
 
@@ -43,6 +50,7 @@ __all__ = [
     "MapRows",
     "Project",
     "StreamingRepartition",
+    "ShuffleBatches",
     "CSE_TEMP_COLUMN_PREFIX",
 ]
 
@@ -295,6 +303,38 @@ class MapBatches(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
+class ShuffleBatches(AbstractMap, LogicalOperatorPreservesSchema):
+    """Shuffle rows within target-sized batches or whole input blocks.
+
+    Limit pushdown can truncate shuffle batches. Fusion must not rebundle them
+    because task grouping determines the batch-indexed random seeds.
+    """
+
+    batch_size: Optional[int]
+    seed_config: RandomSeedConfig
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    compute: Optional[ComputeStrategy] = None
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if self.batch_size is not None and self.batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(
+            self,
+            "min_rows_per_bundled_input",
+            self.batch_size,
+        )
+        object.__setattr__(self, "_name", "ShuffleBatches")
+
+
+@dataclass(frozen=True, repr=False, eq=False)
 class MapRows(AbstractUDFMap):
     """Logical operator for map."""
 
@@ -335,6 +375,7 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
+    processed_join_conjuncts: Tuple[Expr, ...] = ()
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -409,6 +450,22 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             object.__setattr__(
                 self, "exprs", expand_star_exprs(self.exprs, input_schema)
             )
+        # Eagerly expand any expression that stands for several output
+        # columns (``UnnestExpr`` today) into ordinary named expressions, via
+        # ``Expr.expand_projection``. Unlike star expansion this runs even
+        # without an input schema: an unnest wrapping a UDF resolves its
+        # struct type from the UDF's declared ``return_dtype``. If an
+        # expression cannot be expanded at plan time it raises here, so no
+        # multi-column marker survives into optimizer rules or runtime
+        # evaluation.
+        object.__setattr__(
+            self,
+            "exprs",
+            expand_projection_exprs(
+                self.exprs,
+                input_schema if isinstance(input_schema, pa.Schema) else None,
+            ),
+        )
         if self.compute is None:
             object.__setattr__(
                 self,
@@ -485,6 +542,32 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
+
+    def preserves_columns(self, columns: Sequence[str]) -> bool:
+        """Whether each of ``columns`` passes through unchanged, same name."""
+
+        has_star = any(isinstance(e, StarExpr) for e in self.exprs)
+        # The last expression for a name wins, as in eval_projection.
+        final_exprs: Dict[str, "Expr"] = {}
+        for e in self.exprs:
+            if not isinstance(e, StarExpr):
+                final_exprs[e.name] = e
+        # star() doesn't pass along a column that another expression renames.
+        rename_sources = {e.expr.name for e in self.exprs if is_rename_expr(e)}
+
+        for column in columns:
+            expr = final_exprs.get(column)
+            if expr is None:
+                # Only star() can pass it along.
+                if not has_star or column in rename_sources:
+                    return False
+                continue
+            # Must be the same column, maybe aliased to its own name.
+            while isinstance(expr, AliasExpr):
+                expr = expr.expr
+            if not (isinstance(expr, ColumnExpr) and expr.name == column):
+                return False
+        return True
 
     def infer_schema(self) -> Optional["Schema"]:
         import pyarrow as pa

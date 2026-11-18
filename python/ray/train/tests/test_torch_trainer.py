@@ -17,6 +17,8 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.torch import TorchCheckpoint, TorchConfig, TorchTrainer
 from ray.train.trainer import TrainingFailedError
 
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
+
 
 @pytest.fixture
 def ray_start_4_cpus():

@@ -1,5 +1,6 @@
 import os
 import re
+from dataclasses import replace
 from typing import Any, List
 
 import lance
@@ -7,21 +8,30 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import Version, parse as version_parse
+from packaging.version import Version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Dataset
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
+)
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
     Filter,
     Limit,
+    ListFiles,
     Project,
+    ReadFiles,
     Repartition,
     Sort,
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data._internal.util import rows_same
-from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.datatype import DataType
 from ray.data.expressions import col, lit, udf
@@ -44,6 +54,70 @@ from ray.tests.conftest import *  # noqa
 READ_OPERATOR_PATTERN = (
     r"^(Read\[Read\w+\]" r"|ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\w*\])"
 )
+
+
+@pytest.mark.parametrize(
+    "partitioning",
+    [None, Partitioning(PartitionStyle.HIVE, field_names=["path"])],
+    ids=["none", "hive"],
+)
+@pytest.mark.parametrize("match_path", [True, False], ids=["path", "directory"])
+def test_synthesized_path_filters_use_output_values(
+    ray_start_regular_shared, tmp_path, monkeypatch, partitioning, match_path
+):
+    directory = tmp_path / "path=foo"
+    directory.mkdir()
+    file = directory / "data with spaces.parquet"
+    pq.write_table(pa.table({"id": [1, 2]}), file)
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    ds = ray.data.read_parquet(
+        str(tmp_path), include_paths=True, partitioning=partitioning
+    )
+    rows = ds.filter(
+        expr=col("path") == (str(file) if match_path else "foo")
+    ).take_all()
+    expected = [{"id": i, "path": str(file)} for i in [1, 2]] if match_path else []
+    assert sorted(rows, key=lambda row: row["id"]) == expected
+
+
+def test_synthesized_path_residual_preserves_read_constraints(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    first = tmp_path / "first.parquet"
+    matching = tmp_path / "matching.parquet"
+    for file in (first, matching):
+        pq.write_table(pa.table({"id": [2]}), file)
+    ctx = ray.data.DataContext.get_current()
+    monkeypatch.setattr(ctx, "use_datasource_v2", True)
+    monkeypatch.setattr(ctx.execution_options, "preserve_order", True)
+    ds = ray.data.read_parquet(
+        [str(first), str(matching)],
+        include_paths=True,
+        partitioning=None,
+        merge_schema=True,
+        override_num_blocks=1,
+    )
+    selected = (
+        ds.rename_columns({"path": "source_file"})
+        .filter(expr=col("source_file") == str(matching))
+        .filter(expr=col("id") == 2)
+        .select_columns(["id"])
+    )
+    limited = selected.limit(1)
+    plan = LogicalOptimizer().optimize(limited._logical_plan)
+    assert isinstance(plan, LogicalPlan)
+    (residual,) = get_operators_of_type(plan, Filter)
+    (read,) = get_operators_of_type(plan, ReadFiles)
+
+    assert isinstance(residual, Filter)
+    assert isinstance(read, ReadFiles)
+    assert residual.predicate_expr is not None
+    assert isinstance(read.scanner, ParquetScanner)
+    assert read.scanner.predicate is not None
+    assert set(get_column_references(residual.predicate_expr)) == {"path"}
+    assert set(get_column_references(read.scanner.predicate)) == {"id"}
+    assert selected.count() == 1
+    assert limited.take_all() == [{"id": 2}]
 
 
 def _check_plan_with_flexible_read(
@@ -520,15 +594,16 @@ class TestPredicatePushdownIntoRead:
     def parquet_ds(self, ray_start_regular_shared):
         return ray.data.read_parquet("example://iris.parquet")
 
-    def test_complex_pipeline_all_filters_push_to_read(self, parquet_ds):
-        """Complex pipeline: filters should push through all operators into Read.
+    def test_complex_pipeline_filters_stop_at_limit(self, parquet_ds):
+        """Only filters before the limit should be absorbed into Read.
 
         Pipeline: Read -> Filter -> Rename -> Filter -> Sort -> Repartition
                   -> Filter -> Limit -> Filter
 
-        All filters should fuse, push through all operators, rebind through rename,
-        and be absorbed into the Read operator.
+        Filters before the limit can rebind through rename and push into Read.
+        The final filter must stay after the limit to preserve which rows it sees.
         """
+        parquet_ds.context.execution_options.preserve_order = True
         ds = (
             parquet_ds.filter(expr=col("sepal.length") > 4.0)
             .rename_columns({"sepal.length": "len", "sepal.width": "width"})
@@ -546,27 +621,52 @@ class TestPredicatePushdownIntoRead:
                 expr=(col("sepal.length") > 4.0)
                 & (col("sepal.length") < 7.0)
                 & (col("sepal.width") > 2.5)
-                & (col("sepal.length") > 4.5)
             )
             .rename_columns({"sepal.length": "len", "sepal.width": "width"})
             .sort("len")
             .repartition(3)
             .limit(100)
+            .materialize()
+            .filter(expr=col("len") > 4.5)
         )
 
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        # Verify plan: all filters pushed into Read, passthrough ops remain
+        # Only the post-limit filter should remain outside the reader.
         optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
-        assert not plan_has_operator(
-            optimized_plan, Filter
-        ), "No Filter operators should remain after pushdown into Read"
+        assert len(get_operators_of_type(optimized_plan, Filter)) == 1
+        assert plan_operator_comes_before(optimized_plan, Limit, Filter)
+
+
+@pytest.mark.parametrize("source", ["range", "parquet"])
+@pytest.mark.parametrize("num_blocks", [1, 3])
+@pytest.mark.parametrize("threshold,expected_ids", [(1, [1, 2]), (3, [])])
+def test_filter_does_not_push_through_limit(
+    ray_start_regular_shared, tmp_path, source, num_blocks, threshold, expected_ids
+):
+    if source == "range":
+        ds = ray.data.range(10, override_num_blocks=num_blocks)
+    else:
+        path = tmp_path / "data.parquet"
+        pq.write_table(pa.table({"id": list(range(10))}), path)
+        ds = ray.data.read_parquet(str(path), override_num_blocks=num_blocks)
+    ds.context.execution_options.preserve_order = True
+
+    # Renaming is safe to push through, but the limit must still be a barrier.
+    filtered = (
+        ds.limit(3)
+        .rename_columns({"id": "value"})
+        .filter(expr=col("value") >= threshold)
+    )
+    assert filtered.take_all() == [{"value": i} for i in expected_ids]
+    optimized_plan = LogicalOptimizer().optimize(filtered._logical_plan)
+    assert plan_operator_comes_before(optimized_plan, Limit, Filter)
 
 
 class TestPassthroughBehavior:
     """Tests for PASSTHROUGH behavior operators.
 
-    Operators: Sort, Repartition, RandomShuffle, Limit
+    Operators: Sort, Repartition, RandomShuffle
     Predicates pass through unchanged - operators don't affect filtering.
     """
 
@@ -584,9 +684,8 @@ class TestPassthroughBehavior:
                 "StreamingRepartition",
             ),
             (lambda ds: ds.random_shuffle(), "RandomShuffle"),
-            (lambda ds: ds.limit(50), "Limit"),
         ],
-        ids=["sort", "repartition", "streaming_repartition", "random_shuffle", "limit"],
+        ids=["sort", "repartition", "streaming_repartition", "random_shuffle"],
     )
     def test_filter_pushes_through_operator(self, base_ds, transform, expected_op_type):
         """Filter should push through passthrough operators."""
@@ -608,7 +707,7 @@ class TestPassthroughBehavior:
 
     def test_filter_pushes_through_multiple_ops(self, base_ds):
         """Filter should push through multiple passthrough operators."""
-        ds = base_ds.sort("id").repartition(5).limit(50).filter(expr=col("id") < 10)
+        ds = base_ds.sort("id").repartition(5).filter(expr=col("id") < 10)
 
         # Verify correctness against expected result
         expected = base_ds.filter(expr=col("id") < 10)
@@ -621,7 +720,6 @@ class TestPassthroughBehavior:
         assert plan_has_operator(
             optimized_plan, Repartition
         ), "Repartition should remain"
-        assert plan_has_operator(optimized_plan, Limit), "Limit should remain"
 
     def test_multiple_filters_fuse_and_push_through(self, base_ds):
         """Multiple filters should fuse and push through passthrough operators."""
@@ -1004,10 +1102,6 @@ class TestPyArrowComputeUDFPushdown:
             ),
         ],
     )
-    @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
-    )
     def test_string_udf_pushdown_into_parquet(
         self, parquet_ds, build_filter, equivalent_fn
     ):
@@ -1021,10 +1115,6 @@ class TestPyArrowComputeUDFPushdown:
             optimized_plan, Filter
         ), "PyArrow-compute UDF filter should be pushed into Read"
 
-    @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
-    )
     def test_udf_combined_with_comparison_pushdown(self, parquet_ds):
         """UDF predicate combined with comparison should both push down."""
         ds = parquet_ds.filter(
@@ -1040,10 +1130,6 @@ class TestPyArrowComputeUDFPushdown:
             optimized_plan, Filter
         ), "Combined UDF + comparison filter should be pushed into Read"
 
-    @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
-    )
     def test_chained_udf_filters_fuse_and_push(self, parquet_ds):
         """Multiple UDF filters should fuse and push into Read."""
         ds = parquet_ds.filter(expr=col("variety").str.contains("set")).filter(
@@ -1059,10 +1145,6 @@ class TestPyArrowComputeUDFPushdown:
             optimized_plan, Filter
         ), "Chained UDF filters should fuse and push into Read"
 
-    @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for complex type UDF pushdown",
-    )
     @pytest.mark.parametrize(
         "table,build_filter,equivalent_fn",
         [
@@ -1167,6 +1249,200 @@ class TestPushIntoBranchesBehavior:
         )
         expected = expected_single.union(expected_single)
         assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+
+def test_limit_over_partition_filter(ray_start_regular_shared, tmp_path):
+    """A limit under a partition filter must be correct *and* still stop early.
+
+    Listing prunes on row-group statistics, which cannot see partition columns
+    -- those live in the directory name, not the file. So listing counted all
+    50 rows of whichever file completed first, stopped, and the reader then
+    dropped that file, returning 0 rows whenever the first-listed file was not
+    ``year=2020``. Which file completed first is decided by an unordered actor
+    pool, so the query was nondeterministically wrong.
+
+    The fix gives listing the same path-based pruning the reader uses, so it
+    drops ``year=2019`` before reading its footer. Every row it counts towards
+    the limit now belongs to a file the reader keeps.
+    """
+    for year in (2019, 2020):
+        (tmp_path / f"year={year}").mkdir()
+        pq.write_table(
+            pa.table({"x": list(range(50))}),
+            tmp_path / f"year={year}" / "data.parquet",
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") == "2020")
+
+    optimized_plan = LogicalOptimizer().optimize(ds.limit(5)._logical_plan)
+    list_files = get_operators_of_type(optimized_plan, ListFiles)
+    assert len(list_files) == 1
+    # The limit survives -- pruning is what makes stopping early sound.
+    assert list_files[0].limit == 5
+    assert list_files[0].partition_pruner is not None
+
+    # Racy on master: it passed only when ``year=2020`` happened to land first.
+    assert len(ds.take(5)) == 5
+
+
+def test_limit_over_partition_filter_prunes_before_listing(
+    ray_start_regular_shared, tmp_path
+):
+    """Listing reads footers only for files the partition filter keeps.
+
+    Without pruning, a correct answer costs a footer read for every file in the
+    dataset, because the limit has to be abandoned to stay correct. The
+    ``ListFiles`` output row count is one row per file whose footer was read.
+    """
+    for year in range(2000, 2020):
+        (tmp_path / f"year={year}").mkdir()
+        pq.write_table(
+            pa.table({"x": list(range(50))}),
+            tmp_path / f"year={year}" / "data.parquet",
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") >= "2010")
+
+    # 10 of 20 partitions match, and a limit of 5 is satisfied by the first
+    # file, so listing should stop far short of even those 10.
+    assert len(ds.limit(5).take_all()) == 5
+
+    # Without a limit, pruning alone still keeps listing to the 10 matches.
+    assert ds.count() == 500
+
+
+def test_limit_over_partition_filter_without_partitioning_spec(
+    ray_start_regular_shared, tmp_path
+):
+    """With no partitioning spec, listing cannot prune, so it must not stop early.
+
+    This is the conservative branch: ``pushed_partition_pruner`` returns
+    ``None`` and planning drops the limit rather than risk truncating listing
+    to files the reader discards.
+    """
+    from ray.data._internal.datasource_v2.common.pushdown_utils import (
+        derive_list_files_pushdown,
+    )
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+        ParquetScanner,
+    )
+
+    pq.write_table(pa.table({"x": [1, 2, 3]}), tmp_path / "a.parquet")
+    ds = ray.data.read_parquet(str(tmp_path))
+    reads = get_operators_of_type(
+        LogicalOptimizer().optimize(ds._logical_plan), ReadFiles
+    )
+    scanner = reads[0].scanner
+    assert isinstance(scanner, ParquetScanner)
+
+    # A partition predicate but no partitioning spec to evaluate it against.
+    scanner = replace(scanner, partition_predicate=col("year") == "2020")
+    scanner = replace(scanner, partitioning=None)
+    scanner = scanner.push_limit(5)
+
+    assert scanner.pushed_partition_pruner() is None
+    pushdown = derive_list_files_pushdown(scanner)
+    assert pushdown.limit is None
+    assert pushdown.partition_pruner is None
+
+
+def _write_q7_tables(tmp_path, partition_nation_by_name: bool):
+    """A ``nation`` table and a (supplier nation, customer nation) fact table; only
+    the FRANCE<->GERMANY pairs (volumes 10 and 20) satisfy q7's filter.
+    """
+    nations = ["FRANCE", "GERMANY", "JAPAN", "BRAZIL"]
+    nation_table = pa.table(
+        {"n_nationkey": list(range(len(nations))), "n_name": nations}
+    )
+    nation_path = tmp_path / "nation"
+    if partition_nation_by_name:
+        pq.write_to_dataset(
+            nation_table, root_path=str(nation_path), partition_cols=["n_name"]
+        )
+    else:
+        nation_path.mkdir()
+        pq.write_table(nation_table, nation_path / "nation.parquet")
+    trade_path = tmp_path / "trade.parquet"
+    pq.write_table(
+        pa.table(
+            {
+                "supp_nation": [0, 1, 0, 2, 1, 3],
+                "cust_nation": [1, 0, 0, 1, 1, 3],
+                "volume": [10, 20, 30, 40, 50, 60],
+            }
+        ),
+        trade_path,
+    )
+    return nation_path, trade_path
+
+
+@pytest.mark.parametrize("hive_partitioned", [False, True], ids=["plain", "hive"])
+def test_disjunction_over_two_joined_scans_prunes_both_reads(
+    ray_start_regular_shared, tmp_path, hive_partitioned
+):
+    """TPC-H q7 on Parquet reads behind renames (#66832): the OR stays above the
+    join, each nation scan gets the derived predicate rebound to its own column
+    (into partition pruning when hive-partitioned).
+    """
+    from ray.data._internal.logical.interfaces import (
+        LogicalOperatorSupportsPredicatePushdown,
+    )
+    from ray.data.tests.test_util import assert_plans_structurally_equal
+
+    nation_path, trade_path = _write_q7_tables(tmp_path, hive_partitioned)
+    read_kwargs = {"partitioning": Partitioning("hive")} if hive_partitioned else {}
+
+    supp_nation = ray.data.read_parquet(str(nation_path), **read_kwargs).rename_columns(
+        {"n_nationkey": "supp_nation", "n_name": "supp_nation_name"}
+    )
+    cust_nation = ray.data.read_parquet(str(nation_path), **read_kwargs).rename_columns(
+        {"n_nationkey": "cust_nation", "n_name": "cust_nation_name"}
+    )
+    join_kwargs = dict(
+        join_type="inner",
+        num_partitions=2,
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    ds = (
+        ray.data.read_parquet(str(trade_path))
+        .join(supp_nation, on=("supp_nation",), **join_kwargs)
+        .join(cust_nation, on=("cust_nation",), **join_kwargs)
+    )
+    predicate = (
+        (col("supp_nation_name") == "FRANCE") & (col("cust_nation_name") == "GERMANY")
+    ) | ((col("supp_nation_name") == "GERMANY") & (col("cust_nation_name") == "FRANCE"))
+    ds = ds.filter(expr=predicate)
+
+    plan = LogicalOptimizer().optimize(ds._logical_plan)
+    assert_plans_structurally_equal(LogicalOptimizer().optimize(plan), plan)
+
+    assert isinstance(plan.dag, Filter)
+    assert plan.dag.predicate_expr.structurally_equals(predicate)
+
+    reads = [
+        op
+        for op in plan.dag.post_order_iter()
+        if isinstance(op, LogicalOperatorSupportsPredicatePushdown)
+        and op.supports_predicate_pushdown()
+    ]
+    assert len(reads) == 3, plan.dag.dag_str
+    # The branches come out in the original order, so the two sides are mirrored.
+    derived_supp = (col("n_name") == "FRANCE") | (col("n_name") == "GERMANY")
+    derived_cust = (col("n_name") == "GERMANY") | (col("n_name") == "FRANCE")
+    pruned = [
+        read
+        for read in reads
+        if read.get_current_predicate() is not None
+        and (
+            read.get_current_predicate().structurally_equals(derived_supp)
+            or read.get_current_predicate().structurally_equals(derived_cust)
+        )
+    ]
+    unpruned = [read for read in reads if read.get_current_predicate() is None]
+    assert len(pruned) == 2 and len(unpruned) == 1, plan.dag.dag_str
+
+    result = sorted(ds.to_pandas()["volume"].tolist())
+    assert result == [10, 20]
 
 
 if __name__ == "__main__":

@@ -116,7 +116,6 @@ def plan_read_op(
         [
             BlockMapTransformFn(
                 do_read,
-                is_udf=False,
                 output_block_size_option=OutputBlockSizeOption.of(
                     target_max_block_size=data_context.target_max_block_size,
                 ),
@@ -132,4 +131,5 @@ def plan_read_op(
         compute_strategy=op.compute,
         ray_remote_args=op.ray_remote_args,
         isolate_workers=data_context.isolate_read_workers,
+        is_read_op=True,
     )

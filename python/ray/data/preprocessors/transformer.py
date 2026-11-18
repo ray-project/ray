@@ -75,25 +75,40 @@ class PowerTransformer(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately transform."""
         return self._columns
 
     @property
     def method(self) -> str:
+        """The transformation to apply: ``"yeo-johnson"`` or ``"box-cox"``."""
         return self._method
 
     @property
     def power(self) -> float:
+        """The parameter that determines how the data is transformed."""
         return self._power
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_power_transformer(s: pd.Series):
             if self._method == "yeo-johnson":
                 result = np.zeros_like(s, dtype=np.float64)
-                pos = s >= 0  # binary mask
+                # Binary mask. `fillna(False)` is what keeps it binary: an
+                # Arrow-backed column represents a missing value with `pd.NA`,
+                # and `pd.NA >= 0` is `pd.NA` rather than True or False, so the
+                # mask becomes three-valued and cannot index `result` below.
+                # Treating a missing value as "not positive" sends the row down
+                # the negative branch, where the arithmetic leaves it missing --
+                # the same result as a NumPy-backed column, for which
+                # `np.nan >= 0` is already False.
+                pos = (s >= 0).fillna(False)
 
                 if self._power != 0:
                     result[pos] = (np.power(s[pos] + 1, self._power) - 1) / self._power

@@ -1,5 +1,7 @@
 import pickle
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+from types import GeneratorType
 from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Union
 
 import ray
@@ -29,6 +31,23 @@ def merge_label_selector(
     out = dict(ray_remote_args)
     out["label_selector"] = merged
     return out
+
+
+def merge_runtime_envs(
+    base: Optional[Dict[str, Any]], user: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Overlay a user ``runtime_env`` on an operator default, merging ``env_vars``."""
+    base = base or {}
+    merged = {**base, **user}
+    if "env_vars" in base or "env_vars" in user:
+        merged["env_vars"] = {**base.get("env_vars", {}), **user.get("env_vars", {})}
+    return merged
+
+
+def resource_override(ray_remote_args: Dict[str, Any], key: str, default: Any) -> Any:
+    """User value for a resource option; ``None`` means "use the default", as in Ray."""
+    value = ray_remote_args.get(key)
+    return default if value is None else value
 
 
 def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
@@ -112,6 +131,7 @@ def make_callable_class_single_threaded(callable_cls: CallableClass) -> Callable
     class _SingleThreadedWrapper(callable_cls):
         def __init__(self, *args, **kwargs):
             self.thread_pool_executor = ThreadPoolExecutor(max_workers=1)
+            self._udf_lock = Lock()
             super().__init__(*args, **kwargs)
 
         def __repr__(self):
@@ -120,6 +140,26 @@ def make_callable_class_single_threaded(callable_cls: CallableClass) -> Callable
         def __call__(self, *args, **kwargs):
             # ThreadPoolExecutor will reuse the same thread for every submit call.
             future = self.thread_pool_executor.submit(super().__call__, *args, **kwargs)
-            return future.result()
+            result = future.result()
+            if not isinstance(result, GeneratorType):
+                return result
+
+            def iterate():
+                # Keep the lock across yields, but wait for it outside the executor.
+                with self._udf_lock:
+                    try:
+                        while True:
+                            try:
+                                item = self.thread_pool_executor.submit(
+                                    next, result
+                                ).result()
+                            except StopIteration:
+                                return
+                            yield item
+                            del item
+                    finally:
+                        self.thread_pool_executor.submit(result.close).result()
+
+            return iterate()
 
     return _SingleThreadedWrapper

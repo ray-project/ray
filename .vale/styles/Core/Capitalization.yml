@@ -1,0 +1,39 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-core-docs-style'
+level: warning
+ignorecase: false
+# Ray Core generic nouns written in title case. These are the companion to
+# Core/Terms.yml, split out because a fix here needs judgment: the swaps lowercase the
+# whole phrase, but when the phrase opens a heading or a sentence, the first word keeps
+# its capital, such as "# Placement groups". So this rule carries no `action: replace`,
+# and a tool applying swaps from Vale's JSON output skips it.
+#
+# The swaps are case-sensitive, so a sentence-initial "Placement groups" doesn't match.
+# `vocab: false` for the same reason as Core/Terms.yml: `[Rr]aylet(s)?` is in the Core
+# accept list.
+vocab: false
+swap:
+  # Vale's word boundary stops 'Raylet' matching inside 'Raylets', so the plural is
+  # its own entry. Core/Terms.yml handles the singular with preceding-word keys.
+  'Raylets': raylets
+  # "object ref" in prose, `ObjectRef` in code style for the type.
+  'Object Refs': object refs
+  'Object Ref': object ref
+  'Object Store': object store
+  'Placement Groups': placement groups
+  'Placement Group': placement group
+  'Head Node': head node
+  'Worker Nodes': worker nodes
+  'Worker Node': worker node
+  'Worker Processes': worker processes
+  'Worker Process': worker process
+  'Fault Tolerance': fault tolerance
+  'Remote Functions': remote functions
+  'Remote Function': remote function
+  'Actor Handles': actor handles
+  'Actor Handle': actor handle
+  'Named Actors': named actors
+  'Named Actor': named actor
+  'Concurrency Groups': concurrency groups
+  'Concurrency Group': concurrency group

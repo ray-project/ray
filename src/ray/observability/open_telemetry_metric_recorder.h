@@ -69,6 +69,10 @@ class OpenTelemetryMetricRecorder {
              std::chrono::milliseconds interval,
              std::chrono::milliseconds timeout);
 
+  // Exports recorded metrics now, blocking until the export completes or timeout
+  // elapses. Unlike Shutdown(), the recorder stays usable afterwards.
+  bool ForceFlush(std::chrono::microseconds timeout);
+
   // Flush the remaining metrics. Note that this is a reset rather than a complete
   // shutdown, so it can be consistent with the shutdown behavior of stats.h.
   void Shutdown();

@@ -7,6 +7,7 @@ import tempfile
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Optional, Union
 from unittest import mock
 
 import pandas as pd
@@ -22,6 +23,7 @@ from ray.data._internal.datasource.databricks_credentials import (
 from ray.data._internal.datasource.databricks_uc_datasource import (
     DatabricksUCDatasource,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.util import rows_same
 from ray.data.tests.datasource.databricks_test_utils import (
     MockResponse,
@@ -125,17 +127,21 @@ def test_data():
 # =============================================================================
 
 
-def create_mock_chunks(df: pd.DataFrame, rows_per_chunk: int) -> list[MockChunk]:
-    """Create mock chunks from a DataFrame."""
+def create_mock_chunks(
+    data: Union[pd.DataFrame, pa.Table], rows_per_chunk: int
+) -> list[MockChunk]:
+    """Create mock Arrow IPC chunks from a DataFrame or an Arrow table."""
     chunks = []
-    num_rows = len(df)
+    num_rows = len(data)
     cur_pos = 0
     index = 0
 
     while cur_pos < num_rows:
         chunk_rows = min(rows_per_chunk, num_rows - cur_pos)
-        chunk_df = df[cur_pos : cur_pos + chunk_rows]
-        chunk_pa_table = pa.Table.from_pandas(chunk_df)
+        if isinstance(data, pa.Table):
+            chunk_pa_table = data.slice(cur_pos, chunk_rows)
+        else:
+            chunk_pa_table = pa.Table.from_pandas(data[cur_pos : cur_pos + chunk_rows])
 
         sink = pa.BufferOutputStream()
         with pa.ipc.new_stream(sink, chunk_pa_table.schema) as writer:
@@ -278,11 +284,14 @@ class TestDatabricksUCDatasourceIntegration:
             yield
 
     @contextmanager
-    def _setup_integration_test(self, test_data: dict):
+    def _setup_integration_test(
+        self, test_data: dict, mock_chunks: Optional[list[MockChunk]] = None
+    ):
         """Set up complete integration test environment with mocks and Ray."""
-        mock_chunks = create_mock_chunks(
-            test_data["expected_df"], test_data["rows_per_chunk"]
-        )
+        if mock_chunks is None:
+            mock_chunks = create_mock_chunks(
+                test_data["expected_df"], test_data["rows_per_chunk"]
+            )
 
         setup_mock_fn_path = os.path.join(tempfile.mkdtemp(), "setup_mock_fn.pkl")
         with open(setup_mock_fn_path, "wb") as fp:
@@ -321,6 +330,35 @@ class TestDatabricksUCDatasourceIntegration:
             ).to_pandas()
 
             assert rows_same(result, test_data["expected_df"])
+
+    def test_read_rejects_pickle_object_columns(self, test_data, tmp_path):
+        """An Arrow IPC chunk from the external link carrying a pickled-object
+        column must be rejected before anything is unpickled."""
+        marker = tmp_path / "exploit_marker"
+
+        class Exploit:
+            def __reduce__(self):
+                return (os.system, (f"touch {marker}",))
+
+        poisoned = pa.table(
+            {
+                "id": pa.array([1, 2]),
+                "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2),
+            }
+        )
+        mock_chunks = create_mock_chunks(poisoned, rows_per_chunk=2)
+
+        with self._setup_integration_test(test_data, mock_chunks):
+            with pytest.raises(Exception, match="arrow_pickled_object"):
+                ray.data.read_databricks_tables(
+                    warehouse_id=test_data["warehouse_id"],
+                    query=test_data["query"],
+                    catalog=test_data["catalog"],
+                    schema=test_data["schema"],
+                    override_num_blocks=1,
+                ).take_all()
+
+        assert not marker.exists(), "pickle.load executed attacker code"
 
     @pytest.mark.parametrize("num_blocks", [5, 100])
     def test_read_with_different_parallelism(self, test_data, num_blocks):

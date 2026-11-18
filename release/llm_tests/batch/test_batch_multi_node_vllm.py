@@ -14,13 +14,15 @@ def cleanup_ray_resources():
 @pytest.mark.parametrize(
     "tp_size,pp_size",
     [
-        (2, 4),
-        (4, 2),
+        # Cluster: 2 nodes x 2 GPUs. TPxPP=4 forces cross-node placement.
+        (1, 4),
+        (2, 2),
     ],
 )
+@pytest.mark.requires_2x_2GPU
 def test_vllm_multi_node(tp_size, pp_size):
     config = vLLMEngineProcessorConfig(
-        model_source="facebook/opt-1.3b",
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             enable_prefix_caching=True,
             enable_chunked_prefill=True,

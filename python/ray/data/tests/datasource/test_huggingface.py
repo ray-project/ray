@@ -1,12 +1,16 @@
+import os
 from unittest.mock import MagicMock, patch
 
 import datasets
 import pyarrow
 import pytest
 import requests
-from packaging.version import Version
 
 import ray
+from ray.data._internal.datasource.huggingface_datasource import (
+    HuggingFaceDatasource,
+)
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.tests.conftest import *  # noqa
 
@@ -263,10 +267,6 @@ def test_from_huggingface(mock_hf_dataset_dict, ray_start_regular_shared, num_pa
     datasets.Version(datasets.__version__) < datasets.Version("2.8.0"),
     reason="IterableDataset.iter() added in 2.8.0",
 )
-@pytest.mark.skipif(
-    Version(pyarrow.__version__) < Version("8.0.0"),
-    reason="pyarrow.Table.to_reader() added in 8.0.0",
-)
 # Note, pandas is excluded here because IterableDatasets do not support pandas format.
 @pytest.mark.parametrize(
     "batch_format",
@@ -456,6 +456,33 @@ def test_from_huggingface_url_resolution_failures(
 
                 # Verify the dataset was created successfully via fallback
                 verify_dataset_creation(ds, mock_hf_dataset)
+
+
+def test_huggingface_datasource_rejects_pickle_object_columns(tmp_path):
+    """An Arrow batch from HF carrying a pickled-object column must be rejected
+    before anything is unpickled."""
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    poisoned = pyarrow.table(
+        {
+            "text": ["a", "b"],
+            "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2),
+        }
+    )
+    # ``datasets`` refuses to build Features for unknown extension types, so drive
+    # the datasource with a stand-in that yields the Arrow batch HF would produce.
+    hf_dataset = MagicMock()
+    hf_dataset.with_format.return_value.iter.return_value = iter([poisoned])
+
+    read_task = HuggingFaceDatasource(hf_dataset).get_read_tasks(1)[0]
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(read_task())
+
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 if __name__ == "__main__":

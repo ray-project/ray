@@ -2,33 +2,40 @@ import gc
 import time
 import weakref
 from collections import deque
+from dataclasses import dataclass
+from typing import Type
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
-from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.interfaces.task_context import (
+    RerunPolicy,
+    TaskContext,
+)
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
+    BlockMapTransformFn,
     MapTransformer,
-    UDFTimeScope,
+    TransformClock,
+)
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    _task_rerun_policy,
 )
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_map_batches,
 )
 from ray.data.block import BlockAccessor, DataBatch
+from ray.data.context import DataContext
+from ray.exceptions import RaySystemError
 
 
-def _create_chained_transformer(udf, n, *, is_udf=False):
-    """Create a MapTransformer with chained batch transforms that track intermediates.
-
-    ``is_udf`` mirrors what the planner sets for real ``map_batches`` stages; it
-    gates UDF timing, so tests that assert on ``udf_time_s`` must pass True.
-    """
+def _create_chained_transformer(udf, n):
+    """Create a MapTransformer with chained batch transforms that track intermediates."""
     transform_fns = [
         BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(udf),
-            is_udf=is_udf,
             batch_format="pandas",
             batch_size=1,
             output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
@@ -68,7 +75,7 @@ def test_chained_transforms_release_intermediates_between_batches():
             yield pd.DataFrame({"id": [i + 1]})
 
     result_iter = transformer.apply_transform(
-        make_input_blocks(), ctx, udf_time_scope=UDFTimeScope()
+        make_input_blocks(), ctx, clock=TransformClock()
     )
 
     for i in range(NUM_BATCHES):
@@ -148,7 +155,7 @@ def _trace_back_refs(intermediates: list, label: str = ""):
                     print(f"    -> {type(r).__name__}")
 
 
-def test_chained_transforms_dont_double_count_udf_time():
+def test_chained_transforms_dont_double_count_block_transform_time():
     """Chained UDF stages must not each re-count their upstream stages' time.
 
     Timing every stage and summing reported n(n+1)/2x the real time, which could
@@ -166,19 +173,16 @@ def test_chained_transforms_dont_double_count_udf_time():
         time.sleep(SLEEP_S)
         return pd.DataFrame({"id": batch["id"]})
 
-    # is_udf=True is what gates timing; without it no stage is timed at all.
-    transformer = _create_chained_transformer(udf, NUM_CHAINED_TRANSFORMS, is_udf=True)
+    transformer = _create_chained_transformer(udf, NUM_CHAINED_TRANSFORMS)
     ctx = TaskContext(task_idx=0, op_name="test")
 
     def make_input_blocks():
         for i in range(NUM_BATCHES):
             yield pd.DataFrame({"id": [i]})
 
-    scope = UDFTimeScope()
+    scope = TransformClock()
     start_s = time.perf_counter()
-    blocks = list(
-        transformer.apply_transform(make_input_blocks(), ctx, udf_time_scope=scope)
-    )
+    blocks = list(transformer.apply_transform(make_input_blocks(), ctx, clock=scope))
     wall_s = time.perf_counter() - start_s
 
     # Assert on rows rather than block count, which depends on block shaping.
@@ -188,7 +192,7 @@ def test_chained_transforms_dont_double_count_udf_time():
     # The whole transform chain, not just the sleeps: for each stage it covers
     # turning input blocks into batches, the UDF body, and building output
     # blocks. The sleeps are therefore a floor on it, never an equality.
-    reported_s = scope.attributed_s
+    reported_s = scope.drain().total_s
     # Measured, not assumed: block shaping decides how many batches each stage sees.
     slept_s = num_calls * SLEEP_S
 
@@ -196,10 +200,10 @@ def test_chained_transforms_dont_double_count_udf_time():
     # absorbs timing noise; double counting shows up at ~2x for 3 stages.
     assert (
         reported_s <= wall_s * 1.05
-    ), f"reported UDF time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
+    ), f"reported block transform time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
     # ...and the stages' time must still be measured, not dropped.
     assert reported_s >= slept_s * 0.9, (
-        f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
+        f"reported block transform time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
         f"across {num_calls} UDF calls"
     )
 
@@ -228,7 +232,6 @@ def test_chained_transforms_total_is_independent_of_distribution():
     transform_fns = [
         BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(make_udf(i)),
-            is_udf=True,
             batch_format="pandas",
             batch_size=1,
             output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
@@ -242,17 +245,15 @@ def test_chained_transforms_total_is_independent_of_distribution():
         for i in range(NUM_BATCHES):
             yield pd.DataFrame({"id": [i]})
 
-    scope = UDFTimeScope()
+    scope = TransformClock()
     start_s = time.perf_counter()
-    blocks = list(
-        transformer.apply_transform(make_input_blocks(), ctx, udf_time_scope=scope)
-    )
+    blocks = list(transformer.apply_transform(make_input_blocks(), ctx, clock=scope))
     wall_s = time.perf_counter() - start_s
 
     assert sum(BlockAccessor.for_block(b).num_rows() for b in blocks) == NUM_BATCHES
     assert all(n > 0 for n in calls_per_stage), calls_per_stage
 
-    reported_s = scope.attributed_s
+    reported_s = scope.drain().total_s
     slept_s = sum(n * s for n, s in zip(calls_per_stage, SLEEPS_S))
 
     # Summing the stages' inclusive times would give 0.05 + 0.15 + 0.30 = 0.50s
@@ -260,11 +261,235 @@ def test_chained_transforms_total_is_independent_of_distribution():
     # exactly, not approximately.
     assert (
         reported_s <= wall_s * 1.05
-    ), f"reported UDF time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
+    ), f"reported block transform time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
     assert reported_s >= slept_s * 0.9, (
-        f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
+        f"reported block transform time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
         f"across stages {calls_per_stage}"
     )
+
+
+def test_every_output_block_is_timed():
+    """Draining must not stop the chain from measuring the next block.
+
+    `_map_task` drains once per output block, so a drain that rebound its
+    totals instead of clearing them left the steps writing to a list nobody
+    read again: a task's first block reported its time and every block after it
+    reported zero.
+    """
+    NUM_BLOCKS = 3
+    SLEEP_S = 0.05
+
+    def udf(batch: DataBatch) -> DataBatch:
+        time.sleep(SLEEP_S)
+        return pd.DataFrame({"id": batch["id"]})
+
+    transformer = _create_chained_transformer(udf, 1)
+    ctx = TaskContext(task_idx=0, op_name="test")
+
+    def make_input_blocks():
+        for i in range(NUM_BLOCKS):
+            yield pd.DataFrame({"id": [i]})
+
+    clock = TransformClock()
+    # `_create_chained_transformer` shapes one batch per output block, so each
+    # `next()` here is one output block, drained the way `_map_task` drains it.
+    out = iter(transformer.apply_transform(make_input_blocks(), ctx, clock=clock))
+    reported_s = []
+    for _ in range(NUM_BLOCKS):
+        next(out)
+        reported_s.append(clock.drain().total_s)
+
+    assert all(s >= SLEEP_S * 0.9 for s in reported_s), (
+        f"per-block transform times {[round(s, 4) for s in reported_s]} do not all "
+        f"cover the {SLEEP_S}s slept while producing each block"
+    )
+
+
+def _failing_block_transformer(tables_before_error, error_type=ValueError):
+    """A one-stage transformer whose function yields ``tables_before_error``
+    one-row tables, then raises ``error_type("bad input")``. Its output blocks
+    are 1 MiB, so the tables share one buffered block."""
+
+    def fn(blocks, ctx):
+        for i in range(tables_before_error):
+            yield pa.table({"x": [i]})
+        raise error_type("bad input")
+
+    return MapTransformer(
+        [
+            BlockMapTransformFn(
+                fn,
+                output_block_size_option=OutputBlockSizeOption.of(
+                    target_max_block_size=1024 * 1024
+                ),
+            )
+        ]
+    )
+
+
+# A task that Ray does not rerun, for the tests of ``_map_task``'s own retries.
+NO_RAY_RERUN = RerunPolicy(ray_reruns_any_error=False)
+
+
+def _outputs(transformer, rerun_policy=NO_RAY_RERUN):
+    """The transformer's output blocks for one one-row input block, in a task
+    that runs again as ``rerun_policy`` says.
+
+    A generator, so the task context is current while the blocks are drawn, as
+    ``_map_task`` sets it.
+    """
+    ctx = TaskContext(task_idx=0, op_name="test", rerun_policy=rerun_policy)
+    with TaskContext.current(ctx):
+        yield from transformer.apply_transform(
+            iter([pa.table({"x": [0]})]), ctx, clock=TransformClock()
+        )
+
+
+@pytest.fixture
+def skip_errors(monkeypatch):
+    """Let the job skip an errored block (``max_errored_blocks=1``); returns the
+    patched ``DataContext``."""
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "max_errored_blocks", 1)
+    return context
+
+
+@dataclass(frozen=True)
+class BufferedRowsCase:
+    """A map task that raises after buffering rows 0 and 1, and whether it emits
+    them as a last block before the error."""
+
+    rerun_policy: RerunPolicy
+    emits_rows: bool
+    error_type: Type[Exception] = ValueError
+    # The job's ``DataContext`` settings; 1 lets the job skip the error.
+    max_errored_blocks: int = 1
+    actor_task_retry_on_errors: bool = False
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            BufferedRowsCase(NO_RAY_RERUN, emits_rows=True), id="skipped-error"
+        ),
+        pytest.param(
+            BufferedRowsCase(NO_RAY_RERUN, emits_rows=False, max_errored_blocks=0),
+            id="error-fails-the-job",
+        ),
+        # ``None`` patterns retry any error, as ``retried_map_errors=True`` sets them.
+        pytest.param(
+            BufferedRowsCase(
+                NO_RAY_RERUN.with_map_retries(attempts_left=1, patterns=None),
+                emits_rows=False,
+            ),
+            id="map-task-retries-any-error",
+        ),
+        pytest.param(
+            BufferedRowsCase(
+                NO_RAY_RERUN.with_map_retries(
+                    attempts_left=1, patterns=["connection reset"]
+                ),
+                emits_rows=True,
+            ),
+            id="no-map-retry-pattern-matches",
+        ),
+        pytest.param(
+            BufferedRowsCase(
+                NO_RAY_RERUN.with_map_retries(attempts_left=1, patterns=["bad input"]),
+                emits_rows=False,
+            ),
+            id="a-map-retry-pattern-matches",
+        ),
+        pytest.param(
+            BufferedRowsCase(
+                NO_RAY_RERUN.with_map_retries(attempts_left=0, patterns=["bad input"]),
+                emits_rows=True,
+            ),
+            id="last-map-attempt",
+        ),
+        pytest.param(
+            BufferedRowsCase(
+                RerunPolicy.from_retry_exceptions([ValueError]), emits_rows=False
+            ),
+            id="ray-retries-the-error",
+        ),
+        pytest.param(
+            BufferedRowsCase(
+                RerunPolicy.from_retry_exceptions([KeyError]), emits_rows=True
+            ),
+            id="ray-retries-other-errors",
+        ),
+        # Ray Data's default for a task: unlimited retries, ``RaySystemError``
+        # among them. With ``max_retries=0`` Ray reruns on nothing.
+        pytest.param(
+            BufferedRowsCase(
+                _task_rerun_policy({}), emits_rows=False, error_type=RaySystemError
+            ),
+            id="system-error-ray-retries",
+        ),
+        pytest.param(
+            BufferedRowsCase(
+                _task_rerun_policy({"max_retries": 0}),
+                emits_rows=True,
+                error_type=RaySystemError,
+            ),
+            id="system-error-no-ray-retries",
+        ),
+        # ``actor_task_retry_on_errors`` reaches actor tasks only, through their
+        # ``retry_exceptions``.
+        pytest.param(
+            BufferedRowsCase(
+                _task_rerun_policy({}), emits_rows=True, actor_task_retry_on_errors=True
+            ),
+            id="task-with-actor-retry-setting",
+        ),
+    ],
+)
+def test_a_failing_task_emits_its_buffered_rows_only_without_a_rerun(case, monkeypatch):
+    """A map task that raises after buffering rows emits them as one last block
+    before the error only when the job skips the error and neither Ray nor
+    ``_map_task`` runs the task again."""
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "max_errored_blocks", case.max_errored_blocks)
+    monkeypatch.setattr(
+        context, "actor_task_retry_on_errors", case.actor_task_retry_on_errors
+    )
+    transformer = _failing_block_transformer(
+        tables_before_error=2, error_type=case.error_type
+    )
+
+    out = _outputs(transformer, case.rerun_policy)
+
+    if case.emits_rows:
+        rows = BlockAccessor.for_block(next(out)).to_arrow()["x"].to_pylist()
+        assert rows == [0, 1]
+    with pytest.raises(case.error_type, match="bad input"):
+        next(out)
+
+
+def test_a_task_without_retry_settings_raises_without_a_partial_block(skip_errors):
+    """A task whose ``TaskContext`` does not state its retry settings may be
+    rerun, so its buffered rows are not emitted even when the job skips errors."""
+    ctx = TaskContext(task_idx=0, op_name="test")
+    transformer = _failing_block_transformer(tables_before_error=2)
+
+    with TaskContext.current(ctx):
+        out = transformer.apply_transform(
+            iter([pa.table({"x": [0]})]), ctx, clock=TransformClock()
+        )
+
+        with pytest.raises(ValueError, match="bad input"):
+            next(out)
+
+
+def test_a_transform_failing_before_any_output_emits_no_block(skip_errors):
+    """A transform that raises before producing a row raises at once, without
+    an empty block."""
+    out = _outputs(_failing_block_transformer(tables_before_error=0))
+
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
 
 
 if __name__ == "__main__":

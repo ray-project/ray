@@ -41,7 +41,7 @@ chmod +x /tmp/bazel
 echo "--- Install uv"
 
 UV_PYTHON_VERSION=3.10
-curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf https://astral.sh/uv/0.11.33/install.sh | sh
 UV_BIN="${HOME}/.local/bin/uv"
 "${UV_BIN}" python install "${UV_PYTHON_VERSION}"
 UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
@@ -49,7 +49,17 @@ UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
 echo "--- Generate custom build steps"
 
 if [[ "${AUTOMATIC:-0}" == "1" && "${BUILDKITE_BRANCH}" == "master" ]]; then
+  # The test state machine these feed only tracks master.
   export REPORT_TO_RAY_TEST_DB=1
+  export OBS_AGENT_COMMENT_ON_GITHUB_ISSUE=1
+fi
+
+# Safe on release branches because it moves no test state: it creates a debug
+# session and posts to slack, but writes nothing this repo records. Automatic
+# builds only: release branch tests are always triggered through automation.
+if [[ "${AUTOMATIC:-0}" == "1" ]] &&
+   [[ "${BUILDKITE_BRANCH:-}" == "master" || "${BUILDKITE_BRANCH:-}" == "releases/"* ]]; then
+  export TRIGGER_OBSERVABILITY_AGENT=1
 fi
 
 RUN_FLAGS=()

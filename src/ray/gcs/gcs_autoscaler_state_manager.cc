@@ -200,6 +200,11 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     return;
   }
 
+  // TODO: remove once the v1 autoscaler is retired.
+  // Stash a copy of the raw placement group load for the v1 autoscaler, which
+  // doesn't understand GangResourceRequest's constraint-based shape.
+  state->mutable_placement_group_load()->CopyFrom(*placement_group_load);
+
   // Iterate through each placement group load.
   for (auto &&pg_data :
        std::move(*placement_group_load->mutable_placement_group_data())) {

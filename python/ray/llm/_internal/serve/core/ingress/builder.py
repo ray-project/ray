@@ -1,6 +1,6 @@
 import os
 import pprint
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Mapping, Optional, Type, Union
 
 from pydantic import Field, field_validator, model_validator
 
@@ -10,7 +10,10 @@ from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
 from ray.llm._internal.common.utils.import_utils import load_class
-from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
+from ray.llm._internal.serve.constants import (
+    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
+    get_llm_serve_runtime_env,
+)
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
@@ -24,6 +27,10 @@ from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
+)
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
 )
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
@@ -105,12 +112,23 @@ def _build_openai_ingress_request_router(
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
-    ray_actor_options: Dict[str, Any] = {"num_cpus": 0}
-    if is_kv_aware(llm_config):
-        runtime_env = _get_tokenizing_router_runtime_env(llm_config)
-        if runtime_env is not None:
-            ray_actor_options["runtime_env"] = runtime_env
+    if (
+        llm_config.lora_config is not None
+        and not RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+    ):
+        raise ValueError(
+            "LoRA multiplexing with direct streaming requires "
+            "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1."
+        )
 
+    ray_actor_options: Dict[str, Any] = {
+        "num_cpus": 0,
+        "runtime_env": get_llm_serve_runtime_env(
+            _get_tokenizing_router_runtime_env(llm_config)
+            if is_kv_aware(llm_config)
+            else None
+        ),
+    }
     deployment = serve.deployment(
         LLMRouter,
         max_ongoing_requests=1000,
@@ -119,6 +137,9 @@ def _build_openai_ingress_request_router(
     return deployment.bind(
         server=server,
         llm_config=llm_config if is_kv_aware(llm_config) else None,
+        base_model_id=(
+            llm_config.model_id if llm_config.lora_config is not None else None
+        ),
     )
 
 
@@ -141,6 +162,26 @@ class IngressClsConfig(BaseModelExtended):
         if isinstance(value, str):
             return load_class(value)
         return value
+
+
+def _parse_llm_configs(
+    value: List[Union[str, dict, LLMConfig]],
+) -> List[LLMConfig]:
+    llm_configs = []
+    for config in value:
+        if isinstance(config, str):
+            if not os.path.exists(config):
+                raise ValueError(
+                    f"Could not load model config from {config}, as the file does not exist."
+                )
+            llm_configs.append(LLMConfig.from_file(config))
+        elif isinstance(config, dict):
+            llm_configs.append(LLMConfig.model_validate(config))
+        elif isinstance(config, LLMConfig):
+            llm_configs.append(config)
+        else:
+            raise TypeError(f"Invalid LLMConfig type: {type(config)}")
+    return llm_configs
 
 
 class LLMServingArgs(BaseModelExtended):
@@ -172,21 +213,7 @@ class LLMServingArgs(BaseModelExtended):
     def _validate_llm_configs(
         cls, value: List[Union[str, dict, LLMConfig]]
     ) -> List[LLMConfig]:
-        llm_configs = []
-        for config in value:
-            if isinstance(config, str):
-                if not os.path.exists(config):
-                    raise ValueError(
-                        f"Could not load model config from {config}, as the file does not exist."
-                    )
-                llm_configs.append(LLMConfig.from_file(config))
-            elif isinstance(config, dict):
-                llm_configs.append(LLMConfig.model_validate(config))
-            elif isinstance(config, LLMConfig):
-                llm_configs.append(config)
-            else:
-                raise TypeError(f"Invalid LLMConfig type: {type(config)}")
-        return llm_configs
+        return _parse_llm_configs(value)
 
     @model_validator(mode="after")
     def _validate_model_ids(self):
@@ -292,4 +319,91 @@ def build_openai_app(builder_config: dict) -> Application:
         model_cards=model_cards,
         lora_paths=lora_paths,
         **ingress_cls_config.ingress_extra_kwargs,
+    )
+
+
+def _validate_model_applications(
+    model_applications: Mapping[str, str],
+) -> Dict[str, str]:
+    if not isinstance(model_applications, Mapping):
+        raise TypeError(
+            "model_applications must be a mapping of model IDs to app names."
+        )
+
+    result = dict(model_applications)
+    if not result:
+        raise ValueError("model_applications must contain at least one model.")
+    for model_id, application_name in result.items():
+        if not isinstance(model_id, str) or not model_id:
+            raise ValueError("Model IDs must be nonempty strings.")
+        if not isinstance(application_name, str) or not application_name:
+            raise ValueError("Application names must be nonempty strings.")
+    if len(set(result.values())) != len(result):
+        raise ValueError("Each model must reference a different Serve application.")
+    return result
+
+
+class OpenAIRouterArgs(BaseModelExtended):
+    """Configuration for the multi-application OpenAI router."""
+
+    model_applications: Dict[str, str]
+    llm_configs: List[Union[str, dict, LLMConfig]]
+
+    @field_validator("model_applications", mode="before")
+    @classmethod
+    def _validate_mapping(cls, value: Any) -> Dict[str, str]:
+        return _validate_model_applications(value)
+
+    @field_validator("llm_configs")
+    @classmethod
+    def _validate_llm_configs(
+        cls, value: List[Union[str, dict, LLMConfig]]
+    ) -> List[LLMConfig]:
+        return _parse_llm_configs(value)
+
+    @model_validator(mode="after")
+    def _validate_model_configs(self):
+        if any(config.lora_config is not None for config in self.llm_configs):
+            raise ValueError("build_openai_router_app does not support LoRA configs.")
+
+        config_model_ids = [config.model_id for config in self.llm_configs]
+        if len(set(config_model_ids)) != len(config_model_ids):
+            raise ValueError("Duplicate models found. Make sure model ids are unique.")
+        if set(config_model_ids) != set(self.model_applications):
+            raise ValueError(
+                "llm_configs must contain exactly one config for each model in "
+                "model_applications."
+            )
+        return self
+
+
+def build_openai_router_app(
+    router_args: dict,
+) -> Application:
+    """Build a router for independently deployed OpenAI model applications."""
+    # Import lazily: router_application imports router, whose module-level
+    # @serve.ingress(FastAPI()) fails when fastapi is mocked, as in the docs
+    # build, which breaks `import ray.serve.llm`.
+    from ray.llm._internal.serve.core.ingress.router_application import (
+        RouterApplication,
+    )
+
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        raise ValueError(
+            "build_openai_router_app requires HAProxy. Set "
+            "RAY_SERVE_ENABLE_HA_PROXY=1 on the Ray cluster."
+        )
+    if not RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        raise ValueError(
+            "build_openai_router_app requires direct streaming. Set "
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 on the Ray cluster."
+        )
+
+    args = OpenAIRouterArgs.model_validate(router_args)
+    return serve.deployment(
+        RouterApplication,
+        **RouterApplication.get_deployment_options(),
+    ).bind(
+        model_applications=args.model_applications,
+        llm_configs=args.llm_configs,
     )

@@ -51,11 +51,15 @@ from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
+from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
+from ray.data._internal.datasource.webdataset_datasink import (
+    WebDatasetDatasink,
+    WebDatasetEncoderConfig,
+)
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.executor import OutputIterator
@@ -82,6 +86,7 @@ from ray.data._internal.logical.operators import (
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
+    ShuffleBatches,
     Sort,
     StreamingRepartition,
     StreamingSplit,
@@ -91,7 +96,7 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.random_config import RandomSeedConfig
+from ray.data._internal.random_config import RandomSeedConfig, get_timestamp_seed
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
@@ -103,11 +108,14 @@ from ray.data._internal.usage.util import record_operators_usage
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
+    _validate_min_bytes_per_file_args,
     _validate_rows_per_file_args,
+    create_streaming_split_dataset,
     explain_plan,
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.aggregate import (
     AggregateFn,
     AggregateFnV2,
@@ -174,7 +182,7 @@ if TYPE_CHECKING:
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
-from ray.data.expressions import Expr, StarExpr, col
+from ray.data.expressions import Expr, StarExpr, UnnestExpr, col
 
 logger = logging.getLogger(__name__)
 
@@ -281,20 +289,17 @@ class Dataset:
     via the ``write_*()`` APIs.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            # Create dataset from synthetic data.
-            ds = ray.data.range(1000)
-            # Create dataset from in-memory data.
-            ds = ray.data.from_items(
-                [{"col1": i, "col2": i * 2} for i in range(1000)]
-            )
-            # Create dataset from external storage system.
-            ds = ray.data.read_parquet("s3://bucket/path")
-            # Save dataset back to external storage system.
-            ds.write_csv("s3://bucket/output")
+        >>> import ray
+        >>> # Create dataset from synthetic data.
+        >>> ds = ray.data.range(1000)
+        >>> # Create dataset from in-memory data.
+        >>> ds = ray.data.from_items(
+        ...     [{"col1": i, "col2": i * 2} for i in range(1000)]
+        ... )
+        >>> # Create dataset from external storage system.
+        >>> ds = ray.data.read_parquet("s3://bucket/path")  # doctest: +SKIP
+        >>> # Save dataset back to external storage system.
+        >>> ds.write_csv("s3://bucket/output")  # doctest: +SKIP
 
     Dataset has two kinds of operations: transformation, which takes in Dataset
     and outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption,
@@ -359,6 +364,17 @@ class Dataset:
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
+
+        Args:
+            logical_plan: The logical plan that produces this dataset.
+            context: The :class:`~ray.data.DataContext` for this dataset.
+            in_stats: The initial execution statistics. They seed the stats for input
+                that the executor can't observe, such as data from the ``from_*``
+                APIs.
+            cache: The execution cache. If ``None``, the dataset starts with an empty
+                cache.
+            dataset_name: The name of the dataset, used as a prefix for metrics
+                tags.
         """
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
@@ -399,6 +415,19 @@ class Dataset:
     def copy(
         ds: "Dataset", _deep_copy: bool = False, _as: Optional[type] = None
     ) -> "Dataset":
+        """Create a new Dataset from the state of an existing one.
+
+        Args:
+            ds: The dataset to copy.
+            _deep_copy: If ``True``, the new dataset gets copies of the logical plan,
+                context, and stats, and a deep copy of the execution cache. If
+                ``False``, it shares the plan, context, and stats, and gets a copy of
+                the execution cache.
+            _as: The class of the new dataset. Defaults to the class of ``ds``.
+
+        Returns:
+            A new dataset of class ``_as``.
+        """
         if not _as:
             _as = type(ds)
         if _deep_copy:
@@ -421,7 +450,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
-        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -465,29 +494,22 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import os
-                from typing import Any, Dict
-                import ray
-
-                def parse_filename(row: Dict[str, Any]) -> Dict[str, Any]:
-                    row["filename"] = os.path.basename(row["path"])
-                    return row
-
-                ds = (
-                    ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
-                    .map(parse_filename)
-                )
-                print(ds.schema())
-
-            .. testoutput::
-
-                Column    Type
-                ------    ----
-                image     ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
-                path      string
-                filename  string
+            >>> import os
+            >>> from typing import Any, Dict
+            >>> import ray
+            >>> def parse_filename(row: Dict[str, Any]) -> Dict[str, Any]:
+            ...     row["filename"] = os.path.basename(row["path"])
+            ...     return row
+            >>> ds = (
+            ...     ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
+            ...     .map(parse_filename)
+            ... )
+            >>> print(ds.schema())
+            Column    Type
+            ------    ----
+            image     ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
+            path      string
+            filename  string
 
         Time complexity: O(dataset size / parallelism)
 
@@ -602,10 +624,13 @@ class Dataset:
     def _set_name(self, name: Optional[str]):
         self.set_name(name)
 
-    def set_name(self, name: Optional[str]):
+    def set_name(self, name: Optional[str]) -> None:
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
+
+        Args:
+            name: The name of the dataset, or ``None`` to clear it.
         """
         self._dataset_name = name
 
@@ -622,8 +647,19 @@ class Dataset:
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
+
+        Returns:
+            The dataset ID.
         """
-        return f"{self._dataset_name or 'dataset'}_{self._uuid}_{self._run_index}"
+        return self._get_dataset_id_for_run(self._run_index)
+
+    def _get_dataset_id_for_run(self, run_index: int) -> str:
+        """Helper to return the dataset id for the given run index."""
+        return f"{self._dataset_name or 'dataset'}_{self._uuid}_{run_index}"
+
+    def _get_dataset_id_for_next_run(self) -> str:
+        """Helper to return the dataset id for the next run index."""
+        return self._get_dataset_id_for_run(self._run_index + 1)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
@@ -690,82 +726,67 @@ class Dataset:
 
             Call :meth:`~Dataset.map_batches` to transform your data.
 
-            .. testcode::
-
-                from typing import Dict
-                import numpy as np
-                import ray
-
-                def add_dog_years(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                    batch["age_in_dog_years"] = 7 * batch["age"]
-                    return batch
-
-                ds = (
-                    ray.data.from_items([
-                        {"name": "Luna", "age": 4},
-                        {"name": "Rory", "age": 14},
-                        {"name": "Scout", "age": 9},
-                    ])
-                    .map_batches(add_dog_years, batch_size="auto")
-                )
-                ds.show()
-
-            .. testoutput::
-
-                {'name': 'Luna', 'age': 4, 'age_in_dog_years': 28}
-                {'name': 'Rory', 'age': 14, 'age_in_dog_years': 98}
-                {'name': 'Scout', 'age': 9, 'age_in_dog_years': 63}
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import ray
+            >>> def add_dog_years(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...     batch["age_in_dog_years"] = 7 * batch["age"]
+            ...     return batch
+            >>> ds = (
+            ...     ray.data.from_items([
+            ...         {"name": "Luna", "age": 4},
+            ...         {"name": "Rory", "age": 14},
+            ...         {"name": "Scout", "age": 9},
+            ...     ])
+            ...     .map_batches(add_dog_years, batch_size="auto")
+            ... )
+            >>> ds.show()
+            {'name': 'Luna', 'age': 4, 'age_in_dog_years': 28}
+            {'name': 'Rory', 'age': 14, 'age_in_dog_years': 98}
+            {'name': 'Scout', 'age': 9, 'age_in_dog_years': 63}
 
             If your function returns large objects, yield outputs in chunks.
 
-            .. testcode::
-
-                from typing import Dict
-                import ray
-                import numpy as np
-
-                def map_fn_with_large_output(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                    for i in range(3):
-                        yield {"large_output": np.ones((100, 1000))}
-
-                ds = (
-                    ray.data.from_items([1])
-                    .map_batches(map_fn_with_large_output, batch_size="auto")
-                )
+            >>> from typing import Dict
+            >>> import ray
+            >>> import numpy as np
+            >>> def map_fn_with_large_output(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...     for i in range(3):
+            ...         yield {"large_output": np.ones((100, 1000))}
+            >>> ds = (
+            ...     ray.data.from_items([1])
+            ...     .map_batches(map_fn_with_large_output, batch_size="auto")
+            ... )
 
             If you require stateful transformation,
             use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
-            .. testcode::
-
-                from typing import Dict
-                import numpy as np
-                import torch
-                import ray
-
-                class TorchPredictor:
-
-                    def __init__(self):
-                        self.model = torch.nn.Identity().cuda()
-                        self.model.eval()
-
-                    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                        inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
-                        with torch.inference_mode():
-                            batch["output"] = self.model(inputs).detach().cpu().numpy()
-                        return batch
-
-                ds = (
-                    ray.data.from_numpy(np.ones((32, 100)))
-                    .map_batches(
-                        TorchPredictor,
-                        # Two workers with one GPU each
-                        compute=ray.data.ActorPoolStrategy(size=2),
-                        # Batch size is required if you're using GPUs.
-                        batch_size=4,
-                        num_gpus=1
-                    )
-                )
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import torch
+            >>> import ray
+            >>> class TorchPredictor:
+            ...
+            ...     def __init__(self):
+            ...         self.model = torch.nn.Identity().cuda()
+            ...         self.model.eval()
+            ...
+            ...     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...         inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
+            ...         with torch.inference_mode():
+            ...             batch["output"] = self.model(inputs).detach().cpu().numpy()
+            ...         return batch
+            >>> ds = (
+            ...     ray.data.from_numpy(np.ones((32, 100)))
+            ...     .map_batches(
+            ...         TorchPredictor,
+            ...         # Two workers with one GPU each
+            ...         compute=ray.data.ActorPoolStrategy(size=2),
+            ...         # Batch size is required if you're using GPUs.
+            ...         batch_size=4,
+            ...         num_gpus=1
+            ...     )
+            ... )
 
             To learn more, see
             :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
@@ -1018,8 +1039,8 @@ class Dataset:
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_columns(
         self,
-        exprs: Mapping[str, "Expr"],
-        *,
+        exprs: Optional[Union[Mapping[str, "Expr"], "UnnestExpr"]] = None,
+        *more_exprs: Union[Mapping[str, "Expr"], "UnnestExpr"],
         compute: Optional[ComputeStrategy] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1033,13 +1054,17 @@ class Dataset:
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """
-        Add or overwrite multiple columns via expressions in a single projection.
+        """Add or overwrite multiple columns via expressions in a single projection.
 
         This is the multi-column counterpart of :meth:`with_column`. All
         expressions are evaluated within one projection over the existing
         columns, which avoids the repeated work of chaining several
         ``with_column`` calls.
+
+        In addition to a mapping from column name to expression, positional
+        arguments may be :func:`~ray.data.expressions.unnest` expressions:
+        each wraps a struct-typed expression and contributes one output
+        column per struct field, named after the fields.
 
         Examples:
             >>> import ray
@@ -1052,10 +1077,19 @@ class Dataset:
             {'id': 0, 'id_2': 0, 'id_3': 0}
             {'id': 1, 'id_2': 2, 'id_3': 3}
 
+            See :func:`~ray.data.expressions.unnest` for expanding a
+            struct-returning UDF into multiple columns, including mixed
+            usage such as ``ds.with_columns({"a2": col("a") * 2},
+            unnest(make_features(col("a"), col("b"))))``.
+
         Args:
             exprs: A mapping from new column name to the expression that
-                defines its values. Column order follows the mapping's
-                insertion order.
+                defines its values, or an
+                :func:`~ray.data.expressions.unnest` expression. Column
+                order follows the mapping's insertion order.
+            *more_exprs: Additional mappings or
+                :func:`~ray.data.expressions.unnest` expressions, appended
+                in argument order.
             compute: The compute strategy to use for the projection operation.
             num_cpus: The number of CPUs to reserve for each worker.
             num_gpus: The number of GPUs to reserve for each worker.
@@ -1081,13 +1115,28 @@ class Dataset:
 
         _warn_on_ray_remote_args(ray_remote_args)
 
-        if not exprs:
+        args = [] if exprs is None else [exprs]
+        args.extend(more_exprs)
+
+        projection_exprs: List[Expr] = [StarExpr()]
+        for arg in args:
+            if isinstance(arg, UnnestExpr):
+                projection_exprs.append(arg)
+            elif isinstance(arg, Mapping):
+                if any(isinstance(expr, DownloadExpr) for expr in arg.values()):
+                    raise ValueError(
+                        "`with_columns` does not support DownloadExpr. "
+                        "Use `with_column` for download expressions instead."
+                    )
+                projection_exprs.extend(expr.alias(name) for name, expr in arg.items())
+            else:
+                raise TypeError(
+                    "`with_columns` arguments must be mappings from column "
+                    "name to expression, or unnest() expressions, got "
+                    f"{type(arg).__name__}."
+                )
+        if len(projection_exprs) == 1:
             return self
-        if any(isinstance(expr, DownloadExpr) for expr in exprs.values()):
-            raise ValueError(
-                "`with_columns` does not support DownloadExpr. "
-                "Use `with_column` for download expressions instead."
-            )
 
         from ray.data._internal.logical.operators import Project
 
@@ -1108,7 +1157,7 @@ class Dataset:
         )
 
         project_op = Project(
-            exprs=[StarExpr(), *(expr.alias(name) for name, expr in exprs.items())],
+            exprs=projection_exprs,
             input_dependencies=[self._logical_plan.dag],
             compute=compute,
             ray_remote_args=ray_remote_args,
@@ -1135,8 +1184,7 @@ class Dataset:
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """
-        Add a new column to the dataset via an expression.
+        """Add a new column to the dataset via an expression.
 
         This method allows you to add a new column to a dataset by applying an
         expression. The expression can be composed of existing columns, literals,
@@ -1183,7 +1231,9 @@ class Dataset:
 
         Args:
             column_name: The name of the new column.
-            expr: An expression that defines the new column values.
+            expr: An expression that defines the new column values. For
+                :func:`~ray.data.expressions.download`, see that function for
+                how missing objects and transient download failures are handled.
             compute: The compute strategy to use for the projection operation.
                 If not specified and the expression contains callable class UDFs,
                 Ray Data automatically uses ``ActorPoolStrategy`` for actor semantics.
@@ -1272,7 +1322,7 @@ class Dataset:
         ],
         *,
         batch_format: Optional[str] = "pandas",
-        compute: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1429,7 +1479,7 @@ class Dataset:
         self,
         cols: List[str],
         *,
-        compute: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1571,7 +1621,7 @@ class Dataset:
         self,
         cols: Union[str, List[str]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1704,7 +1754,7 @@ class Dataset:
         accelerator_type: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
-    ):
+    ) -> "Dataset":
         """Rename columns in the dataset.
 
         Examples:
@@ -1904,23 +1954,16 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                from typing import Any, Dict, List
-                import ray
-
-                def duplicate_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
-                    return [row] * 2
-
-                print(
-                    ray.data.range(3)
-                    .flat_map(duplicate_row)
-                    .take_all()
-                )
-
-            .. testoutput::
-
-                [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
+            >>> from typing import Any, Dict, List
+            >>> import ray
+            >>> def duplicate_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
+            ...     return [row] * 2
+            >>> print(
+            ...     ray.data.range(3)
+            ...     .flat_map(duplicate_row)
+            ...     .take_all()
+            ... )
+            [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2035,7 +2078,7 @@ class Dataset:
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
         expr: Optional[Union[str, Expr]] = None,
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -2280,11 +2323,11 @@ class Dataset:
         :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
-        more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
+        more, see :ref:`Advanced: Performance tips and tuning <data_performance_tips>`.
 
         If you're writing data to files, you can also use this method to change the
         number of output files. To learn more, see
-        :ref:`Changing the number of output files <changing-number-output-files>`.
+        :ref:`Change the number of output files <changing-number-output-files>`.
 
         .. note::
 
@@ -2299,6 +2342,15 @@ class Dataset:
 
             ..
                 https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+
+        .. tip::
+
+            Repartitioning with ``keys`` or ``shuffle=True`` shuffles the whole dataset.
+            Under ``ShuffleStrategy.SHUFFLE_V2``, if the dataset is much larger than
+            the cluster's aggregate object-store memory, enable
+            :ref:`disk-based shuffle <disk-based-shuffle>` by
+            setting ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
         Examples:
             >>> import ray
@@ -2333,7 +2385,10 @@ class Dataset:
                 contains a subset of data rows from each input block, which
                 requires all-to-all data movement. When shuffle is disabled,
                 output blocks are created from adjacent input blocks,
-                minimizing data movement.
+                minimizing data movement. When shuffle is enabled with
+                ``ShuffleStrategy.SHUFFLE_V2`` and no keys, rows within each input
+                block are divided into contiguous slices and assigned to output
+                partitions in order.
             keys: List of key columns repartitioning will use to determine which
                 partition will row belong to after repartitioning (by applying
                 hash-partitioning algorithm to the whole dataset). Note that, this
@@ -2344,8 +2399,8 @@ class Dataset:
 
         Note that you must set either `num_blocks` or `target_num_rows_per_block`
         but not both.
-        Additionally note that this operation materializes the entire dataset in memory
-        when you set shuffle to True.
+        Additionally note that this operation materializes the entire dataset
+        when you set shuffle to True, using disk when disk-based shuffle is enabled.
 
         Returns:
             The repartitioned :class:`Dataset`.
@@ -2405,12 +2460,107 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
+    @PublicAPI(api_group=SSR_API_GROUP, stability="alpha")
+    def shuffle_batches(
+        self,
+        batch_size: int | None = None,
+        *,
+        seed: int | RandomSeedConfig | None = None,
+        compute: TaskPoolStrategy | None = None,
+        num_cpus: float | None = None,
+        memory: float | None = None,
+    ) -> "Dataset":
+        """Shuffle rows within batches using parallel Ray Data tasks.
+
+        Each batch receives a uniform random permutation. With ``batch_size=None``,
+        shuffle each input block independently. A positive ``batch_size`` uses
+        target-sized batching, as in :meth:`map_batches`. Batches can span input
+        blocks, but each task's final batch can be smaller, including in the middle
+        of the dataset. Shuffle batches are independent of consumer batch sizes
+        and output block sizes.
+
+        A downstream :meth:`limit` can reduce the input before shuffling, so its
+        result can differ from a prefix of the unlimited shuffle.
+
+        To construct exact windows, call :meth:`repartition` with
+        ``target_num_rows_per_block`` and ``strict=True``, then shuffle each block
+        with ``batch_size=None``. Only the final window can be smaller. Window
+        boundaries follow the upstream execution order.
+
+        This operation streams results without materializing the whole dataset.
+        Rows don't move between shuffle batches, and batches aren't randomly
+        reordered. Use :meth:`random_shuffle` for global row shuffling. See
+        :ref:`shuffling_data` for usage and performance considerations.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(20, override_num_blocks=4)
+            >>> shuffled = ds.shuffle_batches(batch_size=8, seed=42)
+            >>> sum(len(b) for b in shuffled.iter_batches(batch_format="pyarrow"))
+            20
+            >>> # Shuffle exact eight-row windows, except the final remainder.
+            >>> exact = ds.repartition(
+            ...     target_num_rows_per_block=8, strict=True
+            ... ).shuffle_batches(seed=42)
+            >>> sum(len(b) for b in exact.iter_batches(batch_format="pyarrow"))
+            20
+
+        Args:
+            batch_size: Target rows per shuffle batch. If None, shuffle each
+                input block independently. Defaults to None.
+                A value of one returns the input unchanged.
+            seed: Optional integer seed or :class:`RandomSeedConfig`. An integer
+                repeats permutations for the same input layout and task grouping.
+                Enable ``preserve_order`` on the dataset's execution options for
+                reproducible output order. None reseeds between executions.
+            compute: Optional task-pool strategy controlling shuffle parallelism.
+            num_cpus: CPU reservation for each shuffle map task.
+            memory: Heap-memory scheduling reservation per shuffle task, in bytes.
+                This is not a hard memory limit.
+
+        Returns:
+            A Dataset with rows shuffled within each batch.
+        """
+        if batch_size is not None:
+            if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+                raise TypeError("batch_size must be an integer or None")
+            if batch_size <= 0:
+                raise ValueError("batch_size must be positive")
+        if compute is not None and not isinstance(compute, TaskPoolStrategy):
+            raise TypeError("shuffle_batches currently supports TaskPoolStrategy only")
+
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+        if seed_config.seed is not None:
+            # Validate on the driver rather than failing a remote shuffle task.
+            np.random.SeedSequence(seed_config.seed)
+        if batch_size == 1:
+            return self
+        if seed_config.seed is None:
+            # Pin the base seed so task retries replay the same permutation.
+            seed_config = RandomSeedConfig(
+                seed=get_timestamp_seed(), reseed_after_execution=True
+            )
+
+        remote_args = {}
+        if num_cpus is not None:
+            remote_args["num_cpus"] = num_cpus
+        if memory is not None:
+            remote_args["memory"] = memory
+        op = ShuffleBatches(
+            input_dependencies=[self._logical_plan.dag],
+            batch_size=batch_size,
+            seed_config=seed_config,
+            compute=compute,
+            ray_remote_args=remote_args,
+        )
+        return Dataset._from_parent(self, LogicalPlan(op, self.context))
+
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
     def random_shuffle(
         self,
         *,
-        seed: Optional[int | RandomSeedConfig] = None,
+        seed: Optional[Union[int, RandomSeedConfig]] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -2419,8 +2569,8 @@ class Dataset:
         .. tip::
 
             This method can be slow. For better performance, try
-            :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
-            Also, see :ref:`Optimizing shuffles <optimizing_shuffles>`.
+            :ref:`iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+            Also, see :ref:`Optimize shuffles <optimizing_shuffles>`.
 
         Examples:
             >>> import ray
@@ -2491,7 +2641,7 @@ class Dataset:
     def randomize_block_order(
         self,
         *,
-        seed: Optional[int | RandomSeedConfig] = None,
+        seed: Optional[Union[int, RandomSeedConfig]] = None,
     ) -> "Dataset":
         """Randomly shuffle the :ref:`blocks <dataset_concept>` of this :class:`Dataset`.
 
@@ -2540,7 +2690,7 @@ class Dataset:
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
-        self, fraction: float, *, seed: Optional[int | RandomSeedConfig] = None
+        self, fraction: float, *, seed: Optional[Union[int, RandomSeedConfig]] = None
     ) -> "Dataset":
         """Returns a new :class:`Dataset` containing a random fraction of the rows.
         In other words, this method "randomly filters" the rows of the dataset without
@@ -2656,44 +2806,34 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.range(100)
-                it1, it2 = ds.streaming_split(2, equal=True)
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> it1, it2 = ds.streaming_split(2, equal=True)
 
             Consume data from iterators in parallel.
 
-            .. testcode::
-
-                @ray.remote
-                def consume(it):
-                    for batch in it.iter_batches():
-                       pass
-
-                ray.get([consume.remote(it1), consume.remote(it2)])
+            >>> @ray.remote
+            ... def consume(it):
+            ...     for batch in it.iter_batches():
+            ...         pass
+            >>> ray.get([consume.remote(it1), consume.remote(it2)])
+            [None, None]
 
             You can loop over the iterators multiple times (multiple epochs).
 
-            .. testcode::
-
-                @ray.remote
-                def train(it):
-                    NUM_EPOCHS = 2
-                    for _ in range(NUM_EPOCHS):
-                        for batch in it.iter_batches():
-                            pass
-
-                ray.get([train.remote(it1), train.remote(it2)])
+            >>> @ray.remote
+            ... def train(it):
+            ...     NUM_EPOCHS = 2
+            ...     for _ in range(NUM_EPOCHS):
+            ...         for batch in it.iter_batches():
+            ...             pass
+            >>> ray.get([train.remote(it1), train.remote(it2)])
+            [None, None]
 
             The following remote function call blocks waiting for a read on ``it2`` to
             start.
 
-            .. testcode::
-                :skipif: True
-
-                ray.get(train.remote(it1))
+            >>> ray.get(train.remote(it1))  # doctest: +SKIP
 
         Args:
             n: Number of output iterators to return.
@@ -2716,16 +2856,9 @@ class Dataset:
                 Unlike :meth:`~Dataset.streaming_split`, :meth:`~Dataset.split`
                 materializes the dataset in memory.
         """
-        op = StreamingSplit(
-            num_splits=n,
-            equal=equal,
-            input_dependencies=[self._logical_plan.dag],
-            locality_hints=locality_hints,
+        split_dataset = create_streaming_split_dataset(
+            self, n, equal=equal, locality_hints=locality_hints
         )
-        logical_plan = LogicalPlan(op, self.context)
-        split_dataset = Dataset._from_parent(self, logical_plan)
-        split_dataset._set_uuid(self._uuid)
-
         return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
 
     @ConsumptionAPI
@@ -2740,18 +2873,16 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                @ray.remote
-                class Worker:
-
-                    def train(self, data_iterator):
-                        for batch in data_iterator.iter_batches(batch_size=8):
-                            pass
-
-                workers = [Worker.remote() for _ in range(4)]
-                shards = ray.data.range(100).split(n=4, equal=True)
-                ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+            >>> import ray
+            >>> @ray.remote
+            ... class Worker:
+            ...     def train(self, data_iterator):
+            ...         for batch in data_iterator.iter_batches(batch_size=8):
+            ...             pass
+            >>> workers = [Worker.remote() for _ in range(4)]
+            >>> shards = ray.data.range(100).split(n=4, equal=True)
+            >>> ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+            [None, None, None, None]
 
         Time complexity: O(1)
 
@@ -3366,8 +3497,7 @@ class Dataset:
             raise ValueError("hash_column is not supported for random split")
 
         def random_split(batch: pa.Table):
-            """
-            Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
+            """Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
             or to test otherwise.
 
             This version ensures that the random choices are **stable per Ray task execution** by seeding
@@ -3436,8 +3566,13 @@ class Dataset:
     def union(self, *other: "Dataset") -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
-        The order of the blocks in the datasets is preserved, as is the
-        relative ordering between the datasets passed in the argument list.
+        The union doesn't append one dataset after another. By default, it
+        emits blocks in the order the input datasets produce them, so the
+        output order isn't deterministic. If you set
+        ``DataContext.execution_options.preserve_order`` to ``True``, it
+        interleaves blocks round-robin: one block from each dataset in
+        argument order, then the next block from each, until every dataset
+        runs out. Within each dataset, blocks keep their order.
 
         .. caution::
             Unioned datasets aren't lineage-serializable. As a result, they can't be
@@ -3446,10 +3581,13 @@ class Dataset:
         Examples:
 
             >>> import ray
-            >>> ds1 = ray.data.range(2)
-            >>> ds2 = ray.data.range(3)
-            >>> ds1.union(ds2).take_all()  # doctest: +SKIP
-            [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
+            >>> ctx = ray.data.DataContext.get_current()
+            >>> ctx.execution_options.preserve_order = True
+            >>> ds1 = ray.data.range(4, override_num_blocks=2)
+            >>> ds2 = ray.data.range(4, override_num_blocks=2)
+            >>> [row["id"] for row in ds1.union(ds2).take_all()]
+            [0, 1, 0, 1, 2, 3, 2, 3]
+            >>> ctx.execution_options.preserve_order = False
 
         Args:
             *other: The datasets to combine with this one. The datasets
@@ -3566,16 +3704,27 @@ class Dataset:
         ds: "Dataset",
         join_type: str,
         num_partitions: int,
-        on: Tuple[str] = ("id",),
-        right_on: Optional[Tuple[str]] = None,
+        on: Tuple[str, ...] = ("id",),
+        right_on: Optional[Tuple[str, ...]] = None,
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
+        condition: Optional[Expr] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys.
+
+        Joins require the ``polars`` package.
+
+        .. tip::
+
+            Joins hash-shuffle both input datasets by key. If the inputs are
+            much larger than the cluster's aggregate object-store memory,
+            enable :ref:`disk-based shuffle <disk-based-shuffle>` by setting
+            ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
         Args:
             ds: Other dataset to join against
@@ -3598,6 +3747,18 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
+            condition: (Optional) Additional join condition, as an expression over
+                the *input* column names of both operands (before any suffix is
+                applied). Every conjunct of the form ``col("a") == col("b")``
+                with ``a`` from one operand and ``b`` from the other is hashed
+                on like the ``on`` keys, so the join only produces the rows
+                that satisfy it. Unlike the ``on`` keys, the two columns
+                aren't merged into one: both stay in the output, as with
+                ``join(...).filter(col("a") == col("b"))`` on an inner join. A
+                column name that exists in both operands is ambiguous and
+                raises. ``condition`` complements ``on``; it can't replace it,
+                and any other kind of conjunct (``<``, a comparison against a
+                literal, ``|``, ...) is not supported yet.
             partition_size_hint: (Optional) **Deprecated** and ignored. The join is
                 now executed on the v2 hash-shuffle path, which sizes reduce-task
                 memory from observed partition sizes rather than a hint. This
@@ -3614,85 +3775,56 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            :skipif: True
+            >>> import ray
+            >>> doubles_ds = ray.data.range(4).map(
+            ...     lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+            ... )
+            >>> squares_ds = ray.data.range(4).map(
+            ...     lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
+            ... )
+            >>> # Inner join example
+            >>> joined_ds = doubles_ds.join(
+            ...     squares_ds,
+            ...     join_type="inner",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0, 'square': 0}
+            {'id': 1, 'double': 2, 'square': 1}
+            {'id': 2, 'double': 4, 'square': 4}
+            {'id': 3, 'double': 6, 'square': 9}
 
-            doubles_ds = ray.data.range(4).map(
-                lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
-            )
+            >>> # Left anti-join example: find rows in doubles_ds that don't match squares_ds
+            >>> partial_squares_ds = ray.data.range(2).map(
+            ...     lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
+            ... )
+            >>> anti_joined_ds = doubles_ds.join(
+            ...     partial_squares_ds,
+            ...     join_type="left_anti",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0}
+            {'id': 1, 'double': 2}
 
-            squares_ds = ray.data.range(4).map(
-                lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
-            )
-
-            # Inner join example
-            joined_ds = doubles_ds.join(
-                squares_ds,
-                join_type="inner",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0, 'square': 0},
-                {'id': 1, 'double': 2, 'square': 1},
-                {'id': 2, 'double': 4, 'square': 4},
-                {'id': 3, 'double': 6, 'square': 9}
-            ]
-
-        .. testcode::
-            :skipif: True
-
-            # Left anti-join example: find rows in doubles_ds that don't match squares_ds
-            partial_squares_ds = ray.data.range(2).map(
-                lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
-            )
-
-            anti_joined_ds = doubles_ds.join(
-                partial_squares_ds,
-                join_type="left_anti",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0},
-                {'id': 1, 'double': 2}
-            ]
-
-        .. testcode::
-            :skipif: True
-
-            # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
-            # (only returns columns from left dataset)
-            semi_joined_ds = doubles_ds.join(
-                squares_ds,
-                join_type="left_semi",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0},
-                {'id': 1, 'double': 2},
-                {'id': 2, 'double': 4},
-                {'id': 3, 'double': 6}
-            ]
+            >>> # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
+            >>> # (only returns columns from left dataset)
+            >>> semi_joined_ds = doubles_ds.join(
+            ...     squares_ds,
+            ...     join_type="left_semi",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0}
+            {'id': 1, 'double': 2}
+            {'id': 2, 'double': 4}
+            {'id': 3, 'double': 6}
         """
 
         if not isinstance(on, (tuple, list)):
@@ -3703,6 +3835,11 @@ class Dataset:
         if right_on and not isinstance(right_on, (tuple, list)):
             raise ValueError(
                 f"Expected tuple or list as `right_on` (got {type(right_on).__name__})"
+            )
+
+        if condition is not None and not isinstance(condition, Expr):
+            raise ValueError(
+                f"Expected an `Expr` as `condition` (got {type(condition).__name__})"
             )
 
         # NOTE: If no separate keys provided for the right side, assume just the left
@@ -3718,15 +3855,6 @@ class Dataset:
                 stacklevel=2,
             )
 
-        # NOTE: By default validating schemas are disabled as it could be arbitrarily
-        #       expensive (potentially executing whole pipeline to completion) to fetch
-        #       one currently
-        if validate_schemas:
-            left_op_schema: Optional["Schema"] = self.schema()
-            right_op_schema: Optional["Schema"] = ds.schema()
-
-            Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
-
         op = Join(
             left_input_op=self._logical_plan.dag,
             right_input_op=ds._logical_plan.dag,
@@ -3738,7 +3866,31 @@ class Dataset:
             right_columns_suffix=right_suffix,
             partition_size_hint=partition_size_hint,
             aggregator_ray_remote_args=aggregator_ray_remote_args,
+            condition=condition,
         )
+
+        # Fails now on an unknown or ambiguous column when the input schemas are
+        # inferable; otherwise the planner reports it.
+        resolved = op.resolve_condition() if condition is not None else None
+
+        # NOTE: By default validating schemas are disabled as it could be arbitrarily
+        #       expensive (potentially executing whole pipeline to completion) to fetch
+        #       one currently
+        if validate_schemas:
+            left_op_schema: Optional["Schema"] = self.schema()
+            right_op_schema: Optional["Schema"] = ds.schema()
+
+            if condition is not None and resolved is None:
+                # The schemas couldn't be inferred; resolve against the
+                # executed ones.
+                resolved = op.resolve_condition(left_op_schema, right_op_schema)
+            left_keys, right_keys = tuple(on), tuple(right_on)
+            if resolved is not None:
+                left_keys += resolved.left_condition_key_columns
+                right_keys += resolved.right_condition_key_columns
+            Join._validate_schemas(
+                left_op_schema, right_op_schema, left_keys, right_keys
+            )
 
         return Dataset._from_parent(self, LogicalPlan(op, self.context))
 
@@ -3754,23 +3906,27 @@ class Dataset:
         Use this method to transform data based on a
         categorical variable.
 
+        .. tip::
+
+            Grouping hash-shuffles the dataset by key. If the dataset is much
+            larger than the cluster's aggregate object-store memory, enable
+            :ref:`disk-based shuffle <disk-based-shuffle>` by setting
+            ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
+
         Examples:
 
-            .. testcode::
-
-                import pandas as pd
-                import ray
-
-                def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
-                    for feature in group.drop(columns=["variety"]).columns:
-                        group[feature] = group[feature] / group[feature].abs().max()
-                    return group
-
-                ds = (
-                    ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
-                    .groupby("variety")
-                    .map_groups(normalize_variety, batch_format="pandas")
-                )
+            >>> import pandas as pd
+            >>> import ray
+            >>> def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
+            ...     for feature in group.drop(columns=["variety"]).columns:
+            ...         group[feature] = group[feature] / group[feature].abs().max()
+            ...     return group
+            >>> ds = (
+            ...     ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            ...     .groupby("variety")
+            ...     .map_groups(normalize_variety, batch_format="pandas")
+            ... )
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -3847,7 +4003,7 @@ class Dataset:
             A list with unique elements in the given column.
         """  # noqa: E501
         ret = self._aggregate_on(Unique, column, ignore_nulls=ignore_nulls)
-        return self._aggregate_result(ret)
+        return self._aggregate_result(ret) or []
 
     @AllToAllAPI
     @ConsumptionAPI
@@ -3859,25 +4015,19 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-                from ray.data.aggregate import AggregateFn
-
-                ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
-                aggregation = AggregateFn(
-                    init=lambda column: 1,
-                    # Apply this to each row to produce a partial aggregate result
-                    accumulate_row=lambda a, row: a * row["number"],
-                    # Apply this to merge partial aggregate results into a final result
-                    merge=lambda a1, a2: a1 * a2,
-                    name="prod"
-                )
-                print(ds.aggregate(aggregation))
-
-            .. testoutput::
-
-                {'prod': 362880}
+            >>> import ray
+            >>> from ray.data.aggregate import AggregateFn
+            >>> ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
+            >>> aggregation = AggregateFn(
+            ...     init=lambda column: 1,
+            ...     # Apply this to each row to produce a partial aggregate result
+            ...     accumulate_row=lambda a, row: a * row["number"],
+            ...     # Apply this to merge partial aggregate results into a final result
+            ...     merge=lambda a1, a2: a1 * a2,
+            ...     name="prod"
+            ... )
+            >>> print(ds.aggregate(aggregation))
+            {'prod': 362880}
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4268,9 +4418,9 @@ class Dataset:
         self,
         key: Union[str, List[str]],
         descending: Union[bool, List[bool]] = False,
-        boundaries: List[Union[int, float]] = None,
+        boundaries: Optional[List[Union[int, float]]] = None,
     ) -> "Dataset":
-        """Sort the dataset by the specified key column or key function.
+        """Sort the dataset by the specified one or more key columns.
         The `key` parameter must be specified (i.e., it cannot be `None`).
 
         .. note::
@@ -4649,9 +4799,39 @@ class Dataset:
         self, fetch_if_missing: bool = True
     ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
         """Gets the underlying raw schema value not wrapped in Schema class."""
-        base_schema = self._cache.get_schema(self._logical_plan.dag)
+        config = self._logical_plan.context.checkpoint_config
+        generated_id = config.generated_id_column if config is not None else None
+        base_schema = self._cache.get_schema(
+            self._logical_plan.dag, generated_id=generated_id
+        )
         if base_schema is None:
             base_schema = self._logical_plan.dag.infer_schema()
+
+        # ``BindGeneratedIdColumn`` adds the configured generated ID column
+        # when the plan is optimized for execution, possibly after this
+        # dataset was built (Ray Train sets ``checkpoint_config`` on built
+        # datasets). Re-infer over the bound plan when the column is missing
+        # from the current answer, so the schema matches the rows execution
+        # produces — also when the schema was cached before the config was
+        # set.
+        schema_names = getattr(base_schema, "names", None)
+        if generated_id is not None and (
+            schema_names is None or generated_id not in schema_names
+        ):
+            # Lazy import: the rules package imports back into ``ray.data``.
+            from ray.data._internal.logical.rules.bind_generated_id_column import (
+                BindGeneratedIdColumn,
+            )
+
+            bound_plan = BindGeneratedIdColumn().apply(self._logical_plan)
+            if bound_plan is not self._logical_plan:
+                bound_schema = bound_plan.dag.infer_schema()
+                # ``None`` when an op erases the schema (e.g. a UDF). The
+                # current answer may come from executed blocks and is the
+                # best one available; never trade a known schema for None.
+                if bound_schema is not None:
+                    base_schema = bound_schema
+
         if base_schema is None and fetch_if_missing:
             # Lazily execute only the first block to minimize computation.
             # We achieve this by appending a Limit[1] operation to a copy of
@@ -4676,7 +4856,9 @@ class Dataset:
                         bundle.schema for bundle in iter_ref_bundles
                     )
         if base_schema is not None:
-            self._cache.set_schema(self._logical_plan.dag, base_schema)
+            self._cache.set_schema(
+                self._logical_plan.dag, base_schema, generated_id=generated_id
+            )
         return base_schema
 
     @ConsumptionAPI(
@@ -4778,8 +4960,7 @@ class Dataset:
             80
 
         Returns:
-            The in-memory size of the dataset in bytes, or None if the
-            in-memory size is not known.
+            The in-memory size of the dataset in bytes.
         """
         # If the size is known from metadata, return it.
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
@@ -4822,7 +5003,8 @@ class Dataset:
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        min_bytes_per_file: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -4831,7 +5013,7 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         If pyarrow can't represent your data, this method errors.
@@ -4881,7 +5063,7 @@ class Dataset:
                 look like. The filename is expected to be templatized with `{i}`
                 to ensure unique filenames when writing multiple files. If it's not
                 templatized, Ray Data will add `{i}` to the filename to ensure
-                compatibility with the pyarrow `write_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_dataset.html>`_.
+                compatibility with the pyarrow `write_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html>`_.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
@@ -4911,6 +5093,18 @@ class Dataset:
                 might write more or fewer rows to each file. If both ``min_rows_per_file``
                 and ``max_rows_per_file`` are specified, ``max_rows_per_file`` takes
                 precedence when they cannot both be satisfied.
+            min_bytes_per_file: [Experimental] The minimum in-memory size, in bytes,
+                of input blocks to combine for each write. This must be a positive
+                integer. Ray Data combines small input blocks until their total
+                in-memory size reaches this value. Note that
+                since this is compared against the uncompressed in-memory size, the
+                resulting on-disk files will typically be much smaller than this value
+                due to Parquet compression and encoding. Ray Data doesn't split blocks
+                or write inputs that exceed this value, so output files can be larger.
+                Partitioning can also cause actual file sizes to differ. Operator
+                fusion is disabled when this parameter is set. You can't use this
+                parameter with ``min_rows_per_file``, ``max_rows_per_file``, or
+                ``num_rows_per_file``.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -4974,6 +5168,12 @@ class Dataset:
                     )
                 filesystem = resolved.filesystem
 
+        _validate_min_bytes_per_file_args(
+            min_bytes_per_file=min_bytes_per_file,
+            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=min_rows_per_file,
+            max_rows_per_file=max_rows_per_file,
+        )
         effective_min_rows, effective_max_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file,
             min_rows_per_file=min_rows_per_file,
@@ -4987,6 +5187,7 @@ class Dataset:
             arrow_parquet_args=arrow_parquet_args,
             min_rows_per_file=effective_min_rows,
             max_rows_per_file=effective_max_rows,
+            min_bytes_per_file=min_bytes_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -5012,7 +5213,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         pandas_json_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5138,7 +5339,7 @@ class Dataset:
         overwrite_filter: Optional["Expr"] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
@@ -5148,46 +5349,40 @@ class Dataset:
             - URI: https://py.iceberg.apache.org/
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-                from ray.data.expressions import col
-
-                # Basic append (default behavior)
-                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
-                )
-
-                # Schema evolution is automatic - new columns are added automatically
-                enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
-                ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
-                ds_enriched.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
-                )
-                 # Upsert mode - update existing rows or insert new ones
-                updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
-                ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
-                ds_updates.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"},
-                    mode=SaveMode.UPSERT,
-                    upsert_kwargs={"join_cols": ["id"]},
-                )
-
-                # Partial overwrite with Ray Data expressions
-                ds.write_iceberg(
-                    table_identifier="events.user_activity",
-                    catalog_kwargs={"name": "default", "type": "rest"},
-                    mode=SaveMode.OVERWRITE,
-                    overwrite_filter=col("date") >= "2024-10-28"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> from ray.data import SaveMode
+            >>> from ray.data.expressions import col
+            >>> # Basic append (default behavior)
+            >>> docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"}
+            ... )
+            >>> # Schema evolution is automatic - new columns are added automatically
+            >>> enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
+            >>> ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
+            >>> ds_enriched.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"}
+            ... )
+            >>> # Upsert mode - update existing rows or insert new ones
+            >>> updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
+            >>> ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
+            >>> ds_updates.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"},
+            ...     mode=SaveMode.UPSERT,
+            ...     upsert_kwargs={"join_cols": ["id"]},
+            ... )
+            >>> # Partial overwrite with Ray Data expressions
+            >>> ds.write_iceberg(
+            ...     table_identifier="events.user_activity",
+            ...     catalog_kwargs={"name": "default", "type": "rest"},
+            ...     mode=SaveMode.OVERWRITE,
+            ...     overwrite_filter=col("date") >= "2024-10-28"
+            ... )
 
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
@@ -5292,37 +5487,28 @@ class Dataset:
             ``deltalake`` Python library.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-
-                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-
-                # Append (default) - creates the table if it doesn't exist.
-                ds.write_delta("/tmp/my_delta_table")
-
-                # Overwrite the table contents.
-                ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
-
-                # Partitioned write.
-                ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
-
-                # A later append with an extra column adds it to the table
-                # automatically (the default schema_mode="merge") -- existing
-                # rows read back with None for it.
-                more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
-                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
-                    "/tmp/my_delta_table"
-                )
-
-                # Reject that same write instead, leaving the table untouched.
-                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
-                    "/tmp/my_delta_table", schema_mode="error"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> from ray.data import SaveMode
+            >>> docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> # Append (default) - creates the table if it doesn't exist.
+            >>> ds.write_delta("/tmp/my_delta_table")
+            >>> # Overwrite the table contents.
+            >>> ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
+            >>> # Partitioned write.
+            >>> ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
+            >>> # A later append with an extra column adds it to the table
+            >>> # automatically (the default schema_mode="merge") -- existing
+            >>> # rows read back with None for it.
+            >>> more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
+            >>> ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+            ...     "/tmp/my_delta_table"
+            ... )
+            >>> # Reject that same write instead, leaving the table untouched.
+            >>> ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+            ...     "/tmp/my_delta_table", schema_mode="error"
+            ... )
 
         Args:
             path: URI of the Delta table (e.g. ``/tmp/my_table`` or
@@ -5342,27 +5528,28 @@ class Dataset:
             storage_options: A dictionary of storage options passed to the
                 ``deltalake`` library for authentication and configuration (e.g.
                 cloud credentials).
-            schema_mode: How an ``APPEND`` handles a column present in the
+            schema_mode: How an ``APPEND`` handles a field present in the
                 data being written but absent from the table's current
-                schema. Has no effect on ``SaveMode.OVERWRITE`` (which always
+                schema, including fields nested in structs, lists, or maps.
+                Has no effect on ``SaveMode.OVERWRITE`` (which always
                 replaces the table's schema wholesale) or when the table
                 doesn't exist yet (there's no existing schema to compare
                 against). One of:
 
-                * ``"merge"`` (default): Add the new column to the table
+                * ``"merge"`` (default): Add the new field to the table
                   before committing the write, like SQL's
-                  ``ALTER TABLE ... ADD COLUMN``. The new column is always
+                  ``ALTER TABLE ... ADD COLUMN``. The new field is always
                   added as nullable, and every row written before this
                   reads back with ``None`` for it.
                 * ``"error"``: Reject the write with a ``ValueError``
                   instead, leaving the table's schema unchanged.
 
-                A column present in *both* the data and the table, but with
+                A field present in *both* the data and the table, but with
                 an incompatible type (for example, writing a string into a
                 column the table has as an integer), always raises a
                 ``ValueError`` -- regardless of ``schema_mode``. Only adding
-                a brand-new column is supported; changing an existing
-                column's type is not.
+                a brand-new field is supported; changing an existing
+                field's type is not.
             filesystem: Optional PyArrow filesystem used for worker Parquet
                 writes, instead of one built from ``storage_options`` or ambient
                 credentials. Cannot be combined with ``catalog``.
@@ -5437,7 +5624,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
@@ -5515,7 +5702,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         arrow_csv_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5547,7 +5734,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.write_csv("s3://bucket/folder/)  # doctest: +SKIP
+            >>> ds.write_csv("s3://bucket/folder/")  # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -5628,6 +5815,130 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_orc(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        filename_provider: Optional[FilenameProvider] = None,
+        arrow_orc_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        min_rows_per_file: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
+        **arrow_orc_args,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to ORC files.
+
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        This method is only supported for datasets with records that are convertible to
+        pyarrow tables.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.orc``,
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom :class:`~ray.data.datasource.FilenameProvider`
+        and pass it in as the ``filename_provider`` argument.
+
+
+        Examples:
+            Write the dataset as ORC files to a local directory.
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_orc("/tmp/data")
+
+            Write the dataset as ORC files to S3.
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_orc("s3://bucket/folder/")  # doctest: +SKIP
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where
+                the ORC files are written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path if ``True``. Does nothing if all directories already
+                exist. Defaults to ``True``.
+            arrow_open_stream_args: kwargs passed to
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to. Don't pass ``compression`` here.
+                To configure ORC compression, pass ``compression`` directly to
+                :meth:`write_orc`.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
+            arrow_orc_args_fn: Callable that returns a dictionary of write
+                arguments that are provided to `pyarrow.orc.write_table <https://\
+                arrow.apache.org/docs/python/generated/\
+                pyarrow.orc.write_table.html#pyarrow.orc.write_table>`_ when writing
+                each block to a file. Overrides any duplicate keys from
+                ``arrow_orc_args``. Use this argument instead of ``arrow_orc_args``
+                if any of your write arguments cannot be pickled, or if you'd like to
+                lazily resolve the write arguments for each dataset block.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
+            **arrow_orc_args: Options to pass to `pyarrow.orc.write_table <https://\
+                arrow.apache.org/docs/python/generated/pyarrow.orc.write_table.html\
+                    #pyarrow.orc.write_table>`_
+                when writing each block to a file.
+        """
+        if arrow_orc_args_fn is None:
+            arrow_orc_args_fn = lambda: {}  # noqa: E731
+
+        effective_min_rows, _ = _validate_rows_per_file_args(
+            min_rows_per_file=min_rows_per_file
+        )
+
+        datasink = ORCDatasink(
+            path,
+            arrow_orc_args_fn=arrow_orc_args_fn,
+            arrow_orc_args=arrow_orc_args,
+            min_rows_per_file=effective_min_rows,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
+            dataset_uuid=self._uuid,
+            mode=mode,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
     def write_tfrecords(
         self,
@@ -5639,7 +5950,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5749,46 +6060,39 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
-        encoder: Optional[Union[bool, str, callable, list]] = True,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
-        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
+        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_
+        tar archives.
 
-        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
-        records, with one Example record for each row in the dataset.
-
-        .. warning::
-            tf.train.Feature only natively stores ints, floats, and bytes,
-            so this function only supports datasets with these data types,
-            and will error if the dataset contains unsupported types.
+        Each row is written as a WebDataset sample.
 
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
 
-        Unless a custom filename provider is given, the format of the output
-        files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
-        for the dataset.
+        Unless a custom filename provider is given, generated output filenames end
+        in ``.tar``.
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_webdataset("s3://bucket/folder/")
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.from_items(
+            ...     [
+            ...         {"__key__": f"{i:06d}", "txt": str(i)}
+            ...         for i in range(100)
+            ...     ]
+            ... )
+            >>> ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where tfrecords
-                files are written to.
+            path: The path to the destination root directory, where WebDataset tar
+                archives are written.
             filesystem: The filesystem implementation to write to.
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
@@ -5806,11 +6110,12 @@ class Dataset:
                 might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             encoder: Controls how dataset rows are encoded into WebDataset samples.
-                If ``True`` (default), uses the default encoder that automatically
-                handles common data types. If ``False``, disables encoding and requires
-                all values to already be bytes or strings. A string specifies a format
-                hint for the default encoder, a callable provides a custom encoding
-                function, and a list applies multiple encoders in sequence.
+                A boolean or string selects the built-in encoder, which automatically
+                handles common data types based on column-name extensions. A callable
+                receives and returns a sample dictionary, and a list applies multiple
+                encoder specifications in sequence. Set this to ``None`` to skip
+                encoding; in that case, each non-special value that isn't ``None``
+                must already be bytes or a string.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -5854,7 +6159,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5962,34 +6267,26 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import sqlite3
-                import ray
-
-                connection = sqlite3.connect("example.db")
-                connection.cursor().execute("CREATE TABLE movie(title, year, score)")
-                dataset = ray.data.from_items([
-                    {"title": "Monty Python and the Holy Grail", "year": 1975, "score": 8.2},
-                    {"title": "And Now for Something Completely Different", "year": 1971, "score": 7.5}
-                ])
-
-                dataset.write_sql(
-                    "INSERT INTO movie VALUES(?, ?, ?)", lambda: sqlite3.connect("example.db")
-                )
-
-                result = connection.cursor().execute("SELECT * FROM movie ORDER BY year")
-                print(result.fetchall())
-
-            .. testoutput::
-
-                [('And Now for Something Completely Different', 1971, 7.5), ('Monty Python and the Holy Grail', 1975, 8.2)]
-
-            .. testcode::
-                :hide:
-
-                import os
-                os.remove("example.db")
+            >>> import os
+            >>> import sqlite3
+            >>> import tempfile
+            >>> import ray
+            >>> db_dir = tempfile.TemporaryDirectory()
+            >>> db_path = os.path.join(db_dir.name, "example.db")
+            >>> connection = sqlite3.connect(db_path)
+            >>> _ = connection.execute("CREATE TABLE movie(title, year, score)")
+            >>> dataset = ray.data.from_items([
+            ...     {"title": "Monty Python and the Holy Grail", "year": 1975, "score": 8.2},
+            ...     {"title": "And Now for Something Completely Different", "year": 1971, "score": 7.5}
+            ... ])
+            >>> dataset.write_sql(
+            ...     "INSERT INTO movie VALUES(?, ?, ?)", lambda: sqlite3.connect(db_path)
+            ... )
+            >>> result = connection.execute("SELECT * FROM movie ORDER BY year")
+            >>> print(result.fetchall())
+            [('And Now for Something Completely Different', 1971, 7.5), ('Monty Python and the Holy Grail', 1975, 8.2)]
+            >>> connection.close()
+            >>> db_dir.cleanup()
 
         Arguments:
             sql: An ``INSERT INTO`` statement that specifies the table to write to. The
@@ -6015,29 +6312,25 @@ class Dataset:
     def write_snowflake(
         self,
         table: str,
-        connection_parameters: str,
+        connection_parameters: Dict[str, Any],
         *,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
-    ):
+    ) -> None:
         """Write this ``Dataset`` to a Snowflake table.
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                connection_parameters = dict(
-                    user=...,
-                    account="ABCDEFG-ABC12345",
-                    password=...,
-                    database="SNOWFLAKE_SAMPLE_DATA",
-                    schema="TPCDS_SF100TCL"
-                )
-                ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
-                ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> connection_parameters = dict(
+            ...     user=...,
+            ...     account="ABCDEFG-ABC12345",
+            ...     password=...,
+            ...     database="SNOWFLAKE_SAMPLE_DATA",
+            ...     schema="TPCDS_SF100TCL"
+            ... )
+            >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            >>> ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
 
         Args:
             table: The name of the table to write to.
@@ -6077,7 +6370,7 @@ class Dataset:
         uri: str,
         database: str,
         collection: str,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to a MongoDB database.
@@ -6103,17 +6396,13 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_mongo(
-                    uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-                    database="my_db",
-                    collection="my_collection"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds.write_mongo(
+            ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+            ...     database="my_db",
+            ...     collection="my_collection"
+            ... )
 
         Args:
             uri: The URI to the destination MongoDB where the dataset is
@@ -6152,7 +6441,7 @@ class Dataset:
         dataset: str,
         max_retry_cnt: int = 10,
         overwrite_table: Optional[bool] = True,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -6161,19 +6450,15 @@ class Dataset:
         before calling this method.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-
-                docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_bigquery(
-                    project_id="my_project_id",
-                    dataset="my_dataset_table",
-                    overwrite_table=True
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_bigquery(
+            ...     project_id="my_project_id",
+            ...     dataset="my_dataset_table",
+            ...     overwrite_table=True
+            ... )
 
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
@@ -6231,7 +6516,7 @@ class Dataset:
         client_kwargs: Optional[Dict[str, Any]] = None,
         table_settings: Optional[ClickHouseTableSettings] = None,
         max_insert_block_rows: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a ClickHouse dataset table.
@@ -6240,31 +6525,27 @@ class Dataset:
         before calling this method.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pyarrow as pa
-                import pandas as pd
-
-                docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                user_schema = pa.schema(
-                    [
-                        ("id", pa.int64()),
-                        ("title", pa.string()),
-                    ]
-                )
-                ds.write_clickhouse(
-                    table="default.my_table",
-                    dsn="clickhouse+http://user:pass@localhost:8123/default",
-                    mode=ray.data.SinkMode.OVERWRITE,
-                    schema=user_schema,
-                    table_settings=ray.data.ClickHouseTableSettings(
-                        engine="ReplacingMergeTree()",
-                        order_by="id",
-                    ),
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pyarrow as pa
+            >>> import pandas as pd
+            >>> docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> user_schema = pa.schema(
+            ...     [
+            ...         ("id", pa.int64()),
+            ...         ("title", pa.string()),
+            ...     ]
+            ... )
+            >>> ds.write_clickhouse(
+            ...     table="default.my_table",
+            ...     dsn="clickhouse+http://user:pass@localhost:8123/default",
+            ...     mode=ray.data.SinkMode.OVERWRITE,
+            ...     schema=user_schema,
+            ...     table_settings=ray.data.ClickHouseTableSettings(
+            ...         engine="ReplacingMergeTree()",
+            ...         order_by="id",
+            ...     ),
+            ... )
 
         Args:
             table: Fully qualified table identifier (e.g., "default.my_table").
@@ -6366,7 +6647,7 @@ class Dataset:
         vector_column: str = "vector",
         batch_size: int = 10000,
         distance_metric: str = "cosine_distance",
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Turbopuffer vector database namespace.
@@ -6388,35 +6669,27 @@ class Dataset:
 
             Write to a single namespace:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds = ds.map_batches(
-                    lambda batch: {
-                        "id": batch["id"],
-                        "vector": ...,
-                    }
-                )
-
-                ds.write_turbopuffer(
-                    namespace="my-namespace",
-                    api_key="<YOUR_API_KEY>",
-                    region="gcp-us-central1",
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds = ds.map_batches(
+            ...     lambda batch: {
+            ...         "id": batch["id"],
+            ...         "vector": ...,
+            ...     }
+            ... )
+            >>> ds.write_turbopuffer(
+            ...     namespace="my-namespace",
+            ...     api_key="<YOUR_API_KEY>",
+            ...     region="gcp-us-central1",
+            ... )
 
             Write to multiple namespaces driven by a column:
 
-            .. testcode::
-                :skipif: True
-
-                ds.write_turbopuffer(
-                    namespace_column="tenant",
-                    api_key="<YOUR_API_KEY>",
-                    region="gcp-us-central1",
-                )
+            >>> ds.write_turbopuffer(
+            ...     namespace_column="tenant",
+            ...     api_key="<YOUR_API_KEY>",
+            ...     region="gcp-us-central1",
+            ... )
 
         Args:
             namespace: Name of the Turbopuffer namespace to write into.
@@ -6491,20 +6764,24 @@ class Dataset:
         table_id: Optional[List[str]] = None,
         namespace_impl: Optional[str] = None,
         namespace_properties: Optional[Dict[str, str]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Lance dataset.
 
         Examples:
-             .. testcode::
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-
-                docs = [{"title": "Lance data sink test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_lance("/tmp/lance_data/", mode=SaveMode.OVERWRITE)
+            >>> import os
+            >>> import tempfile
+            >>> import pandas as pd
+            >>> import ray
+            >>> from ray.data import SaveMode
+            >>> lance_dir = tempfile.TemporaryDirectory()
+            >>> docs = [{"title": "Lance data sink test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_lance(
+            ...     os.path.join(lance_dir.name, "lance_data"), mode=SaveMode.OVERWRITE
+            ... )
+            >>> lance_dir.cleanup()
 
         Args:
             path: The path to the destination Lance dataset. Ignored when namespace
@@ -6564,17 +6841,12 @@ class Dataset:
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
-        """
-        Convenience method to write Ray Dataset to Kafka.
+        """Convenience method to write Ray Dataset to Kafka.
 
         Examples:
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_kafka("my-topic", "localhost:9092")
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds.write_kafka("my-topic", "localhost:9092")
 
         Args:
             topic: Kafka topic name
@@ -6608,7 +6880,7 @@ class Dataset:
         self,
         datasink: Datasink,
         *,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasink`.
@@ -6746,21 +7018,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_images("example://image-datasets/simple")
-
-                for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
-                    print(batch)
-
-            .. testoutput::
-                :options: +MOCK
-
-                {'image': array([[[[...]]]], dtype=uint8)}
-                ...
-                {'image': array([[[[...]]]], dtype=uint8)}
+            >>> import ray
+            >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            >>> for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
+            ...     print(batch)
+            {'image': array([[[[...]]]], dtype=uint8)}
+            {'image': array([[[[...]]]], dtype=uint8)}
 
         .. note::
 
@@ -6779,10 +7042,13 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node and format the batches. Defaults
-                to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -6793,11 +7059,14 @@ class Dataset:
                 ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
                 ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             _collate_fn: A custom function to collate each batch of data.
 
@@ -6871,10 +7140,14 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches
+                and applies ``collate_fn``. The pool has ``prefetch_batches`` threads,
+                up to a limit of 4. To change the limit, set the
+                ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS`` environment variable. If
+                0, Ray Data doesn't prefetch blocks and formats and collates each batch
+                without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -6901,12 +7174,14 @@ class Dataset:
                 experimental and is subject to change. You can't use this parameter in
                 conjunction with ``dtypes``.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
                 `TensorBatchType`. It is recommended to use this flag to pin
@@ -6971,24 +7246,23 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-
-                jax_dataset = ds.iter_jax_batches(batch_size=2)
-                for batch in jax_dataset:
-                    print(batch["sepal length (cm)"], batch["target"])
-                    break
-
-            .. testoutput::
-                :options: +MOCK
-
-                [5.1 4.9] [0 0]
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+            >>> jax_dataset = ds.iter_jax_batches(batch_size=2)
+            >>> for batch in jax_dataset:
+            ...     print(batch["sepal length (cm)"], batch["target"])
+            ...     break
+            [5.1 4.9] [0 0]
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches
+                and applies ``collate_fn``. The pool has ``prefetch_batches`` threads,
+                up to a limit of 4. To change the limit, set the
+                ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS`` environment variable. If
+                0, Ray Data doesn't prefetch blocks and formats and collates each batch
+                without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch. Must be divisible
                 by the number of local devices. Defaults to 256.
             dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
@@ -7010,12 +7284,14 @@ class Dataset:
                 Note: This function is called in a multi-threaded context; avoid using
                 thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete. Defaults to False.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             synchronize_batches: Whether to synchronize batch shapes across all hosts.
                 Setting this to False can improve performance if you guarantee that all
@@ -7070,33 +7346,24 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-
-                tf_dataset = ds.to_tf(
-                    feature_columns="sepal length (cm)",
-                    label_columns="target",
-                    batch_size=2
-                )
-                for features, labels in tf_dataset:
-                    print(features, labels)
-
-            .. testoutput::
-
-                tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
-                ...
-                tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dtype=int64)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+            >>> tf_dataset = ds.iter_tf_batches(batch_size=2)
+            >>> for batch in tf_dataset:
+            ...     print(batch["sepal length (cm)"], batch["target"])
+            ...     break
+            tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
 
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -7104,12 +7371,14 @@ class Dataset:
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if ``None``, the
                 dtype is inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -7140,15 +7409,21 @@ class Dataset:
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
-        additional_columns: Union[str, List[str]] = None,
+        additional_columns: Optional[Union[str, List[str]]] = None,
         prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        additional_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        feature_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
+        label_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
+        additional_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
     ) -> "tf.data.Dataset":
         """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
         over this :class:`~ray.data.Dataset`.
@@ -7227,23 +7502,26 @@ class Dataset:
             additional_columns: Columns that correspond to sample weights or other metadata.
                 If this is a string, the weight data is a tensor. If this is a list, the
                 weight data is a ``dict`` that maps column names to their tensor representation.
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
                 size, then the last batch is smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer is drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
@@ -7400,7 +7678,7 @@ class Dataset:
                         }
                     )
                 else:
-                    meta = schema.empty_table().to_pandas()
+                    meta = _create_empty_table(schema).to_pandas()
 
         dfs = []
         for ref_bundle in self.iter_internal_ref_bundles():
@@ -7440,7 +7718,7 @@ class Dataset:
         if isinstance(schema, PandasBlockSchema):
             dtypes = pd.Series(schema.types, index=schema.names)
         elif isinstance(schema, pa.Schema):
-            dtypes = schema.empty_table().to_pandas().dtypes
+            dtypes = _create_empty_table(schema).to_pandas().dtypes
         else:
             raise NotImplementedError(f"Unsupported format of schema {schema}")
         index_value = parse_index(pd.RangeIndex(-1))
@@ -7504,7 +7782,7 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     @PublicAPI(api_group=IOC_API_GROUP)
-    def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
+    def to_pandas(self, limit: Optional[int] = None) -> "pandas.DataFrame":
         """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
         This method errors if the number of rows exceeds the provided ``limit``.
@@ -7552,7 +7830,51 @@ class Dataset:
         # `PandasBlockBuilder` creates a dataframe with internal extension types like
         # 'TensorDtype'. We use the `to_pandas` method to convert these extension
         # types to regular types.
-        return BlockAccessor.for_block(block).to_pandas()
+        df = BlockAccessor.for_block(block).to_pandas()
+
+        # An empty dataset yields no batches above, so the builder produces a
+        # DataFrame with no columns. Restore the columns and dtypes from the
+        # dataset schema so the result still matches the dataset's structure
+        # (issue #59946).
+        if df.shape[1] == 0:
+            import pyarrow as pa
+
+            schema = self.schema(fetch_if_missing=True)
+            if schema is not None and schema.names:
+                base_schema = schema.base_schema
+                if isinstance(base_schema, pa.Schema):
+                    # Route the empty Arrow table through the same
+                    # `BlockAccessor.to_pandas()` path used for non-empty blocks
+                    # so the two agree on column types (types_mapper, tensor
+                    # casting, etc.).
+                    df = BlockAccessor.for_block(
+                        _create_empty_table(base_schema)
+                    ).to_pandas()
+                else:
+                    import pandas
+
+                    # Pandas-backed schema: preserve per-column dtypes.
+                    types = base_schema.types
+                    assert len(types) == len(schema.names), (types, schema.names)
+                    try:
+                        empty_block = pandas.DataFrame(
+                            {
+                                name: pandas.Series([], dtype=dtype)
+                                for name, dtype in zip(schema.names, types)
+                            }
+                        )
+                    except (TypeError, ValueError):
+                        # A dtype that can't back an empty Series (e.g. an
+                        # exotic extension type): keep the columns at least.
+                        df = pandas.DataFrame(columns=list(schema.names))
+                    else:
+                        # Route through the same `BlockAccessor.to_pandas()`
+                        # conversion used for non-empty blocks so internal
+                        # extension dtypes (e.g. TensorDtype) are converted
+                        # identically.
+                        df = BlockAccessor.for_block(empty_block).to_pandas()
+
+        return df
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
@@ -7673,7 +7995,10 @@ class Dataset:
             block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
-    @ConsumptionAPI(pattern="Args:")
+    @Deprecated(
+        message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
+        warning=True,
+    )
     def to_random_access_dataset(
         self,
         key: str,
@@ -7786,26 +8111,14 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.range(10)
-            assert ds.stats() == ""
-
-            ds = ds.materialize()
-            print(ds.stats())
-
-        .. testoutput::
-            :options: +MOCK
-
-            Operator 0 Read: 1 tasks executed, 5 blocks produced in 0s
-            * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
-            * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
-            * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean
-            * Output num rows: 0 min, 1 max, 0 mean, 10 total
-            * Output size bytes: 0 min, 8 max, 4 mean, 80 total
-            * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
+        >>> import ray
+        >>> ds = ray.data.range(10)
+        >>> ds.stats()
+        ''
+        >>> ds = ds.materialize()
+        >>> print(ds.stats())
+        Operator 1 ReadRange...: ... tasks executed, ... blocks produced in ...
+        * Remote wall time: ...
 
         Returns:
             A string containing execution timing information, or an empty string if
@@ -7814,39 +8127,34 @@ class Dataset:
         return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self):
+    def explain(self) -> None:
         """Show the logical plan and physical plan of the dataset.
 
         Examples:
 
-        .. testcode::
-
-            import ray
-            from ray.data import Dataset
-            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
-            ds = ds.map(lambda x: x + 1)
-            ds.explain()
-
-        .. testoutput::
-
-            <BLANKLINE>
-            -------- Logical Plan --------
-            MapRows[Map(<lambda>)]
-            +- Read[ReadRange]
-            <BLANKLINE>
-            -------- Logical Plan (Optimized) --------
-            MapRows[Map(<lambda>)]
-            +- Read[ReadRange]
-            <BLANKLINE>
-            -------- Physical Plan --------
-            TaskPoolMapOperator[Map(<lambda>)]
-            +- TaskPoolMapOperator[ReadRange]
-               +- InputDataBuffer[Input]
-            <BLANKLINE>
-            -------- Physical Plan (Optimized) --------
-            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
-            +- InputDataBuffer[Input]
-            <BLANKLINE>
+        >>> import ray
+        >>> from ray.data import Dataset
+        >>> ds: Dataset = ray.data.range(10,  override_num_blocks=10)
+        >>> ds = ds.map(lambda x: x + 1)
+        >>> ds.explain()
+        <BLANKLINE>
+        -------- Logical Plan --------
+        MapRows[Map(<lambda>)]
+        +- Read[ReadRange]
+        <BLANKLINE>
+        -------- Logical Plan (Optimized) --------
+        MapRows[Map(<lambda>)]
+        +- Read[ReadRange]
+        <BLANKLINE>
+        -------- Physical Plan --------
+        TaskPoolMapOperator[Map(<lambda>)]
+        +- TaskPoolMapOperator[ReadRange]
+           +- InputDataBuffer[Input]
+        <BLANKLINE>
+        -------- Physical Plan (Optimized) --------
+        TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+        +- InputDataBuffer[Input]
+        <BLANKLINE>
         """
         print(explain_plan(self._logical_plan))
 
@@ -7911,31 +8219,6 @@ class Dataset:
         self._synchronize_progress_bar()
         return iter_ref_bundles
 
-    @Deprecated
-    @ConsumptionAPI(pattern="Examples:")
-    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
-        """Get a list of references to the underlying blocks of this dataset.
-
-        This function can be used for zero-copy access to the data. It blocks
-        until the underlying blocks are computed.
-
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(1)
-            >>> ds.get_internal_block_refs()
-            [ObjectRef(...)]
-
-        Returns:
-            A list of references to this dataset's blocks.
-        """
-        logger.warning(
-            "`Dataset.get_internal_block_refs()` is deprecated. Use "
-            "`Dataset.iter_internal_ref_bundles()` instead.",
-        )
-        block_refs = self._execute().block_refs
-        self._synchronize_progress_bar()
-        return block_refs
-
     @DeveloperAPI
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
@@ -7965,8 +8248,7 @@ class Dataset:
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:
-        """
-        Serialize this dataset's lineage, not the actual data or the existing data
+        """Serialize this dataset's lineage, not the actual data or the existing data
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
@@ -7982,18 +8264,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-                serialized_ds = ds.serialize_lineage()
-                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-                print(ds)
-
-            .. testoutput::
-
-                Dataset(num_rows=?, schema=...)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> serialized_ds = ds.serialize_lineage()
+            >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+            >>> print(ds)
+            Dataset(num_rows=?, schema=...)
 
 
         Returns:
@@ -8044,26 +8320,19 @@ class Dataset:
     @staticmethod
     @DeveloperAPI
     def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
-        """
-        Deserialize the provided lineage-serialized Dataset.
+        """Deserialize the provided lineage-serialized Dataset.
 
         This uses pickle, and assumes that the provided serialized bytes were
         serialized using :py:meth:`Dataset.serialize_lineage`.
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-                serialized_ds = ds.serialize_lineage()
-                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-                print(ds)
-
-            .. testoutput::
-
-                Dataset(num_rows=?, schema=...)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> serialized_ds = ds.serialize_lineage()
+            >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+            >>> print(ds)
+            Dataset(num_rows=?, schema=...)
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
@@ -8591,8 +8860,7 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
-        """
-        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
+        """Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
 
         Args:
             base_schema: The underlying Arrow or Pandas schema.
@@ -8759,7 +9027,14 @@ class _CacheMetadataIterator(OutputIterator):
             self._dataset._cache.set_num_rows(dag, self._num_rows)
             self._dataset._cache.set_size_bytes(dag, self._size_bytes)
             if schema:
-                self._dataset._cache.set_schema(dag, schema)
+                config = self._dataset._logical_plan.context.checkpoint_config
+                self._dataset._cache.set_schema(
+                    dag,
+                    schema,
+                    generated_id=(
+                        config.generated_id_column if config is not None else None
+                    ),
+                )
             raise
 
 
@@ -8790,6 +9065,9 @@ class _ExecutionCache:
         self._size_bytes: Optional[int] = None
         # Note schema can be cached via other means as well.
         self._schema: Optional["Schema"] = None
+        # The ``CheckpointConfig.generated_id_column`` binding in effect when
+        # ``_schema`` was written; ``None`` if no column was configured.
+        self._schema_generated_id: Optional[str] = None
 
         # --- Other ---
         self._stats: Optional[DatasetStats] = None
@@ -8813,12 +9091,27 @@ class _ExecutionCache:
         # backwards compatibility.
         return self._stats
 
-    def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
-        if self._cache_is_fresh(dag):
-            if self._bundle is not None and self._bundle.schema is not None:
-                return self._bundle.schema
-            return self._schema
-        return None
+    def get_schema(
+        self, dag: "LogicalOperator", *, generated_id: Optional[str] = None
+    ) -> Optional["Schema"]:
+        """Return the cached schema, or ``None`` on a miss.
+
+        ``generated_id`` is the ``CheckpointConfig.generated_id_column``
+        currently in effect. The column appears and disappears with the
+        config (Ray Train sets ``checkpoint_config`` on built datasets), so
+        a cached schema is valid only under the binding it was computed
+        with; any other binding is a miss.
+        """
+        if not self._cache_is_fresh(dag):
+            return None
+        if self._bundle is not None and self._bundle.schema is not None:
+            # A materialized bundle is exactly what iteration returns — no
+            # re-execution happens — so its schema holds regardless of any
+            # config set afterwards.
+            return self._bundle.schema
+        if generated_id != self._schema_generated_id:
+            return None
+        return self._schema
 
     def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
         if self._cache_is_fresh(dag):
@@ -8852,11 +9145,18 @@ class _ExecutionCache:
         self._operator = dag
         self._size_bytes = size_bytes
 
-    def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
+    def set_schema(
+        self,
+        dag: "LogicalOperator",
+        schema: "Schema",
+        *,
+        generated_id: Optional[str] = None,
+    ) -> None:
         if dag != self._operator:
             self._clear_dag_dependent_cache()
         self._operator = dag
         self._schema = schema
+        self._schema_generated_id = generated_id
 
     def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
         if dag != self._operator:
@@ -8874,6 +9174,7 @@ class _ExecutionCache:
         self._operator = None
         self._bundle = None
         self._schema = None
+        self._schema_generated_id = None
         self._num_rows = None
         self._size_bytes = None
 
@@ -8883,6 +9184,7 @@ class _ExecutionCache:
         new._bundle = self._bundle
         new._stats = self._stats
         new._schema = self._schema
+        new._schema_generated_id = self._schema_generated_id
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
         return new
@@ -8893,6 +9195,7 @@ class _ExecutionCache:
         new._bundle = copy.copy(self._bundle)
         new._stats = copy.copy(self._stats)
         new._schema = copy.copy(self._schema)
+        new._schema_generated_id = self._schema_generated_id
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
         return new

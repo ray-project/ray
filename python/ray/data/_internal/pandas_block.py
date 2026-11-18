@@ -1,4 +1,5 @@
 import collections
+import functools
 import logging
 import sys
 from dataclasses import dataclass
@@ -179,7 +180,9 @@ def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
     # If no object-dtype columns, use fast path with regular from_pandas()
     if not any(is_object_dtype(df[col].dtype) for col in df.columns):
         # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
-        return pa.Table.from_pandas(df, preserve_index=False)
+        return _with_parsable_pandas_metadata(
+            pa.Table.from_pandas(df, preserve_index=False)
+        )
 
     # Convert column by column: object-dtype columns go through
     # convert_to_pyarrow_array (handles tensors, PIL images, arbitrary objects),
@@ -198,67 +201,107 @@ def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
     return pa.table(dict(zip(df.columns, arrays)), schema=pa.schema(fields))
 
 
-class PandasRow(Mapping):
-    """
-    Row of a tabular Dataset backed by a Pandas DataFrame block.
-    """
+def _with_parsable_pandas_metadata(table: "pyarrow.Table") -> "pyarrow.Table":
+    """Returns ``table`` with every pandas dtype name in its metadata that pandas
+    cannot parse replaced by ``object``.
 
-    def __init__(self, row: Any):
-        self._row = row
+    ``pa.Table.from_pandas`` records each column's pandas dtype as a string, and
+    ``to_pandas`` rebuilds the dtype from it when no types mapper covers the
+    column. pandas cannot parse the names of parametrized Arrow-backed dtypes,
+    such as ``list<item: int64>[pyarrow]``, and raises ``TypeError``.
+    """
+    metadata = table.schema.metadata
+    pandas_metadata = metadata.get(b"pandas") if metadata else None
+    if pandas_metadata is None:
+        return table
+    parsable = _parsable_pandas_metadata(pandas_metadata)
+    if parsable == pandas_metadata:
+        return table
+    return table.replace_schema_metadata({**metadata, b"pandas": parsable})
+
+
+@functools.lru_cache(maxsize=128)
+def _parsable_pandas_metadata(pandas_metadata: bytes) -> bytes:
+    """Rewrites unparsable ``numpy_type`` entries to ``object``. The same schema
+    recurs across batches, so the result is cached on the metadata bytes."""
+    import json
+
+    from pandas.api.types import pandas_dtype
+
+    document = json.loads(pandas_metadata)
+    changed = False
+    for column in document.get("columns", []):
+        dtype_name = column.get("numpy_type")
+        if not isinstance(dtype_name, str):
+            continue
+        try:
+            pandas_dtype(dtype_name)
+        except (TypeError, ValueError, NotImplementedError):
+            # What pandas raises for a dtype name it cannot parse.
+            column["numpy_type"] = "object"
+            changed = True
+    return json.dumps(document).encode() if changed else pandas_metadata
+
+
+class PandasRow(Mapping):
+    """Row of a tabular Dataset backed by a Pandas DataFrame block."""
+
+    def __init__(self, df: "pandas.DataFrame", row_idx: int):
+        self._batch = df
+        self._row_idx = row_idx
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        def get_item(keys: List[str]) -> Any:
-            col = self._row[keys]
-            if len(col) == 0:
-                return None
+        def get_item(keys: List[str]) -> Tuple[Any, ...]:
+            items = []
+            for col_name in keys:
+                if col_name not in self._batch.columns:
+                    raise KeyError(col_name)
+                val = self._batch[col_name].iloc[self._row_idx]
+                if isinstance(val, TensorArrayElement):
+                    # Getting an item in a Pandas tensor column may return
+                    # a TensorArrayElement, which we have to convert to an ndarray.
+                    val = val.to_numpy()
+                items.append(val)
 
-            items = col.iloc[0]
-            if isinstance(items.iloc[0], TensorArrayElement):
-                # Getting an item in a Pandas tensor column may return
-                # a TensorArrayElement, which we have to convert to an ndarray.
-                return tuple(item.to_numpy() for item in items)
-
-            try:
-                # Try to interpret this as a numpy-type value.
-                # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-                return tuple(item for item in items)
-
-            except (AttributeError, ValueError) as e:
-                logger.warning(f"Failed to convert {items} to a tuple", exc_info=e)
-
-                # Fallback to the original form.
-                return items
+            # Unwrap NumPy scalars into their native Python equivalents, so that
+            # this returns what ``ArrowRow`` returns via ``pyarrow.Scalar.as_py()``.
+            # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
+            #
+            # Only ``np.generic`` is unwrapped. ``ndarray`` also has ``.item()``,
+            # but calling it on a tensor value either drops the array's shape
+            # (size-1 arrays) or raises ``ValueError`` (anything larger), and
+            # ``ArrowRow`` returns tensor values as arrays too.
+            return tuple(v.item() if isinstance(v, np.generic) else v for v in items)
 
         is_single_item = isinstance(key, str)
         keys = [key] if is_single_item else key
-
         items = get_item(keys)
 
-        if items is None:
-            return None
-
-        elif is_single_item:
-            return items[0]
-        else:
-            return items
+        return items[0] if is_single_item else items
 
     def __iter__(self) -> Iterator:
-        for k in self._row.columns:
-            yield k
+        return iter(self._batch.columns)
 
     def __len__(self):
-        return self._row.shape[1]
+        return self._batch.shape[1]
 
     def as_pydict(self) -> Dict[str, Any]:
+        from ray.data.extensions import TensorArrayElement
+
         pydict: Dict[str, Any] = {}
-        for key, value in self.items():
+        for key in self:
+            value = self._batch[key].iloc[self._row_idx]
             # Convert NA to None for consistency across block formats. `pd.isna`
             # returns True for both NA and NaN, but since we want to preserve NaN
             # values, we check for identity instead.
             if is_scalar(value) and value is pd.NA:
                 pydict[key] = None
+            elif isinstance(value, TensorArrayElement):
+                pydict[key] = value.to_numpy()
+            elif isinstance(value, np.generic):
+                pydict[key] = value.item()
             else:
                 pydict[key] = value
 
@@ -502,8 +545,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         super().__init__(table)
 
     def _get_row(self, index: int) -> PandasRow:
-        base_row = self.slice(index, index + 1, copy=False)
-        return PandasRow(base_row)
+        return self.ROW_TYPE(self._table, index)
 
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
@@ -522,7 +564,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             view = view.copy(deep=True)
         return view
 
-    def take(self, indices: List[int]) -> "pandas.DataFrame":
+    def take(self, indices: Union[List[int], np.ndarray]) -> "pandas.DataFrame":
         table = self._table.take(indices)
         table.reset_index(drop=True, inplace=True)
         return table
@@ -806,6 +848,36 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         columns, ascending = sort_key.to_pandas_sort_args()
         return self._table.sort_values(by=columns, ascending=ascending)
+
+    def top_n(self, sort_key: "SortKey", limit: int) -> Block:
+        assert (
+            sort_key.get_columns()
+        ), f"Sorting columns couldn't be empty (got {sort_key.get_columns()})"
+        assert limit >= 0, limit
+
+        if limit == 0 or self._table.shape[0] == 0:
+            return self._table.iloc[:0]
+
+        result_size = min(limit, self._table.shape[0])
+        columns, ascending = sort_key.to_pandas_sort_args()
+
+        # Use row positions so duplicate/non-default indices survive the gather.
+        key_frame = self._table[columns].reset_index(drop=True)
+        if not key_frame.isnull().values.any() and len(set(ascending)) == 1:
+            try:
+                if ascending[0]:
+                    selected = key_frame.nsmallest(result_size, columns)
+                else:
+                    selected = key_frame.nlargest(result_size, columns)
+            except TypeError:
+                pass
+            else:
+                return self._table.iloc[selected.index]
+
+        indices = key_frame.sort_values(by=columns, ascending=ascending).index[
+            :result_size
+        ]
+        return self._table.iloc[indices]
 
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"

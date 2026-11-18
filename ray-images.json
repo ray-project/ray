@@ -1,11 +1,11 @@
 {
   "ray": {
     "defaults": {
-      "python": "3.10",
+      "python": "3.11",
       "gpu_platform": "cu12.1.1-cudnn8",
       "architecture": "x86_64"
     },
-    "python": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "python": ["3.11", "3.12", "3.13", "3.14"],
     "architectures": ["x86_64", "aarch64"],
     "exceptions": [
       {
@@ -16,7 +16,6 @@
     "platforms": [
       "cpu",
       "tpu",
-      "cu11.7.1-cudnn8",
       "cu11.8.0-cudnn8",
       "cu12.1.1-cudnn8",
       "cu12.3.2-cudnn9",
@@ -25,7 +24,8 @@
       "cu12.6.3-cudnn",
       "cu12.8.1-cudnn",
       "cu12.9.1-cudnn",
-      "cu13.0.0-cudnn"
+      "cu13.0.0-cudnn",
+      "cu13.3.1-cudnn"
     ]
   },
   "ray-ml": {

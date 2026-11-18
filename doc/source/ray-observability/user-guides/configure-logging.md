@@ -50,9 +50,9 @@ System logs may include information about your applications. For example, ``runt
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python or Java part of Ray drivers and workers. Ray streams all stdout and stderr from Tasks or Actors to these files. Note that job_id is the ID of the driver.
 
 ### System/component logs
-- ``dashboard.[log|out|err]``: A log file of a Ray Dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard respectively. They're usually empty except when the dashboard crashes unexpectedly.
+- ``dashboard.[log|out|err]``: A log file of a Ray dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard respectively. They're usually empty except when the dashboard crashes unexpectedly.
 - ``dashboard_agent.[log|out|err]``: Every Ray node has one dashboard agent. ``.log`` files contain logs generated from the dashboard agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard agent respectively. They're usually empty except when the dashboard agent crashes unexpectedly.
-- ``dashboard_[module_name].[log|out|err]``: The log files for the Ray Dashboard child processes, one per each module. ``.log`` files contain logs generated from the module's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the module respectively. They're usually empty except when the module crashes unexpectedly.
+- ``dashboard_[module_name].[log|out|err]``: The log files for the Ray dashboard child processes, one per each module. ``.log`` files contain logs generated from the module's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the module respectively. They're usually empty except when the module crashes unexpectedly.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
 - ``log_monitor.[log|out|err]``: The log monitor is in charge of streaming logs to the driver. ``.log`` files contain logs generated from the log monitor's logger. ``.out`` and ``.err`` files contain the stdout and stderr printed from the log monitor respectively. They're usually empty except when the log monitor crashes unexpectedly.
@@ -83,7 +83,7 @@ Ray prints all stdout emitted from the ``print`` method to the driver with a ``(
 
 It's often useful to distinguish between log messages from different Actors. For example, if you have a large number of worker Actors, you may want to easily see the index of the Actor that logged a particular message. Define the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for the Actor class to replace the Actor name with the Actor repr. For example:
 
-```{literalinclude} /ray-core/doc_code/actor-repr.py
+```{literalinclude} /core/doc_code/actor-repr.py
 ```
 
 The resulting output follows:
@@ -230,7 +230,7 @@ Configure the following environment variables on the driver process **before imp
 
 When using [tqdm](https://tqdm.github.io) in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
 
-```{literalinclude} /ray-core/doc_code/tqdm.py
+```{literalinclude} /core/doc_code/tqdm.py
 ```
 
 This tqdm implementation works as follows:
@@ -612,7 +612,7 @@ When enabled, the Job Supervisor Python logs output in the following JSON format
 ```
 
 :::{note}
-Currently, only the Job Supervisor supports JSON format for Python system logs when ``RAY_BACKEND_LOG_JSON=1`` is set. Other Python system components such as the Dashboard, Dashboard Agent, Log Monitor, and Autoscaler Monitor do not yet support JSON format and continue to use the standard text format.
+Currently, only the Job Supervisor supports JSON format for Python system logs when ``RAY_BACKEND_LOG_JSON=1`` is set. Other Python system components such as the dashboard, dashboard Agent, Log Monitor, and Autoscaler Monitor do not yet support JSON format and continue to use the standard text format.
 :::
 
 C++ system logs (such as Raylet, GCS) output in the following JSON format:
