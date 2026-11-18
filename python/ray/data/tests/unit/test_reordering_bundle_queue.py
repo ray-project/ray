@@ -290,30 +290,7 @@ def test_ordered_queue_metrics():
 
 
 def test_ordered_queue_finalize_out_of_order():
-    """Test that keys can be finalized out of order."""
-    queue = ReorderingBundleQueue()
-    bundle0 = _create_bundle("data1")
-    bundle1 = _create_bundle("data11")
-    bundle2 = _create_bundle("data111")
-
-    queue.add(bundle0, key=0)
-    queue.add(bundle1, key=1)
-    queue.add(bundle2, key=2)
-
-    # Finalize key 2 first, then 1, then 0
-    queue.finalize(key=2)
-    queue.finalize(key=1)
-
-    # Should still need to consume key 0 first
-    assert queue.get_next() is bundle0
-    queue.finalize(key=0)
-
-    assert queue.get_next() is bundle1
-    assert queue.get_next() is bundle2
-
-
-def test_ordered_queue_cleans_up_consumed_keys():
-    """Test that finalized and consumed keys are evicted from internal state."""
+    """Test that keys can be finalized out of order and cleaned up once consumed."""
     queue = ReorderingBundleQueue()
 
     # Checking has_next / peek_next on an empty queue should not insert empty deques.
@@ -321,18 +298,31 @@ def test_ordered_queue_cleans_up_consumed_keys():
     assert queue.peek_next() is None
     assert len(queue._inner) == 0
 
-    for k in range(5):
-        if k % 2 == 0:
-            queue.add(_create_bundle(f"data-{k}"), key=k)
-        queue.finalize(key=k)
+    bundle0 = _create_bundle("data1")
+    bundle1a = _create_bundle("data11a")
+    bundle1b = _create_bundle("data11b")
+    bundle3 = _create_bundle("data111")
+
+    queue.add(bundle0, key=0)
+    queue.add(bundle1a, key=1)
+    queue.add(bundle1b, key=1)
+    queue.add(bundle3, key=3)
+
+    # Finalize keys out of order (including empty key 2)
+    queue.finalize(key=3)
+    queue.finalize(key=2)
+    queue.finalize(key=1)
+
+    # Should still need to consume key 0 first
+    assert queue.get_next() is bundle0
+    queue.finalize(key=0)
 
     consumed = []
     while queue.has_next():
         consumed.append(queue.get_next())
 
-    assert len(consumed) == 3
+    assert consumed == [bundle1a, bundle1b, bundle3]
     assert not queue.has_next()
-    assert queue._current_key == 5
     assert len(queue._inner) == 0
     assert len(queue._finalized_keys) == 0
 
