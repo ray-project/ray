@@ -985,6 +985,40 @@ def test_estimate_distinct_keys(rows_per_key, expected):
     assert estimate == pytest.approx(expected, rel=0.1)
 
 
+@pytest.mark.parametrize("heavy_keys", [1, 10, 100])
+def test_estimate_distinct_keys_unique_plus_heavy_keys(heavy_keys):
+    """90% unique keys plus 10% of rows over a few heavy keys (e.g. null):
+    the heavy keys must not drag the estimate for the unique ones down. Each
+    heavy key holds at least 200 rows, so it shows up several times in the
+    sample."""
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _estimate_distinct_keys,
+    )
+
+    num_rows = 200_000
+    keys = np.arange(num_rows)
+    heavy = np.random.default_rng(0).random(num_rows) < 0.1
+    keys[heavy] = -1 - (np.arange(heavy.sum()) % heavy_keys)
+    table = pa.table({"k": keys})
+    expected = len(np.unique(keys))
+
+    estimate = _estimate_distinct_keys(table, ["k"], sample_rows=10_000)
+
+    assert estimate == pytest.approx(expected, rel=0.1)
+
+
+def test_estimate_distinct_keys_key_named_count_all():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _estimate_distinct_keys,
+    )
+
+    table = pa.table({"count_all": pa.array([str(i) for i in range(1_000)])})
+
+    estimate = _estimate_distinct_keys(table, ["count_all"], sample_rows=100)
+
+    assert estimate == pytest.approx(1_000, rel=0.1)
+
+
 @pytest.mark.parametrize("mode,expect_partial", [("always", True), ("never", False)])
 def test_partial_agg_forced_modes(mode, expect_partial):
     from ray.data._internal.execution.operators.hash_aggregate_v2 import (

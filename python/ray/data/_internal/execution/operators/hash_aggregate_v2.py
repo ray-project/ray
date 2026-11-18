@@ -426,6 +426,11 @@ def _should_skip_partial_aggregation(
     return num_distinct > policy.unique_ratio_threshold * block.num_rows
 
 
+# Keys seen at least this many times in the sample count as one distinct key
+# each and are left out of the Duj1 scale-up (see _estimate_distinct_keys).
+_HEAVY_KEY_SAMPLE_COUNT = 3
+
+
 def _estimate_distinct_keys(
     block: pa.Table, keys: List[str], sample_rows: int
 ) -> float:
@@ -444,28 +449,40 @@ def _estimate_distinct_keys(
     where ``N`` is the block's rows, ``n`` the sampled rows, ``d`` the distinct
     keys in the sample and ``f1`` the keys seen exactly once in it.
 
+    Duj1 runs low when a few heavy keys (e.g. null) sit next to many unique
+    ones: the heavy keys' rows inflate ``n - f1``. So keys seen at least
+    ``_HEAVY_KEY_SAMPLE_COUNT`` times in the sample count as one distinct key
+    each, and Duj1 is applied only to the remaining rows, with ``N`` scaled by
+    the same fraction.
+
     Reference: P. J. Haas and L. Stokes, "Estimating the number of classes in a
     finite population", Journal of the American Statistical Association 93(444),
     1998.
     """
     total = block.num_rows
-    if sample_rows >= total:
-        sample = block.select(keys)
-    else:
+    # Rename the keys so none can clash with the ``count_all`` output column.
+    sample = block.select(keys).rename_columns([f"__key{i}" for i in range(len(keys))])
+    if sample_rows < total:
         # Fixed seed: the same block always gets the same decision.
         rng = np.random.default_rng(0)
         indices = rng.choice(total, size=sample_rows, replace=False, shuffle=False)
-        sample = block.select(keys).take(np.sort(indices))
+        sample = sample.take(np.sort(indices))
     counts = (
-        sample.group_by(keys, use_threads=False)
+        sample.group_by(sample.column_names, use_threads=False)
         .aggregate([([], "count_all")])
         .column("count_all")
+        .to_numpy()
     )
-    n = sample.num_rows
-    d = len(counts)
-    f1 = pc.sum(pc.equal(counts, 1)).as_py() or 0
-    denominator = n - f1 + f1 * n / total
-    return n * d / denominator
+    heavy = counts >= _HEAVY_KEY_SAMPLE_COUNT
+    num_heavy = int(np.count_nonzero(heavy))
+    # Sampled rows and distinct keys left after setting the heavy keys aside.
+    n = sample.num_rows - int(counts[heavy].sum())
+    d = len(counts) - num_heavy
+    if n == 0:
+        return float(num_heavy)
+    f1 = int(np.count_nonzero(counts == 1))
+    rest_total = total * n / sample.num_rows
+    return num_heavy + n * d / (n - f1 + f1 * n / rest_total)
 
 
 def _make_vectorized_aggregating_transformer(
