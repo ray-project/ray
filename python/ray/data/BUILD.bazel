@@ -997,7 +997,7 @@ py_test(
 
 py_test(
     name = "test_hudi",
-    size = "medium",
+    size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
     tags = [
         "exclusive",
