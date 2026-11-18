@@ -28,7 +28,7 @@ def split_container_options(options, help_text, create_help, global_help):
     Separate create and global declarations determine each option's scope.
 
     Return create options, start options, stdout/stderr discard flags, global
-    options, and whether the original run command is required.
+    options, command-specific run options, and whether run itself is required.
     """
 
     def declarations(text):
@@ -99,13 +99,17 @@ def split_container_options(options, help_text, create_help, global_help):
 
     # Container configuration belongs to create; attachment and signal handling
     # belong to the launcher's start. Detach means omitting start --attach.
-    create, start, global_options, streams = [], [], [], set()
+    create, start, global_options, run_options, streams = [], [], [], [], set()
     use_run = False
     detached, interactive = False, False
     for name, value in parsed:
         if name in global_schema:
             global_options.append(name + "=" + value)
-        elif name == "--detach":
+            continue
+        # Rebuild from parsed options so flag-looking values stay data. Global
+        # options are emitted separately before every Podman subcommand.
+        run_options.append(name + "=" + value)
+        if name == "--detach":
             detached = boolean(value)
         elif name in ("--sig-proxy", "--detach-keys"):
             start.append(name + "=" + value)
@@ -134,6 +138,7 @@ def split_container_options(options, help_text, create_help, global_help):
         bool(streams and "stdout" not in streams),
         bool(streams and "stderr" not in streams),
         global_options,
+        run_options,
         use_run,
     )
 

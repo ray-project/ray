@@ -86,7 +86,14 @@ class WorkerContainerManager:
             if record.cleanup is not None and not record.cleanup.done()
         ):
             raise RuntimeError("Worker container cleanup is pending; retry the launch")
-        if sum(not r.cancelled for r in self.records.values()) >= self.max_pending:
+        # A managed run retains its record for the worker's lifetime. Admission
+        # covers the startup deadline, independently of supervision/cleanup.
+        now = time.monotonic()
+        pending = sum(
+            not record.cancelled and record.identity["deadline_ms"] / 1000 > now
+            for record in self.records.values()
+        )
+        if pending >= self.max_pending:
             raise RuntimeError(
                 "Too many pending worker container launches on this node"
             )
@@ -289,6 +296,7 @@ class WorkerContainerManager:
             nonlocal completion
             record.run_process = await asyncio.create_subprocess_exec(
                 *self.podman_command,
+                *record.global_options,
                 "run",
                 *options,
                 "--label=" + LAUNCH_LABEL + "=" + record.identity["launch_id"],

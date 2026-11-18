@@ -287,6 +287,84 @@ def test_grants_are_bounded_and_overflow_cancellation_cannot_resurrect(tmp_path)
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("late_create", [False, True])
+def test_managed_run_deadline_releases_capacity_but_retains_cleanup(
+    tmp_path, late_create
+):
+    async def run():
+        async with managed(tmp_path, max_pending=1) as (manager, engine):
+            first, other = launch("a"), launch("b", ttl=100)
+            gate, started, queried = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+            async def live_run(record, *args):
+                if not late_create:
+                    engine.containers[first["launch_id"]] = "a" * 64
+                started.set()
+                await gate.wait()
+                if late_create:
+                    engine.containers[first["launch_id"]] = "a" * 64
+
+            async def trace(args, *a, **kw):
+                result = await engine.run(args, *a, **kw)
+                if args[0] == "ps":
+                    queried.set()
+                return result
+
+            manager._run_attached = live_run
+            manager._run = trace
+            manager.register(first)
+            await manager.create_registered(
+                first,
+                ["--passwd=false"],
+                ["image"],
+                {},
+                None,
+                stdio_socket="simulated-stdio",
+            )
+            await started.wait()
+            record = manager.records[first["launch_id"]]
+            with pytest.raises(RuntimeError, match="Too many"):
+                manager.register(other)
+            # Patch only the manager's clock, leaving asyncio's timers alone.
+            with mock.patch(
+                "ray._private.runtime_env.worker_container_manager.time"
+            ) as clock:
+                clock.monotonic.return_value = first["deadline_ms"] / 1000 + 1
+                manager._retire(record)
+                assert manager.records[first["launch_id"]] is record
+                assert not record.creator.done()
+                manager.register(other)
+                with pytest.raises(RuntimeError, match="Too many"):
+                    manager.check_admission()
+                with pytest.raises(RuntimeError, match="expired"):
+                    manager.register(first)
+                with pytest.raises(RuntimeError, match="expired"):
+                    await manager.create_registered(
+                        first,
+                        [],
+                        ["image"],
+                        {},
+                        None,
+                        stdio_socket="simulated-stdio",
+                    )
+                manager.stop(first)
+                await asyncio.wait_for(queried.wait(), 1)
+                assert not record.creator.done()
+                assert not record.cleanup.done()
+                with pytest.raises(RuntimeError, match="cleanup is pending"):
+                    manager.check_admission()
+                gate.set()
+                await settled(manager, first)
+                assert first["launch_id"] not in manager.records
+                assert not engine.containers
+                assert engine.remove_attempted.is_set()
+                manager.stop(other)
+                await settled(manager, other)
+                manager.register(launch("c", ttl=100))
+
+    asyncio.run(run())
+
+
 def test_hung_command_is_killed_and_reaped_within_deadline(tmp_path):
     async def run():
         manager = WorkerContainerManager(
@@ -365,14 +443,15 @@ GLOBAL_HELP = """
     ],
 )
 def test_option_values_and_combined_short_flags(flags, expected_create, expected_start):
-    assert split_container_options(flags, OPTION_HELP, CREATE_HELP, GLOBAL_HELP) == (
+    result = split_container_options(flags, OPTION_HELP, CREATE_HELP, GLOBAL_HELP)
+    assert result[:5] == (
         expected_create,
         expected_start,
         False,
         False,
         [],
-        False,
     )
+    assert not result[-1]
 
 
 def test_attach_selection_and_new_boolean_options():
@@ -384,6 +463,7 @@ def test_attach_selection_and_new_boolean_options():
         True,
         False,
         [],
+        ["--attach=stderr"],
         False,
     )
     help_text = OPTION_HELP + "      --future-flag          A new boolean option\n"
@@ -391,6 +471,7 @@ def test_attach_selection_and_new_boolean_options():
         ["--future-flag", "-i"], help_text, CREATE_HELP, GLOBAL_HELP
     )
     assert result[0] == ["--interactive=true"]
+    assert result[5] == ["--future-flag=true", "--interactive=true"]
     assert result[-1]  # A new run-only flag must never be sent to create.
 
 
@@ -415,6 +496,39 @@ def test_global_options_are_kept_separate_with_order_and_repetition():
         "--storage-opt=b=2",
     ]
     assert not result[-1]
+
+
+@pytest.mark.parametrize("flag", ["--passwd=false", "--rmi"])
+def test_managed_run_keeps_command_options_separate_from_globals(flag):
+    result = split_container_options(
+        [
+            "--root",
+            "/custom/storage",
+            "--storage-opt=a=1",
+            flag,
+            "--label",
+            "--root=/label-data",
+            "--storage-opt",
+            "b=2",
+            "-dit",
+        ],
+        GLOBAL_HELP + OPTION_HELP,
+        CREATE_HELP,
+        GLOBAL_HELP,
+    )
+    assert result[4] == [
+        "--root=/custom/storage",
+        "--storage-opt=a=1",
+        "--storage-opt=b=2",
+    ]
+    assert result[5] == [
+        flag if "=" in flag else flag + "=true",
+        "--label=--root=/label-data",
+        "--detach=true",
+        "--interactive=true",
+        "--tty=true",
+    ]
+    assert result[-1]
 
 
 @pytest.mark.parametrize("fail_create", [False, True])
@@ -516,6 +630,19 @@ def test_run_only_launch_preserves_stdio_signals_exit_and_cancellation(
                     return await original_engine(args, *a, **kw)
 
                 manager._run = late_engine
+            global_options = [
+                "--root=/custom/storage",
+                "--storage-opt=a=1",
+                "--storage-opt=b=2",
+                "--runroot=/custom/state",
+            ]
+            unscoped_engine = manager._run
+
+            async def scoped_engine(args, *a, **kw):
+                assert args[: len(global_options)] == global_options
+                return await unscoped_engine(args[len(global_options) :], *a, **kw)
+
+            manager._run = scoped_engine
             owner = launch(ttl=30)
             manager.register(owner)
             client = await server_for(manager)
@@ -546,7 +673,19 @@ def test_run_only_launch_preserves_stdio_signals_exit_and_cancellation(
                 "import json,os,sys; from ray._private.runtime_env.container_launch import run_worker_container; "
                 "run_worker_container(sys.argv[1], json.loads(sys.argv[2]), ['image'], dict(os.environ))",
                 address,
-                json.dumps([flag]),
+                json.dumps(
+                    [
+                        "--root",
+                        "/custom/storage",
+                        "--storage-opt=a=1",
+                        flag,
+                        "--label",
+                        "--root=/label-data",
+                        "--storage-opt",
+                        "b=2",
+                        "--runroot=/custom/state",
+                    ]
+                ),
                 env=environment,
                 cwd=str(tmp_path),
                 stdin=asyncio.subprocess.PIPE,
@@ -599,7 +738,12 @@ def test_run_only_launch_preserves_stdio_signals_exit_and_cancellation(
                     assert (tmp_path / "removed").exists()
                     assert not (tmp_path / "late").exists()
                 argv = json.loads((tmp_path / "argv.json").read_text())
-                assert argv[0] == "run" and flag in argv and argv[-1] == "image"
+                assert argv[: len(global_options) + 1] == [*global_options, "run"]
+                for option in global_options:
+                    assert argv.count(option) == 1
+                assert (flag if "=" in flag else flag + "=true") in argv
+                assert "--label=--root=/label-data" in argv
+                assert argv[-1] == "image"
                 assert not any(command[0] == "create" for command in engine.calls)
             finally:
                 if launcher.returncode is None:

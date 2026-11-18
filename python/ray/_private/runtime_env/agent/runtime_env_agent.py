@@ -593,6 +593,7 @@ class RuntimeEnvAgent:
                 discard_stdout,
                 discard_stderr,
                 global_options,
+                run_options,
                 use_run,
             ) = split_container_options(
                 list(request.options), *self._container_option_help
@@ -608,7 +609,7 @@ class RuntimeEnvAgent:
                     "job_id": request.launch.job_id,
                     "deadline_ms": request.launch.deadline_ms,
                 },
-                list(request.options) if use_run else options,
+                run_options if use_run else options,
                 list(request.entrypoint),
                 dict(request.environment),
                 request.working_directory or None,
