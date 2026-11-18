@@ -7439,6 +7439,19 @@ class TestReconcilerMultiHost:
         assert view.unlabeled_backfill_gap("tpu-u", 4, extra_queued=1) == 0
         assert view.unlabeled_backfill_gap("tpu", 4) == 0
 
+        # Vanished mid-boot pod on an unclaimed batch with pending REQUESTED siblings
+        # counts toward unlabeled_backfill_gap so 1 allocated + 2 requested + 1 vanished
+        # yields gap 0, and adding 3 survivors on another torn-down slice yields gap 1.
+        van_view = _MultiHostReplicaView(
+            requested_by_lid={("tpu-u", "lid-v"): 2},
+            vanished_cids_by_lid={("tpu-u", "lid-v"): {"u-van"}},
+            unlabeled_occupying_cids={"tpu-u": {"u-0"}},
+        )
+        assert van_view.uncovered_replica_slots_by_type({"tpu-u": 4}) == {"tpu-u": 1}
+        assert van_view.unlabeled_backfill_gap("tpu-u", 4) == 0
+        van_view.unlabeled_occupying_cids["tpu-u"].update({"u-s0", "u-s1", "u-s2"})
+        assert van_view.unlabeled_backfill_gap("tpu-u", 4) == 1
+
         cands = [
             CloudInstance("c0", "tpu", NodeKind.WORKER, True, replica_id="rep-new"),
             CloudInstance("c1", "tpu", NodeKind.WORKER, True, replica_id="rep-new"),
@@ -11757,7 +11770,8 @@ class TestReconcilerMultiHost:
 
     def test_unlabeled_pinned_gang_refills_torndown_slice_e2e(self):
         """A rescheduling gang pinned to slice-0 on a 3/4 torn-down unlabeled KubeRay
-        group launches the 1-pod refill and recovers to 4 workers on slice-0."""
+        group reports zero infeasible gangs on the immediate crash tick, launches the
+        1-pod refill, and recovers to 4 workers on slice-0."""
         (group, _, _, ray_busy, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
             "pinned-refill-e2e",
             size=4,
@@ -11771,14 +11785,161 @@ class TestReconcilerMultiHost:
         step_tick()
         assert workers() == ["u-0", "u-1", "u-2", "u-3"]
 
-        # Kill u-3 without immediate operator auto-recreation so replicas drops to 0 (3/4).
-        step_tick(dead="u-3", run_operator=False)
+        # Kill u-3 while the pinned gang reschedules on slice-0 before operator recreation.
+        res_crash = step_tick(
+            gangs=1, pinned_slice="slice-0", dead="u-3", run_operator=False
+        )
+        assert len(res_crash.infeasible_gang_resource_requests) == 0
         res = None
         for _ in range(3):
             res = step_tick(gangs=1, pinned_slice="slice-0")
         assert group.get("replicas") == 1
         assert workers() == ["u-0", "u-1", "u-2", "u-4"]
         assert len(res.infeasible_gang_resource_requests) == 0
+
+        # Pinning to a nonexistent slice stays infeasible at maxReplicas=1.
+        res_miss = step_tick(gangs=1, pinned_slice="slice-99")
+        assert len(res_miss.infeasible_gang_resource_requests) == 1
+
+    def test_unlabeled_mid_boot_vanished_pod_with_requested_siblings_scales_to_max_replicas(
+        self,
+    ):
+        """When one pod of an in-flight scale-from-zero 4-pod batch allocates and
+        vanishes directly from Kubernetes while sibling REQUESTED rows remain pending
+        at maxReplicas=2, a second 4-host gang scales replicas to 2 with zero
+        ALLOCATION_FAILED rows."""
+        (group, pods, store, _, workers, step_tick,) = self._make_unlabeled_kuberay_sim(
+            "vanished-with-req-sibs",
+            size=4,
+            max_replicas=2,
+            pod_names=[f"u-{i}" for i in range(16)],
+        )
+        # Tick 1 scales 0 -> 1 (4 REQUESTED rows) and operator admits u-0..u-3; keep
+        # only u-0 and u-1 in K8s so u-0, u-1 transition to ALLOCATED while 2 stay REQUESTED.
+        step_tick(gangs=1)
+        pods["items"] = [
+            p for p in pods["items"] if p["metadata"]["name"] not in {"u-2", "u-3"}
+        ]
+        pods["metadata"]["resourceVersion"] = str(
+            int(pods["metadata"]["resourceVersion"]) + 1
+        )
+        step_tick(gangs=1, run_operator=False)
+
+        # Now u-1 vanishes directly from K8s while u-0 stays ALLOCATED and 2 stay REQUESTED.
+        pods["items"] = [p for p in pods["items"] if p["metadata"]["name"] != "u-1"]
+        pods["metadata"]["resourceVersion"] = str(
+            int(pods["metadata"]["resourceVersion"]) + 1
+        )
+        res_van = step_tick(gangs=2, run_operator=False)
+        assert len(res_van.infeasible_gang_resource_requests) == 0
+
+        res_scale = None
+        for _ in range(3):
+            res_scale = step_tick(gangs=2)
+        assert group.get("replicas") == 2
+        assert len(workers()) == 8
+        assert len(res_scale.infeasible_gang_resource_requests) == 0
+        failed_rows = [
+            v
+            for v in store.get_instances()[0].values()
+            if v.status == Instance.ALLOCATION_FAILED
+        ]
+        assert failed_rows == []
+
+        # Counter-case: a 3rd concurrent 4-host gang exceeds maxReplicas=2.
+        res_over = step_tick(gangs=3)
+        assert len(res_over.infeasible_gang_resource_requests) == 1
+
+    def test_unlabeled_mixed_torndown_and_evicted_slices_and_capped_partial_refills(
+        self,
+    ):
+        """Mixed torn-down (2/4 idle) and direct-evicted (2/4 busy) slices with zero
+        raw gap refill to 2 replicas for a pending 4-host gang, and three partial
+        torn-down slices totaling 6 pods at maxReplicas=2 refill 2 slots without
+        terminating live RAY_RUNNING hosts."""
+        (
+            group,
+            pods,
+            _,
+            ray_busy,
+            workers,
+            step_tick,
+        ) = self._make_unlabeled_kuberay_sim(
+            "mixed-td-evict",
+            size=4,
+            max_replicas=2,
+            pod_names=[f"u-{i}" for i in range(20)],
+        )
+        for _ in range(3):
+            step_tick(gangs=2)
+        for idx, nm in enumerate(workers()):
+            ray_busy[nm] = idx >= 4
+        step_tick(gangs=1)
+        assert workers() == [f"u-{i}" for i in range(8)]
+
+        # Tear down 2 pods on idle slice-0 (u-2, u-3) without operator recreation,
+        # and directly evict 2 pods on busy slice-1 (u-6, u-7) from K8s -> 4 live pods.
+        for victim in ("u-2", "u-3"):
+            step_tick(gangs=1, dead=victim, run_operator=False)
+        pods["items"] = [
+            p for p in pods["items"] if p["metadata"]["name"] not in {"u-6", "u-7"}
+        ]
+        pods["metadata"]["resourceVersion"] = str(
+            int(pods["metadata"]["resourceVersion"]) + 1
+        )
+        ray_busy.pop("u-6")
+        ray_busy.pop("u-7")
+        res_one = step_tick(gangs=1, run_operator=False)
+        assert len(res_one.infeasible_gang_resource_requests) == 0
+        # Counter-case while slice-1 has 2 busy hosts + 2 placeholders: 2nd gang is infeasible.
+        res_two = step_tick(gangs=2, run_operator=False)
+        assert len(res_two.infeasible_gang_resource_requests) == 1
+
+        res_rec = None
+        for _ in range(3):
+            res_rec = step_tick(gangs=1)
+        assert group.get("replicas") == 2
+        assert len(workers()) == 8
+        assert len(res_rec.infeasible_gang_resource_requests) == 0
+
+        # Three partial torn-down slices totaling 6 survivors at minReplicas=2, maxReplicas=2
+        # refill 2 slots to 8 workers with zero live RAY_RUNNING terminations.
+        (
+            group3,
+            _,
+            store3,
+            ray_busy3,
+            workers3,
+            step_tick3,
+        ) = self._make_unlabeled_kuberay_sim(
+            "three-partial-cap",
+            size=4,
+            min_replicas=0,
+            max_replicas=3,
+            pod_names=[f"p-{i}" for i in range(24)],
+        )
+        for _ in range(3):
+            step_tick3(gangs=3)
+        for idx, nm in enumerate(workers3()):
+            ray_busy3[nm] = idx == 0
+        step_tick3(gangs=1)
+        for victim in ("p-1", "p-2", "p-3", "p-6", "p-7", "p-11"):
+            step_tick3(gangs=1, dead=victim, run_operator=False)
+        surviving_running = {"p-0", "p-4", "p-5", "p-8", "p-9", "p-10"}
+        group3["minReplicas"] = 2
+        group3["maxReplicas"] = 2
+        res3 = None
+        for _ in range(4):
+            res3 = step_tick3(gangs=1)
+        assert group3.get("replicas") == 2
+        assert len(workers3()) == 8
+        assert len(res3.infeasible_gang_resource_requests) == 0
+        inst_by_cid = {
+            v.cloud_instance_id: v.status
+            for v in store3.get_instances()[0].values()
+            if v.cloud_instance_id in surviving_running
+        }
+        assert all(st == Instance.RAY_RUNNING for st in inst_by_cid.values())
 
 
 if __name__ == "__main__":

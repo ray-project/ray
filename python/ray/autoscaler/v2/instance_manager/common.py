@@ -885,7 +885,7 @@ class _MultiHostReplicaView:
         if not unlabeled or size <= 1:
             return 0
         unclaimed_req = sum(
-            cnt
+            cnt + len(self.vanished_cids_by_lid.get((t, lid), ()))
             for (t, lid), cnt in self.requested_by_lid.items()
             if t == nt
             and cnt > 0
