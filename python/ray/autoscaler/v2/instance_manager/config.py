@@ -212,16 +212,16 @@ class AutoscalingConfig:
         )
 
     def get_docker_config(self, ray_node_type: NodeType) -> Dict[str, Any]:
-        """
-        Return the docker config for the specified node type.
-            If it's a head node, the image will be chosen in the following order:
-                1. Node specific docker image.
-                2. The 'docker' config's 'head_image' field.
-                3. The 'docker' config's 'image' field.
-            If it's a worker node, the image will be chosen in the following order:
-                1. Node specific docker image.
-                2. The 'docker' config's 'worker_image' field.
-                3. The 'docker' config's 'image' field.
+        """Return the docker config for the specified node type.
+
+        If it's a head node, the image will be chosen in the following order:
+            1. The 'docker' config's 'head_image' field.
+            2. The 'docker' config's 'image' field.
+
+        If it's a worker node, the image will be chosen in the following order:
+            1. The node type's 'docker.worker_image' field.
+            2. The 'docker' config's 'worker_image' field.
+            3. The 'docker' config's 'image' field.
         """
         # TODO(rickyx): It's unfortunate we have multiple fields in ray-schema.json
         #  that can specify docker images. We should consolidate them.
@@ -484,11 +484,6 @@ class FileConfigReader(IConfigReader):
             return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
 
     def get_cached_autoscaling_config(self) -> AutoscalingConfig:
-        """
-        Returns:
-            AutoscalingConfig: The autoscaling config.
-        """
-
         return self._cached_config
 
     def refresh_cached_autoscaling_config(self):
@@ -506,10 +501,6 @@ class KubeRayConfigReader(IConfigReader):
         return AutoscalingConfig(self._config_producer())
 
     def get_cached_autoscaling_config(self) -> AutoscalingConfig:
-        """
-        Returns:
-            AutoscalingConfig: The autoscaling config.
-        """
         return self._cached_config
 
     def refresh_cached_autoscaling_config(self):

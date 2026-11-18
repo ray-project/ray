@@ -85,63 +85,56 @@ def _xgboost_train_fn_per_worker(
 class XGBoostTrainer(SimpleXGBoostTrainer):
     """A Trainer for distributed data-parallel XGBoost training.
 
-    Example:
-
-        .. testcode::
-            :skipif: True
-
-            import xgboost
-
-            import ray.data
-            import ray.train
-            from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
-
-            def train_fn_per_worker(config: dict):
-                # (Optional) Add logic to resume training state from a checkpoint.
-                # ray.train.get_checkpoint()
-
-                # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
-                train_ds_iter, eval_ds_iter = (
-                    ray.train.get_dataset_shard("train"),
-                    ray.train.get_dataset_shard("validation"),
-                )
-                train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
-
-                train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
-                train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
-                eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
-
-                dtrain = xgboost.DMatrix(train_X, label=train_y)
-                deval = xgboost.DMatrix(eval_X, label=eval_y)
-
-                params = {
-                    "tree_method": "approx",
-                    "objective": "reg:squarederror",
-                    "eta": 1e-4,
-                    "subsample": 0.5,
-                    "max_depth": 2,
-                }
-
-                # 2. Do distributed data-parallel training.
-                # Ray Train sets up the necessary coordinator processes and
-                # environment variables for your workers to communicate with each other.
-                bst = xgboost.train(
-                    params,
-                    dtrain=dtrain,
-                    evals=[(deval, "validation")],
-                    num_boost_round=10,
-                    callbacks=[RayTrainReportCallback()],
-                )
-
-            train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-            eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
-            trainer = XGBoostTrainer(
-                train_fn_per_worker,
-                datasets={"train": train_ds, "validation": eval_ds},
-                scaling_config=ray.train.ScalingConfig(num_workers=4),
-            )
-            result = trainer.fit()
-            booster = RayTrainReportCallback.get_model(result.checkpoint)
+    Examples:
+        >>> import xgboost  # doctest: +SKIP_EXAMPLE
+        >>> import ray.data
+        >>> import ray.train
+        >>> from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
+        >>> def train_fn_per_worker(config: dict):
+        ...     # (Optional) Add logic to resume training state from a checkpoint.
+        ...     # ray.train.get_checkpoint()
+        ...
+        ...     # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
+        ...     train_ds_iter, eval_ds_iter = (
+        ...         ray.train.get_dataset_shard("train"),
+        ...         ray.train.get_dataset_shard("validation"),
+        ...     )
+        ...     train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
+        ...
+        ...     train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
+        ...     train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
+        ...     eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
+        ...
+        ...     dtrain = xgboost.DMatrix(train_X, label=train_y)
+        ...     deval = xgboost.DMatrix(eval_X, label=eval_y)
+        ...
+        ...     params = {
+        ...         "tree_method": "approx",
+        ...         "objective": "reg:squarederror",
+        ...         "eta": 1e-4,
+        ...         "subsample": 0.5,
+        ...         "max_depth": 2,
+        ...     }
+        ...
+        ...     # 2. Do distributed data-parallel training.
+        ...     # Ray Train sets up the necessary coordinator processes and
+        ...     # environment variables for your workers to communicate with each other.
+        ...     bst = xgboost.train(
+        ...         params,
+        ...         dtrain=dtrain,
+        ...         evals=[(deval, "validation")],
+        ...         num_boost_round=10,
+        ...         callbacks=[RayTrainReportCallback()],
+        ...     )
+        >>> train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+        >>> eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
+        >>> trainer = XGBoostTrainer(
+        ...     train_fn_per_worker,
+        ...     datasets={"train": train_ds, "validation": eval_ds},
+        ...     scaling_config=ray.train.ScalingConfig(num_workers=4),
+        ... )
+        >>> result = trainer.fit()
+        >>> booster = RayTrainReportCallback.get_model(result.checkpoint)
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -204,7 +197,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
         label_column: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        num_boost_round: Optional[int] = None,
+        num_boost_round: int = 10,
         **train_kwargs,
     ):
         if Version(xgboost.__version__) < Version("1.7.0"):
@@ -250,7 +243,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         run_config: Optional[ray.train.RunConfig],
         datasets: Optional[Dict[str, GenDataset]],
         label_column: Optional[str],
-        num_boost_round: Optional[int],
+        num_boost_round: int = 10,
     ) -> Callable[[Dict], None]:
         """Get the training function for the legacy XGBoostTrainer API."""
 
@@ -270,12 +263,10 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 "This is the column name of the label in the dataset."
             )
 
-        num_boost_round = num_boost_round or 10
-
         _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
-        callbacks = xgboost_train_kwargs.get("callbacks", [])
+        callbacks = list(xgboost_train_kwargs.get("callbacks") or [])
         user_supplied_callback = any(
             isinstance(callback, RayTrainReportCallback) for callback in callbacks
         )

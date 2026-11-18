@@ -47,7 +47,9 @@ def _register_fan_out(
     complete; each test decides which ones finish.
     """
     tracker.register_task_submission(seed_task_id, dependencies=[])
-    tracker.register_task_complete(seed_task_id)
+    tracker.register_task_complete(
+        seed_task_id, num_outputs=len(child_task_ids) * num_inputs_per_child
+    )
     for child_position, child_task_id in enumerate(child_task_ids):
         tracker.register_task_submission(
             child_task_id,
@@ -76,7 +78,7 @@ def _register_shared_output_fan_out(
     submitted-but-not-complete; each test decides which ones finish.
     """
     tracker.register_task_submission(seed_task_id, dependencies=[])
-    tracker.register_task_complete(seed_task_id)
+    tracker.register_task_complete(seed_task_id, num_outputs=shared_output_index + 1)
     for child_task_id in child_task_ids:
         tracker.register_task_submission(
             child_task_id,
@@ -112,7 +114,7 @@ def _register_downstream_chain(
         ],
     )
     for upstream_task_id, downstream_task_id in zip(chain_task_ids, chain_task_ids[1:]):
-        tracker.register_task_complete(upstream_task_id)
+        tracker.register_task_complete(upstream_task_id, num_outputs=1)
         tracker.register_task_submission(
             downstream_task_id,
             dependencies=[
@@ -122,7 +124,7 @@ def _register_downstream_chain(
             ],
         )
     if complete_leaf:
-        tracker.register_task_complete(chain_task_ids[-1])
+        tracker.register_task_complete(chain_task_ids[-1], num_outputs=1)
 
 
 def _assert_reuse_statuses(
@@ -576,7 +578,7 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
     if case.sibling_state is SiblingState.COMPLETED:
         for child_position, child_task_id in enumerate(child_task_ids):
             if child_position not in case.failed_child_positions:
-                tracker.register_task_complete(child_task_id)
+                tracker.register_task_complete(child_task_id, num_outputs=1)
 
     if case.failure_mode is FailureMode.TOGETHER:
         # Every child fails before any recovery begins, so each failure opens a
@@ -619,7 +621,9 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
             child_task_id = child_task_ids[child_position]
 
             tracker.register_task_complete(
-                seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+                seed_task_id,
+                num_outputs=len(seed_output_indices),
+                reconstruction_plan_id=reconstruction_plan_id,
             )
             _resubmit_child_retry(
                 tracker,
@@ -651,7 +655,9 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
 
             # This plan's retry completes, closing it out.
             tracker.register_task_complete(
-                child_task_id, reconstruction_plan_id=reconstruction_plan_id
+                child_task_id,
+                num_outputs=1,
+                reconstruction_plan_id=reconstruction_plan_id,
             )
         return
 
@@ -695,7 +701,9 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
         # The seed's re-execution completes for this plan and this round's retry
         # is resubmitted against the recovered outputs.
         tracker.register_task_complete(
-            seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+            seed_task_id,
+            num_outputs=len(seed_output_indices),
+            reconstruction_plan_id=reconstruction_plan_id,
         )
         _resubmit_child_retry(
             tracker,
@@ -713,7 +721,9 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
         if case.failure_mode is FailureMode.SEQUENTIAL_RECOVERED:
             # The retry completes, closing out the round before the next failure.
             tracker.register_task_complete(
-                child_task_id, reconstruction_plan_id=reconstruction_plan_id
+                child_task_id,
+                num_outputs=1,
+                reconstruction_plan_id=reconstruction_plan_id,
             )
 
     if case.failure_mode is FailureMode.SEQUENTIAL_IN_RECOVERY:
@@ -735,6 +745,7 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
         ):
             tracker.register_task_complete(
                 child_task_ids[child_position],
+                num_outputs=1,
                 reconstruction_plan_id=reconstruction_plan_id,
             )
 
@@ -865,10 +876,12 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
     # The seed's re-execution closes out the plan, then both children finish:
     # child_0 (which survived the seed failure) first.
     tracker.register_task_complete(
-        seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+        seed_task_id,
+        num_outputs=len(seed_output_indices),
+        reconstruction_plan_id=reconstruction_plan_id,
     )
-    tracker.register_task_complete(child_task_ids[0])
-    tracker.register_task_complete(child_task_ids[1])
+    tracker.register_task_complete(child_task_ids[0], num_outputs=1)
+    tracker.register_task_complete(child_task_ids[1], num_outputs=1)
 
     # The seed still has no pending children and both outputs remain pruned.
     assert (
@@ -928,21 +941,21 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     # Linear prefix: seed -> prefix -> fan_out, one output block per edge. Each
     # task completes before its child is submitted.
     tracker.register_task_submission(seed_task_id, dependencies=[])
-    tracker.register_task_complete(seed_task_id)
+    tracker.register_task_complete(seed_task_id, num_outputs=1)
     tracker.register_task_submission(
         prefix_task_id,
         dependencies=[
             ParentBlockOutput(parent_lineage_task_id=seed_task_id, output_index=0)
         ],
     )
-    tracker.register_task_complete(prefix_task_id)
+    tracker.register_task_complete(prefix_task_id, num_outputs=1)
     tracker.register_task_submission(
         fan_out_task_id,
         dependencies=[
             ParentBlockOutput(parent_lineage_task_id=prefix_task_id, output_index=0)
         ],
     )
-    tracker.register_task_complete(fan_out_task_id)
+    tracker.register_task_complete(fan_out_task_id, num_outputs=2)
 
     # The fan-out's two outputs each root a 3-deep chain. branch_1 finishes
     # entirely; branch_0's leaf is left in flight so it can fail.
@@ -1050,8 +1063,12 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
             == ObjectReuseStatus.OBJECT_REUSED
         )
 
+        # The fan-out feeds both branches; every other task emits one block.
+        num_outputs = 2 if parent_task_id == fan_out_task_id else 1
         tracker.register_task_complete(
-            parent_task_id, reconstruction_plan_id=reconstruction_plan_id
+            parent_task_id,
+            num_outputs=num_outputs,
+            reconstruction_plan_id=reconstruction_plan_id,
         )
         release_inputs_and_submit(
             tracker,
@@ -1086,7 +1103,9 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
 
     # The leaf's own re-execution closes out the plan.
     tracker.register_task_complete(
-        failed_leaf_task_id, reconstruction_plan_id=reconstruction_plan_id
+        failed_leaf_task_id,
+        num_outputs=1,
+        reconstruction_plan_id=reconstruction_plan_id,
     )
 
 

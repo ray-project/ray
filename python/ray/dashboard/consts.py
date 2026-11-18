@@ -1,5 +1,7 @@
 import os
 
+from ray._common.usage.usage_constants import CLUSTER_METADATA_KEY
+from ray._private import ray_constants
 from ray._private.ray_constants import env_bool, env_float, env_integer
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
@@ -33,7 +35,21 @@ RAY_DASHBOARD_STATS_UPDATING_INTERVAL = env_integer(
 GCS_SERVER_ADDRESS = "GcsServerAddress"
 # GCS check alive
 GCS_CHECK_ALIVE_INTERVAL_SECONDS = env_integer("GCS_CHECK_ALIVE_INTERVAL_SECONDS", 5)
+# How long the dashboard head and agent wait before retrying an address
+# registration that a passive GCS refused.
+GCS_REGISTER_RETRY_INTERVAL_S = 5.0
 GCS_RPC_TIMEOUT_SECONDS = env_integer("RAY_DASHBOARD_GCS_RPC_TIMEOUT_SECONDS", 60)
+
+# The explicit list of KV (key, namespace) pairs that a promoted head node
+# must write/replay after taking over leadership from a dead leader.
+HEAD_PROMOTION_REPLAY_KEYS = (
+    (b"DashboardMetricsAddress", None),
+    (ray_constants.DASHBOARD_ADDRESS.encode(), ray_constants.KV_NAMESPACE_DASHBOARD),
+    (b"webui:url", ray_constants.KV_NAMESPACE_DASHBOARD),
+    (b"session_name", ray_constants.KV_NAMESPACE_SESSION),
+    (CLUSTER_METADATA_KEY, ray_constants.KV_NAMESPACE_CLUSTER),
+    (b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING),
+)
 # aiohttp_cache
 AIOHTTP_CACHE_TTL_SECONDS = 2
 AIOHTTP_CACHE_MAX_SIZE = 128

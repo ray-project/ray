@@ -1,3 +1,4 @@
+import keyword
 import logging
 import sys
 from collections import OrderedDict
@@ -452,6 +453,38 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
     return env_vars
 
 
+def parse_and_validate_preload_modules(
+    preload_modules: List[str],
+) -> Optional[List[str]]:
+    """Parses and validates a user-provided 'preload_modules' option."""
+    assert preload_modules is not None
+    if not isinstance(preload_modules, list):
+        raise TypeError(
+            "runtime_env['preload_modules'] must be of type List[str], "
+            f"got {type(preload_modules)}"
+        )
+    if len(preload_modules) == 0:
+        return None
+    validated: List[str] = []
+    for mod in preload_modules:
+        if not isinstance(mod, str):
+            raise TypeError(
+                "Elements of runtime_env['preload_modules'] must be of type str, "
+                f"got {type(mod)}"
+            )
+        stripped = mod.strip()
+        if not stripped or not all(
+            part.isidentifier() and not keyword.iskeyword(part)
+            for part in stripped.split(".")
+        ):
+            raise ValueError(
+                f"Invalid module name '{mod}' in runtime_env['preload_modules']."
+            )
+        if stripped not in validated:
+            validated.append(stripped)
+    return validated
+
+
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
 OPTION_TO_VALIDATION_FN = {
@@ -463,6 +496,7 @@ OPTION_TO_VALIDATION_FN = {
     "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
+    "preload_modules": parse_and_validate_preload_modules,
 }
 
 # RuntimeEnv can be created with local paths
