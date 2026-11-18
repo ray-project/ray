@@ -293,6 +293,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   const WorkerID &GetWorkerID() const;
 
+  /// Whether Jobs can retain an unreaped child as a process-group identity.
+  bool SupportsJobProcessGroupCleanup() const;
+
+  /// Register the Jobs helper before allowing it to start the entrypoint.
+  /// The caller must keep this child unreaped until CleanupJobProcessGroup succeeds.
+  Status RegisterJobProcessGroup(int64_t pid);
+
+  /// Close registration and signal the owned Jobs group before releasing its identity.
+  /// Safe to call concurrently with registration and repeatedly during shutdown.
+  Status CleanupJobProcessGroup();
+
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
@@ -2229,6 +2240,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Implements a thread-safe, single state machine that coordinates
   /// all shutdown entry points.
   std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
+
+  absl::Mutex job_process_group_mutex_;
+  std::optional<int64_t> job_process_group_ ABSL_GUARDED_BY(job_process_group_mutex_);
+  bool job_process_cleanup_started_ ABSL_GUARDED_BY(job_process_group_mutex_) = false;
 
   int64_t max_direct_call_object_size_;
 

@@ -294,6 +294,12 @@ void CoreWorkerShutdownExecutor::ExecuteExitIfIdle(std::string_view exit_type,
 }
 
 void CoreWorkerShutdownExecutor::KillChildProcessesImmediately() {
+  if (auto core_worker = core_worker_.lock()) {
+    const auto status = core_worker->CleanupJobProcessGroup();
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << status;
+    }
+  }
   if (!RayConfig::instance().kill_child_processes_on_worker_exit()) {
     RAY_LOG(DEBUG)
         << "kill_child_processes_on_worker_exit is not true, skipping KillChildProcs";
@@ -405,6 +411,12 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
 }
 
 void CoreWorkerShutdownExecutor::QuickExit() {
+  if (auto core_worker = core_worker_.lock()) {
+    const auto status = core_worker->CleanupJobProcessGroup();
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << status;
+    }
+  }
   RAY_LOG(WARNING) << "Quick exit - terminating process immediately";
   ray::QuickExit();
   RAY_LOG(WARNING) << "Quick exit - this line should never be reached";
