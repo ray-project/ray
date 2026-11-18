@@ -198,6 +198,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
 }
 
 WorkerPool::~WorkerPool() {
+  FinishPrestartWorkers(/*send_reply=*/false);
   absl::flat_hash_map<pid_t, std::unique_ptr<ProcessInterface>> procs_to_kill;
   for (auto &entry : states_by_lang_) {
     // Kill all the worker processes.
@@ -954,15 +955,22 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
       worker->GetLanguage() == Language::PYTHON) {
     if (++first_job_registered_python_worker_count_ ==
         first_job_driver_wait_num_python_workers_) {
-      if (first_job_send_register_client_reply_to_driver_) {
-        first_job_send_register_client_reply_to_driver_();
-        first_job_send_register_client_reply_to_driver_ = nullptr;
-      }
+      FinishPrestartWorkers();
     }
   }
 }
 
-void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
+void WorkerPool::FinishPrestartWorkers(bool send_reply) {
+  auto callback = std::exchange(first_job_send_register_client_reply_to_driver_, nullptr);
+  first_job_prestart_timer_.reset();
+  first_job_waiting_driver_.reset();
+  if (send_reply && callback) {
+    callback();
+  }
+}
+
+void WorkerPool::ExecuteOnPrestartWorkersStarted(
+    const std::shared_ptr<WorkerInterface> &driver, std::function<void()> callback) {
   bool prestart = RayConfig::instance().prestart_worker_first_driver() ||
                   RayConfig::instance().enable_worker_prestart();
   if (first_job_registered_ ||
@@ -975,6 +983,26 @@ void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback)
   first_job_registered_ = true;
   RAY_CHECK(!first_job_send_register_client_reply_to_driver_);
   first_job_send_register_client_reply_to_driver_ = std::move(callback);
+  first_job_waiting_driver_ = driver;
+  const auto timeout = std::chrono::seconds(
+      std::max<int64_t>(0, RayConfig::instance().worker_register_timeout_seconds()));
+  first_job_prestart_timer_ =
+      std::make_shared<boost::asio::steady_timer>(*io_service_, timeout);
+  // Resetting the timer cancels the wait and invalidates even an already queued expiry.
+  first_job_prestart_timer_->async_wait(
+      [this,
+       weak_timer = std::weak_ptr<boost::asio::steady_timer>(first_job_prestart_timer_),
+       timeout](const boost::system::error_code &error) {
+        if (error || weak_timer.expired()) {
+          return;
+        }
+        RAY_LOG(WARNING) << "Timed out waiting for prestarted Python workers: "
+                         << first_job_registered_python_worker_count_ << "/"
+                         << first_job_driver_wait_num_python_workers_
+                         << " started within " << timeout.count()
+                         << " seconds; completing driver registration.";
+        FinishPrestartWorkers();
+      });
 }
 
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
@@ -1018,7 +1046,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     // registration after all prestarted workers are registered to Raylet.
     // NOTE(clarng): prestart is only for python workers.
     ExecuteOnPrestartWorkersStarted(
-        [send_reply_callback = std::move(send_reply_callback), port]() {
+        driver, [send_reply_callback = std::move(send_reply_callback), port]() {
           send_reply_callback(Status::OK(), port);
         });
   }
@@ -1695,6 +1723,9 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
+  if (driver == first_job_waiting_driver_) {
+    FinishPrestartWorkers(/*send_reply=*/false);
+  }
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
   MarkPortAsFree(driver->AssignedPort());
