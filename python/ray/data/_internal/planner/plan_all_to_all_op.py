@@ -263,15 +263,40 @@ def _plan_sort_v2(
 
 def _choose_partial_agg_policy(data_context: DataContext) -> PartialAggPolicy:
     """Picks how the map side of a SHUFFLE_V2 aggregation pre-aggregates."""
-    mode = PartialAggMode(data_context.partial_aggregation_mode)
+    try:
+        mode = PartialAggMode(data_context.partial_aggregation_mode)
+    except ValueError:
+        raise ValueError(
+            "DataContext.partial_aggregation_mode must be one of "
+            f"{[m.value for m in PartialAggMode]}, got "
+            f"{data_context.partial_aggregation_mode!r}"
+        ) from None
     if mode != PartialAggMode.ESTIMATE:
         return PartialAggPolicy(mode=mode)
+    sample_rows = data_context.adaptive_partial_aggregation_sample_rows
+    if (
+        isinstance(sample_rows, bool)
+        or not isinstance(sample_rows, int)
+        or (sample_rows <= 0)
+    ):
+        raise ValueError(
+            "DataContext.adaptive_partial_aggregation_sample_rows must be a "
+            f"positive integer, got {sample_rows!r}"
+        )
+    threshold = data_context.adaptive_partial_aggregation_unique_ratio_threshold
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, (int, float))
+        or not 0 <= threshold <= 1
+    ):
+        raise ValueError(
+            "DataContext.adaptive_partial_aggregation_unique_ratio_threshold "
+            f"must be a number between 0 and 1, got {threshold!r}"
+        )
     return PartialAggPolicy(
         mode=PartialAggMode.ESTIMATE,
-        sample_rows=data_context.adaptive_partial_aggregation_sample_rows,
-        unique_ratio_threshold=(
-            data_context.adaptive_partial_aggregation_unique_ratio_threshold
-        ),
+        sample_rows=sample_rows,
+        unique_ratio_threshold=float(threshold),
     )
 
 
