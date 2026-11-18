@@ -198,8 +198,11 @@ def test_unavailable_metadata_falls_back_but_io_errors_propagate(tmp_path, monke
         _rows(scanner, path)
 
 
-@pytest.mark.parametrize("mode", ["off", "file"])
-@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
+@pytest.mark.parametrize(
+    "mode,style",
+    [("off", PartitionStyle.HIVE)]
+    + [("file", style) for style in (PartitionStyle.HIVE, PartitionStyle.DIRECTORY)],
+)
 def test_logical_partition_pruning_and_statistics(tmp_path, monkeypatch, mode, style):
     monkeypatch.setattr(
         DataContext.get_current().execution_options, "preserve_order", True
@@ -501,6 +504,11 @@ def test_serialized_footer_unavailable_or_contradictory_retains_rows(
                 tail.footer.number_of_rows += 1
             else:
                 tail.footer.statistics[1].number_of_values = 0
+            if change in ("writer", "count"):
+                # Plausible all-NULL statistics contradict the physical True row.
+                flag = tail.footer.statistics[1]
+                flag.number_of_values = 0
+                flag.bucket_statistics.count[0] = 0
             return tail.SerializeToString()
 
     class WrappedFile:

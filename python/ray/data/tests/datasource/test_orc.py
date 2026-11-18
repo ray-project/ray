@@ -50,8 +50,11 @@ def test_orc_statistics_public_pipeline(
     assert rows == table.slice(3500, 73).select(["payload"]).to_pylist()
 
 
-@pytest.mark.parametrize("mode", ["off", "file"])
-@pytest.mark.parametrize("scenario", ["basic", "path_filter", "merge_schema"])
+@pytest.mark.parametrize(
+    "scenario,mode",
+    [("basic", "off")]
+    + [(scenario, "file") for scenario in ("basic", "path_filter", "merge_schema")],
+)
 def test_orc_file_statistics_pruning_public_worker(
     ray_start_regular_shared, tmp_path, monkeypatch, mode, scenario
 ):

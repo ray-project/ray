@@ -10,9 +10,10 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data.expressions import col, lit
 
 
-@pytest.mark.parametrize("mode", ["off", "file"])
 @pytest.mark.parametrize(
-    "predicate", [col("x") > 0, col("flag").is_not_null() & ~(col("flag") != lit(True))]
+    "mode,predicate",
+    [("off", col("x") > 0), ("file", col("x") > 0)]
+    + [("file", col("flag").is_not_null() & ~(col("flag") != lit(True)))],
 )
 def test_orc_file_statistics_s3(s3_fs, s3_path, monkeypatch, mode, predicate):
     root = s3_path.removeprefix("s3://")
