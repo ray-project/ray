@@ -21,7 +21,10 @@ from collections import Counter
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
-from ray.data._internal.execution.execution_flags import SIZER_CADENCE_S
+from ray.data._internal.execution.execution_flags import (
+    SIZER_BOTTLENECK_MODEL,
+    SIZER_CADENCE_S,
+)
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
 )
@@ -151,8 +154,8 @@ class OperatorSizer:
         }
         for op in self._awaiting_on_start:
             self._guard.block(op, _AWAITING_ON_START_REASON)
-        # Actors last held for each op awaiting on_start, and the one-time
-        # grant to that count queued when its on_start runs.
+        # Actors held last tick for each held op (see SizingTicker), and the
+        # one-time grant to that count queued when its hold releases.
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
         self._grow_to_held: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Warm the non-blocking allocation cache, so the first ticks read a
@@ -182,7 +185,9 @@ class OperatorSizer:
             clock=clock,
             pg_bundles=pg_bundles,
             unknown_pg_cap_by_op=unknown_pg_cap_by_op,
-            hold_target=self._policy.warmup_target,
+            hold_target=(
+                self._policy.warmup_target if SIZER_BOTTLENECK_MODEL else None
+            ),
         )
 
     # --- lifecycle ------------------------------------------------------------
@@ -223,7 +228,7 @@ class OperatorSizer:
         t1 = time.perf_counter()
         if ctx is None:
             return
-        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        self._note_held_ops(ctx)
         self._bottleneck_observer.log_tick(ctx.capacity)
         # Picks up placement groups a ray_remote_args_fn created since the
         # last tick, so later views take their bundles out of the slice.
@@ -249,14 +254,20 @@ class OperatorSizer:
             e2e_s=t5 - t0,
         )
 
+    def _note_held_ops(self, ctx: TickContext) -> None:
+        """Queue a one-time grant up to the held count for every op whose
+        hold released since last tick, then remember this tick's holds."""
+        held_now = ctx.capacity.held_actors_by_op
+        for op, held in self._held_actors_by_op.items():
+            if op not in held_now and not op.has_completed():
+                self._grow_to_held[op] = held
+        self._held_actors_by_op = dict(held_now)
+
     def _release_started_ops(self) -> None:
         """Let ops whose ``on_start`` has now run (on their first input) scale."""
         started = {op for op in self._awaiting_on_start if not op.awaiting_on_start()}
         for op in started:
             self._guard.release(op)
-            held = self._held_actors_by_op.pop(op, 0)
-            if held > 0:
-                self._grow_to_held[op] = held
         self._awaiting_on_start -= started
 
     def _observe(self) -> None:
@@ -364,14 +375,14 @@ class OperatorSizer:
                 want = self._policy.warm_delta(
                     op, self._topology[op], backpressured_with_demand
                 )
-            # Released from its on_start hold: grow straight into the room
-            # held for it while it waited (its warmup share), once. Capped
-            # below, like any want, at the work left once upstream is done.
+            # Released from a hold: grow straight into the room held for it
+            # while it waited (its warmup share), once. Capped below, like any
+            # want, at the work left once upstream is done.
             held = self._grow_to_held.pop(op, 0)
             to_held = held - pool.serving_size()
             if to_held > 0 and (want is None or want.delta < to_held):
                 want = ActorPoolScalingRequest.upscale(
-                    delta=to_held, reason="held share (on_start ran)"
+                    delta=to_held, reason="held share (hold released)"
                 )
             want = self._cap_at_remaining_work(op, want)
             below_min = pool.min_size() - pool.serving_size()

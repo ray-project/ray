@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
+    SIZER_BOTTLENECK_MODEL,
     SIZER_DOWNSCALE_FACTOR,
     SIZER_DOWNSCALE_HYSTERESIS,
     SIZER_OUTQUEUE_FULL_FRACTION,
@@ -67,6 +68,9 @@ class OpSizingPolicy:
         self._pg_bundles = pg_bundles or PlacementGroupBundles()
         self._unknown_pg_cap_by_op = dict(unknown_pg_cap_by_op or {})
         self.reservation_ratio = SIZER_RESERVATION_RATIO
+        # Bottleneck model: warmup shares also respect memory (see
+        # ``warmup_target``).
+        self.memory_aware_warmup = SIZER_BOTTLENECK_MODEL
         self.upscale_factor = SIZER_UPSCALE_FACTOR
         self.downscale_factor = SIZER_DOWNSCALE_FACTOR
         self.downscale_hysteresis = SIZER_DOWNSCALE_HYSTERESIS
@@ -166,26 +170,24 @@ class OpSizingPolicy:
         op: "ExperimentalActorPoolMapOperator",
         cluster_capacity: ExecutionResources,
     ) -> Optional[int]:
-        """This op's warmup equal share in actors, clamped to
-        [min_size, max_size] (see ``warmup_delta``). Also what an op held
-        until its ``on_start`` runs reserves (``SizingTicker``)."""
+        """This op's warmup share in actors, clamped to [min_size, max_size]
+        (see ``warmup_delta``). Also what an op held at zero or min reserves
+        (``SizingTicker``).
+
+        With ``memory_aware_warmup``, a CPU op's share is also capped by
+        memory: GPU ops take their GPU share (and its memory) first, and the
+        CPU ops whose actors request memory split what is left equally. A
+        CPU-only share alone can pack memory-heavy CPU stages so tightly that
+        the GPU stage cannot place its actors.
+        """
         pool = op.actor_pool
-        if op in self._unknown_pg_cap_by_op:
-            share = self._unknown_pg_cap_by_op[op] * self.reservation_ratio
-        else:
-            resource_type = self._profiles.resource_type(op)
-            per_actor = getattr(pool.per_actor_resource_usage(), resource_type)
-            if per_actor <= 0:
-                # The sizer rejects this shape when built; defensive only.
-                return None
-            if op in self._pg_bundles.bundles_by_op:
-                ceiling = self._pg_warmup_ceiling(op, resource_type)
-            else:
-                ceiling = self._warmup_ceiling(resource_type, cluster_capacity)
-            # An actor with max_actor_concurrency=k serves ~k tasks at once, so
-            # we need k times fewer actors for the same share.
-            concurrency = max(1, pool.max_actor_concurrency())
-            share = ceiling / per_actor / concurrency
+        share = self._share_by_resource_type(op, cluster_capacity)
+        if share is None:
+            return None
+        if self.memory_aware_warmup:
+            memory_share = self._memory_share(op, cluster_capacity)
+            if memory_share is not None:
+                share = min(share, memory_share)
         # FIT_EPS: float division can land just under a whole actor
         # (0.3 / 0.1 == 2.999...), which int() would truncate away.
         target = int(min(max(share + FIT_EPS, pool.min_size()), pool.max_size()))
@@ -197,6 +199,74 @@ class OpSizingPolicy:
             pool.serving_size(),
         )
         return target
+
+    def _share_by_resource_type(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        cluster_capacity: ExecutionResources,
+    ) -> Optional[float]:
+        """The op's equal share of its resource type (CPU or GPU), in actors."""
+        pool = op.actor_pool
+        if op in self._unknown_pg_cap_by_op:
+            return self._unknown_pg_cap_by_op[op] * self.reservation_ratio
+        resource_type = self._profiles.resource_type(op)
+        per_actor = getattr(pool.per_actor_resource_usage(), resource_type)
+        if per_actor <= 0:
+            # The sizer rejects this shape when built; defensive only.
+            return None
+        if op in self._pg_bundles.bundles_by_op:
+            ceiling = self._pg_warmup_ceiling(op, resource_type)
+        else:
+            ceiling = self._warmup_ceiling(resource_type, cluster_capacity)
+        # An actor with max_actor_concurrency=k serves ~k tasks at once, so we
+        # need k times fewer actors for the same share.
+        concurrency = max(1, pool.max_actor_concurrency())
+        return ceiling / per_actor / concurrency
+
+    def _memory_share(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        cluster_capacity: ExecutionResources,
+    ) -> Optional[float]:
+        """A non-PG CPU op's share of memory, in actors, or None when memory
+        does not bound it (a GPU or PG op, or actors that request none).
+
+        usable = memory x ratio - GPU ops' warmup shares' memory - fixed CPU
+        pools' memory; split equally among the autoscaled CPU ops whose actors
+        request memory.
+        """
+        if (
+            op in self._unknown_pg_cap_by_op
+            or op in self._pg_bundles.bundles_by_op
+            or self._profiles.resource_type(op) != "cpu"
+        ):
+            return None
+        per_actor_memory = op.actor_pool.per_actor_resource_usage().memory
+        if per_actor_memory <= 0:
+            return None
+        usable = cluster_capacity.memory * self.reservation_ratio
+        for gpu_op in self._eligible_ops_by_resource_type("gpu"):
+            gpu_share = self._share_by_resource_type(gpu_op, cluster_capacity)
+            if gpu_share is None:
+                continue
+            gpu_pool = gpu_op.actor_pool
+            actors = min(
+                max(gpu_share + FIT_EPS, gpu_pool.min_size()), gpu_pool.max_size()
+            )
+            usable -= int(actors) * gpu_pool.per_actor_resource_usage().memory
+        sharers = 0
+        for cpu_op in self._eligible_ops_by_resource_type("cpu"):
+            cpu_pool = cpu_op.actor_pool
+            cpu_memory = cpu_pool.per_actor_resource_usage().memory
+            if cpu_memory <= 0:
+                continue
+            if cpu_pool.min_size() == cpu_pool.max_size():
+                usable -= cpu_pool.min_size() * cpu_memory
+            else:
+                sharers += 1
+        if sharers == 0:
+            return None
+        return max(usable, 0.0) / sharers / per_actor_memory
 
     def _pg_warmup_ceiling(
         self, op: "ExperimentalActorPoolMapOperator", resource_type: str

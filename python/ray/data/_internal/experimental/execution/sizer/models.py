@@ -87,9 +87,8 @@ class TickCapacitySnapshot:
     unknown_pg_headroom_by_op: Dict["ExperimentalActorPoolMapOperator", int] = field(
         default_factory=dict
     )
-    # Actors held out of ``free_by_node`` this tick for each op still waiting
-    # on its ``on_start`` (see ``SizingTicker``): what it grows to once
-    # released.
+    # Actors held out of ``free_by_node`` this tick for each held op (see
+    # ``SizingTicker``): what it grows to once its hold releases.
     held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = field(
         default_factory=dict
     )

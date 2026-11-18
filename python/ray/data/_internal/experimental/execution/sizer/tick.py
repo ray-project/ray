@@ -121,8 +121,9 @@ class SizingTicker:
         ] = None,
     ):
         self._profiles = profiles
-        # Actors to hold for an op waiting on its on_start: its warmup equal
-        # share (``OpSizingPolicy.warmup_target``); its min size without one.
+        # Bottleneck model: actors to hold for a held op, its warmup share
+        # (``OpSizingPolicy.warmup_target``). Without it, an op awaiting its
+        # on_start holds its min size and nothing else is held.
         self._hold_target = hold_target
         self.cadence_s = cadence_s
         self.clock = clock
@@ -268,7 +269,7 @@ class SizingTicker:
         global_limits = ExecutionResources.zero()
         for resources in reserved.values():
             global_limits = global_limits.add(resources)
-        held_actors_by_op = self._hold_share_for_ops_awaiting_on_start(
+        held_actors_by_op = self._hold_for_held_ops(
             free,
             schedulable_nodes_by_op,
             per_actor_resources_by_op,
@@ -289,7 +290,24 @@ class SizingTicker:
             held_actors_by_op=held_actors_by_op,
         )
 
-    def _hold_share_for_ops_awaiting_on_start(
+    def _held_ops(self) -> List["ExperimentalActorPoolMapOperator"]:
+        """Non-PG ops kept from growing into their share for now: waiting on
+        their ``on_start`` (no actor may start before it runs), and, under
+        the bottleneck model, ops warmup keeps at min until every upstream
+        actor-pool op has produced output."""
+        held = []
+        for op in self._profiles.non_pg_ops:
+            if op.has_completed():
+                continue
+            if op.awaiting_on_start():
+                held.append(op)
+            elif self._hold_target is not None and not all(
+                has_produced_output(prev) for prev in self._profiles.prev_ops[op]
+            ):
+                held.append(op)
+        return held
+
+    def _hold_for_held_ops(
         self,
         free: Dict[NodeIdStr, ExecutionResources],
         schedulable_nodes_by_op: Dict[
@@ -301,26 +319,22 @@ class SizingTicker:
         constrained_op_count_by_node: Dict[NodeIdStr, int],
         global_limits: ExecutionResources,
     ) -> Dict["ExperimentalActorPoolMapOperator", int]:
-        """Take each op still waiting on its ``on_start`` out of ``free``
-        (mutated) for its warmup equal share; return how many actors each
-        got held.
+        """Take each held op's room out of ``free`` (mutated); return how
+        many actors each got held.
 
-        Such an op (e.g. a Write sink) gets no actor until its first input
-        arrives (an actor made earlier would ship a transformer without the
-        state ``on_start`` sets), so nothing else would hold room for it, and
-        by then upstream ops can have taken every node's space; getting it
-        back means draining actors whose outputs only clear through this op.
-        Holding its share here keeps that room out of every phase's free map
-        without starting an actor. Once released, the sizer grows it straight
-        to the held count, ahead of other ops (it is below min size). The
-        share is held whole per actor, every resource the actor needs, on the
-        least contended nodes, as the ledger would place it; what does not
-        fit is not held.
+        A held op (e.g. a Write sink before its first input) gets no room of
+        its own, so upstream ops can take every node's space first; getting it
+        back then means draining actors whose outputs only clear through the
+        held op. Holding its room here keeps it out of every phase's free map
+        without starting an actor. Without the bottleneck model only an op
+        awaiting on_start is held, for its min size; with it, every held op
+        is held for its warmup share, and once released the sizer grows it
+        straight to the held count. Held whole per actor, every resource the
+        actor needs, on the least contended nodes, as the ledger would place
+        it; what does not fit is not held.
         """
         held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = {}
-        for op in self._profiles.non_pg_ops:
-            if not op.awaiting_on_start() or op.has_completed():
-                continue
+        for op in self._held_ops():
             pool = op.actor_pool
             target = (
                 self._hold_target(op, global_limits)
@@ -337,10 +351,10 @@ class SizingTicker:
                 key=lambda n: (constrained_op_count_by_node.get(n, 0), n),
             )
             held = pack_actors(free, nodes, per_actor_resources_by_op[op], num_to_hold)
-            held_actors_by_op[op] = len(held)
+            held_actors_by_op[op] = pool.serving_size() + len(held)
             logger.debug(
-                "OperatorSizer: holding %d/%d actor(s) (warmup share) for %s "
-                "until its on_start runs",
+                "OperatorSizer: holding %d/%d actor(s) for %s until its hold "
+                "releases",
                 len(held),
                 num_to_hold,
                 op.name,

@@ -160,6 +160,21 @@ SIZER_BOTTLENECK_WINDOW_S: float = env_float("RAY_DATA_SIZER_BOTTLENECK_WINDOW_S
 SIZER_BOTTLENECK_ARROW_MARGIN: float = env_float(
     "RAY_DATA_SIZER_BOTTLENECK_ARROW_MARGIN", 0.1
 )
+# Drive cross-op sizing from the bottleneck model (bottleneck_observer.py):
+# grow the stable bottleneck, fund it from donors' slack, and reserve held
+# ops' memory-aware warmup share. Off keeps the per-op rules
+# (SilentBottleneckGrant, CapacityTransfer's recipient/donor policy,
+# blocks_upstream, the warm table's growth rows).
+SIZER_BOTTLENECK_MODEL: bool = env_bool("RAY_DATA_SIZER_BOTTLENECK_MODEL", False)
+# Most a bottleneck transfer may grow the recipient in one step: b'/b.
+SIZER_BOTTLENECK_MAX_STEP_RATIO: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_MAX_STEP_RATIO", 1.5
+)
+# Upper bound on a bottleneck transfer's timeout, which is otherwise derived
+# from its victims' estimated time-to-free.
+SIZER_BOTTLENECK_MAX_TIMEOUT_S: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_MAX_TIMEOUT_S", 300.0
+)
 # Least severity for an op to be named a bottleneck: below it, the arrows'
 # noise (e.g. a near-tie edge during ramp-up) rather than neighbours waiting.
 SIZER_BOTTLENECK_MIN_SEVERITY: float = env_float(

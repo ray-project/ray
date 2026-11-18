@@ -495,7 +495,7 @@ class _TestSizer(OperatorSizer):
         self._release_started_ops()
         ctx = self.next_tick(force=force)
         assert ctx is not None
-        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        self._note_held_ops(ctx)
         return self._per_op_how_many(ctx)
 
     @property
@@ -668,59 +668,174 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
     assert _tick(sizer).request[write].delta >= 1
 
 
-@pytest.mark.parametrize(
-    "memory, held, free_after",
-    [
-        # 8 CPU: equal share = (8 - floors 2) x 0.8 / 2 ops = 2.4 -> 2 actors,
-        # held whole: 2 CPU and 2 x 3 memory.
-        (10, 2, (5, 2)),
-        # Memory for only one write actor after read's: only what fits is held.
-        (7, 1, (6, 2)),
-    ],
-    ids=["share-fits", "share-clamped-to-what-fits"],
-)
-def test_op_awaiting_on_start_has_its_share_held_until_it_runs(
-    memory, held, free_after
-):
-    # An op held at zero actors until its on_start runs (an actor made earlier
-    # ships a transformer without that state) must still find room when it
-    # does. Upstream warmup would otherwise take every node's space, and the
-    # only way back is draining actors whose outputs clear through this op.
-    # Its warmup equal share stays out of the tick's free capacity, memory
-    # included, with no actor started; once on_start runs it grows straight
-    # to the held count.
+def test_op_awaiting_on_start_has_its_min_size_held_until_it_runs():
+    # An op held at zero actors until its on_start runs must still find room
+    # when it does. Without a hold, upstream ops can take every node's space
+    # first and the op (e.g. a Write sink) can then never place its first
+    # actor. Its min-size actors stay out of the tick's free capacity, with
+    # memory held as well as CPU, so every phase sizes and places around them.
     read = _FakeOp(
         "read", _FakePool(min_size=1, max_size=10, cpu=1, memory=2, running=1)
     )
     write = _write_op(
         "write",
-        _FakePool(min_size=1, max_size=10, cpu=1, memory=3),
+        _FakePool(min_size=2, max_size=10, cpu=1, memory=3),
         inputs=[read],
         awaiting_on_start=True,
     )
     view = DatasetAllocationView(
-        reserved_by_node={"node0": ExecutionResources(cpu=8, memory=memory)},
+        reserved_by_node={"node0": ExecutionResources(cpu=8, memory=10)},
         labels_by_node={"node0": {}},
     )
     sizer, _ = _bootstrapped(read, write, view=view)
 
-    assert write not in _tick(sizer).request  # no actor while held
-    snapshot = _snapshot_of(sizer)
-    assert snapshot.held_actors_by_op == {write: held}
-    free = snapshot.free_by_node["node0"]
-    assert (free.cpu, free.memory) == free_after
+    free = _snapshot_of(sizer).free_by_node["node0"]
+    # 8 CPU / 10 memory, minus read's running actor, minus write's 2 held.
+    assert (free.cpu, free.memory) == (5, 2)
 
-    # Read's first output ends warmup and is what reaches write: on_start
-    # runs, the hold is gone, and write grows to the held count in one grant
-    # (warmup sizing is over by then), ahead of read (it is below min size).
-    read.metrics.num_task_outputs_generated = 1
+    # Once on_start runs, the hold is gone; write is below min size, so it is
+    # granted and placed before anything else can take the room.
+    write.pending_on_start = False
+    assert _tick(sizer).request[write].delta == 2
+
+
+def _with_bottleneck_model(sizer: "_TestSizer") -> "_TestSizer":
+    """Turn on what RAY_DATA_SIZER_BOTTLENECK_MODEL selects at construction:
+    memory-aware warmup shares and holding held ops' shares."""
+    sizer._policy.memory_aware_warmup = True
+    sizer._ticker._hold_target = sizer._policy.warmup_target
+    return sizer
+
+
+def _video_pipeline(write_awaiting_on_start=False):
+    """video_object_detection's shape on one 32 CPU / 8 GPU / 61.6 memory
+    node: three 1-CPU, 2.4-memory stages around a 1-GPU, 3.3-memory one."""
+    read = _FakeOp(
+        "ReadVideo",
+        _FakePool(min_size=1, max_size=100, cpu=1, memory=2.4 * GiB, running=1),
+    )
+    resize = _FakeOp(
+        "resize",
+        _FakePool(min_size=1, max_size=100, cpu=1, memory=2.4 * GiB, running=1),
+        inputs=(read,),
+    )
+    features = _FakeOp(
+        "ExtractImageFeatures",
+        _FakePool(min_size=1, max_size=8, cpu=1, gpu=1, memory=3.3 * GiB, running=1),
+        inputs=(resize,),
+    )
+    write = _write_op(
+        "Write",
+        _FakePool(
+            min_size=1,
+            max_size=100,
+            cpu=1,
+            memory=2.4 * GiB,
+            running=0 if write_awaiting_on_start else 1,
+        ),
+        inputs=(features,),
+        awaiting_on_start=write_awaiting_on_start,
+    )
+    view = DatasetAllocationView(
+        reserved_by_node={
+            "node0": ExecutionResources(cpu=32, gpu=8, memory=61.6 * GiB)
+        },
+        labels_by_node={"node0": {}},
+    )
+    return {"read": read, "resize": resize, "features": features, "write": write}, view
+
+
+@pytest.mark.parametrize(
+    "memory_aware, cpu_target",
+    [
+        # CPU share (32 - 3 floors) x 0.8 / 3 = 7.7 -> 7 for each CPU stage:
+        # 21 x 2.4 = 50.4 memory, plus 5 x 3.3 for the GPU stage, exceeds the
+        # usable 49.3 and leaves the GPU stage unplaceable.
+        (False, 7),
+        # GPU stage first: 5 x 3.3 = 16.5; (49.3 - 16.5) / 3 / 2.4 = 4.6 -> 4.
+        (True, 4),
+    ],
+    ids=["cpu-only-share", "memory-aware-share"],
+)
+def test_warmup_share_respects_memory_after_gpu_ops(memory_aware, cpu_target):
+    ops, view = _video_pipeline()
+    sizer, _ = _bootstrapped(*ops.values(), view=view)
+    if memory_aware:
+        _with_bottleneck_model(sizer)
+    capacity = view.reserved_by_node["node0"]
+    targets = {
+        name: sizer._policy.warmup_target(op, capacity) for name, op in ops.items()
+    }
+
+    # GPU share: (8 - 1 floor) x 0.8 = 5.6 -> 5, unchanged either way.
+    assert targets == {
+        "read": cpu_target,
+        "resize": cpu_target,
+        "features": 5,
+        "write": cpu_target,
+    }
+
+
+def test_memory_aware_share_leaves_cpu_only_actors_alone():
+    # Actors that request no memory are bounded by CPU alone.
+    read = _FakeOp("read", _FakePool(min_size=1, max_size=100, cpu=1))
+    write = _write_op(
+        "write", _FakePool(min_size=1, max_size=100, cpu=1), inputs=(read,)
+    )
+    sizer, _ = _bootstrapped(read, write, cpu=32)
+    _with_bottleneck_model(sizer)
+    capacity = ExecutionResources(cpu=32, gpu=4)
+    # (32 - 2 floors) x 0.8 / 2 = 12.
+    assert sizer._policy.warmup_target(read, capacity) == 12
+
+
+def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
+    # Write waits on its on_start: no actor yet, but its memory-aware share (4)
+    # is held, memory included. Once on_start runs (its first input, after
+    # warmup ended), it grows straight to the held count in one grant.
+    ops, view = _video_pipeline(write_awaiting_on_start=True)
+    write = ops["write"]
+    sizer, _ = _bootstrapped(*ops.values(), view=view)
+    _with_bottleneck_model(sizer)
+    # Upstream is producing (so only Write's on_start hold is in play).
+    for name in ("read", "resize", "features"):
+        ops[name].metrics.num_task_outputs_generated = 1
+
+    assert write not in _tick(sizer).request
+    snapshot = _snapshot_of(sizer)
+    assert snapshot.held_actors_by_op[write] == 4
+    # 61.6 - 3 running 1-actor stages (2.4 + 2.4 + 3.3) - 4 held x 2.4.
+    assert snapshot.free_by_node["node0"].memory == pytest.approx(
+        (61.6 - 8.1 - 9.6) * GiB, rel=1e-6
+    )
+
     write.pending_on_start = False
     request = _tick(sizer).request
-    assert request[write].delta == held
-    assert request[write].reason == "held share (on_start ran)"
-    # One-time: the next tick sizes write from its own signals again (the
-    # fake pool applies nothing, so it is still below min size).
+    assert request[write].delta == 4
+    assert request[write].reason == "held share (hold released)"
+    # One-time: the fake pool applies nothing, so next tick it is merely
+    # below min size again.
     assert _tick(sizer).request[write].reason == "below min size"
+
+
+def test_op_waiting_on_upstream_output_reserves_its_share():
+    # The PR #68257 hold keeps an op at min until its upstream produces
+    # output. Under the bottleneck model its share is held meanwhile, and
+    # it grows to it once the upstream output arrives.
+    ops, view = _video_pipeline()
+    sizer, _ = _bootstrapped(*ops.values(), view=view)
+    _with_bottleneck_model(sizer)
+
+    held = _snapshot_of(sizer).held_actors_by_op
+    # resize, features and write wait on upstream output; read is a source.
+    assert set(held) == {ops["resize"], ops["features"], ops["write"]}
+    assert held[ops["features"]] == 5
+
+    ops["read"].metrics.num_task_outputs_generated = 1
+    request = _tick(sizer).request
+    # resize's hold released: one grant to its held count (4 here is its share;
+    # it already has 1 actor).
+    assert request[ops["resize"]].delta == held[ops["resize"]] - 1
 
 
 def test_warmup_latches_off_on_critical_op_first_output():
