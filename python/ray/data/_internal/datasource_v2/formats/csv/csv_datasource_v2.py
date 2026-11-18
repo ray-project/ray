@@ -265,8 +265,9 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
     """V2 datasource that lists CSV files and reads them with ``CsvScanner``.
 
     Splits a large uncompressed file into byte-range chunks unless the parse
-    options let a row span lines (``newlines_in_values``), skip rows at the
-    start of each file, or use a non-UTF-8 encoding.
+    options let a row span lines (``newlines_in_values`` or
+    ``escape_char``), skip rows at the start of each file, or use a non-UTF-8
+    encoding.
     """
 
     _FORMAT_NAME = "CSV"
@@ -296,6 +297,10 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
         encoding = self._read_options.encoding.lower().replace("-", "")
         return (
             not self._parse_options.newlines_in_values
+            # An escaped newline breaks the same every-newline-ends-a-row
+            # assumption that ``newlines_in_values`` breaks. Unset is falsy
+            # (``None`` or pyarrow's ``False``).
+            and not self._parse_options.escape_char
             and self._read_options.skip_rows == 0
             and self._read_options.skip_rows_after_names == 0
             and encoding == "utf8"

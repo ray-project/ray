@@ -53,6 +53,17 @@ def invalid_csv_error(path: str) -> ValueError:
     )
 
 
+def quoted_newline_error(path: str) -> ValueError:
+    """Error for a split file's piece failing to parse."""
+    return ValueError(
+        f"Failed to read a chunk of CSV file: {path}. The file is split at "
+        "newline bytes, so a newline inside a quoted or escaped value that "
+        "the piece can't see fails to parse. Pass "
+        "parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) to "
+        "read each file whole. See read_csv() documentation for more details."
+    )
+
+
 def read_snappy_buffer(path: str, filesystem: "FileSystem") -> pa.Buffer:
     """Return a whole Snappy file decompressed, since pyarrow can't read it."""
     with filesystem.open_input_stream(path, compression=None) as file:
@@ -121,7 +132,9 @@ class CsvFileReader(LineChunkableFileReader):
             else:
                 yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
         except pa.ArrowInvalid as e:
-            raise invalid_csv_error(unit.source) from e
+            if unit.id == unit.source:
+                raise invalid_csv_error(unit.source) from e
+            raise quoted_newline_error(unit.source) from e
 
     @override
     def _make_chunk_fragment(

@@ -258,6 +258,7 @@ def test_reads_a_file_holding_its_partition_column(
     "arrow_csv_args",
     [
         {"parse_options": pcsv.ParseOptions(newlines_in_values=True)},
+        {"parse_options": pcsv.ParseOptions(escape_char="\\")},
         {"read_options": pcsv.ReadOptions(skip_rows=1)},
         {"read_options": pcsv.ReadOptions(skip_rows_after_names=1)},
         {"read_options": pcsv.ReadOptions(encoding="utf-16")},
@@ -267,6 +268,20 @@ def test_reads_files_whole_when_rows_may_not_end_at_newlines(arrow_csv_args):
     datasource = CsvDatasourceV2(["/tmp"], arrow_csv_args=arrow_csv_args)
     indexer = datasource._get_file_indexer()
     assert type(indexer) is NonSamplingFileIndexer
+
+
+def test_hints_newlines_in_values_when_a_piece_fails_to_parse(tmp_path, monkeypatch):
+    # The first piece ends inside a quoted value; the second piece's first
+    # row then holds more fields than the header names, so pyarrow raises
+    # and the reader points at ``newlines_in_values``. The chunk boundary
+    # is placed right before the value's second half.
+    head = "id,note\n" + "".join(f'{i},"short"\n' for i in range(4)) + '4,"multi\n'
+    tail = 'w,x,y,z"\n' + "".join(f'{i},"short"\n' for i in range(5, 20))
+    path = _write(tmp_path / "a.csv", head + tail)
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
+
+    with pytest.raises(ValueError, match="newlines_in_values"):
+        _read_all(CsvDatasourceV2([path]), [path])
 
 
 def test_reads_compressed_files_whole(tmp_path, small_chunks):
