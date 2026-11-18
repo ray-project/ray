@@ -7,8 +7,8 @@ files, partition values and residual filter, which only the listing task (the
 one that called ``plan_files()``) has seen.
 
 So each manifest row also carries the planned PyIceberg ``FileScanTask``
-itself, pickled, and the reader hands the unpickled task to ``ArrowScan``
-unchanged, the same objects V1 ships inside its read tasks. Carrying the task
+itself, pickled with Ray's ``cloudpickle`` as V1's read tasks are, and the
+reader hands the unpickled task to ``ArrowScan`` unchanged. Carrying the task
 rather than rebuilding it from typed columns keeps this module off PyIceberg's
 internal constructors (``DataFile``, ``Record``), which change between
 releases. Listing and reading run in one cluster, so both sides use the same
@@ -17,11 +17,11 @@ PyIceberg version.
 
 from __future__ import annotations
 
-import pickle
 from typing import TYPE_CHECKING, Iterator, Sequence
 
 import pyarrow as pa
 
+from ray import cloudpickle
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
@@ -48,7 +48,7 @@ def manifest_from_scan_tasks(tasks: Sequence["FileScanTask"]) -> FileManifest:
             ),
             FILE_CHUNK_METADATA_COLUMN_NAME: pa.nulls(len(tasks)),
             SCAN_TASK_COLUMN_NAME: pa.array(
-                [pickle.dumps(task) for task in tasks], type=pa.binary()
+                [cloudpickle.dumps(task) for task in tasks], type=pa.binary()
             ),
         }
     )
@@ -58,4 +58,4 @@ def manifest_from_scan_tasks(tasks: Sequence["FileScanTask"]) -> FileManifest:
 def scan_tasks_from_manifest(manifest: FileManifest) -> Iterator["FileScanTask"]:
     """Unpickle each manifest row's scan task, in row order."""
     for data in manifest.as_block()[SCAN_TASK_COLUMN_NAME].to_pylist():
-        yield pickle.loads(data)
+        yield cloudpickle.loads(data)
