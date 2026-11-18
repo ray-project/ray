@@ -113,7 +113,7 @@ Shuffle v2 supports the following operations:
 - Key-based repartitioning through {meth}`Dataset.repartition <ray.data.Dataset.repartition>` with `keys`
 - Joins through {meth}`Dataset.join <ray.data.Dataset.join>`
 
-Shuffle v2 doesn't support {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, which uses a separate map-reduce shuffle. That shuffle runs push-based under `ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED` and pull-based under every other strategy.
+Shuffle v2 runs {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` only when {ref}`disk-based shuffle <disk-based-shuffle>` is enabled. Otherwise random shuffle uses a separate map-reduce shuffle that runs push-based under `ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED` and pull-based under every other strategy.
 
 (disk-based-shuffle)=
 
@@ -136,7 +136,7 @@ Because intermediate data goes straight to disk instead of filling the object st
 
 For shuffles that fit comfortably in object-store memory, the default in-memory path avoids the disk round trip and is typically faster.
 
-To enable disk-based shuffle for sorts, key-based repartitioning, aggregations, and joins under the `SHUFFLE_V2` strategy, set `DataContext.use_disk_based_hash_shuffle` before creating a `Dataset`:
+To enable disk-based shuffle for random shuffles, sorts, key-based repartitioning, aggregations, and joins under the `SHUFFLE_V2` strategy, set `DataContext.use_disk_based_hash_shuffle` before creating a `Dataset`:
 
 ```python
 import ray
