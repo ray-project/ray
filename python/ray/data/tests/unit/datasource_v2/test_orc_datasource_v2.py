@@ -1,6 +1,8 @@
 """Unit tests for :class:`OrcDatasourceV2`."""
 
+import copy
 import os
+import pickle
 from dataclasses import replace
 from unittest.mock import Mock
 
@@ -17,6 +19,7 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
+    _read_orc_schema,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
@@ -58,6 +61,21 @@ def _manifest_of(paths):
         sizes=[os.path.getsize(path) for path in paths],
         chunk_metadatas=[None] * len(paths),
     )
+
+
+def test_orc_schema_reader_retries_schema_read(monkeypatch):
+    import pyarrow.orc as orc
+
+    expected = pa.schema([("a", pa.int64())])
+    reader = Mock(
+        side_effect=[OSError("retryable footer error"), Mock(schema=expected)]
+    )
+    monkeypatch.setattr(orc, "ORCFile", reader)
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+
+    assert _read_orc_schema("test.orc", None, None) == expected
+    assert reader.call_count == 2
 
 
 def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
@@ -232,37 +250,54 @@ def test_infer_schema_unifies_across_batches(tmp_path):
     assert schema.names == ["id", "late"]
 
 
-@pytest.mark.parametrize("target_block_size", [None, 128])
-@pytest.mark.parametrize("batch_size", [None, 2])
+@pytest.mark.parametrize(
+    "target_block_size,batch_size,mode",
+    [
+        (None, None, "off"),
+        (128, None, "off"),
+        (None, 2, "off"),
+        (128, 2, "off"),
+        (128, None, "file"),
+    ],
+)
 def test_orc_batch_sizing_config_survives_pushdowns(
-    tmp_path, monkeypatch, target_block_size, batch_size
+    tmp_path, monkeypatch, target_block_size, batch_size, mode
 ):
     path = tmp_path / "data.orc"
     table = pa.table({"id": [0, 1, 2, 3], "payload": ["wide" * 64] * 4})
     _write_orc(path, table)
     context = DataContext.get_current()
     monkeypatch.setattr(context, "target_max_block_size", target_block_size)
+    monkeypatch.setattr(context, "orc_statistics_pruning", mode)
     datasource = OrcDatasourceV2([str(path)])
     scanner = datasource.create_scanner(table.schema)
     assert scanner.target_block_size == target_block_size
 
     # The scanner captures the context value and immutable pushdowns retain it.
     monkeypatch.setattr(context, "target_max_block_size", 8)
+    monkeypatch.setattr(context, "orc_statistics_pruning", "off")
     scanner = replace(scanner, batch_size=batch_size)
     pushed, residual = scanner.push_filters(col("id") > 0)
     pushed = pushed.prune_columns(["id"]).push_limit(3)
     assert isinstance(pushed, OrcScanner)
-    reader = pushed.create_reader()
-
     assert residual is None
-    assert pushed.target_block_size == target_block_size
-    assert reader._target_block_size == target_block_size
-    assert reader._explicit_batch_size == batch_size
-    batches = list(reader.read(_manifest_of([path])))
-    assert pa.concat_tables(batches).to_pylist() == [{"id": 1}, {"id": 2}, {"id": 3}]
-    if batch_size is not None:
-        assert len(batches) > 1
-        assert all(batch.num_rows <= batch_size for batch in batches)
+    for copied in (pushed, copy.deepcopy(pushed), pickle.loads(pickle.dumps(pushed))):
+        reader = copied.create_reader()
+        assert copied.statistics_pruning == mode
+        assert reader._statistics_pruning == mode
+        assert (
+            copied.target_block_size == reader._target_block_size == target_block_size
+        )
+        assert reader._explicit_batch_size == batch_size
+        batches = list(reader.read(_manifest_of([path])))
+        assert pa.concat_tables(batches).to_pylist() == [
+            {"id": 1},
+            {"id": 2},
+            {"id": 3},
+        ]
+        if batch_size is not None:
+            assert len(batches) > 1
+            assert all(batch.num_rows <= batch_size for batch in batches)
 
 
 def test_read_orc_routes_to_v1_when_v2_is_disabled(monkeypatch, tmp_path):

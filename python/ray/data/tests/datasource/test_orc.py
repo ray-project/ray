@@ -21,10 +21,9 @@ from ray.data.block import BlockAccessor
 from ray.data.expressions import col
 
 
-@pytest.mark.parametrize("codec", ["uncompressed", "zlib", "snappy", "lz4", "zstd"])
 @pytest.mark.parametrize("mode", ["off", "file"])
 def test_orc_statistics_public_pipeline(
-    ray_start_regular_shared, tmp_path, monkeypatch, codec, mode
+    ray_start_regular_shared, tmp_path, monkeypatch, mode
 ):
     from ray.data.context import DataContext
 
@@ -37,7 +36,7 @@ def test_orc_statistics_public_pipeline(
     )
     path = tmp_path / "data.orc"
     orc.write_table(
-        table, str(path), compression=codec, stripe_size=8192, batch_size=256
+        table, str(path), compression="zlib", stripe_size=8192, batch_size=256
     )
     assert orc.ORCFile(str(path)).nstripes > 1
     predicate = (col("id") >= 3500) & (col("id") < 3800)
@@ -52,8 +51,9 @@ def test_orc_statistics_public_pipeline(
 
 
 @pytest.mark.parametrize("mode", ["off", "file"])
+@pytest.mark.parametrize("scenario", ["basic", "path_filter", "merge_schema"])
 def test_orc_file_statistics_pruning_public_worker(
-    ray_start_regular_shared, tmp_path, monkeypatch, mode
+    ray_start_regular_shared, tmp_path, monkeypatch, mode, scenario
 ):
     from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
         OrcDatasourceV2,
@@ -118,29 +118,40 @@ def test_orc_file_statistics_pruning_public_worker(
 
     monkeypatch.setattr(OrcDatasourceV2, "create_scanner", create_scanner)
     paths = [tmp_path / "excluded.orc", tmp_path / "candidate.orc"]
-    for path, values in zip(paths, ([-10, -1], [10, 11])):
-        _write_orc(
-            str(path), pa.table({"x": values, "payload": [str(x) for x in values]})
-        )
-    rows = (
-        ray.data.read_orc([str(path) for path in paths], override_num_blocks=1)
-        .filter(expr=col("x") > 0)
-        .select_columns(["payload"])
-        .take_all()
+    if scenario == "path_filter":
+        paths.append(tmp_path / "other.orc")
+    for path, values in zip(paths, ([-10, -1], [10, 11], [20, 21])):
+        columns = {"x": values, "payload": [str(x) for x in values]}
+        if scenario == "merge_schema" and path == paths[1]:
+            columns["extra"] = ["a", "b"]
+        _write_orc(str(path), pa.table(columns))
+    dataset = ray.data.read_orc(
+        [str(path) for path in paths],
+        override_num_blocks=1,
+        include_paths=scenario == "path_filter",
+        merge_schema=scenario == "merge_schema",
     )
-    assert sorted(row["payload"] for row in rows) == ["10", "11"]
+    if scenario == "merge_schema":
+        assert "extra" in dataset.schema().names
+    predicate = col("x") > 0
+    if scenario == "path_filter":
+        predicate = predicate & (col("path") == str(paths[1]))
+    columns = ["payload", "extra"] if scenario == "merge_schema" else ["payload"]
+    rows = dataset.filter(expr=predicate).select_columns(columns).take_all()
+    expected = [{"payload": "10"}, {"payload": "11"}]
+    if scenario == "merge_schema":
+        expected = [{"payload": "10", "extra": "a"}, {"payload": "11", "extra": "b"}]
+    assert sorted(rows, key=lambda row: row["payload"]) == expected
     records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
     records = [record for record in records if record["pid"] != driver_pid]
     assert {
         Path(record["path"]).name for record in records if record["kind"] == "consider"
-    } == {"excluded.orc", "candidate.orc"}
+    } == {path.name for path in paths}
     assert {record["mode"] for record in records} == {mode}
     scanned = {
         Path(record["path"]).name for record in records if record["kind"] == "scan"
     }
-    assert scanned == (
-        {"excluded.orc", "candidate.orc"} if mode == "off" else {"candidate.orc"}
-    )
+    assert scanned == {path.name for path in (paths if mode == "off" else paths[1:])}
 
 
 @pytest.fixture(params=[False, True], ids=["v1", "v2"])
@@ -503,6 +514,19 @@ def test_read_orc_include_paths(ray_start_regular_shared, tmp_path, orc_reader_v
     rows = ds.take_all()
     assert all("path" in row for row in rows)
     assert all(row["path"].endswith("data.orc") for row in rows)
+
+
+def test_read_orc_v2_filter_path_from_directory(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    _write_orc(str(tmp_path / "first.orc"), pa.table({"id": [1]}))
+    path = str(tmp_path / "matching.orc")
+    _write_orc(path, pa.table({"id": [2]}))
+    ds = ray.data.read_orc(str(tmp_path), include_paths=True)
+    assert ds.filter(expr=col("path") == path).take_all() == [{"id": 2, "path": path}]
 
 
 def test_read_orc_ignore_missing_paths(

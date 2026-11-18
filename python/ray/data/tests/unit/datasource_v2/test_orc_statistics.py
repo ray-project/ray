@@ -66,6 +66,29 @@ def _rows(scanner, path):
     ]
 
 
+def _assert_file_excluded(path, schema, predicate):
+    fragment = next(pds.dataset(str(path), format="orc").get_fragments())
+
+    class GuardFragment:
+        def __getattr__(self, name):
+            return getattr(fragment, name)
+
+        def scanner(self, **kwargs):
+            fragment.scanner(**kwargs)
+
+            class Scanner:
+                def scan_batches(self):
+                    pytest.fail("Excluded file entered the streaming decoder")
+
+            return Scanner()
+
+    reader = OrcScanner(
+        schema=schema, predicate=predicate, statistics_pruning="file"
+    ).create_reader()
+    kwargs = {"columns": None, "filter": predicate.to_pyarrow(), "batch_size": 2}
+    assert not list(reader._iter_fragment_tables(GuardFragment(), kwargs))
+
+
 def _integer_stats(values):
     valid = [value for value in values if value is not None]
     return {
@@ -135,41 +158,6 @@ def test_mode_capture_validation_and_serialization(monkeypatch):
 
 
 @pytest.mark.parametrize("mode", ["off", "file"])
-def test_statistics_and_batch_sizing_config_survive_pushdowns(
-    tmp_path, monkeypatch, mode
-):
-    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
-        OrcDatasourceV2,
-    )
-
-    table = pa.table({"x": range(16), "payload": ["value"] * 16})
-    path = tmp_path / "data.orc"
-    _write(path, table)
-    context = DataContext.get_current()
-    monkeypatch.setattr(context, "orc_statistics_pruning", mode)
-    monkeypatch.setattr(context, "target_max_block_size", 4096)
-    scanner = OrcDatasourceV2([str(path)]).create_scanner(table.schema)
-    monkeypatch.setattr(context, "orc_statistics_pruning", "off")
-    monkeypatch.setattr(context, "target_max_block_size", 1)
-    pushed, residual = scanner.push_filters(col("x") >= 8)
-    assert residual is None
-    pushed = pushed.prune_columns(["payload"]).push_limit(3)
-    for copied in (
-        pushed,
-        copy.deepcopy(pushed),
-        pickle.loads(pickle.dumps(pushed)),
-    ):
-        assert isinstance(copied, OrcScanner)
-        reader = copied.create_reader()
-        assert copied.statistics_pruning == reader._statistics_pruning == mode
-        assert copied.target_block_size == reader._target_block_size == 4096
-        assert reader._explicit_batch_size is None
-        assert pa.concat_tables(list(reader.read(_manifest(path)))).equals(
-            table.slice(8, 3).select(["payload"])
-        )
-
-
-@pytest.mark.parametrize("mode", ["off", "file"])
 def test_no_eligible_predicate_has_no_extra_statistics(tmp_path, monkeypatch, mode):
     path = tmp_path / "data.orc"
     table = pa.table({"x": [1, 2, 3]})
@@ -188,22 +176,19 @@ def test_no_eligible_predicate_has_no_extra_statistics(tmp_path, monkeypatch, mo
     assert _rows(scanner, path) == table.filter(predicate.to_pyarrow()).to_pylist()
 
 
-@pytest.mark.parametrize("mode", ["file"])
-def test_unavailable_metadata_falls_back_but_io_errors_propagate(
-    tmp_path, monkeypatch, mode
-):
+def test_unavailable_metadata_falls_back_but_io_errors_propagate(tmp_path, monkeypatch):
     path = tmp_path / "data.orc"
     table = pa.table({"x": [1, 2, 3]})
     _write(path, table)
     scanner = OrcScanner(
-        schema=table.schema, predicate=col("x") > 10, statistics_pruning=mode
+        schema=table.schema, predicate=col("x") > 1, statistics_pruning="file"
     )
 
     def unavailable(source):
         raise MetadataUnavailable("unknown writer")
 
     monkeypatch.setattr(reader_module, "read_metadata", unavailable)
-    assert _rows(scanner, path) == []
+    assert _rows(scanner, path) == [{"x": 2}, {"x": 3}]
 
     def broken(source):
         raise OSError("object store connection failed")
@@ -349,39 +334,8 @@ def test_extended_predicates_exclude_whole_file(tmp_path, values, predicate):
     )
     table = pa.table({"x": pa.array(values, type=value_type)})
     _write(path, table, "zlib")
-    fragment = next(pds.dataset(str(path), format="orc").get_fragments())
-
-    class Fragment:
-        def __getattr__(self, name):
-            return getattr(fragment, name)
-
-        def scanner(self, **kwargs):
-            fragment.scanner(**kwargs)
-
-            class Scanner:
-                def scan_batches(self):
-                    pytest.fail("Statistics exclusion decoded data")
-
-            return Scanner()
-
     assert table.filter(predicate.to_pyarrow()).num_rows == 0
-    for mode in ("file",):
-        reader = OrcScanner(
-            schema=table.schema, predicate=predicate, statistics_pruning=mode
-        ).create_reader()
-        assert (
-            list(
-                reader._iter_fragment_tables(
-                    Fragment(),
-                    {
-                        "columns": None,
-                        "filter": predicate.to_pyarrow(),
-                        "batch_size": 2,
-                    },
-                )
-            )
-            == []
-        )
+    _assert_file_excluded(path, table.schema, predicate)
 
 
 @pytest.mark.parametrize(
@@ -490,34 +444,7 @@ def test_serialized_footer_statistics_and_file_exclusion(tmp_path, codec):
         3,
     )
     assert metadata.statistics["flag"].true_count == 1
-    predicate = col("x") > 10
-    fragment = next(pds.dataset(str(path), format="orc").get_fragments())
-
-    class GuardFragment:
-        def __getattr__(self, name):
-            return getattr(fragment, name)
-
-        def scanner(self, **kwargs):
-            fragment.scanner(**kwargs)
-
-            class Scanner:
-                def scan_batches(self):
-                    pytest.fail("Excluded file entered the streaming decoder")
-
-            return Scanner()
-
-    reader = OrcScanner(
-        schema=table.schema, predicate=predicate, statistics_pruning="file"
-    ).create_reader()
-    assert (
-        list(
-            reader._iter_fragment_tables(
-                GuardFragment(),
-                {"columns": None, "filter": predicate.to_pyarrow(), "batch_size": 2},
-            )
-        )
-        == []
-    )
+    _assert_file_excluded(path, table.schema, col("x") > 10)
 
 
 def test_qualified_java_and_unqualified_cpp_string_statistics(tmp_path):
