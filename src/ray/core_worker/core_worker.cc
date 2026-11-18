@@ -2302,6 +2302,19 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   return returned_refs;
 }
 
+std::optional<MoveState> CoreWorker::GetMoveState(const ObjectID &object_id) const {
+  return reference_counter_->GetMoveState(object_id);
+}
+
+std::vector<std::optional<MoveState>> CoreWorker::GetMoveStates(
+    const std::vector<ObjectID> &object_ids) const {
+  return reference_counter_->GetMoveStates(object_ids);
+}
+
+bool CoreWorker::HasConsumeOnceObjects() const {
+  return reference_counter_->HasConsumeOnceObjects();
+}
+
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
@@ -2530,6 +2543,17 @@ Status CoreWorker::CreatePlacementGroup(
                << "allowed to be used in placement group. ";
         return Status::Invalid(stream.str());
       }
+      // Fractional demand >= 1 is invalid for unit-instance resources (GPU, TPU, etc.).
+      if (ResourceID(resource.first).IsUnitInstanceResource()) {
+        double value = resource.second;
+        if (value >= 1.0 && value != std::floor(value)) {
+          return Status::InvalidArgument(
+              absl::StrFormat("%s resource quantities >1 must be whole numbers. "
+                              "The specified quantity %g is invalid.",
+                              resource.first,
+                              value));
+        }
+      }
     }
   }
   const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
@@ -2678,6 +2702,19 @@ Status CoreWorker::SubmitActorTask(
         actor_id.Hex()));
   }
 
+  // Nothing after this commit to MOVED fails the submit, so a committed move always has a
+  // consuming task. That task can still fail (for example, if the actor is dead), and the
+  // ref stays MOVED.
+  std::vector<ObjectID> arg_ids;
+  for (const std::unique_ptr<TaskArg> &arg : args) {
+    if (std::optional<ObjectID> arg_id = arg->GetReferenceId()) {
+      arg_ids.push_back(*arg_id);
+    }
+  }
+  if (!arg_ids.empty() && reference_counter_->HasConsumeOnceObjects()) {
+    RAY_RETURN_NOT_OK(reference_counter_->TryCommitMoves(arg_ids));
+  }
+
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
   // Subscribe the actor state when we first submit the actor task. It is to reduce the
   // number of connections. The method is idempotent.
@@ -2742,7 +2779,7 @@ Status CoreWorker::SubmitActorTask(
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   task_returns = task_manager_->AddPendingTask(
-      rpc_address_, task_spec, CurrentCallSite(), max_retries);
+      rpc_address_, task_spec, CurrentCallSite(), max_retries, task_options.consume_once);
   actor_task_submitter_->SubmitTask(task_spec);
   return Status::OK();
 }
@@ -3764,25 +3801,36 @@ void CoreWorker::HandleReportGeneratorItemReturns(
       /*consumption_update_callback=*/
       [this, worker_addr, generator_id = consumption_generator_id](
           const Status &status, int64_t total_num_object_consumed) {
-        rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
-        update_request.set_generator_id(generator_id.Binary());
-        update_request.set_total_num_object_consumed(
-            status.ok() ? total_num_object_consumed : -1);
-        auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
-        client->UpdateGeneratorBackpressureConsumed(
-            std::move(update_request),
-            [generator_id](const Status &update_status,
-                           const rpc::UpdateGeneratorBackpressureConsumedReply &) {
-              if (!update_status.ok()) {
-                // The retryable RPC layer retries transient failures; a
-                // permanent failure usually means the executor is gone, in
-                // which case no one is blocked on the corresponding
-                // WaitUntilObjectConsumed. Still WARN so unexpected
-                // executor-side stalls (if any) are visible.
-                RAY_LOG(WARNING).WithField(generator_id)
-                    << "Failed to update generator consumed progress: " << update_status;
-              }
-            });
+        // This callback runs on every read from the stream, usually on the
+        // consumer's Python thread. Post the RPC to io_service_ so the gRPC send
+        // cost stays off that thread.
+        io_service_.post(
+            [this,
+             worker_addr,
+             generator_id,
+             total_num_object_consumed =
+                 status.ok() ? total_num_object_consumed : int64_t{-1}]() {
+              rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
+              update_request.set_generator_id(generator_id.Binary());
+              update_request.set_total_num_object_consumed(total_num_object_consumed);
+              auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
+              client->UpdateGeneratorBackpressureConsumed(
+                  std::move(update_request),
+                  [generator_id](const Status &update_status,
+                                 const rpc::UpdateGeneratorBackpressureConsumedReply &) {
+                    if (!update_status.ok()) {
+                      // The retryable RPC layer retries transient failures; a
+                      // permanent failure usually means the executor is gone, in
+                      // which case no one is blocked on the corresponding
+                      // WaitUntilObjectConsumed. Still WARN so unexpected
+                      // executor-side stalls (if any) are visible.
+                      RAY_LOG(WARNING).WithField(generator_id)
+                          << "Failed to update generator consumed progress: "
+                          << update_status;
+                    }
+                  });
+            },
+            "CoreWorker.UpdateGeneratorBackpressureConsumed");
       });
 }
 

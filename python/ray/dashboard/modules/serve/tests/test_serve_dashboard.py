@@ -1,6 +1,7 @@
 import copy
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,13 +21,20 @@ import ray
 from ray import serve
 from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
 from ray._private.test_utils import request_with_auth_token
+from ray.experimental.internal_kv import _internal_kv_del
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
 )
-from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.test_utils import get_num_alive_replicas
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
+)
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import get_application_url, get_num_alive_replicas
 from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
@@ -175,6 +183,122 @@ def test_put_bad_schema(ray_start_stop):
         "PUT", SERVE_HEAD_URL, json=config, timeout=5
     )
     assert put_response.status_code == 400
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+@pytest.mark.parametrize(
+    "exporter_import_path",
+    [
+        # Can't be imported.
+        "serve_missing_tracing_exporter_mod:exp",
+        # Imports, but takes arguments, which custom exporters can't.
+        "ray.serve.tests.test_standalone:tracing_exporter_with_args",
+        # Imports, but raises when the controller calls it.
+        "ray.serve.tests.test_standalone:raising_tracing_exporter",
+    ],
+)
+def test_put_bad_tracing_exporter(ray_start_stop, exporter_import_path):
+    """An unusable tracing exporter fails the deploy with a 400.
+
+    It's validated when the controller starts, in the controller's env. The
+    failed start must not leave a controller behind, so a corrected deploy
+    then succeeds.
+    """
+    config = {
+        "tracing_config": {
+            "enabled": True,
+            "exporter_import_path": exporter_import_path,
+        },
+        "applications": [],
+    }
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 400
+    assert exporter_import_path in put_response.text
+
+    config["tracing_config"] = {"enabled": False}
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 200
+
+
+def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
+    """Return whether a span file for ``component`` contains ``span_name``."""
+    if not os.path.isdir(spans_dir):
+        return False
+    for fname in os.listdir(spans_dir):
+        if component not in fname:
+            continue
+        try:
+            with open(os.path.join(spans_dir, fname)) as f:
+                if span_name in f.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_put_tracing_config_on_fresh_cluster_produces_traces(ray_start_stop):
+    """The first serve deploy's tracing_config applies end to end.
+
+    On a fresh cluster the deploy passes tracing_config into the controller
+    constructor, so proxies get it at construction and replicas at startup, and
+    a request produces traces for both.
+    """
+    config = {
+        "tracing_config": {"enabled": True, "sampling_ratio": 1.0},
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/",
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+            }
+        ],
+    }
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 200
+    wait_for_condition(
+        lambda: serve.status().applications["app1"].status == ApplicationStatus.RUNNING,
+        timeout=60,
+    )
+
+    # The controller started with the deployed tracing config.
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    tracing_config = ray.get(controller.get_tracing_config.remote())
+    assert tracing_config.enabled is True
+    assert tracing_config.sampling_ratio == 1.0
+
+    # Under HAProxy or direct ingress the Python proxy isn't in the request path,
+    # so only the replica emits request spans.
+    expect_proxy_spans = not (
+        RAY_SERVE_ENABLE_HA_PROXY or RAY_SERVE_ENABLE_DIRECT_INGRESS
+    )
+    url = get_application_url(app_name="app1")
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+
+    def traces_produced() -> bool:
+        requests.get(url, timeout=10)
+        replica_traced = _span_file_contains(
+            spans_dir, "replica", "replica_handle_request"
+        )
+        proxy_traced = not expect_proxy_spans or _span_file_contains(
+            spans_dir, "proxy", "proxy_http_request"
+        )
+        return replica_traced and proxy_traced
+
+    try:
+        wait_for_condition(traces_produced, timeout=60)
+    finally:
+        shutil.rmtree(spans_dir, ignore_errors=True)
 
 
 @pytest.mark.skipif(
@@ -340,6 +464,66 @@ def test_get_serve_instance_details_not_started(ray_start_stop):
     assert serve_details.target_groups == []
 
 
+@pytest.fixture
+def no_working_dir_cache(monkeypatch):
+    # Delete working_dir packages from the node as soon as nothing uses them,
+    # so a restarting actor has to download its package again.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", "0")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_rest_api_recovers_after_controller_runtime_env_setup_error(
+    no_working_dir_cache, ray_start_stop, tmp_path
+):
+    """The REST API recovers once a new controller is started, even when the
+    cached controller handle fails with RuntimeEnvSetupError instead of
+    RayActorError."""
+    (tmp_path / "module.py").write_text("")
+    ray.shutdown()
+    ray.init("auto", runtime_env={"working_dir": str(tmp_path)})
+    package_uri = ray.get_runtime_context().runtime_env["working_dir"]
+    serve.run(serve.deployment(lambda: "hi").bind(), name="app1")
+    wait_for_condition(
+        lambda: request_with_auth_token("GET", SERVE_HEAD_URL).status_code == 200
+    )
+
+    # The controller inherited the job's working_dir. End that job, delete the
+    # package from the GCS and the node, then restart every Serve actor so the
+    # controller restart can't set it up.
+    ray.shutdown()
+    ray.init("auto")
+    _internal_kv_del(package_uri.encode())
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    package_dir = Path(session_dir) / "runtime_resources" / "working_dir_files"
+    shutil.rmtree(package_dir / Path(package_uri).stem, ignore_errors=True)
+    for actor in list_actors(filters=[("state", "=", "ALIVE")]):
+        if actor.ray_namespace == SERVE_NAMESPACE and actor.name:
+            ray.kill(
+                ray.get_actor(actor.name, namespace=SERVE_NAMESPACE),
+                no_restart=False,
+            )
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    # If the restart is scheduled before the killed actors release the
+    # package, the raylet retries the worker about a minute later and fails then.
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        ray.get(controller.check_alive.remote(), timeout=180)
+
+    serve.start()
+    new_controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    new_controller_id = new_controller._actor_id.hex()
+    assert new_controller_id != controller._actor_id.hex()
+
+    def rest_api_reports_new_controller():
+        response = request_with_auth_token("GET", SERVE_HEAD_URL)
+        assert response.status_code == 200
+        details = ServeInstanceDetails(**response.json())
+        return details.controller_info.actor_id == new_controller_id
+
+    wait_for_condition(rest_api_reports_new_controller, timeout=30)
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
@@ -492,6 +676,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
                     == deployment.deployment_config.num_replicas
                 )
                 assert len(deployment.replicas) == deployment.target_num_replicas
+                assert (
+                    deployment.num_running_replicas_at_target_version
+                    == deployment.target_num_replicas
+                )
             assert (
                 deployment.required_resources
                 == expected_values[app]["required_resources"][deployment.name]

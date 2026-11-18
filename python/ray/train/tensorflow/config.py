@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="beta")
 @dataclass
 class TensorflowConfig(BackendConfig):
+    """Configuration for TensorFlow distributed training setup.
+
+    Ray Train sets the ``TF_CONFIG`` environment variable on each worker from the
+    addresses of all the workers. This config takes no arguments.
+    """
+
     @property
     def backend_cls(self):
         return _TensorflowBackend

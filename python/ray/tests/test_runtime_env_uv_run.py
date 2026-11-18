@@ -164,6 +164,15 @@ def test_uv_run_runtime_env_hook():
             "working_dir": os.path.realpath("/tmp"),
         },
     )
+    # An argument with spaces reaches the workers as one argument.
+    check_uv_run(
+        cmd=[find_uv_bin(), "run", "--no-project", "--with", "psutil >= 1", script],
+        runtime_env={},
+        expected_output={
+            "py_executable": f"{find_uv_bin()} run --no-project --with 'psutil >= 1' --python {sys.executable} python",
+            "working_dir": os.getcwd(),
+        },
+    )
     check_uv_run(
         [find_uv_bin(), "run", "--no-project", script],
         {"working_dir": "/some/path"},
@@ -490,6 +499,17 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
         env={
             "PATH": os.environ["PATH"],
             "RAY_ADDRESS": webui_url,
+            # The CLI needs the test cluster's auth mode and token.
+            **{
+                key: os.environ[key]
+                for key in (
+                    "HOME",
+                    "RAY_AUTH_MODE",
+                    "RAY_AUTH_TOKEN",
+                    "RAY_AUTH_TOKEN_PATH",
+                )
+                if key in os.environ
+            },
         },
         cwd=working_dir,
         check=True,

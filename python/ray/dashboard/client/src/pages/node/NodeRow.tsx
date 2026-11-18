@@ -327,6 +327,7 @@ export const WorkerRow = ({
           <WorkerAcceleratorRow
             workerPID={pid}
             gpus={node.gpus}
+            npus={node.npus}
             tpus={node.tpus}
           />
         </TableCell>
@@ -336,6 +337,7 @@ export const WorkerRow = ({
           <WorkerAcceleratorMemory
             workerPID={pid}
             gpus={node.gpus}
+            npus={node.npus}
             tpus={node.tpus}
           />
         </TableCell>
@@ -364,7 +366,7 @@ type NodeRowsProps = {
    */
   startExpanded?: boolean;
   /**
-   * Whether to show accelerator (GPU/TPU) columns.
+   * Whether to show accelerator columns.
    */
   showAcceleratorColumns?: boolean;
 };

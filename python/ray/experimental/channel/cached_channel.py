@@ -5,8 +5,7 @@ from ray.experimental.channel.common import ChannelInterface
 
 
 class CachedChannel(ChannelInterface):
-    """
-    CachedChannel wraps an inner channel and caches the data read from it until
+    """CachedChannel wraps an inner channel and caches the data read from it until
     `num_reads` reads have completed. If inner channel is None, the data
     is written to serialization context and retrieved from there. This is useful
     when passing data within the same actor and a shared memory channel can be

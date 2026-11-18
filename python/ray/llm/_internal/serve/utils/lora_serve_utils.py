@@ -1,5 +1,4 @@
-"""
-Serve-specific LoRA utilities that use generic abstractions from lora_utils.py.
+"""Serve-specific LoRA utilities that use generic abstractions from lora_utils.py.
 
 This module provides serve-specific functionality while using the generic
 LoRA abstractions from common/lora_utils.py. This ensures clean separation

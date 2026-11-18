@@ -31,12 +31,14 @@ import pyarrow.parquet as pq
 
 import ray
 from ray.data._internal.datasource._lerobot_compat import new_decoder_cache
+from ray.data._internal.datasource.image_utils import _ALLOWED_PIL_FORMATS
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import (
     _check_import,
     _is_local_scheme,
     _resolve_custom_scheme,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -481,7 +483,7 @@ def _raise_on_pickle_object_meta_parquet(local_meta_dir: str, root_uri: str) -> 
         try:
             # Unpickling untrusted data can execute arbitrary code. Reject object
             # columns unless the user has explicitly opted in.
-            raise_on_pickle_object_columns(schema.empty_table())
+            raise_on_pickle_object_columns(_create_empty_table(schema))
         except ValueError as e:
             rel = path.relative_to(meta_dir).as_posix()
             raise ValueError(f"{root_uri!r}: meta/{rel}: {e}") from e
@@ -1343,7 +1345,10 @@ def _decode_image_frames(
                     f"image column {ik!r}: row has neither inline bytes nor a path"
                 )
             arr = np.asarray(
-                Image.open(io.BytesIO(data)).convert("RGB"), dtype=np.uint8
+                Image.open(io.BytesIO(data), formats=_ALLOWED_PIL_FORMATS).convert(
+                    "RGB"
+                ),
+                dtype=np.uint8,
             )
             frames.append(arr)
         decoded[ik] = frames
@@ -1832,7 +1837,11 @@ class LeRobotDatasource(Datasource):
         extra split re-opens a file and re-inits a decoder, a cost a small
         dataset cannot amortize. This mirrors how file-based readers cap at the
         file count; an explicit ``override_num_blocks`` still splits or merges
-        from this base."""
+        from this base.
+
+        Returns:
+            The number of base read tasks.
+        """
         return len(self._slice())
 
     def get_read_tasks(
@@ -1975,6 +1984,28 @@ class LeRobotPerDatasetDatasource(Datasource):
     ``image_keys`` / ``fps`` / non-camera features); unlike the ``"file"`` and
     ``"episode"`` granularities this is *not* pre-checked on the driver -- a
     divergent dataset surfaces as a schema-inconsistent block at read time.
+
+    Args:
+        root: Path or URI to the dataset root (local, ``gs://``, ``s3://``), or a
+            list of such paths to read multiple datasets as one. Every root must
+            have the same ``video_keys``, ``image_keys``, ``fps``, and non-camera
+            features as the first one.
+        episodes: If given, read only these ``episode_index`` values from each
+            root. ``None`` (the default) reads all episodes.
+        filesystem: Filesystem for reading metadata and parquet files. A pyarrow
+            ``FileSystem`` or an fsspec ``AbstractFileSystem``. When omitted, it's
+            selected from the URI scheme. Applied to every root.
+        storage_options: Extra options forwarded to ``fsspec``, such as
+            credentials or a custom ``endpoint_url``. Applied to every root.
+        frame_tolerance_s: Max seconds a decoded video frame's timestamp may
+            differ from a row's timestamp before it's rejected. ``None`` (the
+            default) uses half a frame interval, ``0.5 / fps``.
+        delta_timestamps: Optional ``{feature_key: [offsets_in_seconds]}``. For
+            each frame, the listed feature is returned stacked over the offsets,
+            plus a boolean ``{key}_is_pad`` column.
+        delta_tolerance_s: Frame-grid tolerance, in seconds, for
+            ``delta_timestamps`` offsets. An offset must be a multiple of
+            ``1 / fps`` within this tolerance. Defaults to ``1e-4``.
     """
 
     def __init__(

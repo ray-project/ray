@@ -23,20 +23,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     ReportsExtraResourceUsage,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShufflingOperatorBase,
-)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
-    DiskHashShuffleMapOp,
-)
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
-    ShuffleMapOp,
-)
-from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 from ray.util.debug import log_once
@@ -58,19 +45,6 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
 #
 # I arbitrarily chose the default delay.
 STARVATION_WARNING_DELAY_S = env_float("RAY_DATA_STARVATION_WARNING_DELAY_S", 60)
-
-
-# Following list is a list of *blocking* materializing operators, that prevent
-# operators downstream from them from starting execution until these operators
-# finish executing.
-_BLOCKING_MATERIALIZING_OPERATORS = (
-    HashShufflingOperatorBase,
-    AllToAllOperator,
-    ShuffleMapOp,
-    DiskHashShuffleMapOp,
-    # TODO remove after zip made fully streaming
-    ZipOperator,
-)
 
 
 def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
@@ -277,6 +251,35 @@ class ResourceManager:
         """Return the global pending resource usage at the current time."""
         return self._global_pending_usage
 
+    def is_blocked_on_consumer(self) -> bool:
+        """Whether the last op is waiting for the consumer to read its outputs.
+
+        More nodes won't help then, since they won't speed up the consumer.
+        """
+        for op in reversed(self._topology):
+            # Skip finished ops and pass-through ops, e.g., OutputSplitter.
+            if not self.is_op_eligible(op) and op.num_active_tasks() == 0:
+                continue
+            return self._is_blocked_on_object_store_memory(op)
+        # Every op has finished, so only outputs are left.
+        return True
+
+    def _is_blocked_on_object_store_memory(self, op: PhysicalOperator) -> bool:
+        """Whether the op is held back by its unread outputs in the object store,
+        rather than by CPU, GPU, or memory."""
+        if op.in_task_output_backpressure:
+            return True
+        if op.num_active_tasks() > 0:
+            return False
+        # An idle op short on CPU, GPU, or memory for its next task needs more nodes.
+        budget = self.get_budget(op)
+        if budget is not None and not op.incremental_resource_usage().satisfies_limit(
+            budget, ignore_object_store_memory=True
+        ):
+            return False
+        # Otherwise, if it can't submit tasks, it's waiting on object store memory.
+        return op.in_task_submission_backpressure
+
     def get_global_limits(self) -> ExecutionResources:
         """Return the global resource limits at the current time.
 
@@ -477,8 +480,7 @@ class ResourceManager:
         return None
 
     def _get_completed_ops_usage(self) -> ExecutionResources:
-        """
-        Resource reservation is based on the number of eligible operators.
+        """Resource reservation is based on the number of eligible operators.
         However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
         And we also need to exclude the downstream ineligible operators.
 
@@ -525,7 +527,7 @@ class ResourceManager:
         """
 
         # Check if Op itself is a blocking, materializing operator
-        if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS):
+        if op.is_synchronization_barrier:
             return True
 
         # Check if any of its direct *ineligible* downstream dependencies are
@@ -534,7 +536,7 @@ class ResourceManager:
         # NOTE: We only check ineligible downstream deps, since eligible downstream
         #       deps will have their own allocation that is adjusted appropriately
         return any(
-            isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS)
+            op.is_synchronization_barrier
             for op in self._get_downstream_ineligible_ops(op)
         )
 
@@ -548,14 +550,14 @@ class ResourceManager:
         the line, and exempting it keeps Map1 from backing up.
         """
         return any(
-            isinstance(downstream_op, _BLOCKING_MATERIALIZING_OPERATORS)
+            downstream_op.is_synchronization_barrier
             for downstream_op in self.get_downstream_eligible_ops(op)
         )
 
 
 def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
-        if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS) and not op.has_completed():
+        if op.is_synchronization_barrier and not op.has_completed():
             return idx
 
     return -1

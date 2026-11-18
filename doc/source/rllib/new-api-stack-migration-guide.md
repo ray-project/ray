@@ -354,9 +354,7 @@ To translate `action_distribution_fn`, write the following custom RLModule code:
 
 :::{tab-item} Same action dist. class
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
 
 
@@ -370,9 +368,7 @@ class MyRLModule(TorchRLModule):
 
 :::{tab-item} Different action dist. classes
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.rllib.models.torch.torch_distributions import (
     YOUR_INFERENCE_DIST_CLASS,
     YOUR_EXPLORATION_DIST_CLASS,
@@ -397,9 +393,7 @@ from ray.rllib.models.torch.torch_distributions import (
 
 To translate `action_sampler_fn`, write the following custom RLModule code:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
 
 

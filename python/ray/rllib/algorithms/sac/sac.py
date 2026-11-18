@@ -31,25 +31,25 @@ logger = logging.getLogger(__name__)
 class SACConfig(AlgorithmConfig):
     """Defines a configuration class from which an SAC Algorithm can be built.
 
-    .. testcode::
-
-        config = (
-            SACConfig()
-            .environment("Pendulum-v1")
-            .env_runners(num_env_runners=1)
-            .training(
-                gamma=0.9,
-                actor_lr=0.001,
-                critic_lr=0.002,
-                train_batch_size_per_learner=32,
-            )
-        )
-        # Build the SAC algo object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
+    Examples:
+        >>> config = (
+        ...     SACConfig()
+        ...     .environment("Pendulum-v1")
+        ...     .env_runners(num_env_runners=1)
+        ...     .training(
+        ...         gamma=0.9,
+        ...         actor_lr=0.001,
+        ...         critic_lr=0.002,
+        ...         train_batch_size_per_learner=32,
+        ...     )
+        ... )
+        >>> # Build the SAC algo object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
     """
 
     def __init__(self, algo_class=None):
+        """Initializes a SACConfig instance."""
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -495,7 +495,7 @@ class SACConfig(AlgorithmConfig):
                 "behavior for this algorithm. If you don't want to use the new API "
                 "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
                 "enable_env_runner_and_connector_v2=False)`. For a detailed "
-                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+                "migration guide, see here: https://docs.ray.io/en/latest/rllib/new-api-stack-migration-guide.html"  # noqa
             )
 
     @override(AlgorithmConfig)
@@ -568,7 +568,7 @@ class SAC(DQN):
     See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
 
     Detailed documentation:
-    https://docs.ray.io/en/master/rllib-algorithms.html#sac
+    https://docs.ray.io/en/latest/rllib/algorithms.html#sac
     """
 
     def __init__(self, *args, **kwargs):

@@ -214,8 +214,7 @@ def add_patch(path: str, value: Any) -> Dict[str, Any]:
 
 
 def load_k8s_secrets() -> Tuple[Dict[str, str], str, Optional[Tuple[str, str]]]:
-    """
-    Loads secrets needed to access K8s resources.
+    """Loads secrets needed to access K8s resources.
 
     By default the in-cluster ServiceAccount credentials are used. Setting
     $RAY_KUBERAY_CLIENT_CERT_PATH and $RAY_KUBERAY_CLIENT_KEY_PATH instead
@@ -311,6 +310,11 @@ def _worker_group_max_replicas(
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("maxReplicas")
 
 
+def _worker_group_min_replicas(raycluster: Dict[str, Any], group_index: int):
+    # 0 is the default minReplicas value used by the KubeRay operator
+    return raycluster["spec"]["workerGroupSpecs"][group_index].get("minReplicas", 0)
+
+
 def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     # 1 is the default replicas value used by the KubeRay operator
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
@@ -322,8 +326,7 @@ def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
 
 
 class IKubernetesHttpApiClient(ABC):
-    """
-    An interface for a Kubernetes HTTP API client.
+    """An interface for a Kubernetes HTTP API client.
 
     This interface could be used to mock the Kubernetes API client in tests.
     """
@@ -599,8 +602,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         return True
 
     def _get_pods_resource_version(self) -> str:
-        """
-        Extract a recent pods resource version by reading the head pod's
+        """Extract a recent pods resource version by reading the head pod's
         metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:
@@ -617,6 +619,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         for node_type, target_replicas in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
+            group_min_replicas = _worker_group_min_replicas(raycluster, group_index)
             # Cap the replica count to maxReplicas.
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
@@ -624,6 +627,13 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
                     + "more than maxReplicas pods of type {}.".format(node_type)
                 )
                 target_replicas = group_max_replicas
+            # Raise the replica count to minReplicas, matching KubeRay's clamp.
+            if group_min_replicas > target_replicas:
+                logger.info(
+                    "Autoscaler attempted to request "
+                    + "fewer than minReplicas pods of type {}.".format(node_type)
+                )
+                target_replicas = group_min_replicas
             # Check if we need to change the target count.
             if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.

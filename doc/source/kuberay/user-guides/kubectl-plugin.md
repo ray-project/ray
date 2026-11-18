@@ -12,7 +12,7 @@ Starting from KubeRay v1.3.0, you can use the `kubectl ray` plugin to simplify c
 
 ## Installation
 
-See [KubeRay kubectl Plugin](https://github.com/ray-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
+See [KubeRay kubectl Plugin](https://github.com/kuberay-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
 
 Install the KubeRay kubectl plugin using one of the following methods:
 
@@ -33,12 +33,12 @@ Try to use the same plugin and KubeRay versions.
 
 ### Download from GitHub releases
 
-Go to the [releases page](https://github.com/ray-project/kuberay/releases) and download the binary for your platform.
+Go to the [releases page](https://github.com/kuberay-project/kuberay/releases) and download the binary for your platform.
 
 For example, to install kubectl plugin version 1.7.0 on Linux amd64:
 
 ```bash
-curl -LO https://github.com/ray-project/kuberay/releases/download/v1.7.0/kubectl-ray_v1.7.0_linux_amd64.tar.gz
+curl -LO https://github.com/kuberay-project/kuberay/releases/download/v1.7.0/kubectl-ray_v1.7.0_linux_amd64.tar.gz
 tar -xvf kubectl-ray_v1.7.0_linux_amd64.tar.gz
 cp kubectl-ray ~/.local/bin
 ```
@@ -99,12 +99,12 @@ Created Ray Cluster: raycluster-sample-2
 You can also override the default values with a config file. For example, the following config file sets the worker CPU to 3.
 
 ```text
-$ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/refs/tags/v1.7.0/kubectl-plugin/config/samples/create-cluster.sample.yaml
+$ curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/refs/tags/v1.7.0/kubectl-plugin/config/samples/create-cluster.sample.yaml
 $ kubectl ray create cluster raycluster-sample-3 --file create-cluster.sample.yaml
 Created Ray Cluster: raycluster-sample-3
 ```
 
-See https://github.com/ray-project/kuberay/blob/v1.7.0/kubectl-plugin/config/samples/create-cluster.complete.yaml for the complete list of parameters that you can set in the config file.
+See https://github.com/kuberay-project/kuberay/blob/v1.7.0/kubectl-plugin/config/samples/create-cluster.complete.yaml for the complete list of parameters that you can set in the config file.
 
 By default it only creates one worker group. You can use `kubectl ray create workergroup` to add additional worker groups to existing RayClusters.
 
@@ -233,7 +233,7 @@ Waiting for RayCluster
 You can also designate a specific RayJob YAML to submit a Ray job.
 
 ```text
-$ wget https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-job.interactive-mode.yaml
+$ wget https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-job.interactive-mode.yaml
 ```
 
 Note that in the RayJob spec, `submissionMode` is `InteractiveMode`.

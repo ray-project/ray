@@ -95,6 +95,7 @@ py_test(
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
         "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
         "modules/tests/test_config_files/basic_runtime_env.yaml",
+        "//doc:source/cluster/running-applications/job-submission/openapi.yml",
     ] + glob([
         "modules/job/tests/subprocess_driver_scripts/*.py",
     ]),

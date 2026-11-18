@@ -37,9 +37,11 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import (
+    PartitionDataType,
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
+    _null_partition_type,
 )
 from ray.data.datasource.path_util import (
     _has_file_extension,
@@ -92,6 +94,14 @@ class FileShuffleConfig:
             If False, the random seed is constantly ``seed``, resulting in the same
             shuffling order across executions. Only takes effect when ``seed`` is not None.
             Defaults to True.
+        small_chunks_shuffle: If True, shuffle runs of Parquet row groups instead of
+            whole files, so each read task mixes rows from many files. Contiguous
+            row groups are coalesced into runs of about
+            ``DataContext.small_shuffle_chunk_size`` uncompressed bytes before the
+            shuffle. Row groups are never split, so the effective shuffle unit is
+            ``max(row_group_size, small_shuffle_chunk_size)``. Only supported by
+            ``read_parquet`` with ``DataContext.use_datasource_v2`` enabled;
+            other readers ignore it and shuffle whole files. Defaults to False.
 
     Example:
         >>> import ray
@@ -107,6 +117,7 @@ class FileShuffleConfig:
 
     seed: Optional[int] = None
     reseed_after_execution: bool = True
+    small_chunks_shuffle: bool = False
 
     def __post_init__(self):
         """Ensure that the seed is either None or an integer."""
@@ -278,7 +289,7 @@ class FileBasedDatasource(Datasource):
             paths, file_sizes, self._shuffle, execution_idx
         )
 
-        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
+        filesystem = self._filesystem
 
         if open_stream_args is None:
             open_stream_args = {}
@@ -288,7 +299,7 @@ class FileBasedDatasource(Datasource):
         ) -> Iterable[Block]:
             nonlocal filesystem, open_stream_args, partitioning
 
-            fs = _unwrap_s3_serialization_workaround(filesystem)
+            fs = filesystem
 
             for read_path in read_paths:
                 partitions: Dict[str, str] = {}
@@ -317,7 +328,9 @@ class FileBasedDatasource(Datasource):
                     match=self._data_context.retried_io_errors,
                 ):
                     if partitions:
-                        block = _add_partitions(block, partitions)
+                        block = _add_partitions(
+                            block, partitions, partitioning.field_types
+                        )
                     if self._include_paths:
                         block_accessor = BlockAccessor.for_block(block)
                         block = block_accessor.fill_column("path", read_path)
@@ -475,27 +488,42 @@ class FileBasedDatasource(Datasource):
 
 
 def _add_partitions(
-    data: Union["pyarrow.Table", "pd.DataFrame"], partitions: Dict[str, Any]
+    data: Union["pyarrow.Table", "pd.DataFrame"],
+    partitions: Dict[str, Any],
+    field_types: Optional[Dict[str, PartitionDataType]] = None,
 ) -> Union["pyarrow.Table", "pd.DataFrame"]:
     import pandas as pd
     import pyarrow as pa
 
     assert isinstance(data, (pa.Table, pd.DataFrame))
     if isinstance(data, pa.Table):
-        return _add_partitions_to_table(data, partitions)
+        return _add_partitions_to_table(data, partitions, field_types)
     if isinstance(data, pd.DataFrame):
         return _add_partitions_to_dataframe(data, partitions)
 
 
 def _add_partitions_to_table(
-    table: "pyarrow.Table", partitions: Dict[str, Any]
+    table: "pyarrow.Table",
+    partitions: Dict[str, Any],
+    field_types: Optional[Dict[str, PartitionDataType]] = None,
 ) -> "pyarrow.Table":
     import pyarrow as pa
     import pyarrow.compute as pc
 
     column_names = set(table.column_names)
     for field, value in partitions.items():
-        column = pa.array([value] * len(table))
+        if value is None:
+            # Typed like the file's column if it has one (which may be
+            # ``null``, inferred from an all-null CSV column), else like the
+            # field's other values, so an added column isn't null-typed.
+            null_type = (
+                table.schema.field(field).type
+                if field in column_names
+                else _null_partition_type(field, field_types)
+            )
+            column = pa.nulls(len(table), null_type)
+        else:
+            column = pa.array([value] * len(table))
         if field in column_names:
             column_type = table.schema.field(field).type
             try:
@@ -506,8 +534,14 @@ def _add_partitions_to_table(
                     f"to target type {column_type}."
                 ) from e
 
-            values_are_equal = pc.all(pc.equal(column, table[field]))
-            values_are_equal = values_are_equal.as_py()
+            if value is None:
+                # ``pc.equal`` of two nulls is null, not true. A null
+                # partition value (see ``Partitioning.null_fallback``)
+                # matches only a column that is all null.
+                values_are_equal = table[field].null_count == len(table)
+            else:
+                values_are_equal = pc.all(pc.equal(column, table[field]))
+                values_are_equal = values_are_equal.as_py()
 
             if not values_are_equal:
                 raise ValueError(
@@ -545,59 +579,6 @@ def _add_partitions_to_dataframe(
         df[field] = column
 
     return df
-
-
-def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
-    # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
-    # imported before deserialization. See #17085.
-    import pyarrow as pa
-    import pyarrow.fs
-
-    base_fs = filesystem
-    if isinstance(filesystem, RetryingPyFileSystem):
-        base_fs = filesystem.unwrap()
-
-    if isinstance(base_fs, pa.fs.S3FileSystem):
-        return _S3FileSystemWrapper(filesystem)
-
-    return filesystem
-
-
-def _unwrap_s3_serialization_workaround(
-    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
-):
-    if isinstance(filesystem, _S3FileSystemWrapper):
-        filesystem = filesystem.unwrap()
-    return filesystem
-
-
-class _S3FileSystemWrapper:
-    """pyarrow.fs.S3FileSystem wrapper that can be deserialized safely.
-
-    Importing pyarrow.fs during reconstruction triggers the pyarrow
-    S3 subsystem initialization.
-
-    NOTE: This is only needed for pyarrow<14.0.0 and should be removed
-        once the minimum supported pyarrow version exceeds that.
-        See https://github.com/apache/arrow/pull/38375 for context.
-    """
-
-    def __init__(self, fs: "pyarrow.fs.FileSystem"):
-        self._fs = fs
-
-    def unwrap(self):
-        return self._fs
-
-    @classmethod
-    def _reconstruct(cls, fs_reconstruct, fs_args):
-        # Implicitly trigger S3 subsystem initialization by importing
-        # pyarrow.fs.
-        import pyarrow.fs  # noqa: F401
-
-        return cls(fs_reconstruct(*fs_args))
-
-    def __reduce__(self):
-        return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
 
 
 def _resolve_kwargs(

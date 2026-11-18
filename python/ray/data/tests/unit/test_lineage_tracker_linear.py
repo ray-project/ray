@@ -47,7 +47,7 @@ def _register_linear_chain(
             child_task_id,
             dependencies=_dependencies(parent_task_id, output_indices),
         )
-        tracker.register_task_complete(parent_task_id)
+        tracker.register_task_complete(parent_task_id, num_outputs=len(output_indices))
 
 
 def _assert_pending_children(
@@ -164,7 +164,9 @@ def _reconstruct_edge(
     )
 
     tracker.register_task_complete(
-        parent_task_id, reconstruction_plan_id=reconstruction_plan_id
+        parent_task_id,
+        num_outputs=len(output_indices),
+        reconstruction_plan_id=reconstruction_plan_id,
     )
     release_inputs_and_submit(
         tracker,
@@ -213,7 +215,7 @@ def test_seed_task_fail_resubmit_and_complete():
 
     # The seed's own re-execution closes out the plan.
     tracker.register_task_complete(
-        seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+        seed_task_id, num_outputs=1, reconstruction_plan_id=reconstruction_plan_id
     )
 
 
@@ -226,7 +228,7 @@ def test_unregistered_task_raises():
     tracker = LineageTracker()
 
     with pytest.raises(ValueError):
-        tracker.register_task_complete("unknown_task")
+        tracker.register_task_complete("unknown_task", num_outputs=1)
     with pytest.raises(ValueError):
         tracker.register_task_failed("unknown_task")
     with pytest.raises(ValueError):
@@ -262,7 +264,7 @@ def test_unregistered_task_submitted_for_a_live_plan_raises():
     tracker.register_task_submission(
         "child_task", dependencies=_dependencies(seed_task_id, [0])
     )
-    tracker.register_task_complete(seed_task_id)
+    tracker.register_task_complete(seed_task_id, num_outputs=1)
 
     _, reconstruction_plan_id = tracker.register_task_failed("child_task")
 
@@ -299,7 +301,7 @@ def _fail_child_of_seed(
     tracker.register_task_submission(
         _CHILD_TASK_ID, dependencies=_dependencies(_SEED_TASK_ID, output_indices)
     )
-    tracker.register_task_complete(_SEED_TASK_ID)
+    tracker.register_task_complete(_SEED_TASK_ID, num_outputs=len(output_indices))
 
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         _CHILD_TASK_ID
@@ -331,7 +333,9 @@ def test_resubmission_for_a_block_the_plan_does_not_owe_raises(
         _SEED_TASK_ID, dependencies=[], reconstruction_plan_id=reconstruction_plan_id
     )
     tracker.register_task_complete(
-        _SEED_TASK_ID, reconstruction_plan_id=reconstruction_plan_id
+        _SEED_TASK_ID,
+        num_outputs=len(output_indices),
+        reconstruction_plan_id=reconstruction_plan_id,
     )
 
     unowed_output_index = len(output_indices)
@@ -364,7 +368,9 @@ def test_resubmission_of_an_already_claimed_block_raises():
         seed_task_id, dependencies=[], reconstruction_plan_id=reconstruction_plan_id
     )
     tracker.register_task_complete(
-        seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+        seed_task_id,
+        num_outputs=len(output_indices),
+        reconstruction_plan_id=reconstruction_plan_id,
     )
 
     release_inputs_and_submit(
@@ -443,7 +449,6 @@ def test_target_consumed_output_pruned_and_unconsumed_output_new():
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(seed_task_id, [0])
     )
-    tracker.register_task_complete(seed_task_id)
 
     # Fail the seed itself, so the seed is the target of the resulting plan.
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
@@ -481,7 +486,6 @@ def test_reuse_status_of_task_outside_the_plan_is_unrelated():
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(seed_task_id, [0])
     )
-    tracker.register_task_complete(seed_task_id)
 
     # The plan targets the seed, so it never traces down into the child.
     _, reconstruction_plan_id = tracker.register_task_failed(seed_task_id)
@@ -524,7 +528,7 @@ def test_child_task_fail_recovers_seed_and_reuse_status(
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(seed_task_id, output_indices)
     )
-    tracker.register_task_complete(seed_task_id)
+    tracker.register_task_complete(seed_task_id, num_outputs=len(output_indices))
 
     # Fail the child; reconstruction traces back to the seed as the retry root.
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
@@ -556,7 +560,7 @@ def test_child_task_fail_recovers_seed_and_reuse_status(
 
     # The child's re-execution closes out the plan.
     tracker.register_task_complete(
-        child_task_id, reconstruction_plan_id=reconstruction_plan_id
+        child_task_id, num_outputs=1, reconstruction_plan_id=reconstruction_plan_id
     )
 
 
@@ -583,7 +587,7 @@ def test_child_task_fail_recovers_seed_when_submitted_after_parent_complete(
     # Register and complete the seed task (no dependencies) before any child
     # consumes its outputs.
     tracker.register_task_submission(seed_task_id, dependencies=[])
-    tracker.register_task_complete(seed_task_id)
+    tracker.register_task_complete(seed_task_id, num_outputs=len(output_indices))
 
     # Only now register a child task depending on the completed seed's outputs.
     tracker.register_task_submission(
@@ -620,7 +624,7 @@ def test_child_task_fail_recovers_seed_when_submitted_after_parent_complete(
 
     # The child's re-execution closes out the plan.
     tracker.register_task_complete(
-        child_task_id, reconstruction_plan_id=reconstruction_plan_id
+        child_task_id, num_outputs=1, reconstruction_plan_id=reconstruction_plan_id
     )
 
 
@@ -651,7 +655,7 @@ def test_child_task_fail_twice_recovers_seed_and_reuse_status(
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(seed_task_id, output_indices)
     )
-    tracker.register_task_complete(seed_task_id)
+    tracker.register_task_complete(seed_task_id, num_outputs=len(output_indices))
 
     # Fail the child; reconstruction traces back to the seed as the retry root.
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
@@ -694,7 +698,7 @@ def test_child_task_fail_twice_recovers_seed_and_reuse_status(
         tracker, child_task_id, [0], reconstruction_plan_id
     )
     tracker.register_task_complete(
-        child_task_id, reconstruction_plan_id=reconstruction_plan_id
+        child_task_id, num_outputs=1, reconstruction_plan_id=reconstruction_plan_id
     )
 
 
@@ -749,7 +753,7 @@ def test_deep_chain_leaf_fail_recovers_seed_and_reuse_status(
 
     # The leaf's own re-execution closes out the reconstruction.
     tracker.register_task_complete(
-        leaf_task_id, reconstruction_plan_id=reconstruction_plan_id
+        leaf_task_id, num_outputs=1, reconstruction_plan_id=reconstruction_plan_id
     )
 
 
@@ -836,7 +840,7 @@ def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
 
     # The leaf's own re-execution closes out the reconstruction.
     tracker.register_task_complete(
-        leaf_task_id, reconstruction_plan_id=reconstruction_plan_id
+        leaf_task_id, num_outputs=1, reconstruction_plan_id=reconstruction_plan_id
     )
 
 

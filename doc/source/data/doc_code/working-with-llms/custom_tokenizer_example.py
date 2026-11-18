@@ -129,7 +129,7 @@ def run_custom_tokenizer_example():
     )
 
     # __custom_tokenizer_pipeline_start__
-    MODEL_ID = "unsloth/Llama-3.1-8B-Instruct"
+    MODEL_ID = "Qwen/Qwen3.5-0.8B"
 
     config = vLLMEngineProcessorConfig(
         model_source=MODEL_ID,

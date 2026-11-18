@@ -1,4 +1,4 @@
-from typing import Callable, Dict
+from typing import Any, Callable, Dict
 
 from ray.tune.stopper.stopper import Stopper
 from ray.util.annotations import PublicAPI
@@ -28,7 +28,19 @@ class FunctionStopper(Stopper):
         return False
 
     @classmethod
-    def is_valid_function(cls, fn):
+    def is_valid_function(cls, fn: Any) -> bool:
+        """Whether ``fn`` is a callable, other than a ``Stopper``, to wrap.
+
+        Args:
+            fn: The object to check.
+
+        Returns:
+            True if ``fn`` is callable and isn't a ``Stopper``, False otherwise.
+
+        Raises:
+            ValueError: If ``fn`` qualifies but has a ``stop_all`` attribute,
+                since it's likely meant to be a ``Stopper``.
+        """
         is_function = callable(fn) and not issubclass(type(fn), Stopper)
         if is_function and hasattr(fn, "stop_all"):
             raise ValueError(

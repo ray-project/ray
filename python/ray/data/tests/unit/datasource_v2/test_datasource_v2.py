@@ -19,6 +19,7 @@ from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     FileDataSourceV2,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileIndexer
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
 from ray.data.read_api import _read_datasource_v2
 
@@ -97,7 +98,7 @@ class _BareSource(_Members, DataSourceV2):
 
 def test_table_source_has_no_filesystem_members():
     source = _MetadataSource()
-    for member in ("filesystem", "file_extensions", "shuffle"):
+    for member in ("filesystem", "file_extensions", "shuffle", "source_paths"):
         assert not hasattr(source, member), member
     assert source.schema_needs_file_sample is False
 
@@ -120,6 +121,20 @@ def test_file_source_defaults():
     assert isinstance(source, DataSourceV2)
     assert source.file_extensions is None
     assert source.shuffle is None
+    assert source.source_paths == source.paths
+
+
+def test_file_source_full_schema_defaults_to_infer_schema(mocker):
+    source = _FileSource()
+    sample = FileManifest.construct_manifest(
+        paths=["example.parquet"], sizes=[1], chunk_metadatas=[None]
+    )
+    infer_schema = mocker.spy(source, "infer_schema")
+    result = source.infer_full_schema(sample, ray_remote_args={})
+
+    infer_schema.assert_called_once()
+    assert infer_schema.call_args.args[0] is sample
+    assert result is _SCHEMA
 
 
 def test_parquet_is_a_file_source():

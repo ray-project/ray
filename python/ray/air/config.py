@@ -298,7 +298,13 @@ class ScalingConfig:
         }
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
-        """Returns a PlacementGroupFactory to specify resources for Tune."""
+        """Returns a PlacementGroupFactory to specify resources for Tune.
+
+        Returns:
+            A ``PlacementGroupFactory`` with an empty head bundle, one bundle
+            that combines the trainer's resources with the first worker's, and
+            one bundle for each other worker.
+        """
         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
         trainer_bundle = self._trainer_resources_not_none
@@ -322,6 +328,12 @@ class ScalingConfig:
         modifies a trial's PlacementGroupFactory but doesn't propagate
         the changes to ScalingConfig. TrainTrainable needs to reconstruct
         a ScalingConfig from on the trial's PlacementGroupFactory.
+
+        Args:
+            pgf: The placement group factory to convert.
+
+        Returns:
+            The ``ScalingConfig`` that the placement group factory describes.
         """
 
         # pgf.bundles = [{trainer + worker}, {worker}, ..., {worker}]
@@ -414,6 +426,9 @@ class CheckpointConfig:
             there are already this many checkpoints, then an existing
             checkpoint will be deleted. If this is ``None`` then checkpoints
             will not be deleted. Must be >= 1.
+            The latest checkpoint is never deleted, because training resumes
+            from it after a failure, so up to ``num_to_keep + 1`` checkpoints
+            can be on disk.
         checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept
             on disk when there are greater than ``num_to_keep`` checkpoints.
@@ -573,7 +588,7 @@ class RunConfig:
         sync_config: Configuration object for syncing. See train.SyncConfig.
         verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose. Defaults to 1.
-            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            If the ``RAY_AIR_NEW_OUTPUT=0`` environment variable is set,
             uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results.

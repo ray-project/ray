@@ -123,18 +123,22 @@ MODEL_DEFAULTS: ModelConfigDict = {
 class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 
-    .. testcode::
-        :skipif: True
-
-        prep = ModelCatalog.get_preprocessor(env)
-        observation = prep.transform(raw_observation)
-
-        dist_class, dist_dim = ModelCatalog.get_action_dist(
-            env.action_space, {})
-        model = ModelCatalog.get_model_v2(
-            obs_space, action_space, num_outputs, options)
-        dist = dist_class(model.outputs, model)
-        action = dist.sample()
+    Examples:
+        >>> import gymnasium as gym
+        >>> import torch
+        >>> from ray.rllib.models.catalog import MODEL_DEFAULTS, ModelCatalog
+        >>> env = gym.make("CartPole-v1")
+        >>> raw_observation, _ = env.reset(seed=0)
+        >>> prep = ModelCatalog.get_preprocessor(env)
+        >>> observation = prep.transform(raw_observation)
+        >>> dist_class, dist_dim = ModelCatalog.get_action_dist(
+        ...     env.action_space, {}, framework="torch")
+        >>> model = ModelCatalog.get_model_v2(
+        ...     env.observation_space, env.action_space, dist_dim, MODEL_DEFAULTS,
+        ...     framework="torch")
+        >>> logits, _ = model({"obs": torch.tensor(observation).unsqueeze(0)})
+        >>> dist = dist_class(logits, model)
+        >>> action = dist.sample()
     """
 
     @staticmethod

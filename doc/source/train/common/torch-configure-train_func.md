@@ -1,8 +1,6 @@
 First, update your training code to support distributed training. Wrap your code in a {ref}`training function <train-overview-training-function>`:
 
-```{testcode}
-:skipif: True
-
+```python
 def train_func():
     # Your model training code here.
     ...
@@ -12,9 +10,7 @@ Each distributed training worker executes this function.
 
 You can also pass `train_func` a dictionary as its input argument through the `train_loop_config` parameter of `TorchTrainer`. The following example passes a learning rate and a number of epochs:
 
-```{testcode} python
-:skipif: True
-
+```python
 def train_func(config):
     lr = config["lr"]
     num_epochs = config["num_epochs"]

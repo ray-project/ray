@@ -52,7 +52,7 @@ Follow the [KubeRay Operator Installation](kuberay-operator-deploy) to install t
     ```
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.uv.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.uv.yaml
 ```
 
 ## Step 4: Execute a Ray Python script with `uv`

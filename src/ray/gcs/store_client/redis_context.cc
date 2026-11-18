@@ -27,6 +27,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#endif
+
 #include "ray/asio/asio_util.h"
 #include "ray/gcs/store_client/redis_tcp_keepalive.h"
 #include "ray/util/network_util.h"
@@ -519,6 +523,51 @@ std::string DescribeRedisTcpKeepalivePolicy(int64_t interval, int64_t probes) {
 #endif
 }
 
+#ifdef _WIN32
+/// Waits for the given context to finish connecting before returning.
+///
+/// Arguments:
+///   \param context - The connection context
+///   \param address - The address the context is trying to make a connection to
+///   \param port - The port the context is trying to connect to
+///
+/// A connect that fails or doesn't finish in time is a connectivity error, so it
+/// is retryable like any other.
+Status WaitForRedisConnect(const redisContext *context,
+                           const std::string &address,
+                           int port) {
+  const auto redis_socket = static_cast<SOCKET>(context->fd);
+  fd_set writable;
+  fd_set failed;
+  FD_ZERO(&writable);
+  FD_ZERO(&failed);
+  FD_SET(redis_socket, &writable);
+  FD_SET(redis_socket, &failed);
+  timeval timeout{static_cast<long>(kRedisConnectWaitTimeoutSeconds), 0};
+  const int ready = ::select(/*nfds=*/0, nullptr, &writable, &failed, &timeout);
+  if (ready == SOCKET_ERROR) {
+    return Status::RedisError(
+        absl::StrCat("Failed to wait for the async Redis connection to ",
+                     BuildAddress(address, port),
+                     " (WSA error=",
+                     ::WSAGetLastError(),
+                     ")."));
+  }
+  if (ready == 0) {
+    return Status::RedisError(absl::StrCat("The async Redis connection to ",
+                                           BuildAddress(address, port),
+                                           " did not finish connecting within ",
+                                           kRedisConnectWaitTimeoutSeconds,
+                                           "s."));
+  }
+  if (FD_ISSET(redis_socket, &failed)) {
+    return Status::RedisError(absl::StrCat(
+        "The async Redis connection to ", BuildAddress(address, port), " failed."));
+  }
+  return Status::OK();
+}
+#endif
+
 // Applies the configured TCP keepalive policy to a freshly created hiredis
 // context. Called from exactly one place (ConnectWithoutRetries) so that every
 // external Redis socket - sync, async, Sentinel, Cluster-redirect, and cleanup
@@ -539,6 +588,14 @@ Status ConfigureRedisTcpKeepalive(redisContext *context,
     return Status::OK();
   }
 #ifdef _WIN32
+  // Note: redisAsyncConnect starts a non-blocking connect and returns before it
+  // finishes. Winsock doesn't support setting socket options while a connect is
+  // in progress (see the Winsock connect() docs), and enabling keepalive on such
+  // a socket without waiting for it to complete may fail if the setting is written
+  // before the connection completes.
+  if (!(context->flags & REDIS_BLOCK)) {
+    RAY_RETURN_NOT_OK(WaitForRedisConnect(context, address, port));
+  }
   if (::redisEnableKeepAliveWithInterval(context, static_cast<int>(interval)) !=
       REDIS_OK) {
     return Status::IOError(
@@ -708,8 +765,8 @@ ConnectWithoutRetries(const std::string &address,
   }
   // Apply the TCP keepalive policy before the context is used for anything
   // (TLS, AUTH, or the first command). For the async context the TCP handshake
-  // may not have completed yet; that is fine - the options apply to the
-  // socket, not the connection.
+  // may not have completed yet. POSIX accepts the options on a connecting
+  // socket; on Windows, ConfigureRedisTcpKeepalive waits for the connect first.
   Status status = ConfigureRedisTcpKeepalive(AsRedisContext(newContext), address, port);
   if (!status.ok()) {
     return std::make_pair(status, nullptr);

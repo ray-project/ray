@@ -35,16 +35,6 @@ struct BundleSchedulingContext : public SchedulingContext {
   std::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
 };
 
-struct AffinityWithBundleSchedulingContext : public SchedulingContext {
- public:
-  explicit AffinityWithBundleSchedulingContext(const BundleID &bundle_id)
-      : affinity_bundle_id_(bundle_id) {}
-  const BundleID &GetAffinityBundleID() const { return affinity_bundle_id_; }
-
- private:
-  BundleID affinity_bundle_id_;
-};
-
 struct NodeLabelSchedulingContext : public SchedulingContext {
  public:
   explicit NodeLabelSchedulingContext(const rpc::SchedulingStrategy &scheduling_strategy)

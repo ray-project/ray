@@ -13,14 +13,20 @@ from ray.tests.conftest import *  # noqa
 DATASET_SIZE = 40
 NUM_BLOCKS = 8
 
-METHODS = ["random_shuffle", "random_sample", "randomize_block_order"]
+METHODS = [
+    "random_shuffle",
+    "random_sample",
+    "randomize_block_order",
+    "shuffle_batches",
+]
 
 
 @pytest.fixture
-def base_dataset(ray_start_regular_shared) -> ray.data.Dataset:
+def base_dataset(ray_start_regular_shared, restore_data_context) -> ray.data.Dataset:
     """Create a base dataset for testing."""
     ctx = DataContext.get_current()
     ctx.enable_progress_bars = False
+    ctx.execution_options.preserve_order = True
     return ray.data.range(DATASET_SIZE, override_num_blocks=NUM_BLOCKS)
 
 
@@ -61,6 +67,8 @@ def apply_random_operation(ds, method, seed, fraction=None):
         return ds.random_sample(fraction=fraction or 0.5, seed=seed)
     if method == "randomize_block_order":
         return ds.randomize_block_order(seed=seed)
+    if method == "shuffle_batches":
+        return ds.shuffle_batches(seed=seed)
     raise ValueError(f"Unknown method: {method}")
 
 

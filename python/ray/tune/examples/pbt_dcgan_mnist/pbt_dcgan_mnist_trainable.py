@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""
-Example of training DCGAN on MNIST using PBT with Tune's Trainable Class
+"""Example of training DCGAN on MNIST using PBT with Tune's Trainable Class
 API.
 """
 import argparse

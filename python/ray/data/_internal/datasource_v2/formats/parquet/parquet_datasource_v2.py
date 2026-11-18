@@ -11,12 +11,19 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    resolve_partitioning,
+)
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_full_schema_from_files,
+    infer_schema_from_files,
+)
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
     PathColumn,
     RowHashColumn,
@@ -36,12 +43,17 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.util import _is_local_scheme
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    _normalize_paths_to_strings,
+    call_with_retry,
+    filesystem_for_sized_opens,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
-    PathPartitionParser,
     _partition_field_types_to_pa_schema,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
@@ -50,12 +62,45 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
+        OnlineBinPacker,
+    )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 logger = logging.getLogger(__name__)
 
-# Bound submitted footer reads when full schema inference covers many files.
-_SCHEMA_READ_BATCH_SIZE = 256
+
+def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[int]):
+    import pyarrow.dataset as pds
+    import pyarrow.parquet as pq
+
+    if filesystem is None:
+        return pq.read_metadata(path)
+    filesystem = filesystem_for_sized_opens(filesystem)
+    fragment = pds.ParquetFileFormat().make_fragment(
+        path, filesystem=filesystem, file_size=size
+    )
+    return call_with_retry(
+        lambda: fragment.metadata,
+        description=f"read Parquet footer for {path}",
+        match=DataContext.get_current().retried_io_errors,
+    )
+
+
+def _read_parquet_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+    if filesystem is None:
+        import pyarrow.parquet as pq
+
+        return pq.read_schema(path)
+    return _read_parquet_metadata(path, filesystem, size).schema.to_arrow_schema()
+
+
+def _read_parquet_schema_metadata(
+    path: str, filesystem: "FileSystem", size: Optional[int]
+) -> bytes:
+    output = pa.BufferOutputStream()
+    _read_parquet_metadata(path, filesystem, size).write_metadata_file(output)
+    return output.getvalue().to_pybytes()
 
 
 @DeveloperAPI
@@ -84,7 +129,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
         arrow_parquet_args: Optional[dict] = None,
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[dict] = None,
-        extra_synthesized_columns: Sequence[SynthesizedColumn] = (),
     ):
         super().__init__(name="ParquetV2", category=DatasourceCategory.FILE_BASED)
         # Capture the ``local://`` check against the *original* paths;
@@ -98,7 +142,17 @@ class ParquetDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths: List[str] = resolved_paths
-        self._filesystem = resolved_filesystem
+        # The resolved paths above lose their URI scheme; lineage tracking
+        # reads the caller's paths through ``source_paths``.
+        self._source_paths: List[str] = _normalize_paths_to_strings(paths)
+        # Retry ``DataContext.retried_io_errors`` on every filesystem call --
+        # listing, schema inference and reads -- as V1's ``ParquetDatasource``
+        # does. Without this, the driver-side listing and footer reads fail on
+        # the first transient error.
+        self._filesystem = RetryingPyFileSystem.wrap(
+            resolved_filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
+        )
         self._partitioning = partitioning
         self._file_extensions = (
             list(file_extensions) if file_extensions is not None else None
@@ -135,12 +189,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
             synthesized_columns.append(PathColumn())
         if include_row_hash:
             synthesized_columns.append(RowHashColumn())
-        # Columns Ray Data itself requests (e.g. the checkpoint ID column
-        # behind ``CheckpointConfig(generated_id_column=...)``). Unlike
-        # ``path`` / ``row_hash`` they never replace a file column:
-        # ``infer_schema`` raises if a file already has one of their names.
-        self._extra_synthesized_columns = tuple(extra_synthesized_columns)
-        synthesized_columns.extend(self._extra_synthesized_columns)
         self._synthesized_columns = tuple(synthesized_columns)
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
@@ -157,6 +205,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
     @property
     def paths(self) -> List[str]:
         return self._paths
+
+    @property
+    def source_paths(self) -> List[str]:
+        return self._source_paths
 
     @property
     def filesystem(self) -> "FileSystem":
@@ -196,33 +248,17 @@ class ParquetDatasourceV2(FileDataSourceV2):
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
             coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
+            small_shuffle_chunk_size=(
+                DataContext.get_current().small_shuffle_chunk_size
+            ),
+            partitioning=self._partitioning,
+            logical_schema=self._user_schema,
         )
 
     def get_file_partitioner(self, **kwargs):
         # Listing rows carry per-row-group stats, so bin-pack them into read
         # units instead of size-estimating whole files.
-        from ray.data._internal.datasource_v2.common.online_bin_packer import (
-            OnlineBinPacker,
-        )
-        from ray.data._internal.util import MiB
-
-        max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
-        max_shared_open_bins = env_integer(
-            "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
-        )
-        split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
-        logger.debug(
-            "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
-            "split_coalesced=%s)",
-            max_bin_bytes,
-            max_shared_open_bins,
-            split_coalesced,
-        )
-        return OnlineBinPacker(
-            max_bin_bytes=max_bin_bytes,
-            max_shared_open_bins=max_shared_open_bins,
-            split_coalesced=split_coalesced,
-        )
+        return make_row_group_bin_packer(self._shuffle)
 
     @override
     def resolve_partitioning(
@@ -236,30 +272,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
         needs no discovery. Returns a fresh ``Partitioning`` rather than
         mutating ``self`` so schema inference stays side-effect-free.
         """
-        import copy
-
-        # The base signature allows ``None`` for sources whose schema comes
-        # from a catalog; Parquet answers ``schema_needs_file_sample`` True,
-        # so ``_read_datasource_v2`` always samples before calling this.
+        # Parquet always receives the existing schema sample; discovery does
+        # not list additional files or enlarge the sample.
         assert sample is not None, "Parquet always receives a sample"
-
-        if self._partitioning is None or len(sample) == 0:
-            return copy.deepcopy(self._partitioning)
-        if self._partitioning.field_names:
-            return copy.deepcopy(self._partitioning)
-
-        first_path = sample.paths.tolist()[0]
-        parser = PathPartitionParser(self._partitioning)
-        partition_kv = parser(first_path)
-        if not partition_kv:
-            return copy.deepcopy(self._partitioning)
-        return Partitioning(
-            style=self._partitioning.style,
-            base_dir=self._partitioning.base_dir,
-            field_names=list(partition_kv.keys()),
-            field_types=self._partitioning.field_types,
-            filesystem=self._partitioning.filesystem,
-        )
+        return resolve_partitioning(self._partitioning, sample.paths.tolist())
 
     @property
     @override
@@ -279,12 +295,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
         ``Partitioning`` can flow through ``_read_datasource_v2`` into
         :meth:`create_scanner` without side effects.
         """
-        from concurrent.futures import ThreadPoolExecutor
-
-        import pyarrow.parquet as pq
-
-        from ray.data._internal.util import unify_schemas_with_validation
-
         # See ``resolve_partitioning``: ``None`` is reachable only for a
         # source that answers ``schema_needs_file_sample`` False.
         assert sample is not None, "Parquet always receives a sample"
@@ -302,81 +312,66 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # parallel keeps driver-side schema inference bounded by the
         # slowest single read rather than the sum. ``executor.map``
         # preserves input order, which matters because the unified
-        # schema's field order follows the first schema's and
-        # ``sample_paths[0]`` drives partition discovery below.
+        # schema's field order follows the first schema's.
         #
-        # NOTE: ``pq.read_schema`` only accepts a ``filesystem=`` kwarg in
-        # recent pyarrow releases; older wheels in CI don't have it. Open
-        # the file through the configured filesystem and hand the file
-        # handle to ``read_schema`` for cross-version compatibility.
+        # With a filesystem, the footer is read through a fragment rather
+        # than ``pq.read_schema``: a fragment takes the listing's file size,
+        # which spares the open a request for it (a HEAD on S3).
         filesystem = self._filesystem
+        file_sizes = dict(zip(sample_paths, sample.known_file_sizes))
 
-        if self._user_schema is not None:
+        user_schema = self._user_schema
+        if user_schema is not None:
             # Caller pinned the schema — skip footer reads. Partition/path
             # augmentation below still applies so downstream ops see the
             # synthesized columns.
-            schema = self._user_schema
+            schema = user_schema
         else:
 
             def _read_schema(path: str):
-                if filesystem is None:
-                    return pq.read_schema(path)
-                with filesystem.open_input_file(path) as handle:
-                    return pq.read_schema(handle)
+                return _read_parquet_schema(path, filesystem, file_sizes[path])
 
-            per_file_schemas: List[pa.Schema] = []
-            with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-                for start in range(0, len(sample_paths), _SCHEMA_READ_BATCH_SIZE):
-                    batch = sample_paths[start : start + _SCHEMA_READ_BATCH_SIZE]
-                    per_file_schemas.extend(executor.map(_read_schema, batch))
-            try:
-                schema = (
-                    unify_schemas_with_validation(per_file_schemas)
-                    or per_file_schemas[0]
-                )
-            except (pa.ArrowTypeError, pa.ArrowInvalid):
-                # Locate the first file that conflicts with the schema seen so
-                # far. This only runs on failure and reads no additional footers.
-                merged = per_file_schemas[0]
-                for path, file_schema in zip(sample_paths[1:], per_file_schemas[1:]):
-                    try:
-                        merged = (
-                            unify_schemas_with_validation([merged, file_schema])
-                            or merged
-                        )
-                    except (pa.ArrowTypeError, pa.ArrowInvalid) as cause:
-                        raise type(cause)(
-                            f"Failed to merge Parquet schema from {path!r}: {cause}"
-                        ) from cause
-                raise
-            assert isinstance(schema, pa.Schema)
+            schema = infer_schema_from_files(
+                sample_paths, _read_schema, format_name="Parquet"
+            )
 
+        return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> pa.Schema:
+        if (
+            type(self).infer_schema is not ParquetDatasourceV2.infer_schema
+            or self._user_schema is not None
+            or not len(sample)
+        ):
+            return self.infer_schema(sample)
+        schema = infer_full_schema_from_files(
+            sample,
+            self._filesystem,
+            format_name="Parquet",
+            read_schema=_read_parquet_schema,
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+            read_schema_metadata=_read_parquet_schema_metadata,
+        )
+        if schema is None:
+            return self.infer_schema(sample)
+        return self._augment_schema(schema, sample)
+
+    def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
-            first_path = sample_paths[0]
-            parser = PathPartitionParser(resolved_partitioning)
-            partition_kv = parser(first_path)
-            # For hive partitioning the parser discovers key names from the
-            # path itself; for directory partitioning it uses ``field_names``.
-            # In both cases ``partition_kv`` is the authoritative list of
-            # partition columns for the first sample file.
+            field_names = resolved_partitioning.field_names or []
             partition_pa_schema = _partition_field_types_to_pa_schema(
-                field_names=list(partition_kv.keys()),
+                field_names=field_names,
                 field_types=resolved_partitioning.field_types or {},
             )
-            for field_name in partition_kv.keys():
+            for field_name in field_names:
                 if schema.get_field_index(field_name) == -1:
                     pa_type = partition_pa_schema.field(field_name).type
                     schema = schema.append(pa.field(field_name, pa_type))
-
-        for column in self._extra_synthesized_columns:
-            if schema.get_field_index(column.name) != -1:
-                raise ValueError(
-                    f"Column {column.name!r} already exists in the Parquet data, "
-                    "so Ray Data can't add its synthesized column of the same "
-                    "name. Pick a different name, e.g. for "
-                    "`CheckpointConfig(generated_id_column=...)`."
-                )
 
         for column in self._synthesized_columns:
             # Synthesized columns (``path``, ``row_hash``) are appended
@@ -413,3 +408,49 @@ class ParquetDatasourceV2(FileDataSourceV2):
             target_block_size=DataContext.get_current().target_max_block_size,
             parquet_format_kwargs=dict(self._parquet_format_kwargs),
         )
+
+
+def make_row_group_bin_packer(
+    shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]],
+) -> "OnlineBinPacker":
+    """Bin packer for the per-row-group listing rows ``FooterFileIndexer`` emits.
+
+    Shared by every source whose listing goes through ``FooterFileIndexer``.
+
+    Args:
+        shuffle: The read's shuffle setting.
+
+    Returns:
+        The ``OnlineBinPacker``, configured from the environment.
+    """
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
+        OnlineBinPacker,
+    )
+    from ray.data._internal.util import MiB
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
+    max_shared_open_bins = env_integer(
+        "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
+    )
+    split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
+    # A row-group shuffle feeds runs from many files interleaved; per-file
+    # heavy bins would split them back apart, so pack everything shared.
+    row_group_shuffle = (
+        isinstance(shuffle, FileShuffleConfig) and shuffle.small_chunks_shuffle
+    )
+    isolate_heavy_files = not row_group_shuffle
+    logger.debug(
+        "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
+        "split_coalesced=%s, isolate_heavy_files=%s)",
+        max_bin_bytes,
+        max_shared_open_bins,
+        split_coalesced,
+        isolate_heavy_files,
+    )
+    return OnlineBinPacker(
+        max_bin_bytes=max_bin_bytes,
+        max_shared_open_bins=max_shared_open_bins,
+        split_coalesced=split_coalesced,
+        isolate_heavy_files=isolate_heavy_files,
+    )

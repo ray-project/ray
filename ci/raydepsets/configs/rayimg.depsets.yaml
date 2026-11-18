@@ -119,6 +119,9 @@ depsets:
       - docker/base-extra/requirements.in
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
+    # Not constrained by requirements_compiled, so apply the security floors here.
+    constraints:
+      - python/requirements/security-requirements.txt
     output: python/deplocks/base_extra_testdeps/ray-llm-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/${CUDA_CODE}
@@ -249,6 +252,9 @@ depsets:
       - docker/base-deps/requirements_tpu.in
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
+    # Not constrained by requirements_compiled, so apply the security floors here.
+    constraints:
+      - python/requirements/security-requirements.txt
     output: python/deplocks/base_deps/ray_base_deps_tpu_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray

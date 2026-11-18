@@ -13,7 +13,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ray.experimental.sandbox.exceptions import SandboxExecError
-from ray.experimental.sandbox.http.app import RayActorHandleResolver, create_app
+from ray.experimental.sandbox.http.app import (
+    RayActorHandleResolver,
+    build_app,
+    create_app,
+)
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 from ray.experimental.sandbox.http.tests.conftest import (
     FakeExecResult,
@@ -147,6 +151,38 @@ def test_create_maps_resources_to_actor_options_and_limits(
     create_call = runtime.create_calls[0]
     assert create_call["cpu"] == 2.0
     assert create_call["memory"] == "2048Mi"
+
+
+def test_create_passes_the_disk_limit_to_the_runtime(
+    fake_resolver: FakeResolver,
+) -> None:
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client, resources={"disk_limit_mb": 10240})
+        _wait_running(client, info["sandbox_id"])
+        # A readonly rootfs with a workdir runs on a private writable overlay.
+        info = _create_sandbox(
+            client,
+            readonly=True,
+            workdir="/workspace",
+            resources={"disk_limit_mb": 512},
+        )
+        _wait_running(client, info["sandbox_id"])
+        # Without a workdir, a read-only rootfs has nothing for the cap to bound.
+        response = client.post(
+            f"{BASE}/sandboxes",
+            json={
+                "image": "python:3.12-slim",
+                "readonly": True,
+                "resources": {"disk_limit_mb": 10240},
+            },
+        )
+        assert response.status_code == 422
+        assert "readonly=false or a workdir" in response.text
+
+    assert [r.create_calls[0]["disk"] for r in fake_resolver.runtimes] == [
+        "10240Mi",
+        "512Mi",
+    ]
 
 
 def test_create_defaults_request_to_limit(fake_resolver: FakeResolver) -> None:
@@ -653,6 +689,86 @@ def test_invalid_network_mode_is_422(fake_resolver: FakeResolver) -> None:
         f"{BASE}/sandboxes", json={"image": "python:3.12", "network": "bridge"}
     )
     assert response.status_code == 422
+
+
+def test_create_passes_cidr_allowlist_and_reports_it(
+    fake_resolver: FakeResolver,
+) -> None:
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client, network="public", cidr_allowlist=["10.0.1.5/24"])
+        assert info["cidr_allowlist"] == ["10.0.1.0/24"]
+        running = _wait_running(client, info["sandbox_id"])
+        assert running["status"] == "running", running
+        assert running["network"] == "public"
+        assert running["cidr_allowlist"] == ["10.0.1.0/24"]
+        (runtime,) = fake_resolver.runtimes
+        assert runtime.create_calls[0]["cidr_allowlist"] == ["10.0.1.0/24"]
+
+
+def test_create_reports_the_default_allowlist(fake_resolver: FakeResolver) -> None:
+    """A public sandbox created without a list runs with ["internet"], and the
+    create response says so, as describe() does once the sandbox runs."""
+    with _client(fake_resolver) as client:
+        public = _create_sandbox(client, network="public")
+        assert public["cidr_allowlist"] == ["internet"]
+        running = _wait_running(client, public["sandbox_id"])
+        assert running["cidr_allowlist"] == ["internet"]
+        assert _create_sandbox(client)["cidr_allowlist"] is None
+
+
+def test_cidr_allowlist_without_public_network_is_422(
+    fake_resolver: FakeResolver,
+) -> None:
+    client = _client(fake_resolver)
+    response = client.post(
+        f"{BASE}/sandboxes",
+        json={"image": "python:3.12", "cidr_allowlist": ["10.0.0.0/8"]},
+    )
+    assert response.status_code == 422
+
+
+def test_host_network_and_rootful_need_server_opt_in(
+    fake_resolver: FakeResolver,
+) -> None:
+    """network="host" shares the node's network and Ray ports, so clients get
+    it, "sandbox", or rootless=false only where the server allows them."""
+    client = _client(fake_resolver)
+    for overrides in (
+        {"network": "host"},
+        {"network": "sandbox", "rootless": False},
+        {"network": "public", "rootless": False},
+    ):
+        response = client.post(
+            f"{BASE}/sandboxes", json={"image": "python:3.12", **overrides}
+        )
+        assert response.status_code == 403, (overrides, response.text)
+        assert response.json()["error"]["code"] == "forbidden"
+    assert fake_resolver.runtimes == []
+
+    settings = SandboxAPISettings(
+        allowed_network_modes=["none", "public", "host"], allow_rootful=True
+    )
+    with _client(fake_resolver, settings) as client:
+        info = _create_sandbox(client, network="host", rootless=False)
+        assert _wait_running(client, info["sandbox_id"])["network"] == "host"
+
+
+def test_allowed_network_modes_must_be_known() -> None:
+    with pytest.raises(ValueError, match="bridge"):
+        SandboxAPISettings(allowed_network_modes=["public", "bridge"])
+
+
+def test_build_app_requires_a_token_unless_unauthenticated_is_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Serve's proxies listen on every node's address, so the builder refuses
+    to run tokenless unless the operator says so explicitly."""
+    monkeypatch.delenv("RAY_SANDBOX_API_TOKEN", raising=False)
+    with pytest.raises(ValueError, match="RAY_SANDBOX_API_TOKEN"):
+        build_app({})
+    assert build_app({"allow_unauthenticated": True}) is not None
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", "sekret")
+    assert build_app({}) is not None
 
 
 def test_chunked_file_upload_via_append(fake_resolver: FakeResolver) -> None:

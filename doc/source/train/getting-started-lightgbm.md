@@ -20,9 +20,7 @@ Learn how to do the following:
 
 The finished code looks similar to the following example:
 
-```{testcode}
-:skipif: True
-
+```python
 import ray.train
 from ray.train.lightgbm import LightGBMTrainer
 
@@ -63,9 +61,7 @@ Compare a LightGBM training script with and without Ray Train.
 
 To support distributed training, first wrap your [native](https://lightgbm.readthedocs.io/en/latest/Python-Intro.html) or [scikit-learn estimator](https://lightgbm.readthedocs.io/en/latest/Python-API.html#scikit-learn-api) LightGBM training code in a {ref}`training function <train-overview-training-function>`:
 
-```{testcode}
-:skipif: True
-
+```python
 def train_func():
     # Your native LightGBM training code here.
     train_set = ...
@@ -76,9 +72,7 @@ Each distributed training worker executes this function.
 
 You can also pass a dictionary to `train_func` as its input argument through the trainer's `train_loop_config` parameter, as the following example shows:
 
-```{testcode} python
-:skipif: True
-
+```python
 def train_func(config):
     label_column = config["label_column"]
     num_boost_round = config["num_boost_round"]
@@ -146,9 +140,7 @@ Set `tree_learner` to enable distributed training. For details, see the [LightGB
 To persist your checkpoints and monitor training progress, add a {class}`ray.train.lightgbm.RayTrainReportCallback` utility callback to your `lightgbm.train` call:
 
 
-```{testcode} python
-:skipif: True
-
+```python
 import lightgbm
 from ray.train.lightgbm import RayTrainReportCallback
 
@@ -173,9 +165,7 @@ Report metrics and checkpoints to Ray Train to use {ref}`fault-tolerant training
 For distributed LightGBM training, give each worker a different shard of the dataset.
 
 
-```{testcode} python
-:skipif: True
-
+```python
 def get_train_dataset(world_rank: int) -> lightgbm.Dataset:
     # Define logic to get the Dataset shard for this worker rank
     ...
@@ -201,9 +191,7 @@ Pre-sharding doesn't adapt well to changes in the number of workers, because som
 
 First, load the entire dataset, not a pre-sharded subset of it, as a Ray Data Dataset. See the {ref}`data_quickstart` for details on how to load and preprocess data from different sources.
 
-```{testcode} python
-:skipif: True
-
+```python
 train_dataset = ray.data.read_parquet("s3://path/to/entire/train/dataset/dir")
 eval_dataset = ray.data.read_parquet("s3://path/to/entire/eval/dataset/dir")
 ```
@@ -211,9 +199,7 @@ eval_dataset = ray.data.read_parquet("s3://path/to/entire/eval/dataset/dir")
 In the training function, access this worker's dataset shards with {meth}`ray.train.get_dataset_shard` and convert each one into a native [`lightgbm.Dataset`](https://lightgbm.readthedocs.io/en/latest/Python-Intro.html#dataset).
 
 
-```{testcode} python
-:skipif: True
-
+```python
 from ray.train.lightgbm import normalize_pandas_for_lightgbm
 
 def get_dataset(dataset_name: str) -> lightgbm.Dataset:
@@ -238,9 +224,7 @@ Starting in Ray 2.56, Ray Data preserves Arrow-backed pandas dtypes, such as `in
 Finally, pass the datasets to the trainer. Ray Train then automatically shards them across the workers. The keys in the `datasets` dictionary must match the keys you pass to `get_dataset_shard` in the training function.
 
 
-```{testcode} python
-:skipif: True
-
+```python
 trainer = LightGBMTrainer(..., datasets={"train": train_dataset, "eval": eval_dataset})
 trainer.fit()
 ```

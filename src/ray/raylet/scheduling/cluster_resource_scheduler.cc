@@ -144,16 +144,6 @@ bool IsHardNodeAffinitySchedulingStrategy(
 }
 }  // namespace
 
-bool ClusterResourceScheduler::IsAffinityWithBundleSchedule(
-    const rpc::SchedulingStrategy &scheduling_strategy) {
-  return scheduling_strategy.scheduling_strategy_case() ==
-             rpc::SchedulingStrategy::SchedulingStrategyCase::
-                 kPlacementGroupSchedulingStrategy &&
-         (!scheduling_strategy.placement_group_scheduling_strategy()
-               .placement_group_id()
-               .empty());
-}
-
 NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request,
     const rpc::SchedulingStrategy &scheduling_strategy,
@@ -189,17 +179,6 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
                 .spill_on_unavailable(),
             scheduling_strategy.node_affinity_scheduling_strategy()
                 .fail_on_unavailable()));
-  } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
-             !is_local_node_with_raylet_) {
-    // This scheduling strategy is only used for gcs scheduling for the time being.
-    auto placement_group_id = PlacementGroupID::FromBinary(
-        scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
-    BundleID bundle_id =
-        std::pair(placement_group_id,
-                  scheduling_strategy.placement_group_scheduling_strategy()
-                      .placement_group_bundle_index());
-    result = scheduling_policy_->Schedule(
-        resource_request, SchedulingOptions::AffinityWithBundle(bundle_id));
   } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
     result = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));

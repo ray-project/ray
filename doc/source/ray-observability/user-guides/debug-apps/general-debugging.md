@@ -174,9 +174,7 @@ Note that Ray turns off stack trace capture by default due to potential performa
 Example:
 
 <!-- NOTE(edoakes): test is skipped because it reinitializes Ray. -->
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 # Enable stack trace capture

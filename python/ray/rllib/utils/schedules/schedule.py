@@ -47,8 +47,7 @@ class Schedule(metaclass=ABCMeta):
 
     @abstractmethod
     def _value(self, t: Union[int, TensorType]) -> Any:
-        """
-        Returns the value based on a time step input.
+        """Returns the value based on a time step input.
 
         Args:
             t: The time step. This could be a tf.Tensor.
@@ -59,8 +58,7 @@ class Schedule(metaclass=ABCMeta):
         raise NotImplementedError
 
     def _tf_value_op(self, t: TensorType) -> TensorType:
-        """
-        Returns the tf-op that calculates the value based on a time step input.
+        """Returns the tf-op that calculates the value based on a time step input.
 
         Args:
             t: The time step op (int tf.Tensor).

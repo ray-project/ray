@@ -1,12 +1,11 @@
 import asyncio
 import logging
 from copy import deepcopy
-from typing import Callable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, List, Optional, Sequence, Set, Tuple
 from unittest.mock import Mock
 
 import grpc
 from grpc.aio._server import Server
-from grpc_reflection.v1alpha import reflection
 
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.constants import (
@@ -42,7 +41,7 @@ class gRPCGenericServer(Server):
         self,
         service_handler_factory: Callable,
         *,
-        extra_options: Optional[List[Tuple[str, str]]] = None,
+        extra_options: Optional[List[Tuple[str, Any]]] = None,
     ):
         super().__init__(
             thread_pool=None,
@@ -169,6 +168,16 @@ def enable_server_reflection(server: gRPCGenericServer) -> None:
     The reflection service is registered as a passthrough service so it
     executes on the server itself instead of being routed to replicas.
     """
+    # Imported here because reflection is opt-in: importing Serve shouldn't
+    # need grpcio-reflection (vLLM's Ray metrics import ray.serve, for one).
+    try:
+        from grpc_reflection.v1alpha import reflection
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            f"{e.msg}. gRPC server reflection needs grpcio-reflection. You can run "
+            '`pip install "ray[serve]"` to install all Ray Serve dependencies.'
+        ) from e
+
     service_names = get_service_names(server.generic_rpc_handlers)
     # Advertise only user-defined services, not Serve's built-in API service.
     service_names.discard(
@@ -199,7 +208,9 @@ async def start_grpc_server(
 
     server = gRPCGenericServer(
         service_handler_factory,
-        extra_options=[("grpc.so_reuseport", str(int(enable_so_reuseport)))],
+        # An integer: gRPC ignores a string value for this option and keeps
+        # SO_REUSEPORT on, which lets another server bind the same port.
+        extra_options=[("grpc.so_reuseport", int(enable_so_reuseport))],
     )
     add_grpc_address(server, f"[::]:{grpc_options.port}")
 

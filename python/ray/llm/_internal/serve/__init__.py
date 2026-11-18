@@ -9,6 +9,15 @@ setup_observability()
 
 
 def _worker_process_setup_hook():
-    """Noop setup hook used for ENABLE_WORKER_PROCESS_SETUP_HOOK
-    (see python/ray/llm/_internal/serve/configs/constants.py)."""
-    pass
+    """Setup hook used for ENABLE_WORKER_PROCESS_SETUP_HOOK
+    (see python/ray/llm/_internal/serve/configs/constants.py).
+
+    Must not import torch, directly or through vllm. The hook runs when the worker
+    process starts, before Ray sets OMP_NUM_THREADS to the actor's CPUs, and torch
+    sizes its thread pool when it is first imported: every vLLM worker would then
+    run as many threads as the host has cores.
+    """
+    # TODO(kourosh): Remove with compile_cache_compat.
+    from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat
+
+    compile_cache_compat.install()

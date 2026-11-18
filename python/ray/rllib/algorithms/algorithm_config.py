@@ -5343,7 +5343,7 @@ class AlgorithmConfig(_Config):
                 "want to use the new API stack, set `config.api_stack("
                 "enable_rl_module_and_learner=False,"
                 "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+                "guide, see here: https://docs.ray.io/en/latest/rllib/new-api-stack-migration-guide.html"  # noqa
             )
 
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
