@@ -1860,7 +1860,7 @@ def test_erofs_pull_from_a_registry(tmp_path, fake_docker_hub, erofs_pull, monke
     )
     tree = _erofs_tree(os.path.join(image_dir, ROOTFS_IMAGE))
     assert tree["/bin/busybox"][1:] == (0o755, 0, 0, fake_docker_hub)
-    assert "/etc/resolv.conf" in tree
+    assert "/tmp/.ray-sandbox-keep" in tree
 
 
 def _cut_short(index, handler, blob):
