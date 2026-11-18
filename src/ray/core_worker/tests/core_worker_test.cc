@@ -67,7 +67,10 @@ class TestRayletClient : public rpc::FakeRayletClient {
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
       const ObjectID &generator_id,
+      const WorkerID &producer_worker_id,
       const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
+    rpc::FakeRayletClient::PinObjectIDs(
+        caller_address, object_ids, generator_id, producer_worker_id, callback);
     pin_callbacks_.push_back(callback);
   }
 
