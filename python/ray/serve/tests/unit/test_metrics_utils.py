@@ -1,12 +1,18 @@
 import asyncio
 import sys
+import time
 
 import numpy as np
 import pytest
 
+import ray.serve._private.replica as replica_mod
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private import autoscaling_metrics_merge as merge
-from ray.serve._private.common import TimeStampedValue
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    TimeStampedValue,
+)
 from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
     MetricsPusher,
@@ -208,6 +214,31 @@ class TestMetricsPusher:
 
         assert not metrics_pusher.stop_event.is_set()
         assert all(t.done() for t in new_tasks)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("fixed_rate", [False, True])
+    async def test_a_fixed_rate_task_sleeps_only_what_is_left_of_its_interval(
+        self, fixed_rate
+    ):
+        """A self-check slower than a quarter period would otherwise push that much
+        later every cycle, and miss the controller's freshness window each time."""
+        slept = []
+
+        async def record_sleep(amount):
+            slept.append(amount)
+            await asyncio.Event().wait()
+
+        metrics_pusher = MetricsPusher(async_sleep=record_sleep)
+        metrics_pusher.start()
+        metrics_pusher.register_or_update_task(
+            "slow", lambda: time.sleep(0.05), 1.0, fixed_rate=fixed_rate
+        )
+        await async_wait_for_condition(lambda: len(slept) == 1, retry_interval_ms=1)
+        if fixed_rate:
+            assert slept[0] <= 0.95
+        else:
+            assert slept[0] == 1.0
+        await metrics_pusher.graceful_shutdown()
 
 
 def assert_timeseries_equal(actual, expected):
@@ -1468,6 +1499,144 @@ class TestCythonImplementationEdgeCases:
         assert len(result) == 4
         # Check that values are computed correctly despite extreme changes
         assert result[0].value == pytest.approx(1e-10, rel=1e-6)
+
+
+async def _fails():
+    raise RuntimeError("intended to fail")
+
+
+def _bare_manager():
+    """A ReplicaMetricsManager with only what the self-check uses."""
+    import threading
+    from unittest.mock import Mock
+
+    from ray.serve._private.replica import ReplicaMetricsManager
+
+    m = ReplicaMetricsManager.__new__(ReplicaMetricsManager)
+    m._health_check_period_s = 10.0
+    m._consecutive_failures = 0
+    m._last_counted_failure_at = 0.0
+    m._pending_health_push_ref = None
+    m._pending_health_push_started_at = 0.0
+    m._metrics_push_lock = threading.Lock()
+    m._controller_handle = Mock()
+    m._metrics_pusher = MetricsPusher()
+    m._replica_id = ReplicaID("r1", DeploymentID(name="d", app_name="app"))
+    return m
+
+
+class TestSelfHealthPush:
+    """The replica runs its own health check on a timer and heartbeats the result."""
+
+    @pytest.mark.asyncio
+    async def test_healthy_eval_heartbeats(self):
+        m = _bare_manager()
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        await m._eval_and_push_self_health()
+        args = m._controller_handle.record_replica_health.remote.call_args.args
+        assert args[0] == m._replica_id and args[2] is True
+
+    @pytest.mark.asyncio
+    async def test_failing_eval_heartbeats_unhealthy(self):
+        m = _bare_manager()
+
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is False
+        )
+
+    @pytest.mark.asyncio
+    async def test_failures_are_counted_once_per_period(self, monkeypatch):
+        """Evals run twice per period, but the controller weighs the count against a
+        threshold calibrated to the period."""
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 1
+        await m._eval_and_push_self_health()  # same period, must not count again
+        assert m._consecutive_failures == 1
+        m._last_counted_failure_at -= m._health_check_period_s  # a period on
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 2
+
+    @pytest.mark.asyncio
+    async def test_a_pass_clears_the_failure_count(self, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        m._eval_self_health_fn = AsyncMock()
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 0
+        assert m._controller_handle.record_replica_health.remote.call_args.args[3] == 0
+
+    def test_the_check_runs_every_half_period_start_to_start(self):
+        from unittest.mock import Mock
+
+        m = _bare_manager()
+        m._metrics_pusher = Mock()
+        m.start_self_health_pusher(_fails, 10.0)
+        register = m._metrics_pusher.register_or_update_task.call_args
+        assert register.args[2] == 5.0
+        assert register.kwargs["fixed_rate"] is True
+
+    @pytest.mark.asyncio
+    async def test_no_heartbeat_while_the_last_is_in_flight(self, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        m = _bare_manager()
+        m._pending_health_push_ref = "in_flight"
+        m._pending_health_push_started_at = time.time()
+        m._eval_self_health_fn = AsyncMock()
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_eval_does_not_retire_the_pusher(self):
+        """CancelledError is not an Exception and MetricsPusher only catches Exception,
+        so letting it out would end the heartbeat task for the replica's lifetime."""
+        m = _bare_manager()
+
+        async def cancelled():
+            raise asyncio.CancelledError()
+
+        m._eval_self_health_fn = cancelled
+        await m._eval_and_push_self_health()
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is False
+        )
+
+
+class TestBoundedPushGuard:
+    """A push that never completes must not silence the replica permanently."""
+
+    def test_no_ref_is_not_blocked(self):
+        assert _bare_manager()._push_blocked(None, 0.0) is False
+
+    def test_completed_ref_is_not_blocked(self, monkeypatch):
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        assert _bare_manager()._push_blocked("ref", time.time()) is False
+
+    def test_fresh_in_flight_ref_blocks(self, monkeypatch):
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        assert _bare_manager()._push_blocked("ref", time.time()) is True
+
+    def test_overdue_ref_is_abandoned(self, monkeypatch):
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        # Absolute durations either side of the documented 20s, so the bound itself is
+        # pinned rather than whatever the constant happens to say.
+        assert _bare_manager()._push_blocked("ref", time.time() - 21.0) is False
+        assert _bare_manager()._push_blocked("ref", time.time() - 19.0) is True
 
 
 if __name__ == "__main__":
