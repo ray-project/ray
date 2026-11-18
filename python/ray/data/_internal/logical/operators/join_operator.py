@@ -8,6 +8,7 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.n_ary_operator import NAry
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.expressions import BinaryExpr, ColumnExpr, Expr, Operation
 
 if TYPE_CHECKING:
@@ -460,8 +461,8 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             return None
         try:
             joined = join_tables(
-                left_schema.empty_table(),
-                right_schema.empty_table(),
+                _create_empty_table(left_schema),
+                _create_empty_table(right_schema),
                 join_type=join_type_enum,
                 left_key_col_names=self.left_key_columns,
                 right_key_col_names=self.right_key_columns,

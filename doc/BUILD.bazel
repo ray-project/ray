@@ -538,6 +538,7 @@ doctest_each(
     files = [
         "source/data/aggregating-data.md",
         "source/data/execution-configurations.md",
+        "source/data/fault-tolerance.md",
         "source/data/index.md",
         "source/data/inspecting-data.md",
         "source/data/internals.md",
