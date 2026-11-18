@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Deque, Dict, Iterable, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
 from typing_extensions import override
 
+import ray
+from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
     ArrowFileScanner,
 )
@@ -17,11 +21,12 @@ from ray.data._internal.datasource_v2.common.file_reader import (
 )
 from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
     LineChunkFileIndexer,
+    _is_compressed,
 )
 from ray.data._internal.datasource_v2.common.line_chunkable_datasource_v2 import (
     LineChunkableDatasourceV2,
 )
-from ray.data._internal.datasource_v2.common.line_chunking import read_line_aligned
+from ray.data._internal.datasource_v2.common.listing_utils import batch_file_infos
 from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
     COLUMN_NAMES_KEY,
     CsvFileReader,
@@ -30,11 +35,18 @@ from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
     invalid_csv_error,
     read_snappy_buffer,
 )
+from ray.data._internal.datasource_v2.formats.csv.header_reader import (
+    HeaderReader,
+    HeaderReaderActor,
+)
 from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileIndexer,
     FileInfo,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import ChunkMetadata
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    ChunkMetadata,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
@@ -45,8 +57,19 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.actor import ActorProxy
+
+logger = logging.getLogger(__name__)
+
 # ``read_csv`` keyword arguments this datasource takes; any other goes to V1.
 CSV_V2_ARGS = frozenset({"read_options", "parse_options", "convert_options"})
+
+_DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_CSV_HEADER_NUM_ACTORS", 8)
+_DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_CSV_HEADER_IO_CONCURRENCY", 32)
+_DEFAULT_HEADER_BATCH_SIZE = env_integer("RAY_DATA_CSV_HEADER_BATCH_SIZE", 32)
+# Actor restarts and batch re-runs after a death or OOM, as the footer
+# indexer restores actors.
+_MAX_ACTOR_RETRIES = 10
 
 
 class CsvFileIndexer(LineChunkFileIndexer):
@@ -54,7 +77,9 @@ class CsvFileIndexer(LineChunkFileIndexer):
 
     A chunk after the first has no header, so the indexer reads the split
     file's header line once and puts its column names in every chunk's
-    metadata.
+    metadata. Header reads run in a spread actor pool, as Parquet indexers
+    read footers; ``RAY_DATA_CSV_HEADER_NUM_ACTORS=0`` reads them inline in
+    the listing task instead.
     """
 
     def __init__(
@@ -67,10 +92,114 @@ class CsvFileIndexer(LineChunkFileIndexer):
     ):
         super().__init__(**line_chunk_kwargs)
         self._filesystem = filesystem
+        # Knobs are re-read here, not at import time, so ``monkeypatch.setenv``
+        # and release-test env overrides work after import.
+        self._num_actors = env_integer(
+            "RAY_DATA_CSV_HEADER_NUM_ACTORS", _DEFAULT_NUM_ACTORS
+        )
+        self._io_concurrency = env_integer(
+            "RAY_DATA_CSV_HEADER_IO_CONCURRENCY", _DEFAULT_IO_CONCURRENCY
+        )
+        self._header_batch_size = env_integer(
+            "RAY_DATA_CSV_HEADER_BATCH_SIZE", _DEFAULT_HEADER_BATCH_SIZE
+        )
         # Default convert options, so ``include_columns`` can't drop names.
         self._header_format = csv_file_format(
             read_options, parse_options, pcsv.ConvertOptions()
         )
+        self._reader = HeaderReader(
+            filesystem=filesystem,
+            file_format=self._header_format,
+            io_concurrency=self._io_concurrency,
+        )
+        self._header_names: Dict[str, List[str]] = {}
+
+    @override
+    def _process_file_infos_to_manifests(
+        self, file_infos: Iterable[FileInfo]
+    ) -> Iterable[FileManifest]:
+        if self._num_actors == 0:
+            yield from super()._process_file_infos_to_manifests(file_infos)
+            return
+        actors: List[ActorProxy[HeaderReader]] = [
+            HeaderReaderActor.options(
+                scheduling_strategy="SPREAD",
+                max_restarts=_MAX_ACTOR_RETRIES,
+                max_task_retries=_MAX_ACTOR_RETRIES,
+            ).remote(
+                filesystem=self._filesystem,
+                file_format=self._header_format,
+                io_concurrency=self._io_concurrency,
+            )
+            for _ in range(self._num_actors)
+        ]
+        logger.debug("Provisioned %d HeaderReader actors", self._num_actors)
+        try:
+            self._header_names = {}
+            yield from super()._process_file_infos_to_manifests(
+                self._with_prefetched_headers(file_infos, actors)
+            )
+        finally:
+            self._header_names = {}
+            for actor in actors:
+                # ``ActorProxy`` is ``ActorHandle | type[T]``; kill wants a handle.
+                # pyrefly: ignore[bad-argument-type]
+                ray.kill(actor)
+
+    def _with_prefetched_headers(
+        self,
+        file_infos: Iterable[FileInfo],
+        actors: List["ActorProxy[HeaderReader]"],
+    ) -> Iterable[FileInfo]:
+        """Yield files in order, their headers read ahead by the actor pool.
+
+        Mirrors the footer indexer's dispatch: a FIFO of in-flight batches,
+        up to two per actor, delivered in order, so manifest assembly never
+        waits unless every batch in the window is still being read.
+        """
+        infos = iter(file_infos)
+        # One entry per dispatched batch: its files, the ones whose headers
+        # the actor reads, and the read's ObjectRef.
+        pending: Deque[
+            Tuple[List[FileInfo], List[FileInfo], Optional[ray.ObjectRef]]
+        ] = deque()
+        window = self._num_actors * 2
+        batch_no = 0
+
+        def dispatch_next() -> bool:
+            nonlocal batch_no
+            batch = next(batch_file_infos(infos, self._header_batch_size), None)
+            if batch is None:
+                return False
+            with_headers = [info for info in batch if self._needs_header(info)]
+            ref = None
+            if with_headers:
+                actor = actors[batch_no % len(actors)]
+                # ``ActorProxy`` stubs type ``.remote`` narrower than it is.
+                ref = actor.read_headers.remote(
+                    with_headers
+                )  # pyrefly: ignore[missing-attribute]
+            pending.append((batch, with_headers, ref))
+            batch_no += 1
+            return True
+
+        # Prime the window.
+        for _ in range(window):
+            if not dispatch_next():
+                break
+        while pending:
+            batch, with_headers, ref = pending.popleft()
+            if ref is not None:
+                for info, names in zip(with_headers, ray.get(ref)):
+                    self._header_names[info.path] = names
+            yield from batch
+            dispatch_next()
+
+    def _needs_header(self, file_info: FileInfo) -> bool:
+        # The whole-file branch of ``_chunk_metadatas_of_file`` is the exact
+        # negation, so a file reads its header iff its rows are chunked.
+        assert file_info.size is not None
+        return file_info.size > self._chunk_size and not _is_compressed(file_info.path)
 
     @override
     def _chunk_metadatas_of_file(
@@ -79,12 +208,11 @@ class CsvFileIndexer(LineChunkFileIndexer):
         metadatas = super()._chunk_metadatas_of_file(file_info)
         if metadatas == [None]:
             return metadatas
-        assert file_info.size is not None
-        # ponytail: one header read per split file, serially in the listing
-        # task. Read them in a thread pool if listing many large files is slow.
-        with self._filesystem.open_input_file(file_info.path) as file:
-            header = read_line_aligned(file, start=0, end=1, file_size=file_info.size)
-        names = self._header_format.inspect(pa.py_buffer(header)).names
+        names = self._header_names.pop(file_info.path, None)
+        if names is None:
+            # The inline path (``RAY_DATA_CSV_HEADER_NUM_ACTORS=0``) and
+            # direct off-listing calls read the header right here.
+            names = self._reader.read_header(file_info)
         return [
             None if metadata is None else {**metadata, COLUMN_NAMES_KEY: names}
             for metadata in metadatas

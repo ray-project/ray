@@ -7,6 +7,7 @@ from typing import List
 import pyarrow as pa
 import pyarrow.csv as pcsv
 import pytest
+from pyarrow.fs import LocalFileSystem
 
 import ray.data.read_api as read_api
 from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
@@ -25,6 +26,9 @@ from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
     CsvDatasourceV2,
     CsvFileIndexer,
 )
+from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import csv_file_format
+from ray.data._internal.datasource_v2.formats.csv.header_reader import HeaderReader
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
 from ray.data._internal.util import RetryingPyFileSystem
@@ -62,6 +66,13 @@ def _read_all(datasource: CsvDatasourceV2, paths) -> pa.Table:
     return pa.concat_tables(
         _read_tables(datasource, paths), promote_options="permissive"
     )
+
+
+@pytest.fixture(autouse=True)
+def inline_header_reads(monkeypatch):
+    # Header reads stay in this process; the actor pool is covered in
+    # ``tests/datasource_v2/test_csv_header_listing.py``.
+    monkeypatch.setenv("RAY_DATA_CSV_HEADER_NUM_ACTORS", "0")
 
 
 @pytest.fixture
@@ -141,6 +152,28 @@ def test_lists_a_split_file_with_its_column_names(tmp_path, small_chunks):
     ]
     assert names.count(None) == 1
     assert set(names) - {None} == {("order id", "amount")}
+
+
+def test_header_reader_reads_each_files_header(tmp_path):
+    # ``HeaderReader`` is a plain class, unit-tested here as ``FooterReader``
+    # is; the indexer runs it as an actor pool.
+    filesystem = LocalFileSystem()
+    reader = HeaderReader(
+        filesystem=filesystem,
+        file_format=csv_file_format(
+            pcsv.ReadOptions(), pcsv.ParseOptions(), pcsv.ConvertOptions()
+        ),
+        io_concurrency=2,
+    )
+    paths = [_write(tmp_path / f"{i}.csv", f"id{i},x\n1,2\n") for i in range(3)]
+    files = [
+        FileInfo(path=path, size=filesystem.get_file_info(path).size) for path in paths
+    ]
+
+    assert reader.read_header(files[0]) == ["id0", "x"]
+    assert [reader.read_header(file) for file in files] == [
+        [f"id{i}", "x"] for i in range(3)
+    ]
 
 
 @pytest.mark.parametrize(

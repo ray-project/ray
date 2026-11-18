@@ -12,6 +12,7 @@ from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
+from ray.data._internal.datasource_v2.common.listing_utils import batch_file_infos
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
@@ -407,13 +408,4 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             dispatch_next()
 
     def _batches(self, file_infos: "Iterable[FileInfo]") -> Iterator[List[FileInfo]]:
-        batch: List[FileInfo] = []
-        for file_info in file_infos:
-            if file_info.size is None:
-                continue
-            batch.append(file_info)
-            if len(batch) >= self._footer_batch_size:
-                yield batch
-                batch = []
-        if batch:
-            yield batch
+        return batch_file_infos(file_infos, self._footer_batch_size)
