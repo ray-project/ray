@@ -10,6 +10,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    PartialAggMode,
+    PartialAggPolicy,
     _make_aggregating_reduce_fn,
     _make_aggregating_transformer,
 )
@@ -436,6 +438,45 @@ def _plan_random_shuffle_v2(
     )
 
 
+def _choose_partial_agg_policy(data_context: DataContext) -> PartialAggPolicy:
+    """Picks how the map side of a SHUFFLE_V2 aggregation pre-aggregates."""
+    try:
+        mode = PartialAggMode(data_context.partial_aggregation_mode)
+    except ValueError:
+        raise ValueError(
+            "DataContext.partial_aggregation_mode must be one of "
+            f"{[m.value for m in PartialAggMode]}, got "
+            f"{data_context.partial_aggregation_mode!r}"
+        ) from None
+    if mode != PartialAggMode.ESTIMATE:
+        return PartialAggPolicy(mode=mode)
+    sample_rows = data_context.adaptive_partial_aggregation_sample_rows
+    if (
+        isinstance(sample_rows, bool)
+        or not isinstance(sample_rows, int)
+        or (sample_rows <= 0)
+    ):
+        raise ValueError(
+            "DataContext.adaptive_partial_aggregation_sample_rows must be a "
+            f"positive integer, got {sample_rows!r}"
+        )
+    threshold = data_context.adaptive_partial_aggregation_unique_ratio_threshold
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, (int, float))
+        or not 0 <= threshold <= 1
+    ):
+        raise ValueError(
+            "DataContext.adaptive_partial_aggregation_unique_ratio_threshold "
+            f"must be a number between 0 and 1, got {threshold!r}"
+        )
+    return PartialAggPolicy(
+        mode=PartialAggMode.ESTIMATE,
+        sample_rows=sample_rows,
+        unique_ratio_threshold=float(threshold),
+    )
+
+
 def _plan_hash_shuffle_aggregate_v2(
     data_context: DataContext,
     logical_op: Aggregate,
@@ -457,7 +498,9 @@ def _plan_hash_shuffle_aggregate_v2(
         num_partitions = 1
 
     partition_fn = _make_hash_partition_fn(key_list, num_partitions)
-    block_transformer = _make_aggregating_transformer(key_columns, aggs)
+    block_transformer = _make_aggregating_transformer(
+        key_columns, aggs, policy=_choose_partial_agg_policy(data_context)
+    )
     reduce_fn = _make_aggregating_reduce_fn(key_columns, aggs)
 
     map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)

@@ -1,5 +1,6 @@
 import os
 import random
+import sys
 from types import SimpleNamespace
 from typing import Any, Dict, Generator, List, Tuple, Type
 
@@ -15,9 +16,9 @@ from pyiceberg import (
 )
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
-from pyiceberg.manifest import FileFormat
+from pyiceberg.manifest import DataFile, FileFormat
 from pyiceberg.partitioning import PartitionField, PartitionSpec
-from pyiceberg.table import Table
+from pyiceberg.table import FileScanTask, Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -3020,7 +3021,107 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     assert len(result.data_files) > 0, "Expected data files in result"
 
 
-if __name__ == "__main__":
-    import sys
+class TestIcebergDatasourceV2:
+    """Tests for the V2-only machinery, which has no V1 counterpart."""
 
+    @staticmethod
+    def _load_table() -> Table:
+        return pyi_catalog.load_catalog(**_CATALOG_KWARGS).load_table(
+            f"{_DB_NAME}.{_TABLE_NAME}"
+        )
+
+    def test_manifest_preserves_every_field_the_reader_uses(self):
+        """A manifest round trip must return each scan task field-for-field."""
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        tasks = list(table.scan(row_filter="col_a >= 5").plan_files())
+        assert tasks, "fixture table should plan at least one file"
+
+        manifest = manifest_from_scan_tasks(tasks)
+        assert len(manifest) == len(tasks)
+
+        rebuilt = list(scan_tasks_from_manifest(manifest))
+        assert len(rebuilt) == len(tasks)
+        for original, copied in zip(tasks, rebuilt):
+            assert copied.file.file_path == original.file.file_path
+            assert copied.file.file_format == original.file.file_format
+            assert copied.file.spec_id == original.file.spec_id
+            assert copied.file.record_count == original.file.record_count
+            assert copied.file.file_size_in_bytes == original.file.file_size_in_bytes
+            assert copied.file.partition == original.file.partition
+            assert copied.residual == original.residual
+            assert copied.delete_files == original.delete_files
+
+    def test_manifest_carries_delete_files(self):
+        """Delete files attached to a task must survive the round trip.
+
+        Built by hand rather than from the fixture: PyIceberg 0.11.1 deletes
+        copy-on-write (it rewrites the data files), so no scan task it plans
+        ever carries one -- yet a table written by an engine that deletes
+        merge-on-read will, and dropping them would silently resurrect deleted
+        rows.
+        """
+        from pyiceberg.manifest import DataFileContent, FileFormat
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        task = list(table.scan().plan_files())[0]
+        delete_paths = [
+            "s3://bucket/deletes/b.parquet",
+            "s3://bucket/deletes/a.parquet",
+        ]
+        deletes = {
+            DataFile.from_args(
+                content=DataFileContent.POSITION_DELETES,
+                file_path=path,
+                file_format=FileFormat.PARQUET,
+                partition=task.file.partition,
+                record_count=1,
+                file_size_in_bytes=1,
+            )
+            for path in delete_paths
+        }
+        with_deletes = FileScanTask(task.file, delete_files=deletes)
+
+        (rebuilt,) = scan_tasks_from_manifest(manifest_from_scan_tasks([with_deletes]))
+        assert {f.file_path for f in rebuilt.delete_files} == set(delete_paths)
+        assert all(
+            f.content == DataFileContent.POSITION_DELETES for f in rebuilt.delete_files
+        )
+
+    def test_rebuilt_scan_tasks_decode_identically(self):
+        """The rebuilt tasks must read byte-for-byte what the originals do."""
+        from pyiceberg.io.pyarrow import ArrowScan
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        scan = table.scan()
+        tasks = list(scan.plan_files())
+        rebuilt = list(scan_tasks_from_manifest(manifest_from_scan_tasks(tasks)))
+
+        def read(scan_tasks):
+            return ArrowScan(
+                table_metadata=table.metadata,
+                io=table.io,
+                projected_schema=scan.projection(),
+                row_filter=pyi_expr.AlwaysTrue(),
+                case_sensitive=True,
+            ).to_table(scan_tasks)
+
+        assert read(rebuilt).equals(read(tasks))
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
