@@ -59,8 +59,12 @@ class MutableObjectProviderInterface {
 
   /// RPC callback for when a writer pushes a mutable object over the network to a reader
   /// on this node.
-  virtual void HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
-                                       rpc::PushMutableObjectReply *reply) = 0;
+  /// \param[in] request The request containing the pushed object chunk.
+  /// \param[out] reply The reply indicating whether the complete object has been
+  /// received. \return The status of processing this chunk. A closed channel is reported
+  /// to the sender so it can stop polling the failed channel.
+  virtual Status HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
+                                         rpc::PushMutableObjectReply *reply) = 0;
 
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.
