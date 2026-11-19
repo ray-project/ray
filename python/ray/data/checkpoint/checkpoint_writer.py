@@ -188,6 +188,7 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
                 _write,
                 description=f"Write checkpoint file: {file_name}",
                 match=DataContext.get_current().retried_io_errors,
+                max_attempts=DataContext.get_current().io_retry_max_attempts,
             )
         except Exception:
             logger.exception(f"Checkpoint write failed: {file_name}")
@@ -223,6 +224,7 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
             _write,
             description=f"Write pending checkpoint file: {pending_file_name}",
             match=DataContext.get_current().retried_io_errors,
+            max_attempts=DataContext.get_current().io_retry_max_attempts,
         )
         return PendingCheckpoint(
             pending_path=pending_path,
@@ -270,4 +272,5 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
             _rename,
             description=f"Commit checkpoint: {pending.pending_path}",
             match=DataContext.get_current().retried_io_errors,
+            max_attempts=DataContext.get_current().io_retry_max_attempts,
         )

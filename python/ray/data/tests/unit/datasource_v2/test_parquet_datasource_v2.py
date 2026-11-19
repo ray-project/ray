@@ -129,6 +129,27 @@ def test_parquet_schema_reader_uses_listed_size_and_retries(monkeypatch, size):
     assert metadata_property.call_count == 2
 
 
+@pytest.mark.parametrize("attempts", [1, 3])
+def test_parquet_schema_reader_respects_io_retry_max_attempts(monkeypatch, attempts):
+    import pyarrow.dataset as pds
+
+    fragment = Mock()
+    metadata_property = PropertyMock(side_effect=OSError("retryable footer error"))
+    type(fragment).metadata = metadata_property
+    file_format = Mock()
+    file_format.make_fragment.return_value = fragment
+    monkeypatch.setattr(pds, "ParquetFileFormat", lambda: file_format)
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+    ctx = DataContext(io_retry_max_attempts=attempts)
+    ctx.retried_io_errors = ["retryable"]
+
+    with DataContext.current(ctx):
+        with pytest.raises(OSError, match="retryable footer error"):
+            _read_parquet_schema("test.parquet", pafs.LocalFileSystem(), 123)
+
+    assert metadata_property.call_count == attempts
+
+
 def test_infer_schema_unpartitioned(tmp_path):
     file_path = tmp_path / "data.parquet"
     _write_parquet(str(file_path), pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}))
@@ -774,6 +795,44 @@ def fake_footer_actors(monkeypatch):
     # The driver resolves refs and tears the pool down; neither needs a real Ray.
     monkeypatch.setattr(ray, "get", lambda ref: ref)
     monkeypatch.setattr(ray, "kill", lambda _actor: None)
+
+
+@pytest.mark.parametrize("errors", [[], ["custom footer error"]])
+@pytest.mark.parametrize("attempts", [1, 3])
+def test_footer_indexer_snapshots_and_forwards_io_retry_config(
+    tmp_path, monkeypatch, errors, attempts
+):
+    import ray
+    from ray.data._internal.datasource_v2.formats.parquet import footer_file_indexer
+
+    path = tmp_path / "ids.parquet"
+    _write_parquet(str(path), pa.table({"id": [1]}))
+    actor_class = Mock()
+    actor_class.options.return_value.remote.return_value = _FakeFooterActor()
+    monkeypatch.setattr(footer_file_indexer, "FooterReaderActor", actor_class)
+    monkeypatch.setattr(ray, "get", lambda ref: ref)
+    monkeypatch.setattr(ray, "kill", lambda actor: None)
+    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
+    ctx = DataContext(io_retry_max_attempts=attempts)
+    ctx.retried_io_errors = list(errors)
+
+    with DataContext.current(ctx):
+        datasource = ParquetDatasourceV2([str(path)])
+        indexer = datasource._get_file_indexer()
+        ctx.io_retry_max_attempts = 9
+        ctx.retried_io_errors.append("later error")
+        manifests = list(
+            indexer.list_files(
+                pa.array(datasource.paths), filesystem=datasource.filesystem
+            )
+        )
+
+    assert manifests
+    actor_class.options.assert_called_once_with(scheduling_strategy="SPREAD")
+    kwargs = actor_class.options.return_value.remote.call_args.kwargs
+    assert kwargs["io_retry_max_attempts"] == attempts
+    assert kwargs["retried_io_errors"] == errors
+    assert kwargs["retried_io_errors"] is not ctx.retried_io_errors
 
 
 def test_footer_indexer_preserves_listing_order_across_batches(

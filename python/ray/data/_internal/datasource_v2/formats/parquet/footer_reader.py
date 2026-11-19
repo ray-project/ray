@@ -130,14 +130,22 @@ class FooterReader:
         partitioning: Partitioning | None = None,
         partition_pruner: PartitionPredicatePruner | None = None,
         logical_schema: pa.Schema | None = None,
+        *,
+        io_retry_max_attempts: int | None = None,
     ):
-        from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
+        from ray.data.context import (
+            DEFAULT_IO_RETRY_MAX_ATTEMPTS,
+            DEFAULT_RETRIED_IO_ERRORS,
+        )
 
         self.retried_io_errors = (
-            retried_io_errors
+            list(retried_io_errors)
             if retried_io_errors is not None
             else list(DEFAULT_RETRIED_IO_ERRORS)
         )
+        if io_retry_max_attempts is None:
+            io_retry_max_attempts = DEFAULT_IO_RETRY_MAX_ATTEMPTS
+        self._io_retry_max_attempts = io_retry_max_attempts
         # Coalescing target: merge contiguous row groups into chunks of
         # ~coalesce_bytes uncompressed before returning them, so the driver packs
         # fewer items. 0 disables coalescing (one chunk per physical row group).
@@ -395,6 +403,7 @@ class FooterReader:
             lambda: fragment.metadata,
             description=f"read Parquet footer for {path}",
             match=self.retried_io_errors,
+            max_attempts=self._io_retry_max_attempts,
         )
         # Both column look-ups are schema-derived, and a Parquet file has a
         # single schema, so resolve them once rather than rescanning every leaf

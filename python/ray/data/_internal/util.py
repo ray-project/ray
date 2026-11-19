@@ -1361,11 +1361,13 @@ class RetryingContextManager:
         self,
         f: pyarrow.NativeFile,
         context: DataContext,
-        max_attempts: int = 10,
+        max_attempts: Optional[int] = None,
         max_backoff_s: int = 32,
     ):
         self._f = f
         self._data_context = context
+        if max_attempts is None:
+            max_attempts = context.io_retry_max_attempts
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
 
@@ -1410,7 +1412,7 @@ class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
         cls,
         fs: "pyarrow.fs.FileSystem",
         retryable_errors: List[str],
-        max_attempts: int = 10,
+        max_attempts: Optional[int] = None,
         max_backoff_s: int = 32,
     ):
         if isinstance(fs, RetryingPyFileSystem):
@@ -1441,7 +1443,7 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         self,
         fs: "pyarrow.fs.FileSystem",
         retryable_errors: List[str] = tuple(),
-        max_attempts: int = 10,
+        max_attempts: Optional[int] = None,
         max_backoff_s: int = 32,
     ):
         """Initialize the retrying filesystem wrapper.
@@ -1449,7 +1451,8 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         Args:
             fs: The underlying filesystem to wrap
             retryable_errors: Error substrings that should trigger a retry
-            max_attempts: Maximum number of retry attempts
+            max_attempts: Maximum total attempts (the first try plus retries).
+                Defaults to ``DataContext.io_retry_max_attempts`` at construction.
             max_backoff_s: Maximum backoff time in seconds
         """
         assert not isinstance(
@@ -1457,6 +1460,8 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         ), "Cannot wrap a RetryingPyFileSystem"
         self._fs = fs
         self._retryable_errors = retryable_errors
+        if max_attempts is None:
+            max_attempts = DataContext.get_current().io_retry_max_attempts
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
 

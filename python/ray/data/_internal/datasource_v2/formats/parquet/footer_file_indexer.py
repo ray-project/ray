@@ -157,6 +157,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         max_inflight_batches: Optional[int] = None,
         partitioning: Optional[Partitioning] = None,
         logical_schema: Optional[pa.Schema] = None,
+        retried_io_errors: Optional[List[str]] = None,
+        io_retry_max_attempts: Optional[int] = None,
     ):
         super().__init__(
             ignore_missing_paths=ignore_missing_paths,
@@ -167,6 +169,14 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self._coalesce_bytes = coalesce_bytes
         self._partitioning = partitioning
         self._logical_schema = logical_schema
+        self._retried_io_errors = (
+            list(retried_io_errors) if retried_io_errors is not None else None
+        )
+        if io_retry_max_attempts is None:
+            from ray.data.context import DEFAULT_IO_RETRY_MAX_ATTEMPTS
+
+            io_retry_max_attempts = DEFAULT_IO_RETRY_MAX_ATTEMPTS
+        self._io_retry_max_attempts = io_retry_max_attempts
         # Coalesce target used instead of ``coalesce_bytes`` (when larger) for a
         # row-group shuffle, so the shuffle unit is a ~chunk-sized run rather
         # than a single, possibly tiny, row group.
@@ -327,6 +337,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             partitioning=self._partitioning,
             partition_pruner=partition_pruner,
             logical_schema=self._logical_schema,
+            retried_io_errors=self._retried_io_errors,
+            io_retry_max_attempts=self._io_retry_max_attempts,
         ) as pool:
             manifests = self._read_footers(pool, file_infos, limit)
             if shuffle_row_groups:

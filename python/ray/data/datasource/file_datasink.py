@@ -229,6 +229,7 @@ class RowBasedFileDatasink(_FileDatasink):
                 write_row_to_path,
                 description=f"write '{write_path}'",
                 match=self._data_context.retried_io_errors,
+                max_attempts=self._data_context.io_retry_max_attempts,
             )
 
 
@@ -292,6 +293,7 @@ class BlockBasedFileDatasink(_FileDatasink):
             write_block_to_path,
             description=f"write '{write_path}'",
             match=self._data_context.retried_io_errors,
+            max_attempts=self._data_context.io_retry_max_attempts,
         )
 
     @property

@@ -226,10 +226,12 @@ class MCAPReader(Reader[FileManifest]):
         # What the read skips. Each attempt starts it afresh, so it holds the
         # last attempt's.
         skipped = _SkippedData() if skip_corrupt else None
+        ctx = DataContext.get_current()
         tables = iterate_with_retry(
             partial(read_file, limit, skipped),
             f"read MCAP file {path}",
-            match=DataContext.get_current().retried_io_errors,
+            match=ctx.retried_io_errors,
+            max_attempts=ctx.io_retry_max_attempts,
         )
         try:
             yield from tables
@@ -498,10 +500,11 @@ class MCAPReader(Reader[FileManifest]):
         """Broadcast one path-derived partition value, typed by the schema if known."""
         as_str = None if value is None else str(value)
         array = pa.repeat(pa.scalar(as_str, type=pa.string()), num_rows)
-        if self._schema is not None:
-            idx = self._schema.get_field_index(name)
-            if idx != -1 and self._schema.field(idx).type != pa.string():
-                array = array.cast(self._schema.field(idx).type)
+        schema = self._schema
+        if schema is not None:
+            idx = schema.get_field_index(name)
+            if idx != -1 and schema.field(idx).type != pa.string():
+                array = array.cast(schema.field(idx).type)
         return array
 
 

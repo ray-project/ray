@@ -457,6 +457,39 @@ def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
     assert len(ds.take()) == 1
 
 
+def test_read_stream_retries_respect_io_retry_max_attempts(
+    ray_start_regular_shared, tmp_path
+):
+    csv_path = tmp_path / "file.csv"
+    csv_path.write_text("spam")
+    retried_error = ray.data.context.DEFAULT_RETRIED_IO_ERRORS[0]
+    attempts = {"n": 0}
+
+    class FlakyDatasource(MockFileBasedDatasource):
+        def _read_stream(self, f, path):
+            attempts["n"] += 1
+            if attempts["n"] <= 2:
+                raise RuntimeError(retried_error)
+            yield from super()._read_stream(f, path)
+
+    ctx = ray.data.DataContext.get_current()
+    original_attempts = ctx.io_retry_max_attempts
+    try:
+        ctx.io_retry_max_attempts = 2
+        datasource = FlakyDatasource([str(csv_path)])
+        with pytest.raises(RuntimeError, match=retried_error):
+            execute_read_tasks(datasource.get_read_tasks(1))
+        assert attempts["n"] == 2
+
+        attempts["n"] = 0
+        ctx.io_retry_max_attempts = 3
+        datasource = FlakyDatasource([str(csv_path)])
+        assert len(execute_read_tasks(datasource.get_read_tasks(1))) == 1
+        assert attempts["n"] == 3
+    finally:
+        ctx.io_retry_max_attempts = original_attempts
+
+
 def test_default_retried_io_errors_cover_pyarrow_s3_access_denied():
     """PyArrow's S3FileSystem reports a transient credential-lookup failure
     (e.g. an empty IMDS response under load) as ACCESS_DENIED. Retrying it by
@@ -490,6 +523,32 @@ def test_default_retried_io_errors_cover_pyarrow_s3_access_denied():
     unrelated = "OSError: connection refused"
     assert not any(
         matches_error(pattern, unrelated) for pattern in DEFAULT_RETRIED_IO_ERRORS
+    )
+
+
+def test_default_retried_io_errors_cover_s3_throttling_429():
+    """S3-compatible stores and HTTP gateways throttle with 429, which PyArrow
+    reports as ``AWS Error UNKNOWN (HTTP status 429)``."""
+    from ray._common.retry import matches_error
+    from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
+
+    throttled = (
+        "OSError: When getting information for key 'k' in bucket 'b': "
+        "AWS Error UNKNOWN (HTTP status 429) during HeadObject operation: "
+        "Slow down"
+    )
+    assert any(
+        matches_error(pattern, throttled) for pattern in DEFAULT_RETRIED_IO_ERRORS
+    )
+
+    # Negative control: 400 carries an expired or malformed token, which no
+    # amount of retrying fixes.
+    bad_request = (
+        "OSError: AWS Error UNKNOWN (HTTP status 400) during HeadObject "
+        "operation: No response body"
+    )
+    assert not any(
+        matches_error(pattern, bad_request) for pattern in DEFAULT_RETRIED_IO_ERRORS
     )
 
 
