@@ -169,5 +169,33 @@ def test_concurrent_shutdowns_flush_and_finalize_exactly_once():
     assert metrics.finalizes_seen_by_flush == [0]
 
 
+def test_escape_hatch_sees_consumption_queued_this_step(monkeypatch):
+    """Processing completed tasks can drop withheld outputs, which only queues
+    their release. The hatch applies that queue first, so it never mistakes
+    released outputs for a withheld deadlock."""
+    from ray.data._internal.experimental.execution import (
+        streaming_executor as executor_mod,
+    )
+
+    calls: List[str] = []
+    bank = MagicMock()
+    bank.drain_consumed_blocks.side_effect = lambda: calls.append("drain")
+    monkeypatch.setattr(
+        executor_mod,
+        "relieve_output_deadlock",
+        lambda **kwargs: calls.append("hatch"),
+    )
+    executor = ExperimentalStreamingExecutor.__new__(ExperimentalStreamingExecutor)
+    executor._last_detection_timestamp = 0.0
+    executor._idle_detection_interval_s = 0.0
+    executor._output_node = (MagicMock(), MagicMock())
+    executor._resource_bank = bank
+    executor._topology = {}
+
+    executor._maybe_run_escape_hatch()
+
+    assert calls == ["drain", "hatch"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import DefaultDict, Dict, List, Tuple
+from typing import TYPE_CHECKING, DefaultDict, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import (
@@ -30,12 +30,16 @@ from ray.data._internal.execution.streaming_executor_state import (
     WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
     OpState,
     Topology,
-    _handle_data_op_task_exception,
+    recover_or_count_lost_output,
+    route_metadata_fetch_failures,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (
     ExperimentalActorPoolMapOperator,
 )
 from ray.exceptions import RayError
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +51,7 @@ def process_completed_tasks(
     topology: Topology,
     max_errored_blocks: int,
     metadata_fetcher: MetadataFetcher,
+    lineage_tracker: Optional["LineageTracker"] = None,
 ) -> int:
     """Process newly completed tasks and move queued inputs into operators.
     Call ``update_operator_states()`` afterwards.
@@ -57,6 +62,9 @@ def process_completed_tasks(
             negative.
         metadata_fetcher: Resolves pulled ``(block_ref, meta_ref)`` pairs into
             emitted RefBundles (inline, or deferred to a background thread).
+        lineage_tracker: Ray Data lineage tracker. A lost output or a dead
+            actor on a tracked task starts lineage reconstruction instead of
+            counting an errored block.
 
     Returns:
         The number of errored blocks.
@@ -123,8 +131,14 @@ def process_completed_tasks(
                         )
                         op_data_tasks.append(task)
                     except Exception as e:
-                        num_errored_blocks = _handle_data_op_task_exception(
-                            e, op.name, max_errored_blocks, num_errored_blocks
+                        num_errored_blocks, _ = recover_or_count_lost_output(
+                            topology=topology,
+                            lineage_tracker=lineage_tracker,
+                            state=state,
+                            task=task,
+                            error=e,
+                            max_errored_blocks=max_errored_blocks,
+                            num_errored_blocks=num_errored_blocks,
                         )
             finally:
                 # Hand this op's deferred pairs to the fetcher and register
@@ -138,13 +152,13 @@ def process_completed_tasks(
     # iterations can still have metadata land now, and gating on
     # ``active_tasks`` would strand them. Deferred fetch failures share the
     # ``max_errored_blocks`` accounting with inline errors.
-    for (
-        failed_op_name,
-        fetch_exc,
-    ) in metadata_fetcher.emit_ready_and_fire_done_callbacks():
-        num_errored_blocks = _handle_data_op_task_exception(
-            fetch_exc, failed_op_name, max_errored_blocks, num_errored_blocks
-        )
+    num_errored_blocks = route_metadata_fetch_failures(
+        topology=topology,
+        lineage_tracker=lineage_tracker,
+        metadata_fetcher=metadata_fetcher,
+        max_errored_blocks=max_errored_blocks,
+        num_errored_blocks=num_errored_blocks,
+    )
 
     for op, op_state in topology.items():
         while op.has_next():

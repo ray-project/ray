@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import ExecutionResources, PhysicalOperator
 from ray.data._internal.execution.interfaces.common import ActorStatus
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -968,3 +968,62 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
+
+
+def test_withheld_outputs_stay_pulled_and_are_marked_until_released():
+    """A block withheld by lineage reconstruction is still in the object store,
+    so it stays counted as pulled against its producer; it is also counted as
+    withheld until the child's input set is released, or the block is
+    consumed."""
+    bank = ResourceBank()
+    actor_op = _make_op()
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
+    bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
+    held = _new_output(bank, actor_op, "held", task_id=TASK, size_bytes=100)
+    _new_output(bank, actor_op, "plain", task_id=TASK, size_bytes=50)
+
+    bank.on_output_withheld(ref=cast(ObjectRef[Block], held))
+    actor = bank.live_object_store(actor_id=ACTOR)
+    assert actor.num_pulled_output_bytes == 150
+    assert (actor.num_withheld_output_blocks, actor.num_withheld_output_bytes) == (
+        1,
+        100,
+    )
+    assert bank.live_object_store(node_id=NODE).num_withheld_output_bytes == 100
+
+    bank.on_output_released(ref=cast(ObjectRef[Block], held))
+    assert bank.live_object_store(actor_id=ACTOR).num_withheld_output_bytes == 0
+    assert bank.live_object_store(actor_id=ACTOR).num_pulled_output_bytes == 150
+
+    # Consuming a still-withheld block clears both counts.
+    bank.on_output_withheld(ref=cast(ObjectRef[Block], held))
+    bank.on_block_consumed(input_ref=cast(ObjectRef[Block], held))
+    bank.drain_consumed_blocks()
+    actor = bank.live_object_store(actor_id=ACTOR)
+    assert actor.num_withheld_output_bytes == 0
+    assert actor.num_pulled_output_bytes == 50
+    assert bank.live_object_store(op=actor_op).num_withheld_output_blocks == 0
+
+
+def test_reserved_headroom_is_not_free_twice():
+    """Free object store is what the node holds minus Data blocks minus what
+    escape hatches already reserved there, so two grants can't count the same
+    bytes."""
+    bank = ResourceBank()
+    actor_op = _make_op()
+    bank.set_node_view(node_view={NODE: ExecutionResources(object_store_memory=1000)})
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
+    bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
+    bank.on_task_completed(op=actor_op, task_id=TASK)
+    _new_output(bank, actor_op, "out", task_id=TASK, size_bytes=100)
+    assert bank.free_object_store_bytes(node_id=NODE) == 900
+
+    assert bank.reserve_headroom(node_id=NODE, num_bytes=300) == 300
+    assert bank.free_object_store_bytes(node_id=NODE) == 600
+    bank.release_headroom(node_id=NODE, num_bytes=300)
+    assert bank.free_object_store_bytes(node_id=NODE) == 900
+
+    # Capped at the node's free bytes.
+    assert bank.reserve_headroom(node_id=NODE, num_bytes=5000) == 900
+    assert bank.free_object_store_bytes(node_id=NODE) == 0
+    assert bank.reserve_headroom(node_id=NODE, num_bytes=1) == 0
