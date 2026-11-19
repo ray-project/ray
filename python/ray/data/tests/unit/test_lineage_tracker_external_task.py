@@ -1,4 +1,4 @@
-"""PROTOTYPE. Tracker semantics for an external task, such as the push-based
+"""Tracker semantics for an external task, such as the push-based
 split's delivery of one output block to a train worker.
 
 The executor registers each push as a task that consumes one output block of the

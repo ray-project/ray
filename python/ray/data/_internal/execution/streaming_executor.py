@@ -172,7 +172,7 @@ def _disable_data_reconstruction_if_unsupported(
             op._block_ref_bundler._strategy, ExactMultipleSize
         ):
             continue
-        # PROTOTYPE: a non-equal split only routes whole blocks. An equal split
+        # A non-equal split only routes whole blocks. An equal split
         # slices blocks in untracked tasks, so it stays unsupported. A split's
         # outputs are only covered when its consumers report the tasks that
         # consume them, so a pull-based split stays unsupported too.
@@ -282,7 +282,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # inline fetcher reproduces the synchronous, master-identical path.
         self._metadata_fetcher = make_metadata_fetcher()
 
-        # PROTOTYPE: tasks outside the executor that consume its outputs, such
+        # Tasks outside the executor that consume its outputs, such
         # as the push-based split's delivery of a block to a train worker. None
         # unless `enable_external_consumer_tasks` was called.
         self._external_consumer_tasks: Optional[ExternalConsumerTasks] = None
@@ -621,8 +621,8 @@ class StreamingExecutor(Executor, threading.Thread):
             return self._generate_stats()
 
     def enable_external_consumer_tasks(self) -> ExternalConsumerTasks:
-        """PROTOTYPE. Track every task outside the executor that consumes its
-        outputs, and return what the external consumer reports those tasks to.
+        """Track every task outside the executor that consumes its outputs,
+        and return what the external consumer reports those tasks to.
 
         Call before ``execute``, since it decides whether the plan supports
         lineage reconstruction. The executor keeps running while any external

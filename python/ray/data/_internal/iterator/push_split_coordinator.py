@@ -79,8 +79,8 @@ BLOCKED_CLIENT_WARN_TIMEOUT = 30
 # coordinator, which sends it with every delivery.
 ReceiverKey = str
 
-# PROTOTYPE knob: 0 restores #66466's fire-and-forget pushes, for measuring
-# the cost of tracking them.
+# Set to 0 to push without tracking, as #66466 did. Untracked pushes aren't
+# covered by lineage reconstruction.
 _TRACK_PUSHES = os.environ.get("RAY_DATA_PUSH_SPLIT_TRACK_PUSHES", "1") == "1"
 
 
@@ -105,7 +105,7 @@ class _ExecutorError:
 
 @dataclass
 class _LostBlock:
-    """PROTOTYPE. Placeholder for a pushed block whose input was lost before
+    """Placeholder for a pushed block whose input was lost before
     delivery. The receiver skips its seq, and the re-produced block arrives
     later under a new seq."""
 
@@ -116,7 +116,7 @@ _SequencedItem = Union[_BlockPush, _EndOfEpoch, _LostBlock]
 
 @dataclass
 class _PendingPush:
-    """PROTOTYPE. A push whose return ref hasn't resolved yet."""
+    """A push whose return ref hasn't resolved yet."""
 
     split_idx: int
     seq: int
@@ -129,9 +129,9 @@ class _PendingPush:
     size_bytes: int
 
 
-# PROTOTYPE: put on the watcher's queue to tell the watcher thread to exit.
+# Put on the watcher's queue to tell the watcher thread to exit.
 _STOP_WATCHER = object()
-# PROTOTYPE: how long the watcher waits on pending pushes per pass.
+# How long the watcher waits on pending pushes per pass.
 _WATCH_WAIT_TIMEOUT_S = 0.1
 
 
@@ -224,7 +224,7 @@ class _SplitFlow:
             return len(self._unconsumed_refs)
 
     def record_loss(self, num_rows: int, size_bytes: int, block_ref: Any) -> None:
-        """PROTOTYPE. Un-count a push whose block was lost before delivery, so
+        """Un-count a push whose block was lost before delivery, so
         the window doesn't stay full while the block is reconstructed."""
         with self.cond:
             # finish() already dropped the split's counts and held refs.
@@ -301,11 +301,11 @@ class PushSplitCoordinator:
         self._consumers: Dict[int, Tuple[ray.actor.ActorHandle, ReceiverKey]] = {}
         self._pusher_threads: List[threading.Thread] = []
         self._pusher_stop_events: Dict[int, threading.Event] = {}
-        # PROTOTYPE: where each push is reported as an external task.
+        # Where each push is reported as an external task.
         # Recreated with the executor every epoch. None when pushes aren't
         # tracked.
         self._external_consumer_tasks: Optional["ExternalConsumerTasks"] = None
-        # PROTOTYPE: the pushers hand each push to the watcher thread through
+        # The pushers hand each push to the watcher thread through
         # this queue. Both are recreated every epoch, and are None when pushes
         # aren't tracked.
         self._pending_push_q: Optional[queue_module.Queue] = None
@@ -742,7 +742,7 @@ class PushSplitCoordinator:
         external_tasks: "ExternalConsumerTasks",
         pending_push_q: queue_module.Queue,
     ) -> None:
-        """PROTOTYPE. Resolve pushes and report each one as an external task.
+        """Resolve pushes and report each one as an external task.
 
         Shaped like ``ThreadedMetadataFetcher``'s fetch thread. The pushers hand
         each push to this thread through ``pending_push_q``, and only this thread

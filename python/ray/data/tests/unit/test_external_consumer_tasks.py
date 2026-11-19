@@ -1,5 +1,5 @@
-"""PROTOTYPE. How ``ExternalConsumerTasks`` applies the external tasks that
-external_tasks report to the lineage tracker on the executor thread."""
+"""How ``ExternalConsumerTasks`` applies the external tasks that consumers
+report to the lineage tracker on the executor thread."""
 
 import sys
 from dataclasses import dataclass
