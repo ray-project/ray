@@ -19,7 +19,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from itertools import groupby
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 GATED_SEVERITIES = ("CRITICAL", "HIGH")
 # Trivy statuses meaning no usable fix exists, even if FixedVersion is set.
