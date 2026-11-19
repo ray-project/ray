@@ -77,6 +77,35 @@ def test_tensor_array_from_tensor_array_element():
     np.testing.assert_array_equal(t_arr.to_numpy(), np.arange(4, 8).reshape((1, 2, 2)))
 
 
+def test_tensor_array_astype_numeric():
+    arr = np.arange(4).reshape(2, 2)
+
+    result = TensorArray(arr).astype(np.float32)
+
+    assert result.dtype == np.float32
+    assert result.shape == arr.shape
+    np.testing.assert_array_equal(result, arr)
+
+
+def test_tensor_array_astype_string_and_object():
+    tensor_array = TensorArray(np.arange(4).reshape(2, 2))
+    expected_strings = ["[0 1]", "[2 3]"]
+
+    numpy_string_result = tensor_array.astype(str)
+    assert numpy_string_result.dtype.kind == "U"
+    assert numpy_string_result.tolist() == expected_strings
+
+    pandas_string_result = tensor_array.astype(pd.StringDtype())
+    assert pandas_string_result.dtype == pd.StringDtype()
+    assert pandas_string_result.tolist() == expected_strings
+
+    object_result = tensor_array.astype(object)
+    assert object_result.dtype == object
+    assert object_result.shape == (2,)
+    for actual, expected in zip(object_result, tensor_array):
+        np.testing.assert_array_equal(actual, expected)
+
+
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))

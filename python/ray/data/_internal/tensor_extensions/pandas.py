@@ -1238,8 +1238,8 @@ class TensorArray(
 
         if isinstance(dtype, TensorDtype):
             values = TensorArray(self._tensor.copy()) if copy else self
-        elif not (
-            pd.api.types.is_object_dtype(dtype) and pd.api.types.is_string_dtype(dtype)
+        elif pd.api.types.is_string_dtype(dtype) and not pd.api.types.is_object_dtype(
+            dtype
         ):
             values = np.array([str(t) for t in self._tensor])
             if isinstance(dtype, pd.StringDtype):
