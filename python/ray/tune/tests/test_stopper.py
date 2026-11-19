@@ -1,5 +1,7 @@
+import datetime
 import pickle
 
+import pytest
 from freezegun import freeze_time
 
 from ray.tune.stopper import TimeoutStopper
@@ -54,6 +56,40 @@ def test_timeout_stopper_recover_after_timeout():
         assert stopper.stop_all()
         frozen.tick(10)
         assert stopper.stop_all()
+
+
+@pytest.mark.parametrize(
+    "invalid_timeout",
+    [
+        True,
+        False,
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        -1,
+        -0.5,
+        datetime.timedelta(seconds=-5),
+        "60",
+    ],
+)
+def test_timeout_stopper_validation(invalid_timeout):
+    with pytest.raises(ValueError):
+        TimeoutStopper(timeout=invalid_timeout)
+
+
+def test_timeout_stopper_backward_clock_and_epoch_zero(monkeypatch):
+    """Ensure epoch 0.0 is tracked and backward clock steps do not refund budget."""
+    times = iter([0.0, 40.0, 20.0, 45.0])
+    monkeypatch.setattr("ray.tune.stopper.timeout.time.time", lambda: next(times))
+    stopper = TimeoutStopper(timeout=60)
+    # First check at t=0.0 sets _last_check = 0.0 (budget = 60)
+    assert not stopper.stop_all()
+    # Second check at t=40.0 deducts 40s even though _last_check == 0.0 (budget = 20)
+    assert not stopper.stop_all()
+    # Backward clock step to t=20.0 does not refund 20s (budget stays 20)
+    assert not stopper.stop_all()
+    # Check at t=45.0 deducts 25s (budget = -5 <= 0) -> stops
+    assert stopper.stop_all()
 
 
 if __name__ == "__main__":

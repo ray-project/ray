@@ -1,4 +1,5 @@
 import datetime
+import math
 import time
 from typing import Union
 
@@ -15,8 +16,8 @@ class TimeoutStopper(Stopper):
     argument is passed to `tune.RunConfig()`.
 
     Args:
-        timeout: Either a number specifying the timeout in seconds, or
-            a `datetime.timedelta` object.
+        timeout: Either a non-negative finite number specifying the timeout
+            in seconds, or a non-negative `datetime.timedelta` object.
     """
 
     def __init__(self, timeout: Union[int, float, datetime.timedelta]):
@@ -24,12 +25,21 @@ class TimeoutStopper(Stopper):
 
         if isinstance(timeout, timedelta):
             self._timeout_seconds = timeout.total_seconds()
-        elif isinstance(timeout, (int, float)):
+        elif isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
             self._timeout_seconds = timeout
         else:
             raise ValueError(
                 "`timeout` parameter has to be either a number or a "
                 "`datetime.timedelta` object. Found: {}".format(type(timeout))
+            )
+
+        if not math.isfinite(self._timeout_seconds):
+            raise ValueError(
+                f"`timeout` must be a finite number of seconds, got {timeout}."
+            )
+        if self._timeout_seconds < 0:
+            raise ValueError(
+                f"`timeout` must be non-negative, got {self._timeout_seconds} seconds."
             )
 
         self._budget = self._timeout_seconds
@@ -44,8 +54,8 @@ class TimeoutStopper(Stopper):
     def stop_all(self):
         now = time.time()
 
-        if self._last_check:
-            taken = now - self._last_check
+        if self._last_check is not None:
+            taken = max(0.0, now - self._last_check)
             self._budget -= taken
 
         self._last_check = now
