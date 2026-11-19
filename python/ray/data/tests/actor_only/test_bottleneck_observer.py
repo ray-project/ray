@@ -405,6 +405,35 @@ def test_growth_target_follows_how_long_neighbours_wait(
     )
 
 
+@pytest.mark.parametrize(
+    "op_obp, expected",
+    [
+        # Output-backpressured 96% of the time: ReadVideo's 0.95 wait is on
+        # the GPU op behind it (0.95 x 0.04), so the GPU op starving 0.13
+        # decides: ceil(4 / 0.87) = 5. Uncorrected, 0.95 asked for 80,
+        # capped at 1.5 x 4 = 6, every tick (4 -> 6 -> 9 -> 12 -> 14).
+        (0.96, 5),
+        # Never output-backpressured: ReadVideo's wait is all on it.
+        (0.0, 6),
+    ],
+    ids=["output-blocked-op", "working-op"],
+)
+def test_growth_target_ignores_waits_passing_through_a_blocked_op(op_obp, expected):
+    """video_object_detection 2:22:16: resize_frame (4 actors, busy 0.04)
+    between ReadVideo (blocked 0.95 on it) and the GPU op (starved 0.13)."""
+    shares = {
+        "Read": OpShares(busy=0.05, obp=0.95, starved=0.0, actors=2),
+        "Resize": OpShares(busy=1.0 - op_obp, obp=op_obp, starved=0.0, actors=4),
+        "Gpu": OpShares(busy=0.48, obp=0.39, starved=0.13, actors=8),
+    }
+    prev_ops, next_ops = _chain("Read", "Resize", "Gpu")
+    edge_shares = {("Read", "Resize"): EdgeShares(blocked=0.95, self_limited=0.0)}
+    assert (
+        growth_target("Resize", shares, prev_ops, next_ops, edge_shares, 1.5, 100)
+        == expected
+    )
+
+
 class _Clock:
     def __init__(self):
         self.now = 0.0

@@ -350,10 +350,19 @@ def growth_target(
     it, or a consumer starved). A producer blocked w of the time could make
     1 / (1 - w) times as much, so the bottleneck needs that much more
     throughput. At least b + 1, at most b x ``max_ratio`` and ``max_size``.
+
+    A producer's wait counts only for the share of time ``op`` is not
+    output-backpressured itself. While ``op``'s slots hold finished output
+    they take no input, so a producer blocked then waits on what holds
+    ``op`` back, not on ``op``'s throughput: in video_object_detection,
+    resize_frame (obp 0.96 behind the GPU op) had ReadVideo blocked 0.95 on
+    it, which asked for 20x its actors when the GPU op starving 0.13 asked
+    for one more.
     """
     b = shares[op].actors if op in shares else 0
+    not_obp = 1.0 - shares[op].obp if op in shares else 1.0
     waits = [
-        edge_shares_of(p, op, shares, edge_shares).blocked
+        edge_shares_of(p, op, shares, edge_shares).blocked * not_obp
         for p in prev_ops.get(op, ())
         if p in shares
     ]
