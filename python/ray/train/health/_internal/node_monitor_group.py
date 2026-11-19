@@ -7,9 +7,10 @@ from ray.actor import ActorHandle
 from ray.train.health._internal.constants import (
     DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
+    ON_DEMAND_PROBE_GRACE_S,
 )
 from ray.train.health._internal.node_monitor import NodeMonitor, NodeMonitorStatus
-from ray.train.health._internal.probe_utils import ScheduledProbe
+from ray.train.health._internal.probe_utils import ScheduledProbe, split_probes_by_type
 from ray.train.health.probe import ControllerProbe, NodeIdStr, NodeProbe, Probe
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -207,7 +208,9 @@ class NodeMonitorGroup:
 
         Args:
             probes: The probes to poll.
-            timeout_s: Timeout in seconds for the nodes to answer.
+            timeout_s: How long the probes have to return. A node answers
+                once they did or this passed, and one that hasn't answered
+                ``ON_DEMAND_PROBE_GRACE_S`` later gets a ``TimeoutError``.
             node_ids: The worker nodes to poll the NodeProbes on. ``None`` means
                 every worker node with a monitor.
 
@@ -218,15 +221,20 @@ class NodeMonitorGroup:
         missing = [n for n in node_ids if n not in self._worker_node_monitors]
         if missing:
             raise ValueError(f"No NodeMonitor on nodes {missing}.")
-        node_probes = [p for p in probes if isinstance(p, NodeProbe)]
-        controller_probes = [p for p in probes if isinstance(p, ControllerProbe)]
-        self._on_demand_deadline = time.monotonic() + timeout_s
+        _, node_probes, controller_probes = split_probes_by_type(probes)
+        self._on_demand_deadline = (
+            time.monotonic() + timeout_s + ON_DEMAND_PROBE_GRACE_S
+        )
         self._on_demand_polls = {
-            node_id: self._worker_node_monitors[node_id].poll_probes.remote(node_probes)
+            node_id: self._worker_node_monitors[node_id].poll_probes.remote(
+                node_probes, timeout_s
+            )
             for node_id in node_ids
         }
         self._on_demand_controller_poll = (
-            self._controller_node_monitor.poll_probes.remote(controller_probes)
+            self._controller_node_monitor.poll_probes.remote(
+                controller_probes, timeout_s
+            )
         )
 
     def poll_probe_results(self) -> Optional[NodeMonitorGroupPollStatus]:
