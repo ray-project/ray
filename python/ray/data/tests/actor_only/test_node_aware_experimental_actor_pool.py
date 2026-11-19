@@ -1,9 +1,8 @@
 """Tests for the node-aware experimental actor pool
 (``_NodeAwareExperimentalActorPool``, actor-only backend): spot-preemption
-node draining and actor relocation."""
+node draining."""
 import unittest
 from typing import Any, Dict, List, Optional, Tuple, cast
-from unittest.mock import patch
 
 import pyarrow as pa
 import pytest
@@ -26,7 +25,6 @@ from ray.data._internal.experimental.execution.operators.actor_pool import (
     _NodeAwareExperimentalActorPool,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-    _ACTOR_STATE_RESTARTING,
     DrainReason,
     ScaleUpRequest,
 )
@@ -141,10 +139,9 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         ray.shutdown()
 
     def setUp(self):
-        # What the pool's injected ``get_draining_nodes`` / ``get_actor_locations``
-        # report; tests mutate these in place between refreshes.
+        # What the pool's injected ``get_draining_nodes`` reports; tests
+        # mutate it in place between refreshes.
         self._draining_nodes: Dict[str, int] = {}
-        self._actor_locations: Dict[str, str] = {}
 
     def _create_actor_fn(
         self,
@@ -176,7 +173,6 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
             create_actor_fn=self._create_actor_fn,
             config=config,
             get_draining_nodes=lambda: dict(self._draining_nodes),
-            get_actor_locations=lambda _ids: dict(self._actor_locations),
         )
         pool.set_resource_bank(_StubResourceBank())
         return pool
@@ -193,15 +189,6 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         pool.pending_to_running(ready_ref)
         return actor
 
-    @staticmethod
-    def _locations(
-        pool: _NodeAwareExperimentalActorPool, *actors: ActorHandle
-    ) -> Dict[str, str]:
-        return {
-            pool.get_actor_logical_id(actor): pool.get_actor_location(actor)
-            for actor in actors
-        }
-
     def test_drains_actors_on_draining_node(self):
         """Actors on a draining node start draining; actors elsewhere don't.
 
@@ -213,7 +200,6 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         pool.set_metrics(metrics, "Map")
         actor1 = self._add_ready_actor(pool, node_id="node1")
         actor2 = self._add_ready_actor(pool, node_id="node2")
-        self._actor_locations.update(self._locations(pool, actor1, actor2))
 
         # No drain: nothing drains.
         self._draining_nodes.clear()
@@ -246,7 +232,6 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         flight, and repeated refreshes don't re-drain it."""
         pool = self._create_pool()
         actor = self._add_ready_actor(pool, node_id="node1")
-        self._actor_locations.update(self._locations(pool, actor))
         self._draining_nodes.clear()
         pool.refresh_actor_state()
 
@@ -291,37 +276,6 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         active = self._add_ready_actor(pool, node_id="node2")
         assert pool.select_actors() is active
 
-    def test_actor_moved_by_restart_moves_its_committed_usage(self):
-        """A refresh that reports the actor on a new node must move its
-        node-keyed accounting, not just its address.
-
-        Left behind, the old node keeps a charge nothing can clear, and the
-        sizer reads it as a permanent overdraft on a node that is gone.
-        """
-        pool = self._create_pool()
-        actor = self._add_ready_actor(pool, node_id="node1")
-        logical_id = pool.get_actor_logical_id(actor)
-        self._draining_nodes.clear()
-        self._actor_locations[logical_id] = "node1"
-        pool.refresh_actor_state()
-        assert set(pool.committed_usage_by_node) == {"node1"}
-
-        # Ray core restarted it on node2.
-        self._actor_locations[logical_id] = "node2"
-        pool.refresh_actor_state()
-
-        assert pool.get_actor_location(actor) == "node2"
-        assert set(pool.committed_usage_by_node) == {"node2"}
-        assert set(pool._node_to_actor_states) == {"node2"}
-
-        # And the actor is schedulable at its new home, not the old one.
-        assert (
-            pool.select_actors(
-                bundle=_located_bundle("node2"), actor_locality_enabled=True
-            )
-            is actor
-        )
-
     def test_draining_usage_by_node_is_the_draining_part_of_committed(self):
         """Draining actors keep their committed usage until they die; the sizer
         nets this part out when it decides what is left to shed."""
@@ -342,10 +296,12 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         -- until its node starts draining, which must retract that."""
         pool = self._create_pool()
         actor = self._add_ready_actor(pool, node_id="node1")
-        self._actor_locations.update(self._locations(pool, actor))
         self._draining_nodes.clear()
         pool.refresh_actor_state()
 
+        # A task in flight keeps the drain open across refreshes (a refresh
+        # tears down a fully drained actor).
+        pool.on_task_submitted(actor, _located_bundle("node1"))
         pool.begin_draining(actor, reason=DrainReason.RESIZE)
         assert pool.num_reclaimable_draining_actors() == 1
 
@@ -355,25 +311,6 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         assert pool.num_draining_actors() == 1
         assert pool.num_reclaimable_draining_actors() == 0
         assert pool.reclaim_draining_actors(limit=1) == 0
-
-    def test_restarting_actor_on_draining_node_is_not_drained(self):
-        """A RESTARTING actor's recorded location is stale (Ray core may bring
-        it back elsewhere), so it isn't drained until it reports ALIVE again."""
-        pool = self._create_pool()
-        actor = self._add_ready_actor(pool, node_id="node1")
-        self._actor_locations.update(self._locations(pool, actor))
-        self._draining_nodes["node1"] = 1
-
-        with patch.object(
-            ActorHandle, "_get_local_state", return_value=_ACTOR_STATE_RESTARTING
-        ):
-            pool.refresh_actor_state()
-        assert pool._running_actors[actor].status == ActorStatus.RESTARTING
-        assert pool.num_draining_actors() == 0
-
-        # Back ALIVE on the still-draining node -> now it drains.
-        pool.refresh_actor_state()
-        assert pool._running_actors[actor].status == ActorStatus.DRAINING
 
     def test_actor_on_draining_node_stays_out_of_heaps_after_task_completion(self):
         """Draining is what keeps the actor unschedulable, and it is sticky.
@@ -386,7 +323,6 @@ class TestNodeAwareExperimentalActorPoolNodeDraining(unittest.TestCase):
         pool = self._create_pool()
         actor1 = self._add_ready_actor(pool, node_id="node1")
         actor2 = self._add_ready_actor(pool, node_id="node2")
-        self._actor_locations.update(self._locations(pool, actor1, actor2))
         self._draining_nodes.clear()
         pool.refresh_actor_state()
 
