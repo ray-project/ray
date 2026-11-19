@@ -8,7 +8,9 @@ time, so deletes, schema evolution and partition backfill stay PyIceberg's job:
                  -> pickle check -> cast to the projected schema -> block
 
 The reader yields a block per record batch and stops once the pushed limit is
-reached.
+reached. One file per call bounds memory but re-reads a delete file shared by
+several data files once per file; ``IcebergConfig.read_file_tasks_sequentially
+= False`` trades the other way, passing the whole unit in one call as V1 does.
 """
 
 from __future__ import annotations
@@ -40,7 +42,9 @@ class IcebergFileReader(Reader[FileManifest]):
 
     ``ArrowScan`` reads Parquet and ORC data files; Avro ones raise
     ``ValueError``, as in V1. It holds every batch of the files it is given, so
-    one file per call keeps memory to one file.
+    one file per call keeps memory to one file. With
+    ``DataContext.iceberg_config.read_file_tasks_sequentially = False`` the
+    whole unit goes in one call, as in V1.
     """
 
     def __init__(
@@ -84,22 +88,34 @@ class IcebergFileReader(Reader[FileManifest]):
             self._projected_schema, include_field_ids=False
         )
 
+        for record_batch in self._record_batches(input_split):
+            table = pa.Table.from_batches([record_batch])
+            # Before the cast, which fails opaquely on a pickled column.
+            raise_on_pickle_object_columns(table)
+            table = table.cast(target_schema)
+            if self._drop_all_columns:
+                # Zero-column tables lose their length on concat, so use the
+                # shared ``FileReader``'s null stub column.
+                table = table.select([]).append_column(
+                    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+                    pa.nulls(table.num_rows),
+                )
+            yield table
+
+    def _record_batches(self, input_split: FileManifest) -> Iterator[pa.RecordBatch]:
+        from ray.data.context import DataContext
+
+        tasks = scan_tasks_from_manifest(manifest=input_split)
+        if not DataContext.get_current().iceberg_config.read_file_tasks_sequentially:
+            # One call reads a delete file shared by several files once, but
+            # holds every file's batches. A list, since PyIceberg iterates twice.
+            yield from self._scan(limit=self._limit).to_record_batches(list(tasks))
+            return
         rows_read = 0
-        for task in scan_tasks_from_manifest(manifest=input_split):
+        for task in tasks:
             remaining = None if self._limit is None else self._limit - rows_read
             if remaining is not None and remaining <= 0:
                 return
             for record_batch in self._scan(limit=remaining).to_record_batches([task]):
                 rows_read += record_batch.num_rows
-                table = pa.Table.from_batches([record_batch])
-                # Before the cast, which fails opaquely on a pickled column.
-                raise_on_pickle_object_columns(table)
-                table = table.cast(target_schema)
-                if self._drop_all_columns:
-                    # Zero-column tables lose their length on concat, so use the
-                    # shared ``FileReader``'s null stub column.
-                    table = table.select([]).append_column(
-                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
-                        pa.nulls(table.num_rows),
-                    )
-                yield table
+                yield record_batch

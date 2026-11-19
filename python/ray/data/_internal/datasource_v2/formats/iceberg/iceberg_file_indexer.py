@@ -8,8 +8,9 @@ blocks of up to ``_FILES_PER_MANIFEST_BLOCK`` rows, one row per data file:
     plan_files() -> FileScanTask per data file -> manifest_from_scan_tasks
                  -> FileManifest blocks -> OnlineBinPacker -> read units
 
-Planning reads Iceberg metadata only, never a data file. A pushed predicate is
-ANDed into the scan's row filter so planning prunes partitions and files.
+Planning reads Iceberg metadata only, never a data file. It prunes on
+``read_iceberg``'s ``row_filter``; the scanner takes no Ray filters, so no
+predicate reaches listing.
 """
 
 from __future__ import annotations
@@ -30,9 +31,6 @@ from typing_extensions import override
 
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
     manifest_from_scan_tasks,
-)
-from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
-    combine_row_filter,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileIndexer,
@@ -96,14 +94,13 @@ class IcebergFileIndexer(FileIndexer):
     ) -> Iterable[FileManifest]:
         """Plan the table and yield the surviving files, one row each.
 
-        ``predicate`` is ANDed into the row filter so planning prunes files.
         ``excluded_read_unit_ids`` are file paths, since a read unit is a whole
         file. ``limit`` is applied by the reader; stopping listing early from
         Iceberg's per-file row counts is a follow-up. The other arguments don't
         apply and are ignored.
         """
         pending_tasks: List["FileScanTask"] = []
-        for task in self._plan_files(predicate=predicate):
+        for task in self._plan_files():
             if excluded_read_unit_ids and task.file.file_path in excluded_read_unit_ids:
                 continue
             pending_tasks.append(task)
@@ -127,24 +124,17 @@ class IcebergFileIndexer(FileIndexer):
         Unused: this only feeds schema sampling, and the schema comes from
         table metadata.
         """
-        for task in self._plan_files(predicate=None):
+        for task in self._plan_files():
             yield FileInfo(path=task.file.file_path, size=task.file.file_size_in_bytes)
 
-    def _plan_files(self, predicate: Optional["Expr"]) -> Iterator["FileScanTask"]:
+    def _plan_files(self) -> Iterator["FileScanTask"]:
         from pyiceberg.table import DataScan
 
-        row_filter, residual = combine_row_filter(
-            row_filter=self._row_filter, predicate=predicate
-        )
-        assert residual is None, (
-            "the scanner only reports a pushed predicate it could translate, "
-            f"but this one did not translate: {residual}"
-        )
         # Not ``Table.scan``: there is no catalog in this task.
         scan = DataScan(
             table_metadata=self._table_metadata,
             io=self._io,
-            row_filter=row_filter,
+            row_filter=self._row_filter,
             snapshot_id=self._snapshot_id,
             **self._scan_kwargs,
         )
@@ -152,6 +142,6 @@ class IcebergFileIndexer(FileIndexer):
             "Planning Iceberg scan of %s (snapshot %s, filter %s)",
             self._table_metadata.location,
             self._snapshot_id,
-            row_filter,
+            self._row_filter,
         )
         return iter(scan.plan_files())

@@ -1,13 +1,12 @@
-"""Iceberg helpers shared by the V2 Iceberg indexer and scanner, and by V1.
+"""Iceberg helpers shared by the V2 Iceberg scanner and by V1.
 
 Two pieces, both stateless:
 
 - Filter translation. ``_IcebergExpressionVisitor`` turns a Ray ``Expr`` into a
   PyIceberg ``BooleanExpression`` by mapping each Ray operation to its Iceberg
   class (``RAY_DATA_OPERATION_TO_ICEBERG``), and raises ``ValueError`` or
-  ``TypeError`` for anything Iceberg can't express. ``combine_row_filter`` ANDs
-  the result into a scan's row filter and hands back what didn't translate, so
-  the caller applies it above the read instead of dropping it.
+  ``TypeError`` for anything Iceberg can't express. V1's datasource and datasink
+  use it; V2 doesn't push filters yet.
 - ``_get_empty_projection_schema``, the stub field a read projects when it needs
   no columns, because PyIceberg returns zero rows for an empty projection.
 
@@ -17,8 +16,7 @@ that ``datasource_v2`` doesn't depend on the legacy package; the legacy
 datasource and datasink import them from here instead.
 """
 
-import logging
-from typing import TYPE_CHECKING, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.planner.plan_expression.expression_visitors import _ExprVisitor
@@ -27,7 +25,6 @@ from ray.data.expressions import (
     BinaryExpr,
     ColumnExpr,
     DownloadExpr,
-    Expr,
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
@@ -81,8 +78,6 @@ except ImportError:
 if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.schema import Schema
-
-logger = logging.getLogger(__name__)
 
 
 # Field ID for the fabricated stub field, see ``_get_empty_projection_schema``.
@@ -239,33 +234,3 @@ class _IcebergExpressionVisitor(
         raise TypeError(
             "UUID expressions cannot be converted to Iceberg filter expressions."
         )
-
-
-def combine_row_filter(
-    row_filter: "BooleanExpression", predicate: Optional[Expr]
-) -> Tuple["BooleanExpression", Optional[Expr]]:
-    """AND a Ray expression into an Iceberg filter.
-
-    Args:
-        row_filter: The scan's current Iceberg filter.
-        predicate: The Ray expression to AND into it, or ``None``.
-
-    Returns:
-        ``(filter, residual)``. ``residual`` is the whole ``predicate`` if it
-        has no Iceberg equivalent, e.g. ``col("x") * 2 > 10``, else ``None``.
-    """
-    from pyiceberg.expressions import AlwaysTrue, And, BooleanExpression
-
-    if predicate is None:
-        return row_filter, None
-    try:
-        translated = _IcebergExpressionVisitor().visit(predicate)
-    except (ValueError, TypeError) as e:
-        logger.debug("Not pushing %s into the Iceberg scan: %s", predicate, e)
-        return row_filter, predicate
-    if not isinstance(translated, BooleanExpression):
-        # A bare column like ``col("is_valid")`` is a term, not a filter.
-        return row_filter, predicate
-    if isinstance(row_filter, AlwaysTrue):
-        return translated, None
-    return And(row_filter, translated), None

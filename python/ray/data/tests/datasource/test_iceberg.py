@@ -3186,18 +3186,6 @@ class TestIcebergDatasourceV2:
             list(reader.read(manifest))
         assert not marker.exists()
 
-    def test_listing_prunes_files_with_the_pushed_predicate(self):
-        """A pushed predicate on the partition column leaves files unlisted."""
-        indexer = self._indexer()
-        unfiltered = sum(len(m) for m in indexer.list_files(None, filesystem=None))
-        filtered = sum(
-            len(m)
-            for m in indexer.list_files(
-                None, filesystem=None, predicate=col("col_c") == 3
-            )
-        )
-        assert 0 < filtered < unfiltered
-
     def test_listing_skips_excluded_read_units(self):
         """A file whose path is an excluded read unit id is not listed again."""
         indexer = self._indexer()
@@ -3216,20 +3204,6 @@ class TestIcebergDatasourceV2:
             for path in manifest.paths.tolist()
         ]
         assert sorted(remaining) == sorted(listed[1:])
-
-    def test_bare_column_predicate_is_not_pushed(self):
-        """``col("is_valid")`` is a term, not a filter, so it stays above the read.
-
-        ``plan_files`` would reject it inside the listing task.
-        """
-        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
-            combine_row_filter,
-        )
-
-        predicate = col("is_valid")
-        row_filter, residual = combine_row_filter(pyi_expr.AlwaysTrue(), predicate)
-        assert residual is predicate
-        assert row_filter == pyi_expr.AlwaysTrue()
 
 
 if __name__ == "__main__":

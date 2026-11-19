@@ -4,36 +4,30 @@
 holds what PyIceberg's ``ArrowScan`` needs (table metadata, ``FileIO``,
 projected schema, row filter) and creates one ``IcebergFileReader`` per task.
 
-It takes all three pushdowns: a filter is translated to Iceberg's and ANDed into
-the row filter (``combine_row_filter``), and the part Iceberg can't express
-stays above the read; pruned columns are reprojected in the order asked for;
-the limit is handed to the reader. It has no partition pruning, since
-``plan_files()`` already prunes on Iceberg's own partition values.
+It takes column pruning and the limit: pruned columns are reprojected in the
+order asked for, and the limit is handed to the reader. It takes no filters: a
+Ray filter runs above the read, and filter pushdown is left to a later stack.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Optional, Tuple
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pyarrow as pa
-from typing_extensions import override
 
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (
     IcebergFileReader,
 )
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
     _get_empty_projection_schema,
-    combine_row_filter,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
-    SupportsFilterPushdown,
     SupportsLimitPushdown,
 )
 from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
-from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -47,7 +41,6 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class IcebergScanner(
     Scanner[FileManifest],
-    SupportsFilterPushdown,
     SupportsColumnPruning,
     SupportsLimitPushdown,
 ):
@@ -61,11 +54,9 @@ class IcebergScanner(
     projected_schema: "Schema"
     table_metadata: "TableMetadata"
     io: "FileIO"
-    # ``read_iceberg``'s parsed row filter, ANDed with any pushed predicate.
+    # ``read_iceberg``'s parsed ``row_filter`` argument.
     row_filter: "BooleanExpression"
     case_sensitive: bool = True
-    # The pushed predicate in Ray form, only for ``pushed_predicate``.
-    predicate: Optional[Expr] = None
 
     def _pruned_schema(self) -> "Schema":
         from pyiceberg.schema import Schema
@@ -108,17 +99,3 @@ class IcebergScanner(
             limit=self.limit,
             drop_all_columns=row_count_only,
         )
-
-    @override
-    def push_filters(self, predicate: Expr) -> Tuple["IcebergScanner", Optional[Expr]]:
-        row_filter, residual = combine_row_filter(
-            row_filter=self.row_filter, predicate=predicate
-        )
-        if residual is not None:
-            return self, residual
-        pushed = predicate if self.predicate is None else self.predicate & predicate
-        return replace(self, row_filter=row_filter, predicate=pushed), None
-
-    @override
-    def pushed_predicate(self) -> Optional[Expr]:
-        return self.predicate
