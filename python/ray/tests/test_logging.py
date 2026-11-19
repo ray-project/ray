@@ -1,7 +1,9 @@
+import errno
 import io
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -855,6 +857,379 @@ def test_log_monitor(tmp_path, live_dead_pids):
     # monitor.err and gcs_server.1.err have not been updated, so they remain closed.
     assert len(log_monitor.closed_file_infos) == 2
     assert len(list((log_dir / "old").iterdir())) == 2
+
+
+def test_log_monitor_moves_dead_worker_files(tmp_path, live_dead_pids):
+    """Dead workers' files are moved to old/ even if they were never open
+    when the open-file cap was hit, but only after they are fully published.
+    """
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "old").mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    job_id = "01000000"
+    alive_pid, dead_pid = live_dead_pids
+
+    mock_publisher = MagicMock()
+    # The cap is never reached, so _close_all_files never runs.
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=100
+    )
+
+    dead_read = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
+    dead_idle = f"worker-{worker_id}-{job_id}-{dead_pid}.err"
+    alive = f"worker-{worker_id}-{job_id}-{alive_pid}.out"
+    create_file(log_dir, dead_read, "line\n")
+    create_file(log_dir, dead_idle, "")
+    create_file(log_dir, alive, "line\n")
+    create_file(log_dir, "raylet.err", "line\n")
+
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    # The empty .err file was never opened, so it is still in closed_file_infos.
+    assert len(log_monitor.open_file_infos) == 3
+    assert len(log_monitor.closed_file_infos) == 1
+
+    # A dead worker's file with unpublished lines is not moved yet.
+    with open(log_dir / dead_read, "a") as f:
+        f.write("last words\n")
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / dead_read).exists()
+    assert not (log_dir / dead_idle).exists()
+    assert (log_dir / "old" / dead_idle).exists()
+
+    # Once published, it is moved and no longer tracked.
+    assert log_monitor.check_log_files_and_publish_updates()
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": dead_pid,
+            "job": None,
+            "is_err": False,
+            "lines": ["last words"],
+            "actor_name": None,
+            "task_name": None,
+        }
+    )
+    log_monitor.move_dead_worker_files()
+    assert sorted(p.name for p in (log_dir / "old").iterdir()) == sorted(
+        [dead_read, dead_idle]
+    )
+    assert sorted(p.name for p in log_dir.iterdir() if p.is_file()) == sorted(
+        [alive, "raylet.err"]
+    )
+    assert len(log_monitor.open_file_infos) == 2
+    assert len(log_monitor.log_filenames) == 2
+
+    # The files are not picked up again.
+    log_monitor.update_log_filenames()
+    assert len(log_monitor.log_filenames) == 2
+
+
+def test_log_monitor_reopens_unread_dead_worker_file(tmp_path, live_dead_pids):
+    """A file closed with unread lines while its worker was alive is drained
+    and then moved after the worker dies, even though it no longer grows.
+    """
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "old").mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    _, dead_pid = live_dead_pids
+    filename = f"worker-{worker_id}-01000000-{dead_pid}.out"
+    create_file(log_dir, filename, "a\nb\n")
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    # Simulate it having been closed mid-read while the worker was alive.
+    file_info = log_monitor.open_file_infos.pop()
+    file_info.file_handle.close()
+    file_info.file_handle = None
+    log_monitor.closed_file_infos.append(file_info)
+    assert file_info.file_position == 0
+
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / filename).exists()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": dead_pid,
+            "job": None,
+            "is_err": False,
+            "lines": ["a", "b"],
+            "actor_name": None,
+            "task_name": None,
+        }
+    )
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / "old" / filename).exists()
+    assert not log_monitor.log_filenames
+
+
+def test_log_monitor_dead_worker_sweep_edge_cases(
+    tmp_path, live_dead_pids, monkeypatch
+):
+    """The sweep leaves files in place when it can't move them safely."""
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    _, dead_pid = live_dead_pids
+    worker_file = f"worker-{worker_id}-01000000-{dead_pid}.out"
+
+    # 1a. No logs/old/: it is created and the file moved.
+    log_dir = tmp_path / "no_old" / "logs"
+    log_dir.mkdir(parents=True)
+    create_file(log_dir, worker_file, "line\n")
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), MagicMock(), is_proc_alive, max_files_open=5
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / "old" / worker_file).exists()
+    assert not log_monitor.log_filenames
+
+    # 1b. A move that fails: the file stays tracked and is not published again.
+    log_dir = tmp_path / "move_fails" / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "old").mkdir()
+    create_file(log_dir, worker_file, "line\n")
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+
+    def failing_move(src, dst):
+        raise OSError(errno.ENOENT, "simulated", src)
+
+    with monkeypatch.context() as m:
+        m.setattr(shutil, "move", failing_move)
+        log_monitor.move_dead_worker_files()
+    assert (log_dir / worker_file).exists()
+    assert len(log_monitor.log_filenames) == 1
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert not log_monitor.check_log_files_and_publish_updates()
+    assert mock_publisher.publish_logs.call_count == 1
+
+    # 2. A system log under a temp dir named like a worker log is never moved,
+    # even though WORKER_LOG_PATTERN gives it a dead PID from the path.
+    log_dir = tmp_path / f"worker-{worker_id}-{dead_pid}" / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "old").mkdir()
+    create_file(log_dir, "gcs_server.1.err", "")
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), MagicMock(), is_proc_alive, max_files_open=5
+    )
+    log_monitor.update_log_filenames()
+    assert log_monitor.closed_file_infos[0].worker_pid == dead_pid
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / "gcs_server.1.err").exists()
+
+    # 3. A file truncated while closed is read from the start before it moves.
+    log_dir = tmp_path / "truncated" / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "old").mkdir()
+    create_file(log_dir, worker_file, "first line, which is quite long\n")
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    file_info = log_monitor.open_file_infos.pop()
+    file_info.file_handle.close()
+    file_info.file_handle = None
+    log_monitor.closed_file_infos.append(file_info)
+    create_file(log_dir, worker_file, "new\n")
+
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / worker_file).exists()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    assert mock_publisher.publish_logs.call_args[0][0]["lines"] == ["new"]
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / "old" / worker_file).exists()
+
+    # 4. An open file whose path was removed keeps its unread lines until read.
+    # Windows does not allow unlinking a file that is open.
+    if sys.platform == "win32":
+        return
+    log_dir = tmp_path / "unlinked" / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "old").mkdir()
+    create_file(log_dir, worker_file, "a\n")
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    with open(log_dir / worker_file, "a") as f:
+        f.write("b\n")
+    os.unlink(log_dir / worker_file)
+    log_monitor.move_dead_worker_files()
+    assert len(log_monitor.open_file_infos) == 1
+    log_monitor.check_log_files_and_publish_updates()
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": dead_pid,
+            "job": None,
+            "is_err": False,
+            "lines": ["b"],
+            "actor_name": None,
+            "task_name": None,
+        }
+    )
+    log_monitor.move_dead_worker_files()
+    assert not log_monitor.open_file_infos
+    assert not log_monitor.log_filenames
+
+
+def test_log_monitor_close_all_files_drains_dead_worker(tmp_path, live_dead_pids):
+    """Hitting the open-file cap does not move a dead worker's file while it
+    still has unread lines; they are published first."""
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "old").mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    _, dead_pid = live_dead_pids
+    worker_file = f"worker-{worker_id}-01000000-{dead_pid}.out"
+    num_lines = ray_constants.LOG_MONITOR_NUM_LINES_TO_READ + 500
+    create_file(log_dir, worker_file, "x\n" * num_lines)
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=1
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert not log_monitor.can_open_more_files
+    # One pass reads at most LOG_MONITOR_NUM_LINES_TO_READ lines.
+    assert log_monitor.check_log_files_and_publish_updates()
+    # The cap was hit, so this closes every file. The dead worker's file has
+    # unread lines, so it is kept and reopened instead of moved.
+    log_monitor.open_closed_files()
+    assert (log_dir / worker_file).exists()
+    assert len(log_monitor.open_file_infos) == 1
+    assert log_monitor.check_log_files_and_publish_updates()
+    published = sum(
+        len(call.args[0]["lines"])
+        for call in mock_publisher.publish_logs.call_args_list
+    )
+    assert published == num_lines
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / "old" / worker_file).exists()
+    assert not log_monitor.log_filenames
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows does not allow unlinking an open file."
+)
+def test_log_monitor_close_all_files_keeps_unlinked_dead_worker(
+    tmp_path, live_dead_pids
+):
+    """Hitting the cap keeps a dead worker's unlinked file open while it still
+    has unread lines, since the handle is the only way left to read them."""
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "old").mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    _, dead_pid = live_dead_pids
+    worker_file = f"worker-{worker_id}-01000000-{dead_pid}.out"
+    num_lines = ray_constants.LOG_MONITOR_NUM_LINES_TO_READ + 500
+    create_file(log_dir, worker_file, "x\n" * num_lines)
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=1
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    os.unlink(log_dir / worker_file)
+    # The cap was hit, so this would close every file; the unlinked one stays open.
+    log_monitor.open_closed_files()
+    assert len(log_monitor.open_file_infos) == 1
+    assert log_monitor.check_log_files_and_publish_updates()
+    published = sum(
+        len(call.args[0]["lines"])
+        for call in mock_publisher.publish_logs.call_args_list
+    )
+    assert published == num_lines
+    log_monitor.move_dead_worker_files()
+    assert not log_monitor.open_file_infos
+    assert not log_monitor.log_filenames
+
+
+def test_log_monitor_close_all_files_rewritten_dead_worker(tmp_path, live_dead_pids):
+    """At the cap, a dead worker's file that was truncated in place or replaced
+    is not moved; its new contents are published first."""
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "old").mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    _, dead_pid = live_dead_pids
+    worker_file = f"worker-{worker_id}-01000000-{dead_pid}.out"
+    num_lines = ray_constants.LOG_MONITOR_NUM_LINES_TO_READ + 500
+
+    def published_lines(publisher):
+        return [
+            line
+            for call in publisher.publish_logs.call_args_list
+            for line in call.args[0]["lines"]
+        ]
+
+    # Truncated in place (same inode, smaller than the read position).
+    create_file(log_dir, worker_file, "x\n" * num_lines)
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=1
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    with open(log_dir / worker_file, "w") as f:
+        f.write("y\n" * 10)
+    log_monitor.open_closed_files()  # cap hit: closes, keeps, reopens from 0
+    assert (log_dir / worker_file).exists()
+    assert log_monitor.check_log_files_and_publish_updates()
+    assert published_lines(mock_publisher)[-10:] == ["y"] * 10
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / "old" / worker_file).exists()
+    (log_dir / "old" / worker_file).unlink()
+
+    # Replaced by a smaller file (new inode) after being fully read.
+    if sys.platform == "win32":
+        return  # Windows does not allow replacing a file that is open.
+    create_file(log_dir, worker_file, "x\n" * 10)
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=1
+    )
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert log_monitor.check_log_files_and_publish_updates()
+    replacement = log_dir / "replacement"
+    replacement.write_text("z\n" * 5)
+    os.replace(replacement, log_dir / worker_file)
+    log_monitor.open_closed_files()  # cap hit: the handle is drained, the path isn't
+    assert (log_dir / worker_file).exists()
+    assert log_monitor.check_log_files_and_publish_updates()
+    assert published_lines(mock_publisher)[-5:] == ["z"] * 5
+    log_monitor.move_dead_worker_files()
+    assert (log_dir / "old" / worker_file).exists()
 
 
 def test_tpu_logs(tmp_path):
