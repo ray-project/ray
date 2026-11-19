@@ -1,6 +1,8 @@
 import functools
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+
+import pyarrow as pa
 
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     ListFilesPushdown,
@@ -12,7 +14,14 @@ from ray.data._internal.datasource_v2.interfaces.pushdown import (
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data.expressions import BinaryExpr, Expr, Operation
+from ray.data.expressions import (
+    BinaryExpr,
+    ColumnExpr,
+    Expr,
+    LiteralExpr,
+    Operation,
+    UnaryExpr,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
@@ -121,6 +130,74 @@ def append_unique_predicate(predicates: List[Expr], predicate: Expr) -> None:
     """Append ``predicate`` unless a structurally equal one is already listed."""
     if not any(predicate.structurally_equals(existing) for existing in predicates):
         predicates.append(predicate)
+
+
+# Comparisons that Parquet min/max statistics answer correctly for floats.
+_STATISTICS_SAFE_FLOAT_COMPARISONS = frozenset(
+    {Operation.LT, Operation.LE, Operation.GT, Operation.GE, Operation.EQ}
+)
+
+
+def _has_float(data_type: pa.DataType) -> bool:
+    """Whether ``data_type`` is a float or nests one."""
+    if pa.types.is_dictionary(data_type):
+        data_type = data_type.value_type
+    return pa.types.is_floating(data_type) or any(
+        _has_float(data_type.field(i).type) for i in range(data_type.num_fields)
+    )
+
+
+def _is_statistics_safe(predicate: Expr, float_columns: Set[str]) -> bool:
+    """Whether row-group statistics can prune on ``predicate`` without losing rows."""
+    if isinstance(predicate, BinaryExpr) and predicate.op in (
+        Operation.AND,
+        Operation.OR,
+    ):
+        return _is_statistics_safe(
+            predicate=predicate.left, float_columns=float_columns
+        ) and _is_statistics_safe(
+            predicate=predicate.right, float_columns=float_columns
+        )
+    if not float_columns.intersection(get_column_references(predicate)):
+        return True
+    if isinstance(predicate, BinaryExpr):
+        return predicate.op in _STATISTICS_SAFE_FLOAT_COMPARISONS and all(
+            isinstance(operand, (ColumnExpr, LiteralExpr))
+            for operand in (predicate.left, predicate.right)
+        )
+    return (
+        isinstance(predicate, UnaryExpr)
+        and predicate.op in (Operation.IS_NULL, Operation.IS_NOT_NULL)
+        and isinstance(predicate.operand, ColumnExpr)
+    )
+
+
+def split_statistics_safe_predicate(
+    predicate: Expr, schema: pa.Schema
+) -> Tuple[Optional[Expr], Optional[Expr]]:
+    """Split ``predicate`` into ``(safe, unsafe)`` for a Parquet scan.
+
+    Parquet min/max statistics skip NaN, so PyArrow drops NaN rows when it
+    prunes row groups on a float column with ``!=``, ``is_in``, ``not_in`` or
+    anything under ``~``. Those conjuncts are ``unsafe`` and must be applied
+    after the read; a float column is safe only in ``<``, ``<=``, ``>``,
+    ``>=``, ``==`` and null checks against a column or literal.
+
+    TODO: Push every conjunct down once PyArrow handles NaN in statistics
+    (apache/arrow#50807, apache/arrow#54915).
+    """
+    float_columns = {field.name for field in schema if _has_float(field.type)}
+    safe: List[Expr] = []
+    unsafe: List[Expr] = []
+    for conjunct in flatten_predicate_chain(predicate, Operation.AND):
+        if _is_statistics_safe(predicate=conjunct, float_columns=float_columns):
+            safe.append(conjunct)
+        else:
+            unsafe.append(conjunct)
+    return (
+        combine_predicate_chain(safe, Operation.AND),
+        combine_predicate_chain(unsafe, Operation.AND),
+    )
 
 
 @dataclass

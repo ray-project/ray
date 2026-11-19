@@ -80,6 +80,34 @@ def test_synthesized_path_filters_use_output_values(
     assert sorted(rows, key=lambda row: row["id"]) == expected
 
 
+@pytest.mark.parametrize("use_datasource_v2", [True, False], ids=["v2", "v1"])
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        col("x") != 40.0,
+        ~(col("x") >= 30.0),
+        col("x").is_in([float("nan")]),
+        col("x").not_in([40.0]),
+        (col("x") != 40.0) & (col("id") >= 0),
+        col("x") > 30.0,
+    ],
+    ids=["ne", "not_ge", "is_in_nan", "not_in", "ne_and_int", "gt"],
+)
+def test_float_filter_keeps_nan_rows(
+    ray_start_regular_shared, tmp_path, monkeypatch, use_datasource_v2, predicate
+):
+    """A pushed-down float filter returns the rows the same filter keeps in memory."""
+    path = str(tmp_path / "nan.parquet")
+    pq.write_table(pa.table({"id": [0, 1], "x": [40.0, float("nan")]}), path)
+    monkeypatch.setattr(
+        ray.data.DataContext.get_current(), "use_datasource_v2", use_datasource_v2
+    )
+    ds = ray.data.read_parquet(path)
+    pushed = ds.filter(expr=predicate).take_all()
+    in_memory = ds.materialize().filter(expr=predicate).take_all()
+    assert [row["id"] for row in pushed] == [row["id"] for row in in_memory]
+
+
 def test_synthesized_path_residual_preserves_read_constraints(
     ray_start_regular_shared, tmp_path, monkeypatch
 ):

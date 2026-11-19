@@ -8,7 +8,10 @@ from ray.data._internal.datasource_v2.common.arrow_file_scanner import ArrowFile
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
-from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicates,
+    split_statistics_safe_predicate,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
@@ -45,6 +48,17 @@ class ParquetScanner(ArrowFileScanner):
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
     # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
     parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    @override
+    def push_filters(self, predicate: Expr) -> Tuple[ArrowFileScanner, Optional[Expr]]:
+        # Parquet statistics skip NaN, so some float filters run after the read.
+        safe, unsafe = split_statistics_safe_predicate(
+            predicate=predicate, schema=self.schema
+        )
+        if safe is None:
+            return self, unsafe
+        scanner, residual = super().push_filters(predicate=safe)
+        return scanner, combine_predicates(residual, unsafe)
 
     @override
     def prune_partitions(self, predicate: Expr) -> "ParquetScanner":
