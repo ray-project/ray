@@ -85,7 +85,7 @@ class JobProcess:
         return message
 
     def poll(self) -> Optional[int]:
-        """Read the driver's status, then clean its group before reaping the helper."""
+        """Read the driver's status while reserving its PID until explicit cleanup."""
         if self._control_write is None or self.returncode is not None:
             return self.returncode
         try:
@@ -95,8 +95,6 @@ class JobProcess:
         except BaseException:
             self._close_after_error()
             raise
-        if self.returncode is not None:
-            self.close(reap_driver=True)
         return self.returncode
 
     def _close_after_error(self):

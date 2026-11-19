@@ -342,6 +342,14 @@ class JobSupervisor:
                 # Process is already dead
                 pass
 
+    def _cleanup_job_process(self, *, reap_driver: bool = False):
+        if self._job_process is not None:
+            try:
+                self._job_process.close(reap_driver=reap_driver)
+            except Exception:
+                # Keep the helper waitable for a retry in finally or native shutdown.
+                self._logger.exception("Failed to clean the Jobs process group")
+
     async def run(
         self,
         # Signal actor used in testing to capture PENDING -> RUNNING cases
@@ -456,9 +464,8 @@ class JobSupervisor:
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
                         reap_driver = False
 
-                if self._job_process is not None:
-                    # The monitor can kill this actor as soon as it sees STOPPED.
-                    self._job_process.close(reap_driver=reap_driver)
+                # Attempt cleanup before publishing the terminal job status.
+                self._cleanup_job_process(reap_driver=reap_driver)
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -466,6 +473,7 @@ class JobSupervisor:
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
                 return_code = child_process_task.result()
+                self._cleanup_job_process(reap_driver=True)
                 self._logger.info(
                     f"Job {self._job_id} entrypoint command "
                     f"exited with code {return_code}"
@@ -515,11 +523,7 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
-            if self._job_process is not None:
-                try:
-                    self._job_process.close()
-                except Exception:
-                    self._logger.exception("Failed to clean the Jobs process group")
+            self._cleanup_job_process()
             # Flush any remaining events before the actor exits.
             if submission_job_events_enabled():
                 try:

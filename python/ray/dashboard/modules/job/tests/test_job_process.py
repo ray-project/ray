@@ -150,6 +150,9 @@ def test_driver_pid_reserved_until_cleanup(launch):
     assert driver.ppid() == process._helper.pid
     wait_for(lambda: process.poll() is not None)
     assert process.returncode == 0
+    assert driver.status() == psutil.STATUS_ZOMBIE
+    assert driver.ppid() == process._helper.pid
+    process.close(reap_driver=True)
     assert not psutil.pid_exists(process.pid)
 
 
@@ -200,30 +203,87 @@ def test_high_file_descriptors(launch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exit_before_stop", [False, True])
-async def test_supervisor_stop(launch, tmp_path, monkeypatch, exit_before_stop):
+@pytest.mark.parametrize("cleanup_failures", [0, 1, 2])
+@pytest.mark.parametrize(
+    "exit_code, stop_mode",
+    [(0, None), (7, None), (None, "graceful"), (0, "graceful"), (None, "force")],
+    ids=["success", "failure", "stop", "stop_after_exit", "force_stop"],
+)
+async def test_supervisor_result_and_cleanup(
+    launch, tmp_path, monkeypatch, exit_code, stop_mode, cleanup_failures
+):
     import ray.dashboard.modules.job.job_supervisor as module
-    from ray.job_submission import JobStatus
+    from ray.job_submission import JobErrorType, JobStatus
 
-    process = launch("pass" if exit_before_stop else "import time; time.sleep(60)")
-    if exit_before_stop:
-        # Report the exit before run() schedules its polling task so both the
-        # polling task and stop event are ready when asyncio.wait() returns.
+    monkeypatch.setenv("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+    if exit_code is None:
+        ready = tmp_path / "ready"
+        process = launch(
+            f"""
+            import signal
+            import time
+            from pathlib import Path
+
+            if {stop_mode == "force"!r}:
+                signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            Path({str(ready)!r}).touch()
+            time.sleep(60)
+            """
+        )
+        wait_for(ready.exists)
+    else:
+        process = launch(f"raise SystemExit({exit_code})")
+        # Make exit and a requested stop ready together before run() schedules
+        # the polling task. Reading the exit must still reserve the driver's PID.
         poller = select.poll()
         poller.register(process._helper.stdout, select.POLLIN)
         assert poller.poll(5000)
+    if stop_mode == "force":
+        monkeypatch.setenv("RAY_JOB_STOP_WAIT_TIME_S", "0")
+
+    helper = process._helper
+    control_fd = process._control_write
+    cleanup_group = process._cleanup_group
+
+    def cleanup():
+        assert process._helper is helper
+        assert helper.returncode is None
+        assert not helper.stdout.closed
+        os.fstat(control_fd)
+        assert (
+            os.waitid(os.P_PID, helper.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            is None
+        )
+        if cleanup_mock.call_count <= cleanup_failures:
+            raise OSError("injected cleanup failure")
+        cleanup_group()
+
+    cleanup_mock = Mock(side_effect=cleanup)
+    monkeypatch.setattr(process, "_cleanup_group", cleanup_mock)
+    reap_driver = Mock(wraps=process._reap_driver)
+    monkeypatch.setattr(process, "_reap_driver", reap_driver)
     supervisor = object.__new__(module.JobSupervisor)
-    supervisor._job_id = "stop-after-exit"
+    supervisor._job_id = "result-and-cleanup"
     supervisor._entrypoint = "unused"
     supervisor._job_process = process
     supervisor._win32_job_object = None
     supervisor._stop_event = asyncio.Event()
-    supervisor._stop_event.set()
+    if stop_mode is not None:
+        supervisor._stop_event.set()
     supervisor._logger = Mock()
 
     async def put_status(job_id, status, **kwargs):
-        if status == JobStatus.STOPPED:
-            assert not psutil.pid_exists(process.pid)
+        if status.is_terminal():
+            # Exactly one cleanup attempt must precede the terminal status.
+            assert cleanup_mock.call_count == 1
+            if cleanup_failures == 0:
+                assert not running(process.pid)
+                assert not psutil.pid_exists(helper.pid)
+            else:
+                assert process._helper is helper
+                assert helper.returncode is None
+                assert not helper.stdout.closed
+                os.fstat(control_fd)
 
     supervisor._job_info_client = Mock(
         get_info=AsyncMock(return_value=Mock(status=JobStatus.PENDING, message=None)),
@@ -231,6 +291,9 @@ async def test_supervisor_stop(launch, tmp_path, monkeypatch, exit_before_stop):
     )
     supervisor._log_client = Mock()
     supervisor._log_client.get_log_file_path.return_value = str(tmp_path / "job.log")
+    supervisor._log_client.get_last_n_log_lines = AsyncMock(
+        return_value="driver-output"
+    )
     supervisor._exec_entrypoint = Mock(return_value=process)
     supervisor._get_driver_env_vars = Mock(return_value={"RAY_ADDRESS": "local"})
     monkeypatch.setattr(module.ray, "get_runtime_context", Mock())
@@ -241,12 +304,50 @@ async def test_supervisor_stop(launch, tmp_path, monkeypatch, exit_before_stop):
     )
     monkeypatch.setattr(module.ray.actor, "exit_actor", Mock())
     monkeypatch.setattr(module, "submission_job_events_enabled", lambda: False)
-    await asyncio.wait_for(supervisor.run(), timeout=5)
-    assert supervisor._job_info_client.put_status.call_args.args == (
-        supervisor._job_id,
-        JobStatus.STOPPED,
-    )
-    supervisor._logger.warning.assert_not_called()
+    try:
+        await asyncio.wait_for(supervisor.run(), timeout=5)
+        if stop_mode is not None:
+            expected_status = JobStatus.STOPPED
+        else:
+            expected_status = (
+                JobStatus.SUCCEEDED if exit_code == 0 else JobStatus.FAILED
+            )
+            assert process.returncode == exit_code
+        assert supervisor._job_info_client.put_status.await_count == 2
+        terminal = supervisor._job_info_client.put_status.await_args
+        assert terminal.args == (supervisor._job_id, expected_status)
+        if stop_mode is not None:
+            assert terminal.kwargs == {}
+        else:
+            assert terminal.kwargs["driver_exit_code"] == exit_code
+            if exit_code != 0:
+                assert (
+                    terminal.kwargs["error_type"]
+                    == JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR
+                )
+                assert f"exit code {exit_code}" in terminal.kwargs["message"]
+                assert "driver-output" in terminal.kwargs["message"]
+            else:
+                assert terminal.kwargs.get("error_type") is None
+        supervisor._logger.error.assert_not_called()
+        assert supervisor._logger.exception.call_count == cleanup_failures
+        assert cleanup_mock.call_count == (2 if cleanup_failures else 1)
+        assert reap_driver.call_count == (0 if stop_mode == "force" else 1)
+        if cleanup_failures == 2:
+            assert process._helper is helper
+            assert helper.returncode is None
+            assert not helper.stdout.closed
+            os.fstat(control_fd)
+        else:
+            assert process._helper is None
+            assert helper.stdout.closed
+            assert not psutil.pid_exists(helper.pid)
+            with pytest.raises(OSError):
+                os.fstat(control_fd)
+    finally:
+        # Persistent failure must retain the identity for a later cleanup retry.
+        monkeypatch.setattr(process, "_cleanup_group", cleanup_group)
+        process.close()
 
 
 @pytest.mark.asyncio
@@ -288,6 +389,7 @@ def test_driver_status_and_remaining_child(launch, tmp_path, exit_code):
     )
     wait_for(lambda: process.poll() is not None)
     assert process.returncode == exit_code
+    process.close(reap_driver=True)
     wait_for(lambda: not running(int(child_file.read_text())))
     assert "driver-output" in (tmp_path / "job.log").read_text()
     process.close()
@@ -333,6 +435,7 @@ def test_reap_timeout_preserves_exit_code_and_retries_wait(launch, monkeypatch):
     try:
         wait_for(lambda: process.poll() is not None)
         assert process.returncode == 7
+        process.close(reap_driver=True)
         assert process._helper is helper
         assert helper.stdout.closed
         with pytest.raises(OSError):
@@ -360,6 +463,7 @@ def test_missing_reap_acknowledgment_falls_back_to_group_cleanup(launch, monkeyp
 
     monkeypatch.setattr(process, "_read_message", read_without_acknowledgment)
     assert process.poll() == 7
+    process.close(reap_driver=True)
     assert not psutil.pid_exists(helper_pid)
 
 
