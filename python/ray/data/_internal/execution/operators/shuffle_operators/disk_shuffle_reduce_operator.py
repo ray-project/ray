@@ -333,14 +333,16 @@ class DiskRangeShuffleRegroupOp(DiskHashShuffleRegroupOp):
         self._record_schema_and_file_server(handle, input_index)
 
     def _finalize_partitions(self) -> None:
-        boundaries, rows, nbytes = plan_range_partitions(
-            self._key_samples,
-            self._rows_per_sample,
-            self._bytes_per_sample,
-            self._sort_key,
-            self._num_partitions,
-            boundaries=self._user_boundaries,
-        )
+        # The sample sort picks its backend from the current context.
+        with DataContext.current(self.data_context):
+            boundaries, rows, nbytes = plan_range_partitions(
+                self._key_samples,
+                self._rows_per_sample,
+                self._bytes_per_sample,
+                self._sort_key,
+                self._num_partitions,
+                boundaries=self._user_boundaries,
+            )
         self._boundaries = boundaries
         self._partition_rows_by_input[0] = rows
         self._partition_bytes_by_input[0] = nbytes

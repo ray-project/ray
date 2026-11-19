@@ -1,6 +1,7 @@
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pac
 
@@ -15,6 +16,23 @@ from ray.data.context import DataContext
 
 _SAMPLE_ROWS_COLUMN = "__sort_sample_rows__"
 _SAMPLE_BYTES_COLUMN = "__sort_sample_bytes__"
+
+
+def _weight_columns(sort_key: SortKey) -> Tuple[str, str]:
+    """Names for the per-sample weight columns that no sort column uses."""
+    names = []
+    for base in (_SAMPLE_ROWS_COLUMN, _SAMPLE_BYTES_COLUMN):
+        name = base
+        while name in sort_key.get_columns():
+            name += "_"
+        names.append(name)
+    return names[0], names[1]
+
+
+def _is_na(value: Any) -> bool:
+    """``to_numpy`` renders a null key as NaN or NaT; the partitioner's
+    insertion search only knows None, so boundaries must carry None."""
+    return np.ndim(value) == 0 and bool(pd.isna(value))
 
 
 def user_boundaries(sort_key: SortKey) -> Optional[List[Tuple]]:
@@ -49,15 +67,16 @@ def plan_range_partitions(
     Returns ``(boundaries, estimated_rows, estimated_bytes)`` with
     ``num_partitions - 1`` boundaries and ``num_partitions`` estimates.
     """
+    rows_column, bytes_column = _weight_columns(sort_key)
     weighted = []
     for sample, rows, nbytes in zip(samples, rows_per_sample, bytes_per_sample):
         if sample.num_rows == 0:
             continue
         weighted.append(
             sample.append_column(
-                _SAMPLE_ROWS_COLUMN, pa.array(np.full(sample.num_rows, float(rows)))
+                rows_column, pa.array(np.full(sample.num_rows, float(rows)))
             ).append_column(
-                _SAMPLE_BYTES_COLUMN, pa.array(np.full(sample.num_rows, float(nbytes)))
+                bytes_column, pa.array(np.full(sample.num_rows, float(nbytes)))
             )
         )
     estimated_rows = np.zeros(num_partitions, dtype=np.int64)
@@ -75,7 +94,7 @@ def plan_range_partitions(
     )
     pooled = BlockAccessor.for_block(pooled).sort(sort_key)
     if boundaries is None:
-        row_weights = pooled.column(_SAMPLE_ROWS_COLUMN).to_numpy()
+        row_weights = pooled.column(rows_column).to_numpy()
         cumulative_rows = np.cumsum(row_weights)
         # Boundary k is the first sample at or past k/P of the total rows. A
         # row equal to a boundary falls above it, or below it when the
@@ -91,7 +110,8 @@ def plan_range_partitions(
         )
         keys = BlockAccessor.for_block(pooled).to_numpy(columns=sort_key.get_columns())
         boundaries = [
-            tuple(column[i] for column in keys.values()) for i in indices.tolist()
+            tuple(None if _is_na(column[i]) else column[i] for column in keys.values())
+            for i in indices.tolist()
         ]
     if boundaries:
         pieces = BlockAccessor.for_block(pooled)._find_partitions_sorted(
@@ -102,10 +122,10 @@ def plan_range_partitions(
     for partition_id, piece in enumerate(pieces):
         if piece.num_rows:
             estimated_rows[partition_id] = int(
-                pac.sum(piece.column(_SAMPLE_ROWS_COLUMN)).as_py()
+                pac.sum(piece.column(rows_column)).as_py()
             )
             estimated_bytes[partition_id] = int(
-                pac.sum(piece.column(_SAMPLE_BYTES_COLUMN)).as_py()
+                pac.sum(piece.column(bytes_column)).as_py()
             )
     return boundaries, estimated_rows, estimated_bytes
 

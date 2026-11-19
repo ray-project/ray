@@ -850,7 +850,8 @@ class _KeyRangeSources:
     def ranges_for(self, handle: "ShuffleHandle") -> List[Tuple[int, int]]:
         chunk_index = handle["chunk_index"]
         num_chunks = len(chunk_index)
-        if num_chunks == 0:
+        # Repeated boundaries make an empty range; skip the fetch entirely.
+        if num_chunks == 0 or (self._lower is not None and self._lower == self._upper):
             return []
         first_keys = handle["chunk_first_keys"]
         # Chunks whose first key is below ``upper`` may hold rows of the

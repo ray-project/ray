@@ -263,13 +263,15 @@ def _publish_shuffle_file(
 
 
 def _sort_run_chunk_rows(
-    num_rows: int, nbytes: int, num_partitions: int, max_chunk_bytes: int
+    num_rows: int, nbytes: int, num_partitions: int, max_chunk_bytes: Optional[int]
 ) -> int:
     """Rows per chunk of a sorted run (see ``_SORT_RUN_CHUNKS_PER_PARTITION``)."""
     if num_rows == 0 or nbytes == 0:
         return max(1, num_rows)
     chunk_bytes = nbytes / (num_partitions * _SORT_RUN_CHUNKS_PER_PARTITION)
-    chunk_bytes = min(max(chunk_bytes, _SORT_RUN_MIN_CHUNK_BYTES), max_chunk_bytes)
+    chunk_bytes = max(chunk_bytes, _SORT_RUN_MIN_CHUNK_BYTES)
+    if max_chunk_bytes is not None:
+        chunk_bytes = min(chunk_bytes, max_chunk_bytes)
     return max(1, int(chunk_bytes * num_rows / nbytes))
 
 
@@ -279,7 +281,7 @@ def _write_disk_sort_run(
     sort_key: "SortKey",
     num_partitions: int,
     sample_rows: int,
-    max_chunk_bytes: int,
+    max_chunk_bytes: Optional[int],
     out_dir: str,
     map_id: int,
     shuffle_id: str,
@@ -301,7 +303,8 @@ def _write_disk_sort_run(
         sort_key: Sort columns and directions.
         num_partitions: Number of reducers, which sizes the chunks.
         sample_rows: Upper bound on the number of sampled keys.
-        max_chunk_bytes: Upper bound on a chunk's decoded size.
+        max_chunk_bytes: Upper bound on a chunk's decoded size, or None for
+            no bound.
         out_dir: Directory to write ``map_{i}.shf`` into.
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the file server's actor name.
@@ -335,9 +338,11 @@ def _write_disk_sort_run(
         keys = run.select(key_columns)
     else:
         run = None
+        # An empty input may have no columns at all (validate_schema allows it).
         keys = (
             _create_empty_table(output_schema).select(key_columns)
             if output_schema is not None
+            and set(key_columns) <= set(output_schema.names)
             else pa.table({})
         )
 
@@ -447,7 +452,7 @@ class DiskSortRunWriteFn:
         sort_key: "SortKey",
         num_partitions: int,
         sample_rows: int,
-        max_chunk_bytes: int,
+        max_chunk_bytes: Optional[int],
         out_dir: str,
         shuffle_id: str,
         compression: Optional[str],

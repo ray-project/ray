@@ -370,6 +370,8 @@ def test_disk_sort_run_chunk_rows():
     assert chunk_rows(8192, 8192 * kib, 1, 1024 * kib) == 1024
     assert chunk_rows(5, 0, 4, 1024 * kib) == 5
     assert chunk_rows(0, 0, 4, 1024 * kib) == 1
+    # No block size cap (target_max_block_size=None): the 1/8 rule alone.
+    assert chunk_rows(8192, 8192 * kib, 1, None) == 1024
 
 
 @pytest.mark.parametrize(
@@ -408,6 +410,8 @@ def test_key_range_sources_fetch_overlapping_chunks_and_trim(
     assert _fetch_range(handle, sort_key, None, (boundary,)) == expected[0]
     assert _fetch_range(handle, sort_key, (boundary,), None) == expected[1]
     assert _fetch_range(handle, sort_key, None, None) == expected[0] + expected[1]
+    # Repeated boundaries: an empty range reads nothing.
+    assert _KeyRangeSources(sort_key, (boundary,), (boundary,)).ranges_for(handle) == []
 
 
 def test_key_range_sources_multi_column_and_nulls(tmp_path):
@@ -472,6 +476,24 @@ def test_plan_range_partitions_weights_samples_by_run_size():
     )
     assert boundaries == [(None,), (None,)]
     assert rows.tolist() == [0, 0, 0]
+
+    # A null boundary is None, not the NaN ``to_numpy`` renders it as, so the
+    # descending insertion search puts it after the non-null keys.
+    nulls = pa.table({"k": [5, 4, 3, None, None, None]})
+    boundaries, rows, _ = plan_range_partitions(
+        [nulls], [1.0], [1.0], SortKey("k", descending=True), 3
+    )
+    assert boundaries == [(4,), (None,)]
+    # Descending: a key equal to the boundary goes below it, so 4 joins 5.
+    assert rows.tolist() == [2, 1, 3]
+
+    # A sort column named like a weight column does not collide with it.
+    taken = pa.table({"__sort_sample_rows__": [1, 2, 3, 4]})
+    boundaries, rows, _ = plan_range_partitions(
+        [taken], [1.0], [1.0], SortKey("__sort_sample_rows__"), 2
+    )
+    assert boundaries == [(3,)]
+    assert rows.tolist() == [2, 2]
 
 
 def test_disk_range_regroup_computes_boundaries_from_handles(
@@ -754,26 +776,36 @@ def test_sort_shuffle_v2_end_to_end(
 
 
 @pytest.mark.parametrize("use_disk", _USE_DISK)
+@pytest.mark.parametrize("descending", [False, True])
 def test_sort_shuffle_v2_duplicate_and_null_keys(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     use_disk,
+    descending,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.use_disk_based_hash_shuffle = use_disk
 
     # Few distinct keys, so sampled boundaries repeat and partitions split on
-    # ties; nulls sort last.
+    # ties; nulls sort last in both directions.
     rows = [{"k": i % 3 if i % 7 else None, "i": i} for i in range(60)]
     random.Random(1).shuffle(rows)
-    result = ray.data.from_items(rows, override_num_blocks=6).sort("k").materialize()
+    result = (
+        ray.data.from_items(rows, override_num_blocks=6)
+        .sort("k", descending=descending)
+        .materialize()
+    )
 
     got = [row["k"] for row in result.iter_rows()]
-    assert got == sorted((r["k"] for r in rows if r["k"] is not None)) + [None] * 9
+    keys = sorted((r["k"] for r in rows if r["k"] is not None), reverse=descending)
+    assert got == keys + [None] * 9
     assert sorted(row["i"] for row in result.iter_rows()) == list(range(60))
     # One partition per input block; repeated boundaries leave some empty.
     assert result.num_blocks() == 6
+
+    # An empty input with no columns sorts to nothing.
+    assert ray.data.from_arrow(pa.table({})).sort("k").take_all() == []
 
 
 def test_sort_reduce_fn_keeps_schema_for_empty_partition():
