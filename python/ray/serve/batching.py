@@ -277,6 +277,11 @@ class _BatchQueue:
         items = [request.flattened_args[1] for request in batch]
         return self.batch_size_fn(items)
 
+    def _record_queue_length(self) -> None:
+        self._batch_queue_length_gauge.set(
+            self.queue.qsize(), tags={"function_name": self._function_name}
+        )
+
     async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
 
@@ -318,9 +323,7 @@ class _BatchQueue:
         timeout_start_time = min(first_item.enqueue_time, batch_start_time)
         while True:
             # Record queue length metric.
-            self._batch_queue_length_gauge.set(
-                self.queue.qsize(), tags={"function_name": self._function_name}
-            )
+            self._record_queue_length()
 
             remaining_batch_time_s = max(
                 batch_wait_timeout_s - (time.time() - timeout_start_time), 0
@@ -383,6 +386,9 @@ class _BatchQueue:
             ):
                 break
 
+        # A batch taken from a backlog in one pass would otherwise leave the
+        # backlog's length on the gauge until the next request arrives.
+        self._record_queue_length()
         # Record batch wait time metric (time spent waiting for batch to fill).
         batch_wait_time_ms = (time.time() - batch_start_time) * 1000
         self._batch_wait_time_histogram.observe(

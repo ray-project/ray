@@ -402,21 +402,57 @@ class FileReader(Reader[FileManifest]):
         before the dataset is built, so rows that repeat a path (the user
         listed the same file more than once) share one pyarrow fragment —
         but each row still yields its own :class:`ReadUnitFragment`, so
-        every listed copy is read. Subclasses that support per-row chunk
-        metadata (e.g. :class:`ParquetFileReader`) override this to fan a
-        single file fragment out into N sub-fragments — one per row-group
-        slice — based on :attr:`FileManifest.file_chunk_metadatas`, each
-        paired with its read unit and the row in the file where it starts.
+        every listed copy is read.
+
+        Subclasses that support per-row chunk metadata (e.g.
+        :class:`ParquetFileReader`) override :meth:`_get_chunk_fragments` to
+        fan a single file fragment out into N sub-fragments based on
+        :attr:`FileManifest.file_chunk_metadatas`, each paired with its read
+        unit and the row in the file where it starts. They override
+        :meth:`_get_whole_file_fragment` to enrich the whole-file unit.
         """
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
         }
-        return [
-            ReadUnitFragment(
-                path_to_fragment[path], ReadUnit(id=path, source=path, count=1)
-            )
-            for path in manifest.paths
-        ]
+        fragments: List[ReadUnitFragment] = []
+        for path, file_size, chunk_metadata in zip(
+            manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas
+        ):
+            fragment = path_to_fragment[path]
+            if chunk_metadata is None:
+                fragments.append(self._get_whole_file_fragment(fragment))
+            else:
+                fragments.extend(
+                    self._get_chunk_fragments(fragment, chunk_metadata, file_size)
+                )
+        return fragments
+
+    def _get_whole_file_fragment(self, fragment: pds.Fragment) -> ReadUnitFragment:
+        """Return the read unit that scans all of ``fragment``'s file."""
+        return ReadUnitFragment(
+            fragment, ReadUnit(id=fragment.path, source=fragment.path, count=1)
+        )
+
+    def _get_chunk_fragments(
+        self,
+        fragment: pds.Fragment,
+        chunk_metadata: Dict[str, Any],
+        file_size: Optional[int],
+    ) -> List[ReadUnitFragment]:
+        """Return the read units for a manifest row that carries chunk metadata.
+
+        Default impl ignores the metadata and reads the whole file.
+
+        Args:
+            fragment: The file's pyarrow fragment.
+            chunk_metadata: The row's :attr:`FileManifest.file_chunk_metadatas`
+                entry.
+            file_size: The file's size from the listing, if known.
+
+        Returns:
+            The units to scan for this row, in order.
+        """
+        return [self._get_whole_file_fragment(fragment)]
 
     def _read_fragment_batches(
         self,
@@ -463,7 +499,7 @@ class FileReader(Reader[FileManifest]):
         # ``num_workers`` at the actual fragment count and (b) avoid
         # an early-fallback when the manifest has a single fragment.
         # Subclasses (e.g. ``ParquetFileReader``) override
-        # ``_get_fragments_to_read`` to fan out chunk-level
+        # ``_get_chunk_fragments`` to fan out chunk-level
         # sub-fragments from the manifest's chunk metadata.
         fragments_with_offsets = self._get_fragments_to_read(dataset, manifest)
         if not fragments_with_offsets:
@@ -563,20 +599,28 @@ class FileReader(Reader[FileManifest]):
 
         Subclasses override this to swap in a format-specific reader for
         fragments that don't fit the default scanner-based path (e.g.
-        Parquet's ARROW-5030 nested-type fallback).
-
-        When a non-extension caller schema is available we pin it at the
-        scanner so pyarrow null-fills any column the unified schema names
-        but the fragment lacks (V1 parity — ``ParquetDatasource`` passes
-        ``read_schema`` to ``fragment.to_batches``). Falling back to the
-        per-fragment ``physical_schema`` preserves the variable-shape
-        tensor escape hatch already encoded in ``_file_dataset_schema``.
+        Parquet's ARROW-5030 nested-type fallback). Subclasses that only need
+        a different scan schema override :meth:`_get_scan_schema` instead.
         """
-        fragment_schema = (
-            self._file_dataset_schema
-            if self._file_dataset_schema is not None
-            else fragment.physical_schema
+        scanner = fragment.scanner(
+            **scanner_kwargs, schema=self._get_scan_schema(fragment, scanner_kwargs)
         )
-        scanner = fragment.scanner(**scanner_kwargs, schema=fragment_schema)
         for tagged in scanner.scan_batches():
             yield pa.Table.from_batches(batches=[tagged.record_batch])
+
+    def _get_scan_schema(
+        self, fragment: pds.Fragment, scanner_kwargs: dict
+    ) -> pa.Schema:
+        """Return the schema ``fragment`` is scanned with.
+
+        Default: the caller schema when there is one, else the fragment's
+        ``physical_schema``. Pinning the caller schema makes pyarrow
+        null-fill any column it names but the fragment lacks (V1 parity —
+        ``ParquetDatasource`` passes ``read_schema`` to
+        ``fragment.to_batches``). The ``physical_schema`` fallback preserves
+        the variable-shape tensor escape hatch already encoded in
+        ``_file_dataset_schema``.
+        """
+        if self._file_dataset_schema is not None:
+            return self._file_dataset_schema
+        return fragment.physical_schema

@@ -2301,6 +2301,73 @@ def test_streaming_executor_logs_relevant_env_vars(
     assert "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3" in caplog.text
 
 
+def test_threaded_metadata_fetcher_propagates_unexpected_thread_failure():
+    """Unexpected fetch-thread failures must reach the streaming executor."""
+    from types import SimpleNamespace
+
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        DeferredEmit,
+    )
+
+    failure_seen = threading.Event()
+
+    def failing_wait(*args, **kwargs):
+        failure_seen.set()
+        raise RuntimeError("injected metadata wait failure")
+
+    fetcher = ThreadedMetadataFetcher(wait_for_objects=failing_wait)
+
+    task = MagicMock()
+    task.operator_name = "TestOperator"
+    task.has_finished = False
+    task.is_drained.return_value = True
+
+    fetcher._pending_deferred.append(
+        DeferredEmit(
+            task=task,
+            block_ref=object(),
+            meta_ref=object(),
+        )
+    )
+
+    op = MagicMock()
+    op.name = "TestOperator"
+    op.get_active_tasks.return_value = []
+    op.has_next.return_value = False
+    op.metrics = SimpleNamespace(
+        num_outputs_taken=0,
+        num_tasks_finished=0,
+    )
+
+    fetcher.start()
+    try:
+        fetcher.submit("TestOperator", [task])
+
+        assert failure_seen.wait(timeout=3)
+        fetcher._thread.join(timeout=3)
+        assert not fetcher._thread.is_alive()
+
+        topology = {op: MagicMock()}
+
+        for _ in range(2):
+            with pytest.raises(
+                RuntimeError,
+                match="metadata prefetch thread failed",
+            ) as exc_info:
+                process_completed_tasks(
+                    topology,
+                    backpressure_policies=[],
+                    max_errored_blocks=0,
+                    output_backpressure_guard=MagicMock(),
+                    metadata_fetcher=fetcher,
+                )
+
+            assert isinstance(exc_info.value.__cause__, RuntimeError)
+            assert "injected metadata wait failure" in str(exc_info.value.__cause__)
+    finally:
+        fetcher.stop()
+
+
 if __name__ == "__main__":
     import sys
 

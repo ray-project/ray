@@ -210,6 +210,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   std::vector<ObjectID> FlushObjectsToRecover() override;
 
+  void MarkObjectForRecovery(const ObjectID &object_id) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   bool HasReference(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddObjectRefStats(
@@ -269,8 +272,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::vector<std::optional<MoveState>> GetMoveStates(
       const std::vector<ObjectID> &object_ids) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  Status TryCommitMoves(const std::vector<ObjectID> &object_ids) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  StatusOr<std::vector<bool>> TryCommitMoves(
+      const std::vector<ObjectID> &object_ids) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
     lineage_pinning_enabled_.store(lineage_pinning_enabled);
@@ -561,6 +564,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Unsets the raylet address
   /// that the object was pinned at or spilled at, if the address was set.
   void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Queues the object for recovery if it is still in scope.
+  void MarkObjectForRecoveryInternal(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// This should be called whenever the object is out of scope or manually freed.

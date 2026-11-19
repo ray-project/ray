@@ -427,7 +427,8 @@ def annotate(
     try:
         train_context = get_train_context()
     except Exception:
-        # No worker train context (e.g. local mode), not an annotation failure
+        # No worker train context (called outside a Train worker), not an
+        # annotation failure
         return
 
     if rank_zero_only and train_context.get_world_rank() != 0:
