@@ -57,6 +57,7 @@ ray_cc_library(
         ":__subpackages__",
         "//src/ray/object_manager/plasma:__pkg__",
         "//src/ray/raylet:__pkg__",
+        "//src/ray/raylet/tests:__pkg__",
     ],
     deps = [
         "//src/ray/asio:instrumented_io_context",
