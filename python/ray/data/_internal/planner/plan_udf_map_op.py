@@ -190,10 +190,6 @@ def plan_project_op(
             BlockMapTransformFn(
                 _generate_transform_fn_for_map_block(_project_block),
                 disable_block_shaping=(len(op.exprs) == 0),
-                # Shape to the target block size like map and map_batches. With
-                # no size option, block shaping concatenates all of a task's
-                # output into a single unsliced block, so a Project's blocks
-                # grow with its input bundles.
                 output_block_size_option=OutputBlockSizeOption.of(
                     target_max_block_size=data_context.target_max_block_size,
                 ),
