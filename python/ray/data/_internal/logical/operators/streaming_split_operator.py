@@ -20,6 +20,7 @@ class StreamingSplit(LogicalOperatorPreservesSchema):
 
     num_splits: int
     equal: bool
+    consumers_per_split: int = field(default=1, kw_only=True)
     locality_hints: Optional[List["NodeIdStr"]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
 

@@ -2,6 +2,7 @@ import itertools
 import random
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, List
 
 import numpy as np
@@ -26,7 +27,7 @@ from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import extract_values
+from ray.data.tests.util import Counter, extract_values
 
 
 def make_map_transformer(block_fn):
@@ -211,6 +212,52 @@ def test_output_split_shutdown_preserves_sibling_split_queues(ray_start_10_cpus_
     assert get_outputs(c1_out) == list(range(1, 20, 2))
 
 
+def test_force_shutdown_after_split_eof(ray_start_10_cpus_shared):
+    ctx = DataContext.get_current()
+    source = InputDataBuffer(ctx, make_ref_bundles([[0], [1]]))
+    executor = StreamingExecutor(ctx)
+    output = executor.execute(OutputSplitter(source, 2, equal=False, data_context=ctx))
+    output.get_next(output_split_idx=0)
+    with pytest.raises(StopIteration):
+        output.get_next(output_split_idx=0)
+
+    sink_queue = executor._output_node[1].output_queue
+    assert sink_queue.has_next(1)
+    executor.shutdown(force=True)
+    assert sink_queue.num_blocks == 0
+
+
+def test_streaming_split_force_shutdown_during_publication(
+    ray_start_10_cpus_shared, monkeypatch
+):
+    ctx = DataContext.get_current()
+    source = InputDataBuffer(ctx, make_ref_bundles([[0]]))
+    splitter = OutputSplitter(source, 1, equal=False, data_context=ctx)
+    executor = StreamingExecutor(ctx)
+    publishing = threading.Event()
+    resume = threading.Event()
+    get_next = splitter.get_next
+
+    def hold_output():
+        bundle = get_next()
+        publishing.set()
+        assert resume.wait(timeout=30)
+        return bundle
+
+    monkeypatch.setattr(splitter, "get_next", hold_output)
+    output = executor.execute(splitter)
+    try:
+        assert publishing.wait(timeout=30)
+        executor.shutdown(force=True)
+        assert executor.is_alive()
+    finally:
+        resume.set()
+        executor.join(timeout=30)
+    assert not executor.is_alive()
+    with pytest.raises(StopIteration):
+        output.get_next(output_split_idx=0)
+
+
 def test_streaming_split_e2e(ray_start_10_cpus_shared):
     def get_lengths(*iterators, use_iter_batches=True):
         lengths = []
@@ -279,6 +326,81 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
                 assert lengths == [333, 333, 333], lengths
             else:
                 assert lengths == [300, 300, 400], lengths
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5])
+def test_streaming_split_invalid_consumers_per_split(ray_start_10_cpus_shared, value):
+    with pytest.raises(
+        ValueError, match="consumers_per_split must be a positive integer"
+    ):
+        ray.data.range(1).streaming_split(1, consumers_per_split=value)
+
+
+@pytest.mark.parametrize("equal", [False, True])
+def test_replicated_streaming_split(ray_start_10_cpus_shared, equal):
+    counter = Counter.options(num_cpus=0).remote()
+
+    def count_row(row):
+        ray.get(counter.increment.remote())
+        return row
+
+    @ray.remote
+    def read(iterator):
+        return [
+            row_id
+            for batch in iterator.iter_batches(batch_size=7)
+            for row_id in batch["id"].tolist()
+        ]
+
+    ds = ray.data.range(31, override_num_blocks=5).map(count_row)
+    readers = ds.streaming_split(2, equal=equal, consumers_per_split=3)
+    assert len(readers) == 6
+    for epoch in range(1, 3):
+        a, b, c, d, e, f = ray.get([read.remote(it) for it in readers], timeout=60)
+        assert ray.get(counter.get.remote()) == 31 * epoch
+        assert a == b == c
+        assert d == e == f
+        assert set(a).isdisjoint(d)
+        if equal:
+            assert len(a) == len(d) == 15
+            assert len(set(a + d)) == 30
+        else:
+            assert sorted(a + d) == list(range(31))
+
+
+@pytest.mark.parametrize("num_splits", [1, 2])
+def test_replicated_split_training_barrier(
+    ray_start_10_cpus_shared, restore_data_context, num_splits
+):
+    # One rank reaches the training barrier while the other fills its prefetch window.
+    block_rows = 128
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = 8 * block_rows
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=4 * ctx.target_max_block_size
+    )
+
+    def blocks(_):
+        for i in range(32):
+            yield {"id": np.arange(i * block_rows, (i + 1) * block_rows)}
+
+    ds = ray.data.range(1, override_num_blocks=1).map_batches(blocks, batch_size=None)
+    readers = ds.streaming_split(num_splits, equal=True, consumers_per_split=2)
+    barriers = [threading.Barrier(2) for _ in range(num_splits)]
+
+    def train(slot):
+        steps = 0
+        for batch in readers[slot].iter_batches(
+            batch_size=block_rows, prefetch_batches=0 if slot < num_splits else 4
+        ):
+            assert len(batch["id"]) == block_rows
+            barriers[slot % num_splits].wait(timeout=30)
+            steps += 1
+        return steps
+
+    with ThreadPoolExecutor(max_workers=len(readers)) as pool:
+        steps = list(pool.map(train, range(len(readers))))
+    assert steps == [32 // num_splits] * len(readers)
 
 
 def test_streaming_split_over_materialized_all_to_all(ray_start_10_cpus_shared):

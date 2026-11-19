@@ -861,10 +861,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         #       indefinitely, defeating object-store backpressure on the default
         #       path (see `test_input_backpressure_e2e`).
         #
-        # Pressure check first: it short-circuits on the default path, where the
-        # threshold is unset.
+        # Drain one input for a starving replica group through this idle stage.
+        sink = self._topology[self._resource_manager._output_operator]
+        replica_demand = (
+            sink.has_replicated_outputs
+            and sink.has_replica_demand()
+            and not self._topology[op].output_queue
+        )
         return (
-            self._is_execution_object_store_under_pressure()
+            (self._is_execution_object_store_under_pressure() or replica_demand)
             and op.num_active_tasks() == 0
             and self._topology[op].total_enqueued_input_blocks() > 0
         )

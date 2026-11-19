@@ -38,6 +38,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
     LineageReconstructionMixin,
 )
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
@@ -151,6 +152,7 @@ class OutputBackpressureGuard:
     ):
         self._topology = topology
         self._resource_manager = resource_manager
+        self._output_state = topology[terminal_operator_from_topology(topology)]
         self._idle_detector = IdleDetector()
         # Per-op minimum interval between releases. ``None`` or non-positive
         # disables it and preserves the legacy behavior of releasing whenever
@@ -196,6 +198,12 @@ class OutputBackpressureGuard:
 
     def _evaluate_unblock_raw(self, op: PhysicalOperator) -> bool:
         """Underlying liveness check without interval throttling."""
+        if (
+            self._output_state.has_replicated_outputs
+            and not self._output_state.has_replica_demand()
+        ):
+            return False
+
         downstream_eligible_ops = list(
             self._resource_manager.get_downstream_eligible_ops(op)
         )
@@ -213,9 +221,7 @@ class OutputBackpressureGuard:
             # Check the DAG root rather than the last eligible op because
             # consumers block in get_output_blocking on the root's OpState,
             # which may differ (e.g., OutputSplitter or LimitOperator).
-            output_op = terminal_operator_from_topology(self._topology)
-            output_op_state = self._topology[output_op]
-            return output_op_state.num_waiting_consumers > 0
+            return self._output_state.num_waiting_consumers > 0
 
         for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure
@@ -230,6 +236,13 @@ class OutputBackpressureGuard:
                 # In this case by relaxing output backpressure we allow upstream
                 # operator's task to complete sooner to free up resources.
                 if not self._can_submit_new_task(downstream_op):
+                    # The next stage already has input to drain. Let the idle
+                    # detector handle prolonged resource starvation.
+                    if (
+                        self._output_state.has_replicated_outputs
+                        and self._topology[op].output_queue
+                    ):
+                        continue
                     return True
 
                 # Case 2: Downstream operator
@@ -239,7 +252,11 @@ class OutputBackpressureGuard:
                 #
                 # In this case we relax output backpressure to produce at least
                 # 1 block for downstream operator.
-                elif downstream_op_state.total_enqueued_input_blocks() == 0:
+                elif downstream_op_state.total_enqueued_input_blocks() == 0 or (
+                    self._output_state.has_replicated_outputs
+                    and not downstream_op_state.has_pending_bundles()
+                ):
+                    # An idle batcher can hold partial input and need another block.
                     return True
 
         # As a last resort we check whether operator has been idling (ie not
@@ -364,6 +381,10 @@ class OpSchedulingStatus:
     under_resource_limits: bool = False
 
 
+class OutputSplitFinished(Exception):
+    """An outstanding pull for a reader that has already finished its epoch."""
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -402,6 +423,12 @@ class OpState:
         # _output_lock guards all fields mutated concurrently by consumer
         # threads (num_waiting_consumers, outqueue metrics) since += / -=
         # are not atomic.
+        self.has_replicated_outputs = (
+            isinstance(op, OutputSplitter) and op.consumers_per_split > 1
+        )
+        self._finished_output_splits: Set[int] = set()
+        self._waiting_output_splits: Set[int] = set()
+        self._split_progress: Dict[int, Tuple[int, int]] = {}
         self._num_waiting_consumers: int = 0
         self._output_lock = threading.Lock()
 
@@ -409,6 +436,37 @@ class OpState:
     def num_waiting_consumers(self) -> int:
         """Return the number of consumers currently blocked in get_output_blocking."""
         return self._num_waiting_consumers
+
+    def record_split_progress(
+        self, split_idx: int, consumed: int, delivered: int
+    ) -> None:
+        with self._output_lock:
+            self._split_progress[split_idx] = (consumed, delivered)
+
+    def has_replica_demand(self) -> bool:
+        """Whether a budget override can feed a waiting replicated reader."""
+        with self._output_lock:
+            waiting = self._waiting_output_splits - self._finished_output_splits
+            if not waiting:
+                return False
+            queued = {
+                i
+                for i in range(self.op.num_output_splits())
+                if i not in self._finished_output_splits
+                and self.output_queue.has_next(i)
+            }
+            if not queued:
+                return True
+            waiting -= queued
+            # A reader may need more blocks to yield its current batch. Stop once
+            # all requesting readers are ahead of a backlogged reader's deliveries.
+            fewest_delivered_rows = min(
+                self._split_progress.get(i, (0, 0))[1] for i in queued
+            )
+            return any(
+                self._split_progress.get(i, (0, 0))[0] <= fewest_delivered_rows
+                for i in waiting
+            )
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -497,8 +555,13 @@ class OpState:
             self._schema = ref.schema
             self._warned_on_schema_divergence |= diverged
 
-        self.output_queue.append(ref)
         self.num_completed_tasks += 1
+        with self._output_lock:
+            if ref.output_split_idx in self._finished_output_splits:
+                return
+            self.output_queue.append(ref)
+            self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
+            self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
 
         actor_info = self.op.get_actor_info()
 
@@ -513,8 +576,14 @@ class OpState:
         for next_op in self.op.output_dependencies:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
-        self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
-        self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
+
+    def discard_output_split(self, split_idx: int) -> None:
+        """Drop queued and future deliveries to a finished replica."""
+        with self._output_lock:
+            self._finished_output_splits.add(split_idx)
+            while (ref := self.output_queue.pop(split_idx)) is not None:
+                self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
@@ -556,9 +625,9 @@ class OpState:
                 # execution.
                 if self._exception is not None:
                     raise self._exception
-                elif self._finished and not self.output_queue.has_next(
-                    output_split_idx
-                ):
+                if output_split_idx in self._finished_output_splits:
+                    raise OutputSplitFinished
+                if self._finished and not self.output_queue.has_next(output_split_idx):
                     raise StopIteration()
                 ref = self.output_queue.pop(output_split_idx)
                 if ref is not None:
@@ -579,12 +648,16 @@ class OpState:
                     # Queue is empty — mark this consumer as starving.
                     with self._output_lock:
                         self._num_waiting_consumers += 1
+                        if self.has_replicated_outputs:
+                            self._waiting_output_splits.add(output_split_idx)
                     starving = True
                 time.sleep(0.01)
         finally:
             if starving:
                 with self._output_lock:
                     self._num_waiting_consumers -= 1
+                    if self.has_replicated_outputs:
+                        self._waiting_output_splits.discard(output_split_idx)
 
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""

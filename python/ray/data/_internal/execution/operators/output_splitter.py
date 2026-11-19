@@ -18,6 +18,7 @@ from ray.data._internal.execution.bundle_queue import (
     FIFOBundleQueue,
     HashLinkedQueue,
 )
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
@@ -52,10 +53,10 @@ MEMORY_CONSTRAINED_WARNING_FRACTION = 0.5
 class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
 
-    The output bundles of this operator will have a `bundle.output_split_idx` attr
-    set to an integer from [0..n-1]. This operator tries to divide the rows evenly
-    across output splits. If the `equal` option is set, the operator will furthermore
-    guarantee an exact split of rows across outputs, truncating the Dataset.
+    This operator divides rows among `n` logical splits. With `equal=True`,
+    it truncates the Dataset as needed to give each split the same row count.
+    Each split delivers the same block references to its consumers. The
+    `output_split_idx` on each bundle identifies the destination consumer.
 
     Implementation wise, this operator keeps an internal buffer of bundles. The buffer
     has a minimum size calculated to enable a good locality hit rate, as well as ensure
@@ -71,12 +72,20 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         equal: bool,
         data_context: DataContext,
         locality_hints: Optional[List[NodeIdStr]] = None,
+        *,
+        consumers_per_split: int = 1,
     ):
+        if consumers_per_split > 1 and actor_only_backend_enabled():
+            # The resource bank releases a block on the first downstream dequeue.
+            raise NotImplementedError(
+                "Replicated splits do not yet support the actor-only Data backend"
+            )
+        self.consumers_per_split = consumers_per_split
         super().__init__(
             f"split({n}, equal={equal})",
             [input_op],
             data_context,
-            num_output_splits=n,
+            num_output_splits=n * consumers_per_split,
         )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
@@ -129,13 +138,12 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         return [self._output_queue]
 
     def num_outputs_total(self) -> Optional[int]:
-        # OutputSplitter does not change the number of blocks,
-        # so we can return the number of blocks from the input op.
-        return self.input_dependencies[0].num_outputs_total()
+        count = self.input_dependencies[0].num_outputs_total()
+        return None if count is None else count * self.consumers_per_split
 
     def num_output_rows_total(self) -> Optional[int]:
-        # The total number of rows is the same as the number of input rows.
-        return self.input_dependencies[0].num_output_rows_total()
+        rows = self.input_dependencies[0].num_output_rows_total()
+        return None if rows is None else rows * self.consumers_per_split
 
     def start(
         self,
@@ -177,10 +185,10 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             # The bundle size isn't known yet.
             return
         avg_bundle_bytes = self._metrics.bytes_inputs_received / num_inputs
-        # The locality buffer, plus at least one prefetched bundle per consumer
-        # (the floor at prefetch_batches=1).
+        # Colocated replicas can prefetch the same block. Count one distinct
+        # bundle per logical split for the minimum at prefetch_batches=1.
         required_bytes = (
-            self._max_buffer_size + self.num_output_splits()
+            self._max_buffer_size + len(self._num_output)
         ) * avg_bundle_bytes
         if required_bytes < (
             MEMORY_CONSTRAINED_WARNING_FRACTION * object_store_memory_share_per_op
@@ -278,9 +286,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         for i, count in enumerate(allocation):
             bundles = self._split_from_buffer(count)
             for b in bundles:
-                b = replace(b, output_split_idx=i)
-                self._output_queue.add(b)
-                self._metrics.on_output_queued(b)
+                self._enqueue_for_consumers(b, i)
         # Drain truncated remainder through the metrics layer.
         # A bare self._buffer.clear() would bypass on_input_dequeued,
         # orphaning RefBundle references in _metrics._internal_inqueues
@@ -337,11 +343,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             self._buffer.remove(target_bundle)
             self._metrics.on_input_dequeued(target_bundle, input_index=0)
 
-            target_bundle = replace(target_bundle, output_split_idx=target_output_index)
-
             self._num_output[target_output_index] += target_bundle.num_rows()
-            self._output_queue.add(target_bundle)
-            self._metrics.on_output_queued(target_bundle)
+            self._enqueue_for_consumers(target_bundle, target_output_index)
 
             if self._locality_hints:
                 if preferred_bundle:
@@ -350,6 +353,17 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                     self._locality_misses += 1
 
         self._output_splitter_overhead_time += time.perf_counter() - start_time
+
+    def _enqueue_for_consumers(self, bundle: RefBundle, split_idx: int) -> None:
+        first = split_idx * self.consumers_per_split
+        for idx in range(first, first + self.consumers_per_split):
+            out = replace(
+                bundle,
+                output_split_idx=idx,
+                owns_blocks=bundle.owns_blocks and self.consumers_per_split == 1,
+            )
+            self._output_queue.add(out)
+            self._metrics.on_output_queued(out)
 
     def _select_next_output_index(self) -> int:
         # Greedily dispatch to the consumer with the least data so far.

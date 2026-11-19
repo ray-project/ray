@@ -1,4 +1,5 @@
 import abc
+import copy
 import time
 import warnings
 from typing import (
@@ -1360,13 +1361,15 @@ class DataIterator(abc.ABC):
         ref_bundles = []
         for ref_bundle in ref_bundles_iter:
             stats.iter_prefetched_bytes += ref_bundle.size_bytes()
+            stats.iter_rows_total += ref_bundle.num_rows() or 0
             ref_bundles.append(ref_bundle)
         context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
             context,
         )
-        return MaterializedDataset(logical_plan, context, stats)
+        # Reads of this dataset can overlap the source iterator's next epoch.
+        return MaterializedDataset(logical_plan, context, copy.copy(stats))
 
 
 # Backwards compatibility alias.

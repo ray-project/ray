@@ -8,7 +8,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import List, Literal, Optional, Union
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import numpy as np
 import pyarrow as pa
@@ -46,6 +46,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.ranker import DefaultRanker
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
@@ -667,6 +668,72 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
     # and the policy attribution should be cleared.
     assert o2._in_task_output_backpressure is False
     assert o2._task_output_backpressure_policy is None
+
+
+@pytest.mark.parametrize("consumers_per_split", [1, 2])
+def test_split_consumer_backpressure_override(
+    ray_start_regular_shared, consumers_per_split
+):
+    ctx = DataContext.get_current()
+    source = InputDataBuffer(ctx, [])
+    producer = MapOperator.create(make_map_transformer(lambda b: b), source, ctx)
+    splitter = OutputSplitter(
+        producer,
+        2,
+        equal=True,
+        data_context=ctx,
+        consumers_per_split=consumers_per_split,
+    )
+    topo = build_streaming_topology(splitter, ExecutionOptions(), noop_counter())
+    resource_manager = ResourceManager(
+        topo, ExecutionOptions(), MagicMock(), ctx, noop_counter()
+    )
+    resource_manager.set_external_consumer_bytes(0)
+    guard = OutputBackpressureGuard(topo, resource_manager)
+    state = topo[splitter]
+    state._num_waiting_consumers = 1
+    state._waiting_output_splits.add(0)
+    delivery = replace(make_ref_bundle(0), output_split_idx=1)
+    state.add_output(delivery)
+
+    assert guard.should_unblock(producer)
+    if consumers_per_split == 1:
+        return
+
+    # Once reader 0 advances beyond its paused sibling, stop read-ahead.
+    state.record_split_progress(0, consumed=8, delivered=16)
+    assert not guard.should_unblock(producer)
+
+    # Either override can feed a different logical split's first training batch.
+    alloc = resource_manager.op_resource_allocator
+    alloc._op_budgets[producer] = ExecutionResources(cpu=1, object_store_memory=0)
+    topo[source].add_output(make_ref_bundle(0))
+    state._waiting_output_splits = {2, 3}
+    with patch.object(
+        type(producer.metrics),
+        "obj_store_mem_max_pending_output_per_task",
+        new_callable=PropertyMock,
+        return_value=1,
+    ):
+
+        def check_overrides(expected):
+            assert guard.should_unblock(producer) is expected
+            assert alloc.can_submit_new_task(producer) is expected
+
+        state.record_split_progress(1, consumed=0, delivered=8)
+        check_overrides(True)
+        # Once the applications have consumed more rows than slot 1 received,
+        # a different rank's ongoing requests must not feed the paused replica.
+        for slot in (2, 3):
+            state.record_split_progress(slot, consumed=16, delivered=24)
+        check_overrides(False)
+        state.discard_output_split(1)
+        state.add_output(delivery)
+        check_overrides(True)
+        for slot in (2, 3):
+            state.discard_output_split(slot)
+        check_overrides(False)
+        assert state.op.metrics.num_external_outqueue_bytes == 0
 
 
 def test_summary_str_backpressure_policies(ray_start_regular_shared):

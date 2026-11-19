@@ -74,6 +74,26 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
         )
 
 
+def test_replicated_split_reuses_block_refs(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+    inputs = make_ref_bundles([[0, 1]])
+    op = OutputSplitter(
+        InputDataBuffer(ctx, inputs),
+        1,
+        equal=False,
+        data_context=ctx,
+        consumers_per_split=2,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    op.add_input(inputs[0], 0)
+    op.all_inputs_done()
+    outputs = [op.get_next(), op.get_next()]
+    assert {out.output_split_idx for out in outputs} == {0, 1}
+    assert all(out.block_refs == inputs[0].block_refs for out in outputs)
+    assert all(not out.owns_blocks for out in outputs)
+    assert not op.has_next()
+
+
 @pytest.mark.parametrize("equal", [False, True])
 @pytest.mark.parametrize("random_seed", list(range(10)))
 def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
@@ -332,9 +352,12 @@ def test_split_restamps_node_id_on_new_pieces(ray_start_regular_shared):
     assert list(ray.get(right.blocks[0].ref)["id"]) == [3, 4]
 
 
-def test_split_operator_warns_when_memory_constrained(ray_start_regular_shared):
+@pytest.mark.parametrize("consumers_per_split", [1, 3])
+def test_split_operator_warns_when_memory_constrained(
+    ray_start_regular_shared, consumers_per_split
+):
     """Warns once when the blocks training workers need prefetched (the locality
-    buffer plus one bundle per worker) reach half of an operator's share of the
+    buffer plus one bundle per logical split) reach half of an operator's share of the
     object store."""
     num_splits = 4  # Locality buffer holds up to 2 * 4 = 8 bundles.
     bundles = make_ref_bundles([[i] for i in range(2)])
@@ -346,12 +369,13 @@ def test_split_operator_warns_when_memory_constrained(ray_start_regular_shared):
         equal=False,
         data_context=DataContext.get_current(),
         locality_hints=[f"node{i}" for i in range(num_splits)],
+        consumers_per_split=consumers_per_split,
     )
     op._get_locations = lambda bundle: ["elsewhere"]
     op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
 
     def maybe_warn(share_per_op_bundles: int) -> None:
-        # Required: 8 bundles (locality buffer) + 4 bundles (one per worker).
+        # Required: 8 bundles (locality buffer) + 4 bundles (one per split).
         op.maybe_warn_memory_constrained(
             object_store_memory_share_per_op=share_per_op_bundles * bundle_bytes,
         )

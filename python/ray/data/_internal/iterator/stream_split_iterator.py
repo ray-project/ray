@@ -4,10 +4,12 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
+from ray.data._internal.execution import streaming_executor_state
 from ray.data._internal.execution.interfaces import (
     NodeIdStr,
     RefBundle,
 )
+from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
@@ -78,6 +80,8 @@ class StreamSplitDataIterator(DataIterator):
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], None]:
+        initial_rows = self._iter_stats.iter_rows_total
+
         def gen_blocks() -> Iterator[RefBundle]:
             logger.debug(f"Split {self._output_split_idx}: requesting new epoch.")
             cur_epoch = ray.get(
@@ -109,6 +113,7 @@ class StreamSplitDataIterator(DataIterator):
                         cur_epoch,
                         self._output_split_idx,
                         prefetched_bytes,
+                        self._iter_stats.iter_rows_total - initial_rows,
                     )
                     yield RefBundle(
                         blocks=block_ref_and_md.blocks,
@@ -180,7 +185,7 @@ class StreamSplitDataIterator(DataIterator):
         return ray.get(self._coord_actor.get_dataset_context.remote())
 
     def world_size(self) -> int:
-        """Returns the number of splits total."""
+        """Returns the total number of consumer iterators, including replicas."""
         return self._world_size
 
     def _get_dataset_tag(self) -> Dict[str, str]:
@@ -212,6 +217,10 @@ class SplitCoordinator:
 
         self._base_dataset = dataset
         self._n = n
+        split_op = dataset._logical_plan.dag
+        self._consumers_per_split = (
+            split_op.consumers_per_split if isinstance(split_op, StreamingSplit) else 1
+        )
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
         self._dataset_state_lock = threading.Lock()
@@ -235,6 +244,8 @@ class SplitCoordinator:
         # Track prefetched bytes reported by each client (from BatchIterator).
         # Guarded by self._lock.
         self._client_prefetched_bytes: Dict[int, int] = {}
+        # Start/end byte offsets of the last block sent to each replica this epoch.
+        self._last_delivery: Dict[int, Tuple[int, int]] = {}
 
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
@@ -345,6 +356,8 @@ class SplitCoordinator:
         self._num_unarrived_splits_at_barrier = self._n
         self._finished_splits.clear()
         self._next_bundle.clear()
+        self._last_delivery.clear()
+        self._client_prefetched_bytes.clear()
         self._gen_epoch_error = None
         # Reset per-split dispatch counters for the new epoch.
         self._num_rows_dispatched = dict.fromkeys(range(self._n), 0)
@@ -354,6 +367,7 @@ class SplitCoordinator:
         epoch_id: int,
         output_split_idx: int,
         client_prefetched_bytes: int = 0,
+        rows_consumed: Optional[int] = None,
     ) -> Optional[RefBundle]:
         """Blocking get operation.
 
@@ -364,29 +378,35 @@ class SplitCoordinator:
             output_split_idx: The output split index for this client.
             client_prefetched_bytes: The prefetched bytes reported by the
                 client's BatchIterator, used for resource accounting.
+            rows_consumed: Rows yielded to the application this epoch. A direct
+                block consumer acknowledges the preceding delivery at its next pull.
 
         Returns:
             The next RefBundle for this split, or None if the epoch is done.
         """
         start_time = time.perf_counter()
-        if epoch_id != self._cur_epoch:
-            raise ValueError(
-                "Invalid iterator: the dataset has moved on to another epoch."
-            )
+        with self._lock:
+            if epoch_id != self._cur_epoch:
+                raise ValueError(
+                    "Invalid iterator: the dataset has moved on to another epoch."
+                )
+            if output_split_idx in self._finished_splits:
+                return None
+            next_bundle = self._next_bundle.get(output_split_idx)
+            output_iterator = self._output_iterator
+            num_rows_dispatched = self._num_rows_dispatched[output_split_idx]
+            if self._consumers_per_split > 1:
+                self._current_executor.record_split_progress(
+                    output_split_idx,
+                    num_rows_dispatched if rows_consumed is None else rows_consumed,
+                    num_rows_dispatched,
+                )
 
         returned_normally = False
         try:
-            # Ensure there is at least one bundle.
-            with self._lock:
-                if output_split_idx in self._next_bundle:
-                    next_bundle = self._next_bundle[output_split_idx]
-                else:
-                    next_bundle = None
-
-            # Fetch next bundle if needed.
             while next_bundle is None or not next_bundle.blocks:
-                # This is a BLOCKING call, so do it outside the lock.
-                next_bundle = self._output_iterator.get_next(output_split_idx)
+                # Block outside the lock on this epoch's iterator.
+                next_bundle = output_iterator.get_next(output_split_idx)
 
             schema = next_bundle.schema
             last_entry = next_bundle.blocks[-1]
@@ -397,11 +417,23 @@ class SplitCoordinator:
                 output_split_idx=next_bundle.output_split_idx,
             )
 
-            # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:
+                # A prefetched get can outlive its reader or epoch.
+                if (
+                    epoch_id != self._cur_epoch
+                    or output_split_idx in self._finished_splits
+                ):
+                    return None
                 self._next_bundle[output_split_idx] = next_bundle
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
+
+                if self._consumers_per_split > 1:
+                    _, start = self._last_delivery.get(output_split_idx, (0, 0))
+                    self._last_delivery[output_split_idx] = (
+                        start,
+                        start + (last_entry.metadata.size_bytes or 0),
+                    )
 
                 # Update client prefetched bytes and report to resource manager.
                 self._client_prefetched_bytes[
@@ -428,20 +460,18 @@ class SplitCoordinator:
                 schema=schema,
                 owns_blocks=next_bundle.owns_blocks,
             )
+        except streaming_executor_state.OutputSplitFinished:
+            return None
         except StopIteration:
-            with self._lock:
-                num_rows = self._num_rows_dispatched[output_split_idx]
             logger.debug(
                 f"Split {output_split_idx} epoch {epoch_id} finished, dispatched "
-                f"{num_rows} rows."
+                f"{num_rows_dispatched} rows."
             )
             return None
         except Exception as e:
-            with self._lock:
-                num_rows = self._num_rows_dispatched[output_split_idx]
             logger.warning(
                 f"Split {output_split_idx} epoch {epoch_id} get() failed after "
-                f"{num_rows} rows: {e}"
+                f"{num_rows_dispatched} rows: {e}"
             )
             raise
         finally:
@@ -449,8 +479,12 @@ class SplitCoordinator:
             # exceptions) to avoid stale backpressure data.
             if not returned_normally:
                 with self._lock:
-                    self._client_prefetched_bytes[output_split_idx] = 0
-                    self._report_prefetched_bytes_to_executor()
+                    if (
+                        epoch_id == self._cur_epoch
+                        and output_split_idx not in self._finished_splits
+                    ):
+                        self._client_prefetched_bytes[output_split_idx] = 0
+                        self._report_prefetched_bytes_to_executor()
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
@@ -459,6 +493,31 @@ class SplitCoordinator:
 
         Must be called while holding self._lock.
         """
+        if self._consumers_per_split > 1:
+            total = 0
+            for first in range(0, self._n, self._consumers_per_split):
+                windows = []
+                for slot in range(first, first + self._consumers_per_split):
+                    if slot not in self._last_delivery:
+                        continue
+                    start, end = self._last_delivery[slot]
+                    # The request reports the FIFO window before this delivery.
+                    # The coordinator holds the remainder of the bundle after it.
+                    prefetched = self._client_prefetched_bytes.get(slot, 0)
+                    if prefetched:
+                        windows.append((start - prefetched, start))
+                    pending = self._next_bundle.get(slot)
+                    if pending is not None:
+                        windows.append((end, end + pending.size_bytes()))
+
+                # All replicas read the same block sequence. Count overlapping
+                # byte ranges once, and count disjoint ranges in full.
+                covered_end = 0
+                for start, end in sorted(windows):
+                    total += max(0, end - max(start, covered_end))
+                    covered_end = max(covered_end, end)
+            return total
+
         # Bytes buffered in the coordinator.
         total = sum(bundle.size_bytes() for bundle in self._next_bundle.values())
         # Bytes prefetched by each client's BatchIterator.
@@ -541,6 +600,8 @@ class SplitCoordinator:
             if epoch_id != self._cur_epoch:
                 return
             self._finished_splits.add(split_idx)
+            if self._current_executor is not None:
+                self._current_executor.discard_output_split(split_idx)
 
             self._client_prefetched_bytes[split_idx] = 0
             # Drop any blocks buffered for this split — the consumer won't

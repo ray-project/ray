@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -73,6 +75,22 @@ def test_split_from_buffer_updates_resource_bank(ray_start_regular_shared):
     assert _total_blocks(bank.live_object_store(op=input_op)) == 0
 
 
+def test_replicated_streaming_split_rejected(ray_start_regular_shared):
+    ds = ray.data.range(4, override_num_blocks=2)
+    (reader,) = ds.streaming_split(1)
+    assert sorted(r["id"] for r in reader.iter_rows()) == list(range(4))
+
+    @ray.remote(num_cpus=0)
+    def consume(reader):
+        list(reader.iter_rows())
+
+    readers = ds.streaming_split(1, consumers_per_split=2)
+    calls = [consume.remote(reader) for reader in readers]
+    for call in calls:
+        with pytest.raises(NotImplementedError, match="actor-only Data backend"):
+            ray.get(call, timeout=30)
+
+
 def _ref_hex(ref) -> str:
     # ray.types.ObjectRef is a documentation stub without hex(); the runtime
     # ObjectRef from make_ref_bundles has it.
@@ -89,7 +107,5 @@ def _total_blocks(usage) -> int:
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
