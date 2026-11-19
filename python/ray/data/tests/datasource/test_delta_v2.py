@@ -352,14 +352,32 @@ def test_filter_prunes_row_groups(row_group_table):
     assert _row_groups(rows) == [4]
 
 
-def test_falls_back_to_v1_with_pyarrow_scan_options(tmp_path):
+@pytest.mark.parametrize("deltalake_version", ["1.5.0", "1.6.6"])
+def test_falls_back_to_v1_with_pyarrow_scan_options(
+    tmp_path, monkeypatch, deltalake_version
+):
+    """V1 reads the version the V2 check opened, even if the table changes in
+    between. deltalake 1.6+ loads the file list with the log, so V1 reuses the
+    checked table rather than loading it again."""
     path = str(tmp_path / "table")
     deltalake.write_deltalake(path, pa.table({"x": [1, 2]}))
+    opened = []
+
+    class _AppendAfterFirstOpen(deltalake.DeltaTable):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            opened.append(self.version())
+            if len(opened) == 1:
+                deltalake.write_deltalake(path, pa.table({"x": [3]}), mode="append")
+
+    monkeypatch.setattr(deltalake, "__version__", deltalake_version)
+    monkeypatch.setattr(deltalake, "DeltaTable", _AppendAfterFirstOpen)
 
     ds = _read(path, batch_size=2)
 
     assert not _uses_v2(ds)
     assert sorted(row["x"] for row in ds.take_all()) == [1, 2]
+    assert opened == ([0] if deltalake_version == "1.6.6" else [0, 0])
 
 
 def test_partition_filters_fall_back_to_v1(tmp_path):
