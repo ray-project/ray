@@ -1,12 +1,13 @@
 import copy
+import itertools
 import logging
 import time
 import uuid
 from abc import ABC, abstractmethod
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
 from ray._raylet import IMPLICIT_RESOURCE_PREFIX
@@ -49,6 +50,35 @@ from ray.core.generated.instance_manager_pb2 import (
 #  demands.
 #
 logger = logging.getLogger(__name__)
+
+# Protobuf enum attribute lookups are slow, so hoist the ones used per label check.
+_LABEL_OPERATOR_IN = LabelSelectorOperator.LABEL_OPERATOR_IN
+_LABEL_OPERATOR_NOT_IN = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+
+
+def _has_label_constraints(request: ResourceRequest) -> bool:
+    """Return True if `request` specifies at least one label constraint."""
+    for selector in request.label_selectors:
+        if selector.label_constraints:
+            return True
+    return False
+
+
+def _has_dynamic_selector_overlap(requests: Iterable[ResourceRequest]) -> bool:
+    """Return True if any label selector reads a label added by anti-affinity."""
+    anti_affinity_keys = set()
+    for r in requests:
+        for c in r.placement_constraints:
+            if c.HasField("anti_affinity"):
+                anti_affinity_keys.add(c.anti_affinity.label_name)
+    if not anti_affinity_keys:
+        return False
+    for r in requests:
+        for selector in r.label_selectors:
+            for c in selector.label_constraints:
+                if c.label_key in anti_affinity_keys:
+                    return True
+    return False
 
 
 @dataclass
@@ -578,12 +608,19 @@ class SchedulingNode:
         requests: List[ResourceRequest],
         resource_request_source: ResourceRequestSource,
         shape_keys: Optional[Dict[int, bytes]] = None,
+        best_label_scores: Optional[Dict[bytes, float]] = None,
+        precomputed_label_scores: Optional[Dict[bytes, float]] = None,
     ) -> Tuple[List[ResourceRequest], UtilizationScore]:
         """Try to schedule the resource requests on this node.
 
         This modifies the node's available resources if the requests are schedulable.
-        The requests are scheduled one by one in the sorted order, and no
-        backtracking is done.
+        Requests are tiered by the label selector they match on this node: the
+        primary selector first, then each fallback selector, then requests without
+        label selectors. Once a labeled tier is placed, lower labeled tiers are
+        skipped so one pass never mixes primary and fallback placements; requests
+        without label selectors still fill the remaining capacity unless a skipped
+        labeled tier can fit on this node. Within each tier, the requests are
+        scheduled one by one in the sorted order, and no backtracking is done.
 
         Args:
             requests: The resource requests to be scheduled.
@@ -591,6 +628,12 @@ class SchedulingNode:
                 pending demands from ray actors/tasks or cluster resource constraints.
             shape_keys: Precomputed serialization keys for each request. If None,
                 keys are computed on the fly (fallback).
+            best_label_scores: The best label selector score that any candidate
+                node gives each request, by shape key. Scores are tiered relative
+                to it, so selectors that no node can satisfy do not hold a request
+                back. If None, scores are tiered as is.
+            precomputed_label_scores: Optional precomputed `_satisfies_label_constraints`
+                scores by shape key valid for this node's initial `labels`.
 
         Returns:
             A tuple of:
@@ -598,41 +641,122 @@ class SchedulingNode:
                 - the utilization score for this node with respect to the current
                 resource requests being scheduled.
         """
-        # Track the resource requests that cannot be scheduled on this node.
-        unschedulable_requests = []
-
-        # Cache to prevent O(N^2 * M) iteration by returning early for identical requests.
-        unfittable_cache = UnschedulableRequestCache()
-
-        # Sort the requests and try schedule them one by one.
+        keyed_requests = []
         for r in requests:
             sk = shape_keys.get(id(r)) if shape_keys is not None else None
             if sk is None:
                 sk = r.SerializeToString(deterministic=True)
+            keyed_requests.append((r, sk))
 
-            if unfittable_cache.contains(sk):
-                unschedulable_requests.append(r)
+        # Label tier of each request: its label selector score on this node, 0 if
+        # it has no label selectors, or None if the node satisfies none of them.
+        # Labels only grow while scheduling (anti-affinity), so their count
+        # versions the memo.
+        tiers: Dict[Tuple[bytes, int], Optional[float]] = {}
+        initial_num_labels = len(self.labels)
+
+        def compute_tiers() -> List[Optional[float]]:
+            num_labels = len(self.labels)
+            use_precomputed = (
+                precomputed_label_scores is not None
+                and num_labels == initial_num_labels
+            )
+            out: List[Optional[float]] = []
+            for r, sk in keyed_requests:
+                key = (sk, num_labels)
+                if key not in tiers:
+                    if use_precomputed and sk in precomputed_label_scores:
+                        score = precomputed_label_scores[sk]
+                        if score == 0:
+                            tier: Optional[float] = 0
+                        else:
+                            best = (best_label_scores or {}).get(sk)
+                            tier = (min(score / best, 1.0) if best else score) or None
+                    elif not _has_label_constraints(r):
+                        tier = 0
+                    else:
+                        score = self._satisfies_label_constraints(r)
+                        best = (best_label_scores or {}).get(sk)
+                        tier = (min(score / best, 1.0) if best else score) or None
+                    tiers[key] = tier
+                out.append(tiers[key])
+            return out
+
+        # Cache to prevent O(N^2 * M) iteration by returning early for identical
+        # requests.
+        unfittable_cache = UnschedulableRequestCache()
+        label_score = 0
+        done_tiers = set()
+        request_tiers: Optional[List[Optional[float]]] = None
+        available_resources = self.get_available_resources(resource_request_source)
+
+        while True:
+            if request_tiers is None:
+                request_tiers = compute_tiers()
+            available_tiers = set(request_tiers) - {None}
+            next_tiers = sorted(available_tiers - done_tiers, reverse=True)
+            if not next_tiers:
+                break
+            tier = next_tiers[0]
+            done_tiers.add(tier)
+
+            if label_score and (
+                (0 < tier < label_score)
+                or (
+                    tier == 0
+                    and any(
+                        0 < (rt or 0) < label_score
+                        and self._can_schedule_one(r, resource_request_source)
+                        for (r, _), rt in zip(keyed_requests, request_tiers)
+                    )
+                )
+            ):
                 continue
 
-            # Record the label count to detect if this node's state mutates.
-            # This is to support requests becoming schedulable due to anti-affinity.
             num_labels_before = len(self.labels)
+            remaining = []
+            remaining_tiers: List[Optional[float]] = []
+            labels_grew = False
+            # Try schedule the requests of this tier one by one in the sorted order.
+            # If an anti-affinity placement grows self.labels, restart tier
+            # selection so earlier requests whose tier promoted are revisited.
+            for idx, ((r, sk), req_tier) in enumerate(
+                zip(keyed_requests, request_tiers)
+            ):
+                if req_tier != tier or unfittable_cache.contains(sk):
+                    remaining.append((r, sk))
+                    remaining_tiers.append(req_tier)
+                    continue
 
-            if not self._try_schedule_one(r, resource_request_source):
-                unfittable_cache.add(sk)
-                unschedulable_requests.append(r)
-            else:
-                # If the request successfully scheduled and added a label to the node,
-                # it might have expanded feasibility so we invalidate the unavailable cache.
-                if len(self.labels) > num_labels_before:
-                    unfittable_cache.clear()
+                if not self._try_schedule_one(
+                    r,
+                    resource_request_source,
+                    check_labels=False,
+                    available_resources=available_resources,
+                ):
+                    unfittable_cache.add(sk)
+                    remaining.append((r, sk))
+                    remaining_tiers.append(req_tier)
+                else:
+                    label_score = max(label_score, tier)
+                    if len(self.labels) > num_labels_before:
+                        remaining.extend(keyed_requests[idx + 1 :])
+                        done_tiers.clear()
+                        labels_grew = True
+                        break
 
-        score = self._compute_score(resource_request_source)
+            keyed_requests = remaining
+            request_tiers = None if labels_grew else remaining_tiers
+
+        unschedulable_requests = [r for r, _ in keyed_requests]
+        score = self._compute_score(resource_request_source, label_score)
 
         return unschedulable_requests, score
 
     def _compute_score(
-        self, resource_request_source: ResourceRequestSource
+        self,
+        resource_request_source: ResourceRequestSource,
+        label_score: float,
     ) -> UtilizationScore:
         """Compute the utilization score for this node with respect to the current resource
         request being scheduled.
@@ -645,7 +769,8 @@ class SchedulingNode:
                 label_selector requirements:
                     0: if this node does not satisfy any label selector requirements or
                        no label selectors are provided.
-                    len(label_selectors)-i: a score based on the priority of the label
+                    (len(label_selectors) - i) / len(label_selectors): a normalized
+                        score in (0.0, 1.0] based on the priority index i of the label
                         selector in the resource request that this node satisfies.
             2. Whether this node is a GPU node and the current resource request has
                 GPU requirements:
@@ -661,15 +786,14 @@ class SchedulingNode:
             This function is adapted from  _resource_based_utilization_scorer from
             autoscaler v1.
 
-        TODO(rickyx,jjyao):  We should also consider node labels for
-            scoring. For example, if a node has a label that matches the affinity
-            label of the resource request, we should give it a higher score.
-
         TODO(rickyx): add pluggable scoring functions here.
 
         Args:
             resource_request_source: The resource request source to score
                 against.
+            label_score: The label selector tier of the requests scheduled
+                during the current `try_schedule` pass, so requests placed in
+                earlier passes do not affect it.
 
         Returns:
             A utilization score for this node.
@@ -712,15 +836,12 @@ class SchedulingNode:
             if is_gpu_node and not any_gpu_requests:
                 gpu_ok = False
 
-        # Check if node satisfies label requirements.
-        matches_labels = self._satisfies_label_constraints(sched_requests)
-
         # Prioritize avoiding gpu nodes for non-gpu workloads first,
         # then prioritize matching multiple resource types,
         # then prioritize using all resources,
         # then prioritize overall balance of multiple resources.
         return (
-            matches_labels,
+            label_score,
             gpu_ok,
             num_matching_resource_types,
             min(util_by_resources) if util_by_resources else 0,
@@ -729,39 +850,83 @@ class SchedulingNode:
             else 0,
         )
 
-    def _satisfies_label_constraints(
-        self, sched_requests: List[ResourceRequest]
-    ) -> int:
-        """Returns a higher value based on the priority of the label selector this node
-        satisfies (first returns highest score, decreasing sequentially for fallback), 0 otherwise."""
-        for req in sched_requests:
-            num_selectors = len(req.label_selectors)
-            for i, selector in enumerate(req.label_selectors):
-                all_constraints_pass = True
-                for constraint in selector.label_constraints:
-                    key = constraint.label_key
-                    values = set(constraint.label_values)
-                    op = constraint.operator
-                    node_val = self.labels.get(key)
+    def _satisfies_label_constraints(self, request: ResourceRequest) -> float:
+        """Returns a normalized value in (0.0, 1.0] based on the priority of the label
+        selector this node satisfies (1.0 for the first selector, decreasing
+        proportionally for fallback selectors), or 0 if none apply or none have
+        constraints."""
+        if not _has_label_constraints(request):
+            return 0
+        num_selectors = len(request.label_selectors)
+        for i, selector in enumerate(request.label_selectors):
+            all_constraints_pass = True
+            for constraint in selector.label_constraints:
+                values = constraint.label_values
+                op = constraint.operator
+                node_val = self.labels.get(constraint.label_key)
 
-                    if op == LabelSelectorOperator.LABEL_OPERATOR_IN:
-                        if node_val not in values:
-                            all_constraints_pass = False
-                            break
-                    elif op == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN:
-                        if node_val in values:
-                            all_constraints_pass = False
-                            break
-                    else:
+                if op == _LABEL_OPERATOR_IN:
+                    if node_val not in values:
                         all_constraints_pass = False
                         break
+                elif op == _LABEL_OPERATOR_NOT_IN:
+                    if node_val in values:
+                        all_constraints_pass = False
+                        break
+                else:
+                    all_constraints_pass = False
+                    break
 
-                if all_constraints_pass:
-                    return num_selectors - i
+            if all_constraints_pass:
+                return (num_selectors - i) / num_selectors
         return 0
 
-    def _try_schedule_one(
+    def _schedulable_label_score(
+        self,
+        request: ResourceRequest,
+        resource_request_source: ResourceRequestSource,
+        check_labels: bool = True,
+        available_resources: Optional[Dict[str, float]] = None,
+    ) -> Optional[float]:
+        """Return the label selector score if `request` fits on this node, else None."""
+        if check_labels and request.label_selectors:
+            score = self._satisfies_label_constraints(request)
+            if score == 0 and _has_label_constraints(request):
+                return None
+        else:
+            score = 0
+
+        for constraint in request.placement_constraints:
+            if constraint.HasField("anti_affinity"):
+                anti_affinity = constraint.anti_affinity
+                if (
+                    self.labels.get(anti_affinity.label_name)
+                    == anti_affinity.label_value
+                ):
+                    return None
+
+        avail = (
+            available_resources
+            if available_resources is not None
+            else self.get_available_resources(resource_request_source)
+        )
+        if not _fits(avail, request.resources_bundle):
+            return None
+        return score
+
+    def _can_schedule_one(
         self, request: ResourceRequest, resource_request_source: ResourceRequestSource
+    ) -> bool:
+        return (
+            self._schedulable_label_score(request, resource_request_source) is not None
+        )
+
+    def _try_schedule_one(
+        self,
+        request: ResourceRequest,
+        resource_request_source: ResourceRequestSource,
+        check_labels: bool = True,
+        available_resources: Optional[Dict[str, float]] = None,
     ) -> bool:
         """Try to schedule one resource request on this node. The request could be from
         various sources, specified by `resource_request_source`.
@@ -770,37 +935,28 @@ class SchedulingNode:
             request: The resource request to be scheduled.
             resource_request_source: The source of the resource request, i.e.
                 pending demands from ray actors/tasks or cluster resource constraints.
+            check_labels: Whether to re-evaluate label selectors (False when the
+                caller has already verified them for the current node labels).
+            available_resources: Optional pre-fetched available resources dict for
+                `resource_request_source`.
 
         Returns:
             True if the resource request is scheduled on this node.
         """
-
-        # Enforce label selector constraints
-        if request.label_selectors:
-            if self._satisfies_label_constraints([request]) == 0:
-                return False  # Node doesn't satisfy any label selector in request.
-
-        # Check if there's placement constraints that are not satisfied.
-        for constraint in request.placement_constraints:
-            if constraint.HasField("anti_affinity"):
-                anti_affinity = constraint.anti_affinity
-                if (
-                    anti_affinity.label_name in self.labels
-                    and anti_affinity.label_value
-                    == self.labels[anti_affinity.label_name]
-                ):
-                    # The node already has a label that matches the anti-affinity
-                    return False
-
-            # We don't need to check for affinity constraints here since
-            # we have already combined resource requests with the affinity
-            # constraints into the same request at `combine_requests_with_affinity`.
-            pass
-
-        available_resources_dict = self.get_available_resources(resource_request_source)
-
-        # Check if there's enough resources to schedule the request.
-        if not _fits(available_resources_dict, dict(request.resources_bundle)):
+        available_resources_dict = (
+            available_resources
+            if available_resources is not None
+            else self.get_available_resources(resource_request_source)
+        )
+        if (
+            self._schedulable_label_score(
+                request,
+                resource_request_source,
+                check_labels=check_labels,
+                available_resources=available_resources_dict,
+            )
+            is None
+        ):
             return False
 
         # Schedule the request, update resources
@@ -884,6 +1040,173 @@ class SchedulingNode:
                 ]
             ),
         )
+
+
+def _has_prefix(tier_keys: Iterable[bytes], prefix: Tuple[bytes, ...]) -> bool:
+    return tuple(itertools.islice(tier_keys, len(prefix))) == prefix
+
+
+def _accepted_prefix(
+    tier_keys: Iterable[bytes], remaining_counts: Dict[bytes, int]
+) -> Tuple[bytes, ...]:
+    prefix = []
+    last = 0
+    for k in tier_keys:
+        prefix.append(k)
+        n = remaining_counts.get(k, 0)
+        if n > 0:
+            remaining_counts[k] = n - 1
+            last = len(prefix)
+    return tuple(prefix[:last])
+
+
+@dataclass
+class _NodeAttempt:
+    """Cached scheduling attempt for one candidate node in `_sched_best_node`."""
+
+    # Label selector score by shape key for each request this node can fit.
+    label_scores: Dict[bytes, float]
+    # Best label selector scores (> this node's own score) when simulated.
+    suboptimal_best_scores: Optional[Dict[bytes, float]] = None
+    # Top label tier when simulated (None before simulation).
+    top: Optional[float] = None
+    # Prefix through the last accepted shape in this node's top label tier,
+    # and in tier 0 when co-packed below top > 0.
+    top_prefix: Tuple[bytes, ...] = ()
+    zero_prefix: Tuple[bytes, ...] = ()
+    # Keys in 0 < tier < top that blocked tier 0 from co-packing when simulated.
+    tier_zero_blockers: Tuple[bytes, ...] = ()
+    # Simulated node candidate (None if unsimulated or nothing scheduled).
+    node: Optional[SchedulingNode] = None
+    # Resource requests scheduled on the node during this attempt.
+    scheduled_requests: List[ResourceRequest] = field(default_factory=list)
+    # Utilization score of the simulated node.
+    score: Optional[UtilizationScore] = None
+
+    def node_tier(self, key: bytes, best_label_scores: Dict[bytes, float]) -> float:
+        score = self.label_scores[key]
+        if score == 0:
+            return 0.0
+        best = best_label_scores.get(key)
+        return min(score / best, 1.0) if best else score
+
+    def top_tier(
+        self,
+        requests_by_key: Dict[bytes, ResourceRequest],
+        best_label_scores: Dict[bytes, float],
+        pass_top: float,
+    ) -> float:
+        top = -1.0
+        for k in self.label_scores:
+            if k not in requests_by_key:
+                continue
+            tier = self.node_tier(k, best_label_scores)
+            if tier > top:
+                top = tier
+                if top >= pass_top:
+                    return top
+        return top
+
+    def matches(
+        self,
+        keys: List[bytes],
+        requests_by_key: Dict[bytes, ResourceRequest],
+        best_label_scores: Dict[bytes, float],
+        top: float,
+    ) -> bool:
+        if self.top is None:
+            return False
+        if self.node is None:
+            return True
+        if self.top != top:
+            return False
+        if self.suboptimal_best_scores and not all(
+            best_label_scores.get(k) == v
+            for k, v in self.suboptimal_best_scores.items()
+            if k in requests_by_key
+        ):
+            return False
+        if not _has_prefix(
+            (
+                k
+                for k in keys
+                if k in self.label_scores
+                and self.node_tier(k, best_label_scores) == top
+            ),
+            self.top_prefix,
+        ):
+            return False
+        if self.zero_prefix and not _has_prefix(
+            (k for k in keys if self.label_scores.get(k) == 0),
+            self.zero_prefix,
+        ):
+            return False
+        if self.tier_zero_blockers and not any(
+            k in requests_by_key for k in self.tier_zero_blockers
+        ):
+            return False
+        return True
+
+    @classmethod
+    def from_schedule(
+        cls,
+        label_scores: Dict[bytes, float],
+        best_label_scores: Dict[bytes, float],
+        node_copy: SchedulingNode,
+        new_sched: List[ResourceRequest],
+        score: UtilizationScore,
+        keys: Optional[List[bytes]],
+        shape_key_fn: Callable[[ResourceRequest], bytes],
+        top: Optional[float],
+        requests_by_key: Optional[Dict[bytes, ResourceRequest]],
+        resource_request_source: Optional[ResourceRequestSource],
+    ) -> "_NodeAttempt":
+        if keys is None:
+            return cls(
+                label_scores=label_scores,
+                node=node_copy,
+                scheduled_requests=new_sched,
+                score=score,
+            )
+
+        sched_counts = Counter(map(shape_key_fn, new_sched))
+        node_keys = [k for k in keys if k in label_scores]
+        attempt = cls(
+            label_scores=label_scores,
+            suboptimal_best_scores={
+                k: best_label_scores[k]
+                for k in label_scores
+                if k in best_label_scores and label_scores[k] < best_label_scores[k]
+            },
+            top=top,
+            node=node_copy,
+            scheduled_requests=new_sched,
+            score=score,
+        )
+        attempt.top_prefix = _accepted_prefix(
+            (k for k in node_keys if attempt.node_tier(k, best_label_scores) == top),
+            sched_counts,
+        )
+        if any(sched_counts.values()):
+            attempt.zero_prefix = _accepted_prefix(
+                (k for k in node_keys if label_scores[k] == 0),
+                sched_counts,
+            )
+        elif (
+            top > 0
+            and requests_by_key is not None
+            and resource_request_source is not None
+            and any(label_scores[k] == 0 for k in node_keys)
+        ):
+            attempt.tier_zero_blockers = tuple(
+                k
+                for k in dict.fromkeys(node_keys)
+                if 0 < attempt.node_tier(k, best_label_scores) < top
+                and node_copy._can_schedule_one(
+                    requests_by_key[k], resource_request_source
+                )
+            )
+        return attempt
 
 
 class ResourceDemandScheduler(IResourceScheduler):
@@ -1777,7 +2100,24 @@ class ResourceDemandScheduler(IResourceScheduler):
                 schedulable_nodes.append(node)
         existing_nodes = schedulable_nodes
 
+        # Anti-affinity adds labels while scheduling. Cache scheduling attempts
+        # only if no label selector reads those labels.
+        unique_requests = {shape_keys[id(r)]: r for r in requests_to_sched}.values()
+        static_labels = not _has_dynamic_selector_overlap(unique_requests)
+
+        def _can_host_more(node: SchedulingNode) -> bool:
+            if not requests_to_sched:
+                return False
+            avail = node.get_available_resources(resource_request_source)
+            if not _can_fit_any_request(avail, resource_shapes):
+                return False
+            return any(
+                node._can_schedule_one(r, resource_request_source)
+                for r in {shape_keys[id(r)]: r for r in requests_to_sched}.values()
+            )
+
         # Try scheduling resource requests with existing nodes first.
+        attempts = {} if static_labels else None
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
             (
                 best_node,
@@ -1790,12 +2130,17 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
                 shape_keys,
+                attempts,
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
                 break
 
-            target_nodes.append(best_node)
+            # A node that may host lower label selector tiers stays a candidate.
+            if _can_host_more(best_node):
+                existing_nodes.append(best_node)
+            else:
+                target_nodes.append(best_node)
 
         # If there's any existing nodes left, we will add to the target nodes
         target_nodes.extend(existing_nodes)
@@ -1826,6 +2171,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 }
             )
 
+        attempts = {} if static_labels else None
         while len(requests_to_sched) > 0 and len(ippr_candidates) > 0:
             (
                 best_node,
@@ -1838,6 +2184,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
                 shape_keys,
+                attempts,
             )
             if best_node is None:
                 # No ippr nodes can schedule any more requests.
@@ -1848,12 +2195,18 @@ class ResourceDemandScheduler(IResourceScheduler):
                 desired_cpu=best_node.ippr_status.max_cpu(),
                 desired_memory=best_node.ippr_status.max_memory(),
             )
-            target_nodes.append(best_node)
             original_ippr_candidates.pop(best_node.ippr_status.cloud_instance_id, None)
+            if _can_host_more(best_node):
+                ippr_candidates.append(best_node)
+            else:
+                target_nodes.append(best_node)
 
         # Keep unselected IPPR candidates at their original resources because no
         # resize request was issued for them in this scheduling pass.
-        target_nodes.extend(original_ippr_candidates.values())
+        target_nodes.extend(
+            original_ippr_candidates.get(node.ippr_status.cloud_instance_id, node)
+            for node in ippr_candidates
+        )
 
         ippr_specs = ctx.get_ippr_specs()
 
@@ -1884,38 +2237,55 @@ class ResourceDemandScheduler(IResourceScheduler):
             for node_type, num_available in node_type_available.items()
             if num_available > 0
         ]
+        # New nodes that may still host lower label selector tiers.
+        launched_nodes = []
+        max_num_nodes = ctx.get_max_num_nodes()
+        attempts = {} if static_labels else None
 
-        while len(requests_to_sched) > 0 and len(node_pools) > 0:
-            # Max number of nodes reached.
-            max_num_nodes = ctx.get_max_num_nodes()
-            if max_num_nodes is not None and len(target_nodes) >= max_num_nodes:
-                logger.debug(
-                    "Max number of nodes reached: {}, "
-                    "cannot launch more nodes.".format(max_num_nodes)
-                )
-                break
-
+        while len(requests_to_sched) > 0:
+            num_nodes = len(target_nodes) + len(launched_nodes)
+            can_launch_new = max_num_nodes is None or num_nodes < max_num_nodes
+            fresh_nodes = node_pools if can_launch_new else []
             (
                 best_node,
                 requests_to_sched,
-                node_pools,
+                remaining,
             ) = ResourceDemandScheduler._sched_best_node(
                 requests_to_sched,
-                node_pools,
+                launched_nodes + fresh_nodes,
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
                 shape_keys,
+                attempts,
             )
             if best_node is None:
+                if not can_launch_new:
+                    logger.debug(
+                        "Max number of nodes reached: {}, "
+                        "cannot launch more nodes.".format(max_num_nodes)
+                    )
                 break
 
-            target_nodes.append(best_node)
-            # Update the node pool if a node with the same node type of the
-            # added node can be launched.
-            node_type_available[best_node.node_type] -= 1
-            if node_type_available[best_node.node_type] > 0:
-                node_pools.append(_to_launch_node_with_ippr_caps(best_node.node_type))
+            fresh_ids = {id(n) for n in fresh_nodes}
+            launched_nodes = [n for n in remaining if id(n) not in fresh_ids]
+            remaining_fresh = [n for n in remaining if id(n) in fresh_ids]
+            if len(remaining_fresh) < len(fresh_nodes):
+                # Update the node pool if a node with the same node type of the
+                # added node can be launched.
+                node_type_available[best_node.node_type] -= 1
+                if node_type_available[best_node.node_type] > 0:
+                    remaining_fresh.append(
+                        _to_launch_node_with_ippr_caps(best_node.node_type)
+                    )
+                node_pools = remaining_fresh
+
+            if _can_host_more(best_node):
+                launched_nodes.append(best_node)
+            else:
+                target_nodes.append(best_node)
+
+        target_nodes.extend(launched_nodes)
 
         return target_nodes, requests_to_sched
 
@@ -1927,7 +2297,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         cloud_resource_availabilities: Dict[NodeType, float],
         recoverable_resource_availabilities: Dict[NodeType, float],
         shape_keys: Optional[Dict[int, bytes]] = None,
-    ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
+        attempts: Optional[Dict[int, object]] = None,
+    ) -> Tuple[Optional[SchedulingNode], List[ResourceRequest], List[SchedulingNode]]:
         """Schedule the requests on the best node.
         A simple greedy algorithm is used to schedule the requests:
             1. Try to schedule the requests on each node.
@@ -1960,6 +2331,16 @@ class ResourceDemandScheduler(IResourceScheduler):
             shape_keys: Precomputed serialization keys for each request. Avoids
                 redundant SerializeToString calls inside try_schedule. If None,
                 keys are computed on the fly (fallback for tests and external callers).
+            attempts: Scheduling attempts by node id, shared across calls that
+                schedule the remaining requests on the same candidate nodes. An
+                attempt is reused while the node's label tiers and accepted
+                request prefixes in its top and unlabeled tiers stay unchanged,
+                so each call only simulates nodes affected by the previous
+                selection (e.g. one host per call when placing TPU slice bundles).
+                When any label selector reads a label added by anti-affinity,
+                simulated attempt reuse and pruning are bypassed while keeping
+                initial label scores cached. If None, every candidate node is
+                simulated with every request.
 
         Returns:
             best_node: The best node to schedule the requests.
@@ -1967,43 +2348,127 @@ class ResourceDemandScheduler(IResourceScheduler):
                 node.
             nodes: Remaining nodes after the best node is removed.
         """
+
+        def shape_key(r: ResourceRequest) -> bytes:
+            sk = shape_keys.get(id(r)) if shape_keys is not None else None
+            return sk if sk is not None else r.SerializeToString(deterministic=True)
+
+        keys = [shape_key(r) for r in requests]
+        requests_by_key = dict(zip(keys, requests))
         results = []
 
-        # A temporary data class to store the scheduling result.
-        @dataclass
-        class ScheduleResult:
-            # The node candidate after a scheduling attempt.
-            node: SchedulingNode
-            # The infeasible resource requests that are not scheduled.
-            infeasible_requests: List[ResourceRequest]
-            # The index of the node in the original node list.
-            idx: int
-            # the score of the scheduling node to compare with others.
-            score: UtilizationScore
-
-        # Track node states we've already simulated in this pass. Since we only
-        # select one best node to return, we skip the heavy deepcopy/simulation
-        # overhead for duplicates
+        # Deduplicate identical non-running nodes before computing label scores,
+        # best_label_scores, and pass_top.
         node_cache = NodeStateCache(resource_request_source)
+        candidates = [
+            (idx, node)
+            for idx, node in enumerate(nodes)
+            if not node_cache.was_seen_or_mark(node)
+        ]
 
-        # Iterate through each node and modify the node's available resources
-        # if the requests are schedulable.
-        for idx, node in enumerate(nodes):
-            # Skip this node if we've already evaluated its exact state.
-            if node_cache.was_seen_or_mark(node):
+        # Without a shared cache, label scores are still needed to normalize
+        # tiers, but nothing is reused across calls.
+        cache: Dict[int, _NodeAttempt] = attempts if attempts is not None else {}
+        for _, node in candidates:
+            if id(node) not in cache:
+                avail = node.get_available_resources(resource_request_source)
+                label_scores = {}
+                for k, r in requests_by_key.items():
+                    score = node._schedulable_label_score(
+                        r, resource_request_source, available_resources=avail
+                    )
+                    if score is not None:
+                        label_scores[k] = score
+                cache[id(node)] = _NodeAttempt(label_scores)
+
+        best_label_scores: Dict[bytes, float] = {}
+        if candidates:
+            for k, r in requests_by_key.items():
+                if len(r.label_selectors) > 1 and _has_label_constraints(r):
+                    best = 0.0
+                    for _, n in candidates:
+                        s = cache[id(n)].label_scores.get(k, 0.0)
+                        if s > best:
+                            best = s
+                            if best == 1.0:
+                                break
+                    best_label_scores[k] = best
+        # Any node whose best schedulable tier is below `pass_top` loses to a
+        # `pass_top` candidate on `score[0]`, so skip simulating it until needed.
+        # Bypass simulated attempt reuse and tier pruning when a label selector
+        # reads an anti-affinity label that can grow mid-simulation.
+        use_attempt_cache = attempts is not None and not _has_dynamic_selector_overlap(
+            requests_by_key.values()
+        )
+        pass_top = 0.0
+        if use_attempt_cache:
+            has_any_candidate_score = False
+            for _, n in candidates:
+                for k, score in cache[id(n)].label_scores.items():
+                    if k in requests_by_key:
+                        has_any_candidate_score = True
+                        if score > 0:
+                            pass_top = 1.0
+                            break
+                if pass_top == 1.0:
+                    break
+            if not has_any_candidate_score:
+                pass_top = 1.0
+
+        for idx, node in candidates:
+            result = cache[id(node)]
+            top: Optional[float] = None
+            if use_attempt_cache:
+                top = result.top_tier(requests_by_key, best_label_scores, pass_top)
+                if top < pass_top:
+                    continue
+                if result.matches(keys, requests_by_key, best_label_scores, top):
+                    if result.node is not None:
+                        results.append((idx, result))
+                    continue
+
+            node_requests = (
+                [r for r, k in zip(requests, keys) if k in result.label_scores]
+                if use_attempt_cache
+                else requests
+            )
+            if not node_requests:
+                if use_attempt_cache:
+                    cache[id(node)] = _NodeAttempt(result.label_scores, top=top)
                 continue
 
             node_copy = copy.deepcopy(node)
-
-            remaining, score = node_copy.try_schedule(
-                requests, resource_request_source, shape_keys
+            num_sched = len(node_copy.get_sched_requests(resource_request_source))
+            _, score = node_copy.try_schedule(
+                node_requests,
+                resource_request_source,
+                shape_keys,
+                best_label_scores,
+                result.label_scores,
             )
-
-            if len(remaining) == len(requests):
-                # The node cannot schedule any of the requests.
+            new_sched = node_copy.get_sched_requests(resource_request_source)[
+                num_sched:
+            ]
+            if not new_sched:
+                if use_attempt_cache:
+                    cache[id(node)] = _NodeAttempt(result.label_scores, top=top)
                 continue
 
-            results.append(ScheduleResult(node_copy, remaining, idx, score))
+            attempt = _NodeAttempt.from_schedule(
+                result.label_scores,
+                best_label_scores,
+                node_copy,
+                new_sched,
+                score,
+                keys if use_attempt_cache else None,
+                shape_key,
+                top,
+                requests_by_key if use_attempt_cache else None,
+                resource_request_source if use_attempt_cache else None,
+            )
+            if use_attempt_cache:
+                cache[id(node)] = attempt
+            results.append((idx, attempt))
 
         # No nodes can schedule any of the requests.
         if len(results) == 0:
@@ -2015,29 +2480,38 @@ class ResourceDemandScheduler(IResourceScheduler):
                 )
             return None, requests, nodes
 
-        # Sort the results by score.
-        results.sort(
-            key=lambda r: (
-                r.score,
-                recoverable_resource_availabilities.get(r.node.node_type, 1.0),
-                r.node.priority,
-                cloud_resource_availabilities.get(r.node.node_type, 1.0),
+        # Pick the result with the best score. Like a stable sort, max keeps the
+        # first of equally scored results.
+        best_idx, best_result = max(
+            results,
+            key=lambda item: (
+                item[1].score,
+                recoverable_resource_availabilities.get(item[1].node.node_type, 1.0),
+                item[1].node.priority,
+                cloud_resource_availabilities.get(item[1].node.node_type, 1.0),
             ),
-            reverse=True,
         )
-
-        best_result = results[0]
         # Remove the best node from the nodes.
-        nodes.pop(best_result.idx)
+        cache.pop(id(nodes.pop(best_idx)))
+
+        # Keep the requests that the best node did not schedule, in order.
+        to_drop = Counter(map(shape_key, best_result.scheduled_requests))
+        infeasible = []
+        for r, k in zip(requests, keys):
+            if to_drop[k] > 0:
+                to_drop[k] -= 1
+            else:
+                infeasible.append(r)
+
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "Best node: {}, score: {}, remaining requests: {}".format(
                     best_result.node,
                     best_result.score,
-                    ResourceRequestUtil.to_dict_list(best_result.infeasible_requests),
+                    ResourceRequestUtil.to_dict_list(infeasible),
                 )
             )
-        return best_result.node, best_result.infeasible_requests, nodes
+        return best_result.node, infeasible, nodes
 
     @staticmethod
     def _terminate_outdated_nodes(
