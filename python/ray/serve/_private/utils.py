@@ -614,11 +614,12 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
             # The chain can be longer than one hop when ``@serve.batch`` is
             # combined with other wrapping decorators, e.g.
             # ``@other_decorator @serve.batch(...)``. See #47449.
-            try:
-                if inspect.unwrap(method, stop=lambda f: f is func) is func:
-                    return args[0]
-            except ValueError:  # ``__wrapped__`` loop
-                pass
+            # Stop at non-callables: ``DeploymentHandle`` fabricates ``__wrapped__``.
+            unwrapped = inspect.unwrap(
+                method, stop=lambda f: f is func or not callable(f)
+            )
+            if unwrapped is func:
+                return args[0]
 
     return None
 
