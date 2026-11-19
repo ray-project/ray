@@ -4,7 +4,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pytest
 
@@ -96,7 +96,7 @@ def write_scan(
     (results_dir / f"{name}.json.gz").write_bytes(gzip.compress(payload))
 
 
-def make_vuln(**overrides) -> dict:
+def make_vuln(**overrides: Any) -> dict:
     vuln = {
         "VulnerabilityID": "CVE-2026-0001",
         "PkgName": "pkg",
@@ -110,19 +110,29 @@ def make_vuln(**overrides) -> dict:
     return vuln
 
 
-def make_report(*vulns: dict, packages: int = 1) -> dict:
+def make_report(*vulns: dict, packages: int = 1, os_packages: int = 1) -> dict:
+    """A result with ``os_packages`` Ubuntu packages and ``packages`` Python
+    packages, the latter with ``vulns``. With no Ubuntu packages, it is what
+    Trivy writes when it can't detect the OS: no OS and no OS packages."""
+    os_result = {
+        "Target": "ubuntu 22.04",
+        "Class": "os-pkgs",
+        "Type": "ubuntu",
+        "Packages": [{"Name": f"deb{i}"} for i in range(os_packages)],
+    }
+    python_result = {
+        "Target": "Python",
+        "Class": "lang-pkgs",
+        "Type": "python-pkg",
+        "Packages": [{"Name": f"p{i}"} for i in range(packages)],
+        "Vulnerabilities": list(vulns),
+    }
     return {
         "SchemaVersion": 2,
-        "Metadata": {"OS": {"Family": "ubuntu", "Name": "22.04"}},
-        "Results": [
-            {
-                "Target": "Python",
-                "Class": "lang-pkgs",
-                "Type": "python-pkg",
-                "Packages": [{"Name": f"p{i}"} for i in range(packages)],
-                "Vulnerabilities": list(vulns),
-            }
-        ],
+        "Metadata": (
+            {"OS": {"Family": "ubuntu", "Name": "22.04"}} if os_packages else {}
+        ),
+        "Results": [os_result, python_result] if os_packages else [python_result],
     }
 
 
@@ -227,7 +237,27 @@ def test_load_scans_reads_gzipped_results(tmp_path: Path):
     ("status", "error", "report", "expected_error"),
     [
         ("error", "crane pull failed", None, "crane pull failed"),
-        ("scanned", "", make_report(make_vuln(), packages=0), "no packages detected"),
+        (
+            "scanned",
+            "",
+            make_report(make_vuln(), packages=0, os_packages=0),
+            "no packages detected",
+        ),
+        (
+            "scanned",
+            "",
+            make_report(make_vuln(), os_packages=0),
+            "no OS packages detected (OS: not detected)",
+        ),
+        (
+            "scanned",
+            "",
+            {
+                **make_report(make_vuln(), os_packages=0),
+                "Metadata": {"OS": {"Family": "ubuntu", "Name": "22.04"}},
+            },
+            "no OS packages detected (OS: ubuntu 22.04)",
+        ),
     ],
 )
 def test_load_scans_marks_images_not_scanned(
@@ -260,34 +290,47 @@ def test_load_scans_flags_missing_result_file(tmp_path: Path):
 GZ_FIXTURE = gzip.compress((FIXTURES / "ray-py3.12-cpu.json").read_bytes())
 
 
+DEEP_JSON = b"[" * 100_000 + b"]" * 100_000
+
+
 @pytest.mark.parametrize(
-    ("filename", "payload"),
+    "payload",
     [
+        pytest.param(GZ_FIXTURE[: len(GZ_FIXTURE) // 2], id="truncated-gzip"),
         pytest.param(
-            "x.json.gz", GZ_FIXTURE[: len(GZ_FIXTURE) // 2], id="truncated-gzip"
-        ),
-        pytest.param(
-            "x.json.gz",
             GZ_FIXTURE[:10] + b"\x00" * 200 + GZ_FIXTURE[-8:],
             id="corrupt-deflate",
         ),
-        pytest.param("x.json.gz", b"not gzip at all", id="not-gzip"),
-        pytest.param("x.json.gz", gzip.compress(b'{"Results": ['), id="truncated-json"),
+        pytest.param(b"not gzip at all", id="not-gzip"),
+        pytest.param(gzip.compress(b'{"Results": ['), id="truncated-json"),
+        pytest.param(gzip.compress(DEEP_JSON), id="too-deeply-nested"),
     ],
 )
-def test_load_scans_isolates_unreadable_results(
-    tmp_path: Path, filename: str, payload: bytes
-):
+def test_load_scans_isolates_unreadable_results(tmp_path: Path, payload: bytes):
     write_scan(tmp_path, CPU)
     bad = ("x", "ray", "3.12", "tpu", "x86_64", "")
     write_scan(tmp_path, bad, report={})
-    (tmp_path / "x.json.gz").unlink()
-    (tmp_path / filename).write_bytes(payload)
+    (tmp_path / "x.json.gz").write_bytes(payload)
 
     scans = {s.image.name: s for s in load_scans(tmp_path)}
     assert scans["ray-py3.12-cpu"].scanned
     assert not scans["x"].scanned
     assert scans["x"].error.startswith("unreadable result")
+
+
+def x_record(**overrides: Any) -> str:
+    """Image x's status record, as JSON text."""
+    record = {
+        "name": "x",
+        "image_type": "ray",
+        "python_version": "3.12",
+        "platform": "tpu",
+        "architecture": "x86_64",
+        "status": "error",
+        "error": "pull failed",
+    }
+    record.update(overrides)
+    return json.dumps(record)
 
 
 @pytest.mark.parametrize(
@@ -300,6 +343,23 @@ def test_load_scans_isolates_unreadable_results(
             id="missing-keys",
         ),
         pytest.param("[1, 2]", "malformed status record", id="not-an-object"),
+        pytest.param(
+            DEEP_JSON.decode(), "malformed status record", id="too-deeply-nested"
+        ),
+        pytest.param(
+            x_record(name=CPU[0]),
+            "name 'ray-py3.12-cpu' doesn't match the file name",
+            id="another-image's-name",
+        ),
+        pytest.param(
+            x_record(error={"message": "boom"}), "error not text", id="error-not-text"
+        ),
+        pytest.param(x_record(ref=7, digest=None), "ref not text", id="ref-not-text"),
+        pytest.param(
+            x_record(published_tags=["rayproject/ray:x", None]),
+            "published_tags not text",
+            id="tags-not-text",
+        ),
     ],
 )
 def test_load_scans_isolates_malformed_status_records(
@@ -308,10 +368,12 @@ def test_load_scans_isolates_malformed_status_records(
     write_scan(tmp_path, CPU)
     (tmp_path / "x.status.json").write_text(content)
 
-    scans = {s.image.name: s for s in load_scans(tmp_path)}
-    assert scans["ray-py3.12-cpu"].scanned
-    assert not scans["x"].scanned
-    assert expected_error in scans["x"].error
+    scans = load_scans(tmp_path)
+    assert sorted(s.image.name for s in scans) == [CPU[0], "x"]
+    by_name = {s.image.name: s for s in scans}
+    assert by_name[CPU[0]].scanned
+    assert not by_name["x"].scanned
+    assert expected_error in by_name["x"].error
 
 
 def test_load_scans_accepts_non_numeric_python_versions(tmp_path: Path):
@@ -323,6 +385,46 @@ def test_load_scans_accepts_non_numeric_python_versions(tmp_path: Path):
     assert describe_images([s.image for s in scans], []) == (
         "ray py3.12, py3.13t · cpu · x86_64"
     )
+
+
+def test_load_scans_sorts_images_whatever_the_directory_order(tmp_path: Path):
+    specs = [
+        (
+            "ray-llm-py3.11-cu12.8.1-cudnn",
+            "ray-llm",
+            "3.11",
+            "cu12.8.1-cudnn",
+            "x86_64",
+        ),
+        ("ray-py3.12-cu12.8.1-cudnn", "ray", "3.12", "cu12.8.1-cudnn", "x86_64"),
+        ("ray-py3.12-cu11.8.0-cudnn", "ray", "3.12", "cu11.8.0-cudnn", "x86_64"),
+        ("ray-py3.12-tpu", "ray", "3.12", "tpu", "x86_64"),
+        ("ray-py3.13t-cpu", "ray", "3.13t", "cpu", "x86_64"),
+        ("ray-py3.13-cpu", "ray", "3.13", "cpu", "x86_64"),
+        ("ray-py3.9-cpu", "ray", "3.9", "cpu", "x86_64"),
+        ("ray-py3.12-cpu-aarch64", "ray", "3.12", "cpu", "aarch64"),
+    ]
+    for spec in specs:
+        write_scan(tmp_path, (*spec, ""), status="error", error="pull failed")
+    # Broken records tie on everything but their names.
+    for name in ("c", "e", "a", "d", "b"):
+        (tmp_path / f"{name}.status.json").write_text("{}")
+
+    assert [s.image.name for s in load_scans(tmp_path)] == [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "ray-py3.12-cpu-aarch64",
+        "ray-py3.9-cpu",
+        "ray-py3.13-cpu",
+        "ray-py3.13t-cpu",
+        "ray-py3.12-tpu",
+        "ray-py3.12-cu11.8.0-cudnn",
+        "ray-py3.12-cu12.8.1-cudnn",
+        "ray-llm-py3.11-cu12.8.1-cudnn",
+    ]
 
 
 def test_group_findings_dedupes_across_images_and_skips_noise(tmp_path: Path):
@@ -657,14 +759,28 @@ def test_write_report_writes_the_three_files(tmp_path: Path):
     "report",
     [
         pytest.param([], id="not-an-object"),
-        pytest.param({"Results": [{"Vulnerabilities": [{}]}]}, id="no-vuln-id"),
-        pytest.param({"Results": ["debian"]}, id="result-not-an-object"),
+        pytest.param(None, id="null"),
+        pytest.param({"Results": []}, id="no-schema-version"),
+        pytest.param({"SchemaVersion": 3, "Results": []}, id="newer-schema"),
+        pytest.param(
+            {"SchemaVersion": 2, "Results": [{"Vulnerabilities": [{}]}]},
+            id="no-vuln-id",
+        ),
+        pytest.param(
+            {"SchemaVersion": 2, "Results": ["debian"]}, id="result-not-an-object"
+        ),
+        pytest.param(
+            {"SchemaVersion": 2, "Results": [{"Class": "os-pkgs", "Packages": "abc"}]},
+            id="packages-not-a-list",
+        ),
     ],
 )
-def test_a_wrongly_shaped_result_fails_only_its_image(tmp_path: Path, report):
+def test_a_wrongly_shaped_result_fails_only_its_image(tmp_path: Path, report: Any):
     """Results come from a shared bucket; one bad file must not take the
     whole report down."""
-    write_scan(tmp_path, CPU, report=report)
+    write_scan(tmp_path, CPU)
+    result = gzip.compress(json.dumps(report).encode())
+    (tmp_path / f"{CPU[0]}.json.gz").write_bytes(result)
     write_scan(tmp_path, CU128)
     scans = {s.image.name: s for s in load_scans(tmp_path)}
     assert scans[CPU[0]].error.startswith("unparseable result: ")
