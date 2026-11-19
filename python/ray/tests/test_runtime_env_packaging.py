@@ -1078,6 +1078,36 @@ def test_http_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "allowed_hosts,uri,expect_token",
+    [
+        (None, "https://example.com/test.zip", False),
+        ("", "https://example.com/test.zip", False),
+        ("example.com", "https://example.com/test.zip", True),
+        (" other.com , Example.COM ", "https://EXAMPLE.com:8443/test.zip", True),
+        ("example.com", "https://attacker.com/test.zip", False),
+        ("example.com", "https://example.com.attacker.com/test.zip", False),
+        ("example.com", "https://example.com@attacker.com/test.zip", False),
+        ("example.com", "http://example.com/test.zip", False),
+    ],
+)
+def test_bearer_token_only_sent_to_allowed_hosts(
+    monkeypatch, allowed_hosts, uri, expect_token
+):
+    monkeypatch.setenv("RAY_RUNTIME_ENV_BEARER_TOKEN", "secret-token")
+    if allowed_hosts is None:
+        monkeypatch.delenv("RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS", raising=False)
+    else:
+        monkeypatch.setenv("RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS", allowed_hosts)
+
+    headers = ProtocolsProvider._http_headers(uri)
+
+    if expect_token:
+        assert headers["Authorization"] == "Bearer secret-token"
+    else:
+        assert "Authorization" not in headers
+
+
+@pytest.mark.parametrize(
     "extension,mode",
     [
         (".zip", None),
