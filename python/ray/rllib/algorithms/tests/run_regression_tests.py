@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray import air
+from ray import tune
 from ray._common.deprecation import deprecation_warning
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
@@ -236,7 +236,7 @@ if __name__ == "__main__":
             ] = args.override_mean_reward
 
         # Checkpoint settings.
-        exp["checkpoint_config"] = air.CheckpointConfig(
+        exp["checkpoint_config"] = tune.CheckpointConfig(
             checkpoint_frequency=args.checkpoint_freq,
             checkpoint_at_end=args.checkpoint_freq > 0,
         )

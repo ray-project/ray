@@ -93,5 +93,43 @@ def test_deprecated_value_constant():
     ), f"DEPRECATED_VALUE should be -1, but got {DEPRECATED_VALUE}"
 
 
+def test_make_deprecated_getattr():
+    """The module `__getattr__` warns at the caller and returns the target."""
+    import warnings
+
+    from ray._common.deprecation import DeprecatedAlias, make_deprecated_getattr
+    from ray.util.annotations import RayDeprecationWarning
+
+    getattr_fn = make_deprecated_getattr(
+        "some.module",
+        {
+            "Old": DeprecatedAlias(
+                "collections:OrderedDict",
+                (("new.path.A", "with A"), ("new.path.B", "")),
+                note="See the guide.",
+            )
+        },
+        removal_version="9.9",
+    )
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        obj = getattr_fn("Old")
+
+    from collections import OrderedDict
+
+    assert obj is OrderedDict
+    [warning] = record
+    assert issubclass(warning.category, RayDeprecationWarning)
+    assert warning.filename == __file__
+    assert str(warning.message) == (
+        "`some.module.Old` is deprecated and will be removed in Ray 9.9. "
+        "Use `new.path.A` with A or `new.path.B` instead. See the guide."
+    )
+
+    with pytest.raises(AttributeError, match="has no attribute 'Missing'"):
+        getattr_fn("Missing")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

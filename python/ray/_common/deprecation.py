@@ -1,10 +1,23 @@
+import importlib
 import inspect
 import logging
+import warnings
 from functools import wraps
-from typing import Any, Callable, Optional, TypeVar, Union, cast, overload
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    NamedTuple,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 from ray.util import log_once
-from ray.util.annotations import _mark_annotated
+from ray.util.annotations import RayDeprecationWarning, _mark_annotated
 
 # TypeVar for preserving function/class signatures through decorators.
 # Note: These decorators also accept properties, but we use Callable for the
@@ -179,3 +192,78 @@ def Deprecated(
 
     # Return the prepared decorator.
     return _inner
+
+
+class DeprecatedAlias(NamedTuple):
+    """A deprecated public name and where users should import it from instead."""
+
+    # Where the object lives today, as "module:attribute". The alias returns this
+    # exact object, so using the deprecated path changes nothing except the warning.
+    target: str
+    # Public paths the warning tells users to switch to, each with an optional
+    # "when to use it" suffix, e.g. ("ray.tune.RunConfig", "with Ray Tune").
+    replacements: Tuple[Tuple[str, str], ...]
+    # Extra guidance appended to the message, e.g. a pointer to a migration guide.
+    note: str = ""
+
+
+def deprecated_alias_message(
+    old_path: str, alias: DeprecatedAlias, removal_version: str
+) -> str:
+    """Build the warning for a deprecated import path.
+
+    Args:
+        old_path: The deprecated path, e.g. ``"ray.air.RunConfig"``.
+        alias: The alias that ``old_path`` resolves to.
+        removal_version: The Ray version that removes ``old_path``, e.g. ``"3.0"``.
+
+    Returns:
+        A message that names the deprecated path, the version that removes it and
+        the paths to use instead, followed by the alias's note.
+    """
+    replacements = " or ".join(
+        f"`{path}` {when}".rstrip() for path, when in alias.replacements
+    )
+    message = (
+        f"`{old_path}` is deprecated and will be removed in Ray "
+        f"{removal_version}. Use {replacements} instead."
+    )
+    if alias.note:
+        message += f" {alias.note}"
+    return message
+
+
+def make_deprecated_getattr(
+    module_name: str, aliases: Dict[str, DeprecatedAlias], removal_version: str
+) -> Callable[[str], Any]:
+    """Build a module ``__getattr__`` that warns when a deprecated name is used.
+
+    A module ``__getattr__`` only runs for names that the module doesn't define,
+    so the deprecated names must be kept out of the module's globals. The object
+    isn't cached there either, so every access goes through the warnings
+    machinery, which decides whether to show the warning again.
+
+    Args:
+        module_name: The ``__name__`` of the module that serves the aliases.
+        aliases: The deprecated names of that module, and what each resolves to.
+        removal_version: The Ray version that removes the aliases, e.g. ``"3.0"``.
+
+    Returns:
+        A function to assign to the module's ``__getattr__``. It emits a
+        ``RayDeprecationWarning`` attributed to the caller and returns the
+        alias's target, or raises ``AttributeError`` for any other name.
+    """
+
+    def __getattr__(name: str) -> Any:
+        alias = aliases.get(name)
+        if alias is None:
+            raise AttributeError(f"module {module_name!r} has no attribute {name!r}")
+        warnings.warn(
+            deprecated_alias_message(f"{module_name}.{name}", alias, removal_version),
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
+        module, attr = alias.target.split(":")
+        return getattr(importlib.import_module(module), attr)
+
+    return __getattr__
