@@ -28,6 +28,12 @@ WORKER_HOSTNAME = "_hostname"
 WORKER_NODE_IP = "_node_ip"
 WORKER_PID = "_pid"
 
+# Private copies of `ray.tune.result.TIME_THIS_ITER_S` and `TIMESTAMP` for the Ray
+# Train session, which Train v2 also imports and so can't import `ray.tune`. Keep
+# the values in sync.
+_TIME_THIS_ITER_S = "time_this_iter_s"
+_TIMESTAMP = "timestamp"
+
 # Will not be reported unless ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
 # env var is not 0
 DETAILED_AUTOFILLED_KEYS = {WORKER_HOSTNAME, WORKER_NODE_IP, WORKER_PID, TIME_TOTAL_S}

@@ -11,12 +11,12 @@ import pytest
 
 from ray import tune
 from ray.air._internal.uri_utils import URI
-from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE
 from ray.train._internal.storage import _delete_fs_path
 from ray.train.tests.test_new_persistence import mock_s3_bucket_uri
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 from ray.tune.experiment import Trial
+from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE
 from ray.tune.utils import flatten_dict
 
 NUM_TRIALS = 3

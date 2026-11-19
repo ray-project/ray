@@ -79,7 +79,6 @@ The best trial's hyperparameters will be logged at the end of training.
 """
 
 from ray import tune
-from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
@@ -90,6 +89,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import CLIReporter
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.search import BasicVariantGenerator
 
 parser = add_rllib_example_script_args(

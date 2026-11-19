@@ -9,13 +9,18 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pyarrow.fs
 
-from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE, TRAINING_ITERATION
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 from ray.tune import Checkpoint
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-from ray.tune.result import CONFIG_PREFIX, DEFAULT_METRIC
+from ray.tune.result import (
+    CONFIG_PREFIX,
+    DEFAULT_METRIC,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+    TRAINING_ITERATION,
+)
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import _loads_with_cloudpickle
 from ray.tune.utils.util import is_nan, is_nan_or_inf, unflattened_lookup

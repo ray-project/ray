@@ -12,13 +12,13 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype, is_string_dtype
 
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air.constants import EXPR_RESULT_FILE
 from ray.tune import TuneError
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.result import (
     CONFIG_PREFIX,
     DEFAULT_EXPERIMENT_INFO_KEYS,
     DEFAULT_RESULT_KEYS,
+    EXPR_RESULT_FILE,
 )
 
 logger = logging.getLogger(__name__)

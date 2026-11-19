@@ -3,8 +3,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, TextIO
 
-from ray.air.constants import EXPR_PROGRESS_FILE
 from ray.tune.logger.logger import LoggerCallback
+from ray.tune.result import EXPR_PROGRESS_FILE
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
 

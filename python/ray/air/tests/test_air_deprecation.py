@@ -10,7 +10,9 @@ import pytest
 
 import ray.air
 import ray.air.config
+import ray.air.constants
 import ray.air.result
+import ray.tune.result
 from ray.util.annotations import RayDeprecationWarning
 
 # (deprecated name, object it must resolve to, replacement that must be a drop-in,
@@ -121,6 +123,76 @@ def test_non_deprecated_names_do_not_warn():
     assert not _air_warnings(record)
 
 
+# Public Tune result keys and file names that moved from `ray.air.constants` to
+# `ray.tune.result`.
+MOVED_CONSTANTS = [
+    "EXPR_ERROR_FILE",
+    "EXPR_ERROR_PICKLE_FILE",
+    "EXPR_PARAM_FILE",
+    "EXPR_PARAM_PICKLE_FILE",
+    "EXPR_PROGRESS_FILE",
+    "EXPR_RESULT_FILE",
+    "TIME_THIS_ITER_S",
+    "TIMESTAMP",
+    "TRAINING_ITERATION",
+]
+
+
+@pytest.mark.parametrize("name", MOVED_CONSTANTS)
+def test_moved_constant_warns(name):
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        value = getattr(ray.air.constants, name)
+
+    assert value == getattr(ray.tune.result, name)
+    [warning] = _air_warnings(record)
+    message = str(warning.message)
+    assert f"`ray.air.constants.{name}` is deprecated" in message
+    assert "Ray 3.0" in message
+    assert f"`ray.tune.result.{name}`" in message
+    assert "https://github.com/ray-project/ray/issues/49454" in message
+    assert warning.filename == __file__
+    assert name in dir(ray.air.constants)
+
+
+def test_moved_constant_from_import_warns():
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        namespace = {}
+        exec("from ray.air.constants import TRAINING_ITERATION", namespace)
+
+    assert namespace["TRAINING_ITERATION"] == "training_iteration"
+    air_warnings = _air_warnings(record)
+    assert air_warnings
+    assert {w.filename for w in air_warnings} == {"<string>"}
+
+
+def test_private_copies_match_tune_result():
+    """Ray Train and `ray.air.result` keep private copies to avoid importing Tune."""
+    import ray.train.constants
+
+    assert ray.air.constants._EXPR_PROGRESS_FILE == ray.tune.result.EXPR_PROGRESS_FILE
+    assert ray.air.constants._EXPR_RESULT_FILE == ray.tune.result.EXPR_RESULT_FILE
+    assert (
+        ray.air.constants._EXPR_ERROR_PICKLE_FILE
+        == ray.tune.result.EXPR_ERROR_PICKLE_FILE
+    )
+    assert ray.train.constants._TIME_THIS_ITER_S == ray.tune.result.TIME_THIS_ITER_S
+    assert ray.train.constants._TIMESTAMP == ray.tune.result.TIMESTAMP
+
+
+def test_internal_constants_do_not_warn():
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        _ = ray.air.constants.TRAIN_DATASET_KEY
+        _ = ray.air.constants.PREPROCESSOR_KEY
+        _ = ray.air.constants.TENSOR_COLUMN_NAME
+        _ = ray.air.constants.AIR_ENV_VARS
+        exec("from ray.air.constants import MODEL_KEY", {})
+
+    assert not _air_warnings(record)
+
+
 def test_ray_does_not_trigger_air_warnings():
     """Ray's own imports and a basic Tune run and Train v2 run must not warn.
 
@@ -138,7 +210,10 @@ def test_ray_does_not_trigger_air_warnings():
         )
 
         import ray
+        import ray.air.constants
+        import ray.air.integrations.mlflow
         import ray.data
+        import ray.rllib
         import ray.train
         import ray.train.torch
         import ray.tune

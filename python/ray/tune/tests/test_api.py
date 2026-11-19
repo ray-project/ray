@@ -14,7 +14,6 @@ import pytest
 
 import ray
 from ray import tune
-from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.train._internal.session import shutdown_session
 from ray.train._internal.storage import (
     StorageContext,
@@ -45,9 +44,11 @@ from ray.tune.result import (
     HOSTNAME,
     NODE_IP,
     PID,
+    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTEPS_THIS_ITER,
     TIMESTEPS_TOTAL,
+    TRAINING_ITERATION,
     TRIAL_ID,
 )
 from ray.tune.schedulers import AsyncHyperBandScheduler, FIFOScheduler, TrialScheduler

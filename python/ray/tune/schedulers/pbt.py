@@ -9,12 +9,11 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.air.constants import TRAINING_ITERATION
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.tune import Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
-from ray.tune.result import DEFAULT_METRIC
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.search import SearchGenerator
 from ray.tune.search.sample import Domain, Function

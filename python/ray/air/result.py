@@ -12,9 +12,9 @@ import pyarrow
 import ray
 from ray._private.dict import unflattened_lookup
 from ray.air.constants import (
-    EXPR_ERROR_PICKLE_FILE,
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
+    _EXPR_ERROR_PICKLE_FILE as EXPR_ERROR_PICKLE_FILE,
+    _EXPR_PROGRESS_FILE as EXPR_PROGRESS_FILE,
+    _EXPR_RESULT_FILE as EXPR_RESULT_FILE,
 )
 from ray.util.annotations import PublicAPI
 

@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, TextIO
 
 import ray.cloudpickle as cloudpickle
-from ray.air.constants import EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE, EXPR_RESULT_FILE
 from ray.tune.logger.logger import LoggerCallback
+from ray.tune.result import EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE, EXPR_RESULT_FILE
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.annotations import PublicAPI
 

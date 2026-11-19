@@ -9,7 +9,6 @@ from unittest import mock
 import pytest
 
 import ray
-from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
@@ -23,7 +22,7 @@ from ray.tune import (
 )
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-from ray.tune.result import DONE
+from ray.tune.result import DONE, TRAINING_ITERATION
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.tune_test_util import TrialResultObserver

@@ -1,15 +1,35 @@
-# Importing for Backward Compatibility
-from ray.air.constants import (  # noqa: F401
-    EXPR_ERROR_FILE,
-    EXPR_ERROR_PICKLE_FILE,
-    EXPR_PARAM_FILE,
-    EXPR_PARAM_PICKLE_FILE,
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
-    TIME_THIS_ITER_S,
-    TIMESTAMP,
-    TRAINING_ITERATION,
-)
+# NOTE: This module must not import from the rest of Ray, so that importing it
+# never causes an import cycle. `ray.air.constants` serves these names as
+# deprecated aliases until Ray 3.0.
+
+# The timestamp of when the result is generated.
+# Default to when the result is processed by tune.
+TIMESTAMP = "timestamp"
+
+# (Auto-filled) Time in seconds this iteration took to run.
+# This may be overridden to override the system-computed time difference.
+TIME_THIS_ITER_S = "time_this_iter_s"
+
+# (Auto-filled) The index of this training iteration.
+TRAINING_ITERATION = "training_iteration"
+
+# File that stores parameters of the trial.
+EXPR_PARAM_FILE = "params.json"
+
+# Pickle File that stores parameters of the trial.
+EXPR_PARAM_PICKLE_FILE = "params.pkl"
+
+# File that stores the progress of the trial.
+EXPR_PROGRESS_FILE = "progress.csv"
+
+# File that stores results of the trial.
+EXPR_RESULT_FILE = "result.json"
+
+# File that stores the pickled error file
+EXPR_ERROR_PICKLE_FILE = "error.pkl"
+
+# File that stores the error file
+EXPR_ERROR_FILE = "error.txt"
 
 # fmt: off
 # __sphinx_doc_begin__

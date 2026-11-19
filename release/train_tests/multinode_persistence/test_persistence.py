@@ -36,7 +36,7 @@ import torch.distributed as dist
 import ray
 from ray import train
 from ray._private.dict import flatten_dict
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.air._internal.uri_utils import URI
 from ray.train import Checkpoint
 from ray.train.torch import TorchTrainer

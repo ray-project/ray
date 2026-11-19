@@ -10,7 +10,6 @@ from unittest.mock import patch
 import ray
 from ray import tune
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.tune import Callback
 from ray.tune.callback import warnings
@@ -21,6 +20,7 @@ from ray.tune.execution.ray_trial_executor import (
 )
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.experiment import Experiment, Trial
+from ray.tune.result import TRAINING_ITERATION
 
 
 class TestCallback(Callback):

@@ -17,13 +17,13 @@ from ray.air.constants import (
     _ERROR_FETCH_TIMEOUT,
     _RESULT_FETCH_TIMEOUT,
     SESSION_MISUSE_LOG_ONCE_KEY,
-    TIME_THIS_ITER_S,
-    TIMESTAMP,
 )
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import (
+    _TIME_THIS_ITER_S as TIME_THIS_ITER_S,
+    _TIMESTAMP as TIMESTAMP,
     CHECKPOINT_DIR_NAME,
     DETAILED_AUTOFILLED_KEYS,
     RAY_CHDIR_TO_TRIAL_DIR,

@@ -7,9 +7,9 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from ray import tune
-from ray.air.constants import TRAINING_ITERATION
 from ray.tune import CheckpointConfig
 from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
+from ray.tune.result import TRAINING_ITERATION
 
 
 class _MockDataset(Dataset):

@@ -6,12 +6,11 @@ import unittest
 
 import ray
 from ray import tune
-from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.train.tests.util import mock_storage_context
 from ray.tune import Checkpoint, CheckpointConfig
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.result import DEFAULT_METRIC
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.schedulers import ResourceChangingScheduler
 from ray.tune.trainable import with_parameters, wrap_function
 

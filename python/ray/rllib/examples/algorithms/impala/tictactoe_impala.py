@@ -50,7 +50,6 @@ the policies are learning to win or draw more often than they lose.
 """
 import random
 
-from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -65,6 +64,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_MODULE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(
     default_reward=-0.5,

@@ -16,7 +16,6 @@ import pandas as pd
 import ray
 from ray._private.dict import flatten_dict
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air.constants import EXPR_ERROR_FILE, TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
 from ray.experimental.tqdm_ray import safe_print
 from ray.tune.callback import Callback
@@ -28,12 +27,14 @@ from ray.tune.result import (
     DONE,
     EPISODE_REWARD_MEAN,
     EXPERIMENT_TAG,
+    EXPR_ERROR_FILE,
     MEAN_ACCURACY,
     MEAN_LOSS,
     NODE_IP,
     PID,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
+    TRAINING_ITERATION,
     TRIAL_ID,
 )
 from ray.tune.trainable import Trainable

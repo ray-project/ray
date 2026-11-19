@@ -15,7 +15,6 @@ import ray
 import ray.cloudpickle as ray_pickle
 from ray._common.utils import try_to_create_directory
 from ray.air._internal.util import exception_cause, skip_exceptions
-from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.train.constants import DEFAULT_STORAGE_PATH, RAY_CHDIR_TO_TRIAL_DIR
@@ -32,9 +31,12 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
     STDERR_FILE,
     STDOUT_FILE,
+    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
+    TIMESTAMP,
     TIMESTEPS_THIS_ITER,
     TIMESTEPS_TOTAL,
+    TRAINING_ITERATION,
     TRIAL_ID,
     TRIAL_INFO,
 )

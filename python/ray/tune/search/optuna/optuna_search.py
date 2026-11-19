@@ -8,8 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from packaging import version
 
-from ray.air.constants import TRAINING_ITERATION
-from ray.tune.result import DEFAULT_METRIC
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.search import (
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,

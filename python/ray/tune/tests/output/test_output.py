@@ -6,7 +6,6 @@ import pytest
 from freezegun import freeze_time
 
 from ray import tune
-from ray.air.constants import TRAINING_ITERATION
 from ray.tune.experiment.trial import Trial
 from ray.tune.experimental.output import (
     AirVerbosity,
@@ -23,6 +22,7 @@ from ray.tune.experimental.output import (
     _infer_user_metrics,
     _max_len,
 )
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME
 
 LAST_RESULT = {

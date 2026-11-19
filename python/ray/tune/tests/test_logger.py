@@ -14,12 +14,6 @@ import numpy as np
 import pytest
 
 import ray
-from ray.air.constants import (
-    EXPR_PARAM_FILE,
-    EXPR_PARAM_PICKLE_FILE,
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
-)
 from ray.cloudpickle import cloudpickle
 from ray.tune import Checkpoint
 from ray.tune.logger import (
@@ -28,6 +22,12 @@ from ray.tune.logger import (
     TBXLoggerCallback,
 )
 from ray.tune.logger.aim import AimLoggerCallback
+from ray.tune.result import (
+    EXPR_PARAM_FILE,
+    EXPR_PARAM_PICKLE_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+)
 from ray.tune.utils import flatten_dict
 
 

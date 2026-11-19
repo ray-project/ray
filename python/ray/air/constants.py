@@ -1,3 +1,8 @@
+from ray._common.deprecation import (
+    DeprecatedAlias as _DeprecatedAlias,
+    make_deprecated_getattr as _make_deprecated_getattr,
+)
+
 # Key to denote the preprocessor in the checkpoint dict.
 PREPROCESSOR_KEY = "_preprocessor"
 
@@ -43,34 +48,12 @@ CHECKPOINT_ID_ATTR = "_current_checkpoint_id"
 LAZY_CHECKPOINT_MARKER_FILE = ".lazy_checkpoint_marker"
 
 
-# The timestamp of when the result is generated.
-# Default to when the result is processed by tune.
-TIMESTAMP = "timestamp"
-
-# (Auto-filled) Time in seconds this iteration took to run.
-# This may be overridden to override the system-computed time difference.
-TIME_THIS_ITER_S = "time_this_iter_s"
-
-# (Auto-filled) The index of this training iteration.
-TRAINING_ITERATION = "training_iteration"
-
-# File that stores parameters of the trial.
-EXPR_PARAM_FILE = "params.json"
-
-# Pickle File that stores parameters of the trial.
-EXPR_PARAM_PICKLE_FILE = "params.pkl"
-
-# File that stores the progress of the trial.
-EXPR_PROGRESS_FILE = "progress.csv"
-
-# File that stores results of the trial.
-EXPR_RESULT_FILE = "result.json"
-
-# File that stores the pickled error file
-EXPR_ERROR_PICKLE_FILE = "error.pkl"
-
-# File that stores the error file
-EXPR_ERROR_FILE = "error.txt"
+# Private copies of `ray.tune.result.EXPR_*` for `ray.air.result`,
+# which Train v2 also uses and so can't import `ray.tune` (`ray.tune` also
+# imports `ray.air.result`, which would be a cycle). Keep the values in sync.
+_EXPR_PROGRESS_FILE = "progress.csv"
+_EXPR_RESULT_FILE = "result.json"
+_EXPR_ERROR_PICKLE_FILE = "error.pkl"
 
 # File that stores the checkpoint metadata
 CHECKPOINT_TUNE_METADATA_FILE = ".tune_metadata"
@@ -92,3 +75,41 @@ AIR_ENV_VARS = {
     "RAY_AIR_FULL_TRACEBACKS",
     "RAY_AIR_NEW_OUTPUT",
 }
+
+
+# ==================================================
+#        Deprecated aliases (removed in Ray 3.0)
+# ==================================================
+
+# These are Ray Tune result keys and file names, so they now live in
+# `ray.tune.result`. They are kept out of the module globals so that `__getattr__`
+# can warn on access.
+_MOVED_TO_TUNE_RESULT = (
+    "EXPR_ERROR_FILE",
+    "EXPR_ERROR_PICKLE_FILE",
+    "EXPR_PARAM_FILE",
+    "EXPR_PARAM_PICKLE_FILE",
+    "EXPR_PROGRESS_FILE",
+    "EXPR_RESULT_FILE",
+    "TIME_THIS_ITER_S",
+    "TIMESTAMP",
+    "TRAINING_ITERATION",
+)
+
+_DEPRECATED_ALIASES = {
+    _name: _DeprecatedAlias(
+        f"ray.tune.result:{_name}",
+        ((f"ray.tune.result.{_name}", ""),),
+        note=(
+            "See this issue for more context and migration options: "
+            "https://github.com/ray-project/ray/issues/49454."
+        ),
+    )
+    for _name in _MOVED_TO_TUNE_RESULT
+}
+
+__getattr__ = _make_deprecated_getattr(__name__, _DEPRECATED_ALIASES, "3.0")
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_DEPRECATED_ALIASES))

@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.air.constants import TRAINING_ITERATION
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -14,6 +13,7 @@ from ray.train.examples.pytorch.torch_fashion_mnist_example import (
 )
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch import TorchTrainer
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 

@@ -24,7 +24,6 @@ from ray._private.thirdparty.tabulate.tabulate import (
     tabulate,
 )
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.constants import TRAINING_ITERATION
 from ray.tune import Checkpoint
 from ray.tune.callback import Callback
 from ray.tune.experiment.trial import Trial
@@ -35,6 +34,7 @@ from ray.tune.result import (
     MEAN_LOSS,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
+    TRAINING_ITERATION,
 )
 from ray.tune.search.sample import Domain
 from ray.tune.utils.log import Verbosity

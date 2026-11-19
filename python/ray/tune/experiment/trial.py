@@ -13,11 +13,6 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 import ray.cloudpickle as cloudpickle
 from ray._common.utils import binary_to_hex, hex_to_binary
-from ray.air.constants import (
-    EXPR_ERROR_FILE,
-    EXPR_ERROR_PICKLE_FILE,
-    TRAINING_ITERATION,
-)
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
@@ -37,10 +32,13 @@ from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import (
     DEBUG_METRICS,
     DONE,
+    EXPR_ERROR_FILE,
+    EXPR_ERROR_PICKLE_FILE,
     NODE_IP,
     PID,
     STDERR_FILE,
     STDOUT_FILE,
+    TRAINING_ITERATION,
     TRIAL_ID,
     TRIAL_INFO,
 )

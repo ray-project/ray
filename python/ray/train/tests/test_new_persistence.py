@@ -16,7 +16,6 @@ import ray
 from ray import train, tune
 from ray._common.test_utils import simulate_s3_bucket
 from ray.air._internal.uri_utils import URI
-from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.storage import (
     StorageContext,
@@ -25,6 +24,7 @@ from ray.train._internal.storage import (
 )
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.tune.result import EXPR_RESULT_FILE
 from ray.tune.trainable.trainable import _DICT_CHECKPOINT_FILE_NAME
 
 

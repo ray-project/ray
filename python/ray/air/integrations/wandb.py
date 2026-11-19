@@ -14,12 +14,12 @@ import ray
 from ray import logger
 from ray._common.utils import load_class
 from ray.air._internal import usage as air_usage
-from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.session import get_session
 from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.utils import flatten_dict
 from ray.util import PublicAPI
 from ray.util.queue import Queue

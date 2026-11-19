@@ -4,7 +4,7 @@ import time
 
 import ray
 from ray.train import ScalingConfig
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )

@@ -12,7 +12,6 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.air import ResourceRequest
-from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import PlacementGroupResourceManager, ResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.exceptions import RayActorError, RayTaskError
@@ -44,6 +43,7 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
     STDERR_FILE,
     STDOUT_FILE,
+    TIME_THIS_ITER_S,
     TRIAL_INFO,
 )
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler

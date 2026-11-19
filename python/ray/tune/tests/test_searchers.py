@@ -14,7 +14,7 @@ from packaging.version import Version
 
 import ray
 from ray import tune
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.search import ConcurrencyLimiter
 
 
