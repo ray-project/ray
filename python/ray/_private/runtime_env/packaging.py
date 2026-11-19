@@ -632,6 +632,8 @@ def get_uri_for_directory(
     directory: str,
     include_gitignore: bool,
     excludes: Optional[List[str]] = None,
+    *,
+    include_parent_dir: bool = False,
 ) -> str:
     """Get a content-addressable URI from a directory's contents.
 
@@ -650,6 +652,8 @@ def get_uri_for_directory(
         directory: The directory.
         include_gitignore: Whether to respect .gitignore files.
         excludes: The dir or files that should be excluded.
+        include_parent_dir: Whether the archive includes the directory's name
+            as a top-level directory.
 
     Returns:
         URI for the directory's contents.
@@ -664,9 +668,10 @@ def get_uri_for_directory(
     if not directory.exists() or not directory.is_dir():
         raise ValueError(f"directory {directory} must be an existing directory")
 
+    # Hash paths relative to the same root that will be used in the archive.
     hash_val = _hash_directory(
         directory,
-        directory,
+        directory.parent if include_parent_dir else directory,
         _get_excludes(directory, excludes),
         include_gitignore=include_gitignore,
     )
