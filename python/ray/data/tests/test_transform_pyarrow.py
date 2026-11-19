@@ -7,7 +7,7 @@ import pytest
 
 import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    converts_to_non_object_numpy,
+    numpy_copy_is_deep,
 )
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
@@ -322,9 +322,9 @@ def _native_tensor(with_null_row):
         (lambda: _native_tensor(with_null_row=True), False),
     ],
 )
-def test_converts_to_non_object_numpy(make_column, expected):
+def test_numpy_copy_is_deep(make_column, expected):
     table = pa.table({"col": make_column()})
-    assert converts_to_non_object_numpy(table) == expected
+    assert numpy_copy_is_deep(table) == expected
 
     # The result has to match what the NumPy conversion actually returns.
     batch = BlockAccessor.for_block(table).to_batch_format("numpy")

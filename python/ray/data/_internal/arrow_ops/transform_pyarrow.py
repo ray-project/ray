@@ -1508,7 +1508,7 @@ def to_numpy(
         )
 
 
-def converts_to_non_object_numpy(table: "pyarrow.Table") -> bool:
+def numpy_copy_is_deep(table: "pyarrow.Table") -> bool:
     """Whether copying each column's NumPy array copies all of its data.
 
     True when every column converts to a non-object NumPy array. Nullable
