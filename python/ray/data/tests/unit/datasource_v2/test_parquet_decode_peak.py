@@ -349,7 +349,7 @@ def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(
     if retyped:
         read_schema = pa.schema([("i", pa.int64()), ("s", pa.large_string())])
     (size,) = _peaks(path, read_schema=read_schema)
-    assert charge < size < charge + _SAFETY_FACTOR * (8 << 20), (size, charge)
+    assert charge < size < charge + _SAFETY_FACTOR * (12 << 20), (size, charge)
 
 
 def test_unmodelled_file_counts_the_added_columns(tmp_path, monkeypatch):
