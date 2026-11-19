@@ -271,9 +271,12 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-RayLease CreateLease(const std::unordered_map<std::string, double> &required_resources,
-                     const std::string &task_name = "default",
-                     const std::vector<std::unique_ptr<TaskArg>> &args = {}) {
+RayLease CreateLease(
+    const std::unordered_map<std::string, double> &required_resources,
+    const std::string &task_name = "default",
+    const std::vector<std::unique_ptr<TaskArg>> &args = {},
+    const std::unordered_map<std::string, double> &required_placement_resources = {},
+    bool is_actor_creation_task = false) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -294,14 +297,21 @@ RayLease CreateLease(const std::unordered_map<std::string, double> &required_res
       /*is_streaming_generator*/ false,
       /*generator_backpressure_num_objects*/ -1,
       required_resources,
-      {},
+      required_placement_resources,
       "",
       0,
       TaskID::Nil(),
       "",
       nullptr);
 
-  spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
+  if (is_actor_creation_task) {
+    spec_builder.SetActorCreationTaskSpec(ActorID::Of(job_id, id, 0),
+                                          /*serialized_actor_handle=*/"",
+                                          rpc::SchedulingStrategy());
+  } else {
+    spec_builder.SetNormalTaskSpec(
+        0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
+  }
 
   for (const auto &arg : args) {
     spec_builder.AddArg(*arg);
@@ -312,7 +322,6 @@ RayLease CreateLease(const std::unordered_map<std::string, double> &required_res
   lease_spec.GetMutableMessage().set_lease_id(LeaseID::FromRandom().Binary());
   return RayLease(std::move(lease_spec));
 }
-
 }  // namespace
 
 class LocalLeaseManagerTest : public ::testing::Test {
@@ -622,6 +631,170 @@ TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), false);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
+}
+
+TEST_F(LocalLeaseManagerTest, TestFairShareAcrossMultipleFeasibleClasses) {
+  // Test that fair share correctly limits granting when multiple feasible
+  // classes compete for limited CPUs. Verifies pre computed aggregates
+  // are maintained correctly.
+  // Setup:
+  //   Node: 3 CPUs, 3 workers.
+  //   3 classes ("a", "b", "c"), each with 2 leases × {1 CPU}.
+  //   total_cpu_requests = 6 > 3 → fair-share IS active.
+  //   Only 3 leases can be granted (one per CPU).
+
+  std::shared_ptr<MockWorker> worker1 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+  std::shared_ptr<MockWorker> worker3 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
+
+  rpc::RequestWorkerLeaseReply reply;
+  auto noop = [](Status, std::function<void()>, std::function<void()>) {};
+  // Batch all 6 leases into leases_to_grant_ before scheduling.
+  for (const auto &name : {"a", "a", "b", "b", "c", "c"}) {
+    auto lease = CreateLease({{kCPU_ResourceLabel, 1}}, name);
+    local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(noop, &reply)},
+        internal::WorkStatus::WAITING));
+  }
+  local_lease_manager_->ScheduleAndGrantLeases();
+  // Exactly 3 leases granted (3 CPUs available, 1 CPU each).
+  ASSERT_EQ(pool_.num_pops, 3);
+  pool_.TriggerCallbacks();
+  // 2 classes still have waiting leases.
+  ASSERT_EQ(local_lease_manager_->GetLeasesToGrant().size(), 2);
+
+  // All 3 CPUs fully allocated
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
+}
+
+TEST_F(LocalLeaseManagerTest, TestManySchedulingClassesFairShareActive) {
+  // Test fair-share with many classes competing for limited CPUs.
+  // Verifies correct grant count and no over-allocation at higher class counts.
+  // Setup:
+  //   Node: 3 CPUs, 3 workers.
+  //   10 unique classes, each with 1 lease × {1 CPU}.
+  //   total_cpu_requests = 10 > 3 → fair-share IS active.
+  //   Exactly 3 leases should be granted.
+
+  std::shared_ptr<MockWorker> w1 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+  std::shared_ptr<MockWorker> w2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+  std::shared_ptr<MockWorker> w3 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(w1));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(w2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(w3));
+
+  rpc::RequestWorkerLeaseReply reply;
+  auto noop = [](Status, std::function<void()>, std::function<void()>) {};
+
+  // Batch all 10 leases into leases_to_grant_ before scheduling.
+  for (int i = 0; i < 10; i++) {
+    auto lease = CreateLease({{kCPU_ResourceLabel, 1}}, "task_" + std::to_string(i));
+    local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(noop, &reply)},
+        internal::WorkStatus::WAITING));
+  }
+
+  local_lease_manager_->ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+
+  // Only 3 leases granted (3 CPUs), 7 remain queued.
+  ASSERT_EQ(pool_.num_pops, 3);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
+  ASSERT_EQ(local_lease_manager_->GetLeasesToGrant().size(), 7);
+}
+
+TEST_F(LocalLeaseManagerTest, TestFairShareWithDefaultActorClassesRemovedFromQueue) {
+  // Test fair share when default actor classes leave the grant queue.
+  // Verifies their removal does not decrement num_classes_with_cpu.
+  // Setup:
+  //   Node: 3 CPUs, 2 workers.
+  //   2 actor classes ("a1", "a2"): 0 required CPU, 1 placement CPU.
+  //   Each has 1 granted lease and 1 queued lease with a missing argument.
+  //   1 task class ("t") with 5 leases × {1 CPU}.
+  //   total_cpu_requests = 5 > 3 → fair-share IS active.
+  //   Exactly 3 task leases should be granted.
+
+  std::shared_ptr<MockWorker> worker1 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+
+  rpc::RequestWorkerLeaseReply reply;
+  auto noop = [](Status, std::function<void()>, std::function<void()>) {};
+  auto make_work = [&](const RayLease &lease) {
+    return std::make_shared<internal::Work>(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(noop, &reply)},
+        internal::WorkStatus::WAITING);
+  };
+
+  // Grant one lease for each actor class.
+  for (const auto &name : {"a1", "a2"}) {
+    local_lease_manager_->WaitForLeaseArgsRequests(make_work(
+        CreateLease({}, name, {}, {{kCPU_ResourceLabel, 1}}, /*is_actor_creation_task=*/true)));
+  }
+  local_lease_manager_->ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(pool_.num_pops, 2);
+  ASSERT_TRUE(local_lease_manager_->GetLeasesToGrant().empty());
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 3);
+
+  // Queue one more lease per actor class, each waiting on an argument.
+  auto arg_id = ObjectID::FromRandom();
+  std::vector<std::unique_ptr<TaskArg>> args;
+  args.push_back(
+      std::make_unique<TaskArgByReference>(arg_id, rpc::Address{}, "call_site"));
+  auto lease_a1 = CreateLease(
+      {}, "a1", args, {{kCPU_ResourceLabel, 1}}, /*is_actor_creation_task=*/true);
+  auto lease_a2 = CreateLease(
+      {}, "a2", args, {{kCPU_ResourceLabel, 1}}, /*is_actor_creation_task=*/true);
+  local_lease_manager_->WaitForLeaseArgsRequests(make_work(lease_a1));
+  local_lease_manager_->WaitForLeaseArgsRequests(make_work(lease_a2));
+
+  SchedulingClass task_class = 0;
+  for (int i = 0; i < 5; i++) {
+    auto lease = CreateLease({{kCPU_ResourceLabel, 1}}, "t");
+    task_class = lease.GetLeaseSpecification().GetSchedulingClass();
+    local_lease_manager_->WaitForLeaseArgsRequests(make_work(lease));
+  }
+
+  // The argument is reported ready but is evicted before it can be pinned.
+  missing_objects_.insert(arg_id);
+  local_lease_manager_->LeasesUnblocked({lease_a1.GetLeaseSpecification().LeaseId(),
+                                         lease_a2.GetLeaseSpecification().LeaseId()});
+
+  // Both actor leases went back to the waiting queue. 3 of the 5 task leases
+  // were granted and are waiting for workers, so all 5 are still in the queue.
+  const auto &leases_to_grant = local_lease_manager_->GetLeasesToGrant();
+  ASSERT_EQ(leases_to_grant.size(), 1);
+  ASSERT_TRUE(leases_to_grant.contains(task_class));
+  ASSERT_EQ(leases_to_grant.at(task_class).size(), 5);
+  ASSERT_EQ(pool_.num_pops, 5);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
+
+  // Remove the leases still waiting on args so their dependencies are released
+  // before the fixture is destroyed.
+  local_lease_manager_->CancelLeasesWithoutReply(
+      [](const std::shared_ptr<internal::Work> &work) { return true; });
 }
 
 }  // namespace ray::raylet
