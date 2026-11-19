@@ -51,4 +51,5 @@ These APIs configure Serve's proxies, controller, autoscaling, request routing, 
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
    serve.config.DeploymentActorConfig
+   serve.config.TopologySpread
 ```

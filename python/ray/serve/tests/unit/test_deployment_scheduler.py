@@ -4335,5 +4335,113 @@ class TestCompactionKeepsRules:
         assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == a1
 
 
+def test_topology_spread_option_becomes_rules():
+    d_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache())
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        rconfig(
+            topology_spread=[
+                {"label_key": ZONE, "min_domains": 2},
+                {"label_key": MARKET, "min_domains": 1},
+                {"label_key": RAY_NODE_ID_LABEL, "min_domains": 3},
+            ]
+        ),
+    )
+    assert [rule.describe() for rule in scheduler._deployments[d_id].rules] == [
+        "topology_spread[ray.io/availability-zone>=2]",
+        "topology_spread[ray.io/node-id>=3]",
+    ]
+
+    scheduler.on_deployment_deployed(d_id, rconfig())
+    assert scheduler._deployments[d_id].rules == ()
+
+
+class TestMinReplicaNodes:
+    @staticmethod
+    def _rules(min_nodes, replica_config, **flags):
+        d_id = DeploymentID(name="deployment1")
+        scheduler = _compaction_scheduler(MockClusterNodeInfoCache())
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        with mock.patch(
+            "ray.serve._private.deployment_scheduler.RAY_SERVE_MIN_REPLICA_NODES",
+            min_nodes,
+        ):
+            scheduler.on_deployment_deployed(d_id, replica_config, **flags)
+        return [rule.describe() for rule in scheduler._deployments[d_id].rules]
+
+    def test_default_of_one_adds_no_rule(self):
+        assert self._rules(1, rconfig()) == []
+
+    def test_applies_to_deployments_without_topology_spread(self):
+        assert self._rules(2, rconfig()) == ["topology_spread[ray.io/node-id>=2]"]
+        assert self._rules(
+            2,
+            rconfig(
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_strategy="STRICT_PACK",
+            ),
+        ) == ["topology_spread[ray.io/node-id>=2]"]
+
+    def test_topology_spread_replaces_it(self):
+        zones = [{"label_key": ZONE, "min_domains": 2}]
+        assert self._rules(3, rconfig(topology_spread=zones)) == [
+            "topology_spread[ray.io/availability-zone>=2]"
+        ]
+        assert self._rules(3, rconfig(topology_spread=[])) == []
+
+    def test_exempt_deployments(self):
+        assert self._rules(2, rconfig(), is_gang=True) == []
+        zones = [{"label_key": ZONE, "min_domains": 2}]
+        assert self._rules(2, rconfig(topology_spread=zones), is_gang=True) == []
+        assert self._rules(2, rconfig(), pins_replicas=True) == []
+        assert self._rules(2, rconfig(placement_group_bundles=[{"CPU": 1}])) == []
+
+
+class TestRolloutFloors:
+    def test_outdated_replicas_dont_cover_a_floor(self):
+        a1, b1 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"}), b1: (4, {ZONE: "b"})},
+            [MinTopologyDomainsConstraint(ZONE, 2)],
+        )
+        scheduler.on_replica_running(ReplicaID("new_a", d_id), a1)
+        scheduler.on_replica_running(ReplicaID("old_b", d_id), b1)
+
+        assert _place(scheduler, d_id, ["r1"]) == {"r1": a1}
+
+        scheduler.on_replica_stopping(ReplicaID("r1", d_id))
+        scheduler.on_replicas_outdated(d_id, {ReplicaID("old_b", d_id)})
+        assert _place(scheduler, d_id, ["r2"]) == {"r2": b1}
+
+    def test_stopping_an_outdated_replica_is_never_refused(self):
+        n1, n2 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {n1: (4, {}), n2: (4, {})},
+            [MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 2)],
+        )
+        scheduler.on_replica_running(ReplicaID("a", d_id), n1)
+        scheduler.on_replica_running(ReplicaID("b", d_id), n1)
+        scheduler.on_replica_running(ReplicaID("old", d_id), n2)
+        scheduler.on_replicas_outdated(d_id, {ReplicaID("old", d_id)})
+
+        assert _downscale(scheduler, d_id, 1) == {ReplicaID("old", d_id)}
+
+    def test_outdated_set_clears(self):
+        d_id = DeploymentID(name="deployment1")
+        scheduler = _compaction_scheduler(MockClusterNodeInfoCache())
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(d_id, rconfig())
+        scheduler.on_replicas_outdated(d_id, {ReplicaID("old", d_id)})
+
+        scheduler.on_replica_stopping(ReplicaID("old", d_id))
+        assert not scheduler._outdated_replicas[d_id]
+
+        scheduler.on_replicas_outdated(d_id, {ReplicaID("other", d_id)})
+        scheduler.on_replicas_outdated(d_id, set())
+        assert not scheduler._outdated_replicas[d_id]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -17,6 +17,7 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
+    topology_spread_to_dicts,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -50,6 +51,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    TopologySpread,
     gRPCOptions,
 )
 from ray.serve.context import (
@@ -553,6 +555,7 @@ class _DeploymentOptions(TypedDict, total=False):
     placement_group_strategy: Default[str]
     placement_group_bundle_label_selector: Default[List[Dict[str, str]]]
     max_replicas_per_node: Default[int]
+    topology_spread: Default[Optional[List[Union[TopologySpread, Dict]]]]
     user_config: Default[Optional[Any]]
     max_ongoing_requests: Default[int]
     max_queued_requests: Default[int]
@@ -598,6 +601,9 @@ def deployment(
         List[Dict[str, str]]
     ] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
+    topology_spread: Default[
+        Optional[List[Union[TopologySpread, Dict]]]
+    ] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
@@ -664,6 +670,7 @@ def deployment(
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
             This cannot be set together with placement_group_bundles.
+        topology_spread: An ordered list of `TopologySpread` rules.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
@@ -741,6 +748,14 @@ def deployment(
             "Setting max_replicas_per_node is not allowed when "
             "gang_scheduling_config is provided. Please set max_replicas_per_node "
             "to None."
+        )
+    if gang_scheduling_config not in [
+        DEFAULT.VALUE,
+        None,
+    ] and topology_spread not in [DEFAULT.VALUE, None, []]:
+        raise ValueError(
+            "Setting topology_spread is not allowed when "
+            "gang_scheduling_config is provided."
         )
     if gang_scheduling_config not in [
         DEFAULT.VALUE,
@@ -835,6 +850,11 @@ def deployment(
             max_replicas_per_node=(
                 max_replicas_per_node
                 if max_replicas_per_node is not DEFAULT.VALUE
+                else None
+            ),
+            topology_spread=(
+                topology_spread_to_dicts(topology_spread)
+                if topology_spread is not DEFAULT.VALUE
                 else None
             ),
         )

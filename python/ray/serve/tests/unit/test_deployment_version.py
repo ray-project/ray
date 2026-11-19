@@ -258,6 +258,35 @@ def test_max_replicas_per_node():
     assert v3.requires_actor_restart(v4)
 
 
+def test_topology_spread():
+    zones = [{"label_key": "ray.io/availability-zone", "min_domains": 2}]
+    nodes = [{"label_key": "ray.io/node-id", "min_domains": 2}]
+    unset = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
+    empty = DeploymentVersion(
+        "1", DeploymentConfig(), {"num_cpus": 0.1}, topology_spread=[]
+    )
+    v_zones = DeploymentVersion(
+        "1", DeploymentConfig(), {"num_cpus": 0.1}, topology_spread=zones
+    )
+    v_zones_again = DeploymentVersion(
+        "1", DeploymentConfig(), {"num_cpus": 0.1}, topology_spread=list(zones)
+    )
+    v_nodes = DeploymentVersion(
+        "1", DeploymentConfig(), {"num_cpus": 0.1}, topology_spread=nodes
+    )
+
+    assert v_zones == v_zones_again
+    assert not v_zones.requires_actor_restart(v_zones_again)
+
+    for a, b in ((unset, v_zones), (unset, empty), (v_zones, v_nodes)):
+        assert a != b
+        assert a.requires_actor_restart(b)
+
+    assert DeploymentVersion.from_proto(v_zones.to_proto()).topology_spread == zones
+    assert DeploymentVersion.from_proto(empty.to_proto()).topology_spread == []
+    assert DeploymentVersion.from_proto(unset.to_proto()).topology_spread is None
+
+
 def test_placement_group_options():
     v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
     v2 = DeploymentVersion(

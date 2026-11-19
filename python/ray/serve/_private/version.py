@@ -27,6 +27,7 @@ class DeploymentVersion:
         placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         route_prefix: Optional[str] = None,
+        topology_spread: Optional[List[Dict[str, Any]]] = None,
     ):
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
@@ -47,6 +48,7 @@ class DeploymentVersion:
         self.placement_group_fallback_strategy = placement_group_fallback_strategy
         self.max_replicas_per_node = max_replicas_per_node
         self.route_prefix = route_prefix
+        self.topology_spread = topology_spread
         self.compute_hashes()
 
     @classmethod
@@ -82,6 +84,7 @@ class DeploymentVersion:
             or self.placement_group_options_hash
             != new_version.placement_group_options_hash
             or self.max_replicas_per_node != new_version.max_replicas_per_node
+            or self.topology_spread_hash != new_version.topology_spread_hash
             or self.gang_scheduling_config_hash
             != new_version.gang_scheduling_config_hash
         )
@@ -129,6 +132,12 @@ class DeploymentVersion:
             else {}
         )
         self.gang_scheduling_config_hash = crc32(serialized_gang_scheduling_config)
+        serialized_topology_spread = (
+            _serialize(self.topology_spread)
+            if self.topology_spread is not None
+            else b""
+        )
+        self.topology_spread_hash = crc32(serialized_topology_spread)
         # Include app-level route prefix in the version hashes so changing
         # it triggers an in-place reconfigure of running replicas.
         serialized_route_prefix = _serialize(self.route_prefix)
@@ -157,6 +166,7 @@ class DeploymentVersion:
                 ]
             )
             + serialized_gang_scheduling_config
+            + serialized_topology_spread
         )
 
     def to_proto(self) -> bytes:
@@ -188,6 +198,9 @@ class DeploymentVersion:
         max_replicas_per_node = (
             self.max_replicas_per_node if self.max_replicas_per_node is not None else 0
         )
+        topology_spread = (
+            json.dumps(self.topology_spread) if self.topology_spread is not None else ""
+        )
 
         return DeploymentVersionProto(
             code_version=self.code_version,
@@ -198,6 +211,7 @@ class DeploymentVersion:
             placement_group_bundle_label_selector=placement_group_bundle_label_selector,
             placement_group_fallback_strategy=placement_group_fallback_strategy,
             max_replicas_per_node=max_replicas_per_node,
+            topology_spread=topology_spread,
         )
 
     @classmethod
@@ -228,6 +242,9 @@ class DeploymentVersion:
             ),
             max_replicas_per_node=(
                 proto.max_replicas_per_node if proto.max_replicas_per_node else None
+            ),
+            topology_spread=(
+                json.loads(proto.topology_spread) if proto.topology_spread else None
             ),
         )
 
