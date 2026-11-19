@@ -1578,6 +1578,34 @@ def test_blocked_surplus_drains_without_a_recipient(blocked, self_limited, n, dr
     assert seen == [set(), set(), {read} if drains else set()]
 
 
+@pytest.mark.parametrize("starved, drains", [(0.04, True), (0.07, False)])
+@pytest.mark.parametrize("rule_kind", ["blocked-surplus", "surplus-to-recipient"])
+def test_shrink_stops_while_the_op_it_feeds_starves(rule_kind, starved, drains):
+    """video_object_detection: resize_frame (busy 0.04, blocked behind the
+    GPU op) had a keep of 2, but its output budgets are the GPU op's supply:
+    at 4 actors the GPU op starved past 0.1. Neither shrink drains an op
+    while an op it feeds starves at least 0.05 of the time."""
+    consumer = _op("Gpu", pool=_Pool(current=8))
+    donor = _busy_victims_op("Resize", "node", ["r0"], current=10)
+    donor.output_dependencies = [consumer]
+    consumer_shares = SimpleNamespace(busy=0.6, starved=starved, actors=8)
+    if rule_kind == "blocked-surplus":
+        tick = _blocked_tick(donor, consumer, blocked=0.98)
+        tick.snapshot.shares[consumer] = consumer_shares
+    else:
+        tick = _surplus_tick(consumer, donor)
+        tick.snapshot.shares[consumer] = consumer_shares
+    rule = _bottleneck_rule()
+    state = rule.new_state()
+    seen = []
+    for _ in range(3):
+        _, state, requests = _apply_bottleneck(
+            rule, tick, [consumer, donor], state=state
+        )
+        seen.append(_donors(requests))
+    assert seen == [set(), set(), {donor} if drains else set()]
+
+
 @pytest.mark.parametrize("case", ["no-recipient", "already-draining"])
 def test_surplus_is_not_drained(case):
     """No shrink without a recipient that wants the capacity, and one drain at

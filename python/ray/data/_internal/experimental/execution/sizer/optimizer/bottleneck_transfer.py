@@ -102,6 +102,14 @@ _SURPLUS_STREAK_TICKS = 3
 _BLOCKED_SHARE_MIN = 0.8
 _BLOCKED_KEEP_FLOOR = 2
 
+# Neither shrink drains an op while an op it feeds starves at least this
+# share of its slot time. An op mostly blocked behind its consumer does
+# little work, but its actors' output budgets are the consumer's supply:
+# in video_object_detection, resize_frame (busy 0.04) kept the GPU op fed
+# at 8 actors (starved 0.01-0.05) and not at 4 (starved climbing past 0.1),
+# while its keep from busy and self-limited time was 2.
+_CONSUMER_STARVED_MAX = 0.05
+
 
 def max_step_size(b: int, max_size: int) -> int:
     """The largest b' one step may grow a recipient of size b to."""
@@ -429,7 +437,8 @@ class BottleneckTransfer(CapacityTransfer):
         capacity reaches the recipient through growth into free capacity.
         If the donor is needed again first, growing it reclaims its draining
         actor, which cancels the drain. One drain at a time per donor, so
-        surplus measured over a lagging window is not over-taken.
+        surplus measured over a lagging window is not over-taken. A donor
+        feeding an op that starves (``_CONSUMER_STARVED_MAX``) is not drained.
         """
         pool = recipient.actor_pool
         b = pool.serving_size()
@@ -453,7 +462,7 @@ class BottleneckTransfer(CapacityTransfer):
                 slack_by_op.get(op, 0),
                 donor_pool.serving_size() - donor_pool.min_size(),
             )
-            if surplus < 1:
+            if surplus < 1 or self._keeps_consumer_fed(op, tick, ctx):
                 self._surplus_streak.pop(op, None)
                 continue
             streak = self._surplus_streak.get(op, 0) + 1
@@ -505,7 +514,8 @@ class BottleneckTransfer(CapacityTransfer):
         needed for its busy and self-limited time, at least
         ``_BLOCKED_KEEP_FLOOR``). Such actors hold full output budgets in the
         object store and add no throughput while the consumer is the limit.
-        Same streak and one-drain-at-a-time as ``_shrink_toward_keep``."""
+        Same streak, one-drain-at-a-time and starving-consumer check as
+        ``_shrink_toward_keep``."""
         blocked_by_op: Dict["ExperimentalActorPoolMapOperator", float] = {}
         self_by_op: Dict["ExperimentalActorPoolMapOperator", float] = {}
         for edge in tick.snapshot.edges:
@@ -537,7 +547,7 @@ class BottleneckTransfer(CapacityTransfer):
                     pool.serving_size() * needed * (1 + SIZER_BOTTLENECK_SLACK_MARGIN)
                 ),
             )
-            if pool.serving_size() <= keep:
+            if pool.serving_size() <= keep or self._keeps_consumer_fed(op, tick, ctx):
                 continue
             seen.add(op)
             streak = self._blocked_streak.get(op, 0) + 1
@@ -582,6 +592,40 @@ class BottleneckTransfer(CapacityTransfer):
         for op in [op for op in self._blocked_streak if op not in seen]:
             del self._blocked_streak[op]
         return requests
+
+    @staticmethod
+    def _starved_consumer(
+        op: "ExperimentalActorPoolMapOperator",
+        tick: "BottleneckTick",
+        ctx: OptimizationContext,
+    ) -> Optional[Tuple["ExperimentalActorPoolMapOperator", float]]:
+        """An op ``op`` feeds that starves at least ``_CONSUMER_STARVED_MAX``
+        of the time, with its starved share, or None."""
+        for consumer in ctx.next_ops.get(op, ()):
+            shares = tick.snapshot.shares.get(consumer)
+            if shares is not None and shares.starved >= _CONSUMER_STARVED_MAX:
+                return consumer, shares.starved
+        return None
+
+    def _keeps_consumer_fed(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        tick: "BottleneckTick",
+        ctx: OptimizationContext,
+    ) -> bool:
+        """Whether ``op`` must not shrink because an op it feeds is starving.
+        Logs the skip."""
+        starved = self._starved_consumer(op, tick, ctx)
+        if starved is None:
+            return False
+        consumer, share = starved
+        logger.debug(
+            "PipelineOptimizer: %s not shrunk: %s it feeds is starved %.2f",
+            op.name,
+            consumer.name,
+            share,
+        )
+        return True
 
     @staticmethod
     def _surplus_victim_node(
