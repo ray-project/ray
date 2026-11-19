@@ -166,25 +166,34 @@ def is_statistics_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool
     if float_columns.isdisjoint(get_column_references(predicate)):
         return True
     if isinstance(predicate, UnaryExpr):
-        return predicate.op in (
-            Operation.IS_NULL,
-            Operation.IS_NOT_NULL,
-        ) and isinstance(predicate.operand, ColumnExpr)
+        return _is_safe_float_unary(expr=predicate)
+    if isinstance(predicate, BinaryExpr):
+        return _is_safe_float_binary(expr=predicate)
+    return False
+
+
+def _is_safe_float_unary(expr: UnaryExpr) -> bool:
+    """Only null checks are safe on a float column; ``~`` can match NaN."""
+    return expr.op in (Operation.IS_NULL, Operation.IS_NOT_NULL) and isinstance(
+        expr.operand, ColumnExpr
+    )
+
+
+def _is_safe_float_binary(expr: BinaryExpr) -> bool:
+    """Comparisons between columns and literals, or ``is_in`` without NaN or zero."""
     if (
-        isinstance(predicate, BinaryExpr)
-        and predicate.op == Operation.IN
-        and isinstance(predicate.left, ColumnExpr)
-        and isinstance(predicate.right, LiteralExpr)
+        expr.op == Operation.IN
+        and isinstance(expr.left, ColumnExpr)
+        and isinstance(expr.right, LiteralExpr)
     ):
-        values = predicate.right.value
+        values = expr.right.value
         values = values if isinstance(values, list) else [values]
         # ``value == value`` is false only for NaN; ``value != 0`` also rejects -0.0.
         return all(value == value and value != 0 for value in values)
     return (
-        isinstance(predicate, BinaryExpr)
-        and predicate.op in _STATISTICS_SAFE_FLOAT_COMPARISONS
-        and isinstance(predicate.left, (ColumnExpr, LiteralExpr))
-        and isinstance(predicate.right, (ColumnExpr, LiteralExpr))
+        expr.op in _STATISTICS_SAFE_FLOAT_COMPARISONS
+        and isinstance(expr.left, (ColumnExpr, LiteralExpr))
+        and isinstance(expr.right, (ColumnExpr, LiteralExpr))
     )
 
 
