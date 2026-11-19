@@ -130,6 +130,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
 
   // Only initialize the RPC client and subscriber if needed
   if (!client_context_->IsInitialized()) {
+    resubscribe_lifetime_ = std::make_shared<bool>(true);
     auto gcs_rpc_client = std::make_shared<rpc::GcsRpcClient>(
         options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
     auto observability_pubsub_client =
@@ -156,7 +157,18 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
         [gcs_rpc_client](const rpc::Address &) {
           return std::make_shared<GcsSubscriberClient>(gcs_rpc_client);
         },
-        /*callback_service*/ &io_service);
+        /*callback_service*/ &io_service,
+        /*subscription_reset_callback=*/
+        [this, &io_service, lifetime = std::weak_ptr<bool>(resubscribe_lifetime_)]() {
+          // The Subscriber mutex is held here. Re-enter it only from a later event.
+          io_service.post(
+              [this, lifetime]() {
+                if (!lifetime.expired()) {
+                  AsyncResubscribe();
+                }
+              },
+              "GcsClient.ResubscribeAfterSubscriberReset");
+        });
 
     // Init GCS subscriber instance.
     client_context_->SetGcsSubscriber(
@@ -219,6 +231,7 @@ Status GcsClient::FetchClusterId(int64_t timeout_ms) {
 }
 
 void GcsClient::Disconnect() {
+  resubscribe_lifetime_.reset();
   if (client_context_) {
     client_context_->Disconnect();
   }

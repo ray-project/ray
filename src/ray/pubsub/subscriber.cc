@@ -339,10 +339,13 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       if (last_publisher_id != kDefaultUniqueID) {
         RAY_LOG(INFO) << "Received publisher_id " << reply_publisher_id.Hex()
                       << " is different from last seen publisher_id " << last_publisher_id
-                      << ", this can only happen when gcs failsover.";
+                      << "; publisher or subscriber state has changed.";
       }
       // reset publisher_id and processed_sequence if the publisher_id changes.
       processed_sequences_[publisher_id] = {reply_publisher_id, 0};
+      if (subscription_reset_callback_ && SubscriptionExists(publisher_id)) {
+        subscription_reset_callback_();
+      }
     }
 
     for (int i = 0; i < reply.pub_messages_size(); i++) {

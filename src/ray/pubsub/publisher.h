@@ -368,6 +368,9 @@ class SubscriberState {
    */
   const UniqueID &id() const { return subscriber_id_; }
 
+  /// Identifies the subscription state whose mailbox the client is acknowledging.
+  const std::string &GetPublisherId() const { return publisher_id_binary_; }
+
  private:
   /// Subscriber ID, for logging and debugging.
   const UniqueID subscriber_id_;
@@ -421,18 +424,22 @@ class Publisher : public PublisherInterface {
    *                              See CheckDeadSubscribers() for more details.
    * @param publish_batch_size The batch size of published messages.
    * @param publisher_id Optional publisher ID. Defaults to a random NodeID.
+   * @param use_per_subscriber_publisher_id Give each new SubscriberState its own
+   *        stream ID, so clients can detect expiration without a publisher restart.
    */
   Publisher(const std::vector<rpc::ChannelType> &channels,
             PeriodicalRunnerInterface &periodical_runner,
             ClockInterface &clock,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
-            UniqueID publisher_id = NodeID::FromRandom())
+            UniqueID publisher_id = NodeID::FromRandom(),
+            bool use_per_subscriber_publisher_id = false)
       : periodical_runner_(&periodical_runner),
         clock_(clock),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        publisher_id_(publisher_id) {
+        publisher_id_(publisher_id),
+        use_per_subscriber_publisher_id_(use_per_subscriber_publisher_id) {
     // Insert index map for each channel.
     for (auto type : channels) {
       subscription_index_map_.emplace(type, SubscriptionIndex(type));
@@ -573,6 +580,7 @@ class Publisher : public PublisherInterface {
   int64_t next_sequence_id_ ABSL_GUARDED_BY(mutex_) = 0;
 
   const UniqueID publisher_id_;
+  const bool use_per_subscriber_publisher_id_ = false;
 
   std::string possible_channel_types;
 };
