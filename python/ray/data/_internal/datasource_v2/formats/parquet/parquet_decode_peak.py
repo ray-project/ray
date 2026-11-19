@@ -1,11 +1,10 @@
 """Estimate PyArrow 24's peak memory decoding a Parquet row group, from its footer.
 
 The peak is the I/O (the footer read, ``pre_buffer``'s gaps and the compressed
-chunks), every column's decoded values, the buffers of the columns decoding at once
-(levels, values, dictionary, decompression buffer, temporaries), and a schema pin's
-cast. Each CPU thread decodes one column at a time, and a column's buffers are freed
-when it is read. The rules are fitted to the peaks PyArrow's pool measured and lean
-high, with a flat safety factor on top.
+chunks), every column's decoded values, the buffers of the columns decoding at once,
+and a schema pin's cast. Each CPU thread decodes one column at a time. A leaf's
+buffers are a sum of each one at its largest, so the estimate leans high; it never
+came under the peaks PyArrow's pool measured, and carries a flat safety factor.
 """
 
 from typing import Mapping, Sequence, Set, Tuple
@@ -19,10 +18,8 @@ from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
     estimate_ancestors,
     estimate_leaf,
     estimate_row_group,
-    estimate_string_bytes,
 )
 from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout import (
-    _BINARY,
     _LIST,
 )
 
@@ -96,116 +93,66 @@ def estimate_row_group_work(
         # PyArrow 24 reserves the k-th column's leaves for as many slots as the
         # file's k-th *leaf* has values, whichever column that leaf is in.
         reserved = row_group.column(position).num_values
-        # A column's leaves decode in turn: its peak is one leaf's temporaries
-        # over what that leaf and the ones before it keep. Once the column is
-        # read, only its decoded values stay.
-        column_kept = column_peak = column_decoded = 0
+        column_buffers = 0
         for leaf_idx in leaf_indices:
             # A leaf the estimator doesn't model is charged by the caller.
             if (leaf := leaves.get(leaf_idx)) is None:
                 continue
-            ancestors = estimate_ancestors(leaf=leaf, counted=counted)
-            leaf_decoded, leaf_kept, leaf_temporary = estimate_leaf_work(
-                leaf=leaf,
-                column=columns[leaf_idx],
-                reserved=reserved,
-                rows=row_group.num_rows,
-                ancestors=ancestors,
+            decoded += estimate_ancestors(leaf=leaf, counted=counted)
+            decoded += estimate_leaf(leaf=leaf)
+            column_buffers += estimate_leaf_buffers(
+                leaf=leaf, column=columns[leaf_idx], reserved=reserved
             )
-            column_kept += ancestors + leaf_kept
-            column_peak = max(column_peak, column_kept + leaf_temporary)
-            column_decoded += ancestors + leaf_decoded
-        decoded += column_decoded
-        buffers.append(column_peak - column_decoded)
-    # Each CPU thread decodes one column at a time.
+        buffers.append(column_buffers)
+    # Each CPU thread decodes one column at a time, and a column's buffers are
+    # freed once it is read.
     if decode_threads > 0:
         buffers = sorted(buffers)[-decode_threads:]
     return decoded, sum(buffers)
 
 
-def estimate_leaf_work(
-    leaf: LeafChunk,
-    column: ColumnSchema,
-    reserved: int,
-    rows: int,
-    ancestors: int = 0,
-) -> Tuple[int, int, int]:
-    """One leaf's decoded bytes, and its buffers: those kept until its column is
-    read, the decoded bytes among them, and the temporary ones."""
+def estimate_leaf_buffers(leaf: LeafChunk, column: ColumnSchema, reserved: int) -> int:
+    """The buffers PyArrow holds decoding one leaf, past its decoded values: a sum
+    of each buffer at its largest. ``reserved`` is the slots PyArrow reserves."""
     chunk = leaf.chunk
     encodings = set(chunk.encodings)
-    levels = chunk.num_values
-    # Buffers start at ``reserved`` slots and double to a power of two.
-    capacity = _power_of_two(max(levels, reserved))
+    decoded = estimate_leaf(leaf=leaf)
     repeated = column.max_repetition_level > 0
     nullable = column.max_definition_level > 0
-    # A repeated leaf's buffers measured up to one doubling past ``capacity``.
-    grows = 2 if repeated else 1
-    decoded = estimate_leaf(leaf=leaf)
-    dictionary = _dictionary_bytes(chunk=chunk, encodings=encodings)
-    # int16 definition and repetition levels, and the decoded leaf.
-    kept = 2 * capacity * (nullable + repeated) + decoded
-    temporary = 0
-    reader_bytes = 0
+    # Buffers start at the slots reserved and grow by doubling: at most twice the
+    # larger of those and the leaf's values.
+    slots = 2 * max(chunk.num_values, reserved)
+    # int16 definition and repetition levels.
+    buffers = 2 * slots * (nullable + repeated)
     if chunk.compression != "UNCOMPRESSED":
-        # Pages decompress into a buffer the size of the largest page, bounded by
-        # the chunk, or of the dictionary page.
-        reader_bytes = max(chunk.total_uncompressed_size, dictionary)
-    if _DELTA_ENCODINGS & encodings:
-        # DELTA decoders unpack a page's int32 lengths, 4 bytes a value, and
-        # DELTA_BYTE_ARRAY's its prefix lengths and rebuilt values too.
-        reader_bytes += 4 * levels
-        if "DELTA_BYTE_ARRAY" in encodings:
-            reader_bytes += 4 * levels + decoded
-    if reserved > rows:
-        # Reserved past the rows (a list's position), the page reader measured
-        # as held only while the leaf decodes.
-        temporary += reader_bytes
-    else:
-        kept += reader_bytes
-    # A list's offsets for every slot reserved, past what its ancestors keep.
-    list_offsets = repeated * max(_list_offset_width(leaf) * reserved - ancestors, 0)
+        # The buffer pages decompress into, at most the chunk.
+        buffers += chunk.total_uncompressed_size
+    if repeated:
+        # A list's offsets, for every slot reserved.
+        buffers += _list_offset_width(leaf) * reserved
+    dictionary = _dictionary_bytes(chunk=chunk, encodings=encodings)
     if chunk.physical_type == "BYTE_ARRAY":
-        # Each dictionary entry is at least its 4-byte length.
-        entries = dictionary // 4
-        # The dictionary, and parquet-cpp's 16-byte length and pointer per entry.
-        kept += dictionary + 16 * entries
-        # Offsets reserved past the slots used: 4 bytes, 8 for a large string, 4
-        # for a decimal, which BYTE_ARRAY also carries.
-        node = leaf.profile.nodes[-1]
-        width = node.width if node.kind == _BINARY else 4
-        temporary += width * max(capacity - leaf.array_length(), 0)
-        # The builder's copy of the values; a decimal without SizeStatistics
-        # bytes at most its width each.
-        if node.kind == _BINARY or leaf.size_statistics_bytes is not None:
-            temporary += estimate_string_bytes(leaf=leaf)
+        # The builder's copy of the values and its 4-byte offsets. The dictionary,
+        # and parquet-cpp's 16-byte length and pointer for each of its entries,
+        # which are at least a 4-byte length each.
+        buffers += decoded + 4 * slots + 5 * dictionary
+    else:
+        if chunk.physical_type == "FIXED_LEN_BYTE_ARRAY":
+            values = column.length * slots
         else:
-            temporary += node.width * leaf.array_length()
-        # A string list's offsets are held alongside the builder: both count.
-        return decoded, kept, temporary + list_offsets
-    # Fixed width: the dictionary, then values and validity at capacity.
-    kept += dictionary
-    slots = grows * capacity
-    if repeated and _list_offset_width(leaf) == 4:
-        # A list's values start at the slots reserved and grow by the levels past
-        # the rows; a large_list keeps the doubling, which one measured above.
-        slots = _power_of_two(max(levels, reserved + levels - rows))
-    validity = nullable * slots // 8
-    if chunk.physical_type == "FIXED_LEN_BYTE_ARRAY":
-        # The builder's values, and from a dictionary its values again.
-        values, zero_copy = slots * column.length, False
-        temporary += chunk.has_dictionary_page * values
-    else:
-        values = slots * _PHYSICAL_WIDTH[chunk.physical_type]
-        zero_copy = leaf.profile.nodes[-1].keeps_bitmap
-    if zero_copy:
-        # Trimmed and handed over: the decoded size counts what's kept.
-        temporary += max(values - decoded, 0) + validity
-    else:
-        # Converted into a new array; the decode buffer measured as kept.
-        kept += values + validity
-    # A fixed-width list's offsets come after its values: the larger counts.
-    return decoded, kept, max(temporary, list_offsets)
+            values = _PHYSICAL_WIDTH[chunk.physical_type] * slots
+            if leaf.profile.nodes[-1].keeps_bitmap:
+                # Handed over as the array, not converted: the decoded values
+                # are part of this buffer.
+                values = max(values - decoded, 0)
+        buffers += values + dictionary
+    if _DELTA_ENCODINGS & encodings:
+        # DELTA decoders unpack a page's int32 lengths, and DELTA_BYTE_ARRAY's
+        # its prefix lengths and rebuilt values too.
+        buffers += 4 * chunk.num_values
+        if "DELTA_BYTE_ARRAY" in encodings:
+            buffers += 4 * chunk.num_values + decoded
+    return buffers
 
 
 def estimate_cast(
@@ -238,11 +185,6 @@ def _cast_reuses_buffers(stored: pa.DataType, pinned: pa.DataType) -> bool:
         if pa.types.is_signed_integer(integer) and pa.types.is_temporal(temporal):
             return integer.bit_width == temporal.bit_width
     return False
-
-
-def _power_of_two(slots: int) -> int:
-    """``slots`` rounded up to a power of two, at least 1."""
-    return 1 << (max(slots, 1) - 1).bit_length()
 
 
 def _dictionary_bytes(chunk: ColumnChunkMetaData, encodings: Set[str]) -> int:
