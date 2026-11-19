@@ -4,7 +4,6 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import Version
 
 import ray
 from ray.data import Schema
@@ -171,10 +170,6 @@ def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path)
     )
 
 
-@pytest.mark.skipif(
-    Version(pa.__version__) < Version("7.0.0"),
-    reason="invalid_row_handler was added in pyarrow 7.0.0",
-)
 def test_csv_invalid_file_handler(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):

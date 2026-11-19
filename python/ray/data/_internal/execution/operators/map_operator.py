@@ -43,6 +43,7 @@ from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
     TaskPoolStrategy,
+    maybe_promote_compute_strategy,
 )
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
@@ -89,6 +90,7 @@ from ray.data._internal.execution.util import (
     merge_label_selector,
     yield_block_with_stats,
 )
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -221,6 +223,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     """
     Warn if the size of the map UDF exceeds this threshold.
     """
+
+    is_read_op: bool = False
+    """Whether this op reads from a datasource. Set by the read planners (and
+    propagated through fusion)."""
 
     def __init__(
         self,
@@ -384,6 +390,8 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        is_read_op: bool = False,
+        output_partitioning: Optional[HashPartitioning] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -424,6 +432,8 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            is_read_op: Whether this op reads from a datasource.
+            output_partitioning: See ``PhysicalOperator.output_partitioning``.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -439,6 +449,11 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
 
+        # The actor-only backend transparently promotes ``TaskPoolStrategy`` to
+        # ``ActorPoolStrategy`` here; this is a no-op otherwise. The decision is
+        # self-gated inside the helper so this factory stays backend-agnostic.
+        compute_strategy = maybe_promote_compute_strategy(compute_strategy)
+
         # Apply per-block limit to the map transformer if set
         if per_block_limit is not None:
             map_transformer = _wrap_transformer_with_limit(
@@ -450,7 +465,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
 
             TaskPoolMapOperator = get_task_pool_map_operator_cls()
-            return TaskPoolMapOperator(
+            op = TaskPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -467,6 +482,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
+            op.is_read_op = is_read_op
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
                 get_actor_pool_map_operator_cls,
@@ -479,7 +495,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
-            return ActorPoolMapOperator(
+            op = ActorPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -494,9 +510,12 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                is_read_op=is_read_op,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        op._output_partitioning = output_partitioning
+        return op
 
     def start(
         self,
@@ -629,6 +648,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -687,16 +707,29 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             self._metrics.on_task_output_generated(task_index, output)
 
             if lineage_tracker is not None:
-                # Attribute the block to (this task, output_index) so whichever
-                # downstream task consumes it can name its own dependencies.
-                lineage_tracker.register_block_output(
-                    lineage_task_id, output.block_refs[0].hex(), output_index
-                )
                 if sorted_reconstruction_plan_ids:
-                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
-                        status = lineage_tracker.get_object_reuse_status(
+                    statuses = {
+                        reconstruction_plan_id: lineage_tracker.get_object_reuse_status(
                             lineage_task_id, output_index, reconstruction_plan_id
                         )
+                        for reconstruction_plan_id in sorted_reconstruction_plan_ids
+                    }
+                    # Attribute the block to (this task, output_index) so whichever
+                    # downstream task consumes it can name its own dependencies. Only
+                    # for blocks that will reach a consumer: a dropped one would never
+                    # be resolved, leaving its entry behind for the rest of the run.
+                    if any(
+                        status
+                        in (
+                            ObjectReuseStatus.OBJECT_REUSED,
+                            ObjectReuseStatus.OBJECT_NEW,
+                        )
+                        for status in statuses.values()
+                    ):
+                        lineage_tracker.register_block_output(
+                            lineage_task_id, output.block_refs[0].hex(), output_index
+                        )
+                    for reconstruction_plan_id, status in statuses.items():
                         # REUSED: withhold until the child reconstruction task's whole input set is
                         # re-produced, then release it as one bundle
                         # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
@@ -733,6 +766,9 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     return
                 else:
                     # This is a fresh task
+                    lineage_tracker.register_block_output(
+                        lineage_task_id, output.block_refs[0].hex(), output_index
+                    )
                     lineage_tracker.register_block_queued(lineage_task_id, output_index)
 
             # Notify output queue that the task has produced an new output.
@@ -779,12 +815,23 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     self._release_reconstruction_blocks_to_child(
                         lineage_task_id, reconstruction_plan_ids, task_index
                     )
+                    self._num_reconstruction_tasks_finished += 1
                     for reconstruction_plan_id in sorted_reconstruction_plan_ids:
                         lineage_tracker.register_task_complete(
-                            lineage_task_id, reconstruction_plan_id
+                            lineage_task_id,
+                            num_outputs=next_output_index,
+                            reconstruction_plan_id=reconstruction_plan_id,
                         )
                 else:
-                    lineage_tracker.register_task_complete(lineage_task_id)
+                    # The output count lets the tracker garbage collect this task
+                    # once every output has been consumed by a collected task.
+                    lineage_tracker.register_task_complete(
+                        lineage_task_id, num_outputs=next_output_index
+                    )
+                # A completed write task's rows are durable, so its lineage is no
+                # longer needed.
+                if self._is_sink_operator():
+                    lineage_tracker.try_garbage_collect_lineage(lineage_task_id)
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -801,6 +848,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 task_index, output
             ),
             task_done_callback=functools.partial(_task_done_callback, task_index),
+            task_resource_request=task_resource_request,
             operator_name=self.name,
             lineage_task_id=lineage_task_id,
             reconstruction_plan_ids=reconstruction_plan_ids,
@@ -857,6 +905,21 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     def has_next(self) -> bool:
         assert self._started
         return self._output_queue.has_next()
+
+    def lineage_reconstruction_progress_str(self) -> str:
+        if self._lineage_tracker is None:
+            return ""
+        num_queued = len(self._batched_plans)
+        num_running = sum(
+            1 for task in self._data_tasks.values() if task.reconstruction_plan_ids
+        )
+        num_finished = self._num_reconstruction_tasks_finished
+        if not (num_queued or num_running or num_finished):
+            return ""
+        return (
+            f"Reconstruction: {num_queued} queued, {num_running} running, "
+            f"{num_finished} finished"
+        )
 
     def _get_next_inner(self) -> RefBundle:
         assert self._started
@@ -973,7 +1036,24 @@ def _map_task(
         # `max_concurrent_calls_per_actor > 1` several run at once.
         clock = TransformClock()
 
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+        max_attempts = data_context.max_map_retries + 1
+        attempts_started = 0
+
         def transform_iter_factory():
+            nonlocal attempts_started
+            # Tell the transform whether this attempt can still be rerun, so it
+            # knows whether to emit its buffered rows before an error.
+            attempts_started += 1
+            ctx.rerun_policy = ctx.rerun_policy.with_map_retries(
+                max_attempts - attempts_started, to_match
+            )
             # Clear any per-task custom stats before each attempt (the reporter
             # is reused across retries of this task), so a prior attempt's stats
             # can't leak into this one. A producing transform repopulates it
@@ -990,19 +1070,11 @@ def _map_task(
                 clock=clock,
             )
 
-        match retry_on:
-            case True:
-                to_match = None
-            case False:
-                to_match = []
-            case _:
-                to_match = retry_on
-
         block_iter = iterate_with_retry(
             transform_iter_factory,
             description="apply UDF transform",
             match=to_match,
-            max_attempts=data_context.max_map_retries + 1,
+            max_attempts=max_attempts,
             unwrap_cause=True,
         )
 
