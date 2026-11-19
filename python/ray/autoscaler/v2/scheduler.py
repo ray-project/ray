@@ -654,14 +654,24 @@ class SchedulingNode:
             provider_replica_id=instance.cloud_instance_replica_id,
             launch_request_id=instance.im_instance.launch_request_id or None,
         )
-        if (
-            instance.im_instance.status == Instance.RAY_STOP_REQUESTED
-            and instance.ray_node is not None
-            and node_config.domain_label_key
-        ):
-            dom_val = (instance.ray_node.labels or {}).get(node_config.domain_label_key)
-            if dom_val:
-                node.labels[node_config.domain_label_key] = dom_val
+        if instance.im_instance.status == Instance.RAY_STOP_REQUESTED:
+            if instance.ray_node is not None and node_config.domain_label_key:
+                dom_val = (instance.ray_node.labels or {}).get(
+                    node_config.domain_label_key
+                )
+                if dom_val:
+                    node.labels[node_config.domain_label_key] = dom_val
+            if node_config.head_resources:
+                ray_tot = (
+                    instance.ray_node.total_resources or {}
+                    if instance.ray_node is not None
+                    else {}
+                )
+                for hk in node_config.head_resources:
+                    if ray_tot.get(hk, 0) <= 0:
+                        node.total_resources.pop(hk, None)
+                        for avail in node.available_resources_for_sched.values():
+                            avail.pop(hk, None)
         return node
 
     @staticmethod
@@ -2205,6 +2215,8 @@ def _assign_planned_slots(
 
 def _refill_attach_cap(total_src: int, open_slots: int, size: int) -> int:
     """Max pods from `total_src` attachable to `open_slots` without breaking full `size` chunks."""
+    if total_src <= 0 or size <= 1:
+        return 0
     rem = total_src % size
     return rem + min(total_src - rem, (max(0, open_slots - rem) // size) * size)
 
@@ -2300,11 +2312,76 @@ class _ReplicaGrouper:
             )
         )
 
+    def _nonprov_lid_rep_counts(self) -> Tuple[Counter, Counter]:
+        inc_reps: Counter = Counter()
+        live_reps: Counter = Counter()
+        for rep in self.replicas.values():
+            if rep.is_provider:
+                continue
+            is_inc = len(rep.members) % self.size != 0
+            for lid in rep.lids:
+                live_reps[lid] += 1
+                if is_inc:
+                    inc_reps[lid] += 1
+        return inc_reps, live_reps
+
+    def _max_lid_slots_on_rep(
+        self, rep: _Replica, lid: str, live_reps_by_lid: Counter
+    ) -> Tuple[int, int]:
+        live_lid = sum(
+            1
+            for m in rep.members
+            if m.launch_request_id == lid
+            and m.im_instance_status != Instance.RAY_STOP_REQUESTED
+        )
+        if not self.is_exclusive_domain:
+            return live_lid, live_lid + ((-len(rep.members)) % self.size)
+        other_live = 0
+        other_unsolic = 0
+        for olid in rep.lids:
+            if olid == lid:
+                continue
+            live_o = sum(
+                1
+                for m in rep.members
+                if m.launch_request_id == olid
+                and m.im_instance_status != Instance.RAY_STOP_REQUESTED
+            )
+            other_live += live_o
+            if live_reps_by_lid[olid] <= 1:
+                exited_o = max(
+                    0,
+                    self._ctx.get_total_cloud_pods_on_lid(self.node_type, olid)
+                    - self.size * max(1, live_reps_by_lid[olid]),
+                )
+                other_unsolic += max(
+                    0,
+                    self._ctx.get_unsolicited_on_lid(self.node_type, olid)
+                    - max(
+                        0,
+                        exited_o - self._ctx.get_solicited_on_lid(self.node_type, olid),
+                    ),
+                )
+        other_slots = other_live
+        if (
+            self._ctx.get_total_cloud_pods_on_lid(self.node_type, lid)
+            > self.size - other_live
+        ):
+            other_slots += other_unsolic
+        return live_lid, max(live_lid, self.size - other_slots)
+
     def _is_nonprov_lid_draining(self, lid: str) -> bool:
-        if self.non_stopping_by_lid[lid] % self.size == 0:
+        live_cnt = self.non_stopping_by_lid[lid]
+        if live_cnt % self.size == 0:
             return False
         if lid in self.active_draining_lids:
-            return True
+            total_pods = self._ctx.get_total_cloud_pods_on_lid(self.node_type, lid)
+            live_rep_slots = ((live_cnt + self.size - 1) // self.size) * self.size
+            exited_slots = max(0, total_pods - live_rep_slots)
+            if total_pods == 0 or self._ctx.has_excess_solicited_on_lid(
+                self.node_type, lid, exited_slots
+            ):
+                return True
         live_domains = {
             r.domain
             for r in self.replicas.values()
@@ -2320,7 +2397,7 @@ class _ReplicaGrouper:
         rep: _Replica,
         lid: str,
         include_unscoped_lid: bool = True,
-        live_reps_on_lid: int = 1,
+        live_reps_by_lid: Optional[Counter] = None,
     ) -> bool:
         if self.non_stopping_by_lid[lid] % self.size == 0:
             return False
@@ -2331,9 +2408,24 @@ class _ReplicaGrouper:
             return True
         if include_unscoped_lid and lid in self.active_draining_lids:
             if not has_real_domain:
-                return True
-            return self._ctx.can_unscoped_lid_drain_domain_replica(
-                self.node_type, lid, rep.domain, self.size, live_reps_on_lid
+                return self._is_nonprov_lid_draining(lid)
+            l_counts = (
+                live_reps_by_lid
+                if live_reps_by_lid is not None
+                else self._nonprov_lid_rep_counts()[1]
+            )
+            live_lid, cap_rep = self._max_lid_slots_on_rep(rep, lid, l_counts)
+            if cap_rep <= live_lid:
+                return False
+            sum_cap = sum(
+                self._max_lid_slots_on_rep(r, lid, l_counts)[1]
+                for r in self.replicas.values()
+                if not r.is_provider and lid in r.lids
+            )
+            total_pods = self._ctx.get_total_cloud_pods_on_lid(self.node_type, lid)
+            exited_slots = max(0, total_pods - sum_cap)
+            return total_pods == 0 or self._ctx.has_excess_solicited_on_lid(
+                self.node_type, lid, exited_slots
             )
         return False
 
@@ -2700,18 +2792,7 @@ class _ReplicaGrouper:
             for m in rep.members:
                 if m.launch_request_id:
                     rep.lids.add(m.launch_request_id)
-        inc_reps_by_lid = Counter(
-            lid
-            for rep in self.replicas.values()
-            if not rep.is_provider and len(rep.members) % self.size != 0
-            for lid in rep.lids
-        )
-        live_reps_by_lid = Counter(
-            lid
-            for rep in self.replicas.values()
-            if not rep.is_provider
-            for lid in rep.lids
-        )
+        inc_reps_by_lid, live_reps_by_lid = self._nonprov_lid_rep_counts()
         for rep in self.replicas.values():
             is_td = not rep.is_provider and bool(rep.lids & self.torn_down_lids)
             if is_td:
@@ -2736,7 +2817,7 @@ class _ReplicaGrouper:
                             rep,
                             lid,
                             include_unscoped_lid=inc_reps_by_lid[lid] <= 1,
-                            live_reps_on_lid=max(1, live_reps_by_lid[lid]),
+                            live_reps_by_lid=live_reps_by_lid,
                         )
                         for lid in rep.lids
                     )
@@ -2763,6 +2844,7 @@ class _ReplicaGrouper:
             else:
                 unmatched.append(m)
 
+        inc_reps_by_lid, live_reps_by_lid = self._nonprov_lid_rep_counts()
         for lid, lid_nodes in sorted(by_lid.items()):
             self._sort_by_termination(lid_nodes)
             # First complete any non-provider runtime-labeled partial replica with same lid.
@@ -2774,7 +2856,12 @@ class _ReplicaGrouper:
                     take = min(open_slots, len(lid_nodes))
                     rep_draining = any(
                         m._is_draining_replica for m in rep.members
-                    ) or self._is_rep_lid_draining(rep, lid)
+                    ) or self._is_rep_lid_draining(
+                        rep,
+                        lid,
+                        include_unscoped_lid=inc_reps_by_lid[lid] <= 1,
+                        live_reps_by_lid=live_reps_by_lid,
+                    )
                     for m in lid_nodes[:take]:
                         m.replica_id = rep.rid
                         m._has_runtime_domain = True
@@ -2847,10 +2934,12 @@ class _ReplicaGrouper:
                     self._open_slots_for_placement(r, allow_refill=True)
                     for r in inc_reps
                 )
-                donate = _refill_attach_cap(len(unmatched), sum_open, self.size)
+                donatable = [m for m in unmatched if not m.is_leaving]
+                donate = _refill_attach_cap(len(donatable), sum_open, self.size)
                 if donate > 0:
-                    donor_pool = unmatched[-donate:]
-                    del unmatched[-donate:]
+                    donor_pool = donatable[-donate:]
+                    donated_ids = {id(m) for m in donor_pool}
+                    unmatched = [m for m in unmatched if id(m) not in donated_ids]
                     for r in inc_reps:
                         if not donor_pool:
                             break
@@ -2873,32 +2962,41 @@ class _ReplicaGrouper:
 
         if unmatched:
             self._sort_by_termination(unmatched)
-            chunk = self.size if not self.dom_key else 1
-            for i in range(0, len(unmatched), chunk):
-                slice_nodes = unmatched[i : i + chunk]
-                is_draining = any(
-                    m.im_instance_status == Instance.RAY_STOP_REQUESTED
-                    or (
-                        len(slice_nodes) < self.size
-                        and m.launch_request_id
-                        and self._is_nonprov_lid_draining(m.launch_request_id)
+            unmatched_no_lid = [m for m in unmatched if not m.launch_request_id]
+            unmatched_with_lid = [m for m in unmatched if m.launch_request_id]
+            for pool, chunk, refillable in (
+                (unmatched_no_lid, self.size, True),
+                (unmatched_with_lid, self.size if not self.dom_key else 1, False),
+            ):
+                for i in range(0, len(pool), chunk):
+                    slice_nodes = pool[i : i + chunk]
+                    is_draining = any(
+                        m.im_instance_status == Instance.RAY_STOP_REQUESTED
+                        or (
+                            len(slice_nodes) < self.size
+                            and m.launch_request_id
+                            and self._is_nonprov_lid_draining(m.launch_request_id)
+                        )
+                        for m in slice_nodes
                     )
-                    for m in slice_nodes
-                )
-                rep = self._new_replica(
-                    no_backfill=True,
-                    allow_refill_attach=(
-                        not self.dom_key
-                        and len(slice_nodes) < self.size
-                        and not is_draining
-                        and not any(m.launch_request_id for m in slice_nodes)
-                    ),
-                )
-                for m in slice_nodes:
-                    m.replica_id = rep.rid
-                    if is_draining:
-                        m._is_draining_replica = True
-                    rep.members.append(m)
+                    rep = self._new_replica(
+                        lids={
+                            m.launch_request_id
+                            for m in slice_nodes
+                            if m.launch_request_id
+                        },
+                        no_backfill=True,
+                        allow_refill_attach=(
+                            refillable
+                            and len(slice_nodes) < self.size
+                            and not is_draining
+                        ),
+                    )
+                    for m in slice_nodes:
+                        m.replica_id = rep.rid
+                        if is_draining:
+                            m._is_draining_replica = True
+                        rep.members.append(m)
 
     def _inc_priority(
         self,
@@ -2954,15 +3052,16 @@ class _ReplicaGrouper:
         forced_open = max(0, real_active + non_td_open - self.cfg.max_worker_nodes)
         return td_open + min(non_td_open, forced_open)
 
-    def _attach_refill_remainder(self, src_nodes: List[SchedulingNode]) -> None:
+    def _attach_refill_remainder(
+        self, src_nodes: List[SchedulingNode], *, attach_trailing_rem: bool = True
+    ) -> None:
         """Attach refill pods from `src_nodes` to incomplete non-provider replicas."""
         if not src_nodes or not self.replicas:
             return
-        rem = _refill_attach_cap(
-            len(src_nodes),
-            self._effective_refill_open_slots(allow_when_no_td=False),
-            self.size,
-        )
+        open_slots = self._effective_refill_open_slots(allow_when_no_td=False)
+        if open_slots <= 0 and not attach_trailing_rem:
+            return
+        rem = _refill_attach_cap(len(src_nodes), open_slots, self.size)
         if rem <= 0:
             return
         pinned_domains = self._ctx.peek_pinned_domains()
@@ -3145,18 +3244,7 @@ class _ReplicaGrouper:
                         node._is_draining_replica = True
                     if chunk_rep is not None:
                         chunk_rep.members.append(node)
-        post_inc_reps_by_lid = Counter(
-            lid
-            for rep in self.replicas.values()
-            if not rep.is_provider and len(rep.members) % self.size != 0
-            for lid in rep.lids
-        )
-        post_live_reps_by_lid = Counter(
-            lid
-            for rep in self.replicas.values()
-            if not rep.is_provider
-            for lid in rep.lids
-        )
+        post_inc_reps_by_lid, post_live_reps_by_lid = self._nonprov_lid_rep_counts()
         for rep in self.replicas.values():
             if (
                 not rep.is_provider
@@ -3166,7 +3254,7 @@ class _ReplicaGrouper:
                         rep,
                         lid,
                         include_unscoped_lid=post_inc_reps_by_lid[lid] <= 1,
-                        live_reps_on_lid=max(1, post_live_reps_by_lid[lid]),
+                        live_reps_by_lid=post_live_reps_by_lid,
                     )
                     for lid in rep.lids
                 )
@@ -3438,12 +3526,10 @@ class _ReplicaGrouper:
         booting_no_lid = scrambled_cloud + self._attach_unattributed_booting(
             booting_no_lid
         )
-        if queued_nodes and not any(
-            p.launch_request_id and p.launch_request_id in self.torn_down_lids
-            for p in queued_nodes
-        ):
-            self._attach_refill_remainder(queued_nodes)
-        for group in (booting_no_lid, queued_nodes, other_pending):
+
+        def _chunk_pending_group(
+            group: List[SchedulingNode], *, register_sub_rep: bool
+        ) -> None:
             for i in range(0, len(group), self.size):
                 rid = self._ctx.new_pending_domain(self.node_type)
                 chunk_nodes = group[i : i + self.size]
@@ -3467,7 +3553,7 @@ class _ReplicaGrouper:
                         p._is_draining_replica = True
                         is_chunk_draining = True
                 if (
-                    group is booting_no_lid
+                    register_sub_rep
                     and is_sub_chunk
                     and not any(p.provider_replica_id for p in chunk_nodes)
                 ):
@@ -3478,6 +3564,15 @@ class _ReplicaGrouper:
                         allow_refill_attach=not is_chunk_draining,
                     )
                     chunk_rep.members.extend(chunk_nodes)
+
+        _chunk_pending_group(booting_no_lid, register_sub_rep=True)
+        if queued_nodes and not any(
+            p.launch_request_id and p.launch_request_id in self.torn_down_lids
+            for p in queued_nodes
+        ):
+            self._attach_refill_remainder(queued_nodes, attach_trailing_rem=False)
+        _chunk_pending_group(queued_nodes, register_sub_rep=False)
+        _chunk_pending_group(other_pending, register_sub_rep=False)
 
         # Stage 4: Committed missing-slot backfill placeholders.
         placeholders = self._populate_backfill_placeholders(vanished_batches)
@@ -3642,11 +3737,13 @@ class ResourceDemandScheduler(IResourceScheduler):
             draining_lid_domains: Optional[Dict[NodeType, Set[Tuple[str, str]]]] = None,
             expired_placeholder_keys: Optional[Set[Tuple[str, str, str]]] = None,
             replica_view: Optional[_MultiHostReplicaView] = None,
-            omitted_unlabeled_cnt: Optional[Dict[NodeType, int]] = None,
+            omitted_stopping_cnt: Optional[Dict[NodeType, int]] = None,
+            omitted_gcs_lag_by_lid: Optional[Dict[Tuple[NodeType, str], int]] = None,
             omitted_prov_rids: Optional[Dict[NodeType, Set[str]]] = None,
             solicited_by_lid: Optional[Dict[Tuple[NodeType, str], int]] = None,
+            unsolicited_by_lid: Optional[Dict[Tuple[NodeType, str], int]] = None,
+            active_stopping_by_lid: Optional[Dict[Tuple[NodeType, str], int]] = None,
             total_cloud_pods_by_lid: Optional[Dict[Tuple[NodeType, str], int]] = None,
-            rejected_stop_domains: Optional[Dict[NodeType, Set[str]]] = None,
         ):
             self._nodes = nodes
             self._all_nodes: List[SchedulingNode] = self._nodes
@@ -3680,12 +3777,23 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._replicas_by_type: Dict[NodeType, Dict[str, _Replica]] = {}
             self._extra_lid_backfill: Dict[NodeType, int] = {}
             self._unbacked_refill_gaps: Dict[NodeType, int] = {}
+            self._unconsumed_align_pad: Dict[NodeType, int] = {}
             self._prebuilt_refills: Dict[NodeType, List[SchedulingNode]] = {}
             self._co_launch_overhead: Dict[NodeType, int] = {}
             self._replica_view = replica_view or _MultiHostReplicaView()
-            self._omitted_unlabeled_cnt: Dict[NodeType, int] = dict(
-                omitted_unlabeled_cnt or {}
+            self._omitted_stopping_cnt: Dict[NodeType, int] = dict(
+                omitted_stopping_cnt or {}
             )
+            self._omitted_gcs_lag_by_lid: Dict[Tuple[NodeType, str], int] = dict(
+                omitted_gcs_lag_by_lid or {}
+            )
+            self._omitted_unlabeled_cnt: Dict[NodeType, int] = defaultdict(int)
+            for nt_s, cnt_s in self._omitted_stopping_cnt.items():
+                if cnt_s > 0:
+                    self._omitted_unlabeled_cnt[nt_s] += cnt_s
+            for (nt_l, _), cnt_l in self._omitted_gcs_lag_by_lid.items():
+                if cnt_l > 0:
+                    self._omitted_unlabeled_cnt[nt_l] += cnt_l
             self._omitted_prov_rids: Dict[NodeType, Set[str]] = {
                 k: set(v) for k, v in (omitted_prov_rids or {}).items()
             }
@@ -3694,19 +3802,21 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._solicited_by_lid: Dict[Tuple[NodeType, str], int] = dict(
                 solicited_by_lid or {}
             )
+            self._unsolicited_by_lid: Dict[Tuple[NodeType, str], int] = dict(
+                unsolicited_by_lid or {}
+            )
+            self._active_stopping_by_lid: Dict[Tuple[NodeType, str], int] = dict(
+                active_stopping_by_lid or {}
+            )
             self._total_cloud_pods_by_lid: Dict[Tuple[NodeType, str], int] = dict(
                 total_cloud_pods_by_lid or {}
             )
-            self._rejected_stop_domains: Dict[NodeType, Set[str]] = {
-                k: set(v) for k, v in (rejected_stop_domains or {}).items()
-            }
             self._unlabeled_view_types: Set[NodeType] = set()
             for nt, cfg in self._node_type_configs.items():
                 if not cfg.is_multi_worker_replica or not (
                     self._replica_view.unlabeled_occupying_cids.get(nt)
                 ):
                     continue
-                size = cfg.workers_per_replica
                 non_prov_occ = sum(
                     1
                     for n in self._nodes
@@ -3738,10 +3848,18 @@ class ResourceDemandScheduler(IResourceScheduler):
                     + self._omitted_unlabeled_cnt.get(nt, 0)
                     + sum(self._replica_view.unclaimed_vanished_by_lid(nt).values())
                 )
-                if (
-                    self._replica_view.unlabeled_backfill_gap(nt, size)
-                    == (-total_occ) % size
-                ):
+                vanished_by_lid = self._replica_view.unclaimed_vanished_by_lid(nt)
+                view_occ = len(
+                    self._replica_view.unlabeled_occupying_cids.get(nt, ())
+                ) + sum(
+                    cnt + vanished_by_lid.get(lid, 0)
+                    for (t, lid), cnt in self._replica_view.requested_by_lid.items()
+                    if t == nt
+                    and cnt > 0
+                    and (t, lid) not in self._replica_view.torn_down_lids
+                    and not self._replica_view.claimed_reps_by_lid.get((t, lid))
+                )
+                if view_occ == total_occ:
                     self._unlabeled_view_types.add(nt)
             self._init_replicas()
             self._refresh_capacity_stats()
@@ -3764,22 +3882,28 @@ class ResourceDemandScheduler(IResourceScheduler):
         def get_draining_lid_domains(self, node_type: NodeType) -> Set[Tuple[str, str]]:
             return self._draining_lid_domains.get(node_type, set())
 
-        def can_unscoped_lid_drain_domain_replica(
-            self,
-            node_type: NodeType,
-            lid: str,
-            domain: str,
-            size: int,
-            live_reps_on_lid: int,
-        ) -> bool:
-            if domain in self._rejected_stop_domains.get(node_type, ()):
-                return True
-            total_pods = self._total_cloud_pods_by_lid.get((node_type, lid), 0)
-            total_slices = (total_pods + size - 1) // size if size > 0 else 0
-            exited_rep_slots = max(0, total_slices - live_reps_on_lid) * size
-            return self._solicited_by_lid.get((node_type, lid), 0) > exited_rep_slots
+        def get_total_cloud_pods_on_lid(self, node_type: NodeType, lid: str) -> int:
+            return self._total_cloud_pods_by_lid.get((node_type, lid), 0)
 
-        def get_omitted_occupying_slots(self, node_type: NodeType) -> int:
+        def get_solicited_on_lid(self, node_type: NodeType, lid: str) -> int:
+            return self._solicited_by_lid.get((node_type, lid), 0)
+
+        def get_unsolicited_on_lid(self, node_type: NodeType, lid: str) -> int:
+            return self._unsolicited_by_lid.get((node_type, lid), 0)
+
+        def has_excess_solicited_on_lid(
+            self, node_type: NodeType, lid: str, exited_lid_slots: int
+        ) -> bool:
+            key = (node_type, lid)
+            solic = self._solicited_by_lid.get(key, 0)
+            if solic > exited_lid_slots:
+                return True
+            return (
+                self._active_stopping_by_lid.get(key, 0) > 0
+                and solic + self._unsolicited_by_lid.get(key, 0) > exited_lid_slots
+            )
+
+        def _missing_prov_replica_slots(self, node_type: NodeType) -> int:
             cfg = self._node_type_configs.get(node_type)
             if cfg is None or not cfg.is_multi_worker_replica:
                 return 0
@@ -3799,10 +3923,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                 for rid in self._omitted_prov_rids.get(node_type, ())
                 if rid not in live_prov_rids
             )
-            return (
-                self._omitted_unlabeled_cnt.get(node_type, 0)
-                + missing_prov_reps * cfg.workers_per_replica
-            )
+            return missing_prov_reps * cfg.workers_per_replica
+
+        def get_omitted_occupying_slots(self, node_type: NodeType) -> int:
+            return self._omitted_unlabeled_cnt.get(
+                node_type, 0
+            ) + self._missing_prov_replica_slots(node_type)
 
         def has_unlabeled_view(self, node_type: NodeType) -> bool:
             return node_type in self._unlabeled_view_types
@@ -3828,8 +3954,43 @@ class ResourceDemandScheduler(IResourceScheduler):
         def get_replicas_by_type(self) -> Dict[NodeType, Dict[str, _Replica]]:
             return self._replicas_by_type
 
-        def get_unbacked_refill_gap(self, node_type: NodeType) -> int:
+        def get_unbacked_refill_gap(
+            self, node_type: NodeType, *, exclude_unattributed: bool = False
+        ) -> int:
+            if exclude_unattributed:
+                return self._min_w_refill_gaps.get(node_type, 0)
             return self._unbacked_refill_gaps.get(node_type, 0)
+
+        def _live_nodes_by_rid(
+            self,
+            node_type: NodeType,
+            scan_nodes: Optional[List[SchedulingNode]] = None,
+        ) -> Dict[str, List[SchedulingNode]]:
+            live_by_rid: Dict[str, List[SchedulingNode]] = defaultdict(list)
+            for n in scan_nodes if scan_nodes is not None else self._nodes:
+                if (
+                    n.node_type == node_type
+                    and n.node_kind != NodeKind.HEAD
+                    and n.status != SchedulingNodeStatus.TO_TERMINATE
+                    and not n.is_leaving
+                    and not n._is_draining_replica
+                    and n.replica_id
+                ):
+                    live_by_rid[n.replica_id].append(n)
+            return live_by_rid
+
+        def _queued_and_to_launch_count(self, node_type: NodeType) -> int:
+            return sum(
+                1
+                for n in self._nodes
+                if n.node_type == node_type
+                and n.node_kind != NodeKind.HEAD
+                and n.status != SchedulingNodeStatus.TO_TERMINATE
+                and (
+                    n.im_instance_status == Instance.QUEUED
+                    or n.status == SchedulingNodeStatus.TO_LAUNCH
+                )
+            )
 
         def get_unattributed_open_slots(self, node_type: NodeType) -> int:
             cfg = self._node_type_configs.get(node_type)
@@ -3837,25 +3998,21 @@ class ResourceDemandScheduler(IResourceScheduler):
                 return 0
             size = cfg.workers_per_replica
             is_exclusive = bool(cfg.domain_label_key and cfg.domain_exclusive)
-            live_by_rid = Counter(
-                n.replica_id
-                for n in self._nodes
-                if n.node_type == node_type
-                and n.node_kind != NodeKind.HEAD
-                and n.status != SchedulingNodeStatus.TO_TERMINATE
-                and not n.is_leaving
-                and not n._is_draining_replica
-                and n.replica_id
-            )
-            return sum(
-                _Replica._slots_for(live_by_rid[rep.rid], size, not is_exclusive)[0]
+            live_by_rid = self._live_nodes_by_rid(node_type)
+            raw_open = sum(
+                _Replica._slots_for(len(live_by_rid[rep.rid]), size, not is_exclusive)[
+                    0
+                ]
                 for rep in self._replicas_by_type.get(node_type, {}).values()
                 if rep.no_backfill
                 and rep.allow_refill_attach
                 and not rep.is_provider
                 and not rep.lids
-                and live_by_rid[rep.rid] > 0
+                and live_by_rid.get(rep.rid)
                 and not any(m.is_leaving or m._is_draining_replica for m in rep.members)
+            )
+            return max(
+                0, raw_open - self._omitted_gcs_lag_by_lid.get((node_type, ""), 0)
             )
 
         def get_co_launch_overhead(self, node_type: NodeType) -> int:
@@ -3935,23 +4092,34 @@ class ResourceDemandScheduler(IResourceScheduler):
             replicas_by_type: Optional[Dict[NodeType, Dict[str, _Replica]]] = None,
             extra_lid_backfill: Optional[Dict[NodeType, int]] = None,
             torn_down_lids: Optional[Set[Tuple[NodeType, str]]] = None,
-            omitted_unlabeled_cnt: Optional[Dict[NodeType, int]] = None,
-        ) -> Tuple[Dict[NodeType, int], Dict[NodeType, int]]:
-            """Return `(total_missing, non_prov_missing)` backfill slots in one pass."""
+            omitted_stopping_cnt: Optional[Dict[NodeType, int]] = None,
+            omitted_gcs_lag_by_lid: Optional[Dict[Tuple[NodeType, str], int]] = None,
+        ) -> Tuple[
+            Dict[NodeType, int],
+            Dict[NodeType, int],
+            Dict[NodeType, int],
+            Dict[NodeType, int],
+        ]:
+            """Return `(total_missing, non_prov_missing, unconsumed_align_pad, raw_align_cap)`."""
             missing: Dict[NodeType, int] = {}
             np_missing: Dict[NodeType, int] = {}
+            unconsumed_pad: Dict[NodeType, int] = {}
+            align_caps: Dict[NodeType, int] = {}
             td_lids = torn_down_lids or set()
-            omit_map = omitted_unlabeled_cnt or {}
+            stop_map = omitted_stopping_cnt or {}
+            lag_map = omitted_gcs_lag_by_lid or {}
             for nt, cfg in node_type_configs.items():
                 if not cfg.is_multi_worker_replica:
                     continue
                 size = cfg.workers_per_replica
+                is_exclusive = bool(cfg.domain_label_key and cfg.domain_exclusive)
                 reps = (replicas_by_type or {}).get(nt, {})
                 extra_lid_gap = (extra_lid_backfill or {}).get(nt, 0)
-                omit_u = omit_map.get(nt, 0)
                 k8s_count = np_k8s_count = booting_count = refill_tl_cnt = 0
                 dom_counts: Counter = Counter()
                 np_dom_counts: Counter = Counter()
+                np_real_by_rid: Counter = Counter()
+                booting_by_lid: Counter = Counter()
                 draining_dom_counts: Counter = Counter()
                 np_draining_dom_counts: Counter = Counter()
                 draining_unassigned = 0
@@ -3968,7 +4136,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     ):
                         continue
                     is_prov = bool(n.provider_replica_id)
-                    if n._is_draining_replica:
+                    if n._is_draining_replica or n.is_leaving:
                         if (
                             n.im_instance_status == Instance.REQUESTED
                             and (nt, n.launch_request_id or "") in td_lids
@@ -3991,7 +4159,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                         or (
                             rep_n is not None
                             and (
-                                rep_n.allow_refill_attach
+                                rep_n.no_backfill
+                                or rep_n.allow_refill_attach
                                 or bool(
                                     n.launch_request_id
                                     and (nt, n.launch_request_id) in td_lids
@@ -4002,8 +4171,73 @@ class ResourceDemandScheduler(IResourceScheduler):
                         dom_counts[n.replica_id] += 1
                         if not is_prov:
                             np_dom_counts[n.replica_id] += 1
+                            if not n._is_backfill_placeholder and not n.is_leaving:
+                                np_real_by_rid[n.replica_id] += 1
                     elif not n.is_running and not is_prov:
                         booting_count += 1
+                        if n.launch_request_id and not n._is_backfill_placeholder:
+                            booting_by_lid[n.launch_request_id] += 1
+
+                rem_gcs_lag: Counter = Counter(
+                    {
+                        lid: cnt
+                        for (t, lid), cnt in lag_map.items()
+                        if t == nt and cnt > 0
+                    }
+                )
+                if rem_gcs_lag:
+                    for rep in sorted(reps.values(), key=lambda r: r.rid):
+                        if (
+                            rep.is_provider
+                            or rep.no_backfill
+                            or any(
+                                m.is_leaving or m._is_draining_replica
+                                for m in rep.members
+                            )
+                        ):
+                            continue
+                        real_m = np_real_by_rid.get(rep.rid, 0)
+                        if real_m <= 0:
+                            continue
+                        open_charged = _Replica._slots_for(
+                            real_m, size, rep.allow_multi_replica
+                        )[0]
+                        for lid in sorted(rep.lids):
+                            take_l = min(open_charged, rem_gcs_lag[lid])
+                            if take_l > 0:
+                                rem_gcs_lag[lid] -= take_l
+                                open_charged -= take_l
+                    for lid, b_cnt in booting_by_lid.items():
+                        take_b = min((-b_cnt) % size, rem_gcs_lag[lid])
+                        if take_b > 0:
+                            rem_gcs_lag[lid] -= take_b
+
+                healthy_unmatched_lag = sum(
+                    ((cnt + size - 1) // size) * size
+                    for lid, cnt in rem_gcs_lag.items()
+                    if cnt > 0 and lid and (nt, lid) not in td_lids
+                )
+                unrounded_omit = stop_map.get(nt, 0) + sum(
+                    cnt
+                    for lid, cnt in rem_gcs_lag.items()
+                    if cnt > 0 and (not lid or (nt, lid) in td_lids)
+                )
+                np_draining_in_nodes = (
+                    sum(np_draining_dom_counts.values()) + draining_unassigned
+                )
+                refillable_open_cnt = sum(
+                    _Replica._slots_for(
+                        np_real_by_rid[rep.rid], size, not is_exclusive
+                    )[0]
+                    for rep in reps.values()
+                    if not rep.is_provider
+                    and rep.no_backfill
+                    and rep.allow_refill_attach
+                    and np_real_by_rid.get(rep.rid, 0) > 0
+                    and not any(
+                        m.is_leaving or m._is_draining_replica for m in rep.members
+                    )
+                )
 
                 def _slots_for_rid(
                     rid: str, cnt: int, *, is_draining: bool = False
@@ -4024,16 +4258,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                     cur_k8s: int,
                     cur_dom: Counter,
                     cur_draining: Counter,
-                ) -> int:
-                    np_drain_gap = sum(
-                        _slots_for_rid(rid, cnt, is_draining=True)[0]
-                        for rid, cnt in np_draining_dom_counts.items()
-                    )
-                    if draining_unassigned:
-                        np_drain_gap += (size - draining_unassigned % size) % size
-                    if omit_u > 0:
-                        cov = min(omit_u, np_drain_gap)
-                        np_drain_gap = np_drain_gap - cov + (-(omit_u - cov)) % size
+                    *,
+                    include_omit_base: bool = True,
+                ) -> Tuple[int, int]:
                     prov_drain_gap = (
                         sum(
                             _slots_for_rid(rid, cnt, is_draining=True)[0]
@@ -4061,38 +4288,43 @@ class ResourceDemandScheduler(IResourceScheduler):
                         + extra_lid_gap,
                         dom_committed + extra * size + extra_lid_gap,
                     )
-                    healthy_gap = max(0, committed - cur_k8s - refill_tl_cnt)
-                    return prov_drain_gap + np_drain_gap + healthy_gap
+                    healthy_raw = max(0, committed - cur_k8s)
+                    drain_total = np_draining_in_nodes + unrounded_omit
+                    raw_align = (
+                        (-(unrounded_cnt + drain_total)) % size
+                        if drain_total > 0
+                        else 0
+                    )
+                    pad_raw = max(0, raw_align - refillable_open_cnt)
+                    used_refill = max(0, refill_tl_cnt - healthy_raw)
+                    rem_pad = max(0, pad_raw - used_refill)
+                    align_cap = max(0, raw_align - used_refill)
+                    np_net = max(0, pad_raw + healthy_raw - refill_tl_cnt)
+                    omit_base = (
+                        unrounded_omit + healthy_unmatched_lag
+                        if include_omit_base
+                        else 0
+                    )
+                    return prov_drain_gap + omit_base + np_net, rem_pad, align_cap
 
-                total_gap = _compute_gap(k8s_count, dom_counts, draining_dom_counts)
+                total_gap, rem_pad, align_cap = _compute_gap(
+                    k8s_count, dom_counts, draining_dom_counts
+                )
                 if total_gap > 0:
                     missing[nt] = total_gap
-                np_gap = _compute_gap(
-                    np_k8s_count, np_dom_counts, np_draining_dom_counts
+                if rem_pad > 0:
+                    unconsumed_pad[nt] = rem_pad
+                if align_cap > 0:
+                    align_caps[nt] = align_cap
+                np_gap, _, _ = _compute_gap(
+                    np_k8s_count,
+                    np_dom_counts,
+                    np_draining_dom_counts,
+                    include_omit_base=False,
                 )
                 if np_gap > 0:
                     np_missing[nt] = np_gap
-            return missing, np_missing
-
-        @staticmethod
-        def _missing_replica_backfill_by_type(
-            nodes: List[SchedulingNode],
-            node_type_configs: Dict[NodeType, NodeTypeConfig],
-            replicas_by_type: Optional[Dict[NodeType, Dict[str, _Replica]]] = None,
-            extra_lid_backfill: Optional[Dict[NodeType, int]] = None,
-            torn_down_lids: Optional[Set[Tuple[NodeType, str]]] = None,
-            omitted_unlabeled_cnt: Optional[Dict[NodeType, int]] = None,
-        ) -> Dict[NodeType, int]:
-            return ResourceDemandScheduler.ScheduleContext._missing_replica_backfill_and_nonprov_by_type(
-                nodes,
-                node_type_configs,
-                replicas_by_type,
-                extra_lid_backfill,
-                torn_down_lids,
-                omitted_unlabeled_cnt,
-            )[
-                0
-            ]
+            return missing, np_missing, unconsumed_pad, align_caps
 
         def get_missing_replica_backfill_slots(self) -> Dict[NodeType, int]:
             return dict(self._missing_replica_backfill)
@@ -4157,18 +4389,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             size = cfg.workers_per_replica
             is_exclusive = bool(cfg.domain_label_key and cfg.domain_exclusive)
             reps = self._replicas_by_type.get(node_type, {})
-            live_by_rid: Dict[str, List[SchedulingNode]] = defaultdict(list)
-            scan_nodes = live_nodes if live_nodes is not None else self._all_nodes
-            for n in scan_nodes:
-                if (
-                    n.node_type == node_type
-                    and n.node_kind != NodeKind.HEAD
-                    and n.status != SchedulingNodeStatus.TO_TERMINATE
-                    and not n.is_leaving
-                    and not n._is_draining_replica
-                    and n.replica_id
-                ):
-                    live_by_rid[n.replica_id].append(n)
+            live_by_rid = self._live_nodes_by_rid(
+                node_type, live_nodes if live_nodes is not None else self._all_nodes
+            )
 
             def _rep_open(rep: _Replica) -> int:
                 if rep.is_provider or any(
@@ -4178,9 +4401,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 live_m = live_by_rid.get(rep.rid, [])
                 if not live_m:
                     return 0
-                if is_exclusive:
-                    return max(0, size - len(live_m))
-                return (-len(live_m)) % size
+                return _Replica._slots_for(len(live_m), size, not is_exclusive)[0]
 
             def _emit_on(
                 live_m: List[SchedulingNode],
@@ -4300,11 +4521,15 @@ class ResourceDemandScheduler(IResourceScheduler):
                 set
             )
             solicited_by_lid: Counter = Counter()
+            unsolicited_by_lid: Counter = Counter()
+            active_stopping_by_lid: Counter = Counter()
             total_cloud_cids_by_lid: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(
                 set
             )
-            rejected_stop_domains: Dict[NodeType, Set[str]] = defaultdict(set)
-            omitted_unlabeled_cids: Dict[NodeType, Set[str]] = defaultdict(set)
+            omitted_stopping_cids: Dict[NodeType, Set[str]] = defaultdict(set)
+            omitted_gcs_lag_cids_by_lid: Dict[
+                Tuple[NodeType, str], Set[str]
+            ] = defaultdict(set)
             omitted_prov_rids: Dict[NodeType, Set[str]] = defaultdict(set)
             if replica_sizes:
                 active_nt_cids: Set[Tuple[NodeType, str]] = set()
@@ -4329,17 +4554,26 @@ class ResourceDemandScheduler(IResourceScheduler):
                     ):
                         continue
                     nt = im.instance_type
+                    cfg = node_type_configs[nt]
                     st = im.status
                     cid = instance.cloud_instance_id or im.cloud_instance_id
                     if _is_shadowed_stopped(nt, st, cid, active_nt_cids):
                         continue
+                    is_solic = _is_current_solicited_teardown(im)
                     if im.launch_request_id:
+                        lkey = (nt, im.launch_request_id)
                         if cid or st == Instance.REQUESTED:
-                            total_cloud_cids_by_lid[(nt, im.launch_request_id)].add(
+                            total_cloud_cids_by_lid[lkey].add(
                                 cid or f"__req_{im.instance_id}"
                             )
-                        if _is_current_solicited_teardown(im):
-                            solicited_by_lid[(nt, im.launch_request_id)] += 1
+                        if is_solic:
+                            solicited_by_lid[lkey] += 1
+                        elif st in (
+                            _TEARDOWN_INSTANCE_STATUSES | _TERMINAL_INSTANCE_STATUSES
+                        ):
+                            unsolicited_by_lid[lkey] += 1
+                        if st in (Instance.RAY_STOP_REQUESTED, Instance.RAY_STOPPING):
+                            active_stopping_by_lid[lkey] += 1
                     if st == Instance.RAY_STOPPING or (
                         st == Instance.RAY_RUNNING and instance.ray_node is None
                     ):
@@ -4348,43 +4582,20 @@ class ResourceDemandScheduler(IResourceScheduler):
                             omitted_prov_rids[nt].add(
                                 instance.cloud_instance_replica_id
                             )
+                        elif st == Instance.RAY_STOPPING:
+                            omitted_stopping_cids[nt].add(ukey)
                         else:
-                            omitted_unlabeled_cids[nt].add(ukey)
-
-                for instance in req.current_instances:
-                    im = instance.im_instance
-                    if (
-                        im is None
-                        or im.node_kind == NodeKind.HEAD
-                        or im.instance_type not in replica_sizes
-                    ):
-                        continue
-                    nt = im.instance_type
-                    cfg = node_type_configs[nt]
-                    st = im.status
-                    cid = instance.cloud_instance_id or im.cloud_instance_id
-                    if _is_shadowed_stopped(nt, st, cid, active_nt_cids):
-                        continue
+                            omitted_gcs_lag_cids_by_lid[
+                                (nt, im.launch_request_id or "")
+                            ].add(ukey)
                     dom = (
                         (instance.ray_node.labels or {}).get(cfg.domain_label_key)
                         if cfg.domain_label_key and instance.ray_node is not None
                         else None
                     )
-                    if (
-                        dom
-                        and st == Instance.RAY_RUNNING
-                        and any(
-                            h.instance_status == Instance.RAY_STOP_REQUESTED
-                            for h in im.status_history
-                        )
-                    ):
-                        rejected_stop_domains[nt].add(dom)
                     is_rep_drain = st in _DRAINING_INSTANCE_STATUSES or (
                         st in _TEARDOWN_INSTANCE_STATUSES
-                        and (
-                            bool(instance.cloud_instance_replica_id)
-                            or _is_current_solicited_teardown(im)
-                        )
+                        and (bool(instance.cloud_instance_replica_id) or is_solic)
                     )
                     if is_rep_drain:
                         if dom:
@@ -4394,12 +4605,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                                 draining_lid_domains[nt].add(
                                     (im.launch_request_id, dom)
                                 )
-                        elif im.launch_request_id and (
-                            bool(instance.cloud_instance_replica_id)
-                            or solicited_by_lid[(nt, im.launch_request_id)]
-                            % replica_sizes[nt]
-                            != 0
-                        ):
+                        elif im.launch_request_id:
                             active_draining_lids[nt].add(im.launch_request_id)
 
             # Initialize the scheduling nodes.
@@ -4442,15 +4648,31 @@ class ResourceDemandScheduler(IResourceScheduler):
                 draining_lid_domains=draining_lid_domains,
                 expired_placeholder_keys=expired_placeholder_keys,
                 replica_view=req.replica_view,
-                omitted_unlabeled_cnt={
-                    nt: len(cids) for nt, cids in omitted_unlabeled_cids.items()
+                omitted_stopping_cnt={
+                    nt: len(cids) for nt, cids in omitted_stopping_cids.items()
+                },
+                omitted_gcs_lag_by_lid={
+                    k: len(cids) for k, cids in omitted_gcs_lag_cids_by_lid.items()
                 },
                 omitted_prov_rids=omitted_prov_rids,
                 solicited_by_lid=solicited_by_lid,
+                unsolicited_by_lid=unsolicited_by_lid,
+                active_stopping_by_lid=active_stopping_by_lid,
                 total_cloud_pods_by_lid={
                     k: len(cids) for k, cids in total_cloud_cids_by_lid.items()
                 },
-                rejected_stop_domains=rejected_stop_domains,
+            )
+
+        @staticmethod
+        def _is_doomed_td_requested(
+            node: SchedulingNode,
+            torn_down_lids: Optional[Set[Tuple[NodeType, str]]],
+        ) -> bool:
+            return (
+                bool(torn_down_lids)
+                and node.im_instance_status == Instance.REQUESTED
+                and not node.provider_replica_id
+                and (node.node_type, node.launch_request_id or "") in torn_down_lids
             )
 
         @staticmethod
@@ -4458,6 +4680,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
             missing_backfill: Dict[NodeType, int],
+            torn_down_lids: Optional[Set[Tuple[NodeType, str]]] = None,
         ) -> Dict[NodeType, int]:
             """Compute the number of nodes by node types available for launching based on
             the max number of workers in the config.
@@ -4465,6 +4688,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 nodes: The current existing nodes.
                 node_type_configs: The node type configs.
                 missing_backfill: Precomputed missing replica backfill slots.
+                torn_down_lids: Optional torn-down launch batches whose unallocated
+                    REQUESTED rows are doomed.
             Returns:
                 A dict of node types and the number of nodes available for launching.
             """
@@ -4474,6 +4699,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 if (
                     node.status == SchedulingNodeStatus.TO_TERMINATE
                     and node.im_instance_status == Instance.QUEUED
+                ) or ResourceDemandScheduler.ScheduleContext._is_doomed_td_requested(
+                    node, torn_down_lids
                 ):
                     continue
                 node_type_existing[node.node_type] += 1
@@ -4519,9 +4746,12 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def get_cluster_shape(self) -> Dict[NodeType, int]:
             cluster_shape = defaultdict(int)
+            td_lids = self._replica_view.torn_down_lids
             for node in self._nodes:
-                if node.status == SchedulingNodeStatus.TO_TERMINATE:
-                    # Skip the nodes that are to be terminated.
+                if node.status == SchedulingNodeStatus.TO_TERMINATE or (
+                    self._is_doomed_td_requested(node, td_lids)
+                ):
+                    # Skip the nodes that are to be terminated or doomed REQUESTED rows.
                     continue
 
                 cluster_shape[node.node_type] += 1
@@ -4565,13 +4795,16 @@ class ResourceDemandScheduler(IResourceScheduler):
             (
                 self._missing_replica_backfill,
                 np_missing_by_type,
+                self._unconsumed_align_pad,
+                self._raw_align_cap,
             ) = self._missing_replica_backfill_and_nonprov_by_type(
                 self._nodes,
                 self._node_type_configs,
                 self._replicas_by_type,
                 self._extra_lid_backfill,
                 self._replica_view.torn_down_lids,
-                self._omitted_unlabeled_cnt,
+                self._omitted_stopping_cnt,
+                self._omitted_gcs_lag_by_lid,
             )
             vanished_ph_by_lid: Counter = Counter(
                 (n.node_type, n.launch_request_id)
@@ -4586,55 +4819,55 @@ class ResourceDemandScheduler(IResourceScheduler):
                 for nt, cfg in self._node_type_configs.items()
                 if cfg.is_multi_worker_replica
             }
-            effective_missing = dict(self._missing_replica_backfill)
             for nt, van_map in unclaimed_van_by_nt.items():
                 extra_van = sum(
                     max(0, v_cnt - vanished_ph_by_lid[(nt, v_lid)])
                     for v_lid, v_cnt in van_map.items()
                 )
-                omit_slots = self.get_omitted_occupying_slots(nt)
-                if extra_van > 0 or omit_slots > 0:
-                    effective_missing[nt] = (
-                        effective_missing.get(nt, 0) + extra_van + omit_slots
+                prov_omit = self._missing_prov_replica_slots(nt)
+                if extra_van > 0 or prov_omit > 0:
+                    self._missing_replica_backfill[nt] = (
+                        self._missing_replica_backfill.get(nt, 0)
+                        + extra_van
+                        + prov_omit
                     )
+            td_lids = self._replica_view.torn_down_lids
             self._node_type_available = self._compute_available_node_types(
                 self._nodes,
                 self._node_type_configs,
-                missing_backfill=effective_missing,
+                missing_backfill=self._missing_replica_backfill,
+                torn_down_lids=td_lids,
             )
             active_nodes = sum(
                 1
                 for n in self._nodes
                 if not (
-                    n.status == SchedulingNodeStatus.TO_TERMINATE
-                    and n.im_instance_status == Instance.QUEUED
+                    (
+                        n.status == SchedulingNodeStatus.TO_TERMINATE
+                        and n.im_instance_status == Instance.QUEUED
+                    )
+                    or self._is_doomed_td_requested(n, td_lids)
                 )
             )
             self._headroom: Optional[int] = (
-                self._max_num_nodes - active_nodes - sum(effective_missing.values())
+                self._max_num_nodes
+                - active_nodes
+                - sum(self._missing_replica_backfill.values())
                 if self._max_num_nodes is not None
                 else None
             )
             refill_gaps: Dict[NodeType, int] = {}
+            min_w_refill_gaps: Dict[NodeType, int] = {}
             for nt, cfg in self._node_type_configs.items():
                 if not cfg.is_multi_worker_replica:
                     continue
                 size = cfg.workers_per_replica
-                extra_queued = sum(
-                    1
-                    for n in self._nodes
-                    if n.node_type == nt
-                    and n.node_kind != NodeKind.HEAD
-                    and n.status != SchedulingNodeStatus.TO_TERMINATE
-                    and (
-                        n.im_instance_status == Instance.QUEUED
-                        or n.status == SchedulingNodeStatus.TO_LAUNCH
-                    )
-                )
+                extra_queued = self._queued_and_to_launch_count(nt)
                 raw_gap = self.get_unlabeled_backfill_gap(
                     nt, size, extra_queued=extra_queued
                 )
-                net_raw = 0
+                pad_res = self._unconsumed_align_pad.get(nt, 0)
+                net_raw = eff_raw = 0
                 if nt in self._unlabeled_view_types:
                     non_prov_ph = sum(
                         1
@@ -4645,19 +4878,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                         and not n.launch_request_id
                         and not n.provider_replica_id
                     )
-                    net_raw = raw_gap - non_prov_ph - np_missing_by_type.get(nt, 0)
+                    np_miss = np_missing_by_type.get(nt, 0)
+                    net_raw = raw_gap - non_prov_ph - np_miss
+                    eff_raw = raw_gap - non_prov_ph - max(0, np_miss - pad_res)
                 mod_gap = max(0, net_raw)
                 is_exclusive = bool(cfg.domain_label_key and cfg.domain_exclusive)
-                live_cnt_by_rid: Counter = Counter(
-                    n.replica_id
-                    for n in self._nodes
-                    if n.node_type == nt
-                    and n.node_kind != NodeKind.HEAD
-                    and n.status != SchedulingNodeStatus.TO_TERMINATE
-                    and not n.is_leaving
-                    and not n._is_draining_replica
-                    and n.replica_id
-                )
+                live_by_rid = self._live_nodes_by_rid(nt)
                 rem_van_reserved: Counter = Counter(
                     {
                         v_lid: max(0, v_cnt - vanished_ph_by_lid[(nt, v_lid)])
@@ -4678,7 +4904,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                         )
                     ):
                         continue
-                    live_cnt = live_cnt_by_rid.get(rep.rid, 0)
+                    live_cnt = len(live_by_rid.get(rep.rid, ()))
                     if live_cnt <= 0:
                         continue
                     raw_open = _Replica._slots_for(live_cnt, size, not is_exclusive)[0]
@@ -4692,25 +4918,41 @@ class ResourceDemandScheduler(IResourceScheduler):
                     rep_open_sum += _Replica._slots_for(
                         eff_live, size, not is_exclusive
                     )[0]
-                total_gap = max(mod_gap, rep_open_sum)
-                if total_gap > 0 and nt in self._unlabeled_view_types:
-                    total_gap += (net_raw - total_gap) % size
-                nt_avail = self._node_type_available.get(nt, 0)
+                nt_avail = self._node_type_available.get(nt, 0) + pad_res
                 if self._headroom is not None:
-                    nt_avail = min(nt_avail, max(0, self._headroom))
-                if 0 <= nt_avail < total_gap:
-                    if nt in self._unlabeled_view_types:
-                        rem_res = net_raw % size
-                        total_gap = (
-                            rem_res + ((nt_avail - rem_res) // size) * size
-                            if nt_avail >= rem_res
-                            else 0
-                        )
-                    else:
-                        total_gap = nt_avail
+                    nt_avail = min(nt_avail, max(0, self._headroom + pad_res))
+
+                def _cap_refill(base_gap: int, mod_target: int) -> int:
+                    if base_gap <= 0:
+                        return 0
+                    g = (
+                        base_gap + (mod_target - base_gap) % size
+                        if nt in self._unlabeled_view_types
+                        else base_gap
+                    )
+                    if 0 <= nt_avail < g:
+                        if nt in self._unlabeled_view_types:
+                            rem_res = mod_target % size
+                            return (
+                                rem_res + ((nt_avail - rem_res) // size) * size
+                                if nt_avail >= rem_res
+                                else 0
+                            )
+                        return nt_avail
+                    return g
+
+                total_gap = _cap_refill(max(mod_gap, rep_open_sum), eff_raw)
                 if total_gap > 0:
                     refill_gaps[nt] = total_gap
+                unattr = self.get_unattributed_open_slots(nt)
+                min_w_gap = _cap_refill(
+                    max(max(0, mod_gap - unattr), max(0, rep_open_sum - unattr)),
+                    eff_raw - unattr,
+                )
+                if min_w_gap > 0:
+                    min_w_refill_gaps[nt] = min_w_gap
             self._unbacked_refill_gaps = refill_gaps
+            self._min_w_refill_gaps = min_w_refill_gaps
 
         def materialize_unlabeled_launch_gaps(self) -> None:
             """Materialize remaining unlabeled view gaps whenever TO_LAUNCH nodes exist."""
@@ -4723,19 +4965,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                     for n in self._nodes
                 ):
                     continue
-                extra_queued = sum(
-                    1
-                    for n in self._nodes
-                    if n.node_type == nt
-                    and n.node_kind != NodeKind.HEAD
-                    and n.status != SchedulingNodeStatus.TO_TERMINATE
-                    and (
-                        n.im_instance_status == Instance.QUEUED
-                        or n.status == SchedulingNodeStatus.TO_LAUNCH
-                    )
-                )
                 rem_gap = self.get_unlabeled_backfill_gap(
-                    nt, size, extra_queued=extra_queued
+                    nt, size, extra_queued=self._queued_and_to_launch_count(nt)
                 )
                 if rem_gap <= 0:
                     continue
@@ -4754,11 +4985,32 @@ class ResourceDemandScheduler(IResourceScheduler):
                         n._is_unlabeled_refill = True
                         rem_gap -= 1
                         changed = True
-                omit_gap = (-self._omitted_unlabeled_cnt.get(nt, 0)) % size
-                for _ in range(min(rem_gap, omit_gap)):
+                if rem_gap <= 0:
+                    continue
+                pad_res = self._unconsumed_align_pad.get(nt, 0)
+                has_refill_tl = any(
+                    n.node_type == nt
+                    and n.status == SchedulingNodeStatus.TO_LAUNCH
+                    and n._is_unlabeled_refill
+                    for n in self._nodes
+                )
+                align_cap = rem_gap if has_refill_tl else self._raw_align_cap.get(nt, 0)
+                nt_room = self._node_type_available.get(nt, 0) + pad_res
+                if self._headroom is not None:
+                    nt_room = min(nt_room, self._headroom + pad_res)
+                for _ in range(min(rem_gap, align_cap, max(0, nt_room))):
                     node = self._make_launch_node(nt)
                     node._is_unlabeled_refill = True
+                    _assign_node_replica_slot(
+                        node,
+                        cfg,
+                        self.new_pending_domain(nt),
+                        1 if size > 1 else 0,
+                        keep_head=False,
+                    )
                     self._nodes.append(node)
+                    if self._headroom is not None:
+                        self._headroom -= 1
                     changed = True
             if changed:
                 self._refresh_capacity_stats()
@@ -5018,13 +5270,24 @@ class ResourceDemandScheduler(IResourceScheduler):
         replica_sizes = ctx.get_multihost_replica_sizes()
         pinned_domains = ctx.get_pinned_domains()
         replicas_by_type = ctx.get_replicas_by_type()
+        td_lids = ctx.get_replica_view().torn_down_lids
         # Step 1. Enforce the max number of workers for each node type.
         for node_type in non_terminating_nodes_by_type.keys():
             non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
             node_config = ctx.get_node_type_configs()[node_type]
             num_max_nodes_per_type = node_config.max_worker_nodes
             real_count = sum(
-                1 for n in non_terminate_nodes_of_type if not n._is_backfill_placeholder
+                1
+                for n in non_terminate_nodes_of_type
+                if not n._is_backfill_placeholder
+                and not ctx._is_doomed_td_requested(n, td_lids)
+            ) + min(
+                sum(
+                    1
+                    for n in non_terminate_nodes_of_type
+                    if n.status == SchedulingNodeStatus.TO_LAUNCH
+                ),
+                ctx.get_omitted_occupying_slots(node_type),
             )
             num_extra_nodes = real_count - num_max_nodes_per_type
 
@@ -5084,8 +5347,22 @@ class ResourceDemandScheduler(IResourceScheduler):
                 non_terminating_nodes.append(node)
 
         num_max_nodes = ctx.get_max_num_nodes()
+        td_lids = ctx.get_replica_view().torn_down_lids
         real_non_terminating = sum(
-            1 for n in non_terminating_nodes if not n._is_backfill_placeholder
+            1
+            for n in non_terminating_nodes
+            if not n._is_backfill_placeholder
+            and not ctx._is_doomed_td_requested(n, td_lids)
+        ) + min(
+            sum(
+                1
+                for n in non_terminating_nodes
+                if n.status == SchedulingNodeStatus.TO_LAUNCH
+            ),
+            sum(
+                ctx.get_omitted_occupying_slots(nt)
+                for nt in ctx.get_node_type_configs()
+            ),
         )
 
         num_to_terminate = (
@@ -5298,8 +5575,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                     f"node type: {node_type}."
                 )
                 size = node_type_config.workers_per_replica
-                refill_gap = max(
-                    0, ctx.get_unbacked_refill_gap(node_type) - unattr_open
+                refill_gap = ctx.get_unbacked_refill_gap(
+                    node_type, exclude_unattributed=True
                 )
                 if refill_gap > 0:
                     aligned_def = (
@@ -6894,7 +7171,13 @@ class ResourceDemandScheduler(IResourceScheduler):
                 )
                 canceled = True
         if canceled:
-            ctx.update(nodes)
+            ctx._nodes = [n for n in nodes if not n._is_backfill_placeholder]
+            ctx._all_nodes = ctx._nodes
+            ctx._replicas_by_type = {}
+            ctx._active_placeholder_keys = set()
+            ctx._extra_lid_backfill = {}
+            ctx._init_replicas()
+            ctx.update(ctx._nodes)
 
     def _update_pending_nodes_idle_duration(
         self,

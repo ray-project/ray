@@ -11990,12 +11990,20 @@ class TestReconcilerMultiHost:
         for nm in workers():
             ray_busy[nm] = True
         step_tick()
-        # Remove u-3 directly from Kubernetes and transition u-2 to DRAINING -> RAY_STOPPING.
+        # Remove u-3 directly from Kubernetes, simulate GCS lag on u-1 (RAY_RUNNING
+        # with empty node_id and ray_node=None), and transition u-2 to DRAINING -> RAY_STOPPING.
         pods["items"] = [p for p in pods["items"] if p["metadata"]["name"] != "u-3"]
         pods["metadata"]["resourceVersion"] = str(
             int(pods["metadata"]["resourceVersion"]) + 1
         )
         ray_busy.pop("u-3")
+        ray_busy.pop("u-1")
+        insts_s, ver_s = store.get_instances()
+        for inst in insts_s.values():
+            if inst.cloud_instance_id == "u-1":
+                inst.node_id = ""
+                store.batch_upsert_instances([inst], expected_storage_version=ver_s)
+                break
         res_s1 = step_tick(gangs=1, draining="u-2", run_operator=False)
         assert len(res_s1.infeasible_gang_resource_requests) == 0
         res_s2 = step_tick(gangs=1, draining="u-2", run_operator=True)
@@ -12013,8 +12021,8 @@ class TestReconcilerMultiHost:
         assert canceled_rem == []
         assert group.get("replicas") == 2
 
-        # 2. Rejected RAY_STOP_REQUESTED -> RAY_RUNNING followed by unsolicited u-3 crash
-        # keeps u-0..2 schedulable for a 3-task workload and queues 1 refill pod.
+        # 2. Rejected RAY_STOP_REQUESTED -> RAY_RUNNING followed by unsolicited r-3 crash
+        # keeps r-0..2 schedulable and queues + boots 1 refill pod for a 4-task workload.
         (
             group_r,
             _,
@@ -12043,8 +12051,21 @@ class TestReconcilerMultiHost:
         store_r.batch_upsert_instances(upd_r, expected_storage_version=ver_r)
         for nm in ("r-0", "r-1", "r-2"):
             ray_busy_r[nm] = False
-        res_crash = step_tick_r(tasks=3, dead="r-3", run_operator=False)
+        res_crash = step_tick_r(tasks=4, dead="r-3", run_operator=False)
         assert res_crash.infeasible_resource_requests == []
+        assert (
+            sum(
+                1
+                for v in store_r.get_instances()[0].values()
+                if v.status == Instance.QUEUED
+            )
+            == 1
+        )
+        for _ in range(2):
+            res_rec = step_tick_r(tasks=4)
+        assert res_rec.infeasible_resource_requests == []
+        assert group_r.get("replicas") == 1
+        assert workers_r() == ["r-0", "r-1", "r-2", "r-4"]
 
 
 if __name__ == "__main__":
