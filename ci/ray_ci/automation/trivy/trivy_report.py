@@ -12,7 +12,7 @@ import re
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 GATED_SEVERITIES = ("CRITICAL", "HIGH")
 # Trivy statuses meaning no usable fix exists, even if FixedVersion is set.
@@ -78,6 +78,7 @@ class Finding:
 class ParsedReport:
     findings: list[Finding]
     packages: int
+    os_packages: int
     os_name: str
 
 
@@ -86,28 +87,11 @@ class ImageScan:
     image: Image
     findings: list[Finding] = field(default_factory=list)
     packages: int = 0
-    os_name: str = ""
     error: str = ""
 
     @property
     def scanned(self) -> bool:
         return not self.error
-
-    def gated(
-        self, suppressed: bool = False
-    ) -> dict[tuple[str, str, str], list[Finding]]:
-        """CRITICAL/HIGH findings by key, with one finding per install path.
-
-        A package installed in two paths counts once per image, but both
-        paths are kept so the report can show every place to fix.
-        """
-        by_key: dict[tuple[str, str, str], list[Finding]] = {}
-        for finding in self.findings:
-            if finding.gated and finding.suppressed == suppressed:
-                same_key = by_key.setdefault(finding.key, [])
-                if all(f.path != finding.path for f in same_key):
-                    same_key.append(finding)
-        return by_key
 
 
 def _text(record: Mapping[str, Any], key: str, required: bool = False) -> str:
@@ -120,6 +104,16 @@ def _text(record: Mapping[str, Any], key: str, required: bool = False) -> str:
         return ""
     if not isinstance(value, str):
         raise TypeError(f"{key} is a {type(value).__name__}, not a string")
+    return value
+
+
+def _list(record: Mapping[str, Any], key: str) -> list:
+    """A list field: missing or null reads as empty, any other type raises."""
+    value = record.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise TypeError(f"{key} is a {type(value).__name__}, not a list")
     return value
 
 
@@ -145,16 +139,24 @@ def _finding(
     )
 
 
-def parse_trivy_report(report: Mapping[str, Any]) -> ParsedReport:
-    """Parse a Trivy ``--format json`` image report (schema version 2)."""
+def parse_trivy_report(report: Any) -> ParsedReport:
+    """Parse a Trivy ``--format json`` image report. Anything but schema
+    version 2 raises, so a format change fails loudly instead of misreading."""
+    if not isinstance(report, dict):
+        raise TypeError(f"the report is a {type(report).__name__}, not an object")
+    if report.get("SchemaVersion") != 2:
+        raise ValueError(f"SchemaVersion is {report.get('SchemaVersion')!r}, not 2")
     findings: list[Finding] = []
-    packages = 0
-    for result in report.get("Results") or []:
-        packages += len(result.get("Packages") or [])
-        for vuln in result.get("Vulnerabilities") or []:
+    packages = os_packages = 0
+    for result in _list(report, "Results"):
+        count = len(_list(result, "Packages"))
+        packages += count
+        if _text(result, "Class") == "os-pkgs":
+            os_packages += count
+        for vuln in _list(result, "Vulnerabilities"):
             findings.append(_finding(vuln, result))
         # --show-suppressed moves ignored findings here.
-        for modified in result.get("ExperimentalModifiedFindings") or []:
+        for modified in _list(result, "ExperimentalModifiedFindings"):
             if modified.get("Type") == "vulnerability":
                 findings.append(
                     _finding(
@@ -166,28 +168,25 @@ def parse_trivy_report(report: Mapping[str, Any]) -> ParsedReport:
                 )
     os_meta = (report.get("Metadata") or {}).get("OS") or {}
     os_name = " ".join(filter(None, (_text(os_meta, "Family"), _text(os_meta, "Name"))))
-    return ParsedReport(findings=findings, packages=packages, os_name=os_name)
-
-
-def _read_result(results_dir: Path, name: str) -> Optional[Mapping[str, Any]]:
-    path = results_dir / f"{name}.json.gz"
-    if not path.is_file():
-        return None
-    return json.loads(gzip.decompress(path.read_bytes()))
+    return ParsedReport(
+        findings=findings, packages=packages, os_packages=os_packages, os_name=os_name
+    )
 
 
 def _load_scan(results_dir: Path, image: Image, record: Mapping[str, Any]) -> ImageScan:
     status = record.get("status", "")
     if status != "scanned":
         return ImageScan(image=image, error=record.get("error") or f"status {status!r}")
-    try:
-        report = _read_result(results_dir, image.name)
-    except (OSError, EOFError, ValueError, zlib.error) as e:
-        # Truncated gzip raises EOFError and corrupt deflate zlib.error; one
-        # bad upload must not take the other images' results down with it.
-        return ImageScan(image=image, error=f"unreadable result: {e!r}")
-    if report is None:
+    path = results_dir / f"{image.name}.json.gz"
+    if not path.is_file():
         return ImageScan(image=image, error="no result file")
+    try:
+        report = json.loads(gzip.decompress(path.read_bytes()))
+    except (OSError, EOFError, ValueError, RecursionError, zlib.error) as e:
+        # Truncated gzip raises EOFError, corrupt deflate zlib.error and JSON
+        # nested too deep RecursionError; one bad upload must not take the
+        # other images' results down with it.
+        return ImageScan(image=image, error=f"unreadable result: {e!r}")
     try:
         parsed = parse_trivy_report(report)
     except Exception as e:
@@ -195,44 +194,62 @@ def _load_scan(results_dir: Path, image: Image, record: Mapping[str, Any]) -> Im
         return ImageScan(
             image=image, error=f"unparseable result: {type(e).__name__}: {e}"
         )
-    # A scan that saw nothing must not look clean.
-    error = "" if parsed.packages else "no packages detected"
+    # A scan that saw nothing, or no distro packages, must not look clean:
+    # Trivy only warns when it can't detect the OS, and skips its packages.
+    if not parsed.packages:
+        error = "no packages detected"
+    elif not parsed.os_packages:
+        error = f"no OS packages detected (OS: {parsed.os_name or 'not detected'})"
+    else:
+        error = ""
     return ImageScan(
-        image=image,
-        findings=parsed.findings,
-        packages=parsed.packages,
-        os_name=parsed.os_name,
-        error=error,
+        image=image, findings=parsed.findings, packages=parsed.packages, error=error
     )
 
 
 _IMAGE_FIELDS = ("image_type", "python_version", "platform", "architecture")
+_OPTIONAL_TEXT = ("ref", "digest", "error")
 _STATUS_SUFFIX = ".status.json"
 
 
 def _load_status(status_path: Path) -> tuple[Image, Mapping[str, Any], str]:
-    """Parse one status record. A broken record becomes that image's error."""
+    """Parse one status record. A broken record becomes that image's error.
+
+    The image is named after the file, and a record naming another image is
+    broken, so no record can stand in for another image or count it twice.
+    """
     stem = status_path.name[: -len(_STATUS_SUFFIX)]
     try:
         record = json.loads(status_path.read_text())
         if not isinstance(record, dict):
             raise ValueError("not a JSON object")
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RecursionError) as e:
         return Image(stem, "", "", "", ""), {}, f"malformed status record: {e}"
-    missing = [
-        key
-        for key in ("name", *_IMAGE_FIELDS, "status")
-        if not isinstance(record.get(key), str) or not record[key]
+    text = {key: value for key, value in record.items() if isinstance(value, str)}
+    problems = []
+    missing = [key for key in ("name", *_IMAGE_FIELDS, "status") if not text.get(key)]
+    if missing:
+        problems.append(f"missing {', '.join(missing)}")
+    not_text = [
+        k for k in _OPTIONAL_TEXT if record.get(k) is not None and k not in text
     ]
     tags = record.get("published_tags")
+    tags = [] if tags is None else tags
+    tags_ok = isinstance(tags, list) and all(isinstance(t, str) for t in tags)
+    if not tags_ok:
+        not_text.append("published_tags")
+    if not_text:
+        problems.append(f"{', '.join(not_text)} not text")
+    if text.get("name") and text["name"] != stem:
+        problems.append(f"name {text['name']!r} doesn't match the file name")
     image = Image(
-        name=str(record.get("name") or stem),
-        **{key: str(record.get(key) or "") for key in _IMAGE_FIELDS},
-        ref=str(record.get("ref") or ""),
-        digest=str(record.get("digest") or ""),
-        published_tags=tuple(str(t) for t in tags) if isinstance(tags, list) else (),
+        name=stem,
+        **{key: text.get(key, "") for key in _IMAGE_FIELDS},
+        ref=text.get("ref", ""),
+        digest=text.get("digest", ""),
+        published_tags=tuple(tags) if tags_ok else (),
     )
-    error = f"malformed status record: missing {', '.join(missing)}" if missing else ""
+    error = f"malformed status record: {'; '.join(problems)}" if problems else ""
     return image, record, error
 
 
@@ -268,4 +285,9 @@ def _image_sort_key(image: Image) -> tuple:
         image.architecture,
         _platform_key(image.platform),
         _python_key(image.python_version),
+        # Ties, such as "3.13" and "3.13t" or two broken records, by text,
+        # so the report's order never depends on the directory listing.
+        image.platform,
+        image.python_version,
+        image.name,
     )
