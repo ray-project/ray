@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Dict, List, Union
 
 import numpy as np
 
-from ray.air.data_batch_type import DataBatchType
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.util.expression_utils import _get_setting_with_copy_warning
 from ray.util.annotations import DeveloperAPI
@@ -12,8 +11,17 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pandas as pd
 
+    from ray.data.block import DataBatch
+
 # TODO: Consolidate data conversion edges for arrow bug workaround.
 import pyarrow
+
+# The batches these helpers accept: a Ray Data batch, or a bare NumPy array.
+_ConvertibleBatch = Union[np.ndarray, "DataBatch"]
+_CONVERTIBLE_BATCH_TYPES = (
+    "numpy.ndarray, Dict[str, numpy.ndarray], pyarrow.Table, pandas.DataFrame or "
+    "cudf.DataFrame"
+)
 
 # Lazy import to avoid ray init failures without pandas installed and allow
 # dataset to import modules in this file.
@@ -56,13 +64,13 @@ def _lazy_import_cudf():
 
 
 def _convert_batch_type_to_pandas(
-    data: DataBatchType,
+    data: _ConvertibleBatch,
     cast_tensor_columns: bool = False,
 ) -> "pd.DataFrame":
     """Convert the provided data to a Pandas DataFrame.
 
     Args:
-        data: Data of type DataBatchType
+        data: A NumPy ndarray, dict of ndarrays, or a Ray Data batch.
         cast_tensor_columns: Whether tensor columns should be cast to NumPy ndarrays.
 
     Returns:
@@ -94,7 +102,7 @@ def _convert_batch_type_to_pandas(
         if not isinstance(data, pd.DataFrame):
             raise ValueError(
                 f"Received data of type: {type(data)}, but expected it to be one "
-                f"of {DataBatchType}"
+                f"of {_CONVERTIBLE_BATCH_TYPES}"
             )
     if cast_tensor_columns:
         data = _cast_tensor_columns_to_ndarrays(data)
@@ -105,7 +113,7 @@ def _convert_pandas_to_batch_type(
     data: "pd.DataFrame",
     type: BatchFormat,
     cast_tensor_columns: bool = False,
-) -> DataBatchType:
+) -> _ConvertibleBatch:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
     Args:
@@ -145,17 +153,18 @@ def _convert_pandas_to_batch_type(
         return cudf.from_pandas(data)
     else:
         raise ValueError(
-            f"Received type {type}, but expected it to be one of {DataBatchType}"
+            f"Received type {type}, but expected it to be one of "
+            f"{_CONVERTIBLE_BATCH_TYPES}"
         )
 
 
 def _convert_batch_type_to_numpy(
-    data: DataBatchType,
+    data: _ConvertibleBatch,
 ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
     """Convert the provided data to a NumPy ndarray or dict of ndarrays.
 
     Args:
-        data: Data of type DataBatchType
+        data: A NumPy ndarray, dict of ndarrays, or a Ray Data batch.
 
     Returns:
         A numpy representation of the input data.
@@ -208,7 +217,7 @@ def _convert_batch_type_to_numpy(
             return _convert_pandas_to_batch_type(data.to_pandas(), BatchFormat.NUMPY)
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
-            f"of {DataBatchType}"
+            f"of {_CONVERTIBLE_BATCH_TYPES}"
         )
 
 
