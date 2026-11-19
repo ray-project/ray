@@ -1,3 +1,5 @@
+import os
+
 from ray.llm._internal.common.observability.logging_utils import (
     disable_vllm_custom_ops_logger_on_cpu_nodes,
 )
@@ -17,7 +19,10 @@ def _worker_process_setup_hook():
     sizes its thread pool when it is first imported: every vLLM worker would then
     run as many threads as the host has cores.
     """
-    # TODO(kourosh): Remove with compile_cache_compat.
-    from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat
-
-    compile_cache_compat.install()
+    # vLLM's Ray executor runs a replica's rank 0 on its physical GPU, while the
+    # compile cache is keyed by rank, and Inductor bakes the device index into the
+    # cached code. A replica reusing a cache built on another GPU index then crashes
+    # with "CUDA driver error: invalid argument". This vLLM flag (off by default)
+    # makes the compiled code device-neutral and is part of vLLM's cache key. A
+    # user's own setting wins.
+    os.environ.setdefault("VLLM_COMPILE_ON_ONE_RANK", "1")
