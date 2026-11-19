@@ -15,6 +15,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    cast,
 )
 
 import numpy as np
@@ -333,7 +334,7 @@ def _write_disk_sort_run(
             else tables[0]
         )
         del tables
-        run = BlockAccessor.for_block(run).sort(sort_key)
+        run = cast(pa.Table, BlockAccessor.for_block(run).sort(sort_key))
         output_schema = run.schema
         keys = run.select(key_columns)
     else:

@@ -518,7 +518,8 @@ def test_disk_range_regroup_computes_boundaries_from_handles(
         bundle = RefBundle(
             (
                 BlockEntry(
-                    ray.put(block), BlockAccessor.for_block(block).get_metadata()
+                    ray.put(block),  # pyrefly: ignore[bad-argument-type]
+                    BlockAccessor.for_block(block).get_metadata(),
                 ),
             ),
             owns_blocks=True,
@@ -535,11 +536,13 @@ def test_disk_range_regroup_computes_boundaries_from_handles(
         bundles.append(regroup.get_next())
     assert [b.blocks[0].metadata.num_rows for b in bundles] == [10, 10, 10, 10]
     assert all(b.schema == handles[0]["schema"] for b in bundles)
-    selector = regroup.source_selector(1)
-    assert isinstance(selector, _KeyRangeSources)
-    assert (selector._lower, selector._upper) == ((10,), (20,))
-    assert regroup.source_selector(0)._lower is None
-    assert regroup.source_selector(3)._upper is None
+    selectors = [regroup.source_selector(p) for p in range(4)]
+    bounds = [
+        (s._lower, s._upper) for s in selectors if isinstance(s, _KeyRangeSources)
+    ]
+    assert len(bounds) == 4
+    assert bounds[1] == ((10,), (20,))
+    assert bounds[0][0] is None and bounds[3][1] is None
     regroup.teardown()
 
 

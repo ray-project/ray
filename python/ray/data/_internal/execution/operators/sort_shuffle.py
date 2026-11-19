@@ -1,9 +1,8 @@
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
-import pyarrow.compute as pac
 
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
@@ -92,7 +91,7 @@ def plan_range_partitions(
         if len(weighted) > 1
         else weighted[0]
     )
-    pooled = BlockAccessor.for_block(pooled).sort(sort_key)
+    pooled = cast(pa.Table, BlockAccessor.for_block(pooled).sort(sort_key))
     if boundaries is None:
         row_weights = pooled.column(rows_column).to_numpy()
         cumulative_rows = np.cumsum(row_weights)
@@ -108,24 +107,30 @@ def plan_range_partitions(
         indices = np.minimum(
             np.searchsorted(rows_through, targets, side="left"), pooled.num_rows - 1
         )
-        keys = BlockAccessor.for_block(pooled).to_numpy(columns=sort_key.get_columns())
+        keys = cast(
+            Dict[str, np.ndarray],
+            BlockAccessor.for_block(pooled).to_numpy(columns=sort_key.get_columns()),
+        )
         boundaries = [
             tuple(None if _is_na(column[i]) else column[i] for column in keys.values())
             for i in indices.tolist()
         ]
     if boundaries:
-        pieces = BlockAccessor.for_block(pooled)._find_partitions_sorted(
-            boundaries, sort_key
+        pieces = cast(
+            List[pa.Table],
+            BlockAccessor.for_block(pooled)._find_partitions_sorted(
+                boundaries, sort_key
+            ),
         )
     else:
         pieces = [pooled]
     for partition_id, piece in enumerate(pieces):
         if piece.num_rows:
             estimated_rows[partition_id] = int(
-                pac.sum(piece.column(rows_column)).as_py()
+                piece.column(rows_column).to_numpy().sum()
             )
             estimated_bytes[partition_id] = int(
-                pac.sum(piece.column(bytes_column)).as_py()
+                piece.column(bytes_column).to_numpy().sum()
             )
     return boundaries, estimated_rows, estimated_bytes
 
