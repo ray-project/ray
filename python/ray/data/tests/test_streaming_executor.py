@@ -46,11 +46,15 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
 from ray.data._internal.execution.ranker import DefaultRanker
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
+    _warn_if_actors_may_consume_all_cpus,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
@@ -2366,6 +2370,96 @@ def test_threaded_metadata_fetcher_propagates_unexpected_thread_failure():
             assert "injected metadata wait failure" in str(exc_info.value.__cause__)
     finally:
         fetcher.stop()
+
+
+def _mock_task_pool_op(name: str = "TaskPoolMap") -> MagicMock:
+    """A mock operator that `isinstance`-checks as a TaskPoolMapOperator."""
+    op = MagicMock(spec=TaskPoolMapOperator)
+    op.name = name
+    op.get_autoscaling_actor_pools.return_value = []
+    return op
+
+
+def _mock_actor_pool_op(
+    name: str, min_actors: int, num_cpus_per_actor: float = 1
+) -> MagicMock:
+    """A mock operator managing an actor pool of `min_actors` min size."""
+    op = MagicMock(spec=PhysicalOperator)
+    op.name = name
+    actor_pool = MagicMock()
+    actor_pool.min_size.return_value = min_actors
+    actor_pool.per_actor_resource_usage.return_value = ExecutionResources(
+        cpu=num_cpus_per_actor
+    )
+    op.get_autoscaling_actor_pools.return_value = [actor_pool]
+    return op
+
+
+def _mock_dag(*ops: MagicMock) -> MagicMock:
+    """A mock output operator whose iteration yields exactly `ops`."""
+    dag = MagicMock(spec=PhysicalOperator)
+    dag.post_order_iter.return_value = list(ops)
+    return dag
+
+
+class TestWarnIfActorsMayConsumeAllCpus:
+    """Unit tests for `_warn_if_actors_may_consume_all_cpus` (see #44687).
+
+    These tests mock the operator DAG and the cluster so they run without
+    starting Ray.
+    """
+
+    LOGGER_NAME = "ray.data._internal.execution.streaming_executor"
+
+    def test_warns_when_actor_pools_consume_all_cpus(self, caplog):
+        # 2 actors x 1 CPU each == all 2 CPUs of the cluster: the read op
+        # can never be scheduled and the execution hangs without an error.
+        dag = _mock_dag(
+            _mock_task_pool_op("ReadParquet"),
+            _mock_actor_pool_op("MapBatches(ActorPool)", min_actors=2),
+        )
+        with patch("ray.cluster_resources", return_value={"CPU": 2}), caplog.at_level(
+            logging.WARNING, logger=self.LOGGER_NAME
+        ):
+            _warn_if_actors_may_consume_all_cpus(dag)
+
+        assert "may never be scheduled" in caplog.text
+        assert "Leave at least one CPU for task operators" in caplog.text
+
+    def test_no_warning_when_cpus_left_for_task_ops(self, caplog):
+        # The cluster has 4 CPUs, so 2 CPUs remain for the read op.
+        dag = _mock_dag(
+            _mock_task_pool_op("ReadParquet"),
+            _mock_actor_pool_op("MapBatches(ActorPool)", min_actors=2),
+        )
+        with caplog.at_level(logging.WARNING, logger=self.LOGGER_NAME):
+            _warn_if_actors_may_consume_all_cpus(dag, total_cpus=4)
+
+        assert "may never be scheduled" not in caplog.text
+
+    def test_no_warning_when_dag_has_no_task_pool_ops(self, caplog):
+        # An all-actors DAG cannot starve task operators.
+        dag = _mock_dag(
+            _mock_actor_pool_op("MapBatches(ActorPool)", min_actors=2),
+        )
+        with caplog.at_level(logging.WARNING, logger=self.LOGGER_NAME):
+            _warn_if_actors_may_consume_all_cpus(dag, total_cpus=2)
+
+        assert "may never be scheduled" not in caplog.text
+
+    def test_cluster_resource_query_failure_is_silent(self, caplog):
+        # If the cluster resources cannot be queried (e.g., Ray is not
+        # initialized), the check must be skipped without crashing.
+        dag = _mock_dag(
+            _mock_task_pool_op("ReadParquet"),
+            _mock_actor_pool_op("MapBatches(ActorPool)", min_actors=2),
+        )
+        with patch(
+            "ray.cluster_resources", side_effect=RuntimeError("not initialized")
+        ), caplog.at_level(logging.WARNING, logger=self.LOGGER_NAME):
+            _warn_if_actors_may_consume_all_cpus(dag)
+
+        assert "may never be scheduled" not in caplog.text
 
 
 if __name__ == "__main__":
