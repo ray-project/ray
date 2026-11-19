@@ -86,12 +86,13 @@ def test_synthesized_path_filters_use_output_values(
     [
         col("x") != 40.0,
         ~(col("x") >= 30.0),
+        (col("x") >= 30.0) == lit(False),
         col("x").is_in([float("nan")]),
         col("x").not_in([40.0]),
         (col("x") != 40.0) & (col("id") >= 0),
         col("x") > 30.0,
     ],
-    ids=["ne", "not_ge", "is_in_nan", "not_in", "ne_and_int", "gt"],
+    ids=["ne", "not_ge", "ge_is_false", "is_in_nan", "not_in", "ne_and_int", "gt"],
 )
 def test_float_filter_keeps_nan_rows(
     ray_start_regular_shared, tmp_path, monkeypatch, use_datasource_v2, predicate

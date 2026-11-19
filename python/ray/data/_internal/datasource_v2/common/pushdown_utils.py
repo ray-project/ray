@@ -1,6 +1,6 @@
 import functools
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Set
+from typing import TYPE_CHECKING, List, Optional
 
 import pyarrow as pa
 
@@ -138,78 +138,36 @@ _STATISTICS_SAFE_FLOAT_COMPARISONS = frozenset(
 )
 
 
-def _has_float(data_type: pa.DataType) -> bool:
-    """Whether ``data_type`` is a float or nests one."""
-    if pa.types.is_dictionary(data_type):
-        data_type = data_type.value_type
-    return pa.types.is_floating(data_type) or any(
-        _has_float(data_type.field(i).type) for i in range(data_type.num_fields)
-    )
+def is_statistics_safe(predicate: Expr, schema: pa.Schema) -> bool:
+    """Whether Parquet row-group pruning on ``predicate`` keeps every matching row.
 
+    Parquet min/max statistics skip NaN, so PyArrow can drop NaN rows when it
+    prunes on a float column. Only ``<``, ``<=``, ``>``, ``>=``, ``==`` and null
+    checks between a float column and a literal or column are safe.
 
-def _is_statistics_safe(predicate: Expr, float_columns: Set[str]) -> bool:
-    """Whether row-group statistics can prune on ``predicate`` without losing rows."""
+    TODO: Remove once PyArrow handles NaN in statistics (apache/arrow#50807,
+    apache/arrow#54915).
+    """
     if isinstance(predicate, BinaryExpr) and predicate.op in (
         Operation.AND,
         Operation.OR,
     ):
-        return _is_statistics_safe(
-            predicate=predicate.left, float_columns=float_columns
-        ) and _is_statistics_safe(
-            predicate=predicate.right, float_columns=float_columns
-        )
-    if not float_columns.intersection(get_column_references(predicate)):
+        return is_statistics_safe(
+            predicate=predicate.left, schema=schema
+        ) and is_statistics_safe(predicate=predicate.right, schema=schema)
+    float_columns = {field.name for field in schema if pa.types.is_floating(field.type)}
+    if float_columns.isdisjoint(get_column_references(predicate)):
         return True
-    if isinstance(predicate, BinaryExpr):
-        return predicate.op in _STATISTICS_SAFE_FLOAT_COMPARISONS and all(
-            isinstance(operand, (ColumnExpr, LiteralExpr))
-            for operand in (predicate.left, predicate.right)
-        )
+    if isinstance(predicate, UnaryExpr):
+        return predicate.op in (
+            Operation.IS_NULL,
+            Operation.IS_NOT_NULL,
+        ) and isinstance(predicate.operand, ColumnExpr)
     return (
-        isinstance(predicate, UnaryExpr)
-        and predicate.op in (Operation.IS_NULL, Operation.IS_NOT_NULL)
-        and isinstance(predicate.operand, ColumnExpr)
-    )
-
-
-@dataclass(frozen=True)
-class StatisticsSafeSplit:
-    """A predicate split by whether Parquet statistics evaluate it correctly.
-
-    Attributes:
-        safe: Conjuncts a Parquet scan can apply, or None if there are none.
-        unsafe: Conjuncts to apply after the read, or None if there are none.
-    """
-
-    safe: Optional[Expr]
-    unsafe: Optional[Expr]
-
-
-def split_statistics_safe_predicate(
-    predicate: Expr, schema: pa.Schema
-) -> StatisticsSafeSplit:
-    """Split ``predicate`` into safe and unsafe conjuncts for a Parquet scan.
-
-    Parquet min/max statistics skip NaN, so PyArrow drops NaN rows when it
-    prunes row groups on a float column with ``!=``, ``is_in``, ``not_in`` or
-    anything under ``~``. Those conjuncts are unsafe and must be applied
-    after the read; a float column is safe only in ``<``, ``<=``, ``>``,
-    ``>=``, ``==`` and null checks against a column or literal.
-
-    TODO: Push every conjunct down once PyArrow handles NaN in statistics
-    (apache/arrow#50807, apache/arrow#54915).
-    """
-    float_columns = {field.name for field in schema if _has_float(field.type)}
-    safe: List[Expr] = []
-    unsafe: List[Expr] = []
-    for conjunct in flatten_predicate_chain(predicate, Operation.AND):
-        if _is_statistics_safe(predicate=conjunct, float_columns=float_columns):
-            safe.append(conjunct)
-        else:
-            unsafe.append(conjunct)
-    return StatisticsSafeSplit(
-        safe=combine_predicate_chain(safe, Operation.AND),
-        unsafe=combine_predicate_chain(unsafe, Operation.AND),
+        isinstance(predicate, BinaryExpr)
+        and predicate.op in _STATISTICS_SAFE_FLOAT_COMPARISONS
+        and isinstance(predicate.left, (ColumnExpr, LiteralExpr))
+        and isinstance(predicate.right, (ColumnExpr, LiteralExpr))
     )
 
 

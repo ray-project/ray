@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pyarrow as pa
 from typing_extensions import override
@@ -9,8 +9,10 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicate_chain,
     combine_predicates,
-    split_statistics_safe_predicate,
+    flatten_predicate_chain,
+    is_statistics_safe,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
@@ -22,7 +24,7 @@ from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data.expressions import Expr
+from ray.data.expressions import Expr, Operation
 from ray.util.annotations import DeveloperAPI
 
 
@@ -52,11 +54,19 @@ class ParquetScanner(ArrowFileScanner):
     @override
     def push_filters(self, predicate: Expr) -> Tuple[ArrowFileScanner, Optional[Expr]]:
         # Parquet statistics skip NaN, so some float filters run after the read.
-        split = split_statistics_safe_predicate(predicate=predicate, schema=self.schema)
-        if split.safe is None:
-            return self, split.unsafe
-        scanner, residual = super().push_filters(predicate=split.safe)
-        return scanner, combine_predicates(residual, split.unsafe)
+        safe: List[Expr] = []
+        unsafe: List[Expr] = []
+        for conjunct in flatten_predicate_chain(predicate, Operation.AND):
+            if is_statistics_safe(predicate=conjunct, schema=self.schema):
+                safe.append(conjunct)
+            else:
+                unsafe.append(conjunct)
+        safe_predicate = combine_predicate_chain(safe, Operation.AND)
+        unsafe_predicate = combine_predicate_chain(unsafe, Operation.AND)
+        if safe_predicate is None:
+            return self, unsafe_predicate
+        scanner, residual = super().push_filters(predicate=safe_predicate)
+        return scanner, combine_predicates(residual, unsafe_predicate)
 
     @override
     def prune_partitions(self, predicate: Expr) -> "ParquetScanner":

@@ -26,7 +26,7 @@ from ray.data._internal.arrow_block import (
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
-    split_statistics_safe_predicate,
+    is_statistics_safe,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     PARQUET_FILE_EXTENSIONS,
@@ -816,10 +816,7 @@ class ParquetDatasource(Datasource):
         """
         # Parquet statistics skip NaN, so some float filters must stay in the
         # ``Filter`` above the read; returning ``self`` keeps it there.
-        statistics_split = split_statistics_safe_predicate(
-            predicate=predicate_expr, schema=self._file_schema
-        )
-        if statistics_split.unsafe is not None:
+        if not is_statistics_safe(predicate=predicate_expr, schema=self._file_schema):
             return self
 
         partition_cols = set(self._partition_columns)
