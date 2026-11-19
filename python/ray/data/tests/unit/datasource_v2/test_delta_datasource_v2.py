@@ -132,11 +132,10 @@ def test_indexer_and_scanner_survive_worker_serialization(
     a read task creates its reader from the scanner. The reader opens each data
     file with its size from the log: ``deltalake``'s storage asks for the size
     of a file it wasn't told, a HEAD request per open on S3."""
-    from deltalake.fs import DeltaStorageHandler
-
+    deltalake_fs = pytest.importorskip("deltalake.fs")
     unsized_opens = []
 
-    class _RecordingStorage(DeltaStorageHandler):
+    class _RecordingStorage(deltalake_fs.DeltaStorageHandler):
         def __init__(self, table_uri, options=None, known_sizes=None):
             super().__init__(table_uri, options=options, known_sizes=known_sizes)
             self.known_paths = set(known_sizes or ())
@@ -146,7 +145,7 @@ def test_indexer_and_scanner_survive_worker_serialization(
                 unsized_opens.append(path)
             return super().open_input_file(path)
 
-    monkeypatch.setattr(deltalake.fs, "DeltaStorageHandler", _RecordingStorage)
+    monkeypatch.setattr(deltalake_fs, "DeltaStorageHandler", _RecordingStorage)
     datasource = _datasource(partitioned_table)
     scanner = datasource.create_scanner(schema=datasource.infer_schema(None))
 
