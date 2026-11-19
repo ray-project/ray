@@ -19,7 +19,7 @@ from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.search import SearchGenerator
 from ray.tune.search.sample import Domain, Function
 from ray.tune.search.variant_generator import format_vars
-from ray.tune.utils.util import SafeFallbackEncoder
+from ray.tune.utils.util import SafeFallbackEncoder, flatten_dict
 from ray.util import PublicAPI
 from ray.util.debug import log_once
 
@@ -172,22 +172,42 @@ def _make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
 
 def _fill_config(
     config: Dict, attr: str, search_space: Union[dict, list, tuple, Callable, Domain]
-):
-    """Add attr to config by sampling from search_space.
+) -> Dict:
+    """Add missing attr to config by sampling from search_space.
 
+    Recursively fills nested dicts without overwriting existing keys.
     This is a helper used to set initial hyperparameter values if the user doesn't
     specify them in the Tuner `param_space`.
     """
-    if isinstance(search_space, Callable):
-        config[attr] = search_space()
-    elif isinstance(search_space, Domain):
-        config[attr] = search_space.sample(None)
-    elif isinstance(search_space, (list, tuple)):
-        config[attr] = random.choice(search_space)
-    elif isinstance(search_space, dict):
-        config[attr] = {}
+    filled_hyperparams = {}
+    if isinstance(search_space, dict):
+        if attr in config and not isinstance(config[attr], dict):
+            logger.warning(
+                f"Overwriting existing non-dict value {config[attr]} for "
+                f"key '{attr}' with an empty dict to match the nested "
+                f"structure of `hyperparam_mutations`."
+            )
+            config[attr] = {}
+        elif attr not in config:
+            config[attr] = {}
+        nested_filled = {}
         for k, v in search_space.items():
-            _fill_config(config[attr], k, v)
+            nested_filled.update(_fill_config(config[attr], k, v))
+        if nested_filled:
+            filled_hyperparams[attr] = nested_filled
+    elif attr not in config:
+        if log_once(attr + "-missing"):
+            logger.debug(
+                f"Cannot find {attr} in config. Using search "
+                "space provided by hyperparam_mutations."
+            )
+        if isinstance(search_space, Callable):
+            config[attr] = filled_hyperparams[attr] = search_space()
+        elif isinstance(search_space, Domain):
+            config[attr] = filled_hyperparams[attr] = search_space.sample(None)
+        elif isinstance(search_space, (list, tuple)):
+            config[attr] = filled_hyperparams[attr] = random.choice(search_space)
+    return filled_hyperparams
 
 
 def _filter_mutated_params_from_config(
@@ -385,26 +405,14 @@ class PopulationBasedTraining(FIFOScheduler):
         synch: bool = False,
     ):
         hyperparam_mutations = hyperparam_mutations or {}
-        for value in hyperparam_mutations.values():
-            if not isinstance(value, (dict, list, tuple, Domain, Callable)):
-                raise TypeError(
-                    "`hyperparam_mutation` values must be either "
-                    "a List, Tuple, Dict, a tune search space object, or "
-                    "a callable."
-                )
-            if isinstance(value, Function):
-                raise ValueError(
-                    "arbitrary tune.sample_from objects are not "
-                    "supported for `hyperparam_mutation` values."
-                    "You must use other built in primitives like"
-                    "tune.uniform, tune.loguniform, etc."
-                )
-
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` "
                 "or `custom_explore_fn` to use PBT."
             )
+
+        if hyperparam_mutations:
+            self._validate_hyperparam_mutations(hyperparam_mutations)
 
         if quantile_fraction > 0.5 or quantile_fraction < 0:
             raise ValueError(
@@ -510,18 +518,38 @@ class PopulationBasedTraining(FIFOScheduler):
 
         self._trial_state[trial] = _PBTTrialState(trial)
 
-        for attr in self._hyperparam_mutations.keys():
-            if attr not in trial.config:
-                if log_once(attr + "-missing"):
-                    logger.debug(
-                        "Cannot find {} in config. Using search "
-                        "space provided by hyperparam_mutations."
-                    )
-                # Add attr to trial's config by sampling search space from
-                # hyperparam_mutations.
-                _fill_config(trial.config, attr, self._hyperparam_mutations[attr])
-                # Make sure this attribute is added to CLI output.
-                trial.evaluated_params[attr] = trial.config[attr]
+        for attr, search_space in self._hyperparam_mutations.items():
+            filled_hyperparams = _fill_config(trial.config, attr, search_space)
+            if filled_hyperparams:
+                # Make sure newly sampled attributes are added to CLI output.
+                trial.evaluated_params.update(flatten_dict(filled_hyperparams))
+
+    def _validate_hyperparam_mutations(self, hyperparam_mutations: Dict) -> None:
+        if not hyperparam_mutations:
+            raise TuneError(
+                "You must specify at least one valid mutation in "
+                "`hyperparam_mutations`."
+            )
+        for value in hyperparam_mutations.values():
+            if not isinstance(value, (dict, list, tuple, Domain, Callable)):
+                raise TypeError(
+                    "`hyperparam_mutation` values must be either "
+                    "a List, Tuple, Dict, a tune search space object, or "
+                    "a callable."
+                )
+            if isinstance(value, Function):
+                raise ValueError(
+                    "arbitrary tune.sample_from objects are not "
+                    "supported for `hyperparam_mutation` values."
+                    "You must use other built in primitives like"
+                    "tune.uniform, tune.loguniform, etc."
+                )
+            if isinstance(value, (list, tuple)) and len(value) == 0:
+                raise ValueError(
+                    "`hyperparam_mutation` list or tuple values cannot be empty."
+                )
+            if isinstance(value, dict):
+                self._validate_hyperparam_mutations(value)
 
     def on_trial_result(
         self, tune_controller: "TuneController", trial: Trial, result: Dict
