@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
 
-    from ray.air.data_batch_type import DataBatchType
+    from ray.data.block import DataBatch
     from ray.data.dataset import Dataset
 
 
@@ -337,20 +337,22 @@ class Preprocessor(abc.ABC):
         )
         return transformed_ds
 
-    def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
+    def transform_batch(
+        self, data: Union["np.ndarray", "DataBatch"]
+    ) -> Union["np.ndarray", "DataBatch"]:
         """Transform a single batch of data.
 
         The data will be converted to the format supported by the Preprocessor,
         based on which ``_transform_*`` methods are implemented.
 
         Args:
-            data: Input data batch.
+            data: Input data batch: a pandas DataFrame, a pyarrow Table, a dict of
+                NumPy ndarrays, or a single NumPy ndarray.
 
         Returns:
-            DataBatchType:
-                The transformed data batch. This may differ
-                from the input type depending on which ``_transform_*`` methods
-                are implemented.
+            The transformed data batch. This may differ
+            from the input type depending on which ``_transform_*`` methods
+            are implemented.
         """
         fit_status = self.fit_status()
         if fit_status in (
@@ -466,7 +468,9 @@ class Preprocessor(abc.ABC):
         """
         return {}
 
-    def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
+    def _transform_batch(
+        self, data: Union["np.ndarray", "DataBatch"]
+    ) -> Union["np.ndarray", "DataBatch"]:
         import numpy as np
         import pandas as pd
         import pyarrow

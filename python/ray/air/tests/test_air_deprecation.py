@@ -11,6 +11,7 @@ import pytest
 import ray.air
 import ray.air.config
 import ray.air.constants
+import ray.air.data_batch_type
 import ray.air.result
 import ray.tune.result
 from ray.util.annotations import RayDeprecationWarning
@@ -114,7 +115,6 @@ def test_dir_lists_deprecated_names():
 def test_non_deprecated_names_do_not_warn():
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        _ = ray.air.DataBatchType
         _ = ray.air.ResourceRequest
         _ = ray.air.AcquiredResources
         _ = ray.air.config.RunConfig
@@ -193,6 +193,41 @@ def test_internal_constants_do_not_warn():
     assert not _air_warnings(record)
 
 
+@pytest.mark.parametrize("module", [ray.air, ray.air.data_batch_type])
+def test_data_batch_type_warns(module):
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        obj = module.DataBatchType
+
+    # The deprecated name still resolves to the original type.
+    assert obj is ray.air.data_batch_type._DataBatchType
+    [warning] = _air_warnings(record)
+    message = str(warning.message)
+    assert f"`{module.__name__}.DataBatchType` is deprecated" in message
+    assert "Ray 3.0" in message
+    assert "`ray.data.block.DataBatch`" in message
+    assert "https://github.com/ray-project/ray/issues/49454" in message
+    assert warning.filename == __file__
+    assert "DataBatchType" in dir(module)
+
+
+@pytest.mark.parametrize("module", ["ray.air", "ray.air.data_batch_type"])
+def test_data_batch_type_from_import_warns(module):
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        exec(f"from {module} import DataBatchType", {})
+
+    assert _air_warnings(record)
+
+
+def test_data_batch_replacement_does_not_warn():
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        from ray.data.block import DataBatch  # noqa: F401
+
+    assert not _air_warnings(record)
+
+
 def test_ray_does_not_trigger_air_warnings():
     """Ray's own imports and a basic Tune run and Train v2 run must not warn.
 
@@ -211,8 +246,11 @@ def test_ray_does_not_trigger_air_warnings():
 
         import ray
         import ray.air.constants
+        import ray.air.data_batch_type
         import ray.air.integrations.mlflow
+        import ray.air.util.data_batch_conversion
         import ray.data
+        import ray.data.preprocessors
         import ray.rllib
         import ray.train
         import ray.train.torch

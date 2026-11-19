@@ -5,7 +5,7 @@ from ray._common.deprecation import (
     make_deprecated_getattr as _make_deprecated_getattr,
 )
 from ray.air import config, result  # noqa: F401
-from ray.air.data_batch_type import DataBatchType
+from ray.air.data_batch_type import _DATA_BATCH_TYPE_ALIAS
 from ray.air.execution.resources.request import AcquiredResources, ResourceRequest
 import ray.data  # noqa: F401  # TODO: This is a hack to avoid circular import
 
@@ -42,6 +42,8 @@ _DEPRECATED_ALIASES = {
         "ray.air.config:ScalingConfig", ("ray.train.ScalingConfig", "")
     ),
     "Result": _alias("ray.air.result:Result", *_tune_or_train("Result")),
+    # Deprecated in favour of `ray.data.block.DataBatch`.
+    "DataBatchType": _DATA_BATCH_TYPE_ALIAS,
 }
 
 __getattr__ = _make_deprecated_getattr(__name__, _DEPRECATED_ALIASES, _REMOVAL_VERSION)

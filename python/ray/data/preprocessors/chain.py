@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
 from ray.data.preprocessors.dag import _fit_levels, _fit_order
@@ -13,7 +13,9 @@ from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
-    from ray.air.data_batch_type import DataBatchType
+    import numpy as np
+
+    from ray.data.block import DataBatch
     from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
@@ -331,7 +333,9 @@ class Chain(SerializablePreprocessorBase):
             )
         return ds
 
-    def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":
+    def _transform_batch(
+        self, df: Union["np.ndarray", "DataBatch"]
+    ) -> Union["np.ndarray", "DataBatch"]:
         if self._needs_stats_materialization():
             self._materialize_deferred_stats()
 
