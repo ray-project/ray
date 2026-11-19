@@ -2,29 +2,16 @@
 consume output blocks produced by the final operator.
 
 An external consumer takes outputs from the executor and consumes them in tasks
-that are submitted and monitored outside the executor's thread, such as the push-based split's delivery of a block to
-a train worker. It reports each of those tasks here from its own threads. The
-executor drains the reports once per scheduling step, on its own thread, the
-only thread that touches the lineage tracker.
+that are submitted and monitored outside the executor's thread, such as the
+push-based split delivering blocks to train workers. The consumer reports each
+task's submission and outcome from its own threads. The executor applies those
+reports to the lineage tracker once per scheduling step, on its own thread,
+which is the only thread that touches the tracker.
 
 Each external task is registered with the lineage tracker as a child of the
 tasks that produced its blocks. If its input was lost, it is the target of a
 reconstruction plan like a task inside the executor that hit a lost object. Only the blocks
-it consumed are re-produced. The re-produced blocks are stamped for the external
-task and leave the executor like any other output, so the consumer submits a
-new external task for them.
-
-A completed external task produces nothing, so the lineage tracker garbage
-collects it at completion. Collecting it makes the output it consumed durable on
-its producer, which is collected once all of its outputs are, and so on up to
-the seeds, whose retained inputs are released. A task is kept while an attempt
-or a reconstruction plan still runs through it.
-
-Lineage some external tasks never consume stays until the executor shuts down.
-That is the lineage of an output that a finished split took but never submitted
-a task for, and of an abandoned task, which never completes. Without external
-consumers the final operator's outputs never get a consumer, so nothing is
-collected and the default path is unchanged.
+it consumed are re-produced.
 """
 
 import itertools
