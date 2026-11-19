@@ -133,6 +133,53 @@ def test_orc_reader_projection_filter_and_limit(tmp_path):
     assert result.to_pylist() == [{"label": "b"}, {"label": "c"}]
 
 
+@pytest.mark.parametrize(
+    "limit,min_id,expected_ids,scanned_files",
+    [
+        (0, 0, [], 0),
+        (1, 0, [0], 1),
+        (2, 0, [0, 1], 1),
+        (3, 0, [0, 1, 2], 2),
+        (1, 2, [2], 2),
+    ],
+)
+def test_orc_reader_stops_scanning_at_limit(
+    tmp_path, monkeypatch, orc_read_requests, limit, min_id, expected_ids, scanned_files
+):
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
+    paths = [tmp_path / f"{i}.orc" for i in range(3)]
+    schema = pa.schema([("id", pa.int64())])
+    for i, path in enumerate(paths):
+        _write_orc(path, pa.table({"id": [2 * i, 2 * i + 1]}, schema=schema))
+
+    scanner = OrcScanner(schema=schema, predicate=col("id") >= min_id).push_limit(limit)
+    batches = scanner.create_reader().read(_manifest(*paths))
+
+    assert [row for batch in batches for row in batch["id"].to_pylist()] == expected_ids
+    assert [request["path"] for request in orc_read_requests["scans"]] == [
+        str(path) for path in paths[:scanned_files]
+    ]
+    if limit == 0:
+        assert orc_read_requests["datasets"] == []
+
+
+def test_orc_reader_limit_propagates_required_fragment_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
+    first, broken = tmp_path / "first.orc", tmp_path / "broken.orc"
+    table = pa.table({"id": [0]})
+    _write_orc(first, table)
+    broken.write_bytes(b"invalid ORC data")
+    reader = OrcScanner(schema=table.schema).push_limit(2).create_reader()
+    batches = reader.read(_manifest(first, broken))
+    assert next(batches).equals(table)
+    with pytest.raises((pa.ArrowInvalid, OSError), match="broken.orc"):
+        next(batches)
+
+
 def test_orc_reader_empty_projection_preserves_rows(tmp_path):
     path = tmp_path / "data.orc"
     table = pa.table({"id": [0, 1, 2]})
@@ -1580,8 +1627,9 @@ def test_orc_reader_initial_estimate_is_cached(
     original = orc_file_reader.estimate_batch_size
     estimate = Mock(wraps=original) if available else Mock(return_value=None)
     monkeypatch.setattr(orc_file_reader, "estimate_batch_size", estimate)
+    # Keep all batches empty so observed rows cannot replace the initial estimate.
     reader = OrcScanner(
-        schema=table.schema, target_block_size=65536, limit=0
+        schema=table.schema, target_block_size=65536, predicate=col("payload") == ""
     ).create_reader()
     for _ in range(2):
         assert list(reader.read(_manifest(path))) == []

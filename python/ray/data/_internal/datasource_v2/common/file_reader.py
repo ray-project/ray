@@ -234,7 +234,7 @@ class FileReader(Reader[FileManifest]):
         Yields:
             pa.Table: PyArrow Tables containing the read data.
         """
-        if len(input_split) == 0:
+        if len(input_split) == 0 or (self._limit is not None and self._limit <= 0):
             return
 
         # Dedupe paths before handing them to pyarrow. A manifest can carry
@@ -298,11 +298,8 @@ class FileReader(Reader[FileManifest]):
         for table, position in self._read_fragment_batches(
             dataset, scanner_kwargs, input_split
         ):
-            if self._limit is not None:
-                if rows_read >= self._limit:
-                    break
-                if len(table) > self._limit - rows_read:
-                    table = table.slice(0, self._limit - rows_read)
+            if self._limit is not None and len(table) > self._limit - rows_read:
+                table = table.slice(0, self._limit - rows_read)
 
             if self._partition_parser is not None:
                 table = self._apply_partition_values(
@@ -349,6 +346,8 @@ class FileReader(Reader[FileManifest]):
             self._on_batch_read(table)
             rows_read += len(table)
             yield table
+            if self._limit is not None and rows_read >= self._limit:
+                return
 
     def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
         """Return the batch size to use for scanning.
