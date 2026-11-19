@@ -65,6 +65,10 @@ from ray.llm._internal.serve.core.ingress.utils import (
     _sanitize_chat_completion_request,
 )
 from ray.llm._internal.serve.core.protocol import DeploymentProtocol, RawRequestInfo
+from ray.llm._internal.serve.observability.genai_tracing import (
+    GenAIRequestMiddleware,
+    inject_request_context,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
@@ -165,6 +169,7 @@ def init() -> FastAPI:
     # NOTE: This middleware should be executed among the last (since
     # middleware is executed in LIFO).
     _fastapi_router_app.add_middleware(SetRequestIdMiddleware)
+    _fastapi_router_app.add_middleware(GenAIRequestMiddleware)
 
     return _fastapi_router_app
 
@@ -404,6 +409,7 @@ class OpenAiIngress(DeploymentProtocol):
         if raw_request is not None:
             raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
 
+        inject_request_context(body)
         async for response in getattr(model_handle, call_method).remote(
             body, raw_request_info
         ):
