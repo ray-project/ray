@@ -130,6 +130,22 @@ class ImageScan:
     def scanned(self) -> bool:
         return not self.error
 
+    def gated(
+        self, suppressed: bool = False
+    ) -> dict[tuple[str, str, str], list[Finding]]:
+        """CRITICAL/HIGH findings by key, with one finding per install path.
+
+        A package installed in two paths counts once per image, but both
+        paths are kept so the report can show every place to fix.
+        """
+        by_key: dict[tuple[str, str, str], list[Finding]] = {}
+        for finding in self.findings:
+            if finding.gated and finding.suppressed == suppressed:
+                same_key = by_key.setdefault(finding.key, [])
+                if all(f.path != finding.path for f in same_key):
+                    same_key.append(finding)
+        return by_key
+
 
 def _any_fixable(findings: Iterable[Finding]) -> bool:
     return any(f.fixable for f in findings)
