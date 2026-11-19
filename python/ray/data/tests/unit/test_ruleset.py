@@ -248,6 +248,9 @@ def test_configure_map_task_memory_rule_dedups_diamond_dag():
     # populated in dynamic_ray_remote_args. If shared_map._ray_remote_args_fn
     # were wrapped twice across the two diamond branches, a single invocation
     # would call estimate_per_task_memory_requirement twice.
+    assert shared_map._ray_remote_args_fn is not None
+    assert branch_a._ray_remote_args_fn is not None
+    assert branch_b._ray_remote_args_fn is not None
     assert shared_map._ray_remote_args_fn() == {}
     assert rule.calls[shared_map] == 1
 
@@ -294,9 +297,13 @@ def test_set_read_parallelism_rule_dedups_diamond_dag():
     }
     plan = PhysicalPlan(sink, op_map, DataContext.get_current())
 
-    rule = SetReadParallelismRule()
     visited_ops = []
-    rule._apply = lambda p, op, lop: visited_ops.append(op)
+
+    class TrackingRule(SetReadParallelismRule):
+        def _apply(self, plan, op, logical_op):
+            visited_ops.append(op)
+
+    rule = TrackingRule()
     rule.apply(plan)
 
     assert visited_ops == [shared_read_phys]
