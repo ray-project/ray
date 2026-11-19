@@ -20,8 +20,6 @@ MINIMAL_EXTERNAL_CONFIG = {
         "ray.worker.default": {},
     },
     "head_node_type": "ray.head.default",
-    "head_node": {},
-    "worker_nodes": {},
 }
 
 

@@ -272,8 +272,8 @@ def translate_trivial_legacy_config(config: Dict[str, Any]):
     for field in REMOVABLE_FIELDS:
         if field in config and not config[field]:
             logger.warning(
-                f"Dropping the empty legacy field {field}. {field}"
-                "is not supported for ray>=2.0.0. It is recommended to remove"
+                f"Dropping the empty legacy field {field}. {field} "
+                "is not supported for ray>=2.0.0. It is recommended to remove "
                 f"{field} from the cluster config."
             )
             del config[field]
@@ -330,7 +330,8 @@ def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any]) -> Dict[str, 
         merged_config["available_node_types"].keys() - {default_head_type}
     ).pop()
 
-    if merged_config["head_node"]:
+    # A legacy config may have only one of head_node and worker_nodes.
+    if merged_config.get("head_node"):
         # User specified a head node in legacy config.
         # Convert it into data for the head's node type.
         head_node_info = {
@@ -342,7 +343,7 @@ def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any]) -> Dict[str, 
     else:
         # Use default data for the head's node type.
         head_node_info = merged_config["available_node_types"][default_head_type]
-    if merged_config["worker_nodes"]:
+    if merged_config.get("worker_nodes"):
         # User specified a worker node in legacy config.
         # Convert it into data for the workers' node type.
         worker_node_info = {
@@ -363,8 +364,8 @@ def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any]) -> Dict[str, 
     merged_config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
 
     # Resources field in head/worker fields cause node launch to fail.
-    merged_config["head_node"].pop("resources", None)
-    merged_config["worker_nodes"].pop("resources", None)
+    merged_config.get("head_node", {}).pop("resources", None)
+    merged_config.get("worker_nodes", {}).pop("resources", None)
 
     return merged_config
 
