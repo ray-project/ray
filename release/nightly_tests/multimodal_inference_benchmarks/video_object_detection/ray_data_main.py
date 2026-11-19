@@ -17,7 +17,7 @@ import shutil
 import tempfile
 import uuid
 import warnings
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 # A copy of https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt
 # (sha256 0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1).
@@ -42,7 +42,7 @@ FEATURES_TYPE = pa.list_(
     )
 )
 
-ray.init()
+ray.init(job_config=benchmark_job_config())
 
 
 def to_frames(column: pa.ChunkedArray) -> list:

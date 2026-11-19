@@ -35,7 +35,7 @@ import time
 from typing import Dict, List
 
 import heterogeneous_memory_batch_inference as hmbi
-from benchmark import Benchmark, benchmark_py_modules
+from benchmark import Benchmark, benchmark_py_modules, benchmark_job_config
 from heterogeneous_memory_batch_inference import build_and_run_pipeline
 
 import ray
@@ -241,9 +241,10 @@ if __name__ == "__main__":
     # serializes them by reference and each worker needs to import the
     # module to deserialize.
     ray.init(
+        job_config=benchmark_job_config(),
         runtime_env={
             "py_modules": benchmark_py_modules() + [os.path.abspath(hmbi.__file__)],
-        }
+        },
     )
     benchmark = Benchmark()
     holder = {}

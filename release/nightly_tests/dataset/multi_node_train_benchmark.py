@@ -8,7 +8,7 @@ import itertools
 import os
 import time
 
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import Benchmark, BenchmarkMetric, benchmark_job_config
 
 import numpy as np
 import torch
@@ -188,9 +188,10 @@ def parse_args():
     args = parser.parse_args()
 
     ray.init(
+        job_config=benchmark_job_config(),
         runtime_env={
             "working_dir": os.path.dirname(__file__),
-        }
+        },
     )
 
     if not (args.use_torch or args.use_mosaic or args.use_synthetic_data):

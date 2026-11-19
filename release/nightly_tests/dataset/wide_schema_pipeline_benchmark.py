@@ -2,7 +2,7 @@ import argparse
 from typing import Dict, Any
 
 import ray
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,5 +53,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     main(args)

@@ -13,6 +13,7 @@ from benchmark import (
     RuntimeEnvSetupTracker,
     benchmark_py_modules,
     collect_dataset_stats,
+    benchmark_job_config,
 )
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
@@ -486,12 +487,15 @@ def start_chaos(args: argparse.Namespace):
 
 if __name__ == "__main__":
     args = parse_args()
-    init_kwargs = {}
+    # Ray Data lineage reconstruction is gated on this job config; it also
+    # turns Ray Core lineage reconstruction off for the job. The actor-only
+    # backend turns it on by default (benchmark_job_config);
+    # --lineage-reconstruction turns it on for any backend.
+    job_config = benchmark_job_config()
     if args.lineage_reconstruction:
-        # Ray Data lineage reconstruction is gated on this job config. It also
-        # turns Ray Core lineage reconstruction off for the job.
-        init_kwargs["job_config"] = JobConfig(
-            _disable_job_level_lineage_reconstruction=True
-        )
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()}, **init_kwargs)
+        job_config = JobConfig(_disable_job_level_lineage_reconstruction=True)
+    ray.init(
+        runtime_env={"py_modules": benchmark_py_modules()},
+        job_config=job_config,
+    )
     main(args)

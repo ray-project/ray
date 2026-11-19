@@ -35,7 +35,7 @@ from pyarrow import fs
 from ray.data.datasource.partitioning import Partitioning
 from tabulate import tabulate
 
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 from dataset_benchmark_util import IMAGENET_WNID_TO_ID
 
 logger = logging.getLogger(__name__)
@@ -850,6 +850,8 @@ def main():
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     benchmark = Benchmark()
     benchmark.run_fn("training-ingest-benchmark", main)
     benchmark.write_result()

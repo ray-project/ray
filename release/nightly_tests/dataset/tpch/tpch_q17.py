@@ -2,6 +2,7 @@ import ray
 from ray.data.aggregate import Mean, Sum
 from ray.data.expressions import col
 from common import load_table, parse_tpch_args, run_tpch_benchmark, to_f64
+from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -95,6 +96,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(job_config=benchmark_job_config())
     args = parse_tpch_args()
     main(args)

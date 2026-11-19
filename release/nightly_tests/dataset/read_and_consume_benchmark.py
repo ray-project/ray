@@ -3,7 +3,7 @@ import functools
 import uuid
 from typing import Callable, List
 
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 import ray
 from ray.data import SaveMode
@@ -173,6 +173,6 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     main(args)

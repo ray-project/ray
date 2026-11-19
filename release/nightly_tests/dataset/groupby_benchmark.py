@@ -5,7 +5,7 @@ from pyarrow import types
 import pyarrow.compute as pc
 import ray
 
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 from ray.data import DataContext
 from ray.data.context import ShuffleStrategy
 
@@ -144,5 +144,7 @@ def normalize_table(table: pa.Table) -> pa.Table:
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     main(args)

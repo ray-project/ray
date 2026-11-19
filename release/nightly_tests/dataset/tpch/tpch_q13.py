@@ -2,6 +2,7 @@ import ray
 from ray.data.aggregate import Count
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, run_tpch_benchmark
+from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -75,6 +76,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(job_config=benchmark_job_config())
     args = parse_tpch_args()
     main(args)

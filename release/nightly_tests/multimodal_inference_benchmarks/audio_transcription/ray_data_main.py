@@ -9,7 +9,7 @@ import soundfile as sf
 import torch
 import torchaudio.transforms as T
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 
 TRANSCRIPTION_MODEL = "openai/whisper-tiny"
@@ -22,7 +22,7 @@ BATCH_SIZE = 64
 # previous nightly test runs.
 PREPROCESS_MEMORY = 3_143_442_432  # ~3.1 GB
 
-ray.init()
+ray.init(job_config=benchmark_job_config())
 
 
 @ray.remote
