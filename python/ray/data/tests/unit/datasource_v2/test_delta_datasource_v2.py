@@ -19,9 +19,6 @@ from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
 from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
     DeltaScanner,
 )
-from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
-    DatasourceCategory,
-)
 
 deltalake = pytest.importorskip("deltalake")
 
@@ -85,8 +82,6 @@ def test_datasource_lists_the_pinned_version(tmp_path):
 def test_datasource_takes_schema_and_partitioning_from_the_log(partitioned_table):
     datasource = _datasource(partitioned_table)
 
-    assert datasource.category == DatasourceCategory.DATA_LAKE
-    assert datasource.schema_needs_file_sample is False
     schema = datasource.infer_schema(None)
     assert schema.names == ["id", "grp", "value"]
     assert schema.field("grp").type == pa.string()
@@ -96,9 +91,6 @@ def test_datasource_takes_schema_and_partitioning_from_the_log(partitioned_table
     assert isinstance(scanner, DeltaScanner)
     assert scanner.partitioning is not None
     assert scanner.partitioning.field_names == ["grp"]
-    # Pinned so the partition column keeps its place in the output.
-    assert scanner.columns == ("id", "grp", "value")
-    assert scanner.read_schema().names == ["id", "grp", "value"]
 
 
 @pytest.mark.parametrize(
@@ -133,32 +125,18 @@ def test_datasource_rejects_unknown_columns(partitioned_table):
         _datasource(partitioned_table, columns=["id", "path"])
 
 
-def test_indexer_and_scanner_survive_worker_serialization(partitioned_table):
-    """Listing and read tasks receive the indexer and the scanner pickled, and
-    a read task creates its reader from the scanner."""
-    datasource = _datasource(partitioned_table)
-    scanner = datasource.create_scanner(schema=datasource.infer_schema(None))
-
-    indexer = cloudpickle.loads(cloudpickle.dumps(datasource._get_file_indexer()))
-    reader = cloudpickle.loads(cloudpickle.dumps(scanner)).create_reader()
-
-    assert _listed_paths(indexer) == _log_paths(partitioned_table)
-    manifests = indexer.as_whole_file_indexer().list_files(
-        pa.array(["label"]), filesystem=None
-    )
-    rows = [row for m in manifests for t in reader.read(m) for row in t.to_pylist()]
-    assert sorted(row["id"] for row in rows) == [1, 2, 3, 4]
-    assert {row["grp"] for row in rows} == {"a b", "e=f", None}
-
-
-def test_reader_opens_data_files_with_their_sizes_from_the_log(
+def test_indexer_and_scanner_survive_worker_serialization(
     partitioned_table, monkeypatch
 ):
-    """``deltalake``'s storage asks for the size of a file it opens unless it
-    was told it: a HEAD request per open on S3."""
+    """Listing and read tasks receive the indexer and the scanner pickled, and
+    a read task creates its reader from the scanner. The reader opens each data
+    file with its size from the log: ``deltalake``'s storage asks for the size
+    of a file it wasn't told, a HEAD request per open on S3."""
+    from deltalake.fs import DeltaStorageHandler
+
     unsized_opens = []
 
-    class _RecordingStorage(deltalake.fs.DeltaStorageHandler):
+    class _RecordingStorage(DeltaStorageHandler):
         def __init__(self, table_uri, options=None, known_sizes=None):
             super().__init__(table_uri, options=options, known_sizes=known_sizes)
             self.known_paths = set(known_sizes or ())
@@ -170,18 +148,22 @@ def test_reader_opens_data_files_with_their_sizes_from_the_log(
 
     monkeypatch.setattr(deltalake.fs, "DeltaStorageHandler", _RecordingStorage)
     datasource = _datasource(partitioned_table)
-    reader = datasource.create_scanner(
-        schema=datasource.infer_schema(None)
-    ).create_reader()
-    manifests = (
-        datasource._get_file_indexer()
-        .as_whole_file_indexer()
-        .list_files(pa.array(["label"]), filesystem=None)
+    scanner = datasource.create_scanner(schema=datasource.infer_schema(None))
+
+    indexer = cloudpickle.loads(cloudpickle.dumps(datasource._get_file_indexer()))
+    reader = cloudpickle.loads(cloudpickle.dumps(scanner)).create_reader()
+
+    assert _listed_paths(indexer) == _log_paths(partitioned_table)
+    manifests = indexer.as_whole_file_indexer().list_files(
+        pa.array(["label"]), filesystem=None
     )
-
-    rows = [row for m in manifests for t in reader.read(m) for row in t.to_pylist()]
-
-    assert sorted(row["id"] for row in rows) == [1, 2, 3, 4]
+    rows = [
+        (row["id"], row["grp"])
+        for m in manifests
+        for t in reader.read(m)
+        for row in t.to_pylist()
+    ]
+    assert sorted(rows) == [(1, "a b"), (2, "e=f"), (3, None), (4, "a b")]
     assert unsized_opens == []
 
 

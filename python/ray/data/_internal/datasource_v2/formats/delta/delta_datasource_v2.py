@@ -75,6 +75,14 @@ def delta_datasource_v2_unsupported_reason(
 ) -> Optional[str]:
     """Why ``table`` can't be read with :class:`DeltaDatasourceV2`, if it can't.
 
+    ``read_delta`` reads the tables this rejects with the V1 reader. V1 can
+    read some of them: reads that pass PyArrow scan options, partition columns
+    of types V2 doesn't parse, a table's own ``path`` column with
+    ``include_paths``, and reader features the installed ``deltalake`` reads
+    through PyArrow (``variantType`` in 1.6). V2 needs to support these before
+    V1 is removed. V1 rejects the rest, such as column mapping and deletion
+    vectors, with the same error as before.
+
     Args:
         table: The table, opened at the version to read.
         include_paths: The read's ``include_paths`` argument.
