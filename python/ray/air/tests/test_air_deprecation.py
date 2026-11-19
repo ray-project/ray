@@ -1,6 +1,7 @@
 """Tests for the deprecation aliases of `ray.air` public paths (removed in Ray 3.0)."""
 
 import importlib
+import os
 import subprocess
 import sys
 import textwrap
@@ -125,7 +126,11 @@ def test_ray_does_not_trigger_air_warnings():
     """Ray's own imports and a basic Tune run and Train v2 run must not warn.
 
     Users can't silence a warning that Ray's own code triggers, so any
-    `RayDeprecationWarning` about `ray.air` raised here is a bug.
+    `RayDeprecationWarning` about `ray.air` or, with Train V2 enabled, about
+    `ray.train.SyncConfig` raised here is a bug. The Tune run is restored so that
+    unpickling its experiment state is covered too, and the output of the Ray
+    workers, which the driver's filter doesn't reach, is checked for the
+    `ray.train.SyncConfig` warning as well.
     """
     script = textwrap.dedent(
         """
@@ -134,7 +139,9 @@ def test_ray_does_not_trigger_air_warnings():
         from ray.util.annotations import RayDeprecationWarning
 
         warnings.filterwarnings(
-            "error", message=".*`ray\\\\.air", category=RayDeprecationWarning
+            "error",
+            message=".*`ray\\\\.(air|train\\\\.SyncConfig)",
+            category=RayDeprecationWarning,
         )
 
         import ray
@@ -150,8 +157,12 @@ def test_ray_does_not_trigger_air_warnings():
             tune.report({"score": config["x"]})
 
         results = tune.Tuner(
-            objective, param_space={"x": tune.grid_search([1, 2])}
+            objective,
+            param_space={"x": tune.grid_search([1, 2])},
+            run_config=tune.RunConfig(sync_config=tune.SyncConfig(sync_period=1)),
         ).fit()
+        assert not results.errors
+        results = tune.Tuner.restore(results.experiment_path, objective).fit()
         assert not results.errors
 
         def train_fn():
@@ -165,9 +176,15 @@ def test_ray_does_not_trigger_air_warnings():
         """
     )
     proc = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=170
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=170,
+        env={**os.environ, "RAY_TRAIN_V2_ENABLED": "1"},
     )
     assert proc.returncode == 0 and "OK" in proc.stdout, proc.stderr[-5000:]
+    output = proc.stdout + proc.stderr
+    assert "`ray.train.SyncConfig` is deprecated" not in output, output[-5000:]
 
 
 if __name__ == "__main__":

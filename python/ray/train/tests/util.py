@@ -4,8 +4,9 @@ import tempfile
 from typing import Any, Dict, Optional, Type
 
 import ray.cloudpickle as ray_pickle
-from ray.train import Checkpoint, SyncConfig
+from ray.train import Checkpoint
 from ray.train._internal.storage import StorageContext
+from ray.train._internal.syncer import SyncConfig
 
 
 @contextlib.contextmanager

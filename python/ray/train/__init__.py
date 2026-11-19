@@ -20,7 +20,6 @@ from ray.air.result import Result
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
-from ray.train._internal.syncer import SyncConfig
 from ray.train.backend import BackendConfig
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import TRAIN_DATASET_KEY
@@ -79,6 +78,7 @@ if is_v2_enabled():
         ValidationTaskConfig,
     )
 else:
+    from ray.train._internal.syncer import SyncConfig
     from ray.train.constants import _log_v1_deprecation_warning
 
     _log_v1_deprecation_warning()
@@ -97,7 +97,6 @@ __all__ = [
     "Result",
     "RunConfig",
     "ScalingConfig",
-    "SyncConfig",
     "TrainContext",
     "TrainingFailedError",
     "TRAIN_DATASET_KEY",
@@ -115,7 +114,6 @@ FailureConfig.__module__ = "ray.train"
 Result.__module__ = "ray.train"
 RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
-SyncConfig.__module__ = "ray.train"
 TrainContext.__module__ = "ray.train"
 TrainingFailedError.__module__ = "ray.train"
 
@@ -162,6 +160,35 @@ if is_v2_enabled():
     ValidationTaskConfig.__module__ = "ray.train"
     get_all_reported_checkpoints.__module__ = "ray.train"
     get_preemption_info.__module__ = "ray.train"
+
+    # With Train V2, `ray.train.SyncConfig` is a deprecated alias of the V1 class,
+    # which only Ray Tune still uses. It's kept out of the module globals and
+    # `__all__` so that only an explicit `ray.train.SyncConfig` warns, and its
+    # `__module__` keeps pointing at `ray.train._internal.syncer` so that pickles
+    # of it (e.g. a Tune `RunConfig` in experiment state, or one shipped to a Ray
+    # worker) never resolve the deprecated alias.
+    from ray._common.deprecation import (
+        DeprecatedAlias as _DeprecatedAlias,
+        make_deprecated_getattr as _make_deprecated_getattr,
+    )
+    from ray.train.constants import V2_MIGRATION_GUIDE_LINK_MESSAGE as _MIGRATION_NOTE
+
+    _DEPRECATED_ALIASES = {
+        "SyncConfig": _DeprecatedAlias(
+            "ray.train._internal.syncer:SyncConfig",
+            (("ray.tune.SyncConfig", "with Ray Tune"),),
+            note=_MIGRATION_NOTE,
+        ),
+    }
+
+    __getattr__ = _make_deprecated_getattr(__name__, _DEPRECATED_ALIASES, "3.0")
+
+    def __dir__():
+        return sorted(set(globals()) | set(_DEPRECATED_ALIASES))
+
+else:
+    __all__.append("SyncConfig")
+    SyncConfig.__module__ = "ray.train"
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.

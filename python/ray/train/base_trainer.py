@@ -27,7 +27,9 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
+from ray.train._internal.syncer import SyncConfig
 from ray.train.constants import (
+    V1_REMOVAL_MESSAGE,
     V2_MIGRATION_GUIDE_LINK_MESSAGE,
     V2_MIGRATION_GUIDE_MESSAGE,
     _v2_migration_warnings_enabled,
@@ -545,19 +547,19 @@ class BaseTrainer(abc.ABC):
         constructors to avoid logging incorrect deprecation warnings when
         `ray.train.RunConfig` is passed to Ray Tune.
         """
-        from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR, is_v2_enabled
+        from ray.train.v2._internal.constants import is_v2_enabled
 
         if is_v2_enabled():
             raise DeprecationWarning(
-                f"Detected use of a deprecated Trainer import from `{self.__class__.__module__}`. "
-                "This Trainer class is not compatible with Ray Train V2.\n"
-                "To fix this:\n"
-                "  - Update to use the new import path. For example, "
-                "`from ray.train.torch.torch_trainer import TorchTrainer` -> "
-                "`from ray.train.torch import TorchTrainer`\n"
-                f"  - Or, explicitly disable V2 by setting: {V2_ENABLED_ENV_VAR}=0\n"
-                "See this issue for more context: "
-                "https://github.com/ray-project/ray/issues/49454"
+                "Detected use of a deprecated Trainer import from "
+                f"`{self.__class__.__module__}`. This is a Ray Train V1 Trainer, "
+                "which isn't compatible with Ray Train V2. "
+                f"{V1_REMOVAL_MESSAGE}\n"
+                "To fix this, import the Trainer from its public path instead. "
+                "For example, replace "
+                "`from ray.train.torch.torch_trainer import TorchTrainer` with "
+                "`from ray.train.torch import TorchTrainer`.\n"
+                f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
             )
 
         if not _v2_migration_warnings_enabled():
@@ -599,7 +601,7 @@ class BaseTrainer(abc.ABC):
         if self.run_config.progress_reporter is not None:
             _log_deprecation_warning(PROGRESS_REPORTER_DEPRECATION_MESSAGE)
 
-        if self.run_config.sync_config != ray.train.SyncConfig():
+        if self.run_config.sync_config != SyncConfig():
             _log_deprecation_warning(SYNC_CONFIG_DEPRECATION_MESSAGE)
 
     @classmethod

@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -171,11 +172,193 @@ def test_v2_enabled_error(monkeypatch):
 
     monkeypatch.setenv(V2_ENABLED_ENV_VAR, "1")
 
-    with pytest.raises(DeprecationWarning, match="Detected use of a deprecated"):
+    with pytest.raises(DeprecationWarning, match="Detected use of a deprecated") as e:
         DataParallelTrainer(
             lambda _: None,
             scaling_config=ray.train.ScalingConfig(num_workers=1),
         )
+
+    message = str(e.value)
+    assert "Ray Train V1 is deprecated and will be removed in Ray 3.0" in message
+    assert "`from ray.train.torch import TorchTrainer`" in message
+    assert "https://github.com/ray-project/ray/issues/49454" in message
+    # Disabling V2 stops working in Ray 3.0, so it isn't offered as a fix.
+    assert V2_ENABLED_ENV_VAR not in message
+
+
+def _run_script(tmp_path, code: str, v2_enabled: str) -> str:
+    """Runs ``code`` from a file in a new process and returns its stdout.
+
+    ``ray.train`` reads ``RAY_TRAIN_V2_ENABLED`` on import, so tests that set it
+    run in a new process. The script is a file so that warnings can point at it.
+    """
+    from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR
+
+    script = tmp_path / "user_script.py"
+    script.write_text(code)
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        env={**os.environ, V2_ENABLED_ENV_VAR: v2_enabled},
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr[-5000:]
+    return proc.stdout
+
+
+_RECORD_SYNC_CONFIG_WARNINGS = """
+import json
+import warnings
+
+from ray.util.annotations import RayDeprecationWarning
+
+def sync_config_warnings(record):
+    return [
+        {"message": str(w.message), "filename": w.filename}
+        for w in record
+        if issubclass(w.category, RayDeprecationWarning)
+        and "SyncConfig" in str(w.message)
+    ]
+"""
+
+
+@pytest.mark.parametrize("access", ["attribute", "from_import"])
+def test_sync_config_warns_with_v2(tmp_path, access):
+    """With Train V2, `ray.train.SyncConfig` warns and points users at Ray Tune."""
+    lookup = {
+        "attribute": "obj = ray.train.SyncConfig",
+        "from_import": "from ray.train import SyncConfig as obj",
+    }[access]
+    code = _RECORD_SYNC_CONFIG_WARNINGS + (
+        "import ray.train\n"
+        "import ray.train._internal.syncer\n"
+        "with warnings.catch_warnings(record=True) as record:\n"
+        "    warnings.simplefilter('always')\n"
+        f"    {lookup}\n"
+        "print(json.dumps({\n"
+        "    'warnings': sync_config_warnings(record),\n"
+        "    'same_class': obj is ray.train._internal.syncer.SyncConfig,\n"
+        "    'module': obj.__module__,\n"
+        "    'in_all': 'SyncConfig' in ray.train.__all__,\n"
+        "    'in_dir': 'SyncConfig' in dir(ray.train),\n"
+        "}))\n"
+    )
+    out = json.loads(_run_script(tmp_path, code, v2_enabled="1"))
+
+    assert out["same_class"]
+    # Pickles of the class must not resolve the deprecated alias.
+    assert out["module"] == "ray.train._internal.syncer"
+    assert not out["in_all"]
+    assert out["in_dir"]
+    # `from ... import` looks the name up twice (`hasattr`, then `getattr`).
+    assert out["warnings"]
+    for warning in out["warnings"]:
+        message = warning["message"]
+        assert "`ray.train.SyncConfig` is deprecated" in message
+        assert "removed in Ray 3.0" in message
+        assert "`ray.tune.SyncConfig` with Ray Tune" in message
+        assert "https://github.com/ray-project/ray/issues/49454" in message
+        # The warning points at the user's line.
+        assert warning["filename"] == str(tmp_path / "user_script.py")
+
+
+def test_sync_config_star_import_does_not_warn_with_v2(tmp_path):
+    code = _RECORD_SYNC_CONFIG_WARNINGS + (
+        "with warnings.catch_warnings(record=True) as record:\n"
+        "    warnings.simplefilter('always')\n"
+        "    from ray.train import *  # noqa: F403\n"
+        "print(json.dumps(sync_config_warnings(record)))\n"
+    )
+    assert json.loads(_run_script(tmp_path, code, v2_enabled="1")) == []
+
+
+def test_sync_config_does_not_warn_with_v1(tmp_path):
+    """With Train V1, the `import ray.train` warning covers `SyncConfig` already."""
+    code = _RECORD_SYNC_CONFIG_WARNINGS + (
+        "import ray.train\n"
+        "with warnings.catch_warnings(record=True) as record:\n"
+        "    warnings.simplefilter('always')\n"
+        "    from ray.train import SyncConfig\n"
+        "    ray.train.SyncConfig(sync_artifacts=True)\n"
+        "print(json.dumps({\n"
+        "    'warnings': sync_config_warnings(record),\n"
+        "    'module': SyncConfig.__module__,\n"
+        "    'in_all': 'SyncConfig' in ray.train.__all__,\n"
+        "}))\n"
+    )
+    out = json.loads(_run_script(tmp_path, code, v2_enabled="0"))
+    assert out == {"warnings": [], "module": "ray.train", "in_all": True}
+
+
+def test_tune_sync_config_is_drop_in():
+    """`ray.tune.SyncConfig`, the replacement, accepts everything the old class does."""
+    import dataclasses
+
+    from ray.train._internal.syncer import SyncConfig as TrainSyncConfig
+
+    assert issubclass(ray.tune.SyncConfig, TrainSyncConfig)
+    assert [f.name for f in dataclasses.fields(ray.tune.SyncConfig)] == [
+        f.name for f in dataclasses.fields(TrainSyncConfig)
+    ]
+    kwargs = dict(
+        sync_period=1,
+        sync_timeout=2,
+        sync_artifacts=True,
+        sync_artifacts_on_checkpoint=False,
+    )
+    sync_config = ray.tune.SyncConfig(**kwargs)
+    assert dataclasses.asdict(sync_config) == dataclasses.asdict(
+        TrainSyncConfig(**kwargs)
+    )
+    assert ray.tune.RunConfig(sync_config=sync_config).sync_config is sync_config
+
+
+def test_sync_config_pickles_with_v2(tmp_path):
+    """Tune experiment state pickled with Train V2 loads without the warning.
+
+    A pickle made with Train V1, which references `ray.train.SyncConfig`, still
+    loads with Train V2, and warns.
+    """
+    dump = (
+        "import pickle, sys\n"
+        "import ray.tune\n"
+        "print(pickle.dumps(ray.tune.RunConfig()).hex())\n"
+    )
+    load = _RECORD_SYNC_CONFIG_WARNINGS + (
+        "import pickle, sys\n"
+        "import ray.train._internal.syncer\n"
+        "with warnings.catch_warnings(record=True) as record:\n"
+        "    warnings.simplefilter('always')\n"
+        "    run_config = pickle.loads(bytes.fromhex(sys.stdin.read()))\n"
+        "print(json.dumps({\n"
+        "    'warnings': len(sync_config_warnings(record)),\n"
+        "    'same_class': type(run_config.sync_config)\n"
+        "    is ray.train._internal.syncer.SyncConfig,\n"
+        "}))\n"
+    )
+    load_script = tmp_path / "load.py"
+    load_script.write_text(load)
+
+    def load_with_v2(pickled: str) -> dict:
+        from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR
+
+        proc = subprocess.run(
+            [sys.executable, str(load_script)],
+            input=pickled,
+            env={**os.environ, V2_ENABLED_ENV_VAR: "1"},
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, proc.stderr[-5000:]
+        return json.loads(proc.stdout)
+
+    pickled_v2 = _run_script(tmp_path, dump, v2_enabled="1").strip()
+    assert load_with_v2(pickled_v2) == {"warnings": 0, "same_class": True}
+
+    pickled_v1 = _run_script(tmp_path, dump, v2_enabled="0").strip().splitlines()[-1]
+    out = load_with_v2(pickled_v1)
+    assert out["same_class"]
+    assert out["warnings"] >= 1
 
 
 @pytest.mark.parametrize("import_stmt", ["import ray.train", "import ray.tune"])
