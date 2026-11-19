@@ -321,9 +321,23 @@ def _write_partitioned_table(path: str) -> None:
 
 def _input_dates(ds) -> list:
     """The partition dates of the files the read lists, without running it."""
+    if DataContext.get_current().use_delta_datasource_v2:
+        # The V2 reader lists in a Ray task when the read runs, so
+        # ``input_files()`` is empty here: run its listing instead.
+        (list_files,) = ds._logical_plan.dag.input_dependencies
+        indexer = list_files.file_indexer.as_whole_file_indexer()
+        files = [
+            path
+            for manifest in indexer.list_files(
+                pa.array(list_files.paths), filesystem=None
+            )
+            for path in manifest.paths.tolist()
+        ]
+    else:
+        files = ds.input_files()
     return sorted(
         part.split("=", 1)[1]
-        for file in ds.input_files()
+        for file in files
         for part in file.split("/")
         if part.startswith("date=")
     )

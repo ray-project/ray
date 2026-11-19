@@ -566,18 +566,20 @@ def test_falls_back_to_v1_with_pyarrow_scan_options(
     assert opened == ([0] if deltalake_version == "1.6.6" else [0, 0])
 
 
-def test_partition_filters_fall_back_to_v1(tmp_path):
-    """V2 doesn't apply ``partition_filters`` yet, so it would read every
-    partition; V1 lists only the matching one."""
-    path = str(tmp_path / "table")
-    deltalake.write_deltalake(
-        path, pa.table({"x": [1, 2], "p": ["a", "b"]}), partition_by=["p"]
-    )
-
-    ds = _read(path, partition_filters=[("p", "=", "a")])
-
-    assert not _uses_v2(ds)
-    assert ds.take_all() == [{"x": 1, "p": "a"}]
+@pytest.mark.parametrize(
+    "partition_filters",
+    [
+        [("grp", "=", "a b")],
+        [("grp", "in", ["e=f", "c/d"])],
+        [("grp", "=", "")],
+        [("grp", "!=", "a b"), ("num", ">", 1)],
+    ],
+    ids=["special-characters", "in", "null", "and"],
+)
+def test_partition_filters_match_v1(partitioned_table, partition_filters):
+    """V2 reads the files ``deltalake`` selects, as V1 does: ``''`` is the
+    null partition, and ``num`` compares as an integer."""
+    _assert_matches_v1(partitioned_table, partition_filters=partition_filters)
 
 
 def _random_prefix_table(path: str) -> None:
