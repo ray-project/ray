@@ -916,8 +916,21 @@ class TaskManager : public TaskManagerInterface {
       const rpc::Address &worker_addr,
       const ReferenceCounterInterface::ReferenceTableProto &borrowed_refs);
 
-  // Shared terminal failure handling. execution_error_reply, when non-null,
-  // carries an inlined TASK_EXECUTION_EXCEPTION and the executed worker's refs.
+  /**
+   * @brief Finalize a failed task without making another retry decision.
+   *
+   * @param[in] task_id ID of the task to fail.
+   * @param[in] error_type Failure type; cancellation takes precedence when the
+   * task has already been marked as canceled.
+   * @param[in] status Optional execution or transport status; may be nullptr.
+   * @param[in] ray_error_info Optional detailed failure information; may be nullptr.
+   * @param[in] worker_addr Address of the executing worker for merging borrowed
+   * refs, or an empty address when no execution reply is available.
+   * @param[in] execution_error_reply Optional completed execution reply containing
+   * an inlined TASK_EXECUTION_EXCEPTION in return_objects(0). Its borrowed refs
+   * are merged during cleanup, and its serialized error terminates unreported
+   * stream returns. May be nullptr when no execution reply is available.
+   */
   void FailPendingTaskInternal(const TaskID &task_id,
                                rpc::ErrorType error_type,
                                const Status *status,
