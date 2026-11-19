@@ -272,10 +272,19 @@ class SGLangServer:
         return
 
     async def check_health(self) -> None:
-        # SGLang's in-process Engine API does not expose a health-check method.
-        # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
-        # this integration does not run. Keep the protocol hook as a no-op.
-        return
+        # RayEngine.check_health raises when a scheduler actor died or stopped
+        # answering a probe. SGLang versions before sgl-project/sglang#51367 do
+        # not have it; keep the check a no-op for them.
+        engine_check_health = getattr(self.engine, "check_health", None)
+        if engine_check_health is None:
+            return
+        try:
+            await engine_check_health()
+        except Exception:
+            logger.error(
+                "SGLang engine health check failed. The replica will be restarted."
+            )
+            raise
 
     async def __serve_build_asgi_app__(self) -> Any:
         """Return SGLang's native OpenAI ASGI app for Ray Serve direct streaming.
