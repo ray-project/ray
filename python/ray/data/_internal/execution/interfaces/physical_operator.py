@@ -315,9 +315,11 @@ class DataOpTask(OpTask):
         self._producer_id: str = producer_id
         self._lineage_task_id = lineage_task_id
         self._reconstruction_plan_ids: FrozenSet[str] = reconstruction_plan_ids
-        self._cancel_callback: Callable[[], None] = cancel_callback or (
-            lambda: self._cancel(force=False)
-        )
+        # Store only an injected callback. Defaulting to a lambda that
+        # captures ``self`` would make every task a reference cycle, keeping
+        # finished tasks (and the input block refs their callbacks capture)
+        # alive until the cyclic GC runs.
+        self._cancel_callback: Optional[Callable[[], None]] = cancel_callback
         # Whether this task's Ray task has been cancelled (e.g. by an
         # operator's shutdown), so ``mark_aborted`` doesn't cancel it again.
         self._cancelled = False
@@ -686,7 +688,10 @@ class DataOpTask(OpTask):
         # task can be aborted for it.
         assert not aborted_for_reconstruction or self.is_lineage_tracked
         if not self._cancelled:
-            self._cancel_callback()
+            if self._cancel_callback is not None:
+                self._cancel_callback()
+            else:
+                self._cancel(force=False)
         self._task_done_callback(
             exception,
             None,  # TaskExecStats
