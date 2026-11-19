@@ -377,6 +377,17 @@ def test_load_scans_isolates_malformed_status_records(
     assert expected_error in by_name["x"].error
 
 
+def test_load_scans_accepts_non_numeric_python_versions(tmp_path: Path):
+    write_scan(tmp_path, CPU)
+    write_scan(tmp_path, ("ray-py3.13t-cpu", "ray", "3.13t", "cpu", "x86_64", CPU[5]))
+    scans = load_scans(tmp_path)
+    assert [s.image.python_version for s in scans] == ["3.12", "3.13t"]
+    assert all(s.scanned for s in scans)
+    assert describe_images([s.image for s in scans], []) == (
+        "ray py3.12, py3.13t · cpu · x86_64"
+    )
+
+
 def test_load_scans_sorts_images_whatever_the_directory_order(tmp_path: Path):
     specs = [
         (
@@ -415,17 +426,6 @@ def test_load_scans_sorts_images_whatever_the_directory_order(tmp_path: Path):
         "ray-py3.12-cu12.8.1-cudnn",
         "ray-llm-py3.11-cu12.8.1-cudnn",
     ]
-
-
-def test_load_scans_accepts_non_numeric_python_versions(tmp_path: Path):
-    write_scan(tmp_path, CPU)
-    write_scan(tmp_path, ("ray-py3.13t-cpu", "ray", "3.13t", "cpu", "x86_64", CPU[5]))
-    scans = load_scans(tmp_path)
-    assert [s.image.python_version for s in scans] == ["3.12", "3.13t"]
-    assert all(s.scanned for s in scans)
-    assert describe_images([s.image for s in scans], []) == (
-        "ray py3.12, py3.13t · cpu · x86_64"
-    )
 
 
 def test_group_findings_dedupes_across_images_and_skips_noise(tmp_path: Path):
