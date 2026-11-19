@@ -37,3 +37,9 @@ def test_e2e_headers_from_the_actor_pool(split_csv):
         assert sorted(row[f"id{f}"] for row in rows if row[f"id{f}"] is not None) == (
             list(range(_N_ROWS))
         )
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
