@@ -511,8 +511,9 @@ class OnlineBinPacker(FilePartitioner):
         # unit ids, one group for a file listed once and N groups for a path
         # listed N times, since the reader scans each row's unit set once.
         # Each group's runs are then merged in unit order, starting a new row
-        # wherever ``fully_matched`` changes. Every row keeps the on-disk file
-        # size the listing gave it; a run's bytes live in its chunk metadata.
+        # where the reader switches from stubbing to reading. Every row keeps
+        # the on-disk file size the listing gave it; a run's bytes live in its
+        # chunk metadata.
         files: List[FileInfo] = []
         chunk_metadatas: List[Optional[ChunkMetadata]] = []
         extra_columns: List[Optional[pa.Table]] = []

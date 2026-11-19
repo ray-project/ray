@@ -453,6 +453,22 @@ def test_count_possible_workers():
     )
 
 
+def test_count_possible_workers_with_fractional_resources():
+    """Fractional per-worker resources pack as many workers as the scheduler fits."""
+    scaling_config = ScalingConfig(
+        num_workers=(1, 20),
+        resources_per_worker={"CPU": 0.1},
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+
+    # In floats, 1 // 0.1 == 9.0 and 0.3 // 0.1 == 2.0.
+    assert policy._count_possible_workers(_make_reserved({"CPU": 1}, 1)) == 10
+    assert policy._count_possible_workers(_make_reserved({"CPU": 0.3}, 2)) == 6
+    # The autoscaling coordinator sums ten 0.1 CPU bundles to 0.9999999999999999.
+    ten_bundles = sum([0.1] * 10)
+    assert policy._count_possible_workers(_make_reserved({"CPU": ten_bundles}, 1)) == 10
+
+
 def test_count_possible_workers_with_zero_resources():
     max_workers = 4
     scaling_config = ScalingConfig(

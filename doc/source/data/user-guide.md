@@ -30,6 +30,7 @@ working-with-llms
 how-to-avoid-ooms
 monitoring-your-workload
 execution-configurations
+fault-tolerance
 concurrent-dataset-execution
 batch-inference
 performance-tips

@@ -32,6 +32,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -245,7 +246,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             file_infos,
             filesystem=filesystem,
             pruners=pruners,
-            preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
@@ -286,7 +286,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             file_infos,
             filesystem=filesystem,
             pruners=pruners,
-            preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
@@ -301,7 +300,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         *,
         filesystem: Optional["FileSystem"],
         pruners: Optional[List["FilePruner"]],
-        preserve_order: bool,
         predicate: Optional["Expr"],
         limit: Optional[int],
         projected_columns: Optional[List[str]],
@@ -333,7 +331,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             predicate=read_predicate,
             limit=limit,
             columns=projected_columns,
-            preserve_order=preserve_order,
+            preserve_order=DataContext.get_current().execution_options.preserve_order,
         )
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
@@ -356,9 +354,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             self._io_concurrency,
         )
         try:
-            manifests = self._read_footers(
-                actors, file_infos, limit, preserve_order=preserve_order
-            )
+            manifests = self._read_footers(actors, file_infos, limit)
             if shuffle_row_groups:
                 assert shuffle_config is not None
                 manifests = _shuffle_row_group_runs(
@@ -378,8 +374,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         actors: List["ActorProxy[FooterReader]"],
         file_infos: "Iterable[FileInfo]",
         limit: Optional[int],
-        *,
-        preserve_order: bool = False,
     ) -> Iterator[FileManifest]:
         # Bound the number of in-flight footer batches so listing stays roughly
         # demand-driven (matters under a limit) and memory stays flat.
@@ -402,7 +396,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             gen: ray.ObjectRefGenerator = actor.read_footers.remote(
                 batch,
                 result_batch_size=self._result_batch_size,  # pyrefly: ignore[unexpected-keyword]
-                preserve_order=preserve_order,  # pyrefly: ignore[unexpected-keyword]
             )
             pending.append(gen)
             batch_no += 1
