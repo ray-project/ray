@@ -532,10 +532,17 @@ class OnlineBinPacker(FilePartitioner):
         for file in files:
             assert file.size is not None
             sizes.append(file.size)
+        # The bin's read task requests its runs' summed memory estimates; nothing
+        # when the bin holds a whole file or a run without an estimate.
+        runs = [item.run for item in bin_.items if item.run is not None]
+        consumer_memory_bytes = (
+            _sum_memory(runs) if len(runs) == len(bin_.items) else None
+        )
         return FileManifest.construct_manifest(
             paths=[file.path for file in files],
             sizes=sizes,
             chunk_metadatas=chunk_metadatas,
+            consumer_memory_bytes=consumer_memory_bytes,
             extra_columns=_concat_extra_columns(extra_columns),
         )
 

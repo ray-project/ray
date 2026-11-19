@@ -7,7 +7,12 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
+from ray.data.block import (
+    CONSUMER_MEMORY_BYTES_METADATA_KEY,
+    Block,
+    BlockAccessor,
+    BlockColumnAccessor,
+)
 
 # The per-row chunk metadata a ``FileManifest`` carries: ``None`` for a whole
 # file, else the dict form of a ``FileChunk`` (see ``FileChunk.to_metadata``).
@@ -256,6 +261,7 @@ class FileManifest:
         sizes: List[int],
         chunk_metadatas: List[Optional[ChunkMetadata]],
         extra_columns: Optional[pa.Table] = None,
+        consumer_memory_bytes: Optional[int] = None,
     ) -> "FileManifest":
         """Build a manifest from the required columns, plus any source columns.
 
@@ -266,6 +272,8 @@ class FileManifest:
             extra_columns: The source's own columns (see
                 :attr:`extra_columns`), one row each, in the same row order.
                 Appended as-is, so their Arrow types survive the round trip.
+            consumer_memory_bytes: The reading task's estimated memory, stored
+                in the block's schema metadata.
 
         Returns:
             A manifest whose rows are ``paths`` in the order given.
@@ -285,4 +293,9 @@ class FileManifest:
             ), f"{extra_columns.num_rows} extra-column rows for {len(paths)} paths"
             for field in extra_columns.schema:
                 block = block.append_column(field, extra_columns[field.name])
+        if consumer_memory_bytes is not None:
+            value = str(consumer_memory_bytes).encode()
+            block = block.replace_schema_metadata(
+                {CONSUMER_MEMORY_BYTES_METADATA_KEY: value}
+            )
         return cls(block)

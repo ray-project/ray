@@ -392,6 +392,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         isolate_workers: bool = False,
         is_read_op: bool = False,
         output_partitioning: Optional[HashPartitioning] = None,
+        memory_from_input_estimate: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -434,6 +435,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 large PyArrow memory allocations.
             is_read_op: Whether this op reads from a datasource.
             output_partitioning: See ``PhysicalOperator.output_partitioning``.
+            memory_from_input_estimate: If ``True``, each task requests as its
+                logical ``memory`` the estimate its input blocks carry in
+                ``BlockMetadata.consumer_memory_bytes``. Task pools only, since an
+                actor's memory is fixed when it is created.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -481,6 +486,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 on_start=on_start,
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                memory_from_input_estimate=memory_from_input_estimate,
             )
             op.is_read_op = is_read_op
         elif isinstance(compute_strategy, ActorPoolStrategy):
