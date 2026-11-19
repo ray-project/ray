@@ -586,10 +586,23 @@ def _reconcile_field(
         if pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)
     ]
     if null_lists:
-        # Find first non-null list type
-        for t in non_null_types:
-            if not (pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)):
-                return t
+        remaining = [t for t in non_null_types if t not in null_lists]
+        if not remaining:
+            return None
+        if len(remaining) == 1:
+            return remaining[0]
+        # More than one concrete type remains. Returning the first one makes the
+        # result depend on the order the schemas happen to arrive in and silently
+        # drops the others (e.g. `list<int64>` next to `list<int32>`), so unify
+        # them instead and let PyArrow report a genuine conflict.
+        try:
+            unified = _unify_schemas_pyarrow(
+                [pyarrow.schema([pyarrow.field("item", t)]) for t in remaining],
+                promote_types,
+            )
+        except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid):
+            return None
+        return unified.field("item").type
     # At this phase, we have no special types to reconcile, so return None. Arrow will fail to unify.
     return None
 

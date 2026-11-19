@@ -840,6 +840,8 @@ humanize==4.15.0
     # via -r python/requirements/cloud-requirements.txt
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r python/requirements/ml/tune-requirements.txt
+hypothesis==6.170.15 ; python_version >= "3.11"
+    # via -r python/requirements/ml/data-test-requirements.txt
 identify==2.6.19
     # via pre-commit
 idna==3.18
@@ -2227,6 +2229,7 @@ snowflake-connector-python==4.3.0
 sortedcontainers==2.4.0
     # via
     #   distributed
+    #   hypothesis
     #   snowflake-connector-python
 soundfile==0.13.1
     # via -r python/requirements/ml/data-test-requirements.txt
