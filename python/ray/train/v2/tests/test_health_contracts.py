@@ -27,6 +27,7 @@ class HostTemp(NodeProbe):
 
 class Named(NodeProbe):
     name = "custom"
+    timeout_s = 5.0
 
     def poll(self):
         return ProbeResult()
@@ -54,6 +55,11 @@ class Healthy(Evaluator):
 def test_probe_name_defaults_to_the_class_name():
     assert HostTemp.probe_name() == "HostTemp"
     assert Named.probe_name() == "custom"
+
+
+def test_probe_timeout_s_defaults_to_60s():
+    assert HostTemp.timeout_s == 60.0
+    assert Named.timeout_s == 5.0
 
 
 def test_probe_result_defaults_to_no_timestamp_and_no_error():
