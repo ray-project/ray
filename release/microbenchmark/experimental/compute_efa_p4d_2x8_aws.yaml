@@ -8,6 +8,13 @@ flags:
     efa_config:
         device_count: 1
 
+# The cluster stays in one zone, which EFA needs. us-west-2a is left out: it
+# regularly has no on-demand p4d.24xlarge capacity.
+zones:
+    - us-west-2b
+    - us-west-2c
+    - us-west-2d
+
 head_node:
     instance_type: m5.2xlarge
 

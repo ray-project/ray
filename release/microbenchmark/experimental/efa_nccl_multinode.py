@@ -44,7 +44,7 @@ SIZES = [
     ("1GB", 1 << 30),
 ]
 
-PROVIDER_RE = re.compile(r"NET/OFI.*Selected [Pp]rovider is (\S+)")
+PROVIDER_RE = re.compile(r"NET/OFI.*Selected [Pp]rovider is (\w+)")
 PLUGIN_VERSION_RE = re.compile(r"NET/OFI Initializing aws-ofi-nccl (\S+)")
 NCCL_VERSION_RE = re.compile(r"NCCL version (\S+)")
 
