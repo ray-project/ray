@@ -9,6 +9,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.actor_pool import (
+    LazyActorPool,
     dispatch_batches,
     reader_actor_pool,
 )
@@ -34,10 +35,6 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
-    from ray.actor import ActorProxy
-    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        FooterReader,
-    )
     from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
@@ -47,9 +44,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# A pool of footer-reading actors spread across the cluster, provisioned once
-# per ``list_files`` call. Footer reads are network-bound, so several actors each
-# driving many concurrent reads keeps IO from bottlenecking on a single node.
+# A pool of footer-reading actors spread across the cluster, made once per
+# ``list_files`` call when the first footer batch is dispatched. Footer reads
+# are network-bound, so several actors each driving many concurrent reads
+# keeps IO from bottlenecking on a single node.
 _DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 8)
 _DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_PARQUET_FOOTER_IO_CONCURRENCY", 128)
 # Files per ``read_footers`` call. Small footers -> batch several per task to
@@ -330,13 +328,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             partitioning=self._partitioning,
             partition_pruner=partition_pruner,
             logical_schema=self._logical_schema,
-        ) as actors:
-            logger.debug(
-                "Provisioned %d FooterReader actors (io_concurrency=%d)",
-                self._num_actors,
-                self._io_concurrency,
-            )
-            manifests = self._read_footers(actors, file_infos, limit)
+        ) as pool:
+            manifests = self._read_footers(pool, file_infos, limit)
             if shuffle_row_groups:
                 assert shuffle_config is not None
                 manifests = _shuffle_row_group_runs(
@@ -348,14 +341,14 @@ class FooterFileIndexer(NonSamplingFileIndexer):
 
     def _read_footers(
         self,
-        actors: List["ActorProxy[FooterReader]"],
+        pool: LazyActorPool,
         file_infos: "Iterable[FileInfo]",
         limit: Optional[int],
     ) -> Iterator[FileManifest]:
-        def submit(actor: "ActorProxy[FooterReader]", batch: List[FileInfo]) -> Any:
+        def submit(pool: LazyActorPool, batch: List[FileInfo]) -> Any:
             # Streaming ``@ray.method``; stub types ``.remote`` as ``ObjectRef``
             # and don't preserve the method's keyword args.
-            return actor.read_footers.remote(
+            return pool.next_actor().read_footers.remote(
                 batch,
                 result_batch_size=self._result_batch_size,  # pyrefly: ignore[unexpected-keyword]
             )
@@ -365,7 +358,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         # limit) and memory flat; the pool is killed even on an early return.
         window = max(1, self._max_inflight_batches)
         for _batch, gen in dispatch_batches(
-            actors, self._batches(file_infos), submit, window=window
+            pool, self._batches(file_infos), submit, window=window
         ):
             for ref in gen:  # blocks until this generator's next result lands
                 for chunked_file in ray.get(ref):

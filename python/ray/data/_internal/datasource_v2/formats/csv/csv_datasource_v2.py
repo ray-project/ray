@@ -13,6 +13,7 @@ from typing_extensions import override
 import ray
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.actor_pool import (
+    LazyActorPool,
     dispatch_batches,
     reader_actor_pool,
 )
@@ -62,8 +63,6 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
-    from ray.actor import ActorProxy
-
 logger = logging.getLogger(__name__)
 
 # ``read_csv`` keyword arguments this datasource takes; any other goes to V1.
@@ -83,8 +82,9 @@ class CsvFileIndexer(LineChunkFileIndexer):
     A chunk after the first has no header, so the indexer reads the split
     file's header line once and puts its column names in every chunk's
     metadata. Header reads run in a spread actor pool, as Parquet indexers
-    read footers; ``RAY_DATA_CSV_HEADER_NUM_ACTORS=0`` reads them inline in
-    the listing task instead.
+    read footers, made when the first split file is listed so small files
+    pay no actor startup; ``RAY_DATA_CSV_HEADER_NUM_ACTORS=0`` reads them
+    inline in the listing task instead.
     """
 
     def __init__(
@@ -139,10 +139,9 @@ class CsvFileIndexer(LineChunkFileIndexer):
                 filesystem=self._filesystem,
                 file_format=self._header_format,
                 io_concurrency=self._io_concurrency,
-            ) as actors:
-                logger.debug("Provisioned %d HeaderReader actors", self._num_actors)
+            ) as pool:
                 yield from super()._process_file_infos_to_manifests(
-                    self._with_prefetched_headers(file_infos, actors)
+                    self._with_prefetched_headers(file_infos, pool)
                 )
         finally:
             self._header_names = {}
@@ -150,24 +149,28 @@ class CsvFileIndexer(LineChunkFileIndexer):
     def _with_prefetched_headers(
         self,
         file_infos: Iterable[FileInfo],
-        actors: List["ActorProxy[HeaderReader]"],
+        pool: LazyActorPool,
     ) -> Iterable[FileInfo]:
-        """Yield files in order, their headers read ahead by the actor pool."""
+        """Yield files in order, their headers read ahead by the actor pool.
+
+        The pool is made when the first split file is listed, so a listing
+        of only small files starts no actors.
+        """
 
         def submit(
-            actor: "ActorProxy[HeaderReader]", batch: List[FileInfo]
+            pool: LazyActorPool, batch: List[FileInfo]
         ) -> Optional[Tuple[List[FileInfo], "ray.ObjectRef"]]:
             with_headers = [info for info in batch if self._needs_header(info)]
             if not with_headers:
                 return None
             # ``ActorProxy`` stubs type ``.remote`` narrower than it is.
-            ref = actor.read_headers.remote(
+            ref = pool.next_actor().read_headers.remote(
                 with_headers
             )  # pyrefly: ignore[missing-attribute]
             return with_headers, ref
 
         batches = batch_file_infos(file_infos, self._header_batch_size)
-        for batch, headers in dispatch_batches(actors, batches, submit):
+        for batch, headers in dispatch_batches(pool, batches, submit):
             if headers is not None:
                 with_headers, ref = headers
                 for info, names in zip(with_headers, ray.get(ref)):

@@ -22,6 +22,7 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
 from ray.data._internal.datasource_v2.common.size_estimators import (
     OnDiskSizeEstimator,
 )
+from ray.data._internal.datasource_v2.formats.csv import csv_datasource_v2
 from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
     CsvDatasourceV2,
     CsvFileIndexer,
@@ -129,6 +130,35 @@ def test_names_a_split_file_from_its_own_header(tmp_path, small_chunks):
 
     rows = {(row["id"], row["name"]) for row in table.to_pylist()}
     assert rows == {(1, "x")} | {(i, f"n{i}") for i in range(100)}
+
+
+def test_starts_no_actors_when_no_file_is_split(tmp_path, monkeypatch):
+    # Listing only inline-sized files must not provision the header pool.
+    provisioned = []
+
+    class _FakeActorClass:
+        @staticmethod
+        def options(**_options):
+            class _Builder:
+                @staticmethod
+                def remote(**kwargs):
+                    provisioned.append(kwargs)
+                    return object()
+
+            return _Builder
+
+    monkeypatch.setattr(csv_datasource_v2, "HeaderReaderActor", _FakeActorClass)
+    monkeypatch.setenv("RAY_DATA_CSV_HEADER_NUM_ACTORS", "2")
+    paths = [_write(tmp_path / f"{i}.csv", f"id{i},x\n1,2\n") for i in range(3)]
+    datasource = CsvDatasourceV2(paths)
+
+    list(
+        datasource._get_file_indexer().list_files(
+            pa.array(paths), filesystem=datasource.filesystem
+        )
+    )
+
+    assert provisioned == []
 
 
 def test_lists_a_split_file_with_its_column_names(tmp_path, small_chunks):
