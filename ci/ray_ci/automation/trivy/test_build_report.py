@@ -34,6 +34,7 @@ BUILD_ENV = {
     "BUILDKITE_COMMIT": COMMIT,
 }
 CLEAN_RESULT = {
+    "SchemaVersion": 2,
     "Results": [{"Target": "debian", "Class": "os-pkgs", "Packages": [{}]}],
 }
 
