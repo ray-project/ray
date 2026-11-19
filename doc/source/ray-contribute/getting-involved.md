@@ -35,11 +35,11 @@ agent-development
 
 Ray is more than a framework for distributed applications. It's also an active community of developers, researchers, and folks who love machine learning.
 
+You can join (and Star!) us [on GitHub](https://github.com/ray-project/ray).
+
 :::{tip}
 Ask questions on [our forum](https://discuss.ray.io/)! The community is extremely active in helping people succeed in building their Ray applications.
 :::
-
-You can join (and Star!) us [on GitHub](https://github.com/ray-project/ray).
 
 ## Contributing to Ray
 
@@ -115,23 +115,21 @@ To merge a contribution, complete the following steps:
 3. If introducing a new feature or patching a bug, be sure to add new test cases in the relevant file in `ray/python/ray/tests/`.
 4. Document the code. Document public functions, and remember to provide a usage example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
 5. Address comments on your PR. During the review process you may need to address merge conflicts with other changes. To resolve merge conflicts, run `git pull . upstream/master` on your branch. Don't use rebase, because it's less friendly to the GitHub review tool. We squash all commits on merge.
-6. Reviewers approve and merge the pull request. Be sure to ping them if the pull request is getting stale.
+6. After reviewers approve the pull request and the full CI test suite passes, the PR merges. See [PR review process](#pr-review-process).
 
 ## PR review process
 
-### For contributors in the `ray-project` organization
+The process is the same whether or not you're a member of the `ray-project` organization:
 
-- When you first create a PR, add a reviewer to the `assignee` section.
-- Assignees review your PR and add the `@author-action-required` label if further action is required.
-- Address their comments and remove the `@author-action-required` label from the PR.
-- Repeat this process until assignees approve your PR.
-- Once the PR is approved, the author is in charge of ensuring the PR passes the build. Add the `test-ok` label if the build succeeds.
-- Committers merge the PR once the build passes.
+- When you open a PR or mark a draft PR as ready for review, GitHub automatically requests reviews from the code owners of the files you changed. [`.github/CODEOWNERS`](https://github.com/ray-project/ray/blob/master/.github/CODEOWNERS) lists them. You don't need to assign anyone.
+- Reviewers leave comments and mark the PR as **Changes requested** if it needs more work.
+- Address their comments, push your changes, and **re-request review** so reviewers know the PR is ready for another look.
+- Repeat until the reviewers approve the PR.
+- After reviewers approve the PR, a committer adds the `go` label, which runs the full CI test suite. Enabling auto-merge also adds the `go` label.
+- If the full CI test suite fails, fix the failures. The PR merges after CI passes.
+- If nobody has reviewed your PR after a few days, ping the reviewers in a comment.
 
-### For contributors not in the `ray-project` organization
-
-- Your PRs will have assignees shortly. Assignees of PRs actively engage with contributors to merge the PR.
-- Actively ping assignees after you address your comments!
+If you used an AI coding agent, your PR description must also follow the policy in [AI-assisted contributions](#ai-assisted-contributions).
 
 ## Testing
 
@@ -179,7 +177,7 @@ In general, we follow the [Google style guide](https://google.github.io/stylegui
 
 For Python documentation, we follow a subset of the [Google pydoc format](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html). The following code snippets demonstrate the canonical Ray pydoc formatting:
 
-```{testcode}
+```python
 def ray_canonical_doc_style(param1: int, param2: str) -> bool:
     """First sentence MUST be inline with the quotes and fit on one line.
 
@@ -208,7 +206,7 @@ def ray_canonical_doc_style(param1: int, param2: str) -> bool:
     """
 ```
 
-```{testcode}
+```python
 class RayClass:
     """The summary line for a class docstring should fit on one line.
 

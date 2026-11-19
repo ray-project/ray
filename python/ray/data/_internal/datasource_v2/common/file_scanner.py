@@ -18,7 +18,7 @@ from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
     _validate_shuffle_arg,
 )
-from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
+from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
@@ -58,12 +58,17 @@ class FileScanner(Scanner[FileManifest], SupportsPartitionPruning):
     def __post_init__(self) -> None:
         _validate_shuffle_arg(self.shuffle)
 
+    def _synthesized_column_names(self) -> Set[str]:
+        return {column.name for column in getattr(self, "synthesized_columns", ())}
+
     @property
     def partition_columns(self) -> Set[str]:
-        """Return the set of partition column names, or empty if unpartitioned."""
+        """Return partition columns not replaced by enabled synthesized columns."""
         if self.partitioning is None:
             return set()
-        return set(self.partitioning.field_names or [])
+        return (
+            set(self.partitioning.field_names or []) - self._synthesized_column_names()
+        )
 
     @override
     def prune_partitions(self, predicate: "Expr") -> "FileScanner":
@@ -93,8 +98,11 @@ class FileScanner(Scanner[FileManifest], SupportsPartitionPruning):
 
     @override
     def pushed_partition_pruner(self) -> Optional["FilePruner"]:
+        return self._create_partition_pruner()
+
+    def _create_partition_pruner(self) -> Optional["FilePruner"]:
+        """Build the read-side pruner independently of the optional listing hook."""
         if self.partition_predicate is None or self.partitioning is None:
-            # No spec, no partition values -- same guard as ``prune_input_split``.
             return None
         return PartitionPredicatePruner(self.partitioning, self.partition_predicate)
 
@@ -106,14 +114,14 @@ class FileScanner(Scanner[FileManifest], SupportsPartitionPruning):
         Partition values are parsed out of each file path by
         :class:`PathPartitionParser`.
         """
-        if self.partition_predicate is None or self.partitioning is None:
+        pruner = self._create_partition_pruner()
+        if pruner is None:
             return input_split
 
-        parser = PathPartitionParser(self.partitioning)
         keep_indices = []
 
         for i, path in enumerate(input_split.paths):
-            if parser.evaluate_predicate_on_partition(path, self.partition_predicate):
+            if pruner.should_include(path):
                 keep_indices.append(i)
 
         if len(keep_indices) == len(input_split):

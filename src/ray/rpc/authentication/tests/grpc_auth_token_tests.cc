@@ -17,8 +17,11 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
@@ -42,13 +45,7 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
                             const std::string &client_token) {
     // Set client token in environment for ClientCallManager to read from
     // AuthenticationTokenLoader
-    if (!client_token.empty()) {
-      ray::SetEnv("RAY_AUTH_TOKEN", client_token);
-    } else {
-      RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
-      AuthenticationTokenLoader::instance().ResetCache();
-      ray::UnsetEnv("RAY_AUTH_TOKEN");
-    }
+    ray::SetEnv("RAY_AUTH_TOKEN", client_token);
 
     // Start client thread FIRST
     client_thread_ = std::make_unique<std::thread>([this]() {
@@ -150,6 +147,23 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
   }
 
  protected:
+  // Ping through a plain stub, which sends exactly the given metadata, unlike the
+  // GrpcClient, which attaches the loader's token.
+  grpc::Status PingWithMetadata(
+      const std::vector<std::pair<std::string, std::string>> &metadata) {
+    auto stub = TestService::NewStub(
+        grpc::CreateChannel("127.0.0.1:" + std::to_string(grpc_server_->GetPort()),
+                            grpc::InsecureChannelCredentials()));
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    for (const auto &[key, value] : metadata) {
+      context.AddMetadata(key, value);
+    }
+    PingRequest request;
+    PingReply reply;
+    return stub->Ping(&context, request, &reply);
+  }
+
   VOID_RPC_CLIENT_METHOD(TestService, Ping, grpc_client_, /*method_timeout_ms*/ -1, )
 
   TestServiceHandler test_service_handler_;
@@ -189,28 +203,41 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureWrongToken) {
 }
 
 TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureMissingToken) {
-  // Server expects token, client doesn't send one (empty token)
-  SetUpServerAndClient("server_token", "");
+  SetUpServerAndClient("server_token", "server_token");
 
-  auto result = ExecutePingAndWait();
+  auto status = PingWithMetadata({});
 
-  ASSERT_TRUE(result.completed) << "Request did not complete in time";
-  // If the server has a token but the client doesn't, auth should fail
-  ASSERT_FALSE(result.success)
-      << "Request should fail when client doesn't provide required token";
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::UNAUTHENTICATED)
+      << status.error_message();
+}
+
+TEST_F(TestGrpcServerClientTokenAuthFixture, TestServerWithAuthDisabledRejectsToken) {
+  SetUpServerAndClient("", "client_token");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
+
+  auto status = PingWithMetadata({{"authorization", "Bearer client_token"}});
+
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::UNAUTHENTICATED);
+  ASSERT_EQ(status.error_message(), kTokenAuthErrorMessage);
 }
 
 TEST_F(TestGrpcServerClientTokenAuthFixture,
-       TestClientProvidesTokenServerDoesNotRequire) {
-  // Client provides token, but server doesn't require one (should succeed)
+       TestK8sTokenAuthWithEmptyServerTokenIsNotTreatedAsDisabled) {
+  // Kubernetes token auth runs in token mode with an empty server token.
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": true})");
+  AuthenticationTokenLoader::instance().ResetCache();
   SetUpServerAndClient("", "client_token");
 
   auto result = ExecutePingAndWait();
 
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
   ASSERT_TRUE(result.completed) << "Request did not complete in time";
-  // Server should accept request even though client sent unnecessary token
-  ASSERT_TRUE(result.success)
-      << "Request should succeed when server doesn't require token";
+  ASSERT_FALSE(result.success);
+  // Rejected by token validation (no Kubernetes API here), not as a disabled server.
+  ASSERT_NE(result.error_msg.find("InvalidAuthToken"), std::string::npos)
+      << "Got: " << result.error_msg;
 }
 
 }  // namespace rpc

@@ -2,11 +2,12 @@ import collections
 import inspect
 import logging
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union, overload
 
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
 from starlette.types import ASGIApp
+from typing_extensions import TypedDict, Unpack
 
 import ray
 from ray import cloudpickle
@@ -32,6 +33,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     MULTIPLEXED_FUNCTION_MARKER_ATTR,
+    ROUTER_APPLICATION_MARKER_ATTR,
     Default,
     copy_class_metadata,
     ensure_serialization_context,
@@ -113,7 +115,11 @@ def start(
             controller & proxy).
         tracing_config: Tracing config for distributed tracing. Can be passed as
             a dictionary or a ``TracingConfig`` instance. See ``TracingConfig``
-            for supported options.
+            for supported options. Tracing configuration is fixed when Serve
+            starts; to change it, shut down and restart Serve. Calling
+            ``serve.start`` again with a different config raises an error. A
+            custom exporter is called once in the controller to validate it,
+            so an exporter that raises fails ``serve.start``.
         controller_options: [EXPERIMENTAL] Options for the Serve controller actor.
           Currently scoped to a strictly-validated ``runtime_env.env_vars``
           (other ``runtime_env`` keys are rejected). See
@@ -518,6 +524,67 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     return decorator
 
 
+def _router_application(cls: Type[Any]) -> Type[Any]:
+    """Mark a deployment class as an application-level router.
+
+    HAProxy asks the ingress of an application whose class carries this marker for
+    ``{"application", "replica_id"}`` and sends the request to that replica.
+    Routing decisions must be returned as non-streaming JSON responses.
+
+    Internal-only, unstable hook for Serve LLM direct streaming.
+    """
+    if not isinstance(cls, type):
+        raise TypeError(
+            "@serve._router_application can only decorate a class, got "
+            f"{type(cls).__name__}."
+        )
+    setattr(cls, ROUTER_APPLICATION_MARKER_ATTR, True)
+    return cls
+
+
+# Keyword options accepted by `deployment`. Kept in sync with its signature
+# below; used only to type the `@overload`s.
+class _DeploymentOptions(TypedDict, total=False):
+    name: Default[str]
+    version: Default[str]
+    num_replicas: Default[Optional[Union[int, str]]]
+    ray_actor_options: Default[Dict]
+    placement_group_bundles: Default[List[Dict[str, float]]]
+    placement_group_strategy: Default[str]
+    placement_group_bundle_label_selector: Default[List[Dict[str, str]]]
+    max_replicas_per_node: Default[int]
+    user_config: Default[Optional[Any]]
+    max_ongoing_requests: Default[int]
+    max_queued_requests: Default[int]
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]]
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]]
+    graceful_shutdown_wait_loop_s: Default[float]
+    graceful_shutdown_timeout_s: Default[float]
+    health_check_period_s: Default[float]
+    health_check_timeout_s: Default[float]
+    logging_config: Default[Union[Dict, LoggingConfig, None]]
+    request_router_config: Default[Union[Dict, RequestRouterConfig, None]]
+    max_constructor_retry_count: Default[int]
+    gang_scheduling_config: Default[Union[Dict, GangSchedulingConfig, None]]
+    deployment_actors: Default[Optional[List[Union[Dict, DeploymentActorConfig]]]]
+    rolling_update_percentage: Default[float]
+    max_surge_percent: Default[int]
+
+
+@overload
+def deployment(
+    _func_or_class: Callable, /, **options: Unpack[_DeploymentOptions]
+) -> Deployment:
+    ...
+
+
+@overload
+def deployment(
+    _func_or_class: None = None, /, **options: Unpack[_DeploymentOptions]
+) -> Callable[[Callable], Deployment]:
+    ...
+
+
 @PublicAPI(stability="stable")
 def deployment(
     _func_or_class: Optional[Callable] = None,
@@ -553,7 +620,7 @@ def deployment(
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
     max_surge_percent: Default[int] = DEFAULT.VALUE,
-) -> Callable[[Callable], Deployment]:
+) -> Union[Deployment, Callable[[Callable], Deployment]]:
     """Decorator that converts a Python class to a `Deployment`.
 
     Example:
@@ -894,6 +961,24 @@ def _run(
 
     This is only used internally with the _blocking not totally blocking the following
     code indefinitely until Ctrl-C'd.
+
+    Args:
+        target: A Serve application returned by ``Deployment.bind()``.
+        _blocking: Whether to wait until the application is running.
+        name: Application name.
+        route_prefix: Route prefix for HTTP requests. If None, the application
+            isn't exposed over HTTP.
+        logging_config: Application logging config, applied to deployments
+            that don't set their own.
+        _local_testing_mode: Internal flag for running the application in
+            local-testing mode.
+        external_scaler_enabled: Whether external autoscaling is enabled for
+            this application.
+        controller_options: Options for the Serve controller actor. Only
+            applied when this call creates the controller.
+
+    Returns:
+        A handle to the application's ingress deployment.
     """
     return _run_many(
         [
@@ -981,6 +1066,16 @@ def run(
         handle = serve.run(MyDeployment.bind())
         ray.get(handle.remote())
 
+    `serve.run` deploys imperatively: it deploys an application object. Serve
+    can't tell which version of the code an application object holds, so every
+    `serve.run` call redeploys the whole application, replacing all of its
+    replicas, even when only a deployment option such as `num_replicas` changed.
+    To update a running application in place, deploy it declaratively instead,
+    from a config file with `serve deploy` or through the REST API: Serve then
+    applies a lightweight config change, such as `num_replicas`,
+    `autoscaling_config` or `user_config`, to the running replicas without
+    restarting them. See :ref:`serve-inplace-updates`.
+
     Args:
         target:
             A Serve application returned by `Deployment.bind()`.
@@ -1028,6 +1123,10 @@ def delete(name: str, _blocking: bool = True):
     """Delete an application by its name.
 
     Deletes the app with all corresponding deployments.
+
+    Args:
+        name: Name of the application to delete.
+        _blocking: Whether to wait until the application is deleted.
     """
     client = _get_global_client()
     client.delete_apps([name], blocking=_blocking)
@@ -1215,6 +1314,9 @@ def get_multiplexed_model_id() -> str:
             @serve.deployment
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
+
+    Returns:
+        The multiplexed model ID for the current request.
     """
     # First check if we're inside a batch context. If so, get the model ID
     # from the batch request context. All requests in a batch are guaranteed
@@ -1244,6 +1346,9 @@ def status() -> ServeStatus:
             serve.run(MyDeployment.bind())
             status = serve.status()
             assert status.applications["default"].status == "RUNNING"
+
+    Returns:
+        The status of Serve, or an empty status if Serve hasn't started.
     """
 
     client = _get_global_client(raise_if_no_controller_running=False)

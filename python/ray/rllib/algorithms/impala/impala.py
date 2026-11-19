@@ -72,40 +72,38 @@ LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 class IMPALAConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
-    .. testcode::
+    Examples:
+        >>> from ray.rllib.algorithms.impala import IMPALAConfig
+        >>> config = (
+        ...     IMPALAConfig()
+        ...     .environment("CartPole-v1")
+        ...     .env_runners(num_env_runners=1)
+        ...     .training(lr=0.0003, train_batch_size_per_learner=512)
+        ...     .learners(num_learners=1)
+        ... )
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
+        >>> del algo
 
-        from ray.rllib.algorithms.impala import IMPALAConfig
-
-        config = (
-            IMPALAConfig()
-            .environment("CartPole-v1")
-            .env_runners(num_env_runners=1)
-            .training(lr=0.0003, train_batch_size_per_learner=512)
-            .learners(num_learners=1)
-        )
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
-        del algo
-
-    .. testcode::
-
-        from ray.rllib.algorithms.impala import IMPALAConfig
-        from ray import tune
-
-        config = (
-            IMPALAConfig()
-            .environment("CartPole-v1")
-            .env_runners(num_env_runners=1)
-            .training(lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0)
-            .learners(num_learners=1)
-        )
-        # Run with tune.
-        tune.Tuner(
-            "IMPALA",
-            param_space=config,
-            run_config=tune.RunConfig(stop={"training_iteration": 1}),
-        ).fit()
+        >>> from ray.rllib.algorithms.impala import IMPALAConfig
+        >>> from ray import tune
+        >>> config = (
+        ...     IMPALAConfig()
+        ...     .environment("CartPole-v1")
+        ...     .env_runners(num_env_runners=1)
+        ...     .training(lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0)
+        ...     .learners(num_learners=1)
+        ... )
+        >>> # Run with tune.
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "IMPALA",
+        ...     param_space=config,
+        ...     run_config=tune.RunConfig(stop={"training_iteration": 1}),
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):

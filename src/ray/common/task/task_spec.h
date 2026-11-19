@@ -39,7 +39,7 @@ extern "C" {
 namespace ray {
 
 /// ConcurrencyGroup is a group of actor methods that shares
-/// a executing thread pool.
+/// an executing thread pool.
 struct ConcurrencyGroup {
   // Name of this group.
   std::string name_;
@@ -184,6 +184,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The tensor transport used to transfer the argument to the task
   /// executor.
   std::optional<std::string> ArgTensorTransport(size_t arg_index) const;
+
+  /**
+   * @brief Whether this task consumes the argument at the given index, which was
+   * created with consume_once.
+   *
+   * @param arg_index The index of the argument.
+   * @return True if the argument is moved to this task.
+   **/
+  bool ArgIsMove(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 

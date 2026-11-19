@@ -672,8 +672,7 @@ async def _controller_run_checkpoint(
 async def run_controller_benchmark(
     config: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """
-    Run the controller health metrics benchmark and return raw samples.
+    """Run the controller health metrics benchmark and return raw samples.
 
     Uses MetricsGenerator (autoscaling) -> HelloWorld (fixed) -> SignalActor
     to stress the controller as replicas scale. Fails if get_health_metrics

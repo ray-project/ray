@@ -337,8 +337,39 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --python-version 3.10 --build-name mlbuild-py3.10
         --parallelism-per-worker 2
-        --except-tags gpu,needs_credentials,train_v2_gpu,data_integration,torchft
+        --except-tags gpu,needs_credentials,train_v2_gpu,data_integration,torchft,minimal,soft_imports
     depends_on: [ "mlbuild-multipy(python=3.10)", "forge" ]
+    soft_fail: true
+
+  # minimal and soft_imports tests assert that ML dependencies are not installed,
+  # so they always fail in mlbuild. Run them in their own images when flaky.
+  - label: ":train: ml: train minimal flaky tests"
+    key: ml_train_minimal_flaky_tests
+    tags:
+      - train
+      - min_build
+      - flaky
+      - skip-on-premerge
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml --run-flaky-tests
+        --build-name minbuild-ml-py3.10 --python-version 3.10
+        --only-tags minimal
+    depends_on: [ "minbuild-ml(python=3.10)", "forge" ]
+    soft_fail: true
+
+  - label: ":train: ml: tune soft import flaky tests"
+    key: ml_tune_soft_imports_flaky_tests
+    tags:
+      - tune
+      - flaky
+      - skip-on-premerge
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml --run-flaky-tests
+        --build-name oss-ci-base_build-py3.10 --python-version 3.10
+        --only-tags soft_imports
+    depends_on: [ "oss-ci-base_build-multipy(python=3.10)", "forge" ]
     soft_fail: true
 
   - label: ":train: ml: flaky authentication tests"

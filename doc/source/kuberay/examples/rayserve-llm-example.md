@@ -30,7 +30,7 @@ Install the most recent stable KubeRay operator from the Helm repository by foll
 For additional security, instead of passing the HF access token directly as an environment variable, create a Kubernetes secret containing your Hugging Face access token. Download the Ray Serve LLM service config .yaml file using the following command:
 
 ```sh
-curl -o ray-service.llm-serve.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
+curl -o ray-service.llm-serve.yaml https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
 ```
 
 After downloading, update the value for `hf_token` to your private access token in the `Secret`.

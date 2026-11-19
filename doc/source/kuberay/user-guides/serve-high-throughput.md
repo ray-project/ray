@@ -21,13 +21,12 @@ With Ray 2.56 and later, high throughput config options are available for Ray Se
 - `RAY_SERVE_ENABLE_HA_PROXY=1`: Enables HAProxy ingress for the proxy ingress on each of the RayCluster's Pods (serving on port 8000 by default), which is a highly optimized, battle-tested open-source load balancer written in C.
 - `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`: Enables multiple high throughput serving optimizations, including direct gRPC data-plane communications between Ray Serve replicas, improving the performance of inter-deployment traffic.
 - `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1`: Enables direct streaming, allowing requests and responses to stream directly to the backend server instead of passing through an ingress.
-- `VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1`: Configures vLLM to use the Ray V2 executor backend.
 
 ## Example: Serving Qwen on GKE
 
-The following example demonstrates how to deploy Qwen 3.5 on four replicas with NVIDIA L4 GPUs using KubeRay on Google Kubernetes Engine (GKE) with [this sample RayService](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml).
+The following example demonstrates how to deploy Qwen 3.5 on four replicas with NVIDIA L4 GPUs using KubeRay on Google Kubernetes Engine (GKE) with [this sample RayService](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml).
 
-A corresponding sample for high-performance serving with [Gemma 4 E2B with NVIDIA B200s is also available here](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-gemma4.yaml).
+A corresponding sample for high-performance serving with [Gemma 4 E2B with NVIDIA B200s is also available here](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-gemma4.yaml).
 
 ### 1. Configure the environment
 
@@ -84,7 +83,7 @@ kubectl create secret generic hf-secret \
 Deploy the example high-throughput LLM service:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml
 ```
 
 To enable these optimizations on your own Ray Service, add these environment variables to both the head and worker group specifications:
@@ -109,8 +108,6 @@ spec:
                   value: "1"
                 - name: RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
                   value: "1"
-                - name: VLLM_USE_RAY_V2_EXECUTOR_BACKEND
-                  value: "1"
     workerGroupSpecs:
       - template:
           spec:
@@ -122,8 +119,6 @@ spec:
                   - name: RAY_SERVE_THROUGHPUT_OPTIMIZED
                     value: "1"
                   - name: RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
-                    value: "1"
-                  - name: VLLM_USE_RAY_V2_EXECUTOR_BACKEND
                     value: "1"
 ```
 

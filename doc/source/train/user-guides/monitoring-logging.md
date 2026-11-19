@@ -8,14 +8,17 @@ myst:
 
 # Monitor and log metrics
 
-To attach metrics to {ref}`checkpoints <train-checkpointing>` from the training function, call {func}`ray.train.report(metrics, checkpoint) <ray.train.report>`. Ray Train collects the results from the distributed workers and passes them to the Ray Train driver process for bookkeeping.
+{func}`ray.train.report(metrics, checkpoint) <ray.train.report>` persists a {ref}`checkpoint <train-checkpointing>` so that Ray Train can {ref}`restore training after a failure <train-fault-tolerance>`. Ray Train attaches the metrics that you pass to `ray.train.report` to that checkpoint. Ray Train doesn't persist metrics reported without a checkpoint.
 
-Reporting has two primary use cases:
+Ray Train uses the metrics attached to checkpoints for the following:
 
-* Metrics, such as accuracy and loss, at the end of each training epoch. See {ref}`train-dl-saving-checkpoints` for usage examples.
-* Validating checkpoints on a validation set with a validation function that you define. See {ref}`train-validating-checkpoints` for usage examples.
+* Ranking checkpoints so that Ray Train keeps the best ones. See {ref}`train-dl-configure-checkpoints`.
+* Validating checkpoints on a validation set with a validation function that you define. See {ref}`train-validating-checkpoints`.
+* Returning the metrics of the latest and best checkpoints in the {class}`~ray.train.Result`. See {ref}`train-inspect-results`.
 
-Ray Train attaches only the result that the rank 0 worker reports to the checkpoint. However, `train.report()` acts as a barrier to ensure consistency, so you must call it on each worker. To aggregate results from multiple workers, see {ref}`train-aggregating-results`.
+To track metrics such as loss and accuracy over the course of training, log them from the workers to an experiment tracking tool such as MLflow or W&B. See {ref}`train-experiment-tracking-native`.
+
+Ray Train attaches only the metrics that the rank 0 worker reports to the checkpoint. However, `ray.train.report` acts as a barrier to ensure consistency, so you must call it on each worker. To aggregate results from multiple workers, see {ref}`train-aggregating-results`.
 
 
 (train-aggregating-results)=

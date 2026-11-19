@@ -44,6 +44,7 @@ from ray.data._internal.logical.operators import (
     StreamingRepartition,
     Write,
 )
+from ray.data.block import CallableClass
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.util.annotations import DeveloperAPI
 
@@ -58,6 +59,24 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
 logger = logging.getLogger(__name__)
+
+
+def _udf_kind(op: AbstractMap) -> Optional[str]:
+    """Classify a map op's UDF as ``"sync"``, ``"async_class"``, or ``None``.
+
+    ``"async_class"`` is a callable class with an async ``__call__``: it hosts an
+    event loop on the map worker's thread. ``"sync"`` is a classless non-async
+    UDF, invoked straight from the worker's iterator. Callable-class sync UDFs
+    return ``None`` -- they run on the actor's own thread, so they are neither.
+    """
+    from ray.data._internal.planner.plan_udf_map_op import _is_async_udf
+
+    if not isinstance(op, AbstractUDFMap):
+        return None
+    fn = op.fn
+    if isinstance(fn, CallableClass):
+        return "async_class" if _is_async_udf(fn.__call__) else None
+    return None if _is_async_udf(fn) else "sync"
 
 
 class FuseOperators(Rule):
@@ -271,6 +290,27 @@ class FuseOperators(Rule):
         ]
         return dag
 
+    def _can_fuse_op_types(
+        self, up_op: PhysicalOperator, down_op: PhysicalOperator
+    ) -> bool:
+        """Whether the physical operator *types* of the pair are fusable.
+
+        Extension point factored out of :meth:`_can_fuse`. Subclasses may
+        widen the set of fusable type pairs (e.g. the actor-only backend
+        additionally allows Actor->Actor).
+        """
+        # We currently only support fusing for the following cases:
+        # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
+        # - TaskPoolMapOperator -> AllToAllOperator
+        # (only RandomShuffle and Repartition LogicalOperators are currently supported)
+        return (
+            isinstance(up_op, TaskPoolMapOperator)
+            and isinstance(down_op, (TaskPoolMapOperator, ActorPoolMapOperator))
+        ) or (
+            isinstance(up_op, TaskPoolMapOperator)
+            and isinstance(down_op, AllToAllOperator)
+        )
+
     def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:
         """Returns whether the provided downstream operator can be fused with the given
         upstream operator.
@@ -287,20 +327,7 @@ class FuseOperators(Rule):
         if not up_op.supports_fusion() or not down_op.supports_fusion():
             return False
 
-        # We currently only support fusing for the following cases:
-        # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
-        # - TaskPoolMapOperator -> AllToAllOperator
-        # (only RandomShuffle and Repartition LogicalOperators are currently supported)
-        if not (
-            (
-                isinstance(up_op, TaskPoolMapOperator)
-                and isinstance(down_op, (TaskPoolMapOperator, ActorPoolMapOperator))
-            )
-            or (
-                isinstance(up_op, TaskPoolMapOperator)
-                and isinstance(down_op, AllToAllOperator)
-            )
-        ):
+        if not self._can_fuse_op_types(up_op, down_op):
             return False
 
         down_logical_op = self._op_map[down_op]
@@ -403,12 +430,13 @@ class FuseOperators(Rule):
 
         if isinstance(up_op, DiskHashShuffleReduceOp):
             fused_op = DiskHashShuffleReduceOp(
-                up_op.input_dependencies,
+                up_op.input_dependencies[0],
                 up_op.data_context,
                 num_partitions=up_op._num_partitions,
                 reduce_fn=up_op._reduce_fn,
                 disallow_block_splitting=up_op._disallow_block_splitting,
                 reduce_ray_remote_args=up_op._reduce_ray_remote_args,
+                preserve_partition_order=up_op._preserve_partition_order,
                 peak_memory_multiplier=up_op._peak_memory_multiplier,
                 should_emit_empty_partitions=up_op._emit_empty_partitions,
                 # The fused map (filter/flat_map/...) may change the row count.
@@ -515,6 +543,7 @@ class FuseOperators(Rule):
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
             supports_fusion=True,
+            is_read_op=up_op.is_read_op or down_op.is_read_op,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -682,6 +711,8 @@ class FuseOperators(Rule):
             ray_remote_args_fn=ray_remote_args_fn,
             on_start=on_start,
             isolate_workers=isolate_workers,
+            # A fused op that contains a read stays a read op.
+            is_read_op=up_op.is_read_op or down_op.is_read_op,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -836,6 +867,18 @@ class FuseOperators(Rule):
                 downstream_op.compute,
             )
             is None
+        ):
+            return False
+
+        # Don't fuse a sync UDF into an async callable-class UDF: the latter hosts
+        # an event loop on the map worker's thread, so fusing would put the sync
+        # UDF on that loop thread and break user code calling ``asyncio.run()``
+        # (https://github.com/ray-project/ray/issues/57729). They also scale
+        # differently (IO-bound vs CPU-bound), so they make poor fusion
+        # candidates even aside from the event-loop issue.
+        if (
+            _udf_kind(upstream_op) == "sync"
+            and _udf_kind(downstream_op) == "async_class"
         ):
             return False
 

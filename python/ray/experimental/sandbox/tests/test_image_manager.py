@@ -3,10 +3,11 @@ import json
 import os
 import sys
 import tarfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.experimental.sandbox._internal import cdi_lib, overlayfs
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
@@ -73,6 +74,30 @@ def test_image_manager_pull_and_paths(tmp_path):
         assert tar.extractfile("./test.txt").read() == b"hello from image manager"
 
 
+def test_release_finds_the_pin_after_its_archive_is_deleted(tmp_path, monkeypatch):
+    """A relative archive path names the same cache entry once the archive is
+    gone, so the sandbox's release still drops its pin."""
+    from ray.experimental.sandbox._internal.image_utils import (
+        evict_least_recently_used_images,
+    )
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.chdir(tmp_path)
+    with tarfile.open("app.tar.gz", "w:gz") as tar:
+        info = tarfile.TarInfo("hello.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+    images_dir = str(tmp_path / "images")
+    manager = ImageManager(images_dir=images_dir)
+
+    image_dir = manager.pull_image("app.tar.gz", instance_id="sb-1")
+    os.remove("app.tar.gz")
+    manager.release_image("app.tar.gz", "sb-1")
+
+    evict_least_recently_used_images(images_dir, max_bytes=0)
+    assert not os.path.exists(image_dir)
+
+
 def test_image_manager_config_parsing(tmp_path):
     images_dir = str(tmp_path / "images")
     mgr = ImageManager(images_dir=images_dir)
@@ -133,17 +158,12 @@ def test_image_manager_create_oci_spec(tmp_path):
             f,
         )
 
-    host_workdir = str(tmp_path / "workspace")
-    os.makedirs(host_workdir, exist_ok=True)
-
     spec = mgr.create_oci_spec(
         image=str(local_tar),
         container_cwd="/workspace",
-        workdir_path=host_workdir,
         env_dict={"VAR2": "override2", "VAR3": "new3"},
         cpu=2.5,
         memory="1Gi",
-        readonly=True,
         _oci_spec_transform_fn=lambda s: {**s, "customField": "customValue"},
     )
 
@@ -154,8 +174,7 @@ def test_image_manager_create_oci_spec(tmp_path):
     )
     assert spec["annotations"]["dev.gvisor.spec.rootfs.type"] == "erofs"
     assert spec["root"]["path"] == os.path.join(extracted_dir, "root")
-    # readonly=True with an explicit workdir runs on a private writable
-    # overlay (runsc drops the rootfs overlay for read-only roots).
+    # Every sandbox writes to a private overlay over the image.
     assert spec["root"]["readonly"] is False
     assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
     assert spec["process"]["cwd"] == "/workspace"
@@ -168,9 +187,10 @@ def test_image_manager_create_oci_spec(tmp_path):
     assert "VAR2=default2" not in env_list
     assert "VAR3=new3" in env_list
 
-    # Verify mounts
+    # The workdir is only the cwd: it lives in the overlay, not in a mount.
     mount_dests = [m["destination"] for m in spec["mounts"]]
-    assert "/workspace" in mount_dests
+    assert "/workspace" not in mount_dests
+    assert "/tmp" not in mount_dests
 
     # Verify cpu and memory limits
     assert spec["linux"]["resources"]["cpu"]["quota"] == 250000
@@ -179,6 +199,115 @@ def test_image_manager_create_oci_spec(tmp_path):
 
     # Verify custom transform
     assert spec.get("customField") == "customValue"
+
+
+def _prepare_gpu_bundle(tmp_path, cdi_spec, **kwargs):
+    """Run prepare_oci_bundle with gpu_ids=["0"] and ``kwargs``, with
+    cdi.get_spec patched to return ``cdi_spec``, and return the bundle's
+    config.json path."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "gpu_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+
+    with patch(
+        "ray.experimental.sandbox._internal.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        return mgr.prepare_oci_bundle(
+            root_dir=str(tmp_path / "bundle"),
+            container_cwd="/",
+            image=str(local_tar),
+            gpu_ids=["0"],
+            **kwargs,
+        )
+
+
+def test_prepare_oci_bundle_raises_when_no_cdi_spec_found(tmp_path):
+    """gpu_ids on a node with no GPU CDI spec fails and says so."""
+    with pytest.raises(SandboxCreationError, match="No CDI spec"):
+        _prepare_gpu_bundle(tmp_path, None)
+
+
+def test_prepare_oci_bundle_translates_cdi_error(tmp_path):
+    """A cdi_lib.CDIError, such as a gpu_ids entry with no matching CDI
+    device, surfaces as a SandboxCreationError."""
+    cdi_spec = cdi_lib.CDISpec("acme.com/widget", {"devices": []})
+    with pytest.raises(
+        SandboxCreationError, match="Failed to configure GPU access via CDI"
+    ):
+        _prepare_gpu_bundle(tmp_path, cdi_spec)
+
+
+def test_prepare_oci_bundle_injects_cdi_devices_for_any_kind(tmp_path):
+    """The image manager merges CDI edits for any kind. Whether a backend
+    supports a kind is that backend's concern (see
+    GVisorSandboxBackend._resolve_gpu_run_args)."""
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "kind": "acme.com/widget",
+            "devices": [
+                {
+                    "name": "0",
+                    "containerEdits": {
+                        "env": ["ACME=1"],
+                        "mounts": [
+                            {"hostPath": str(tmp_path), "containerPath": "/acme"}
+                        ],
+                        "hooks": [
+                            {
+                                "hookName": "createContainer",
+                                "path": sys.executable,
+                                "args": ["x"],
+                            }
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+    config_json_path = _prepare_gpu_bundle(tmp_path, cdi_spec)
+    with open(config_json_path, "r", encoding="utf-8") as f:
+        spec = json.load(f)
+
+    assert "ACME=1" in spec["process"]["env"]
+    assert {
+        "destination": "/acme",
+        "type": "bind",
+        "source": str(tmp_path),
+        "options": ["rbind", "ro"],
+    } in spec["mounts"]
+    assert {"path": sys.executable, "args": ["x"]} in spec["hooks"]["createContainer"]
+
+
+def test_prepare_oci_bundle_cdi_env_overrides_image_and_sandbox_env(tmp_path):
+    """A variable the CDI spec sets takes its CDI value, whatever the image
+    or the sandbox's env sets it to."""
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "kind": "acme.com/widget",
+            "containerEdits": {"env": ["FROM_IMAGE=cdi", "FROM_SANDBOX=cdi"]},
+            "devices": [{"name": "0", "containerEdits": {}}],
+        },
+    )
+    with patch.object(
+        ImageManager, "get_envs", return_value=["FROM_IMAGE=image", "KEEP=image"]
+    ):
+        config_json_path = _prepare_gpu_bundle(
+            tmp_path, cdi_spec, env_dict={"FROM_SANDBOX": "sandbox"}
+        )
+    with open(config_json_path, "r", encoding="utf-8") as f:
+        spec = json.load(f)
+
+    assert sorted(spec["process"]["env"]) == [
+        "FROM_IMAGE=cdi",
+        "FROM_SANDBOX=cdi",
+        "KEEP=image",
+    ]
 
 
 def test_image_manager_prepare_oci_bundle(tmp_path):
@@ -192,18 +321,14 @@ def test_image_manager_prepare_oci_bundle(tmp_path):
         tar.addfile(ti, io.BytesIO(b"bundle"))
 
     bundle_dir = str(tmp_path / "bundle")
-    workdir_path = str(tmp_path / "workdir")
-    os.makedirs(workdir_path, exist_ok=True)
 
     config_json_path = mgr.prepare_oci_bundle(
         root_dir=bundle_dir,
-        workdir_path=workdir_path,
         container_cwd="/workdir",
         image=str(local_tar),
         env_dict={"TEST_ENV": "123"},
         cpu=1.0,
         memory="256Mi",
-        readonly=False,
     )
 
     assert os.path.exists(config_json_path)
@@ -295,6 +420,28 @@ def test_custom_image_manager_subclass(tmp_path):
     assert backend.image_manager is custom_mgr
     assert custom_mgr.pull_image("another-image") == custom_root
     assert ("another-image", 120.0) in custom_mgr.pull_calls
+
+
+@pytest.mark.parametrize(
+    "disk, options",
+    [
+        ("64Mi", "size=67108864"),
+        (1 << 30, "size=1073741824"),
+        # Floats and fractional sizes come out as whole bytes.
+        (float(1 << 30), "size=1073741824"),
+        ("1.5Gi", "size=1610612736"),
+        (0, None),
+        (None, None),
+    ],
+)
+def test_create_oci_spec_caps_the_overlay(tmp_path, disk, options):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        disk=disk,
+        base_spec=_sample_base_spec(),
+    )
+    assert spec["annotations"].get("dev.gvisor.spec.rootfs.options") == options
 
 
 class _StubImageManager(ImageManager):
@@ -423,29 +570,19 @@ def test_create_oci_spec_tolerates_non_dict_namespace_entries(tmp_path):
     assert spec["linux"]["namespaces"] == ["pid", None]
 
 
-def test_create_oci_spec_workdir_path_drives_the_scratch_mount(tmp_path):
-    """The scratch bind exists iff a workdir_path is given; the process cwd
-    is independent of it."""
+def test_create_oci_spec_workdir_is_the_cwd_and_never_a_mount(tmp_path):
+    """The workdir is the process cwd. Nothing on the host backs it: runsc
+    creates it in the sandbox's overlay, where a disk cap covers it too."""
     mgr = _StubImageManager(tmp_path)
-    workdir_path = str(tmp_path / "scratch")
-    os.makedirs(workdir_path, exist_ok=True)
-
-    mounted = mgr.create_oci_spec(
+    spec = mgr.create_oci_spec(
         image="fake:latest",
         base_spec=_sample_base_spec(),
         container_cwd="/app",
-        workdir_path=workdir_path,
+        disk="64Mi",
     )
-    assert any(m["destination"] == "/app" for m in mounted["mounts"])
-
-    unmounted = mgr.create_oci_spec(
-        image="fake:latest",
-        base_spec=_sample_base_spec(),
-        container_cwd="/app",
-        workdir_path=None,
-    )
-    assert not any(m["destination"] == "/app" for m in unmounted["mounts"])
-    assert unmounted["process"]["cwd"] == "/app"
+    assert spec["process"]["cwd"] == "/app"
+    assert not any(m["destination"] == "/app" for m in spec["mounts"])
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.options"] == "size=67108864"
 
 
 def test_create_oci_spec_tolerates_null_sections_in_base_spec(tmp_path):
@@ -490,7 +627,6 @@ class _SpecCapturingManager(_StubImageManager):
 def _prepare(mgr, root_dir, **kwargs):
     mgr.prepare_oci_bundle(
         root_dir=str(root_dir),
-        workdir_path=str(root_dir),
         container_cwd="/",
         image="fake:latest",
         **kwargs,
@@ -498,12 +634,28 @@ def _prepare(mgr, root_dir, **kwargs):
     return mgr.spec_kwargs["resolv_conf_source"]
 
 
-def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path):
+def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path, monkeypatch):
+    # The built-in resolvers, whatever this node sets.
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
     mgr = _SpecCapturingManager(tmp_path)
     source = _prepare(mgr, tmp_path, network="public")
     assert source == os.path.join(str(tmp_path), "resolv.conf")
     content = open(source, encoding="utf-8").read()
     assert content == "nameserver 8.8.8.8\nnameserver 1.1.1.1\n"
+
+
+def test_prepare_oci_bundle_public_uses_the_node_default_resolvers(
+    tmp_path, monkeypatch
+):
+    """RAY_SANDBOX_DEFAULT_DNS replaces the public resolvers on networks that
+    block them; a sandbox's own dns still wins."""
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", " 103.247.36.36, 10.0.0.2 ")
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="public")
+    content = open(source, encoding="utf-8").read()
+    assert content == "nameserver 103.247.36.36\nnameserver 10.0.0.2\n"
+    source = _prepare(mgr, tmp_path, network="public", dns=["10.0.0.9"])
+    assert open(source, encoding="utf-8").read() == "nameserver 10.0.0.9\n"
 
 
 def test_prepare_oci_bundle_dns_overrides_for_public_and_host(tmp_path):
@@ -709,7 +861,6 @@ def test_create_oci_spec_erofs_image(tmp_path):
     spec = mgr.create_oci_spec(
         image="fake:latest",
         base_spec=_sample_base_spec(),
-        readonly=False,
         root_path=str(root_path),
     )
     assert spec["annotations"] == {
@@ -722,10 +873,86 @@ def test_create_oci_spec_erofs_image(tmp_path):
     assert not (tmp_path / "rootfs").exists()
 
 
+def test_create_oci_spec_mounts_from_the_transform_need_no_overlay(tmp_path):
+    """A mount the transform adds, such as a library a CDI spec mounts, may
+    land where the image has nothing. runsc creates its mount point in the
+    sandbox's own overlay, so the sandbox still boots straight from the
+    EROFS image."""
+
+    def add_library(spec):
+        spec["mounts"].append(
+            {
+                "destination": "/usr/lib/libcuda.so.1",
+                "type": "bind",
+                "source": "/usr/lib/libcuda.so.1",
+                "options": ["ro", "bind"],
+            }
+        )
+        return spec
+
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        _oci_spec_transform_fn=add_library,
+    )
+    assert spec["root"]["readonly"] is False
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.type"] == "erofs"
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
+
+
+def _with_prestart_hook(spec):
+    """Add an OCI hook that runs on the host before the sandbox starts."""
+    spec.setdefault("hooks", {})["createRuntime"] = [{"path": "/bin/true"}]
+    return spec
+
+
+def test_create_oci_spec_overlayfs(tmp_path, monkeypatch):
+    """A spec that needs a kernel overlay gets no gVisor rootfs annotations.
+    Its root.path is where the backend mounts the sandbox's overlay."""
+    monkeypatch.setattr(overlayfs, "needs_rootfs_overlay", lambda spec: True)
+    mgr = _StubImageManager(tmp_path)
+    root_path = tmp_path / "bundle" / "rootfs"
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        root_path=str(root_path),
+    )
+    assert spec.get("annotations", {}) == {}
+    assert spec["root"] == {"path": str(root_path), "readonly": False}
+
+
+def test_create_oci_spec_prestart_hooks_need_an_overlay(tmp_path):
+    """Hooks that run on the host before the sandbox starts can write to its
+    rootfs, so a spec with them, even ones the transform added, gets no
+    gVisor rootfs annotations. Its root.path is where the backend mounts the
+    sandbox's kernel overlay."""
+    mgr = _StubImageManager(tmp_path)
+    root_path = tmp_path / "bundle" / "rootfs"
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        root_path=str(root_path),
+        _oci_spec_transform_fn=_with_prestart_hook,
+    )
+    assert spec.get("annotations", {}) == {}
+    assert spec["root"] == {"path": str(root_path), "readonly": False}
+
+
+def test_create_oci_spec_makes_a_readonly_base_spec_writable(tmp_path):
+    """``runsc spec``'s default spec has a read-only root. Every sandbox gets
+    a writable one, with a private overlay to hold its writes."""
+    base_spec = _sample_base_spec()
+    base_spec["root"]["readonly"] = True
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=base_spec)
+    assert spec["root"]["readonly"] is False
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
+
+
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
     """/etc/hosts is a per-sandbox read-write bind (localhost must resolve),
-    and /tmp stays on the rootfs, seeded into the image at build time
-    (readonly sandboxes get an explicit tmpfs so it remains writable)."""
+    and /tmp stays on the rootfs, seeded into the image at build time."""
     mgr = _StubImageManager(tmp_path)
     hosts = tmp_path / "hosts"
     hosts.write_text("127.0.0.1\tlocalhost\n")
@@ -734,23 +961,14 @@ def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
         image="fake:latest",
         base_spec=_sample_base_spec(),
         hosts_source=str(hosts),
-        readonly=True,
     )
     mounts = {m["destination"]: m for m in spec["mounts"]}
     assert mounts["/etc/hosts"]["source"] == str(hosts)
     assert "rw" in mounts["/etc/hosts"]["options"]
-    assert mounts["/tmp"]["type"] == "tmpfs"
+    # /tmp is plain rootfs, on the same device as the rest: no tmpfs mount.
+    assert "/tmp" not in mounts
     # Nothing is seeded on the host: the image carries /tmp already.
     assert not (tmp_path / "rootfs").exists()
-
-    spec = mgr.create_oci_spec(
-        image="fake:latest",
-        base_spec=_sample_base_spec(),
-        readonly=False,
-    )
-    dests = {m["destination"] for m in spec["mounts"]}
-    # Writable rootfs: /tmp is plain rootfs, same device — no tmpfs mount.
-    assert "/tmp" not in dests
 
 
 def test_prepare_oci_bundle_writes_hosts_file(tmp_path, monkeypatch):
@@ -764,7 +982,6 @@ def test_prepare_oci_bundle_writes_hosts_file(tmp_path, monkeypatch):
     bundle.mkdir()
     mgr.prepare_oci_bundle(
         root_dir=str(bundle),
-        workdir_path=None,
         container_cwd="/",
         image="fake:latest",
     )
@@ -832,6 +1049,63 @@ def test_extract_tar_layer_defers_restrictive_directory_modes(tmp_path):
     assert stat.S_IMODE(os.stat(dest / "locked").st_mode) == 0o500
     # Restore writability so pytest can clean the tmp dir up.
     os.chmod(dest / "locked", 0o700)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory modes")
+def test_read_only_directory_stays_writable_until_the_last_layer(tmp_path):
+    """A later layer can add and delete entries in a directory an earlier
+    layer ships read-only, as a commit split mid-directory does; the archived
+    mode lands once every layer is extracted."""
+    import io
+    import stat
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import (
+        apply_dir_attrs,
+        extract_tar_layer,
+    )
+
+    def layer(*members) -> bytes:
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            for name, mode, data in members:
+                info = tarfile.TarInfo(name)
+                info.mode = mode
+                if data is None:
+                    info.type = tarfile.DIRTYPE
+                    tar.addfile(info)
+                else:
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+        return buf.getvalue()
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    dir_attrs = {}
+    layers = [
+        layer(
+            ("gomod", 0o555, None),
+            ("gomod/big0.bin", 0o444, b"0"),
+            ("gomod/stale", 0o444, b"s"),
+            ("gone", 0o555, None),
+        ),
+        layer(
+            ("gomod/big1.bin", 0o444, b"1"),
+            ("gomod/.wh.stale", 0o644, b""),
+            ("gone", 0o644, b"now a file"),
+        ),
+    ]
+    for data in layers:
+        extract_tar_layer(data, str(dest), dir_attrs=dir_attrs)
+    apply_dir_attrs(str(dest), dir_attrs)
+
+    try:
+        assert sorted(os.listdir(dest / "gomod")) == ["big0.bin", "big1.bin"]
+        assert stat.S_IMODE(os.stat(dest / "gomod").st_mode) == 0o555
+        # The replaced directory's mode is not applied to the file.
+        assert stat.S_IMODE(os.stat(dest / "gone").st_mode) == 0o644
+    finally:
+        os.chmod(dest / "gomod", 0o755)
 
 
 if __name__ == "__main__":

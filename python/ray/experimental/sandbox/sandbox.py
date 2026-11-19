@@ -5,7 +5,7 @@ from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
 )
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import SandboxConfig, pop_removed_readonly
 from ray.experimental.sandbox.exceptions import SandboxNotFoundError
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
@@ -14,15 +14,17 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 class Sandbox:
     """Ray actor proxy for managing scheduling, lifecycle, command execution, and file I/O for an isolated sandbox instance.
 
+    The sandbox writes to a private copy-on-write overlay over its image.
+    Sandboxes that share an image don't see each other's writes, the cached
+    image is never modified, and the overlay is discarded with the sandbox.
+
     Args:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
         workdir: Working directory for commands; None uses the image's
-            WORKDIR. On a readonly rootfs an explicit workdir is also the
-            sandbox's only writable path; see
-            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+            WORKDIR.
         ttl_seconds: Optional time-to-live in seconds, wall-clock from
             creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -32,20 +34,29 @@ class Sandbox:
             is the recommended internet-access mode.
         dns: Optional nameserver IPs for the generated /etc/resolv.conf
             (public resolvers by default for "public").
+        cidr_allowlist: Optional egress allowlist for network="public": only
+            the listed destinations are reachable (plus DNS to the ``dns``
+            resolvers). None means the public internet, with internal
+            addresses left out as a best effort, and a denylist keeps
+            instance metadata and the Kubernetes API service closed whatever
+            the list says; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none); see
             ``DOCKER_DEFAULT_CAPABILITIES``.
-        readonly: If True (default), mount container image rootfs in read-only mode
-            such that only ``workdir`` is writable. If False, the entire root filesystem
-            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
-            filesystem, ensuring multiple sandboxes running the same container image do
-            not interfere with each other or modify the base image.
-        **kwargs: Additional parameters passed to runtime.
+        disk: Size cap of the root filesystem overlay (e.g. "10Gi"); writes
+            past it fail with ENOSPC. Zero (default) means no cap; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+        restore_from: Path to checkpoint directory if restoring an existing sandbox.
+        **kwargs: Additional parameters passed to runtime. The removed
+            ``readonly`` option is still recognized: ``readonly=False`` is
+            ignored with a deprecation warning, and ``readonly=True`` raises
+            a ``ValueError``.
     """
 
     def __init__(
         self,
-        image: str,
+        image: Optional[str] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         env: Optional[Dict[str, str]] = None,
@@ -53,41 +64,90 @@ class Sandbox:
         ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
-        network: str = "none",
+        network: Optional[str] = None,
         dns: Optional[List[str]] = None,
+        cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
-        readonly: bool = True,
+        disk: Union[str, int, float] = 0,
+        restore_from: Optional[str] = None,
         **kwargs,
     ):
-        env = env or {}
+        if "gpu_ids" in kwargs:
+            raise TypeError(
+                "Sandbox does not accept 'gpu_ids'. A sandbox gets every GPU "
+                "Ray assigned this actor, from ray.get_gpu_ids()."
+            )
+        # Callers written for the removed option still pass it.
+        pop_removed_readonly(kwargs)
 
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
-        try:
-            assigned = ray.get_runtime_context().get_assigned_resources()
-            if (cpu is None or cpu <= 0) and "CPU" in assigned and assigned["CPU"] > 0:
-                cpu = float(assigned["CPU"])
+        # For restore_from, do not default to actor-assigned resources unless explicitly requested,
+        # so that the checkpoint's recorded resource limits are preserved.
+        if not restore_from:
+            env = env or {}
+            try:
+                assigned = ray.get_runtime_context().get_assigned_resources()
+                if cpu is None and "CPU" in assigned and assigned["CPU"] > 0:
+                    cpu = float(assigned["CPU"])
 
-            if (memory is None) and "memory" in assigned and assigned["memory"] > 0:
-                memory = int(assigned["memory"])
-        except Exception:
-            pass
+                if (memory is None) and "memory" in assigned and assigned["memory"] > 0:
+                    memory = int(assigned["memory"])
+            except Exception:
+                pass
 
         self.runtime = SandboxRuntime()
-        self.instance_id = self.runtime.create(
-            image=image,
-            cpu=cpu,
-            memory=memory,
-            env=env,
-            workdir=workdir,
-            ttl_seconds=ttl_seconds,
-            timeout_seconds=timeout_seconds,
-            rootless=rootless,
-            network=network,
-            dns=dns,
-            capabilities=capabilities,
-            readonly=readonly,
-            **kwargs,
-        )
+        if restore_from:
+            restore_kwargs = dict(kwargs)
+            if env is not None:
+                restore_kwargs["env"] = env
+            if workdir is not None:
+                restore_kwargs["workdir"] = workdir
+            if network is not None:
+                restore_kwargs["network"] = network
+            if dns is not None:
+                restore_kwargs["dns"] = dns
+            if cidr_allowlist is not None:
+                restore_kwargs["cidr_allowlist"] = cidr_allowlist
+            if capabilities is not None:
+                restore_kwargs["capabilities"] = capabilities
+            if disk:
+                restore_kwargs["disk"] = disk
+
+            self.instance_id = self.runtime.restore(
+                checkpoint_path=restore_from,
+                cpu=cpu,
+                memory=memory,
+                ttl_seconds=ttl_seconds,
+                timeout_seconds=timeout_seconds,
+                **restore_kwargs,
+            )
+        else:
+            if not image:
+                raise ValueError("Must provide either 'image' or 'restore_from'")
+            if network is None:
+                network = "none"
+            # A sandbox gets every GPU Ray assigned this actor. Unlike cpu and
+            # memory, the actor has no other use for them, so there is nothing
+            # to override. An error resolving them propagates, so the sandbox
+            # never boots without them.
+            gpu_ids = [str(i) for i in ray.get_gpu_ids()] or None
+            self.instance_id = self.runtime.create(
+                image=image,
+                cpu=cpu,
+                memory=memory,
+                env=env,
+                workdir=workdir,
+                ttl_seconds=ttl_seconds,
+                timeout_seconds=timeout_seconds,
+                rootless=rootless,
+                network=network,
+                dns=dns,
+                cidr_allowlist=cidr_allowlist,
+                capabilities=capabilities,
+                disk=disk,
+                gpu_ids=gpu_ids,
+                **kwargs,
+            )
 
     def __del__(self):
         try:
@@ -186,6 +246,86 @@ class Sandbox:
             SandboxStatus of the sandbox instance.
         """
         return self.runtime.get_status(self.instance_id)
+
+    def set_egress_allowlist(self, cidrs: List[str]) -> None:
+        """Replace the egress allowlist of this network="public" sandbox.
+
+        The update is atomic. Connections the new list no longer allows stall
+        from their next packet, and no list opens the denylist; see
+        ``SandboxRuntime.set_egress_allowlist``.
+
+        Args:
+            cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
+                ``ALLOW_ALL_CIDRS`` opens every destination outside the
+                denylist.
+        """
+        self.runtime.set_egress_allowlist(self.instance_id, cidrs)
+
+    def commit(
+        self,
+        image: str,
+        env: Optional[Dict[str, str]] = None,
+        timeout_seconds: float = 1800.0,
+    ) -> str:
+        """Push the sandbox's base image and root filesystem changes to a registry.
+
+        Registry credentials come from ``$DOCKER_CONFIG`` on the node that
+        runs this actor. The actor runs one call at a time, so other calls
+        wait until the push finishes; see ``SandboxRuntime.commit``.
+
+        Args:
+            image: Target reference with a tag, such as ``registry/repo:tag``.
+            env: Variables to replace or extend the base image config's Env.
+            timeout_seconds: Timeout for export and each registry request.
+
+        Returns:
+            The immutable ``registry/repo@sha256:...`` reference.
+        """
+        return self.runtime.commit(
+            self.instance_id, image, env=env, timeout_seconds=timeout_seconds
+        )
+
+    def checkpoint(
+        self,
+        checkpoint_path: Optional[str] = None,
+        leave_running: bool = True,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Create a checkpoint of the running sandbox.
+
+        Args:
+            checkpoint_path: Path where the checkpoint directory will be saved.
+            leave_running: If True, keep the sandbox running after checkpointing.
+            timeout_seconds: Timeout for the checkpoint operation.
+            **kwargs: Additional parameters passed to runtime checkpoint.
+
+        Returns:
+            Absolute path to the checkpoint directory.
+        """
+        return self.runtime.checkpoint(
+            self.instance_id,
+            checkpoint_path=checkpoint_path,
+            leave_running=leave_running,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
+
+    def pause(self, timeout_seconds: float = 10.0) -> None:
+        """Pause the running sandbox instance.
+
+        Args:
+            timeout_seconds: Timeout for pause operation.
+        """
+        self.runtime.pause(self.instance_id, timeout_seconds=timeout_seconds)
+
+    def resume(self, timeout_seconds: float = 10.0) -> None:
+        """Resume a paused sandbox instance.
+
+        Args:
+            timeout_seconds: Timeout for resume operation.
+        """
+        self.runtime.resume(self.instance_id, timeout_seconds=timeout_seconds)
 
     def delete(self) -> None:
         """Clean up and terminate the sandbox instance."""

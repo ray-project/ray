@@ -7,13 +7,13 @@ from vllm.entrypoints.anthropic.protocol import (
     AnthropicMessagesRequest,
 )
 from vllm.entrypoints.anthropic.serving import AnthropicServingMessages
-from vllm.entrypoints.chat_utils import load_chat_template
-from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.common.cli_args import FrontendArgs
 from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 from vllm.entrypoints.serve.engine.protocol import ErrorResponse
 from vllm.exceptions import VLLMClientError, VLLMValidationError
 from vllm.renderers import renderer_from_config
+from vllm.renderers.chat_utils import load_chat_template
 from vllm.renderers.inputs.preprocess import extract_prompt_components
 from vllm.renderers.online_renderer import OnlineRenderer
 
@@ -114,6 +114,9 @@ class Tokenizer:
             tool_parser=frontend_args.tool_call_parser,
             tool_strict_level=frontend_args.tool_strict_level,
             default_chat_template_kwargs=frontend_args.default_chat_template_kwargs,
+            # Forwarded prompt tokens replace the engine's chat rendering, so
+            # apply the same effort rewrites the engine would.
+            reasoning_effort_map=frontend_args.reasoning_effort_map,
         )
         # Check the templates the renderer actually uses, including the model's
         # default when no chat-template override is configured.

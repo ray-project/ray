@@ -68,8 +68,7 @@ def add_mixins(base, mixins, reversed=False):
 def force_list(
     elements: Optional[Any] = None, to_tuple: bool = False
 ) -> Union[List, Tuple]:
-    """
-    Makes sure `elements` is returned as a list, whether `elements` is a single
+    """Makes sure `elements` is returned as a list, whether `elements` is a single
     item, already a list, or a tuple.
 
     Args:
@@ -98,8 +97,7 @@ def force_list(
 def flatten_dict(
     nested: Dict[str, Any], sep: str = "/", env_steps: int = 0
 ) -> Dict[str, Any]:
-    """
-    Flattens a nested dict into a flat dict with joined keys.
+    """Flattens a nested dict into a flat dict with joined keys.
 
     Note, this is used for better serialization of nested dictionaries
     in `OfflinePreLearner.__call__` when called inside
@@ -129,8 +127,7 @@ def flatten_dict(
 
 @DeveloperAPI
 def unflatten_dict(flat: Dict[str, Any], sep: str = "/") -> Dict[str, Any]:
-    """
-    Reconstructs a nested dict from a flat dict with joined keys.
+    """Reconstructs a nested dict from a flat dict with joined keys.
 
     Note, this is used for better deserialization ofr nested dictionaries
     in `Learner.update' calls in which a `ray.data.DataIterator` is used.

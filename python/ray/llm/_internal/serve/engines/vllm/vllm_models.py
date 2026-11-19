@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, model_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.common.cli_args import FrontendArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.placement import PlacementGroupConfig
@@ -130,8 +130,7 @@ class VLLMEngineConfig(BaseModelExtended):
         return self.engine_kwargs.get("trust_remote_code", False)
 
     def get_initialization_kwargs(self) -> dict:
-        """
-        Get kwargs that will be actually passed to the LLMInitializer
+        """Get kwargs that will be actually passed to the LLMInitializer
         constructor.
         """
         engine_kwargs = self.engine_kwargs.copy()

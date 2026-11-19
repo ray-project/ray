@@ -339,6 +339,78 @@ TEST_F(ObservableStoreClientTableLabelTest, NoUserDataInLabels) {
   EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put", kv_table), 1);
 }
 
+// Exercises MaybeObserve over the in-memory client;
+// RedisObservableGcsTableStorageTest covers it against a real Redis.
+class MaybeObserveTest : public ::testing::Test {
+ public:
+  void SetUp() override {
+    io_service_pool_ = std::make_shared<IOServicePool>(1);
+    io_service_pool_->Run();
+  }
+
+  void TearDown() override { io_service_pool_->Stop(); }
+
+ protected:
+  // Issues one Put and waits for it to complete, so the latency observer has
+  // fired by the time the test asserts.
+  void PutAndWait(StoreClient &client) {
+    std::atomic<bool> done{false};
+    client.AsyncPut(rpc::TablePrefix_Name(rpc::TablePrefix::JOB),
+                    "key",
+                    "value",
+                    /*overwrite=*/true,
+                    {[&done](bool) { done = true; }, *io_service_pool_->Get()});
+    ASSERT_TRUE(WaitForCondition([&done] { return done.load(); }, 5000));
+  }
+
+  using Recorded =
+      absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>;
+
+  static std::optional<double> ValueFor(const Recorded &recorded,
+                                        const std::string &operation,
+                                        const std::string &table) {
+    for (const auto &[tags, value] : recorded) {
+      auto op = tags.find("Operation");
+      auto tbl = tags.find("TableName");
+      if (op != tags.end() && op->second == operation && tbl != tags.end() &&
+          tbl->second == table) {
+        return value;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::shared_ptr<IOServicePool> io_service_pool_;
+  ray::FakeClock clock_;
+  ray::observability::FakeHistogram latency_;
+  ray::observability::FakeCounter count_;
+};
+
+TEST_F(MaybeObserveTest, RecordsWhenEnabled) {
+  auto client = MaybeObserve(std::make_shared<InMemoryStoreClient>(),
+                             /*enabled=*/true,
+                             latency_,
+                             count_,
+                             clock_);
+  PutAndWait(*client);
+
+  EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put", "JOB").value_or(0), 1);
+  // FakeHistogram keeps the last observation, so only its presence is stable.
+  EXPECT_TRUE(ValueFor(latency_.GetTagToValue(), "Put", "JOB").has_value());
+}
+
+TEST_F(MaybeObserveTest, RecordsNothingWhenDisabled) {
+  auto delegate = std::make_shared<InMemoryStoreClient>();
+  auto client = MaybeObserve(delegate, /*enabled=*/false, latency_, count_, clock_);
+  // The kill switch must hand back the delegate itself, not a silent wrapper.
+  EXPECT_EQ(client.get(), static_cast<StoreClient *>(delegate.get()));
+
+  PutAndWait(*client);
+
+  EXPECT_TRUE(count_.GetTagToValue().empty());
+  EXPECT_TRUE(latency_.GetTagToValue().empty());
+}
+
 }  // namespace gcs
 
 }  // namespace ray

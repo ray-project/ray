@@ -12,7 +12,7 @@ import json
 import threading
 from collections import OrderedDict
 from dataclasses import asdict
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, cast
 
 import ray
 from ray._common.usage import usage_lib
@@ -27,6 +27,11 @@ _MAX_EXECUTIONS_TO_TRACK = 100
 # Ray Core doesn't allow creating the same named actor from multiple threads
 # simultaneously, and executions start on per-dataset executor threads.
 _get_or_create_lock = threading.Lock()
+
+
+def _drop_none_fields(fields: List[Tuple[str, Any]]) -> Dict[str, Any]:
+    """``asdict`` factory that omits dataclass fields whose value is ``None``."""
+    return {k: v for k, v in fields if v is not None}
 
 
 class _UsageCollectionActor:
@@ -53,7 +58,12 @@ class _UsageCollectionActor:
             self._executions.popitem(last=False)
         self._executions[info.id] = info
         payload = json.dumps(
-            {"executions": [asdict(e) for e in self._executions.values()]}
+            {
+                "executions": [
+                    asdict(e, dict_factory=_drop_none_fields)
+                    for e in self._executions.values()
+                ]
+            }
         )
         # Reference ``TagKey`` through the module: Ray pickles actor classes by
         # value, and the protobuf enum wrapper's descriptor isn't picklable.

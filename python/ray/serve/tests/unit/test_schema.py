@@ -10,7 +10,9 @@ from pydantic import ValidationError
 import ray
 from ray import serve
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.constants import DEFAULT_TRACING_EXPORTER_IMPORT_PATH
 from ray.serve._private.deploy_utils import get_app_code_version
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
     AutoscalingConfig,
@@ -24,13 +26,16 @@ from ray.serve.config import (
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     ControllerHealthMetrics,
+    DeploymentDetails,
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
+    ReplicaDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
     TracingConfig,
+    _deployment_info_to_schema,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -1550,6 +1555,47 @@ def test_serve_instance_details_restores_unset_config_options_is_opt_in():
     assert reported["restores_unset_config_options"] is True
 
 
+def test_deploy_schema_config_id_is_optional_and_echoed():
+    """`config_id` is metadata: optional on the way in, reported back as applied."""
+    assert ServeDeploySchema.model_validate({"applications": []}).config_id is None
+    cfg = ServeDeploySchema.model_validate({"applications": [], "config_id": "c1"})
+    assert cfg.config_id == "c1"
+    assert cfg.model_dump(exclude_unset=True)["config_id"] == "c1"
+
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+    )
+    assert details.applied_config_id is None
+    reported = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+        applied_config_id="c1",
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+    assert reported["applied_config_id"] == "c1"
+
+
+def test_replica_and_deployment_versions_default_to_none():
+    """Versions are optional so older payloads still parse."""
+    replica = ReplicaDetails(replica_id="r", state="RUNNING", start_time_s=0)
+    assert replica.version is None
+    deployment = DeploymentDetails(
+        name="d",
+        status="HEALTHY",
+        status_trigger="CONFIG_UPDATE_COMPLETED",
+        message="",
+        deployment_config={"name": "d"},
+        target_num_replicas=1,
+        required_resources={},
+        replicas=[replica],
+    )
+    assert deployment.target_version is None
+
+
 def test_serve_instance_details_includes_controller_health_metrics():
     """When controller_health_metrics is explicitly set, it should appear in the
     user-facing JSON-serializable representation."""
@@ -1583,9 +1629,6 @@ def test_serve_instance_details_includes_controller_health_metrics():
 def test_deployment_info_to_schema_includes_max_replicas_per_node():
     """_deployment_info_to_schema should propagate max_replicas_per_node
     from ReplicaConfig into the resulting DeploymentSchema."""
-    from ray.serve._private.deployment_info import DeploymentInfo
-    from ray.serve.schema import _deployment_info_to_schema
-
     rc = ReplicaConfig.create(
         deployment_def="",
         init_args=(),
@@ -1604,12 +1647,27 @@ def test_deployment_info_to_schema_includes_max_replicas_per_node():
     assert schema.max_replicas_per_node == 3
 
 
+@pytest.mark.parametrize("user_config", ["updated", ["updated"]])
+def test_deployment_info_user_config_schema_roundtrip(user_config):
+    info = DeploymentInfo(
+        deployment_config=DeploymentConfig.from_default(user_config=user_config),
+        replica_config=ReplicaConfig.create(
+            deployment_def="",
+            init_args=(),
+            init_kwargs={},
+        ),
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.user_config == user_config
+    assert schema_to_deployment(schema).user_config == user_config
+
+
 def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
     """When max_replicas_per_node is None (default), the schema field should
     remain at its default (DEFAULT.VALUE), i.e. unset."""
-    from ray.serve._private.deployment_info import DeploymentInfo
-    from ray.serve.schema import _deployment_info_to_schema
-
     rc = ReplicaConfig.create(
         deployment_def="",
         init_args=(),
@@ -1630,11 +1688,14 @@ def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
 class TestTracingConfig:
     """Tests for the TracingConfig schema."""
 
-    def test_default_values(self):
+    _EXPORTER_ENV = "ray.serve.schema.RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH"
+
+    def test_default_values(self, monkeypatch):
         """Test that default TracingConfig has sensible defaults."""
+        monkeypatch.setattr(self._EXPORTER_ENV, "")
         config = TracingConfig()
         assert config.enabled is False
-        assert config.exporter_import_path == ""
+        assert config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
         assert config.sampling_ratio == 0.01
 
     def test_enabled(self):
@@ -1675,10 +1736,43 @@ class TestTracingConfig:
         with pytest.raises(ValidationError):
             TracingConfig(enabled=True, unknown_field="value")
 
-    def test_enabled_with_empty_exporter(self):
-        """Test that enabled=True with empty exporter stays empty (no auto-fill)."""
-        config = TracingConfig(enabled=True, exporter_import_path="")
-        assert config.exporter_import_path == ""
+    @pytest.mark.parametrize("enabled", [True, False])
+    @pytest.mark.parametrize(
+        "env_exporter,expected",
+        [
+            ("", DEFAULT_TRACING_EXPORTER_IMPORT_PATH),
+            ("my.mod:from_env", "my.mod:from_env"),
+        ],
+    )
+    def test_exporter_default(self, monkeypatch, enabled, env_exporter, expected):
+        """The exporter defaults to the env var, else the built-in exporter."""
+        monkeypatch.setattr(self._EXPORTER_ENV, env_exporter)
+        assert TracingConfig(enabled=enabled).exporter_import_path == expected
+
+    def test_explicit_exporter_overrides_env(self, monkeypatch):
+        monkeypatch.setattr(self._EXPORTER_ENV, "my.mod:from_env")
+        config = TracingConfig(enabled=True, exporter_import_path="my.mod:create")
+        assert config.exporter_import_path == "my.mod:create"
+
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_empty_exporter_rejected(self, enabled):
+        with pytest.raises(ValidationError, match="must not be empty"):
+            TracingConfig(enabled=enabled, exporter_import_path="")
+
+    def test_explicit_fields_resolve_in_another_env(self, monkeypatch):
+        """Only explicitly set fields cross to the controller, which resolves the
+        rest from its own env vars."""
+        monkeypatch.setattr(self._EXPORTER_ENV, "")
+        caller_config = TracingConfig(sampling_ratio=0.5)
+        assert caller_config.enabled is False
+        fields = caller_config.model_dump(exclude_unset=True)
+        assert fields == {"sampling_ratio": 0.5}
+
+        monkeypatch.setattr(self._EXPORTER_ENV, "my.mod:exp")
+        controller_config = TracingConfig(**fields)
+        assert controller_config.enabled is True
+        assert controller_config.exporter_import_path == "my.mod:exp"
+        assert controller_config.sampling_ratio == 0.5
 
 
 if __name__ == "__main__":

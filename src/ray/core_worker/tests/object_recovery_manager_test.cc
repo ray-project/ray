@@ -173,7 +173,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
               memory_store_->Put(data, object_id, ref_counter_->HasReference(object_id));
-            }) {
+            },
+            object_recovery_attempts_counter_) {
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
@@ -261,7 +262,14 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   std::shared_ptr<FakeRayletClientForTest> raylet_client_;
   std::shared_ptr<FakeTaskManager> task_manager_;
   std::shared_ptr<ReferenceCounterInterface> ref_counter_;
+  ray::observability::FakeCounter object_recovery_attempts_counter_;
   ObjectRecoveryManager manager_;
+
+  double RecordedAttempts(const std::string &type) const {
+    const auto tag_to_value = object_recovery_attempts_counter_.GetTagToValue();
+    auto it = tag_to_value.find({{"Type", type}});
+    return it == tag_to_value.end() ? 0 : it->second;
+  }
 };
 
 class ObjectRecoveryLineageDisabledTest : public ObjectRecoveryManagerTestBase {
@@ -350,6 +358,8 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   ASSERT_EQ(raylet_client_->Flush(true), 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
+  ASSERT_EQ(RecordedAttempts("Pin"), 2);
+  ASSERT_EQ(RecordedAttempts("Reconstruct"), 0);
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
@@ -369,6 +379,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 1);
+  ASSERT_EQ(RecordedAttempts("Pin"), 0);
+  ASSERT_EQ(RecordedAttempts("Reconstruct"), 1);
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
@@ -616,6 +628,77 @@ TEST_F(ObjectRecoveryManagerTest, TestTaskCancelledReconstructionFails) {
   ASSERT_EQ(failed_reconstructions_[object_id],
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestGetAsyncRequeuesStaleObject) {
+  // Tests the GetAsync callback requeue logic when a concurrent node failure
+  // invalidates the pinned location. Marker is pre-placed so GetAsync fires
+  // immediately and the ref counter has no pinned location. Verifies the
+  // callback requeues instead of marking recovery complete.
+
+  // Stop the background thread so we control when callbacks execute.
+  io_context_.Stop();
+
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+
+  // Stale OBJECT_IN_PLASMA marker already in the store, no pinned location.
+  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+  auto obj = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
+  memory_store_->Put(obj, object_id, /*has_reference=*/true);
+
+  ASSERT_EQ(manager_.RecoverObject(object_id), std::nullopt);
+
+  // Run the posted callback.
+  io_context_.GetIoService().restart();
+  io_context_.GetIoService().poll();
+
+  // Callback should requeue since pinned_at is nil.
+  auto requeued = ref_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(requeued.size(), 1);
+  ASSERT_EQ(requeued[0], object_id);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestGetAsyncCompletesHealthyObject) {
+  // When the ref counter has a valid pinned location,
+  // the GetAsync callback should complete recovery normally.
+  io_context_.Stop();
+
+  ObjectID object_id = ObjectID::FromRandom();
+  NodeID remote_node_id = NodeID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+
+  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+  auto obj = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
+  memory_store_->Put(obj, object_id, /*has_reference=*/true);
+
+  // Object has a valid pinned location.
+  ref_counter_->UpdateObjectPinnedAtRaylet(object_id, remote_node_id);
+
+  ASSERT_EQ(manager_.RecoverObject(object_id), std::nullopt);
+
+  io_context_.GetIoService().restart();
+  io_context_.GetIoService().poll();
+
+  // Should NOT requeue — recovery is complete.
+  auto requeued = ref_counter_->FlushObjectsToRecover();
+  ASSERT_TRUE(requeued.empty());
 }
 
 // Regression test for a stale spill report poisoning an object's location state.

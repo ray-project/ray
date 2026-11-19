@@ -169,9 +169,9 @@ describe("ActorTable", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear after actor1Row
 
-    // GPU/GRAM columns hidden when showAcceleratorColumns is false (no accelerators on cluster)
-    expect(screen.queryByText("GPU")).not.toBeInTheDocument();
-    expect(screen.queryByText("GRAM")).not.toBeInTheDocument();
+    // Accelerator columns hidden when showAcceleratorColumns is false.
+    expect(screen.queryByText("Accelerator")).not.toBeInTheDocument();
+    expect(screen.queryByText("Accelerator Memory")).not.toBeInTheDocument();
   });
 
   it("renders a table of actors sorted by startTime desc when states are the same", () => {
@@ -238,8 +238,8 @@ describe("ActorTable", () => {
       - CPU: Actor 2 CPU > Actor 1 CPU --> Actor 2 row before Actor 1 row
       - Used memory: Actor 1 memory > Actor 2 memory --> Actor 1 row before Actor 2 row
       - Uptime: Actor 2 uptime < Actor 1 uptime --> Actor 2 row before Actor 1 row
-      - GPU Utilization: Actor 1 GPU > Actor 2 GPU --> Actor 1 row before Actor 2 row
-      - GRAM Utilization: Actor 2 GRAM > Actor 1 GRAM --> Actor 2 row before Actor 1 row
+      - Accelerator Utilization: Actor 1 GPU > Actor 2 GPU --> Actor 1 row before Actor 2 row
+      - Accelerator Memory Usage: Actor 2 GRAM > Actor 1 GRAM --> Actor 2 row before Actor 1 row
     */
     const RUNNING_ACTORS = {
       ...MOCK_ACTORS,
@@ -365,9 +365,11 @@ describe("ActorTable", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear before actor1Row
 
-    // Sort by GPU utilization
+    // Sort by accelerator utilization
     await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
-    await user.click(screen.getByRole("option", { name: /GPU Utilization/ }));
+    await user.click(
+      screen.getByRole("option", { name: /Accelerator Utilization/ }),
+    );
     const actor1GPURow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
@@ -380,9 +382,11 @@ describe("ActorTable", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor1Row appear before actor2Row
 
-    // Sort by GRAM usage
+    // Sort by accelerator memory usage
     await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
-    await user.click(screen.getByRole("option", { name: /GRAM Usage/ }));
+    await user.click(
+      screen.getByRole("option", { name: /Accelerator Memory Usage/ }),
+    );
     const actor1GRAMRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
@@ -395,8 +399,73 @@ describe("ActorTable", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear before actor1Row
 
-    // GPU/GRAM columns visible when actors have GPUs
-    expect(screen.getByText("GPU")).toBeInTheDocument();
-    expect(screen.getByText("GRAM")).toBeInTheDocument();
+    // Generic accelerator columns are visible when actors have accelerators.
+    expect(screen.getByText("Accelerator")).toBeInTheDocument();
+    expect(screen.getByText("Accelerator Memory")).toBeInTheDocument();
+  });
+
+  it("renders and sorts Ascend NPU utilization and memory", async () => {
+    const NPU_ACTORS: { [actorId: string]: ActorDetail } = {
+      ACTOR_1: {
+        ...MOCK_ACTORS.ACTOR_1,
+        state: "ALIVE",
+        npus: [
+          {
+            index: 0,
+            cardId: 0,
+            deviceId: 0,
+            name: "Ascend910",
+            utilizationAicore: 20,
+            memoryUsed: 32 * 1024 * 1024,
+            memoryTotal: 64 * 1024 * 1024,
+            processesPids: [{ pid: 25321, npuMemoryUsage: 30 * 1024 * 1024 }],
+          },
+        ],
+      },
+      ACTOR_2: {
+        ...MOCK_ACTORS.ACTOR_2,
+        state: "ALIVE",
+        npus: [
+          {
+            index: 1,
+            cardId: 0,
+            deviceId: 1,
+            name: "Ascend910",
+            utilizationAicore: 80,
+            memoryUsed: 16 * 1024 * 1024,
+            memoryTotal: 64 * 1024 * 1024,
+            processesPids: [{ pid: 25322, npuMemoryUsage: 10 * 1024 * 1024 }],
+          },
+        ],
+      },
+    };
+
+    const user = userEvent.setup();
+    render(<ActorTable actors={NPU_ACTORS} showAcceleratorColumns />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    expect(screen.getByText("20.0%")).toBeInTheDocument();
+    expect(screen.getByText("80.0%")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(
+      screen.getByRole("option", { name: /Accelerator Utilization/ }),
+    );
+    const actor1UtilizationRow = screen.getByRole("row", { name: /ACTOR_1/ });
+    const actor2UtilizationRow = screen.getByRole("row", { name: /ACTOR_2/ });
+    expect(
+      actor2UtilizationRow.compareDocumentPosition(actor1UtilizationRow),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(
+      screen.getByRole("option", { name: /Accelerator Memory Usage/ }),
+    );
+    const actor1MemoryRow = screen.getByRole("row", { name: /ACTOR_1/ });
+    const actor2MemoryRow = screen.getByRole("row", { name: /ACTOR_2/ });
+    expect(actor1MemoryRow.compareDocumentPosition(actor2MemoryRow)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 });

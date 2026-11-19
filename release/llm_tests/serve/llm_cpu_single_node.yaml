@@ -1,0 +1,7 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    # 8 CPUs, x86, 32G mem. Runs the driver, the router and the fake replicas.
+    instance_type: m5.2xlarge
+
+worker_nodes: []

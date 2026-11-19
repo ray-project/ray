@@ -13,7 +13,7 @@ from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
 )
-from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric
+from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric, ValueMetric
 from ray.train.v2._internal.metrics.controller import ControllerMetrics
 from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2.api.config import RunConfig
@@ -80,6 +80,23 @@ def test_time_metric(monkeypatch, mock_gauge):
     assert metric.get_value() == 3.0
 
     # Test reset
+    metric.reset()
+    assert metric.get_value() == 0.0
+
+
+def test_value_metric(monkeypatch, mock_gauge):
+    metric = ValueMetric(
+        name="test_value",
+        description="Test value metric",
+        base_tags={"run_name": "test_run"},
+    )
+
+    # Recording replaces the value rather than accumulating it
+    metric.record(3.0)
+    assert metric.get_value() == 3.0
+    metric.record(1.0)
+    assert metric.get_value() == 1.0
+
     metric.reset()
     assert metric.get_value() == 0.0
 
@@ -355,6 +372,28 @@ def test_controller_state_metrics(monkeypatch, mock_gauge):
         )
         == 0
     )
+
+
+def test_controller_annotations(mock_gauge, captured_annotations):
+    """Controller state changes are annotated alongside the state metrics."""
+    callback = ControllerMetricsCallback()
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
+    callback.after_controller_state_update(
+        TrainControllerState(TrainControllerStateType.INITIALIZING),
+        TrainControllerState(TrainControllerStateType.RUNNING),
+    )
+
+    # The state metric is recorded either way.
+    assert (
+        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
+            TrainControllerStateType.RUNNING
+        )
+        == 1
+    )
+
+    # One annotation for the controller starting, one for the transition.
+    assert len(captured_annotations) == 2
+    assert captured_annotations[1]["message"] == "Controller: INITIALIZING → RUNNING"
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ set -ex
 powershell ci/ray_ci/windows/install_bazelisk.ps1
 
 # Install uv
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.9.22/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.4/install.ps1 | iex"
 
 conda init
 # TODO(ci): Remove once conda fixes the splitext bug in delete.py (conda/conda#15760).

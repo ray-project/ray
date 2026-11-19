@@ -180,7 +180,7 @@ def _setup_wandb(
         id=trial_id,
         name=trial_name,
         resume=True,
-        reinit=True,
+        reinit="finish_previous",
         allow_val_change=True,
         config=_config,
         project=project,
@@ -394,8 +394,7 @@ class _QueueItem(enum.Enum):
 
 
 class _WandbLoggingActor:
-    """
-    Wandb assumes that each trial's information should be logged from a
+    """Wandb assumes that each trial's information should be logged from a
     separate process. We use Ray actors as forking multiprocessing
     processes is not supported by Ray and spawn processes run into pickling
     problems.
@@ -501,40 +500,27 @@ class WandbLoggerCallback(LoggerCallback):
     ``LoggerCallback`` sends metrics to Wandb for automatic tracking and
     visualization.
 
-    Example:
-
-        .. testcode::
-
-            import random
-
-            from ray import tune
-            from ray.air.integrations.wandb import WandbLoggerCallback
-
-
-            def train_func(config):
-                offset = random.random() / 5
-                for epoch in range(2, config["epochs"]):
-                    acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
-                    loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
-                    train.report({"acc": acc, "loss": loss})
-
-
-            tuner = tune.Tuner(
-                train_func,
-                param_space={
-                    "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
-                    "epochs": 10,
-                },
-                run_config=tune.RunConfig(
-                    callbacks=[WandbLoggerCallback(project="Optimization_Project")]
-                ),
-            )
-            results = tuner.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
+    Examples:
+        >>> import random  # doctest: +SKIP_EXAMPLE
+        >>> from ray import tune
+        >>> from ray.air.integrations.wandb import WandbLoggerCallback
+        >>> def train_func(config):
+        ...     offset = random.random() / 5
+        ...     for epoch in range(2, config["epochs"]):
+        ...         acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
+        ...         loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
+        ...         tune.report({"acc": acc, "loss": loss})
+        >>> tuner = tune.Tuner(
+        ...     train_func,
+        ...     param_space={
+        ...         "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
+        ...         "epochs": 10,
+        ...     },
+        ...     run_config=tune.RunConfig(
+        ...         callbacks=[WandbLoggerCallback(project="Optimization_Project")]
+        ...     ),
+        ... )
+        >>> results = tuner.fit()
 
     Args:
         project: Name of the Wandb project. Mandatory.
@@ -688,7 +674,7 @@ class WandbLoggerCallback(LoggerCallback):
             id=trial_id,
             name=trial_name,
             resume=False,
-            reinit=True,
+            reinit="finish_previous",
             allow_val_change=True,
             group=wandb_group,
             project=wandb_project,
@@ -793,9 +779,15 @@ class WandbLoggerCallback(LoggerCallback):
                 trial = self._logging_future_to_trial.pop(remaining_future)
                 self._cleanup_logging_actor(trial)
 
-    def on_experiment_end(self, trials: List["Trial"], **info):
+    def on_experiment_end(self, trials: List["Trial"], **info: Any):
         """Wait for the actors to finish their call to `wandb.finish`.
-        This includes uploading all logs + artifacts to wandb."""
+
+        This includes uploading all logs + artifacts to wandb.
+
+        Args:
+            trials: The experiment's trials. Unused.
+            **info: Kwargs dict for forward compatibility. Unused.
+        """
         self._cleanup_logging_actors(timeout=self._upload_timeout, kill_on_timeout=True)
 
     def __del__(self):

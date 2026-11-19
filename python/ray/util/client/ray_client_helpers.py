@@ -5,6 +5,9 @@ from typing import Any, Dict
 import ray as real_ray
 import ray.util.client.server.server as ray_client_server
 from ray._common.network_utils import build_address, get_localhost_ip
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
 from ray._private.client_mode_hook import disable_client_hook
 from ray.job_config import JobConfig
 from ray.util.client import ray
@@ -21,9 +24,7 @@ def ray_start_client_server(metadata=None, ray_connect_handler=None, **kwargs):
 
 @contextmanager
 def ray_start_client_server_for_address(address):
-    """
-    Starts a Ray client server that initializes drivers at the specified address.
-    """
+    """Starts a Ray client server that initializes drivers at the specified address."""
 
     def connect_handler(
         job_config: JobConfig = None, **ray_init_kwargs: Dict[str, Any]
@@ -43,6 +44,10 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwar
     ray._inside_client_test = True
     with disable_client_hook():
         assert not ray.is_initialized()
+    if ray_connect_handler is None:
+        # The default handler's bare ray.init() creates a missing token, but the
+        # client connects before the handler runs and needs the token as well.
+        ensure_token_if_auth_enabled()
     server = ray_client_server.serve(
         get_localhost_ip(), 50051, ray_connect_handler=ray_connect_handler
     )

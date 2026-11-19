@@ -419,16 +419,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool ResourceCreateUpdated(const NodeID &node_id,
                              const ResourceRequest &createUpdatedResources);
 
-  /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
-  /// This is called whenever there's an update to the resources on the local node.
-  void TryLocalInfeasibleTaskScheduling();
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
-
-  /// Flush objects that are out of scope in the application. This will attempt
-  /// to eagerly evict all plasma copies of the object from the cluster.
-  void FlushObjectsToFree();
 
   /// Handler for a resource usage notification from the GCS.
   ///
@@ -729,26 +721,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// unable to schedule new tasks or actors at all.
   void WarnAndGCStuckActors();
 
-  /// Dispatch tasks to available workers.
-  void DispatchScheduledTasksToWorkers();
-
-  /// Whether a task is an actor creation task.
-  bool IsActorCreationTask(const TaskID &task_id);
-
-  /// Return back all the bundle resource.
-  ///
-  /// \param bundle_spec: Specification of bundle whose resources will be returned.
-  /// \return Whether the resource is returned successfully.
-  bool ReturnBundleResources(const BundleSpecification &bundle_spec);
-
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
-  /// resource_load and resource_load_by_shape.
-  ///
-  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
-  /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &data);
-
   /// Disconnect a client.
   ///
   /// \param client The client that sent the message.
@@ -846,14 +818,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Garbage-collects CancelWorkerLease tombstones past their TTL.
   void GCCancelledLeaseTombstones();
 
-  /// Creates a AgentManager that creates and manages a dashboard agent.
+  /// Creates an AgentManager that creates and manages a dashboard agent.
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
   std::tuple<int, int, int> WaitForDashboardAgentPorts(const NodeID &self_node_id,
                                                        const NodeManagerConfig &config);
 
-  /// Creates a AgentManager that creates and manages a runtime env agent.
+  /// Creates an AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 

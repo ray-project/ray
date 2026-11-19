@@ -28,7 +28,7 @@ To enable tracing, you must provide a tracing startup hook with a function that 
 
 Below is an example tracing startup hook that sets up the default tracing provider, exports spans to files in `/tmp/spans`, and does not have any additional instruments.
 
-```{testcode}
+```python
 import ray
 import os
 from opentelemetry import trace
@@ -72,7 +72,7 @@ $ python
 :::
 
 :::{tab-item} ray.init()
-```{testcode}
+```python
 ray.init(_tracing_startup_hook="ray.util.tracing.setup_local_tmp_tracing:setup_tracing")
 
 @ray.remote
@@ -108,7 +108,7 @@ Add custom tracing in your programs. Within your program, get the tracer object 
 
 See below for a simple example of adding custom tracing.
 
-```{testcode}
+```python
 from opentelemetry import trace
 
 @ray.remote

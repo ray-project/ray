@@ -12,8 +12,8 @@ Save snapshots of training progress with Ray Train {class}`Checkpoints <ray.trai
 
 Use checkpoints for the following:
 
+- **Fault tolerance:** Handle worker process and node failures in a long-running training job, and use preemptible machines. When you {ref}`enable worker fault tolerance <train-worker-fault-tolerance>`, Ray Train restarts the workers after a failure, and a training function that {ref}`loads the latest checkpoint <train-dl-loading-checkpoints>` resumes from it.
 - **Storing the best-performing model weights:** Save your model to persistent storage, and use it for downstream serving or inference.
-- **Fault tolerance:** Handle worker process and node failures in a long-running training job, and use preemptible machines.
 - **Distributed checkpointing:** {ref}`Upload model shards from multiple workers in parallel <train-distributed-checkpointing>`.
 
 (train-dl-saving-checkpoints)=
@@ -38,8 +38,9 @@ To save a checkpoint in the training loop, do the following:
 
 1. Report the checkpoint to Ray Train using {func}`ray.train.report(metrics, checkpoint=...) <ray.train.report>`.
 
-   - Ray Train uses the metrics you report alongside the checkpoint to {ref}`keep track of the best-performing checkpoints <train-dl-configure-checkpoints>`.
    - This call uploads the checkpoint to persistent storage, if configured. See {ref}`persistent-storage-guide`.
+   - After a failure, {func}`ray.train.get_checkpoint` returns the latest reported checkpoint so that the training function can resume from it. See {ref}`train-dl-loading-checkpoints`.
+   - Ray Train uses the metrics you report alongside the checkpoint to {ref}`keep track of the best-performing checkpoints <train-dl-configure-checkpoints>`.
 
 
 ```{figure} ../images/checkpoint_lifecycle.png
@@ -125,9 +126,7 @@ Ray Train provides the callback implementation {class}`~ray.train.huggingface.tr
 
 For example, evaluation metrics such as `eval_loss` are logged during evaluation. To keep the best three checkpoints according to `eval_loss`, align the saving and evaluation frequency. The following are two examples of valid configurations:
 
-```{testcode}
-:skipif: True
-
+```python
 args = TrainingArguments(
     ...,
     evaluation_strategy="epoch",
@@ -282,7 +281,11 @@ Configure checkpointing with {class}`~ray.train.CheckpointConfig`. The primary o
 
 
 :::{note}
-To save the top `num_to_keep` checkpoints with respect to a metric through {py:class}`~ray.train.CheckpointConfig`, always report the metric together with the checkpoints.
+To save the top `num_to_keep` checkpoints with respect to a metric through {py:class}`~ray.train.CheckpointConfig`, always report the metric together with the checkpoints. If the metric comes from asynchronous validation instead, see {ref}`train-rank-checkpoints-by-validation-metric`.
+:::
+
+:::{note}
+Ray Train never deletes the latest checkpoint, because training resumes from it after a failure. If the latest checkpoint isn't among the top `num_to_keep`, Ray Train keeps `num_to_keep + 1` checkpoints. Ray Train also keeps any checkpoint whose {ref}`validation <train-validating-checkpoints>` hasn't finished, until the validation completes.
 :::
 
 (using-checkpoints-during-training)=
@@ -308,7 +311,7 @@ This function supports two consistency modes:
 
 Access the latest saved checkpoint with {attr}`Result.checkpoint <ray.train.Result>`.
 
-Access the full list of persisted checkpoints with {attr}`Result.best_checkpoints <ray.train.Result>`. If you set {class}`CheckpointConfig(num_to_keep) <ray.train.CheckpointConfig>`, this list contains the best `num_to_keep` checkpoints.
+Access the best checkpoints with {attr}`Result.best_checkpoints <ray.train.Result>`. If you set {class}`CheckpointConfig(num_to_keep) <ray.train.CheckpointConfig>`, this list contains the best `num_to_keep` checkpoints. It doesn't include the latest checkpoint unless the latest is also one of the best, even though Ray Train keeps the latest checkpoint on disk.
 
 For a full guide on inspecting training results, see {ref}`train-inspect-results`.
 

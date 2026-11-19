@@ -107,7 +107,7 @@ build_wheel_windows() {
       --with wheel==0.45.1 \
       --with delvewheel==1.11.2 \
       --with setuptools==80.9.0 \
-      --with pip==25.2 \
+      --with pip==26.2.2 \
       --python "${pyversion}" \
       /bin/bash -o pipefail -ec "
         python -m pip wheel -v -w dist . --no-deps --use-pep517

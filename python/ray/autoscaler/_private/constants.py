@@ -81,6 +81,16 @@ RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S = env_integer(
     "RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S", 600
 )
 
+# Autoscaler v2 only. If set to a non-negative value, pending worker nodes (not
+# yet running ray) that are not needed by any resource demands for longer than
+# this are terminated. It's separate from the idle timeout, since pending nodes
+# may take a while to provision and are expensive to relaunch. Disabled by
+# default (negative value): pending nodes are only terminated when they time out
+# (see RAY_AUTOSCALER_RECONCILE_ALLOCATE_STATUS_TIMEOUT_S).
+RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S = env_integer(
+    "RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S", -1
+)
+
 AUTOSCALER_REPORT_PER_NODE_STATUS = (
     env_integer("AUTOSCALER_REPORT_PER_NODE_STATUS", 1) == 1
 )
@@ -127,6 +137,7 @@ RAY_PROCESSES = [
     ["ray.util.client.server", False],
     ["default_worker.py", False],  # Python worker.
     ["setup_worker.py", False],  # Python environment setup worker.
+    ["fork_server.py", False],  # Python worker fork server.
     # For mac osx, setproctitle doesn't change the process name returned
     # by psutil but only cmdline.
     [

@@ -623,6 +623,15 @@ def validate_warmstart(
     If ``validate_point_name_lengths`` is False, the equality of lengths
     between ``points_to_evaluate`` and ``parameter_names`` will not be
     validated.
+
+    Args:
+        parameter_names: The names of the searcher's parameters.
+        points_to_evaluate: The initial points to evaluate, each a list or a
+            dict.
+        evaluated_rewards: The rewards already observed for
+            ``points_to_evaluate``, one per point.
+        validate_point_name_lengths: Whether to check that each point has one
+            value per parameter name.
     """
     if points_to_evaluate:
         if not isinstance(points_to_evaluate, list):

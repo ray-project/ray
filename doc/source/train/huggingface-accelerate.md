@@ -12,9 +12,7 @@ Use the {class}`~ray.train.torch.TorchTrainer` to launch your [Accelerate](https
 
 You only need to run your existing training code with a `TorchTrainer`. The final code looks similar to the following:
 
-```{testcode}
-:skipif: True
-
+```python
 from accelerate import Accelerator
 
 def train_func():
@@ -70,9 +68,7 @@ In Ray Train, set Accelerate configurations through the [`accelerate.Accelerator
 :::{tab-item} DeepSpeed
 To run DeepSpeed with Accelerate, create a [`DeepSpeedPlugin`](https://huggingface.co/docs/accelerate/main/en/package_reference/deepspeed) from a dictionary:
 
-```{testcode}
-:skipif: True
-
+```python
 from accelerate import Accelerator, DeepSpeedPlugin
 
 DEEPSPEED_CONFIG = {
@@ -131,9 +127,7 @@ trainer.fit()
 :sync: FSDP
 For PyTorch Fully Sharded Data Parallel (FSDP), create a [`FullyShardedDataParallelPlugin`](https://huggingface.co/docs/accelerate/main/en/package_reference/fsdp) and pass it to the `Accelerator`.
 
-```{testcode}
-:skipif: True
-
+```python
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
 from accelerate import Accelerator, FullyShardedDataParallelPlugin
 

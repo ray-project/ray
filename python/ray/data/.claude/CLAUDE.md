@@ -1,6 +1,8 @@
 <!-- Loaded on-demand when Claude works on Ray Data files. -->
 <!-- Keep under 50 lines. Multi-step procedures → skills. Code style → rules/. -->
 
+@../AGENTS.md
+
 # Ray Data
 
 ## Key Modules

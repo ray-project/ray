@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="alpha")
 class OfflineData:
+    """Loads offline data as a Ray Dataset and samples training batches from it.
+
+    Reads `config.input_` with the `ray.data` read method that
+    `config.input_read_method` names, `read_parquet` by default. On the first
+    `sample()` call, maps the data through the `OfflinePreLearner`, or
+    `config.prelearner_class` if set, with `Dataset.map_batches`.
+
+    Args:
+        config: The AlgorithmConfig with the offline data settings, such as
+            `input_`, `input_read_method`, and `input_filesystem`.
+    """
+
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(self, config: "AlgorithmConfig"):
 
@@ -125,6 +137,27 @@ class OfflineData:
         num_shards: int = 1,
         module_state: Dict[str, Any] = None,
     ):
+        """Samples a batch, or returns data iterators, from the offline data.
+
+        On the first call, maps the data through the pre-learner class, which
+        converts it into training batches with the Learner connector pipeline.
+
+        Args:
+            num_samples: The number of rows per batch. Also the batch size for
+                the mapping step, unless `config.input_read_batch_size` is set.
+            return_iterator: Whether to return data iterators instead of a single
+                batch.
+            num_shards: The number of shards to split the data stream into, one
+                per Learner. If greater than 1, splits the data with
+                `Dataset.streaming_split()` into equally sized shards.
+            module_state: The RLModule state to build the pre-learners with. If
+                None, fetches it from the first Learner. Only used on the first
+                call, when the data gets mapped.
+
+        Returns:
+            If `return_iterator` is True, a list of data iterators, one per shard.
+            Otherwise, a single `MultiAgentBatch`.
+        """
         # Materialize the mapped data, if necessary. This runs for all the
         # data the `OfflinePreLearner` logic and maps them to `MultiAgentBatch`es.
         # TODO (simon, sven): This would never update the module nor the
@@ -269,6 +302,12 @@ class OfflineData:
 
     @property
     def default_map_batches_kwargs(self):
+        """The default keyword arguments for the `Dataset.map_batches()` call.
+
+        `concurrency` is the greater of 2 and `config.num_learners`, and
+        `zero_copy_batch` is True. Keys in `config.map_batches_kwargs` override
+        these.
+        """
         return {
             "concurrency": max(2, self.config.num_learners),
             "zero_copy_batch": True,
@@ -276,6 +315,11 @@ class OfflineData:
 
     @property
     def default_iter_batches_kwargs(self):
+        """The default keyword arguments for the `Dataset.iter_batches()` call.
+
+        `prefetch_batches` is 2. Keys in `config.iter_batches_kwargs` override
+        these.
+        """
         return {
             "prefetch_batches": 2,
         }

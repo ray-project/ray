@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Ray Train how-to guides: data loading, accelerators, storage, monitoring, checkpointing, fault tolerance, elastic training, and experiment tracking."
+    description: "Ray Train how-to guides: data loading, accelerators, storage, monitoring, checkpointing, fault tolerance, elastic training, NCCL hang detection, debugging, and experiment tracking."
 ---
 
 (train-user-guides)=
@@ -21,8 +21,9 @@ experiment-tracking
 results
 fault-tolerance
 elastic-training
+nccl-hang-detection
+debugging
 monitor-your-application
-local-mode
 reproducibility
 Hyperparameter optimization <hyperparameter-optimization>
 ```

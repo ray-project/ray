@@ -1,5 +1,4 @@
-"""
-PyTorch policy class used for APPO.
+"""PyTorch policy class used for APPO.
 
 Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
