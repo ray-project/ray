@@ -1,7 +1,7 @@
 import enum
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
@@ -23,6 +23,9 @@ from .supports_cluster_autoscaling import (
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
+    from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
+        ResourceUtilizationGauge,
+    )
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data.context import DataContext
@@ -44,7 +47,13 @@ def create_cluster_autoscaler(
     data_context: "DataContext",
     *,
     execution_id: str,
+    autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
+    resource_utilization_calculator: Optional["ResourceUtilizationGauge"] = None,
 ) -> ClusterAutoscaler:
+    # a shared coordinator and a custom utilization gauge (both
+    # otherwise self-constructed by the autoscaler). The actor-only backend
+    # passes one coordinator shared with its sizer and a gauge fed by its own
+    # resource reporter; with both None this is the classic path.
     resource_limits = data_context.execution_options.resource_limits
     label_selector = data_context.execution_options.label_selector
     cluster_autoscaler_version = os.environ.get(
@@ -74,6 +83,8 @@ def create_cluster_autoscaler(
             data_context.execution_options,
             resource_manager,
             execution_id=execution_id,
+            autoscaling_coordinator=autoscaling_coordinator,
+            utility_calculator=resource_utilization_calculator,
         )
 
     elif cluster_autoscaler_version == ClusterAutoscalerVersion.V2:
@@ -82,6 +93,8 @@ def create_cluster_autoscaler(
             execution_id=execution_id,
             resource_limits=resource_limits,
             label_selector=label_selector,
+            autoscaling_coordinator=autoscaling_coordinator,
+            resource_utilization_calculator=resource_utilization_calculator,
         )
 
     else:
