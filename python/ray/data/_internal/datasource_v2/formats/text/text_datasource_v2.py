@@ -184,7 +184,7 @@ class TextDatasourceV2(FileDataSourceV2):
         return self._shuffle
 
     @override
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
         return _TextFileIndexer(ignore_missing_paths=self._ignore_missing_paths)
 
     @override

@@ -18,6 +18,7 @@ def test_file_chunk_defaults():
         "fully_matched": True,
         "unit_sizes": (),
         "unit_rows": (),
+        "memory_bytes": None,
     }
 
 
@@ -38,6 +39,7 @@ def test_file_chunk_round_trips_through_a_manifest():
         fully_matched=False,
         unit_sizes=(40, 50),
         unit_rows=(10, 20),
+        memory_bytes=120,
     )
     manifest = FileManifest.construct_manifest(
         paths=["a"], sizes=[90], chunk_metadatas=[run.to_metadata()]

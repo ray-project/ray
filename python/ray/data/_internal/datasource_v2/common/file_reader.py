@@ -1,6 +1,17 @@
 from enum import Enum
 from functools import cached_property, partial
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -50,6 +61,23 @@ _ARROW_DEFAULT_BATCH_SIZE = 131_072
 _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
+
+
+def file_dataset_schema(
+    schema: Optional[pa.Schema],
+    partition_keys: Collection[str],
+    synthesized_columns: Collection[str],
+) -> Optional[pa.Schema]:
+    """The schema a reader built with ``schema`` casts every batch to, ``None`` if it
+    casts to none; ``FileReader._file_dataset_schema`` has the reasons."""
+    if schema is None or any(isinstance(f.type, pa.ExtensionType) for f in schema):
+        return None
+    fields = [
+        f
+        for f in schema
+        if f.name not in partition_keys and f.name not in synthesized_columns
+    ]
+    return pa.schema(fields) if fields else None
 
 
 class FileFormat(str, Enum):
@@ -155,23 +183,16 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        schema = self._schema
-        if schema is None:
-            return None
-        if any(isinstance(f.type, pa.ExtensionType) for f in schema):
-            return None
         partition_keys = (
             set(self._partition_parser._scheme.field_names or [])
             if self._partition_parser is not None
             else set()
         )
-        synthesized = {c.name for c in self._synthesized_columns}
-        fields = [
-            f
-            for f in schema
-            if f.name not in partition_keys and f.name not in synthesized
-        ]
-        return pa.schema(fields) if fields else None
+        return file_dataset_schema(
+            schema=self._schema,
+            partition_keys=partition_keys,
+            synthesized_columns={c.name for c in self._synthesized_columns},
+        )
 
     def _broadcast_partition_value(
         self, name: str, value: Any, num_rows: int

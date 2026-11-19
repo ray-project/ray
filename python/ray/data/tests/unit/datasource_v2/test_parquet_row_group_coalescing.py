@@ -70,6 +70,15 @@ def test_coalesce(
             assert c.unit_sizes == () and c.unit_rows == ()
 
 
+def test_coalesced_run_sums_memory_estimates():
+    per_rg = [
+        FileChunk(unit_ids=(i,), size_bytes=10, num_rows=1, memory_bytes=25)
+        for i in range(3)
+    ]
+    (run,) = coalesce_row_groups(per_rg, target=100)
+    assert run.memory_bytes == 75
+
+
 if __name__ == "__main__":
     import sys
 

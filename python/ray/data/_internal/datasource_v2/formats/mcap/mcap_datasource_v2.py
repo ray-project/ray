@@ -161,7 +161,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
     def selection(self) -> MCAPSelection:
         return self._selection
 
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
         return MCAPSummaryIndexer(
             selection=self._selection,
             ignore_missing_paths=self._ignore_missing_paths,
