@@ -12,6 +12,7 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     combine_predicate_chain,
     combine_predicates,
     flatten_predicate_chain,
+    float_column_names,
     is_statistics_safe,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
@@ -56,8 +57,9 @@ class ParquetScanner(ArrowFileScanner):
         # Parquet statistics skip NaN, so some float filters run after the read.
         safe: List[Expr] = []
         unsafe: List[Expr] = []
+        float_columns = float_column_names(self.schema)
         for conjunct in flatten_predicate_chain(predicate, Operation.AND):
-            if is_statistics_safe(predicate=conjunct, schema=self.schema):
+            if is_statistics_safe(predicate=conjunct, float_columns=float_columns):
                 safe.append(conjunct)
             else:
                 unsafe.append(conjunct)

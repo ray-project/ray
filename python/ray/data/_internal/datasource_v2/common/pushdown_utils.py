@@ -1,6 +1,6 @@
 import functools
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, AbstractSet, List, Optional, Set
 
 import pyarrow as pa
 
@@ -138,7 +138,12 @@ _STATISTICS_SAFE_FLOAT_COMPARISONS = frozenset(
 )
 
 
-def is_statistics_safe(predicate: Expr, schema: pa.Schema) -> bool:
+def float_column_names(schema: pa.Schema) -> Set[str]:
+    """Names of the float columns in ``schema``, for :func:`is_statistics_safe`."""
+    return {field.name for field in schema if pa.types.is_floating(field.type)}
+
+
+def is_statistics_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool:
     """Whether Parquet row-group pruning on ``predicate`` keeps every matching row.
 
     Parquet min/max statistics skip NaN, so PyArrow can drop NaN rows when it
@@ -153,9 +158,8 @@ def is_statistics_safe(predicate: Expr, schema: pa.Schema) -> bool:
         Operation.OR,
     ):
         return is_statistics_safe(
-            predicate=predicate.left, schema=schema
-        ) and is_statistics_safe(predicate=predicate.right, schema=schema)
-    float_columns = {field.name for field in schema if pa.types.is_floating(field.type)}
+            predicate=predicate.left, float_columns=float_columns
+        ) and is_statistics_safe(predicate=predicate.right, float_columns=float_columns)
     if float_columns.isdisjoint(get_column_references(predicate)):
         return True
     if isinstance(predicate, UnaryExpr):
