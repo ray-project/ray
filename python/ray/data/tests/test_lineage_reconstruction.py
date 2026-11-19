@@ -603,6 +603,49 @@ def test_seed_targeted_by_one_plan_and_reused_by_another(
     assert _nodes(tracker)[seed_task_id].num_queued_outputs == 2
 
 
+@pytest.mark.parametrize("has_external_consumer", [True, False])
+def test_external_consumer_task_is_released_without_an_owning_operator(
+    ray_start_regular_shared, has_external_consumer  # noqa: F405
+):
+    """The seed's output went to an external consumer task, which lost it.
+
+    No operator owns an external consumer task, so the re-produced block is
+    released stamped for it without joining or queueing a reconstruction task in
+    a downstream operator. Without the flag the release looks for that operator
+    and fails.
+    """
+    producer, _, seed_input, tracker = _seed_and_consumer_ops()
+    if has_external_consumer:
+        producer.set_has_external_consumer()
+
+    seed_task_id = producer._lineage_task_id_for(0)
+    external_task_id = "consumer:0"
+    seed_block_id = "seed/0"
+    tracker.register_task_submission(seed_task_id, [])
+    tracker.register_block_output(seed_task_id, seed_block_id, 0)
+    tracker.register_block_queued(seed_task_id, 0)
+    tracker.register_task_submission(
+        external_task_id, tracker.resolve_dependencies([seed_block_id])
+    )
+    seed_task_ids, plan = tracker.register_task_failed(external_task_id)
+    assert seed_task_ids == [seed_task_id]
+
+    stamped = producer.stamp_seed_reconstruction_task(seed_task_id, {plan}, seed_input)
+    (output,) = _produced_bundles([[1]])
+    if not has_external_consumer:
+        with pytest.raises(ValueError, match="owns child reconstruction task"):
+            _run_to_completion(producer, stamped, [output])
+        return
+    _run_to_completion(producer, stamped, [output])
+
+    (released,) = _drain(producer)
+    assert released.block_refs == output.block_refs
+    assert released.reconstruction_stamp == ReconstructionStamp(
+        external_task_id, frozenset({plan})
+    )
+    assert producer._reconstruction_outputs == {}
+
+
 def test_loss_after_the_seed_reconstruction_task_is_submitted_re_injects_the_seed(
     ray_start_regular_shared,  # noqa: F405
 ):

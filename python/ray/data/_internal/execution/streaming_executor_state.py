@@ -9,7 +9,16 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    FrozenSet,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+)
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
@@ -50,11 +59,17 @@ from ray.data.exceptions import LineageReconstructionError
 from ray.exceptions import ObjectLostError, UserCodeException
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.external_consumer_tasks import (
+        ExternalConsumerTasks,
+    )
     from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
+
+# Names the source of an errored block that an external consumer reported.
+_EXTERNAL_CONSUMER_NAME = "external consumer"
 
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
@@ -711,34 +726,85 @@ def _reconstruct_lost_object(
             "by the lineage graph.",
         ) from lost_error
 
+    plan = _plan_reconstruction(
+        topology,
+        lineage_tracker,
+        task.lineage_task_id,
+        task.reconstruction_plan_ids,
+        lost_error,
+        description=f"task {task.lineage_task_id} on operator {state.op.name!r}",
+    )
+
+    # Abort the task so the operator releases every resource it reserved. It's
+    # not counted as failed since its lost output is being reconstructed.
+    task.mark_aborted(lost_error, aborted_for_reconstruction=True)
+
+    _reinject_seed_inputs(topology, plan)
+
+
+class _ReconstructionPlan(NamedTuple):
+    """The seeds to re-inject for a task that hit a lost object, and the plans
+    they serve."""
+
+    # Names the task in logs.
+    description: str
+    reconstruction_plan_ids: Set[str]
+    # A ``(seed_task_id, seed_operator, retained_input)`` triple per seed.
+    resubmissions: List[Tuple[str, LineageReconstructionMixin, RefBundle]]
+
+
+def _plan_reconstruction(
+    topology: Topology,
+    lineage_tracker: "LineageTracker",
+    lineage_task_id: str,
+    failed_plan_ids: FrozenSet[str],
+    lost_error: ObjectLostError,
+    description: str,
+) -> _ReconstructionPlan:
+    """Open the reconstruction plans for a task that hit a lost object, and get
+    the retained input of each seed task they trace back to.
+
+    Args:
+        topology: The executor's operator topology, searched for the operator
+            that retained each seed task's input.
+        lineage_tracker: The tracker recording the dataset's task lineage.
+        lineage_task_id: The task that hit the lost object.
+        failed_plan_ids: The plans the task served, or empty for a fresh attempt.
+        lost_error: The error raised when reading the lost object.
+        description: Names the task in logs and errors.
+
+    Returns:
+        The plan to pass to ``_reinject_seed_inputs``.
+
+    Raises:
+        LineageReconstructionError: If reconstruction cannot start.
+    """
     # A retry of a failed reconstruction attempt reuses the reconstruction plans it served; a fresh failure
     # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
     # plans do not interfere.
     traced_seed_ids: Set[str] = set()
     reconstruction_plan_ids: Set[str] = set()
     try:
-        if task.reconstruction_plan_ids:
-            for failed_plan_id in sorted(task.reconstruction_plan_ids):
+        if failed_plan_ids:
+            for failed_plan_id in sorted(failed_plan_ids):
                 seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
-                    task.lineage_task_id, failed_plan_id
+                    lineage_task_id, failed_plan_id
                 )
                 traced_seed_ids.update(seed_ids)
                 reconstruction_plan_ids.add(reconstruction_plan_id)
         else:
             seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
-                task.lineage_task_id
+                lineage_task_id
             )
             traced_seed_ids.update(seed_ids)
             reconstruction_plan_ids.add(reconstruction_plan_id)
     except ValueError as err:
         raise LineageReconstructionError(
             lost_error,
-            f"task {task.lineage_task_id} on operator {state.op.name!r} is not "
-            f"registered with the lineage graph ({err}).",
+            f"{description} is not registered with the lineage graph ({err}).",
         ) from lost_error
 
     seed_task_ids = sorted(traced_seed_ids)
-    plans_str = ", ".join(sorted(reconstruction_plan_ids))
 
     # Get each seed's retained input from the tracker, and the operator that ran the
     # seed, which is where the input is re-injected.
@@ -764,12 +830,14 @@ def _reconstruct_lost_object(
                 lost_error, f"no operator owns seed task {seed_id}."
             ) from lost_error
         resubmissions.append((seed_id, seed_op, seed_input))
+    return _ReconstructionPlan(description, reconstruction_plan_ids, resubmissions)
 
-    # Abort the task so the operator releases every resource it reserved. It's
-    # not counted as failed since its lost output is being reconstructed.
-    task.mark_aborted(lost_error, aborted_for_reconstruction=True)
 
-    for seed_id, seed_op, seed_input in resubmissions:
+def _reinject_seed_inputs(topology: Topology, plan: _ReconstructionPlan) -> None:
+    """Re-inject each seed's retained input, stamped for the plans it serves."""
+    reconstruction_plan_ids = plan.reconstruction_plan_ids
+    plans_str = ", ".join(sorted(reconstruction_plan_ids))
+    for seed_id, seed_op, seed_input in plan.resubmissions:
         # Clear the completion state of the seed op and everything downstream so a
         # re-injected seed input can flow through again.
         _clear_downstream_completion_state(topology, seed_op)
@@ -804,10 +872,10 @@ def _reconstruct_lost_object(
         )
 
     logger.warning(
-        "Reconstructing lost object for task %s via plan(s) %s from seed task(s) %s.",
-        task.lineage_task_id,
+        "Reconstructing lost object for %s via plan(s) %s from seed task(s) %s.",
+        plan.description,
         plans_str,
-        ", ".join(seed_task_ids),
+        ", ".join(seed_id for seed_id, _, _ in plan.resubmissions),
     )
 
 
@@ -818,6 +886,7 @@ def process_completed_tasks(
     output_backpressure_guard: OutputBackpressureGuard,
     metadata_fetcher: "MetadataFetcher",
     lineage_tracker: Optional["LineageTracker"] = None,
+    external_consumer_tasks: Optional["ExternalConsumerTasks"] = None,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -837,6 +906,9 @@ def process_completed_tasks(
         lineage_tracker: Optional tracker for experimental lineage reconstruction.
             When set, a lost task output is reconstructed from its lineage instead
             of counting as an errored block. ``None`` disables reconstruction.
+        external_consumer_tasks: Optional tracker of the tasks outside the
+            executor that consume its outputs. A lost input of one is
+            reconstructed like a lost task output.
 
     Returns:
         The number of errored blocks.
@@ -1029,6 +1101,29 @@ def process_completed_tasks(
         fetch_exc,
     ) in metadata_fetcher.emit_ready_and_fire_done_callbacks():
         _record_errored_block(fetch_exc, failed_op_name)
+
+    # Register the external tasks consumers reported. One whose input was lost
+    # is reconstructed like a task inside the executor.
+    if external_consumer_tasks is not None:
+        external_consumer_tasks.update_lineage(lineage_tracker)
+        for lost in external_consumer_tasks.pop_lost_inputs():
+            if lineage_tracker is None:
+                _record_errored_block(lost.error, _EXTERNAL_CONSUMER_NAME)
+                continue
+            lineage_tracker.num_object_reconstruction_attempts += 1
+            try:
+                plan = _plan_reconstruction(
+                    topology,
+                    lineage_tracker,
+                    lost.lineage_task_id,
+                    lost.reconstruction_plan_ids,
+                    lost.error,
+                    description=f"external task {lost.lineage_task_id}",
+                )
+            except LineageReconstructionError as recon_error:
+                _record_errored_block(recon_error, _EXTERNAL_CONSUMER_NAME)
+                continue
+            _reinject_seed_inputs(topology, plan)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
