@@ -1100,6 +1100,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns
         c_bool *is_retryable_error
         c_string *application_error
+        shared_ptr[CRayObject] completion_error
         shared_ptr[CTaskGeneratorBackpressureWaiter] waiter
         # Per-task accounting for the actor-wide cap. NULL when the actor
         # option `_actor_generator_backpressure_num_objects` is disabled
@@ -1310,6 +1311,13 @@ cdef report_streaming_generator_output(
             &return_objs,
             context.application_error)
         output_error_reported = True
+        context.completion_error = make_shared[CRayObject](
+            dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                make_shared[LocalMemoryBuffer](
+                    return_objs.back().second.get().GetData().get().Data(),
+                    return_objs.back().second.get().GetData().get().Size(), True)),
+            return_objs.back().second.get().GetMetadata(),
+            return_objs.back().second.get().GetNestedRefs(), True)
 
     # Del output here so that we can GC the memory
     # usage asap.
@@ -1386,6 +1394,17 @@ cdef report_streaming_generator_exception(
         context.is_retryable_error,
         context.application_error
     )
+
+    # Carry an owned, inlined copy in the completion reply. A streamed exception
+    # may be in plasma, and the owner needs its serialized cause to fail missing
+    # objects from a replay without depending on another object fetch.
+    context.completion_error = make_shared[CRayObject](
+        dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+            make_shared[LocalMemoryBuffer](
+                return_objs[0].second.get().GetData().get().Data(),
+                return_objs[0].second.get().GetData().get().Size(), True)),
+        return_objs[0].second.get().GetMetadata(),
+        return_objs[0].second.get().GetNestedRefs(), True)
 
     # Del exception here so that we can GC the memory
     # usage asap.
@@ -2292,7 +2311,15 @@ cdef void execute_task(
                         else:
                             execute_streaming_generator_sync(context)
 
-                        # Streaming generator output is not used, so set it to None.
+                        # Successful generators retain the None completion value.
+                        # Failed replays carry the serialized exception so the owner
+                        # can terminate refs that the replay never produced.
+                        if (is_reattempt and
+                                (<StreamingGeneratorExecutionContext>context)
+                                .completion_error.get() != NULL):
+                            returns[0][0].second = (
+                                <StreamingGeneratorExecutionContext>context
+                            ).completion_error
                         outputs = None
 
                     next_breakpoint = (

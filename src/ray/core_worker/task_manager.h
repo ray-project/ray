@@ -629,12 +629,18 @@ class TaskManager : public TaskManagerInterface {
    * \param[in] spec The TaskSpec that contains return object.
    * \param[in] error_type The error type the returned Ray object will store.
    * \param[in] ray_error_info The error information of a given error type.
+   * \param[in] store_in_plasma_ids Return IDs that must be written to plasma.
+   * \param[in] serialized_task_error Serialized application exception, if available.
+   * \param[in] num_streaming_returns_to_keep Replay returns already reported; these
+   * should not be replaced by the failure for unreported returns.
    */
   void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec,
       rpc::ErrorType error_type,
       const rpc::RayErrorInfo *ray_error_info,
-      const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) ABSL_LOCKS_EXCLUDED(mu_);
+      const absl::flat_hash_set<ObjectID> &store_in_plasma_ids,
+      const std::optional<rpc::ReturnObject> &serialized_task_error = std::nullopt,
+      size_t num_streaming_returns_to_keep = 0) ABSL_LOCKS_EXCLUDED(mu_);
 
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
@@ -910,6 +916,16 @@ class TaskManager : public TaskManagerInterface {
       const rpc::Address &worker_addr,
       const ReferenceCounterInterface::ReferenceTableProto &borrowed_refs);
 
+  // Shared terminal failure handling. execution_error_reply, when non-null,
+  // carries an inlined TASK_EXECUTION_EXCEPTION and the executed worker's refs.
+  void FailPendingTaskInternal(const TaskID &task_id,
+                               rpc::ErrorType error_type,
+                               const Status *status,
+                               const rpc::RayErrorInfo *ray_error_info,
+                               const rpc::Address &worker_addr,
+                               const rpc::PushTaskReply *execution_error_reply)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
   /**
    * Get the objects that were stored in plasma upon the first successful
    * execution of this task. If the task is re-executed, these objects should
@@ -1017,9 +1033,8 @@ class TaskManager : public TaskManagerInterface {
   /**
    * Fail a streaming generator task if a replay reports a different object
    * count than the first successful attempt. Must run before completion
-   * bookkeeping in CompletePendingTask. Runs for both successful and
-   * application-error completions — retries must reproduce the same object
-   * count.
+   * bookkeeping in CompletePendingTask, and only for successful completions.
+   * Failed executions can legitimately truncate their output.
    *
    * \param task_id The streaming generator task id.
    * \param reply Completing attempt; count from

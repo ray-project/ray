@@ -408,39 +408,29 @@ def test_cancel(shutdown_only, use_asyncio):
         pass
 
 
-def test_streaming_generator_replay_inconsistent_fails_fast(ray_start_cluster):
-    """
-    A streaming generator whose object count differs across attempts must fail
-    fast on replay with StreamingGeneratorReplayInconsistentError, instead of
-    hanging downstream consumers on objects that will never be produced.
+@pytest.mark.parametrize(
+    "replay_error", [None, ValueError, ray.exceptions.OutOfDiskError]
+)
+@pytest.mark.parametrize("replay_yields", [0, 1])
+@pytest.mark.parametrize("inline_threshold", [100, 10_000])
+def test_streaming_generator_replay_inconsistent_fails_fast(
+    ray_start_cluster, replay_error, replay_yields, inline_threshold
+):
+    """Failed replays preserve their exception; successful mismatches fail fast.
 
-    Setup:
-    1. Head + worker node. A detached actor on the head tracks the attempt
-       number across cluster changes.
-    2. Generator runs on the worker; first attempt yields 3 objects (pins EOF
-       to 3); the replay raises immediately with no yields (reports the app
-       exception as stream index 0 → actual count 1).
-    3. Kill the worker (drops the produced objects); add a fresh worker.
-    4. ray.get on the original refs forces lineage reconstruction; the replay's
-       object count mismatches the pinned EOF, and the task fails fast.
-    5. refs[0] already holds the reported app exception (plasma does not
-       overwrite), so ray.get raises RayTaskError; remaining refs raise
-       StreamingGeneratorReplayInconsistentError.
+    Lose three plasma objects after a successful execution, then reconstruct
+    them with a replay that yields fewer objects, optionally raising an error.
+    Test both inlined and plasma-backed streamed exceptions.
     """
     from ray.exceptions import (
         RayTaskError,
         StreamingGeneratorReplayInconsistentError,
     )
 
-    # Yields must exceed max_direct_call_object_size so they live in plasma and
-    # are lost with the worker (forcing reconstruction). The threshold is kept
-    # large enough that the replay's RayTaskError can still be inlined to the
-    # owner; otherwise MarkTaskReturnObjectsFailed seals
-    # STREAMING_GENERATOR_REPLAY_INCONSISTENT into local plasma for index 0
-    # before the worker-plasma exception is fetched.
+    # Yields must live in plasma so losing the worker forces reconstruction.
     system_config = {
         **RECONSTRUCTION_CONFIG,
-        "max_direct_call_object_size": 10_000,
+        "max_direct_call_object_size": inline_threshold,
     }
 
     cluster = ray_start_cluster
@@ -470,12 +460,11 @@ def test_streaming_generator_replay_inconsistent_fails_fast(ray_start_cluster):
     @ray.remote(num_returns="streaming", resources={"worker": 1}, max_retries=-1)
     def gen():
         attempt = ray.get(ray.get_actor("counter").next.remote())
-        # First attempt yields 3 objects → EOF pinned to 3. Replay raises with
-        # no yields → reports 1 stream item (the exception) → count mismatch.
-        if attempt > 1:
-            raise ValueError("intentional replay failure")
-        for i in range(3):
+        count = 3 if attempt == 1 else replay_yields
+        for i in range(count):
             yield np.zeros(20_000, dtype=np.uint8) + i
+        if attempt > 1 and replay_error is not None:
+            raise replay_error("intentional replay failure")
 
     gen_ref = gen.remote()
     refs = list(gen_ref)
@@ -488,18 +477,21 @@ def test_streaming_generator_replay_inconsistent_fails_fast(ray_start_cluster):
     cluster.add_node(num_cpus=1, resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    # Reading any original ref forces reconstruction. The replay reports only
-    # the app exception at index 0 (count 1 ≠ 3), so the task fails fast.
-    # Index 0 keeps the already-written RayTaskError; later indexes get
-    # StreamingGeneratorReplayInconsistentError.
-    with pytest.raises(RayTaskError, match="intentional replay failure"):
-        ray.get(refs[0])
-    for ref in refs[1:]:
-        with pytest.raises(
-            StreamingGeneratorReplayInconsistentError,
-            match=r"produced 1 objects, expected 3",
-        ):
-            ray.get(ref)
+    # Read a missing ref first to force replay completion before checking any
+    # prefix values. Every missing ref must terminate with the original error.
+    for ref in reversed(refs[replay_yields:]):
+        if replay_error is None:
+            with pytest.raises(StreamingGeneratorReplayInconsistentError):
+                ray.get(ref, timeout=30)
+        else:
+            with pytest.raises(RayTaskError, match="intentional replay failure") as exc:
+                ray.get(ref, timeout=30)
+            assert isinstance(exc.value.cause, replay_error)
+    if replay_error is not None:
+        for i, ref in enumerate(refs[:replay_yields]):
+            np.testing.assert_array_equal(
+                ray.get(ref, timeout=30), np.zeros(20_000, dtype=np.uint8) + i
+            )
 
 
 if __name__ == "__main__":

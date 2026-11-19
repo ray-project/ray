@@ -1264,14 +1264,36 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
-  // Fail inconsistent streaming-generator replays before completion bookkeeping.
-  if (FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
-    return;
-  }
-
   bool first_execution = false;
   const auto store_in_plasma_ids =
       GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
+  if (!first_execution && !reply.return_objects().empty() &&
+      !reply.return_objects(0).in_plasma() &&
+      !reply.return_objects(0).metadata().empty()) {
+    const auto &task_error = reply.return_objects(0);
+    RayObject error(nullptr,
+                    MakeInlinedBuffer(task_error.metadata()),
+                    std::vector<rpc::ObjectReference>{});
+    rpc::ErrorType error_type;
+    if (error.IsException(&error_type) &&
+        error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION) {
+      const auto spec = GetTaskSpec(task_id);
+      if (spec.has_value() && spec->IsStreamingGenerator()) {
+        // The diagnostic string can be empty even when a replay returned an error.
+        const auto error_info =
+            gcs::GetRayErrorInfo(error_type, reply.task_execution_error());
+        FailPendingTaskInternal(
+            task_id, error_type, nullptr, &error_info, worker_addr, &reply);
+        return;
+      }
+    }
+  }
+
+  // A failed replay's truncated output does not imply non-determinism.
+  if (!is_application_error &&
+      FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
+    return;
+  }
   std::vector<ObjectID> dynamic_return_ids;
   std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
@@ -1436,10 +1458,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // If it is a streaming generator, mark the end of stream since the task is finished.
   // We handle this logic here because the lock shouldn't be held while calling
   // HandleTaskReturn. On re-execution the EOF was already pinned by the first
-  // successful attempt; stream values are rematerialized only via intermediate
-  // generator reports (retries must be reproducible). Do not copy
-  // return_objects(0) onto stream refs on app-error replay: for streaming
-  // generators the static return is intentionally serialized None.
+  // successful attempt; successful replays rematerialize stream values only
+  // through intermediate generator reports. Failed replays with serialized
+  // exceptions are finalized above.
   if (spec.IsStreamingGenerator() && first_execution) {
     const ObjectID generator_id =
         ObjectID::FromBinary(reply.return_objects(0).object_id());
@@ -1597,6 +1618,24 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                   rpc::ErrorType error_type,
                                   const Status *status,
                                   const rpc::RayErrorInfo *ray_error_info) {
+  FailPendingTaskInternal(
+      task_id, error_type, status, ray_error_info, rpc::Address(), nullptr);
+}
+
+void TaskManager::FailPendingTaskInternal(
+    const TaskID &task_id,
+    rpc::ErrorType error_type,
+    const Status *status,
+    const rpc::RayErrorInfo *ray_error_info,
+    const rpc::Address &worker_addr,
+    const rpc::PushTaskReply *execution_error_reply) {
+  std::optional<rpc::ReturnObject> serialized_task_error;
+  size_t num_streaming_returns_to_keep = 0;
+  if (execution_error_reply != nullptr) {
+    serialized_task_error = execution_error_reply->return_objects(0);
+    num_streaming_returns_to_keep =
+        execution_error_reply->streaming_generator_return_ids_size();
+  }
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -1632,6 +1671,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       // precedence.
       error_type = rpc::ErrorType::TASK_CANCELLED;
       ray_error_info = nullptr;
+      serialized_task_error.reset();
+      num_streaming_returns_to_keep = 0;
     }
 
     if (status != nullptr && status->IsIntentionalSystemExit()) {
@@ -1673,14 +1714,20 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     }
   }
 
-  // The worker failed to execute the task, so it cannot be borrowing any
-  // objects.
+  // A completed execution may still have borrowers even when its replay failed.
   RemoveFinishedTaskReferences(spec,
                                /*release_lineage=*/true,
-                               rpc::Address(),
-                               ReferenceCounterInterface::ReferenceTableProto());
+                               worker_addr,
+                               execution_error_reply != nullptr
+                                   ? execution_error_reply->borrowed_refs()
+                                   : ReferenceCounterInterface::ReferenceTableProto());
 
-  MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
+  MarkTaskReturnObjectsFailed(spec,
+                              error_type,
+                              ray_error_info,
+                              store_in_plasma_ids,
+                              serialized_task_error,
+                              num_streaming_returns_to_keep);
 
   ShutdownIfNeeded();
 }
@@ -1928,9 +1975,16 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     const TaskSpecification &spec,
     rpc::ErrorType error_type,
     const rpc::RayErrorInfo *ray_error_info,
-    const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) {
+    const absl::flat_hash_set<ObjectID> &store_in_plasma_ids,
+    const std::optional<rpc::ReturnObject> &serialized_task_error,
+    size_t num_streaming_returns_to_keep) {
   const TaskID task_id = spec.TaskId();
-  RayObject error(error_type, ray_error_info);
+  RayObject error = serialized_task_error.has_value()
+                        ? RayObject(MakeInlinedBuffer(serialized_task_error->data()),
+                                    MakeInlinedBuffer(serialized_task_error->metadata()),
+                                    VectorFromProtobuf<rpc::ObjectReference>(
+                                        serialized_task_error->nested_inlined_refs()))
+                        : RayObject(error_type, ray_error_info);
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
@@ -1980,7 +2034,8 @@ void TaskManager::MarkTaskReturnObjectsFailed(
                     error_type,
                     ray_error_info != nullptr
                         ? std::optional<rpc::RayErrorInfo>(*ray_error_info)
-                        : std::nullopt);
+                        : std::nullopt,
+                    serialized_task_error);
 
     // If it was a streaming generator, try failing all the return object refs.
     // In a normal time, it is no-op because the object ref values are already
@@ -1990,7 +2045,8 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
-    for (size_t i = 0; i < num_streaming_generator_returns; i++) {
+    for (size_t i = num_streaming_returns_to_keep; i < num_streaming_generator_returns;
+         i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {
         Status s = put_in_local_plasma_callback_(error, generator_return_id);
