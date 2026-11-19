@@ -1258,6 +1258,20 @@ RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 // views of leader election in sync.
 RAY_CONFIG(bool, ENABLE_GCS_LEADER_ELECTION, false)
 
+// GCS leader election lease timings, in seconds. Must satisfy
+// lease_duration > renew_deadline > retry_period.
+RAY_CONFIG(int, gcs_leader_election_lease_duration_s, 15)
+RAY_CONFIG(int, gcs_leader_election_renew_deadline_s, 10)
+RAY_CONFIG(int, gcs_leader_election_retry_period_s, 2)
+
+// Name of the Kubernetes Lease object the GCS heads of one cluster compete for.
+// Required when leader election is enabled.
+RAY_CONFIG(std::string, gcs_leader_election_lease_name, "")
+
+// Namespace of the Lease. Empty falls back to $POD_NAMESPACE, then the pod's
+// service account namespace file.
+RAY_CONFIG(std::string, gcs_leader_election_lease_namespace, "")
+
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.
 // TODO(myan): #54515 Remove this flag after the task events are fully migrated to the

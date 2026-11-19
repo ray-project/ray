@@ -24,9 +24,14 @@ namespace gcs {
 
 class LeaderLeaseClientFactory {
  public:
-  /// Creates a platform-agnostic lease client based on configuration.
+  /// Creates a lease client for `lease_key`. An empty `lease_namespace` falls back to
+  /// $POD_NAMESPACE, then the pod's service account namespace file. Crashes if either
+  /// the key or the namespace can't be determined.
   static std::unique_ptr<LeaderLeaseClientInterface> Create(
       const std::string &lease_namespace, const std::string &lease_key);
+
+  /// The namespace Create() uses for `lease_namespace`, or empty if none is found.
+  static std::string ResolveLeaseNamespace(const std::string &lease_namespace);
 };
 
 }  // namespace gcs
