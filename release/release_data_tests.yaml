@@ -1281,7 +1281,7 @@
     script: >
       python image_embedding_from_uris/main.py
       --inference-concurrency 20 20 --fake-gpu --chaos --lineage-reconstruction
-      --chaos-kill-interval-s 60 --chaos-kill-batch-size 2
+      --chaos-kill-interval-s 60 --chaos-kill-batch-size 2 --chaos-max-kills 10
       --chaos-min-alive-workers 12 --verify-output
 
 
